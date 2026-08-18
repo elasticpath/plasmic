@@ -7,153 +7,83 @@
  */
 
 import type { Product } from "../types/product";
+import { mockProduct } from "../utils/design-time-data";
 
 // ---------------------------------------------------------------------------
 // Search hit products — 6 sample products matching a "leather" query
 // ---------------------------------------------------------------------------
 
 export const MOCK_SEARCH_PRODUCTS: Product[] = [
-  {
+  mockProduct({
     id: "sample-cs-001",
     name: "Sample Leather Messenger Bag",
     slug: "sample-leather-messenger-bag",
-    path: "/sample-leather-messenger-bag",
     description:
       "Full-grain leather messenger bag with adjustable canvas strap.",
+    amount: 15999,
+    currency: "USD",
     images: [
-      {
-        url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
-        alt: "Sample Leather Messenger Bag",
-      },
+      { url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png", alt: "Sample Leather Messenger Bag" },
     ],
-    variants: [
-      {
-        id: "sample-cs-001",
-        name: "Sample Leather Messenger Bag",
-        price: 159.99,
-        options: [],
-      },
-    ],
-    price: { value: 159.99, currencyCode: "USD" },
-    options: [],
-  },
-  {
+  }),
+  mockProduct({
     id: "sample-cs-002",
     name: "Sample Waxed Canvas Tote",
     slug: "sample-waxed-canvas-tote",
-    path: "/sample-waxed-canvas-tote",
-    description: "Durable waxed canvas tote with leather handles and base.",
+    description:
+      "Durable waxed canvas tote with leather handles and base.",
+    amount: 8999,
+    currency: "USD",
     images: [
-      {
-        url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
-        alt: "Sample Waxed Canvas Tote",
-      },
+      { url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png", alt: "Sample Waxed Canvas Tote" },
     ],
-    variants: [
-      {
-        id: "sample-cs-002",
-        name: "Sample Waxed Canvas Tote",
-        price: 89.99,
-        options: [],
-      },
-    ],
-    price: { value: 89.99, currencyCode: "USD" },
-    options: [],
-  },
-  {
+  }),
+  mockProduct({
     id: "sample-cs-003",
     name: "Sample Leather Card Holder",
     slug: "sample-leather-card-holder",
-    path: "/sample-leather-card-holder",
     description:
       "Slim vegetable-tanned leather card holder with 4 card slots.",
+    amount: 3499,
+    currency: "USD",
     images: [
-      {
-        url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
-        alt: "Sample Leather Card Holder",
-      },
+      { url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png", alt: "Sample Leather Card Holder" },
     ],
-    variants: [
-      {
-        id: "sample-cs-003",
-        name: "Sample Leather Card Holder",
-        price: 34.99,
-        options: [],
-      },
-    ],
-    price: { value: 34.99, currencyCode: "USD" },
-    options: [],
-  },
-  {
+  }),
+  mockProduct({
     id: "sample-cs-004",
     name: "Sample Wool Felt Laptop Sleeve",
     slug: "sample-wool-felt-laptop-sleeve",
-    path: "/sample-wool-felt-laptop-sleeve",
-    description:
-      'Premium wool felt laptop sleeve for 13" devices with leather closure.',
+    amount: 4999,
+    currency: "USD",
     images: [
-      {
-        url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
-        alt: "Sample Wool Felt Laptop Sleeve",
-      },
+      { url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png", alt: "Sample Wool Felt Laptop Sleeve" },
     ],
-    variants: [
-      {
-        id: "sample-cs-004",
-        name: "Sample Wool Felt Laptop Sleeve",
-        price: 49.99,
-        options: [],
-      },
-    ],
-    price: { value: 49.99, currencyCode: "USD" },
-    options: [],
-  },
-  {
+  }),
+  mockProduct({
     id: "sample-cs-005",
     name: "Sample Leather Passport Cover",
     slug: "sample-leather-passport-cover",
-    path: "/sample-leather-passport-cover",
-    description: "Hand-stitched leather passport cover with two card pockets.",
+    description:
+      "Hand-stitched leather passport cover with two card pockets.",
+    amount: 4200,
+    currency: "USD",
     images: [
-      {
-        url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
-        alt: "Sample Leather Passport Cover",
-      },
+      { url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png", alt: "Sample Leather Passport Cover" },
     ],
-    variants: [
-      {
-        id: "sample-cs-005",
-        name: "Sample Leather Passport Cover",
-        price: 42.0,
-        options: [],
-      },
-    ],
-    price: { value: 42.0, currencyCode: "USD" },
-    options: [],
-  },
-  {
+  }),
+  mockProduct({
     id: "sample-cs-006",
     name: "Sample Brass Key Ring",
     slug: "sample-brass-key-ring",
-    path: "/sample-brass-key-ring",
-    description: "Solid brass key ring with hand-braided leather fob.",
+    description:
+      "Solid brass key ring with hand-braided leather fob.",
+    amount: 1999,
+    currency: "USD",
     images: [
-      {
-        url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
-        alt: "Sample Brass Key Ring",
-      },
+      { url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png", alt: "Sample Brass Key Ring" },
     ],
-    variants: [
-      {
-        id: "sample-cs-006",
-        name: "Sample Brass Key Ring",
-        price: 19.99,
-        options: [],
-      },
-    ],
-    price: { value: 19.99, currencyCode: "USD" },
-    options: [],
-  },
+  }),
 ];
 
 // ---------------------------------------------------------------------------

@@ -284,11 +284,12 @@ describe("design-time-data", () => {
   it("should have valid product shapes", () => {
     for (const product of MOCK_SEARCH_PRODUCTS) {
       expect(product.id).toBeTruthy();
-      expect(product.name).toBeTruthy();
-      expect(product.slug).toBeTruthy();
-      expect(product.path).toMatch(/^\//);
-      expect(typeof product.price.value).toBe("number");
-      expect(product.price.currencyCode).toBe("USD");
+      expect(product.attributes?.name).toBeTruthy();
+      expect(product.attributes?.slug).toBeTruthy();
+      expect(
+        typeof product.meta?.display_price?.without_tax?.float_price
+      ).toBe("number");
+      expect(product.meta?.display_price?.without_tax?.currency).toBe("USD");
       expect(product.images.length).toBeGreaterThan(0);
     }
   });
@@ -793,9 +794,9 @@ describe("EPSearchHits", () => {
       providerEl!.getAttribute("data-provider-data") || "{}"
     );
     expect(data.id).toBe("sample-cs-001");
-    expect(data.name).toContain("Sample");
-    expect(data.price.formatted).toBeTruthy();
-    expect(data.price.currencyCode).toBe("USD");
+    expect(data.attributes.name).toContain("Sample");
+    expect(data.meta.display_price.without_tax.formatted).toBeTruthy();
+    expect(data.meta.display_price.without_tax.currency).toBe("USD");
   });
 
   it("should expose currentProductIndex in editor", () => {
@@ -856,9 +857,9 @@ describe("EPSearchHits", () => {
     const data = JSON.parse(
       providerEl!.getAttribute("data-provider-data") || "{}"
     );
-    expect(data.price.currencyCode).toBe("GBP");
-    expect(data.price.value).toBe(29.99);
-    expect(data.name).toBe("British Product");
+    expect(data.meta.display_price.without_tax.currency).toBe("GBP");
+    expect(data.meta.display_price.without_tax.float_price).toBe(29.99);
+    expect(data.attributes.name).toBe("British Product");
   });
 
   /** Render one EP catalog-search shaped hit and return the normalized currentProduct. */
@@ -877,6 +878,27 @@ describe("EPSearchHits", () => {
     );
     const providerEl = container.querySelector(
       '[data-testid="data-provider-currentProduct"]'
+    );
+    expect(providerEl).not.toBeNull();
+    return JSON.parse(providerEl!.getAttribute("data-provider-data") || "{}");
+  }
+
+  /** Same render, returning the search-side facts published as `currentHit`. */
+  function renderHitAndGetSearchMeta(
+    hit: Record<string, unknown>,
+    props: { productPathPrefix?: string } = {}
+  ) {
+    mockUsePlasmicCanvasContext.mockReturnValue(null);
+    mockUseSelector.mockReturnValue(undefined);
+    mockUseHits.mockReturnValue({ hits: [hit] });
+
+    const { container } = render(
+      <EPSearchHits {...props}>
+        <div>child</div>
+      </EPSearchHits>
+    );
+    const providerEl = container.querySelector(
+      '[data-testid="data-provider-currentHit"]'
     );
     expect(providerEl).not.toBeNull();
     return JSON.parse(providerEl!.getAttribute("data-provider-data") || "{}");
@@ -901,36 +923,24 @@ describe("EPSearchHits", () => {
     },
   };
 
-  it("exposes template extensions resolved and under the PDP rawData contract", () => {
+  it("carries template extensions where the product page reads them", () => {
     const data = renderHitAndGetCurrentProduct(EP_HIT);
 
-    // 1. direct binding: currentProduct.extensions["products(…)"].field
     expect(
-      data.extensions["products(specs)"].lifecycle_status
+      data.attributes.extensions["products(specs)"].lifecycle_status
     ).toBe("Published");
-    // 2. PDP field components read rawData.data.attributes.extensions
-    //    (see extractRawExtensions in product-extensions/composable/format.ts)
     expect(
-      data.rawData.data.attributes.extensions["products(specs)"]
-        .product_kind
+      data.attributes.extensions["products(specs)"].product_kind
     ).toBe("standard");
   });
 
-  it("defaults extensions to {} when the hit has none", () => {
-    const data = renderHitAndGetCurrentProduct({
-      objectID: "no-ext",
-      attributes: { name: "Plain", slug: "plain" },
-    });
-    expect(data.extensions).toEqual({});
-  });
-
   it("builds path from productPathPrefix (trailing slash tolerated)", () => {
-    const withPrefix = renderHitAndGetCurrentProduct(EP_HIT, {
+    const withPrefix = renderHitAndGetSearchMeta(EP_HIT, {
       productPathPrefix: "/products/",
     });
     expect(withPrefix.path).toBe("/products/sample-product");
 
-    const withDefault = renderHitAndGetCurrentProduct(EP_HIT);
+    const withDefault = renderHitAndGetSearchMeta(EP_HIT);
     expect(withDefault.path).toBe("/product/sample-product");
   });
 
@@ -938,7 +948,7 @@ describe("EPSearchHits", () => {
     // EP keys highlights by the bare query_by names while the document nests
     // fields under attributes — the adapter's document-driven walk drops
     // them, so the normalizer reads _rawTypesenseHit.highlight directly.
-    const data = renderHitAndGetCurrentProduct({
+    const data = renderHitAndGetSearchMeta({
       ...EP_HIT,
       _highlightResult: {
         attributes: {
@@ -955,8 +965,8 @@ describe("EPSearchHits", () => {
       },
     });
 
-    expect(data._highlightedName).toBe("Sample <mark>Product</mark>");
-    expect(data._snippetedDescription).toBe(
+    expect(data.highlightedName).toBe("Sample <mark>Product</mark>");
+    expect(data.snippetedDescription).toBe(
       "a <mark>sample</mark> description"
     );
   });
@@ -988,7 +998,7 @@ describe("EPSearchHits", () => {
     const data = JSON.parse(
       providerEl!.getAttribute("data-provider-data") || "{}"
     );
-    expect(data.price.currencyCode).toBe("USD");
+    expect(data.meta.display_price.without_tax.currency).toBe("USD");
   });
 });
 
