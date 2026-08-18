@@ -125,7 +125,7 @@ export const epSelectFieldMeta: CodeComponentMeta<EPSelectFieldProps> = {
       type: "string",
       defaultValue: "select",
       description:
-        "Form key. Reserved names map to the order; anything else is saved as a cart custom attribute.",
+        "Form key. Reserved names map to the order or shipping address (including shippingCountry with the countries preset); anything else is saved as a cart custom attribute.",
     },
     label: { type: "string", defaultValue: "Label" },
     required: { type: "boolean", defaultValue: false },

@@ -294,10 +294,42 @@ const RATES: SessionShippingRate[] = [
   { id: "rate-express", name: "Express", amount: 1500, currency: "CHF", serviceLevel: "express" },
 ];
 
-function cartFetch(items: Array<Record<string, unknown>> = []) {
+const EXAMPLE_STANDARD: SessionShippingRate = {
+  id: "example-standard",
+  name: "Standard Shipping",
+  amount: 599,
+  currency: "USD",
+  serviceLevel: "standard",
+};
+
+const BASE_TOTALS = {
+  subtotal: 1400,
+  tax: 0,
+  shipping: 0,
+  total: 1400,
+  currency: "USD",
+};
+
+const SHIPPED_TOTALS = {
+  subtotal: 1400,
+  tax: 0,
+  shipping: 599,
+  total: 1999,
+  currency: "USD",
+};
+
+function cartFetch(
+  items: Array<Record<string, unknown>> = [],
+  withTaxAmount = 8000,
+  currency = "CHF"
+) {
   return {
     data: {
-      data: { id: "cart-abc", type: "cart", meta: { display_price: { with_tax: { amount: 8000, currency: "CHF" } } } },
+      data: {
+        id: "cart-abc",
+        type: "cart",
+        meta: { display_price: { with_tax: { amount: withTaxAmount, currency } } },
+      },
       included: { items },
     },
   };
@@ -367,5 +399,182 @@ describe("handleUpdateSession — shipping selection write", () => {
     );
     expect(res.status).toBe(200);
     expect((res.body as any).data.session.selectedShippingRateId).toBe("rate-standard");
+  });
+
+  it("refreshes session.totals from the server rate + fresh EP cart total after a successful selection", async () => {
+    epSdk.getACart.mockResolvedValue(cartFetch([], 1999, "USD"));
+    const store = createMockStore(
+      makeSession({
+        availableShippingRates: [EXAMPLE_STANDARD],
+        totals: BASE_TOTALS,
+      })
+    );
+    const body = { selectedShippingRateId: "example-standard" };
+    const res = await handleUpdateSession(
+      createMockReq(body),
+      createMockCtx(null, {
+        sessionStore: store,
+        getClientCredentialsToken: jest.fn(async () => "ADMIN-TOKEN"),
+      })
+    );
+
+    expect(res.status).toBe(200);
+    expect(Object.keys(body)).toEqual(["selectedShippingRateId"]);
+    expect((body as Record<string, unknown>).amount).toBeUndefined();
+
+    const written = epSdk.manageCarts.mock.calls[0][0].body.data;
+    expect(written.price.amount).toBe(599);
+
+    const session = (res.body as any).data.session;
+    expect(session.totals.shipping).toBe(599);
+    expect(session.totals.total).toBe(1999);
+    expect(session.totals.subtotal).toBe(1400);
+
+    expect(store.set).toHaveBeenCalledTimes(1);
+    const persisted: CheckoutSession = store.set.mock.calls[0][1];
+    expect(persisted.totals?.shipping).toBe(599);
+    expect(persisted.totals?.total).toBe(1999);
+  });
+
+  it("does not update totals when the shipping-line write fails", async () => {
+    epSdk.manageCarts.mockRejectedValue(new Error("EP cart write rejected"));
+    const store = createMockStore(
+      makeSession({
+        availableShippingRates: [EXAMPLE_STANDARD],
+        totals: BASE_TOTALS,
+      })
+    );
+    const res = await handleUpdateSession(
+      createMockReq({ selectedShippingRateId: "example-standard" }),
+      createMockCtx(null, {
+        sessionStore: store,
+        getClientCredentialsToken: jest.fn(async () => "ADMIN-TOKEN"),
+      })
+    );
+
+    expect(res.status).toBe(200);
+    expect((res.body as any).data.session.selectedShippingRateId).toBe(
+      "example-standard"
+    );
+    expect((res.body as any).data.session.totals).toEqual(BASE_TOTALS);
+    const persisted: CheckoutSession = store.set.mock.calls[0][1];
+    expect(persisted.totals).toEqual(BASE_TOTALS);
+  });
+});
+
+describe("handleUpdateSession — shipping address invalidates rates", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    epSdk.getACart.mockResolvedValue(cartFetch([]));
+    epSdk.manageCarts.mockResolvedValue({});
+    epSdk.deleteACartItem.mockResolvedValue({});
+  });
+
+  const sessionWithRates = () =>
+    makeSession({
+      shippingAddress: ADDRESS,
+      selectedShippingRateId: "example-standard",
+      availableShippingRates: [EXAMPLE_STANDARD],
+      totals: SHIPPED_TOTALS,
+    });
+
+  it("clears availableShippingRates and selectedShippingRateId when shippingAddress changes", async () => {
+    const res = await handleUpdateSession(
+      createMockReq({
+        shippingAddress: { ...ADDRESS, line1: "999 Oak Ave" },
+      }),
+      createMockCtx(sessionWithRates())
+    );
+    const session = (res.body as any).data.session;
+    expect(session.availableShippingRates).toEqual([]);
+    expect(session.selectedShippingRateId).toBeNull();
+  });
+
+  it("clears stale shipping from session.totals when shippingAddress changes", async () => {
+    const store = createMockStore(sessionWithRates());
+    const res = await handleUpdateSession(
+      createMockReq({
+        shippingAddress: { ...ADDRESS, line1: "999 Oak Ave" },
+      }),
+      createMockCtx(null, { sessionStore: store })
+    );
+    const session = (res.body as any).data.session;
+    expect(session.totals.shipping).toBe(0);
+    expect(session.totals.subtotal).toBe(1400);
+    expect(session.totals.total).toBe(1400);
+    const persisted: CheckoutSession = store.set.mock.calls[0][1];
+    expect(persisted.totals).toEqual(BASE_TOTALS);
+  });
+
+  it("ignores a stale selectedShippingRateId sent with a changed address", async () => {
+    const ctx = createMockCtx(sessionWithRates(), {
+      getClientCredentialsToken: jest.fn(async () => "ADMIN-TOKEN"),
+    });
+    const res = await handleUpdateSession(
+      createMockReq({
+        shippingAddress: { ...ADDRESS, city: "Shelbyville" },
+        selectedShippingRateId: "rate-standard",
+      }),
+      ctx
+    );
+    const session = (res.body as any).data.session;
+    expect(session.selectedShippingRateId).toBeNull();
+    expect(session.availableShippingRates).toEqual([]);
+    expect(epSdk.manageCarts).not.toHaveBeenCalled();
+  });
+
+  it("preserves rates and selectedShippingRateId when an equivalent shippingAddress is PATCHed", async () => {
+    const res = await handleUpdateSession(
+      createMockReq({
+        shippingAddress: { ...ADDRESS },
+      }),
+      createMockCtx(sessionWithRates())
+    );
+    const session = (res.body as any).data.session;
+    expect(session.availableShippingRates).toEqual([EXAMPLE_STANDARD]);
+    expect(session.selectedShippingRateId).toBe("example-standard");
+  });
+
+  it("preserves selected rate and shipping totals when an equivalent shippingAddress is PATCHed", async () => {
+    const res = await handleUpdateSession(
+      createMockReq({
+        shippingAddress: { ...ADDRESS },
+      }),
+      createMockCtx(sessionWithRates())
+    );
+    const session = (res.body as any).data.session;
+    expect(session.selectedShippingRateId).toBe("example-standard");
+    expect(session.totals).toEqual(SHIPPED_TOTALS);
+  });
+
+  it("preserves rates and selection when optional fields differ only as empty vs missing", async () => {
+    const res = await handleUpdateSession(
+      createMockReq({
+        shippingAddress: {
+          ...ADDRESS,
+          company: "",
+          line2: "",
+          county: "",
+        },
+      }),
+      createMockCtx(sessionWithRates())
+    );
+    const session = (res.body as any).data.session;
+    expect(session.availableShippingRates).toEqual([EXAMPLE_STANDARD]);
+    expect(session.selectedShippingRateId).toBe("example-standard");
+  });
+
+  it("does not apply a shipping line write when the address change cleared rates", async () => {
+    const ctx = createMockCtx(sessionWithRates(), {
+      getClientCredentialsToken: jest.fn(async () => "ADMIN-TOKEN"),
+    });
+    await handleUpdateSession(
+      createMockReq({
+        shippingAddress: { ...ADDRESS, postcode: "00000" },
+        selectedShippingRateId: "rate-express",
+      }),
+      ctx
+    );
+    expect(epSdk.manageCarts).not.toHaveBeenCalled();
   });
 });

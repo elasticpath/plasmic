@@ -18,6 +18,11 @@ export { EPFormField, registerEPFormField, epFormFieldMeta } from "./EPFormField
 export { EPSelectField, registerEPSelectField, epSelectFieldMeta, parseOptions } from "./EPSelectField";
 export { EPConsentCheckbox, registerEPConsentCheckbox, epConsentCheckboxMeta } from "./EPConsentCheckbox";
 export { EPPlaceOrderButton, registerEPPlaceOrderButton, epPlaceOrderButtonMeta } from "./EPPlaceOrderButton";
+export {
+  EPCheckoutShippingRates,
+  registerEPCheckoutShippingRates,
+  epCheckoutShippingRatesMeta,
+} from "../session/EPCheckoutShippingRates";
 
 // Data
 export { COUNTRIES, DEFAULT_PRIORITY_COUNTRIES } from "./countries";
