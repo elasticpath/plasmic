@@ -6,11 +6,7 @@
  * designers can style every scenario.
  */
 
-import type {
-  Product,
-  ProductOption,
-  ProductVariant,
-} from "../types/product";
+import type { ChildProduct, Product, Variation } from "../types/product";
 import type {
   StockLocationData,
   ProductStockSummary,
@@ -20,77 +16,83 @@ import type {
 // Variation mock data
 // ---------------------------------------------------------------------------
 
-export const MOCK_VARIATION_OPTIONS: ProductOption[] = [
+export const MOCK_VARIATIONS: Variation[] = [
   {
     id: "sample-color",
-    displayName: "Sample Color",
-    values: [
-      { label: "Midnight Blue", hexColors: ["#191970"] },
-      { label: "Forest Green", hexColors: ["#228B22"] },
-      { label: "Warm Sand", hexColors: ["#C2B280"] },
+    name: "Sample Color",
+    options: [
+      { id: "sample-color-midnight", name: "Midnight Blue" },
+      { id: "sample-color-forest", name: "Forest Green" },
+      { id: "sample-color-sand", name: "Warm Sand" },
     ],
   },
   {
     id: "sample-size",
-    displayName: "Sample Size",
-    values: [
-      { label: "Small" },
-      { label: "Medium" },
-      { label: "Large" },
+    name: "Sample Size",
+    options: [
+      { id: "sample-size-s", name: "Small" },
+      { id: "sample-size-m", name: "Medium" },
+      { id: "sample-size-l", name: "Large" },
     ],
   },
 ];
 
-function buildMockVariants(): ProductVariant[] {
-  const colors = MOCK_VARIATION_OPTIONS[0].values;
-  const sizes = MOCK_VARIATION_OPTIONS[1].values;
-  const variants: ProductVariant[] = [];
+function buildMockChildProducts(): ChildProduct[] {
+  const [colors, sizes] = [MOCK_VARIATIONS[0].options, MOCK_VARIATIONS[1].options];
+  const children: ChildProduct[] = [];
   let idx = 0;
 
   for (const color of colors) {
     for (const size of sizes) {
       idx++;
-      variants.push({
-        id: `sample-variant-${idx}`,
-        name: `Sample Product – ${color.label} / ${size.label}`,
-        price: 49.99,
-        availableForSale: true,
-        options: [
-          {
-            id: "sample-color",
-            displayName: "Sample Color",
-            values: [{ label: color.label, hexColors: color.hexColors }],
-          },
-          {
-            id: "sample-size",
-            displayName: "Sample Size",
-            values: [{ label: size.label }],
-          },
-        ],
+      children.push({
+        id: `sample-child-${idx}`,
+        name: `Sample Product – ${color.name} / ${size.name}`,
+        sku: `SAMPLE-${idx}`,
+        price: {
+          amount: 4999,
+          currency: "USD",
+          formatted: "$49.99",
+          float_price: 49.99,
+        },
+        optionIds: [color.id, size.id],
+        images: [],
       });
     }
   }
 
-  return variants;
+  return children;
 }
 
-export const MOCK_VARIANTS: ProductVariant[] = buildMockVariants();
+export const MOCK_CHILD_PRODUCTS: ChildProduct[] = buildMockChildProducts();
 
 export const MOCK_EP_PRODUCT: Product = {
   id: "sample-product-001",
-  name: "Sample Variation Product",
-  description: "This is sample data for design-time preview",
-  slug: "sample-variation-product",
-  path: "/sample-variation-product",
+  type: "product",
+  attributes: {
+    name: "Sample Variation Product",
+    description: "This is sample data for design-time preview",
+    slug: "sample-variation-product",
+    sku: "SAMPLE-PARENT",
+  },
+  meta: {
+    display_price: {
+      without_tax: {
+        amount: 4999,
+        currency: "USD",
+        formatted: "$49.99",
+        float_price: 49.99,
+      },
+    },
+  },
   images: [
     {
       url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
       alt: "Sample Product",
     },
   ],
-  variants: MOCK_VARIANTS,
-  price: { value: 49.99, currencyCode: "USD" },
-  options: MOCK_VARIATION_OPTIONS,
+  variations: MOCK_VARIATIONS,
+  childProducts: MOCK_CHILD_PRODUCTS,
 };
 
 // ---------------------------------------------------------------------------

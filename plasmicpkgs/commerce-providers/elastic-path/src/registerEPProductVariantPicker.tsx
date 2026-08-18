@@ -2,10 +2,14 @@ import { useSelector } from "@plasmicapp/host";
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
-import type { Product, ProductOption } from "./types/product";
+import type { Product, Variation } from "./types/product";
 import React, { useEffect, useMemo, useState } from "react";
 import { Controller, useForm, useFormContext } from "react-hook-form";
 import { Registerable } from "./registerable";
+import {
+  findChildProduct,
+  initialSelection,
+} from "./variant-picker/selection";
 import { createLogger } from "./utils/logger";
 
 const log = createLogger("EPProductVariantPicker");
@@ -47,24 +51,23 @@ export function EPProductVariantPicker(props: EPProductVariantPickerProps) {
   const form = useFormContext() ?? useForm();
 
   // Extract variations from the product
-  const variations: ProductOption[] = product?.options || [];
+  const variations: Variation[] = product?.variations || [];
 
   // Track the last initialized variant ID
   const [lastInitializedVariantId, setLastInitializedVariantId] = useState<string | undefined>(undefined);
 
   // Set initial values based on defaultVariantId
   useEffect(() => {
-    if (defaultVariantId && defaultVariantId !== lastInitializedVariantId && product?.variants && form) {
-      const targetVariant = product.variants.find(
-        (v) => v.id === defaultVariantId
-      );
-      if (targetVariant) {
-        // Set form values for each variation based on the target variant's options
-        targetVariant.options?.forEach((option) => {
-          const value = option.values?.[0]?.label;
-          if (value) {
-            form.setValue(`variation_${option.id}`, value);
-          }
+    if (
+      defaultVariantId &&
+      defaultVariantId !== lastInitializedVariantId &&
+      product?.childProducts &&
+      form
+    ) {
+      const selection = initialSelection(product, defaultVariantId);
+      if (Object.keys(selection).length > 0) {
+        Object.entries(selection).forEach(([variationId, optionName]) => {
+          form.setValue(`variation_${variationId}`, optionName);
         });
         setLastInitializedVariantId(defaultVariantId);
       }
@@ -88,39 +91,13 @@ export function EPProductVariantPicker(props: EPProductVariantPickerProps) {
     return values;
   }, [variations, ...watchedValues]);
 
-  // Find the matching variant based on selected options
+  // Find the matching child product based on selected options
   const selectedVariant = useMemo(() => {
-    if (!product?.variants || variations.length === 0) {
-      return product?.variants?.[0];
+    if (Object.keys(variationValues).length !== variations.length) {
+      return undefined;
     }
-
-    // Find variant that matches all selected options
-
-    return product.variants.find((variant) => {
-      // Check if this variant matches all selected variation values
-
-      // If no variations selected yet, don't match any variant
-      if (Object.keys(variationValues).length === 0) {
-        return false;
-      }
-
-      // Check if we have all variations selected
-      if (Object.keys(variationValues).length !== variations.length) {
-        return false;
-      }
-
-      const matches = Object.entries(variationValues).every(
-        ([variationId, selectedValue]) => {
-          // Find the option in this variant for the current variation
-          const variantOption = variant.options?.find(
-            (opt: ProductOption) => opt.id === variationId
-          );
-          return variantOption?.values?.[0]?.label === selectedValue;
-        }
-      );
-      return matches;
-    });
-  }, [product?.variants, variations, variationValues]);
+    return findChildProduct(product, variationValues);
+  }, [product, variations, variationValues]);
 
   // Update the ProductVariant field when a matching variant is found
   useEffect(() => {
@@ -154,7 +131,7 @@ export function EPProductVariantPicker(props: EPProductVariantPickerProps) {
       {variations.map((variation) => (
         <div key={variation.id} style={{ marginBottom: "10px" }}>
           <label style={{ display: "block", marginBottom: "5px" }}>
-            {variation.displayName}
+            {variation.name}
           </label>
           <Controller
             name={`variation_${variation.id}`}
@@ -162,10 +139,10 @@ export function EPProductVariantPicker(props: EPProductVariantPickerProps) {
             defaultValue=""
             render={({ field }) => (
               <select {...field} style={{ width: "100%" }}>
-                <option value="">Select {variation.displayName}</option>
-                {variation.values.map((option) => (
-                  <option key={option.label} value={option.label}>
-                    {option.label}
+                <option value="">Select {variation.name}</option>
+                {variation.options.map((option) => (
+                  <option key={option.id} value={option.name}>
+                    {option.name}
                   </option>
                 ))}
               </select>

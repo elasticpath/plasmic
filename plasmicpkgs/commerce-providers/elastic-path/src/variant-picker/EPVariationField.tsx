@@ -4,7 +4,7 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../registerable";
-import { MOCK_VARIATION_OPTIONS } from "../utils/design-time-data";
+import { MOCK_VARIATIONS } from "../utils/design-time-data";
 
 type VariationFieldName = "name" | "id" | "optionCount";
 
@@ -53,7 +53,7 @@ export function EPVariationField(props: EPVariationFieldProps) {
     | {
         id: string;
         name: string;
-        values: { label: string; hexColors?: string[] }[];
+        options: { id: string; name: string }[];
       }
     | undefined;
   const inEditor = !!usePlasmicCanvasContext();
@@ -61,12 +61,12 @@ export function EPVariationField(props: EPVariationFieldProps) {
   const useMock =
     previewState === "withData" ||
     (previewState === "auto" && !currentVariation && inEditor);
-  const mockVariation = MOCK_VARIATION_OPTIONS[0];
+  const mockVariation = MOCK_VARIATIONS[0];
   const effectiveVariation = useMock
     ? {
         id: mockVariation.id,
-        name: mockVariation.displayName,
-        values: mockVariation.values,
+        name: mockVariation.name,
+        options: mockVariation.options,
       }
     : currentVariation;
 
@@ -83,7 +83,7 @@ export function EPVariationField(props: EPVariationFieldProps) {
       value = effectiveVariation.id;
       break;
     case "optionCount":
-      value = String(effectiveVariation.values?.length ?? 0);
+      value = String(effectiveVariation.options?.length ?? 0);
       break;
     default:
       value = "";

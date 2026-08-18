@@ -34,18 +34,21 @@ export function EPVariationOptionField(props: EPVariationOptionFieldProps) {
   const { field = "label", className } = props;
 
   const currentOption = useSelector("currentVariationOption") as
-    | { label: string; hexColors?: string[]; isSelected: boolean }
+    | { id: string; name: string; isSelected: boolean }
     | undefined;
   const inEditor = !!usePlasmicCanvasContext();
 
   const effectiveOption =
-    currentOption ?? (inEditor ? { label: "Sample Option" } : undefined);
+    currentOption ??
+    (inEditor
+      ? { id: "opt-sample", name: "Sample Option", isSelected: false }
+      : undefined);
 
   if (!effectiveOption) {
     return <span className={className}>—</span>;
   }
 
-  return <span className={className}>{effectiveOption.label}</span>;
+  return <span className={className}>{effectiveOption.name}</span>;
 }
 
 export function registerEPVariationOptionField(
