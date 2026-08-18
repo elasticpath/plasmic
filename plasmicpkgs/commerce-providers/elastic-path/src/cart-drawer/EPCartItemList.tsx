@@ -211,7 +211,7 @@ export function EPCartItemList(props: EPCartItemListProps) {
 
   const items: EnrichedCartItem[] = useMemo(() => {
     if (useMock) {
-      return MOCK_CART_LINE_ITEMS as EnrichedCartItem[];
+      return MOCK_CART_LINE_ITEMS as unknown as EnrichedCartItem[];
     }
     if (!cart?.items) return [];
     return cart.items.map((item) => enrichLineItem(item, locationMap, stockMap));

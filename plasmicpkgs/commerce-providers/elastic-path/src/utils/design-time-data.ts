@@ -326,40 +326,27 @@ export const MOCK_EMPTY_CART_DATA: Cart = {
 // Checkout cart mock data
 // ---------------------------------------------------------------------------
 
-export interface MockCheckoutCartItem {
-  id: string;
-  name: string;
-  quantity: number;
-  price: number;
-  formattedPrice: string;
-  imageUrl: string;
-  sku: string;
-  options: { name: string; value: string }[];
-}
-
-export const MOCK_CHECKOUT_CART_ITEMS: MockCheckoutCartItem[] = [
-  {
+export const MOCK_CHECKOUT_CART_ITEMS: CartItem[] = [
+  mockCartItem({
     id: "sample-checkout-item-1",
+    productId: "sample-checkout-product-1",
     name: "Fireside Amber Candle",
-    quantity: 1,
-    price: 38.0,
-    formattedPrice: "$38.00",
-    imageUrl:
-      "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
     sku: "EW-FA-001",
-    options: [{ name: "Size", value: "8 oz" }],
-  },
-  {
-    id: "sample-checkout-item-2",
-    name: "Woodland Sage Candle",
     quantity: 1,
-    price: 24.0,
-    formattedPrice: "$24.00",
-    imageUrl:
-      "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
+    amount: 3800,
+    imageUrl: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
+    options: [{ name: "Size", value: "8 oz" }],
+  }),
+  mockCartItem({
+    id: "sample-checkout-item-2",
+    productId: "sample-checkout-product-2",
+    name: "Woodland Sage Candle",
     sku: "EW-WS-001",
+    quantity: 1,
+    amount: 2400,
+    imageUrl: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
     options: [{ name: "Size", value: "4 oz" }],
-  },
+  }),
 ];
 
 export const MOCK_CHECKOUT_CART_DATA = {
