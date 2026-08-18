@@ -514,13 +514,26 @@ describe("confirmOrder reconciliation (#369)", () => {
 // ===========================================================================
 
 describe("server-authoritative requiresShipping (#369)", () => {
+  function epIncludedCartItem(productId: string) {
+    return {
+      id: "li-1",
+      type: "cart_item",
+      sku: "sandle",
+      product_id: productId,
+      quantity: 1,
+      unit_price: { amount: 1400 },
+    };
+  }
+
   /** Cart whose single line points at the given product id. */
   function physicalCartFetch(productId: string, commodityType: string) {
-    const items = [{ id: "li-1", quantity: 1, product_id: productId }];
+    const items = [epIncludedCartItem(productId)];
     epSdk.getACart.mockResolvedValue({
       data: {
         included: { items },
         data: {
+          id: "cart-abc",
+          type: "cart",
           meta: { display_price: { with_tax: { amount: 5400, currency: "CHF" } } },
         },
       },
@@ -530,6 +543,39 @@ describe("server-authoritative requiresShipping (#369)", () => {
     });
     return hashCart(items);
   }
+
+  it("requests include: ['items'] on the item-read getACart", async () => {
+    const line = epIncludedCartItem("prod-phys");
+    expect(line).toEqual(
+      expect.objectContaining({
+        id: expect.any(String),
+        sku: expect.any(String),
+        product_id: "prod-phys",
+        quantity: expect.any(Number),
+        unit_price: expect.any(Object),
+      })
+    );
+    expect(line).not.toHaveProperty("commodity_type");
+    physicalCartFetch("prod-phys", "physical");
+    await handlePay(
+      createMockReq({ gateway: "stripe", confirmation_token: "ctok" }),
+      createMockCtx(
+        makeSession({
+          cartHash: hashCart([line]),
+          requiresShipping: false,
+          shippingAddress: null,
+          selectedShippingRateId: null,
+        }),
+        createMockAdapter()
+      )
+    );
+    expect(epSdk.getACart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { cartID: "cart-abc" },
+        query: { include: ["items"] },
+      })
+    );
+  });
 
   it("forces shipping for a physical cart even when the client suppressed it", async () => {
     const cartHash = physicalCartFetch("prod-phys", "physical");
@@ -552,6 +598,8 @@ describe("server-authoritative requiresShipping (#369)", () => {
     expect(res.status).toBe(400);
     expect((res.body as any).error.code).toBe("MISSING_FIELDS");
     expect((res.body as any).error.message).toContain("shippingAddress");
+    expect((res.body as any).error.message).toContain("selectedShippingRateId");
+    expect(epSdk.getByContextAllProducts).toHaveBeenCalled();
     // No payment attempted, no order created.
     expect(adapter.initializePayment).not.toHaveBeenCalled();
     expect(epSdk.checkoutApi).not.toHaveBeenCalled();

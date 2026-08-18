@@ -322,6 +322,7 @@ export async function handlePay(
     const cartResponse = await getACart({
       client: shopperClient,
       path: { cartID: session.cartId },
+      query: { include: ["items"] },
     });
     const items =
       (cartResponse.data as any)?.included?.items ??
