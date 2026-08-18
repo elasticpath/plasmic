@@ -1,5 +1,8 @@
 import type { ProductData, ProductListData } from "@epcc-sdk/sdks-shopper";
-import { normalizeProduct } from "../utils/normalize";
+import {
+  normalizeProduct,
+  normalizeProductFromList,
+} from "../utils/normalize";
 
 const simpleProduct: ProductData = {
   data: {
@@ -219,5 +222,31 @@ describe("normalizeProduct", () => {
     const product = normalizeProduct(simpleProduct, "en-US");
 
     expect(product.priceFrom).toBeUndefined();
+  });
+
+  it("gives a product from a list the same shape as a product fetched alone", () => {
+    const product = normalizeProductFromList(
+      {
+        id: "list-1",
+        type: "product",
+        attributes: { name: "Wool Cap", sku: "CAP-1" },
+        meta: {
+          display_price: {
+            without_tax: { amount: 1500, currency: "USD", formatted: "$15.00" },
+          },
+        },
+        relationships: { main_image: { data: { id: "img-1", type: "main_image" } } },
+      },
+      "en-US",
+      { main_images: [{ id: "img-1", link: { href: "https://cdn.example/cap.jpg" } }] }
+    );
+
+    expect(product.attributes?.name).toBe("Wool Cap");
+    expect(product.meta?.display_price?.without_tax?.float_price).toBe(15);
+    expect(product.images).toEqual([
+      { url: "https://cdn.example/cap.jpg", alt: "Wool Cap" },
+    ]);
+    expect(product.variations).toEqual([]);
+    expect(product.childProducts).toEqual([]);
   });
 });
