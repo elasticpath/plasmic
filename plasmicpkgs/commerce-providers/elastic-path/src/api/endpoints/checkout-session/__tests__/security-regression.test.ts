@@ -514,11 +514,6 @@ describe("confirmOrder reconciliation (#369)", () => {
 // ===========================================================================
 
 describe("server-authoritative requiresShipping (#369)", () => {
-  /**
-   * Realistic EP `GET /v2/carts/{id}?include=items` line: flat cart_item
-   * with top-level product_id/sku. commodity_type lives on the *catalog*
-   * product, not the cart line — the lookup mock supplies it.
-   */
   function epIncludedCartItem(productId: string) {
     return {
       id: "li-1",
@@ -604,7 +599,6 @@ describe("server-authoritative requiresShipping (#369)", () => {
     expect((res.body as any).error.code).toBe("MISSING_FIELDS");
     expect((res.body as any).error.message).toContain("shippingAddress");
     expect((res.body as any).error.message).toContain("selectedShippingRateId");
-    // Catalog lookup — not a cart-line commodity_type — is what classified it.
     expect(epSdk.getByContextAllProducts).toHaveBeenCalled();
     // No payment attempted, no order created.
     expect(adapter.initializePayment).not.toHaveBeenCalled();
