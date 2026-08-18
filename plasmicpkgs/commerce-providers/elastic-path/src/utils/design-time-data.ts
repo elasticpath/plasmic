@@ -253,7 +253,7 @@ export function mockCartItem(spec: {
     locationName: spec.locationName ?? "",
     stockAvailable: spec.stockAvailable ?? null,
     stockStatus: spec.stockStatus ?? "",
-  } as CartItem;
+  } as unknown as CartItem;
 }
 
 export const MOCK_CART_LINE_ITEMS: CartItem[] = [
