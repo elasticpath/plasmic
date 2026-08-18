@@ -1,11 +1,7 @@
 import {
   resolveLocationSlug,
   extractCartItemFromForm,
-  buildCartItemData,
-  validateCartItem,
   validateAndParseQuantity,
-  getCartItemId,
-  createCartDebugInfo,
 } from '../cartDataBuilder';
 import type { BundleConfiguration } from '@epcc-sdk/sdks-shopper';
 
@@ -61,174 +57,53 @@ describe('cartDataBuilder', () => {
   });
 
   describe('extractCartItemFromForm', () => {
-    it('should extract complete cart item', () => {
-      const formValues = {
-        ProductQuantity: 3,
-        ProductVariant: 'variant-2',
-        BundleConfiguration: mockBundleConfig,
-        SelectedLocationSlug: 'location-1',
+    it('resolves the chosen child product, the options behind it and the location', () => {
+      const product = {
+        id: 'base-1',
+        variations: [
+          { id: 'var-size', name: 'Size', options: [{ id: 'opt-s', name: 'Small' }] },
+        ],
+        childProducts: [{ id: 'child-s' }, { id: 'child-m' }],
       };
-      const props = {};
 
-      const result = extractCartItemFromForm(formValues, mockProduct, props);
+      const args = extractCartItemFromForm(
+        {
+          ProductVariant: 'child-m',
+          ProductQuantity: 3,
+          'variation_var-size': 'Small',
+          SelectedLocationSlug: 'warehouse-north',
+          BundleConfiguration: mockBundleConfig,
+        },
+        product,
+        {}
+      );
 
-      expect(result.productId).toBe('prod-123');
-      expect(result.variantId).toBe('variant-2');
-      expect(result.quantity).toBe(3);
-      expect(result.bundleConfiguration).toEqual(mockBundleConfig);
-      expect(result.locationId).toBe('location-1');
-    });
-
-    it('should use defaults when form values missing', () => {
-      const formValues = {};
-      const props = { locationSlug: 'prop-location' };
-
-      const result = extractCartItemFromForm(formValues, mockProduct, props);
-
-      expect(result.productId).toBe('prod-123');
-      expect(result.variantId).toBe('variant-1'); // first variant
-      expect(result.quantity).toBe(1); // default quantity
-      expect(result.bundleConfiguration).toBeUndefined();
-      expect(result.locationId).toBe('prop-location');
-    });
-
-    it('should handle product without variants', () => {
-      const productNoVariants = { id: 'prod-simple' };
-      const formValues = {};
-      const props = {};
-
-      const result = extractCartItemFromForm(formValues, productNoVariants, props);
-
-      // For core compatibility, variantId should fallback to productId when no variants exist
-      expect(result.variantId).toBe('prod-simple');
-      expect(result.productId).toBe('prod-simple');
-    });
-  });
-
-  describe('buildCartItemData', () => {
-    it('should build complete cart item data', () => {
-      const item = {
-        productId: 'prod-123',
-        variantId: 'variant-1',
-        quantity: 2,
+      expect(args).toEqual({
+        productId: 'child-m',
+        quantity: 3,
+        location: 'warehouse-north',
         bundleConfiguration: mockBundleConfig,
-        locationId: 'location-1',
-      };
-
-      const result = buildCartItemData(item);
-
-      expect(result.type).toBe('cart_item');
-      expect(result.id).toBe('variant-1');
-      expect(result.quantity).toBe(2);
-      expect(result.bundle_configuration).toEqual(mockBundleConfig);
-      expect(result.location).toBe('location-1');
-    });
-
-    it('should use product ID when no variant', () => {
-      const item = {
-        variantId: 'prod-123', // Use productId as variantId when no variant
-        productId: 'prod-123',
-        quantity: 1,
-      };
-
-      const result = buildCartItemData(item);
-
-      expect(result.id).toBe('prod-123');
-      expect(result.quantity).toBe(1);
-      expect(result.bundle_configuration).toBeUndefined();
-      expect(result.location).toBeUndefined();
-    });
-
-    it('should use default quantity', () => {
-      const item = { 
-        variantId: 'var-123',
-        productId: 'prod-123' 
-      };
-
-      const result = buildCartItemData(item);
-
-      expect(result.quantity).toBe(1);
+        customInputs: {
+          _selectedOptions: [{ id: 'var-size', name: 'Size', value: 'Small' }],
+        },
+      });
     });
   });
 
-  describe('validateCartItem', () => {
-    it('should validate valid cart item', () => {
-      const item = {
-        variantId: 'var-123',
-        productId: 'prod-123',
-        quantity: 2,
+    it('falls back to the first child product, then to the product itself', () => {
+      const withChildren = {
+        id: 'base-1',
+        variations: [],
+        childProducts: [{ id: 'child-s' }, { id: 'child-m' }],
       };
+      expect(extractCartItemFromForm({}, withChildren, {}).productId).toBe(
+        'child-s'
+      );
 
-      const result = validateCartItem(item);
-
-      expect(result.isValid).toBe(true);
-      expect(result.errorMessage).toBeUndefined();
+      const simple = { id: 'prod-1', variations: [], childProducts: [] };
+      expect(extractCartItemFromForm({}, simple, {}).productId).toBe('prod-1');
+      expect(extractCartItemFromForm({}, simple, {}).quantity).toBe(1);
     });
-
-    it('should reject item without variant ID', () => {
-      const item = {
-        variantId: '',
-        productId: 'prod-123',
-        quantity: 1,
-      };
-
-      const result = validateCartItem(item);
-
-      expect(result.isValid).toBe(false);
-      expect(result.errorMessage).toBe('Variant ID is required and must be a non-empty string');
-    });
-
-    it('should reject item without product ID', () => {
-      const item = {
-        variantId: 'var-123',
-        productId: '',
-        quantity: 1,
-      };
-
-      const result = validateCartItem(item);
-
-      expect(result.isValid).toBe(false);
-      expect(result.errorMessage).toBe('Product ID is required for Elastic Path items');
-    });
-
-    it('should reject item with invalid quantity', () => {
-      const item = {
-        variantId: 'var-123',
-        productId: 'prod-123',
-        quantity: 0,
-      };
-
-      const result = validateCartItem(item);
-
-      expect(result.isValid).toBe(false);
-      expect(result.errorMessage).toBe('Quantity must be at least 1');
-    });
-
-    it('should reject item with non-integer quantity', () => {
-      const item = {
-        variantId: 'var-123',
-        productId: 'prod-123',
-        quantity: 2.5,
-      };
-
-      const result = validateCartItem(item);
-
-      expect(result.isValid).toBe(false);
-      expect(result.errorMessage).toBe('Quantity must be a whole number');
-    });
-
-    it('should handle missing quantity', () => {
-      const item = {
-        variantId: 'var-123',
-        productId: 'prod-123',
-      };
-
-      const result = validateCartItem(item);
-
-      expect(result.isValid).toBe(false);
-      expect(result.errorMessage).toBe('Quantity must be at least 1');
-    });
-  });
 
   describe('validateAndParseQuantity', () => {
     it('should validate valid number', () => {
@@ -275,57 +150,4 @@ describe('cartDataBuilder', () => {
     });
   });
 
-  describe('getCartItemId', () => {
-    it('should return variant ID when provided', () => {
-      const result = getCartItemId('prod-123', 'variant-1');
-      expect(result).toBe('variant-1');
-    });
-
-    it('should return product ID when no variant', () => {
-      const result = getCartItemId('prod-123');
-      expect(result).toBe('prod-123');
-    });
-
-    it('should return product ID when variant is empty', () => {
-      const result = getCartItemId('prod-123', '');
-      expect(result).toBe('prod-123');
-    });
-  });
-
-  describe('createCartDebugInfo', () => {
-    it('should create comprehensive debug info', () => {
-      const item = {
-        productId: 'prod-123',
-        variantId: 'variant-1',
-        quantity: 2,
-        bundleConfiguration: mockBundleConfig,
-        locationId: 'location-1',
-      };
-
-      const cartData = buildCartItemData(item);
-      const result = createCartDebugInfo(item, cartData);
-
-      expect(result.originalItem).toEqual(item);
-      expect(result.builtCartData).toEqual(cartData);
-      expect(result.hasBundle).toBe(true);
-      expect(result.hasLocation).toBe(true);
-      expect(result.cartItemId).toBe('variant-1');
-      expect(result.timestamp).toBeDefined();
-    });
-
-    it('should handle item without bundle or location', () => {
-      const item = {
-        variantId: 'var-123',
-        productId: 'prod-123',
-        quantity: 1,
-      };
-
-      const cartData = buildCartItemData(item);
-      const result = createCartDebugInfo(item, cartData);
-
-      expect(result.hasBundle).toBe(false);
-      expect(result.hasLocation).toBe(false);
-      expect(result.cartItemId).toBe('var-123');
-    });
-  });
 });
