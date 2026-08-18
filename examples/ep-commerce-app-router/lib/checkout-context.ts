@@ -101,7 +101,7 @@ export async function buildCheckoutContext(
         name: "Standard Shipping",
         description: "Example rate — replace in production",
         amount: EXAMPLE_STANDARD_SHIPPING_AMOUNT_MINOR,
-        currency: checkoutSession.totals.currency || "USD",
+        currency: checkoutSession.totals?.currency || "USD",
         deliveryTime: "5-7 days",
         serviceLevel: "standard",
       },
