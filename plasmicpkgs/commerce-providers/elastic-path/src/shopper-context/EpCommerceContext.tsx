@@ -2,7 +2,8 @@ import type { Client } from "@epcc-sdk/sdks-shopper";
 import React from "react";
 import initElasticPathClient from "../client";
 
-export type CurrencyDisplay = "symbol" | "code";
+export type { CurrencyDisplay } from "../utils/price";
+import type { CurrencyDisplay } from "../utils/price";
 
 export interface EpCommerce {
   client: Client;
@@ -55,7 +56,7 @@ export function EpCommerceProvider({
   host,
   locale = "en-US",
   currency,
-  currencyDisplay = "symbol",
+  currencyDisplay = "platform",
   children,
 }: EpCommerceProviderProps) {
   const EpCommerceCtx = getSingletonContext();

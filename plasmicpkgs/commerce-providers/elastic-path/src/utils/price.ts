@@ -68,3 +68,53 @@ function intlFormat(value: number, currency: string): string {
     return `${currency} ${value}`;
   }
 }
+
+/**
+ * How money renders.
+ *
+ * `"platform"` is Elastic Path's own `formatted` string — what Commerce Manager
+ * was configured to produce, and the only option that is right for a store
+ * whose formatting rules are set there. `"symbol"` and `"code"` re-format
+ * through `Intl` instead.
+ */
+export type CurrencyDisplay = "platform" | "symbol" | "code";
+
+/**
+ * Renders a price.
+ *
+ * The `Intl` fallback is load-bearing rather than defensive: a PXM base product
+ * genuinely has no `display_price`, so a synthesized price has no `formatted`.
+ * The locale is always explicit, never the host's default, so the server and
+ * the browser agree.
+ */
+export function formatPrice(
+  price: FormattedPrice | undefined,
+  display: CurrencyDisplay = "platform",
+  locale: string = DEFAULT_LOCALE
+): string {
+  if (!price) return "";
+  if (display === "platform" && price.formatted) return price.formatted;
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency: price.currency,
+      currencyDisplay: display === "code" ? "code" : "symbol",
+    }).format(price.float_price);
+  } catch {
+    return price.formatted ?? `${price.currency} ${price.float_price}`;
+  }
+}
+
+/**
+ * Renders an amount that only ever arrived as minor units — a checkout session
+ * total, a shipping rate — with the currency's real exponent rather than a
+ * hardcoded hundredth.
+ */
+export function formatMinor(
+  amount: number,
+  currency: string,
+  display: CurrencyDisplay = "platform",
+  locale: string = DEFAULT_LOCALE
+): string {
+  return formatPrice(completePrice({ amount, currency }), display, locale);
+}

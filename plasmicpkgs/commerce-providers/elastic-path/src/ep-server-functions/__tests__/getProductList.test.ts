@@ -84,4 +84,33 @@ describe("epGetProductList", () => {
     expect(result).toEqual([]);
     expect(mockGetByContextAllProducts).not.toHaveBeenCalled();
   });
+
+  it("joins each product's image from the response's included block", async () => {
+    const product = makeProduct("p1", "Product One");
+    mockGetByContextAllProducts.mockResolvedValue({
+      data: {
+        data: [
+          {
+            ...product,
+            relationships: {
+              main_image: { data: { id: "img-1", type: "main_image" } },
+            },
+          },
+        ],
+        included: {
+          main_images: [
+            { id: "img-1", link: { href: "https://cdn.example/p1.jpg" } },
+          ],
+        },
+      },
+    });
+
+    const result = await withEpSession(SESSION, () =>
+      epGetProductList({ limit: 10 })
+    );
+
+    expect(result[0].images).toEqual([
+      { url: "https://cdn.example/p1.jpg", alt: "Product One" },
+    ]);
+  });
 });

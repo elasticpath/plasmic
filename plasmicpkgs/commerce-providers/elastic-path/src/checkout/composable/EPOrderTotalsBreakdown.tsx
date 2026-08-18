@@ -18,6 +18,9 @@ import React, { useMemo } from "react";
 import { Registerable } from "../../registerable";
 import { MOCK_ORDER_TOTALS_DATA } from "../../utils/design-time-data";
 import { createLogger } from "../../utils/logger";
+import { formatMinor } from "../../utils/price";
+import { DEFAULT_LOCALE } from "../../utils/field-format";
+import { useEpCommerce } from "../../shopper-context/EpCommerceContext";
 
 const log = createLogger("EPOrderTotalsBreakdown");
 
@@ -52,6 +55,9 @@ interface OrderTotalsData {
 // Component
 // ---------------------------------------------------------------------------
 export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
+  const commerce = useEpCommerce();
+  const currencyDisplay = commerce?.currencyDisplay ?? "platform";
+  const locale = commerce?.locale ?? DEFAULT_LOCALE;
   const { children, className, previewState = "auto" } = props;
 
   // Priority: checkoutData.summary (EPCheckoutProvider) > checkoutSession.totals > checkoutCartData > mock
@@ -103,16 +109,8 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
     // Source 2: checkoutSession.totals (from EPCheckoutSessionProvider)
     if (sessionTotals) {
       const cur = (sessionTotals.currency ?? "USD").toUpperCase();
-      const fmt = (cents: number) => {
-        try {
-          return new Intl.NumberFormat("en-US", {
-            style: "currency",
-            currency: cur,
-          }).format(cents / 100);
-        } catch {
-          return `$${(cents / 100).toFixed(2)}`;
-        }
-      };
+      const fmt = (minor: number) =>
+        formatMinor(minor, cur, currencyDisplay, locale);
       return {
         subtotal: sessionTotals.subtotal ?? 0,
         subtotalFormatted: fmt(sessionTotals.subtotal ?? 0),
