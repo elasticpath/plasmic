@@ -371,7 +371,7 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
   // No portal, no backdrop, no open/close logic.
   // -----------------------------------------------------------------------
   if (inline) {
-    const isEmpty = (effectiveCartData?.itemCount ?? 0) === 0 ?? true;
+    const isEmpty = (effectiveCartData?.itemCount ?? 0) === 0;
     let content: React.ReactNode;
     if (!cart && !cartError && !useMock) {
       content = loadingContent;
@@ -400,7 +400,7 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
     if (closeOnBackdropClick) close();
   };
 
-  const isEmpty = (effectiveCartData?.itemCount ?? 0) === 0 ?? true;
+  const isEmpty = (effectiveCartData?.itemCount ?? 0) === 0;
 
   // Determine which content to show inside the drawer panel
   let drawerContent: React.ReactNode;
