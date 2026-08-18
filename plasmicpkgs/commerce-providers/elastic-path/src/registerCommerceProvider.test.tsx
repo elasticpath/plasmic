@@ -24,6 +24,46 @@ describe("CommerceProviderComponent", () => {
     );
     expect(screen.getByText("no-creds")).toBeTruthy();
   });
+
+  it("keeps child state when a provider prop changes", () => {
+    let mounts = 0;
+    function Child() {
+      React.useEffect(() => {
+        mounts += 1;
+      }, []);
+      return <span>child</span>;
+    }
+
+    const { rerender } = render(
+      <CommerceProviderComponent clientId="abc" locale="en-US" currency="USD">
+        <Child />
+      </CommerceProviderComponent>
+    );
+    expect(mounts).toBe(1);
+
+    rerender(
+      <CommerceProviderComponent clientId="abc" locale="en-US" currency="GBP">
+        <Child />
+      </CommerceProviderComponent>
+    );
+    expect(mounts).toBe(1);
+  });
+
+  it("survives a clientId being filled in", () => {
+    const { rerender } = render(
+      <CommerceProviderComponent clientId="">
+        <span>child</span>
+      </CommerceProviderComponent>
+    );
+
+    expect(() =>
+      rerender(
+        <CommerceProviderComponent clientId="abc">
+          <span>child</span>
+        </CommerceProviderComponent>
+      )
+    ).not.toThrow();
+  });
 });
 
 describe("commerceProviderMeta", () => {

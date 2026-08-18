@@ -187,8 +187,8 @@ jest.mock("@plasmicapp/host/registerComponent", () => ({
   default: jest.fn(),
 }));
 
-jest.mock("../../elastic-path", () => ({
-  useCommerce: (...a: unknown[]) => mockUseCommerce(...a),
+jest.mock("../../shopper-context/EpCommerceContext", () => ({
+  useEpCommerce: (...a: unknown[]) => mockUseCommerce(...a),
 }));
 
 jest.mock("react-instantsearch", () => ({
@@ -203,10 +203,6 @@ jest.mock(
   }),
   { virtual: true }
 );
-
-jest.mock("../../utils/getEPClient", () => ({
-  getEPClient: jest.fn().mockReturnValue({ baseUrl: "https://test.example" }),
-}));
 
 const mockPostMultiSearch = jest.fn().mockResolvedValue({
   data: { results: [{ hits: [] }] },
@@ -276,9 +272,7 @@ beforeEach(() => {
     refine: jest.fn(),
     clear: jest.fn(),
   });
-  mockUseCommerce.mockReturnValue({
-    providerRef: { current: { client: {}, locale: "en-US" } },
-  });
+  mockUseCommerce.mockReturnValue({ client: {}, locale: "en-US" });
 });
 
 /* ================================================================

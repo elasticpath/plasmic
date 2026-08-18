@@ -3,7 +3,6 @@ import type {
   CartIncluded,
   CartItemObject,
   Product as ElasticPathProduct,
-  Node,
   ProductData,
   ProductListData,
   Variation,
@@ -16,7 +15,6 @@ import {
   ProductOptionValues,
   ProductVariant,
 } from "../types/product";
-import { Category } from "../types/site";
 import { dedup } from "./common";
 
 // Variation matrix is a nested object mapping option IDs to child product IDs
@@ -66,7 +64,6 @@ const buildVariantOptions = (
     const optionData = optionToVariation.get(optionId);
     if (optionData) {
       variantOptions.push({
-        __typename: "MultipleChoiceOption" as const,
         id: optionData.variation.id!,
         displayName: optionData.variation.name!,
         values: [{ label: optionData.option.name! }],
@@ -94,7 +91,6 @@ const normalizeProductOption = (option: {
   name: string;
   values: string[];
 }): ProductOption => ({
-  __typename: "MultipleChoiceOption",
   id: option.name,
   displayName: option.name,
   values: dedup(option.values).map((val) => {
@@ -194,7 +190,6 @@ export const normalizeProduct = (
   if (product.data?.meta?.variations) {
     product.data?.meta.variations.forEach((variation) => {
       options.push({
-        __typename: "MultipleChoiceOption",
         id: variation.id!,
         displayName: variation.name!,
         values:
@@ -344,7 +339,6 @@ const normalizeLineItem = (
     name: item.name!,
     path: item.product_id ? `/${item.product_id}` : "",
     quantity: "quantity" in item ? item.quantity : 1,
-    discounts: [],
     variant: {
       id: item.product_id!,
       name: item.name!,
@@ -394,20 +388,6 @@ export const normalizeCart = (
     lineItemsSubtotalPrice: subtotal.value,
     subtotalPrice: subtotal.value,
     totalPrice: subtotal.value,
-    discounts: [],
-  };
-};
-
-export const normalizeCategory = (category: Node, locale: string): Category => {
-  // locale parameter kept for future internationalization support
-  const name = category.attributes?.name || "";
-  const slug = category.attributes?.slug || "";
-
-  return {
-    id: category.id!,
-    name,
-    slug,
-    path: `/${slug}`,
   };
 };
 
@@ -441,7 +421,6 @@ export const normalizeProductFromList = (
   if (product.meta?.variations) {
     product.meta.variations.forEach((variation) => {
       options.push({
-        __typename: "MultipleChoiceOption",
         id: variation.id!,
         displayName: variation.name!,
         values:

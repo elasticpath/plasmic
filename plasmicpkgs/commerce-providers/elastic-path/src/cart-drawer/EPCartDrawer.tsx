@@ -13,7 +13,7 @@ import {
   CART_OVERLAY_Z_INDEX,
   FOCUS_TRAP_DELAY_MS,
 } from "../const";
-import { useCommerce } from "../elastic-path";
+import { useEpCommerce } from "../shopper-context/EpCommerceContext";
 import { Registerable } from "../registerable";
 import { deriveCartData } from "../utils/cart-data";
 import { createLogger } from "../utils/logger";
@@ -206,8 +206,8 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
   } = props;
 
   const { cart, error: cartError } = useEpCart();
-  const { providerRef } = useCommerce();
-  const currencyDisplay = providerRef?.current?.currencyDisplay ?? "symbol";
+  const commerce = useEpCommerce();
+  const currencyDisplay = commerce?.currencyDisplay ?? "symbol";
   const inEditor = !!usePlasmicCanvasContext();
   // Open the drawer in the Studio canvas when this node (or a descendant) is
   // selected in the outline. The drawer has no trigger slot (its trigger is a

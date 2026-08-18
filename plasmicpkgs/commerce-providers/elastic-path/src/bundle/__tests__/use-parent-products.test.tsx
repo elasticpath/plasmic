@@ -42,11 +42,9 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
 }));
 
 const mockClient = { baseUrl: "https://test.epcc.io" };
-jest.mock("../../elastic-path", () => ({
+jest.mock("../../shopper-context/EpCommerceContext", () => ({
   __esModule: true,
-  useCommerce: () => ({
-    providerRef: { current: { client: mockClient } },
-  }),
+  useEpCommerce: () => ({ client: mockClient }),
 }));
 
 // Import under test AFTER mocks — require() is not hoisted by esbuild

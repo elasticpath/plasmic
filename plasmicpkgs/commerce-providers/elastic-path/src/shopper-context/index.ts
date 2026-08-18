@@ -1,3 +1,13 @@
+export {
+  EpCommerceProvider,
+  getEpCommerceContext,
+  useEpCommerce,
+} from "./EpCommerceContext";
+export type {
+  CurrencyDisplay,
+  EpCommerce,
+  EpCommerceProviderProps,
+} from "./EpCommerceContext";
 export { ShopperContext, getShopperContext } from "./ShopperContext";
 export type { ShopperOverrides, ShopperContextProps } from "./ShopperContext";
 export { useShopperContext } from "./useShopperContext";

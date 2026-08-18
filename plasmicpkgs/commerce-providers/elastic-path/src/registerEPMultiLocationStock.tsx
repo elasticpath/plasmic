@@ -3,7 +3,7 @@ import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
-import { Product } from "@plasmicpkgs/commerce";
+import type { Product } from "./types/product";
 import { DEFAULT_LOW_STOCK_THRESHOLD } from "./const";
 import { MultiLocationStock } from "./inventory/components/MultiLocationStock";
 import { Registerable } from "./registerable";

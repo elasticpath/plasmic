@@ -13,7 +13,7 @@
 import { useMemo } from "react";
 import { useMutablePlasmicQueryData } from "@plasmicapp/query";
 import { getByContextAllRelatedProducts } from "@epcc-sdk/sdks-shopper";
-import { useCommerce } from "../elastic-path";
+import { useEpCommerce } from "../shopper-context/EpCommerceContext";
 import { normalizeProductFromList } from "../utils";
 import { handleAPIError } from "../utils/errorHandling";
 import { createLogger } from "../utils/logger";
@@ -47,9 +47,9 @@ export function useRelatedProducts(
     locale,
   } = options;
 
-  const commerce = useCommerce();
-  const client = commerce.providerRef.current?.client;
-  const provider = commerce.providerRef.current;
+  const commerce = useEpCommerce();
+  const client = commerce?.client;
+  const provider = commerce;
 
   // Stable query key — null skips the fetch when missing required params
   const queryKey =

@@ -65,8 +65,8 @@ jest.mock("@plasmicapp/host/registerComponent", () => ({
   default: jest.fn(),
 }));
 
-jest.mock("../../elastic-path", () => ({
-  useCommerce: (...a: unknown[]) => mockUseCommerce(...a),
+jest.mock("../../shopper-context/EpCommerceContext", () => ({
+  useEpCommerce: (...a: unknown[]) => mockUseCommerce(...a),
 }));
 
 jest.mock("../../utils/errorHandling", () => ({
@@ -105,9 +105,7 @@ const mockClient = { baseUrl: "https://api.test.com" };
 const mockProvider = { locale: "en-US", client: mockClient };
 
 function setupCommerce() {
-  mockUseCommerce.mockReturnValue({
-    providerRef: { current: mockProvider },
-  });
+  mockUseCommerce.mockReturnValue(mockProvider);
 }
 
 /* ---------- useRelatedProducts hook tests ---------- */
@@ -118,9 +116,7 @@ describe("useRelatedProducts", () => {
   });
 
   it("should return empty state when no client is available", () => {
-    mockUseCommerce.mockReturnValue({
-      providerRef: { current: null },
-    });
+    mockUseCommerce.mockReturnValue(null);
     mockUseMutablePlasmicQueryData.mockReturnValue({
       data: null,
       error: null,

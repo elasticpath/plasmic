@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useMutablePlasmicQueryData } from "@plasmicapp/query";
 import { getStock } from "@epcc-sdk/sdks-shopper";
 import { SWR_DEDUPING_INTERVAL_SHORT } from "../const";
-import { useCommerce } from "../elastic-path";
+import { useEpCommerce } from "../shopper-context/EpCommerceContext";
 import type { ProductStock, UseStockOptions } from "./types";
 import { createProductStock } from "./utils/stockCalculations";
 import { handleAPIError } from "../utils/errorHandling";
@@ -15,8 +15,8 @@ export function useStock({
   locationIds,
   enabled = true,
 }: UseStockOptions) {
-  const commerce = useCommerce();
-  const client = commerce.providerRef.current?.client;
+  const commerce = useEpCommerce();
+  const client = commerce?.client;
 
   // Stable keys for SWR deduplication
   const productKey = productIds.slice().sort().join(",");
