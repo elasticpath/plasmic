@@ -15,7 +15,7 @@ export { useShopperFetch } from "./useShopperFetch";
 export { useCart } from "./use-cart";
 export type { CartItem, CartMeta, CartData, UseCartReturn } from "./use-cart";
 export { useCheckoutCart } from "./use-checkout-cart";
-export type { CheckoutCartItem, CheckoutCartData } from "./use-checkout-cart";
+export type { UseCheckoutCartReturn } from "./use-checkout-cart";
 export { MOCK_SERVER_CART_DATA } from "./design-time-data";
 export { useAddItem } from "./use-add-item";
 export type { AddItemInput } from "./use-add-item";
