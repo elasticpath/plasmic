@@ -8,16 +8,13 @@ import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useMemo } from "react";
-import { DEFAULT_CURRENCY_CODE, DEFAULT_LOW_STOCK_THRESHOLD } from "../const";
+import { DEFAULT_LOW_STOCK_THRESHOLD } from "../const";
 import { Registerable } from "../registerable";
-import { CurrencyDisplay, formatCurrency } from "../utils/formatCurrency";
+import type { Cart, CartItem, SelectedOption } from "../types/cart";
 import { createLogger } from "../utils/logger";
 import { useLocations } from "../inventory/use-locations";
 import { useStock } from "../inventory/use-stock";
-import {
-  MOCK_CART_LINE_ITEMS,
-  MockCartItemData,
-} from "../utils/design-time-data";
+import { MOCK_CART_LINE_ITEMS } from "../utils/design-time-data";
 import { getLocationSlug } from "../utils/getLocationSlug";
 
 const log = createLogger("EPCartItemList");
@@ -86,99 +83,72 @@ export const epCartItemListMeta: CodeComponentMeta<EPCartItemListProps> = {
   providesData: true,
 };
 
-interface EnrichedCartItem {
-  id: string;
-  variantId: string;
-  productId: string;
-  name: string;
-  quantity: number;
-  path: string;
-  sku: string;
-  price: number;
-  listPrice: number;
-  formattedPrice: string;
-  formattedListPrice: string;
-  lineTotal: number;
-  formattedLineTotal: string;
-  imageUrl: string;
-  imageAlt: string;
-  options: { name: string; value: string }[];
-  hasDiscount: boolean;
-  locationSlug: string;
+type EnrichedCartItem = CartItem & {
+  options: SelectedOption[];
   locationName: string;
   stockAvailable: number | null;
   stockStatus: string;
-}
+};
 
+/**
+ * A cart line plus what only the storefront can work out: the stock location's
+ * display name and its availability. Everything else — name, sku, quantity,
+ * image, and every price with its formatted string — is already on the line.
+ */
 function enrichLineItem(
-  item: any,
-  currencyCode: string,
+  item: CartItem,
   locationMap: Record<string, string>,
-  stockMap: Record<string, Record<string, number>>,
-  currencyDisplay: CurrencyDisplay = "symbol"
+  stockMap: Record<string, Record<string, number>>
 ): EnrichedCartItem {
-  const price = item.variant?.price ?? item.price ?? 0;
-  const listPrice = item.variant?.listPrice ?? item.listPrice ?? price;
-  const quantity = item.quantity ?? 1;
-  const lineTotal = price * quantity;
+  const locationSlug = item.location ?? "";
+  const locationName = locationSlug
+    ? locationMap[locationSlug] ?? locationSlug
+    : "";
 
-  const locationSlug = item.locationSlug ?? "";
-  const locationName = locationSlug ? (locationMap[locationSlug] ?? locationSlug) : "";
-
-  // Look up stock for this product at its location
   let stockAvailable: number | null = null;
   let stockStatus = "";
   if (locationSlug) {
-    const productId = item.variantId ?? item.productId ?? "";
-    const productStockByLocation = stockMap[productId];
-    if (productStockByLocation && locationSlug in productStockByLocation) {
-      stockAvailable = productStockByLocation[locationSlug];
-      if (stockAvailable <= 0) {
-        stockStatus = "out-of-stock";
-      } else if (stockAvailable <= DEFAULT_LOW_STOCK_THRESHOLD) {
-        stockStatus = "low";
-      } else {
-        stockStatus = "in-stock";
-      }
+    const byLocation = stockMap[item.product_id ?? ""];
+    if (byLocation && locationSlug in byLocation) {
+      stockAvailable = byLocation[locationSlug];
+      stockStatus =
+        stockAvailable <= 0
+          ? "out-of-stock"
+          : stockAvailable <= DEFAULT_LOW_STOCK_THRESHOLD
+          ? "low"
+          : "in-stock";
     }
   }
 
   return {
-    id: item.id,
-    variantId: item.variantId ?? item.variant?.id ?? "",
-    productId: item.productId ?? "",
-    name: item.name ?? "",
-    quantity,
-    path: item.path ?? "",
-    sku: item.variant?.sku ?? item.sku ?? "",
-    price,
-    listPrice,
-    formattedPrice: formatCurrency(price, currencyCode, currencyDisplay),
-    formattedListPrice: formatCurrency(listPrice, currencyCode, currencyDisplay),
-    lineTotal,
-    formattedLineTotal: formatCurrency(lineTotal, currencyCode, currencyDisplay),
-    imageUrl: item.variant?.image?.url ?? "",
-    imageAlt: item.variant?.image?.alt ?? item.name ?? "",
-    options: item.options ?? [],
-    hasDiscount: listPrice > price,
-    locationSlug,
+    ...item,
+    options: selectedOptionsOf(item),
     locationName,
     stockAvailable,
     stockStatus,
   };
 }
 
+/** The variation options a shopper chose, persisted in EP's `custom_inputs`. */
+function selectedOptionsOf(item: CartItem): SelectedOption[] {
+  const raw = item.custom_inputs?._selectedOptions;
+  return Array.isArray(raw)
+    ? raw.filter(
+        (o: any) =>
+          o && typeof o.name === "string" && typeof o.value === "string"
+      )
+    : [];
+}
+
 export function EPCartItemList(props: EPCartItemListProps) {
   const { children, className, maxItems, previewState = "auto" } = props;
 
-  const cartData = useSelector("cartData") as
-    | { lineItems?: any[]; currencyCode?: string; currencyDisplay?: CurrencyDisplay }
-    | undefined;
+  const cart = useSelector("cart") as Cart | undefined;
   const inEditor = !!usePlasmicCanvasContext();
 
   const useMock =
     previewState === "withItems" ||
-    (previewState === "auto" && !cartData?.lineItems?.length && inEditor);
+    (previewState === "auto" && !cart?.items?.length && inEditor);
 
   if (useMock) {
     log.debug("Using mock cart items for design-time preview");
@@ -186,19 +156,20 @@ export function EPCartItemList(props: EPCartItemListProps) {
 
   // Collect unique location slugs and product IDs from cart items that have locations
   const { locationSlugs, productIds } = useMemo(() => {
-    if (useMock || !cartData?.lineItems) return { locationSlugs: [] as string[], productIds: [] as string[] };
+    if (useMock || !cart?.items) {
+      return { locationSlugs: [] as string[], productIds: [] as string[] };
+    }
     const slugs = new Set<string>();
     const ids = new Set<string>();
-    for (const item of cartData.lineItems) {
-      const slug = item.locationSlug;
+    for (const item of cart.items) {
+      const slug = item.location;
       if (slug) {
         slugs.add(slug);
-        const productId = item.variantId ?? item.productId;
-        if (productId) ids.add(productId);
+        if (item.product_id) ids.add(item.product_id);
       }
     }
     return { locationSlugs: Array.from(slugs), productIds: Array.from(ids) };
-  }, [useMock, cartData]);
+  }, [useMock, cart]);
 
   const hasLocations = locationSlugs.length > 0;
 
@@ -240,15 +211,11 @@ export function EPCartItemList(props: EPCartItemListProps) {
 
   const items: EnrichedCartItem[] = useMemo(() => {
     if (useMock) {
-      return MOCK_CART_LINE_ITEMS as EnrichedCartItem[];
+      return MOCK_CART_LINE_ITEMS as unknown as EnrichedCartItem[];
     }
-    if (!cartData?.lineItems) return [];
-    const currencyCode = cartData.currencyCode ?? DEFAULT_CURRENCY_CODE;
-    const currencyDisplay = cartData.currencyDisplay ?? "symbol";
-    return cartData.lineItems.map((item) =>
-      enrichLineItem(item, currencyCode, locationMap, stockMap, currencyDisplay)
-    );
-  }, [useMock, cartData, locationMap, stockMap]);
+    if (!cart?.items) return [];
+    return cart.items.map((item) => enrichLineItem(item, locationMap, stockMap));
+  }, [useMock, cart, locationMap, stockMap]);
 
   const displayedItems = maxItems ? items.slice(0, maxItems) : items;
 

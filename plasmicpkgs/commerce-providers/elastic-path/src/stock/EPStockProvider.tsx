@@ -172,7 +172,7 @@ export function EPStockProvider(props: EPStockProviderProps) {
 
   // For variant products, wait until a variant is selected before fetching stock.
   // For simple products (no variations), use the product ID directly.
-  const hasVariations = (product?.options?.length ?? 0) > 0;
+  const hasVariations = (product?.variations?.length ?? 0) > 0;
   const selectedVariantId = form?.watch("ProductVariant") as string | undefined;
   const stockProductId = hasVariations
     ? (selectedVariantId || "")

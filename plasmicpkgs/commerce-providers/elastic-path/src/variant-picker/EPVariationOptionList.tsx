@@ -10,7 +10,7 @@ import registerComponent, {
 import React from "react";
 import { Registerable } from "../registerable";
 import { createLogger } from "../utils/logger";
-import { MOCK_VARIATION_OPTIONS } from "../utils/design-time-data";
+import { MOCK_VARIATIONS } from "../utils/design-time-data";
 import { useRovingTabIndex } from "../utils/useRovingTabIndex";
 import { useVariationPicker } from "./VariationPickerContext";
 
@@ -85,7 +85,7 @@ export function EPVariationOptionList(props: EPVariationOptionListProps) {
     | {
         id: string;
         name: string;
-        values: { label: string; hexColors?: string[] }[];
+        options: { id: string; name: string }[];
       }
     | undefined;
 
@@ -95,7 +95,7 @@ export function EPVariationOptionList(props: EPVariationOptionListProps) {
     orientation: "horizontal",
   });
 
-  const mockVariation = MOCK_VARIATION_OPTIONS[0];
+  const mockVariation = MOCK_VARIATIONS[0];
   const useMock =
     previewState === "withOptions" ||
     (previewState === "auto" && !currentVariation && inEditor);
@@ -103,8 +103,8 @@ export function EPVariationOptionList(props: EPVariationOptionListProps) {
   const effectiveVariation = useMock
     ? {
         id: mockVariation.id,
-        name: mockVariation.displayName,
-        values: mockVariation.values,
+        name: mockVariation.name,
+        options: mockVariation.options,
       }
     : currentVariation;
 
@@ -112,13 +112,13 @@ export function EPVariationOptionList(props: EPVariationOptionListProps) {
     log.debug("Using mock variation for design-time preview");
   }
 
-  if (!effectiveVariation?.values) {
+  if (!effectiveVariation?.options) {
     return null;
   }
 
   const selectedLabel = picker?.selectedValues[effectiveVariation.id];
   const focusTargetLabel =
-    selectedLabel || effectiveVariation.values[0]?.label;
+    selectedLabel || effectiveVariation.options[0]?.name;
   const label = groupLabel || effectiveVariation.name;
 
   if (selectionMode === "dropdown") {
@@ -136,9 +136,9 @@ export function EPVariationOptionList(props: EPVariationOptionListProps) {
           <option value="" disabled>
             Choose {effectiveVariation.name}...
           </option>
-          {effectiveVariation.values.map((option) => (
-            <option key={option.label} value={option.label}>
-              {option.label}
+          {effectiveVariation.options.map((option) => (
+            <option key={option.name} value={option.name}>
+              {option.name}
             </option>
           ))}
         </select>
@@ -154,15 +154,15 @@ export function EPVariationOptionList(props: EPVariationOptionListProps) {
       aria-label={label}
       onKeyDown={handleGroupKeyDown}
     >
-      {effectiveVariation.values.map((option, i) => {
-        const isSelected = selectedLabel === option.label;
+      {effectiveVariation.options.map((option, i) => {
+        const isSelected = selectedLabel === option.name;
         return (
           <DataProvider
-            key={option.label}
+            key={option.name}
             name="currentVariationOption"
             data={{
-              label: option.label,
-              hexColors: option.hexColors,
+              id: option.id,
+              name: option.name,
               isSelected,
             }}
           >
@@ -170,7 +170,7 @@ export function EPVariationOptionList(props: EPVariationOptionListProps) {
               <DataProvider
                 name="optionTriggerA11y"
                 data={{
-                  isFocusTarget: option.label === focusTargetLabel,
+                  isFocusTarget: option.name === focusTargetLabel,
                 }}
               >
                 {repeatedElement(i, children)}

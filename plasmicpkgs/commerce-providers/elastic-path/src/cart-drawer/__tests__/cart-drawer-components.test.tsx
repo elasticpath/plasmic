@@ -320,12 +320,14 @@ describe("CartDrawerContext", () => {
 describe("EPCartDrawer", () => {
   const mockCart = {
     id: "cart-1",
-    lineItems: [
-      { id: "item-1", name: "Product A", quantity: 2, price: 25 },
-    ],
-    subtotalPrice: 50,
-    totalPrice: 50,
-    currency: { code: "USD" },
+    items: [{ id: "item-1", name: "Product A", quantity: 2 }],
+    itemCount: 2,
+    meta: {
+      display_price: {
+        without_tax: { amount: 5000, currency: "USD", formatted: "$50.00" },
+        with_tax: { amount: 5000, currency: "USD", formatted: "$50.00" },
+      },
+    },
   };
 
   it("renders nothing when closed at runtime", () => {
@@ -379,7 +381,7 @@ describe("EPCartDrawer", () => {
   });
 
   it("renders empty content when cart has no items", () => {
-    const emptyCart = { ...mockCart, lineItems: [] };
+    const emptyCart = { ...mockCart, items: [], itemCount: 0 };
     mockUseCart.mockReturnValue({ data: emptyCart, error: null });
     render(
       <EPCartDrawer isOpen={true} emptyContent={<div>Empty cart</div>}>
@@ -596,7 +598,7 @@ describe("EPCartDrawerTrigger", () => {
 
   it("aria-label includes item count (singular)", () => {
     mockUseCart.mockReturnValue({
-      data: { lineItems: [{ quantity: 1 }] },
+      data: { items: [{ quantity: 1 }], itemCount: 1 },
       error: null,
     });
     render(<EPCartDrawerTrigger><span>Cart</span></EPCartDrawerTrigger>);
@@ -606,7 +608,7 @@ describe("EPCartDrawerTrigger", () => {
 
   it("aria-label includes item count (plural)", () => {
     mockUseCart.mockReturnValue({
-      data: { lineItems: [{ quantity: 2 }, { quantity: 1 }] },
+      data: { items: [{ quantity: 2 }, { quantity: 1 }], itemCount: 3 },
       error: null,
     });
     render(<EPCartDrawerTrigger><span>Cart</span></EPCartDrawerTrigger>);
@@ -661,19 +663,19 @@ describe("EPCartField", () => {
   it("renders formattedTotal from cartData", () => {
     mockUseSelector.mockReturnValue(MOCK_CART_DATA);
     render(<EPCartField field="formattedTotal" />);
-    expect(screen.getByText("$159.96")).toBeTruthy();
+    expect(screen.getByText("$149.96")).toBeTruthy();
   });
 
   it("renders itemCount from cartData", () => {
     mockUseSelector.mockReturnValue(MOCK_CART_DATA);
     render(<EPCartField field="itemCount" />);
-    expect(screen.getByText("4")).toBeTruthy();
+    expect(screen.getByText("3")).toBeTruthy();
   });
 
   it("renders formattedSubtotal from cartData", () => {
     mockUseSelector.mockReturnValue(MOCK_CART_DATA);
     render(<EPCartField field="formattedSubtotal" />);
-    expect(screen.getByText("$159.96")).toBeTruthy();
+    expect(screen.getByText("$124.97")).toBeTruthy();
   });
 
   it("renders currencyCode from cartData", () => {
@@ -698,19 +700,19 @@ describe("EPCartField", () => {
     mockUsePlasmicCanvasContext.mockReturnValue({});
     mockUseSelector.mockReturnValue(undefined);
     render(<EPCartField field="formattedTotal" />);
-    expect(screen.getByText("$159.96")).toBeTruthy();
+    expect(screen.getByText("$149.96")).toBeTruthy();
   });
 
   it("uses mock data when previewState=withData", () => {
     mockUseSelector.mockReturnValue(undefined);
     render(<EPCartField field="itemCount" previewState="withData" />);
-    expect(screen.getByText("4")).toBeTruthy();
+    expect(screen.getByText("3")).toBeTruthy();
   });
 
   it("renders in a span element", () => {
     mockUseSelector.mockReturnValue(MOCK_CART_DATA);
     render(<EPCartField field="formattedTotal" />);
-    const el = screen.getByText("$159.96");
+    const el = screen.getByText("$149.96");
     expect(el.tagName).toBe("SPAN");
   });
 });
@@ -806,8 +808,8 @@ describe("EPCartItemField", () => {
 describe("EPCartItemImage", () => {
   it("renders img when imageUrl is present", () => {
     mockUseSelector.mockReturnValue({
-      imageUrl: "https://example.com/img.png",
-      imageAlt: "Product photo",
+      image: { href: "https://example.com/img.png" },
+      name: "Product photo",
     });
     render(<EPCartItemImage />);
     const img = document.querySelector("img");
@@ -820,7 +822,7 @@ describe("EPCartItemImage", () => {
   });
 
   it("renders placeholder when no imageUrl", () => {
-    mockUseSelector.mockReturnValue({ imageUrl: undefined, imageAlt: "" });
+    mockUseSelector.mockReturnValue({ image: undefined, name: "" });
     render(<EPCartItemImage />);
     const placeholder = document.querySelector('[role="img"]');
     expect(placeholder).toBeTruthy();
@@ -828,10 +830,7 @@ describe("EPCartItemImage", () => {
   });
 
   it("uses imageAlt for placeholder aria-label when provided", () => {
-    mockUseSelector.mockReturnValue({
-      imageUrl: undefined,
-      imageAlt: "Missing jacket",
-    });
+    mockUseSelector.mockReturnValue({ image: undefined, name: "Missing jacket" });
     render(<EPCartItemImage />);
     const placeholder = document.querySelector('[role="img"]');
     expect(placeholder?.getAttribute("aria-label")).toBe("Missing jacket");
@@ -839,8 +838,8 @@ describe("EPCartItemImage", () => {
 
   it("respects custom width and height", () => {
     mockUseSelector.mockReturnValue({
-      imageUrl: "https://example.com/img.png",
-      imageAlt: "Product",
+      image: { href: "https://example.com/img.png" },
+      name: "Product",
     });
     render(<EPCartItemImage width={100} height={80} />);
     const img = document.querySelector("img");
@@ -849,7 +848,7 @@ describe("EPCartItemImage", () => {
   });
 
   it("placeholder SVG is 40% of dimensions", () => {
-    mockUseSelector.mockReturnValue({ imageUrl: undefined });
+    mockUseSelector.mockReturnValue({ image: undefined });
     render(<EPCartItemImage width={100} height={100} />);
     const svg = document.querySelector("svg");
     expect(svg?.getAttribute("width")).toBe("40");
@@ -858,8 +857,8 @@ describe("EPCartItemImage", () => {
 
   it("respects loading prop", () => {
     mockUseSelector.mockReturnValue({
-      imageUrl: "https://example.com/img.png",
-      imageAlt: "Product",
+      image: { href: "https://example.com/img.png" },
+      name: "Product",
     });
     render(<EPCartItemImage loading="eager" />);
     const img = document.querySelector("img");
@@ -882,29 +881,16 @@ describe("EPCartItemImage", () => {
 
 describe("EPCartItemList", () => {
   const mockCartData = {
-    lineItems: [
-      {
-        id: "item-1",
-        name: "Product A",
-        quantity: 2,
-        price: 25,
-        productId: "prod-1",
-        options: [],
-      },
-      {
-        id: "item-2",
-        name: "Product B",
-        quantity: 1,
-        price: 30,
-        productId: "prod-2",
-        options: [],
-      },
+    id: "cart-1",
+    itemCount: 3,
+    items: [
+      { id: "item-1", name: "Product A", quantity: 2, product_id: "prod-1" },
+      { id: "item-2", name: "Product B", quantity: 1, product_id: "prod-2" },
     ],
-    currencyCode: "USD",
   };
 
   it("returns null when no items", () => {
-    mockUseSelector.mockReturnValue({ lineItems: [], currencyCode: "USD" });
+    mockUseSelector.mockReturnValue({ id: "cart-1", items: [], itemCount: 0 });
     const { container } = render(
       <EPCartItemList><div>Item</div></EPCartItemList>
     );
@@ -952,8 +938,8 @@ describe("EPCartItemList", () => {
   it("fetches locations/stock for items with locationSlug", () => {
     const dataWithLocations = {
       ...mockCartData,
-      lineItems: [
-        { ...mockCartData.lineItems[0], locationSlug: "store-a" },
+      items: [
+        { ...mockCartData.items[0], location: "store-a" },
       ],
     };
     mockUseSelector.mockReturnValue(dataWithLocations);
@@ -1225,7 +1211,7 @@ describe("EPCartItemQuantityControl", () => {
   });
 
   it("seeds the cart cache with the mutation result", async () => {
-    const updatedCart = { id: "cart-1", lineItems: [{ id: "item-1" }] };
+    const updatedCart = { id: "cart-1", items: [{ id: "item-1" }], itemCount: 1 };
     mockCallEpProxy.mockResolvedValue(updatedCart);
     mockUseSelector.mockReturnValue({ id: "item-1", quantity: 2 });
 
@@ -1295,7 +1281,7 @@ describe("EPCartItemQuantityControl", () => {
     expect(mockCallEpProxy).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      resolveUpdate({ id: "cart-1", lineItems: [] });
+      resolveUpdate({ id: "cart-1", items: [], itemCount: 0 });
     });
   });
 
@@ -1450,13 +1436,13 @@ describe("EPCartItemQuantityControl", () => {
     expect(readProviderState("quantityControl").isLoading).toBe(true);
 
     await act(async () => {
-      resolveUpdate({ id: "cart-1", lineItems: [] });
+      resolveUpdate({ id: "cart-1", items: [], itemCount: 0 });
     });
     expect(readProviderState("quantityControl").error).toBeNull();
   });
 
   it("leaves quantityControl.error null after a successful update", async () => {
-    mockCallEpProxy.mockResolvedValue({ id: "cart-1", lineItems: [] });
+    mockCallEpProxy.mockResolvedValue({ id: "cart-1", items: [], itemCount: 0 });
     mockUseSelector.mockReturnValue({ id: "item-1", quantity: 2 });
 
     let ctxValue: any;

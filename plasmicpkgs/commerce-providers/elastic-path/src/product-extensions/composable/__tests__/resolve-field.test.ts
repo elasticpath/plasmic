@@ -10,18 +10,18 @@ import {
   resolveTopLevelField,
 } from "../resolve-field";
 import type { Product } from "../../../types/product";
+import { mockProduct } from "../../../utils/design-time-data";
 
-const product: Product = {
+const product: Product = mockProduct({
   id: "p1",
   name: "Acme Widget",
   description: "A fine widget.",
   sku: "AW-1",
   slug: "acme-widget",
+  amount: 13500,
+  currency: "CHF",
   images: [{ url: "https://img/1.jpg", alt: "Widget" }],
-  variants: [],
-  price: { value: 135, currencyCode: "CHF" },
-  options: [],
-};
+});
 
 describe("resolveTopLevelField", () => {
   it("resolves a simple string leaf", () => {

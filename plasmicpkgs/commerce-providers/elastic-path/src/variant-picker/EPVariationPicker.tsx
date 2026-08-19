@@ -7,7 +7,7 @@ import {
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
-import type { Product, ProductOption, ProductVariant } from "../types/product";
+import type { Product, Variation } from "../types/product";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useFormContext } from "react-hook-form";
 import { Registerable } from "../registerable";
@@ -17,6 +17,7 @@ import {
   VariationPickerContext,
   VariationPickerContextValue,
 } from "./VariationPickerContext";
+import { findChildProduct, initialSelection } from "./selection";
 
 const log = createLogger("EPVariationPicker");
 
@@ -110,11 +111,11 @@ export function EPVariationPicker(props: EPVariationPickerProps) {
   const useMock =
     previewState === "withVariations" ||
     (previewState === "auto" &&
-      !(product?.options?.length) &&
+      !product?.variations?.length &&
       inEditor);
 
   const effectiveProduct = useMock ? MOCK_EP_PRODUCT : product;
-  const variations: ProductOption[] = effectiveProduct?.options || [];
+  const variations: Variation[] = effectiveProduct?.variations || [];
 
   if (useMock) {
     log.debug("Using mock product for design-time preview");
@@ -156,23 +157,14 @@ export function EPVariationPicker(props: EPVariationPickerProps) {
   // when none is supplied, so trigger highlights match the auto-selected variant
   // exposed via the URL writer below.
   useEffect(() => {
-    if (!effectiveProduct?.variants?.length) return;
+    if (!effectiveProduct?.childProducts?.length) return;
     if (Object.keys(selectedValues).length > 0) return;
 
-    const target = resolvedDefaultVariantId
-      ? effectiveProduct.variants.find((v) => v.id === resolvedDefaultVariantId)
-      : effectiveProduct.variants[0];
-    if (!target) return;
-    const targetId = String(target.id);
-    if (targetId === lastInitializedVariantId) return;
+    const targetId =
+      resolvedDefaultVariantId ?? effectiveProduct.childProducts[0]?.id;
+    if (!targetId || targetId === lastInitializedVariantId) return;
 
-    const initialValues: Record<string, string> = {};
-    target.options?.forEach((option) => {
-      const value = option.values?.[0]?.label;
-      if (value) {
-        initialValues[option.id] = value;
-      }
-    });
+    const initialValues = initialSelection(effectiveProduct, targetId);
     if (Object.keys(initialValues).length === 0) return;
 
     setSelectedValues(initialValues);
@@ -206,25 +198,13 @@ export function EPVariationPicker(props: EPVariationPickerProps) {
   }, [selectedValues, form, useMock]);
 
   // Find matching variant based on all selections
-  const selectedVariant = useMemo(() => {
-    if (!effectiveProduct?.variants || variations.length === 0) {
-      return undefined;
-    }
-    if (Object.keys(selectedValues).length !== variations.length) {
-      // Not all options selected yet — default to first variant so stock can load
-      return effectiveProduct.variants[0];
-    }
-    return effectiveProduct.variants.find((variant) => {
-      return Object.entries(selectedValues).every(
-        ([variationId, selectedValue]) => {
-          const variantOption = variant.options?.find(
-            (opt: ProductOption) => opt.id === variationId
-          );
-          return variantOption?.values?.[0]?.label === selectedValue;
-        }
-      );
-    });
-  }, [effectiveProduct?.variants, variations, selectedValues]);
+  const selectedVariant = useMemo(
+    () =>
+      variations.length === 0
+        ? undefined
+        : findChildProduct(effectiveProduct, selectedValues),
+    [effectiveProduct, variations, selectedValues]
+  );
 
   // Update ProductVariant form field and URL when variant changes (skip mock)
   useEffect(() => {
@@ -268,11 +248,7 @@ export function EPVariationPicker(props: EPVariationPickerProps) {
           <DataProvider
             key={variation.id}
             name="currentVariation"
-            data={{
-              id: variation.id,
-              name: variation.displayName,
-              values: variation.values,
-            }}
+            data={variation}
           >
             <DataProvider name="currentVariationIndex" data={i}>
               {repeatedElement(i, children)}

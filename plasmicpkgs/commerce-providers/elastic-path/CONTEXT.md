@@ -111,3 +111,47 @@ _Avoid_: trusted cart line, server-priced line item
 The config-time `shippingRateResolver` hook on `SessionHandlerContext` that
 sources `availableShippingRates` server-side. The only correct path for real
 shipping charges — never `applyCartAdjustment` with `kind: "shipping"`.
+
+### Product & cart shapes
+
+**Formatted price**:
+Elastic Path's own price leaf — integer amount in the currency's lowest
+denomination, ISO currency code, the display-ready `formatted` string, and
+the decimal `float_price`. Elastic Path omits the decimal on cart and line
+prices; this package fills it in, derived from that currency's own exponent
+and never a fixed hundredth, so zero-decimal currencies (JPY) are correct.
+Every price the package publishes carries all four. `formatted` is the
+preferred read — it is what Commerce Manager was configured to produce.
+Elastic Path's *display price* is the block holding the with-tax and
+without-tax pair, not the leaf itself.
+_Avoid_: Money, ProductPrice, price value, cents
+
+**Base product**:
+A product a shopper cannot buy. It exists to carry the variations and the
+matrix that select a purchasable child, and in PXM it carries no price of its
+own — the price is inherited from a child. Elastic Path's own name for the
+parent of a variation family.
+_Avoid_: parent product, variation parent, master product
+
+**Child product**:
+A purchasable product selected by one combination of variation options. Owns
+its own SKU, price and stock. A cart line always references a child product,
+never the base product it came from.
+_Avoid_: variant, SKU, `children` (that is Plasmic's slot word)
+
+**Variation**:
+One option group a shopper chooses from to select a child product — Colour,
+Size — together with the options in it. The package's established word: the
+variation picker, its fields, and the form keys all use it. Carries exactly
+what Elastic Path models — identity, name, description and the merchandiser's
+sort order — and nothing more; there is no colour on a variation option, so
+swatches are a Studio-side mapping, not commerce data.
+_Avoid_: product option, option group, attribute, hexColors
+
+**Price from**:
+The lowest price among a base product's children, published on the base
+product only. Elastic Path gives a base product no price of its own, so this
+is the package's own value, named for what it is rather than synthesized into
+Elastic Path's price block. It is also the correct storefront semantics for a
+variation family — "From £49.99".
+_Avoid_: parent price, inherited price, starting price

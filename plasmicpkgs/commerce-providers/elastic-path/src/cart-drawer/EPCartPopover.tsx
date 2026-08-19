@@ -9,7 +9,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useEpCart } from "../cart-provider/use-ep-cart";
 import { useEpCommerce } from "../shopper-context/EpCommerceContext";
 import { Registerable } from "../registerable";
-import { deriveCartData } from "../utils/cart-data";
 import { MOCK_CART_DATA, MOCK_EMPTY_CART_DATA } from "../utils/design-time-data";
 import {
   getPopoverPositionStyles,
@@ -171,7 +170,7 @@ export function EPCartPopover(props: EPCartPopoverProps) {
     previewState = "auto",
   } = props;
 
-  const { cart, error: cartError } = useEpCart();
+  const { cart, error: cartError, isLoading: cartLoading } = useEpCart();
   const commerce = useEpCommerce();
   const currencyDisplay = commerce?.currencyDisplay ?? "symbol";
   const inEditor = !!usePlasmicCanvasContext();
@@ -228,10 +227,6 @@ export function EPCartPopover(props: EPCartPopoverProps) {
 
   // Build enriched cart data for DataProvider — formatted money honours the
   // provider's currencyDisplay preference (symbol vs. ISO code prefix).
-  const cartData = useMemo(
-    () => deriveCartData(cart, { currencyDisplay }),
-    [cart, currencyDisplay]
-  );
 
   // --- Preview state handling ---
 
@@ -239,7 +234,7 @@ export function EPCartPopover(props: EPCartPopoverProps) {
     previewState === "withItems" ||
     (previewState === "auto" && !cart && inEditor);
 
-  const effectiveCartData = useMock ? MOCK_CART_DATA : cartData;
+  const effectiveCartData = useMock ? MOCK_CART_DATA : cart;
 
   // In the editor the panel opens when this node is selected in the outline
   // (autoOpenForEditing) or when a previewState is explicitly chosen, so the
@@ -260,12 +255,12 @@ export function EPCartPopover(props: EPCartPopoverProps) {
       panelContent = errorContent;
     } else if (inEditor && previewState === "empty") {
       panelContent = emptyContent;
-    } else if (!cart && !cartError && !useMock) {
+    } else if (cartLoading && !useMock) {
       panelContent = loadingContent;
     } else if (cartError) {
       panelContent = errorContent;
     } else {
-      panelContent = effectiveCartData?.isEmpty ? emptyContent : children;
+      panelContent = (effectiveCartData?.itemCount ?? 0) === 0 ? emptyContent : children;
     }
   }
 
@@ -296,7 +291,7 @@ export function EPCartPopover(props: EPCartPopoverProps) {
       </div>
 
       {panelOpen && (
-        <DataProvider name="cartData" data={providedData}>
+        <DataProvider name="cart" data={providedData}>
           <div
             className={className}
             role="dialog"

@@ -17,6 +17,21 @@ export interface UseEpCartReturn {
  * lets `EPAddToCartButton` and any other surface invalidate the same
  * entry after a mutation.
  */
+/**
+ * Whether the cart fetch has resolved, and how.
+ *
+ * A shopper with no cart resolves to `null`, which is a *loaded* state — only
+ * `undefined` means SWR has not answered yet. Conflating the two is what left
+ * an empty cart rendering "Loading cart…" indefinitely.
+ */
+export function cartLoadState(
+  data: Cart | null | undefined,
+  error: unknown
+): "loading" | "error" | "ready" {
+  if (error) return "error";
+  return data === undefined ? "loading" : "ready";
+}
+
 export function useEpCart(): UseEpCartReturn {
   const { data, error, mutate } = useSWR<Cart | null>(
     epCartCacheKey(),
@@ -25,7 +40,7 @@ export function useEpCart(): UseEpCartReturn {
   );
   return {
     cart: data ?? null,
-    isLoading: !data && !error,
+    isLoading: cartLoadState(data, error) === "loading",
     error: error ?? null,
     refresh: mutate as () => Promise<Cart | null | undefined>,
   };

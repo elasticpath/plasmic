@@ -18,12 +18,21 @@ describe("PRODUCT_FIELD_LEAVES", () => {
   });
 
   it("maps the price leaf to a currency-formatted scalar with a currency path", () => {
-    const price = getProductFieldLeaf("price");
-    expect(price).toMatchObject({
-      path: ["price", "value"],
+    expect(getProductFieldLeaf("price")).toMatchObject({
+      path: ["meta", "display_price", "without_tax", "float_price"],
       defaultFormat: "currency",
-      currencyPath: ["price", "currencyCode"],
+      currencyPath: ["meta", "display_price", "without_tax", "currency"],
     });
+  });
+
+  it("never points a money leaf at Elastic Path's minor-unit amount", () => {
+    // `amount` is 4999 where `float_price` is 49.99 — a leaf pointing at the
+    // former renders every price 100x too large, and canvas looks fine.
+    for (const leaf of PRODUCT_FIELD_LEAVES) {
+      if (leaf.defaultFormat === "currency" || leaf.defaultFormat === "number") {
+        expect(leaf.path).not.toContain("amount");
+      }
+    }
   });
 
   it("exposes the first image as a flattened array-path leaf", () => {

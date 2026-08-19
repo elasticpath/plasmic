@@ -5,7 +5,7 @@ import registerComponent, {
 import React from "react";
 import { Registerable } from "../registerable";
 import { createLogger } from "../utils/logger";
-import { MOCK_VARIATION_OPTIONS } from "../utils/design-time-data";
+import { MOCK_VARIATIONS } from "../utils/design-time-data";
 import { useVariationPicker } from "./VariationPickerContext";
 
 const log = createLogger("EPVariationOptionSelect");
@@ -64,11 +64,11 @@ export function EPVariationOptionSelect(props: EPVariationOptionSelectProps) {
     | {
         id: string;
         name: string;
-        values: { label: string; hexColors?: string[] }[];
+        options: { id: string; name: string }[];
       }
     | undefined;
 
-  const mockVariation = MOCK_VARIATION_OPTIONS[0];
+  const mockVariation = MOCK_VARIATIONS[0];
   const useMock =
     previewState === "withOptions" ||
     (previewState === "auto" && !currentVariation && inEditor);
@@ -76,8 +76,8 @@ export function EPVariationOptionSelect(props: EPVariationOptionSelectProps) {
   const effectiveVariation = useMock
     ? {
         id: mockVariation.id,
-        name: mockVariation.displayName,
-        values: mockVariation.values,
+        name: mockVariation.name,
+        options: mockVariation.options,
       }
     : currentVariation;
 
@@ -85,7 +85,7 @@ export function EPVariationOptionSelect(props: EPVariationOptionSelectProps) {
     log.debug("Using mock variation for design-time preview");
   }
 
-  if (!effectiveVariation?.values) {
+  if (!effectiveVariation?.options) {
     return null;
   }
 
@@ -108,9 +108,9 @@ export function EPVariationOptionSelect(props: EPVariationOptionSelectProps) {
       <option value="" disabled>
         {placeholderText}
       </option>
-      {effectiveVariation.values.map((option) => (
-        <option key={option.label} value={option.label}>
-          {option.label}
+      {effectiveVariation.options.map((option) => (
+        <option key={option.name} value={option.name}>
+          {option.name}
         </option>
       ))}
     </select>

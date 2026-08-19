@@ -5,7 +5,7 @@ import registerComponent, {
 import React, { useId } from "react";
 import { Registerable } from "../registerable";
 import { createLogger } from "../utils/logger";
-import { MOCK_VARIATION_OPTIONS } from "../utils/design-time-data";
+import { MOCK_VARIATIONS } from "../utils/design-time-data";
 import { useVariationPicker } from "./VariationPickerContext";
 
 const log = createLogger("EPVariationOptionRadioGroup");
@@ -87,11 +87,11 @@ export function EPVariationOptionRadioGroup(
     | {
         id: string;
         name: string;
-        values: { label: string; hexColors?: string[] }[];
+        options: { id: string; name: string }[];
       }
     | undefined;
 
-  const mockVariation = MOCK_VARIATION_OPTIONS[0];
+  const mockVariation = MOCK_VARIATIONS[0];
   const useMock =
     previewState === "withOptions" ||
     (previewState === "auto" && !currentVariation && inEditor);
@@ -99,8 +99,8 @@ export function EPVariationOptionRadioGroup(
   const effectiveVariation = useMock
     ? {
         id: mockVariation.id,
-        name: mockVariation.displayName,
-        values: mockVariation.values,
+        name: mockVariation.name,
+        options: mockVariation.options,
       }
     : currentVariation;
 
@@ -108,7 +108,7 @@ export function EPVariationOptionRadioGroup(
     log.debug("Using mock variation for design-time preview");
   }
 
-  if (!effectiveVariation?.values) {
+  if (!effectiveVariation?.options) {
     return null;
   }
 
@@ -118,26 +118,26 @@ export function EPVariationOptionRadioGroup(
 
   return (
     <div className={className} role="radiogroup" aria-label={label}>
-      {effectiveVariation.values.map((option) => {
-        const id = `${radioName}_${option.label}`;
-        const isSelected = selectedLabel === option.label;
+      {effectiveVariation.options.map((option) => {
+        const id = `${radioName}_${option.name}`;
+        const isSelected = selectedLabel === option.name;
         return (
-          <div key={option.label} className={itemClassName}>
+          <div key={option.name} className={itemClassName}>
             <input
               type="radio"
               id={id}
               name={radioName}
-              value={option.label}
+              value={option.name}
               checked={isSelected}
               className={inputClassName}
               onChange={() => {
                 if (picker && effectiveVariation) {
-                  picker.selectOption(effectiveVariation.id, option.label);
+                  picker.selectOption(effectiveVariation.id, option.name);
                 }
               }}
             />
             <label htmlFor={id} className={labelClassName}>
-              {option.label}
+              {option.name}
             </label>
           </div>
         );

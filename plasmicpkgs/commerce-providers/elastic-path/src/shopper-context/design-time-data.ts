@@ -1,4 +1,5 @@
-import type { CheckoutCartData } from "./use-checkout-cart";
+import type { Cart } from "../types/cart";
+import { mockCartItem } from "../utils/design-time-data";
 
 /**
  * Mock cart data for Plasmic Studio design-time preview.
@@ -7,47 +8,43 @@ import type { CheckoutCartData } from "./use-checkout-cart";
  * data while styling checkout components. Prices use minor units (cents) to
  * match the real EP API response shape.
  */
-export const MOCK_SERVER_CART_DATA: CheckoutCartData = {
+export const MOCK_SERVER_CART_DATA: Cart = {
   id: "mock-cart-001",
+  type: "cart",
+  itemCount: 3,
   items: [
-    {
+    mockCartItem({
       id: "mock-item-1",
       productId: "mock-product-1",
       name: "Ember Glow Soy Candle",
       sku: "EW-EMB-001",
       quantity: 2,
-      unitPrice: 3800,
-      linePrice: 7600,
-      formattedUnitPrice: "$38.00",
-      formattedLinePrice: "$76.00",
-      imageUrl: null,
-    },
-    {
+      amount: 3800,
+    }),
+    mockCartItem({
       id: "mock-item-2",
       productId: "mock-product-2",
       name: "Midnight Wick Reed Diffuser",
       sku: "EW-MID-002",
       quantity: 1,
-      unitPrice: 2400,
-      linePrice: 2400,
-      formattedUnitPrice: "$24.00",
-      formattedLinePrice: "$24.00",
-      imageUrl: null,
-    },
+      amount: 2400,
+    }),
   ],
-  itemCount: 3,
-  subtotal: 10000,
-  tax: 825,
-  shipping: 0,
-  total: 10825,
-  formattedSubtotal: "$100.00",
-  formattedTax: "$8.25",
-  formattedShipping: "$0.00",
-  formattedTotal: "$108.25",
-  currencyCode: "USD",
-  showImages: true,
-  hasPromo: false,
-  promoCode: null,
-  promoDiscount: 0,
-  formattedPromoDiscount: null,
+  meta: {
+    display_price: {
+      without_tax: {
+        amount: 10000,
+        currency: "USD",
+        float_price: 100,
+        formatted: "$100.00",
+      },
+      tax: { amount: 825, currency: "USD", float_price: 8.25, formatted: "$8.25" },
+      with_tax: {
+        amount: 10825,
+        currency: "USD",
+        float_price: 108.25,
+        formatted: "$108.25",
+      },
+    },
+  },
 };
