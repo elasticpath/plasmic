@@ -161,6 +161,31 @@ This command will:
 - Testing migration scripts
 - Clearing out test data
 
+### Pointing at a different database
+
+Two mechanisms decide which database you hit, and they read different sources:
+
+| What you run                        | Reads                                           | Notes                                                                   |
+| ----------------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------- |
+| `yarn typeorm migration:run`        | `platform/wab/ormconfig.json`                   | TypeORM CLI only. Ignores `DATABASE_URI`.                               |
+| `yarn seed`, `yarn dev`, the server | `DATABASE_URI` (from the environment or `.env`) | Falls back to `postgresql://wab@localhost/$WAB_DBNAME`, i.e. port 5432. |
+
+So setting one does not redirect the other. To run against a throwaway database on
+port 5433, set the port in `ormconfig.json` for the migration, and pass
+`DATABASE_URI` to everything else:
+
+```bash
+# migrations: ormconfig.json needs "port": 5433
+cd platform/wab && yarn typeorm migration:run
+
+# seed and Studio: environment wins over ormconfig.json
+DATABASE_URI="postgres://wab:SEKRET@localhost:5433/wab" yarn seed
+DATABASE_URI="postgres://wab:SEKRET@localhost:5433/wab" pnpm dev
+```
+
+Set only `ormconfig.json` and the migrations land on the throwaway while the seed
+writes to your normal database. `ormconfig.json` is tracked, so revert it afterwards.
+
 ## Worker Pool Configuration
 
 Code generation runs in worker threads to avoid blocking the main server. Two pools handle different stages:
