@@ -54,3 +54,26 @@ export function toEPCustomer(
 ): { name: string; email: string } {
   return { name: info.name, email: info.email };
 }
+
+function addressFieldKey(value: string | undefined | null): string {
+  return (value ?? "").trim();
+}
+
+export function sessionAddressesEquivalent(
+  a: SessionAddress | null | undefined,
+  b: SessionAddress | null | undefined
+): boolean {
+  if (a == null && b == null) return true;
+  if (a == null || b == null) return false;
+  return (
+    addressFieldKey(a.firstName) === addressFieldKey(b.firstName) &&
+    addressFieldKey(a.lastName) === addressFieldKey(b.lastName) &&
+    addressFieldKey(a.company) === addressFieldKey(b.company) &&
+    addressFieldKey(a.line1) === addressFieldKey(b.line1) &&
+    addressFieldKey(a.line2) === addressFieldKey(b.line2) &&
+    addressFieldKey(a.city) === addressFieldKey(b.city) &&
+    addressFieldKey(a.county) === addressFieldKey(b.county) &&
+    addressFieldKey(a.country) === addressFieldKey(b.country) &&
+    addressFieldKey(a.postcode) === addressFieldKey(b.postcode)
+  );
+}

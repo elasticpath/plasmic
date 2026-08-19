@@ -24,8 +24,18 @@
  *   county                     → billing.county
  *   postal                     → billing.postcode
  *   country                    → billing.country
+ *   shippingFirstName          → session.shippingAddress.firstName
+ *   shippingLastName           → session.shippingAddress.lastName
+ *   shippingCompany            → session.shippingAddress.company
+ *   shippingAddress            → session.shippingAddress.line1
+ *   shippingLine2              → session.shippingAddress.line2
+ *   shippingCity               → session.shippingAddress.city
+ *   shippingCounty             → session.shippingAddress.county
+ *   shippingPostal             → session.shippingAddress.postcode
+ *   shippingCountry            → session.shippingAddress.country
  *   <any other field / checkbox> → cart custom_attributes
- * Override the mapping with the `fieldMapping` prop.
+ * Override the billing mapping with the `fieldMapping` prop. Shipping names
+ * are fixed (not overridable) so they stay reserved.
  *
  * Provides `checkoutFormData` for designer binding and exposes
  * `placeOrder` / `validate` / `reset` refActions.
@@ -42,15 +52,26 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
   useState,
 } from "react";
+import debounce from "debounce";
 import { Registerable } from "../../registerable";
 import { callEpProxy } from "../../ep-server-functions/proxy-fetch";
 import type { EpPlaceOrderResult } from "../../ep-server-functions/place-order";
+import { DEFAULT_DEBOUNCE_MS } from "../../const";
 import { createLogger } from "../../utils/logger";
+import { sessionAddressesEquivalent } from "../session/address-utils";
+import type { SessionAddress } from "../session/types";
+import {
+  SHIPPING_FORM_FIELD_NAMES,
+  formHasShippingFields,
+  isShippingAddressCompleteEnough,
+  mapShippingFormValuesToSessionAddress,
+} from "./shipping-form-fields";
 
 const log = createLogger("EPCheckoutFormProvider");
 
@@ -191,6 +212,7 @@ interface SessionBridge {
     totals?: { total?: number } | null;
   } | null;
   updateSession?: (data: Record<string, unknown>) => Promise<unknown>;
+  calculateShipping?: () => Promise<unknown>;
   placeOrder?: () => Promise<
     | {
         success?: boolean;
@@ -200,6 +222,11 @@ interface SessionBridge {
       }
     | undefined
   >;
+}
+
+interface DebouncedShippingSync {
+  (address: SessionAddress): void;
+  clear(): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -310,6 +337,57 @@ export const EPCheckoutFormProvider = React.forwardRef<
     setErrors((prev) => (prev[name] ? { ...prev, [name]: null } : prev));
   }, []);
 
+  const lastSyncedShippingRef = useRef<SessionAddress | null>(null);
+  const shippingSyncRef = useRef<DebouncedShippingSync | null>(null);
+
+  useEffect(() => {
+    if (inEditor || !useSession) {
+      shippingSyncRef.current = null;
+      return;
+    }
+    const updateSession = sessionBridge?.updateSession;
+    const calculateShipping = sessionBridge?.calculateShipping;
+    if (!updateSession || !calculateShipping) {
+      shippingSyncRef.current = null;
+      return;
+    }
+
+    shippingSyncRef.current = debounce(async (address: SessionAddress) => {
+      if (sessionAddressesEquivalent(address, lastSyncedShippingRef.current)) {
+        return;
+      }
+      try {
+        const resp = (await updateSession({ shippingAddress: address })) as
+          | { success?: boolean }
+          | undefined;
+        if (resp && resp.success === false) return;
+        await calculateShipping();
+        lastSyncedShippingRef.current = address;
+      } catch (err) {
+        log.warn("Shipping address sync failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }, DEFAULT_DEBOUNCE_MS) as DebouncedShippingSync;
+
+    return () => {
+      shippingSyncRef.current?.clear();
+    };
+  }, [
+    inEditor,
+    useSession,
+    sessionBridge?.updateSession,
+    sessionBridge?.calculateShipping,
+  ]);
+
+  useEffect(() => {
+    if (inEditor || !useSession) return;
+    if (!formHasShippingFields(values, registry.current)) return;
+    const address = mapShippingFormValuesToSessionAddress(values);
+    if (!isShippingAddressCompleteEnough(address)) return;
+    shippingSyncRef.current?.(address);
+  }, [inEditor, useSession, values]);
+
   const validateAll = useCallback((): boolean => {
     const nextErrors: Record<string, string | null> = {};
     let valid = true;
@@ -355,8 +433,12 @@ export const EPCheckoutFormProvider = React.forwardRef<
     const v = values;
 
     // Everything that isn't a reserved order field becomes a cart custom
-    // attribute (extra profile fields + consent flags).
-    const reserved = new Set(Object.values(mapping));
+    // attribute (extra profile fields + consent flags). Shipping* names are
+    // reserved so they map to session.shippingAddress, not custom attributes.
+    const reserved = new Set<string>([
+      ...Object.values(mapping),
+      ...SHIPPING_FORM_FIELD_NAMES,
+    ]);
     const customAttributes: Record<string, string | boolean> = {};
     for (const [name, value] of Object.entries(v)) {
       if (reserved.has(name)) continue;
@@ -369,6 +451,7 @@ export const EPCheckoutFormProvider = React.forwardRef<
     // --- Session mode: push fields into the checkout session, then let the
     // session's registered gateway (Stripe) take payment. ---
     if (useSession && sessionBridge) {
+      shippingSyncRef.current?.clear();
       const customerInfo = {
         name: `${v[mapping.firstName] ?? ""} ${v[mapping.lastName] ?? ""}`.trim(),
         email: v[mapping.email] ?? "",
@@ -384,13 +467,18 @@ export const EPCheckoutFormProvider = React.forwardRef<
         country: v[mapping.country] ?? "",
         postcode: v[mapping.postcode] ?? "",
       };
+      const sessionUpdate: Record<string, unknown> = {
+        customerInfo,
+        billingAddress: sessionBilling,
+        requiresShipping,
+        customAttributes,
+      };
+      if (formHasShippingFields(v, registry.current)) {
+        sessionUpdate.shippingAddress =
+          mapShippingFormValuesToSessionAddress(v);
+      }
       try {
-        await sessionBridge.updateSession?.({
-          customerInfo,
-          billingAddress: sessionBilling,
-          requiresShipping,
-          customAttributes,
-        });
+        await sessionBridge.updateSession?.(sessionUpdate);
         const resp = await sessionBridge.placeOrder?.();
         const s = resp?.data?.session;
         if (resp?.success && s?.status === "complete") {
@@ -549,7 +637,7 @@ export const epCheckoutFormProviderMeta: CodeComponentMeta<EPCheckoutFormProvide
     name: "plasmic-commerce-ep-checkout-form-provider",
     displayName: "EP Checkout Form Provider",
     description:
-      "Single-page checkout form collector + order placer. Wrap the form fields (EP Form Field / Select Field / Consent Checkbox) and the EP Place Order Button. Reserved field names (firstName, lastName, email, company, address, line2, city, county, postal, country) map to the order; all other fields and checkboxes are saved as cart custom attributes.",
+      "Single-page checkout form collector + order placer. Wrap the form fields (EP Form Field / Select Field / Consent Checkbox), EP Checkout Shipping Rates, and the EP Place Order Button. Reserved field names (firstName, lastName, email, company, address, line2, city, county, postal, country, shippingFirstName, shippingLastName, shippingCompany, shippingAddress, shippingLine2, shippingCity, shippingCounty, shippingPostal, shippingCountry) map to the order / session; all other fields and checkboxes are saved as cart custom attributes.",
     props: {
       children: {
         type: "slot",

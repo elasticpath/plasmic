@@ -33,7 +33,7 @@ export { CookieSessionStore } from "./cookie-store";
 export { createAdapterRegistry } from "./adapter-registry";
 
 // Address utils
-export { toEPAddress, fromEPAddress, toEPCustomer } from "./address-utils";
+export { toEPAddress, fromEPAddress, toEPCustomer, sessionAddressesEquivalent } from "./address-utils";
 export type { EPAddress } from "./address-utils";
 
 // Cart hash
@@ -85,6 +85,12 @@ export {
   epStripePaymentMeta,
   registerEPStripePayment,
 } from "./EPStripePayment";
+
+export {
+  EPCheckoutShippingRates,
+  epCheckoutShippingRatesMeta,
+  registerEPCheckoutShippingRates,
+} from "./EPCheckoutShippingRates";
 
 // Stripe global context (publishableKey)
 export {
