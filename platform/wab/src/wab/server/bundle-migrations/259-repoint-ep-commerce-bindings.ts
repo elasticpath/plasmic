@@ -57,7 +57,10 @@ const PRODUCT_LEAVES = [
   "path",
   "options",
   "variants",
+  "extensions",
   "_highlightedName",
+  "_highlightedDescription",
+  "_snippetedDescription",
 ];
 const VARIATION_LEAVES = ["displayName", "values", "label", "hexColors"];
 const CART_ITEM_LEAVES = ["imageUrl", "variantId", "price", "currencyCode"];
@@ -162,6 +165,23 @@ const MANUAL_RULES: ManualRule[] = [
     receiver: "currentProduct",
     was: ["_highlightedName"],
     advice: "$ctx.currentHit.highlightedName",
+  },
+  {
+    receiver: "currentProduct",
+    was: ["_highlightedDescription"],
+    advice: "$ctx.currentHit.highlightedDescription",
+  },
+  {
+    receiver: "currentProduct",
+    was: ["_snippetedDescription"],
+    advice: "$ctx.currentHit.snippetedDescription",
+  },
+  { receiver: "currentProduct", was: ["_score"], advice: "$ctx.currentHit.score" },
+  {
+    receiver: "currentProduct",
+    was: ["extensions"],
+    advice:
+      "attributes.extensions, Elastic Path's own wire path, or the $ctx.productExtensions context",
   },
   { receiver: "cart", was: ["currency"], advice: "cart.meta.display_price" },
   {
@@ -592,9 +612,12 @@ export const migrate: BundledMigrationFn = async (bundle, entity) => {
 
   if (repointed > 0 || findings.length > 0) {
     logger().info("259-repoint-ep-commerce-bindings", {
-      projectId:
+      // Import hands us an entity carrying neither, so fall back to its id —
+      // the worklist is useless if it cannot be traced to a project.
+      entity:
         (entity as { projectId?: string }).projectId ??
-        (entity as { pkgId?: string }).pkgId,
+        (entity as { pkgId?: string }).pkgId ??
+        entity.id,
       repointed,
       manualWorklist: findings,
     });

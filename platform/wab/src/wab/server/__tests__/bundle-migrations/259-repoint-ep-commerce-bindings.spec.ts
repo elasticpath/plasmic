@@ -367,11 +367,11 @@ describe("259-repoint-ep-commerce-bindings", () => {
       jest.restoreAllMocks();
       expect(logged).toHaveLength(1);
       const payload = (logged[0] as unknown[])[1] as {
-        projectId: string;
+        entity: string;
         repointed: number;
         manualWorklist: ManualFinding[];
       };
-      expect(payload.projectId).toBe("testProject");
+      expect(payload.entity).toBe("testProject");
       expect(payload.repointed).toBe(2);
       expect(
         [...payload.manualWorklist].sort((a, b) => a.was.localeCompare(b.was))
