@@ -4005,6 +4005,11 @@
   dependencies:
     vitest "^3.2.4"
 
+"@elasticpath/plasmic-ep-custom-api-cms@file:plasmicpkgs/ep-custom-api-cms":
+  version "0.1.0"
+  dependencies:
+    "@epcc-sdk/sdks-shopper" "^0.1.0"
+
 "@elasticpath/plasmic-mcp-registry@file:packages/plasmic-mcp-registry":
   version "0.2.1"
 

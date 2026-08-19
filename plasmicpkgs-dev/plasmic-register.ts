@@ -9,6 +9,7 @@
 import { PLASMIC } from "@/plasmic-init";
 import { registerWithDevMeta } from "@/plasmic-register-dev-meta";
 import { registerAll as registerElasticPath } from "@elasticpath/plasmic-ep-commerce-elastic-path";
+import { registerAll as registerEpCustomApiCms } from "@elasticpath/plasmic-ep-custom-api-cms";
 import { registerAllCmsFunctions as registerPlasmicCms } from "@plasmicpkgs/cms";
 import { registerAll as registerCommerce } from "@plasmicpkgs/commerce";
 import { registerAll as registerShopify } from "@plasmicpkgs/commerce-shopify";
@@ -30,6 +31,7 @@ export function registerAllPackages(plasmic: typeof PLASMIC) {
     registerCommerce(plasmic);
     registerShopify(plasmic);
     registerElasticPath(plasmic);
+    registerEpCustomApiCms(plasmic);
     registerVideo(plasmic);
   }
 
