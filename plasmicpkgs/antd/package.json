@@ -55,7 +55,7 @@
     }
   ],
   "scripts": {
-    "build": "rollup -c rollup.config.mjs && yarn copy_css_files && yarn gentypes",
+    "build": "rollup -c rollup.config.mjs && pnpm copy_css_files && pnpm gentypes",
     "gentypes": "tsc --emitDeclarationOnly --declaration src/index.ts --incremental --tsBuildInfoFile ./dist/.tsbuildinfo  --skipLibCheck --jsx react --lib dom,es2019 --esModuleInterop --strict --outDir ./dist/ && cp ./dist/*.d.ts skinny/ && rm skinny/index.d.ts",
     "prepublishOnly": "npm run build",
     "copy_css_files": "cp src/*.css dist/",

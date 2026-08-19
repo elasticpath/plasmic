@@ -15,7 +15,6 @@ import {
 } from "../const";
 import { useEpCommerce } from "../shopper-context/EpCommerceContext";
 import { Registerable } from "../registerable";
-import { deriveCartData } from "../utils/cart-data";
 import { createLogger } from "../utils/logger";
 import { MOCK_CART_DATA, MOCK_EMPTY_CART_DATA } from "../utils/design-time-data";
 import { useDrawerOpen, setDrawerOpen } from "./CartDrawerContext";
@@ -205,7 +204,7 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
     inline = false,
   } = props;
 
-  const { cart, error: cartError } = useEpCart();
+  const { cart, error: cartError, isLoading: cartLoading } = useEpCart();
   const commerce = useEpCommerce();
   const currencyDisplay = commerce?.currencyDisplay ?? "symbol";
   const inEditor = !!usePlasmicCanvasContext();
@@ -298,10 +297,6 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
 
   // Build enriched cart data for DataProvider — formatted money honours the
   // provider's currencyDisplay preference (symbol vs. ISO code prefix).
-  const cartData = useMemo(
-    () => deriveCartData(cart, { currencyDisplay }),
-    [cart, currencyDisplay]
-  );
 
   // --- Preview state handling ---
 
@@ -309,7 +304,7 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
     previewState === "withItems" ||
     (previewState === "auto" && !cart && inEditor);
 
-  const effectiveCartData = useMock ? MOCK_CART_DATA : cartData;
+  const effectiveCartData = useMock ? MOCK_CART_DATA : cart;
 
   // -----------------------------------------------------------------------
   // Design-time: render inline so designer can see, select, and style.
@@ -342,7 +337,7 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
     }
     if (previewState === "empty") {
       return (
-        <DataProvider name="cartData" data={MOCK_EMPTY_CART_DATA}>
+        <DataProvider name="cart" data={MOCK_EMPTY_CART_DATA}>
           <div
             className={className}
             role="dialog"
@@ -357,7 +352,7 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
     }
 
     return (
-      <DataProvider name="cartData" data={effectiveCartData}>
+      <DataProvider name="cart" data={effectiveCartData}>
         <div
           className={className}
           role="dialog"
@@ -365,7 +360,7 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
           data-ep-cart-drawer=""
           data-side={side}
         >
-          {effectiveCartData?.isEmpty ? emptyContent : children}
+          {(effectiveCartData?.itemCount ?? 0) === 0 ? emptyContent : children}
         </div>
       </DataProvider>
     );
@@ -376,9 +371,9 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
   // No portal, no backdrop, no open/close logic.
   // -----------------------------------------------------------------------
   if (inline) {
-    const isEmpty = effectiveCartData?.isEmpty ?? true;
+    const isEmpty = (effectiveCartData?.itemCount ?? 0) === 0;
     let content: React.ReactNode;
-    if (!cart && !cartError && !useMock) {
+    if (cartLoading && !useMock) {
       content = loadingContent;
     } else if (cartError) {
       content = errorContent;
@@ -386,7 +381,7 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
       content = isEmpty ? emptyContent : children;
     }
     return (
-      <DataProvider name="cartData" data={effectiveCartData}>
+      <DataProvider name="cart" data={effectiveCartData}>
         <div className={className} data-ep-cart-inline="">
           {content}
         </div>
@@ -405,11 +400,11 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
     if (closeOnBackdropClick) close();
   };
 
-  const isEmpty = effectiveCartData?.isEmpty ?? true;
+  const isEmpty = (effectiveCartData?.itemCount ?? 0) === 0;
 
   // Determine which content to show inside the drawer panel
   let drawerContent: React.ReactNode;
-  if (!cart && !cartError && !useMock) {
+  if (cartLoading && !useMock) {
     drawerContent = loadingContent;
   } else if (cartError) {
     drawerContent = errorContent;
@@ -430,7 +425,7 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
       </div>
 
       {/* Drawer panel */}
-      <DataProvider name="cartData" data={effectiveCartData}>
+      <DataProvider name="cart" data={effectiveCartData}>
         <div
           ref={drawerRef}
           className={className}

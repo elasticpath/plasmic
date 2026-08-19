@@ -21,7 +21,9 @@ function makeStorage(): SessionStorage {
       // try to resolve `async_hooks` for the client bundle and fail.
       // eslint-disable-next-line no-eval
       const req = eval("require") as NodeRequire;
-      const { AsyncLocalStorage } = req("async_hooks");
+      const { AsyncLocalStorage } = req(
+        "async_hooks"
+      ) as typeof import("async_hooks");
       return new AsyncLocalStorage<EpSessionContext>();
     } catch {
       // fall through to no-op

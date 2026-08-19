@@ -1,5 +1,6 @@
 {
   "name": "loader-tests",
+  "packageManager": "yarn@1.22.22",
   "version": "1.0.0",
   "main": "index.js",
   "author": "Chung Wu",

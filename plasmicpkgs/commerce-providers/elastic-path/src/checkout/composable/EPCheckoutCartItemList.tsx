@@ -11,6 +11,7 @@ import React from "react";
 import { Registerable } from "../../registerable";
 import { MOCK_CHECKOUT_CART_ITEMS } from "../../utils/design-time-data";
 import { createLogger } from "../../utils/logger";
+import type { Cart } from "../../types/cart";
 
 const log = createLogger("EPCheckoutCartItemList");
 
@@ -77,14 +78,12 @@ export const epCheckoutCartItemListMeta: CodeComponentMeta<EPCheckoutCartItemLis
 export function EPCheckoutCartItemList(props: EPCheckoutCartItemListProps) {
   const { children, className, previewState = "auto" } = props;
 
-  const cartData = useSelector("checkoutCartData") as
-    | { items?: any[] }
-    | undefined;
+  const cart = useSelector("cart") as Cart | undefined;
   const inEditor = !!usePlasmicCanvasContext();
 
   const useMock =
     previewState === "withItems" ||
-    (previewState === "auto" && !cartData?.items?.length && inEditor);
+    (previewState === "auto" && !cart?.items?.length && inEditor);
 
   if (useMock) {
     log.debug("Using mock checkout items for design-time preview");
@@ -92,7 +91,7 @@ export function EPCheckoutCartItemList(props: EPCheckoutCartItemListProps) {
 
   const items = useMock
     ? MOCK_CHECKOUT_CART_ITEMS
-    : cartData?.items ?? [];
+    : cart?.items ?? [];
 
   if (items.length === 0) return null;
 

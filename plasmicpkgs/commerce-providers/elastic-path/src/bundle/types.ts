@@ -18,7 +18,7 @@ export interface ElasticPathBundleProduct extends ElasticPathProduct {
 }
 
 // Extend the normalized Product type for bundles to include raw EP data
-export interface BundleProduct extends Product {
+export interface BundleProduct extends Omit<Product, "rawData"> {
   // Store the raw EP product data for bundle-specific features
   rawData?: ElasticPathBundleProduct;
 }

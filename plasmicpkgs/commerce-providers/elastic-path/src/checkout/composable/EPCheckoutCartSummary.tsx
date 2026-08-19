@@ -8,7 +8,7 @@ import registerComponent, {
 import React, { useMemo, useState } from "react";
 import { Registerable } from "../../registerable";
 import { useCheckoutCart } from "../../shopper-context/use-checkout-cart";
-import type { CheckoutCartData } from "../../shopper-context/use-checkout-cart";
+import type { Cart } from "../../types/cart";
 import { createLogger } from "../../utils/logger";
 import { MOCK_CHECKOUT_CART_DATA } from "../../utils/design-time-data";
 
@@ -29,7 +29,7 @@ interface EPCheckoutCartSummaryProps {
    * skips the internal cart fetch entirely. This is a code-only prop —
    * not exposed in Plasmic Studio meta.
    */
-  cartData?: CheckoutCartData;
+  cartData?: Cart;
 }
 
 export const epCheckoutCartSummaryMeta: CodeComponentMeta<EPCheckoutCartSummaryProps> =
@@ -105,7 +105,7 @@ export function EPCheckoutCartSummary(props: EPCheckoutCartSummaryProps) {
 
   if (externalCartData) {
     return (
-      <DataProvider name="checkoutCartData" data={externalCartData}>
+      <DataProvider name="cart" data={externalCartData}>
         <div className={className} data-ep-checkout-summary="">
           {children}
         </div>
@@ -171,7 +171,7 @@ function EPCheckoutCartSummaryInternal(
   }
 
   return (
-    <DataProvider name="checkoutCartData" data={effectiveData}>
+    <DataProvider name="cart" data={effectiveData}>
       <div className={className} data-ep-checkout-summary="">
         {collapsible ? (
           <>

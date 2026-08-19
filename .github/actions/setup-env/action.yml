@@ -1,5 +1,5 @@
 name: 'Setup Environment'
-description: 'Setup Node.js and restore dependency cache (requires checkout first)'
+description: 'Setup Node.js and pnpm, and restore dependency caches (requires checkout first)'
 
 inputs:
   node-version:
@@ -19,11 +19,30 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
 
-    - name: Restore cache
+    # Reads the version from the root package.json "packageManager" field.
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v4
+
+    - name: Resolve pnpm store path
+      id: pnpm-store
+      shell: bash
+      run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+    # The root workspace is a symlink farm, so cache the store it hardlinks from
+    # rather than node_modules itself.
+    - name: Restore pnpm store
+      uses: actions/cache@v4
+      with:
+        path: ${{ steps.pnpm-store.outputs.path }}
+        key: pnpm-store-v1-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: |
+          pnpm-store-v1-${{ runner.os }}-
+        fail-on-cache-miss: ${{ inputs.fail-on-cache-miss }}
+
+    - name: Restore platform dependencies and generated files
       uses: actions/cache@v4
       with:
         path: |
-          node_modules
           platform/wab/node_modules
           platform/loader-bundle-env/node_modules
           platform/wab/src/wab/gen
@@ -33,5 +52,5 @@ runs:
           platform/wab/src/wab/styles/_tokens.ts
           platform/wab/src/wab/styles/css-variables.ts
           platform/wab/src/wab/styles/css-variables.scss
-        key: deps-v4-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
+        key: deps-v5-${{ runner.os }}-${{ hashFiles('platform/**/yarn.lock') }}
         fail-on-cache-miss: ${{ inputs.fail-on-cache-miss }}

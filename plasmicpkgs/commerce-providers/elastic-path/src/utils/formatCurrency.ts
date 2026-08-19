@@ -1,33 +1,32 @@
 import { DEFAULT_CURRENCY_CODE } from "../const";
 
-/** How a currency renders: a symbol (`$179.00`) or its ISO code (`USD 179.00`). */
-export type CurrencyDisplay = "symbol" | "code";
+export type { CurrencyDisplay } from "./price";
+import type { CurrencyDisplay } from "./price";
+import { DEFAULT_LOCALE } from "./field-format";
 
 /**
- * Formats a currency amount for display using Intl.NumberFormat.
+ * Formats a scalar amount already in display units.
  *
- * Uses the browser's locale (undefined → system default) so the same
- * currency code renders with the user's preferred number/grouping format.
- * `display` maps to Intl's `currencyDisplay` — `"symbol"` (default) renders
- * `$179.00`, `"code"` renders `USD 179.00`.
- * Falls back to a plain string only when Intl throws — which happens for
- * invalid currency codes, not for missing locale data. The fallback mirrors
- * the requested display: a `$` prefix for symbol, a code prefix for code.
+ * Prefer `formatPrice` where an Elastic Path price object is in hand — it
+ * honours the store's own formatting. This is for the paths that only ever
+ * had a number.
  *
- * @param amount — Amount in display units (e.g. 29.99, not cents)
- * @param currencyCode — ISO 4217 code (e.g. "USD", "GBP")
- * @param display — "symbol" (default) or "code"
+ * The locale is explicit rather than the host's default, because
+ * `Intl.NumberFormat(undefined, …)` resolves to Node's locale on the server and
+ * the browser's on the client, so the same amount rendered differently either
+ * side of hydration.
  */
 export function formatCurrency(
   amount: number,
   currencyCode: string = DEFAULT_CURRENCY_CODE,
-  display: CurrencyDisplay = "symbol"
+  display: CurrencyDisplay = "symbol",
+  locale: string = DEFAULT_LOCALE
 ): string {
   try {
-    return new Intl.NumberFormat(undefined, {
+    return new Intl.NumberFormat(locale, {
       style: "currency",
       currency: currencyCode,
-      currencyDisplay: display,
+      currencyDisplay: display === "code" ? "code" : "symbol",
     }).format(amount);
   } catch {
     return display === "code"

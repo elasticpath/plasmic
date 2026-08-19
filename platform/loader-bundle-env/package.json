@@ -1,5 +1,6 @@
 {
   "name": "loader-bundle-env",
+  "packageManager": "yarn@1.22.22",
   "private": true,
   "dependenciesComments": {
     "@ant-design/pro-components": "Must be 2.6.4. Earlier doesn't support newer antd, later incurs a disallowed dynamic require of antd/es/layout/Sider. https://app.shortcut.com/plasmic/story/37043/richlayout-always-initially-loads-with-dark-background",

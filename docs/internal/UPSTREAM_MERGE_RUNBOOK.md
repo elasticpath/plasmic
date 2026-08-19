@@ -84,13 +84,31 @@ EP replaced `Sentry.captureException`/`captureMessage` with
 (e.g. the ts-failable→neverthrow migration) reintroduce Sentry calls — translate them
 back to Datadog on every merge.
 
-**Package manager: root stays yarn**
+**Package manager: pnpm at root, yarn for `platform/*`**
 
-Upstream migrated the monorepo root to pnpm (2026-07). EP keeps `yarn@1.x` at root:
-preserve `workspaces` (including `packages/plasmic-mcp`, `packages/plasmic-mcp-registry`),
-`resolutions`, and yarn-based scripts. Upstream's `pnpm-workspace.yaml`/`pnpm-lock.yaml`
-can land as inert files. Watch for pnpm-only `workspace:`/`catalog:` protocols appearing
-in package manifests — those would break yarn and force the migration decision.
+EP adopted upstream's split (2026-08). Take upstream's side on every package-manager file:
+`package.json` `packageManager`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, and
+`scripts/bootstrap.sh`. There is no root `yarn.lock` — if a merge reintroduces one, drop it.
+Every `platform/*` app keeps its own `yarn.lock` and its own yarn 1 install; root scripts
+still shell out with `cd platform/wab && yarn ...`, exactly as upstream does.
+
+EP-only divergences to preserve in `pnpm-workspace.yaml`:
+
+- `verifyDepsBeforeRun: false`. pnpm 11 otherwise prompts before every `pnpm run` and
+  auto-answers yes when non-interactive, which lets a CI script reinstall `node_modules`
+  mid-job.
+
+One thing to check on every merge: new workspace packages must declare dependency ranges that
+the workspace version actually satisfies. yarn 1 linked a workspace package by name regardless
+of range; pnpm honours the range and silently falls back to the registry, so a stale pin means
+building against a published copy instead of the tree.
+
+Workspace package scripts delegate to the root with `TEST_CWD=$(pwd) pnpm -w test`, matching
+upstream. That form needs pnpm 11 — on pnpm 9 it fails with `Unknown option`, which is a symptom
+of the wrong pnpm on `PATH` rather than a reason to rewrite the scripts.
+
+EP keeps jest at root (`"test": "jest $TEST_CWD"`) while upstream has moved to vitest; that
+is a separate migration, not a package-manager concern.
 
 ### Bundle migration renumbering (recurring)
 

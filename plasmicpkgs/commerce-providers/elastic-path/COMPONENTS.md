@@ -163,42 +163,24 @@ interface UseCartReturn {
 
 ### useCheckoutCart()
 
-Normalized cart data for checkout display. Flat fields, formatted prices.
+The shopper's cart, in Elastic Path's own shape — the same `Cart` a cart drawer
+binds, so a checkout summary and a mini-cart use identical paths.
 
 ```ts
-interface CheckoutCartData {
-  id?: string;
-  items: CheckoutCartItem[];
-  itemCount: number;
-  subtotal: number;             // Minor units (cents)
-  tax: number;
-  shipping: number;             // Always 0 in cart context
-  total: number;
-  formattedSubtotal: string;    // "$100.00"
-  formattedTax: string;
-  formattedShipping: string;
-  formattedTotal: string;
-  currencyCode: string;         // "USD"
-  showImages: boolean;
-  hasPromo: boolean;
-  promoCode: string | null;
-  promoDiscount: number;
-  formattedPromoDiscount: string | null;
-}
-
-interface CheckoutCartItem {
-  id: string;
-  productId: string;
-  name: string;
-  sku: string;
-  quantity: number;
-  unitPrice: number;            // Minor units
-  linePrice: number;
-  formattedUnitPrice: string;
-  formattedLinePrice: string;
-  imageUrl: string | null;
+interface UseCheckoutCartReturn {
+  data: Cart | null;
+  error: Error | null;
+  isLoading: boolean;
+  isEmpty: boolean;
+  mutate: () => Promise<CartData | undefined>;
 }
 ```
+
+`Cart` is Elastic Path's cart response plus `items` (which Elastic Path
+side-loads under `included`) and `itemCount` (the quantity sum). Totals live at
+`meta.display_price.without_tax`, `.tax` and `.with_tax`, each carrying
+`amount`, `currency`, `formatted` and `float_price`.
+
 
 ### useAddItem()
 
@@ -265,7 +247,7 @@ Design-time mock data for Plasmic Studio canvas previews. Import for storybook o
 
 ```ts
 import { MOCK_SERVER_CART_DATA } from "@elasticpath/plasmic-ep-commerce-elastic-path";
-// CheckoutCartData with 2 Ember & Wick candles, $108.25 total
+// A Cart with 2 Ember & Wick candles, $108.25 total
 ```
 
 ---
@@ -567,7 +549,7 @@ Step-aware button that derives its label and behavior from the current checkout 
 
 ### EPOrderTotalsBreakdown
 
-Reads totals from `checkoutData.summary` or falls back to `checkoutCartData`.
+Reads totals from `checkoutData.summary` or falls back to the cart published by `EPCheckoutCartSummary`.
 
 **DataProvider `orderTotalsData`:**
 
@@ -859,12 +841,12 @@ Like Add to Cart, these values are shopper-facing copy derived from stable proxy
 
 Fetches cart data and provides it to children. Supports collapsible mode for mobile.
 
-- **DataProvider:** `checkoutCartData` (same shape as `CheckoutCartData`)
-- **Props:** `showImages?`, `collapsible?`, `isExpanded?`, `onExpandedChange?`, `cartData?` (code-only: pass `CheckoutCartData` to skip internal fetch)
+- **DataProvider:** `cart` — the Elastic Path cart (see the shapes section)
+- **Props:** `showImages?`, `collapsible?`, `isExpanded?`, `onExpandedChange?`, `cartData?` (code-only: pass a `Cart` to skip the internal fetch)
 
 ### EPCheckoutCartItemList
 
-Repeater over items from `checkoutCartData`.
+Repeater over `cart.items`.
 
 - **DataProvider (per item):** `currentCheckoutItem` — `{ id, name, quantity, price, formattedPrice, imageUrl, sku, options }`
 - **DataProvider (per item):** `currentCheckoutItemIndex` — `number`
@@ -874,7 +856,7 @@ Repeater over items from `checkoutCartData`.
 Renders a single cart or item field as a `<span>` (or `<img>` for `imageUrl`).
 
 - **Cart fields:** `formattedSubtotal`, `formattedTotal`, `formattedShipping`, `formattedTax`, `itemCount`
-- **Item fields** (inside EPCheckoutCartItemList): `name`, `quantity`, `formattedPrice`, `imageUrl`, `sku`
+- **Item fields** (inside EPCheckoutCartItemList): `name`, `quantity`, `sku`, `image.href`, `meta.display_price.without_tax.unit.formatted`
 
 ### EPCountrySelect
 
@@ -915,8 +897,8 @@ Lookup table for Plasmic dynamic value bindings (`$ctx.xxx`).
 | `currentShippingMethod` | EPShippingMethodSelector | `id`, `name`, `price`, `priceFormatted`, `estimatedDays`, `carrier`, `isSelected` |
 | `currentShippingMethodIndex` | EPShippingMethodSelector | `number` |
 | `paymentData` | EPPaymentElements | `isReady`, `isProcessing`, `error`, `paymentMethodType`, `clientSecret` |
-| `checkoutCartData` | EPCheckoutCartSummary | `items`, `itemCount`, `formattedSubtotal`, `formattedTax`, `formattedShipping`, `formattedTotal`, `currencyCode`, `showImages`, `hasPromo`, `promoCode` |
-| `currentCheckoutItem` | EPCheckoutCartItemList | `id`, `name`, `quantity`, `price`, `formattedPrice`, `imageUrl`, `sku` |
+| `cart` | EPCheckoutCartSummary | `items`, `itemCount`, `meta.display_price.{without_tax,tax,with_tax}` — Elastic Path's cart |
+| `currentCheckoutItem` | EPCheckoutCartItemList | Elastic Path's cart line: `id`, `name`, `sku`, `quantity`, `product_id`, `image.href`, `meta.display_price.*` |
 | `currentCheckoutItemIndex` | EPCheckoutCartItemList | `number` |
 | `billingToggleData` | EPBillingAddressToggle | `isSameAsShipping` |
 | `promoCodeData` | EPPromoCodeInput | `code`, `state`, `formattedDiscount`, `errorMessage` |

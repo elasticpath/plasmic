@@ -157,7 +157,7 @@ export async function epAddCartItem(input: EpAddCartItemInput): Promise<Cart> {
   // Soft EP failures (e.g. unpublished catalog product) can resolve without
   // `error` while leaving the cart empty — surface that instead of a quiet
   // empty success that looks like "add did nothing".
-  if (cart.lineItems.length === 0) {
+  if (cart.items.length === 0) {
     const includedCount =
       (
         addRes.data as { included?: { items?: unknown[] } } | undefined

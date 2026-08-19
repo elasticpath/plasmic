@@ -22,16 +22,7 @@ export function validateBundleProduct(normalizedProduct?: Product): ProductValid
     };
   }
 
-  const rawProduct = normalizedProduct.rawData?.data;
-  
-  if (!rawProduct) {
-    return {
-      isValid: false,
-      isBundle: false,
-      components: {},
-      errorMessage: "Product data not available"
-    };
-  }
+  const rawProduct = normalizedProduct;
 
   // Check if this is a bundle product
   const isBundle = rawProduct.meta?.product_types?.[0] === "bundle";

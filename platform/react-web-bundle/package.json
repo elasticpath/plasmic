@@ -1,5 +1,6 @@
 {
   "name": "react-web-bundle",
+  "packageManager": "yarn@1.22.22",
   "dependencies": {
     "@plasmicapp/data-sources-context": "^0.1.25",
     "@plasmicapp/react-web": "^1.0.29"

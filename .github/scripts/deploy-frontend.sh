@@ -58,11 +58,11 @@ cd "$SCRIPT_DIR/../../platform/wab"
 step "Step 1: Installing dependencies"
 echo "Installing root dependencies..."
 cd ../..
-yarn install --frozen-lockfile
+pnpm install --frozen-lockfile
 
 echo "Setting up monorepo packages..."
-yarn setup
-yarn setup:canvas-packages
+pnpm setup
+pnpm setup:canvas-packages
 
 echo "Installing wab dependencies..."
 cd platform/wab
