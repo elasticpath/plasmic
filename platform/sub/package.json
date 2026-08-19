@@ -1,5 +1,6 @@
 {
   "name": "subwab",
+  "packageManager": "yarn@1.22.22",
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",

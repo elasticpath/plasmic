@@ -422,7 +422,7 @@ const EPCheckoutProviderRuntime = React.forwardRef<
         err instanceof Error ? err.message : "Payment failed";
       setErrorMsg(msg);
       setPaymentStatus("failed");
-      log.error("Payment failed", err);
+      log.error("Payment failed", { error: msg });
     }
   }, [checkout.createOrder, checkout.setupPayment, checkout.totalAmount]);
 

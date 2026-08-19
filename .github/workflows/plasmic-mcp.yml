@@ -40,7 +40,7 @@ jobs:
         uses: ./.github/actions/setup-env
 
       - name: Install root dependencies
-        run: yarn install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Install platform/wab dependencies
         working-directory: platform/wab

@@ -32,7 +32,7 @@
     "gatsby-ssr.js"
   ],
   "scripts": {
-    "build": "yarn build:types && yarn build:index && yarn build:gatsby-node && yarn build:gatsby-ssr",
+    "build": "pnpm build:types && pnpm build:index && pnpm build:gatsby-node && pnpm build:gatsby-ssr",
     "build:types": "tsc",
     "build:index": "node ../../build.mjs src/index.ts --no-esm",
     "build:gatsby-node": "node ../../build.mjs src/gatsby-node.ts --no-esm",

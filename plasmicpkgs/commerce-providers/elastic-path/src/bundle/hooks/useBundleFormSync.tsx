@@ -42,7 +42,10 @@ export function useBundleFormSync({
       
       // Update internal form if available
       if (form) {
-        form.setValue("BundleConfiguration", serializableConfig);
+        form.setValue(
+          "BundleConfiguration",
+          serializableConfig as unknown as BundleFormData[string]
+        );
         if (configuredBundle.data.id) {
           form.setValue("ConfiguredBundleId", configuredBundle.data.id);
         }
