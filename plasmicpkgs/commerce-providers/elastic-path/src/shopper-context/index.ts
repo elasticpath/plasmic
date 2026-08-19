@@ -10,6 +10,8 @@ export type {
 } from "./EpCommerceContext";
 export { ShopperContext, getShopperContext } from "./ShopperContext";
 export type { ShopperOverrides, ShopperContextProps } from "./ShopperContext";
+export { useMoneyFormat } from "./use-money-format";
+export type { MoneyFormat } from "./use-money-format";
 export { useShopperContext } from "./useShopperContext";
 export { useShopperFetch } from "./useShopperFetch";
 export { useCart } from "./use-cart";

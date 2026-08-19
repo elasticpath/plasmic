@@ -25,11 +25,15 @@ jest.mock("@plasmicapp/host/registerComponent", () => {
   return fn;
 });
 
+jest.mock("../../../client", () => ({ __esModule: true, default: () => ({}) }));
+
 import React from "react";
 import { render, screen } from "@testing-library/react";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { EPOrderTotalsBreakdown } = require("../EPOrderTotalsBreakdown");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { EpCommerceProvider } = require("../../../shopper-context/EpCommerceContext");
 
 describe("EPOrderTotalsBreakdown", () => {
   beforeEach(() => {
@@ -165,6 +169,62 @@ describe("EPOrderTotalsBreakdown", () => {
       expect(data.itemCount).toBe(2);
       expect(data.subtotalFormatted).toBe("$62.00");
       expect(data.totalFormatted).toBe("$72.91");
+    });
+  });
+
+  describe("provider money settings", () => {
+    function publishedTotals() {
+      const dp = screen.getByTestId("dp-orderTotalsData");
+      return JSON.parse(dp.getAttribute("data-value") || "{}");
+    }
+
+    const inProvider = (currencyDisplay: string) => (
+      <EpCommerceProvider clientId="abc" currencyDisplay={currencyDisplay}>
+        <EPOrderTotalsBreakdown>
+          <span>Totals</span>
+        </EPOrderTotalsBreakdown>
+      </EpCommerceProvider>
+    );
+
+    // currencyDisplay and locale are bindable props on EpCommerceProvider, so a
+    // designer-wired switcher has to reach the totals rather than leaving them
+    // stale until unrelated data changes.
+    //
+    // The selector data is a stable object on purpose: a fresh one per render
+    // re-runs the memo whatever its dependencies are, which is what let this
+    // bug pass a green suite in the first place.
+    it("re-formats the totals when currencyDisplay changes", () => {
+      const cart = cartWithTotals(6200);
+      mockUseSelector.mockImplementation((name: string) =>
+        name === "cart" ? cart : undefined
+      );
+
+      const { rerender } = render(inProvider("platform"));
+      expect(publishedTotals().subtotalFormatted).toBe("$62.00");
+
+      rerender(inProvider("code"));
+      expect(publishedTotals().subtotalFormatted).toBe(
+        new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: "USD",
+          currencyDisplay: "code",
+        }).format(62)
+      );
+    });
+
+    it("re-formats session totals when currencyDisplay changes", () => {
+      const session = {
+        session: { totals: { subtotal: 5000, total: 5000, currency: "usd" } },
+      };
+      mockUseSelector.mockImplementation((name: string) =>
+        name === "checkoutSession" ? session : undefined
+      );
+
+      const { rerender } = render(inProvider("platform"));
+      const platform = publishedTotals().subtotalFormatted;
+
+      rerender(inProvider("code"));
+      expect(publishedTotals().subtotalFormatted).not.toBe(platform);
     });
   });
 });
