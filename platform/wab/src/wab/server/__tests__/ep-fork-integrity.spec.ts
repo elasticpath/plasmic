@@ -351,6 +351,33 @@ describe("EP Fork Integrity", () => {
       );
     });
 
+    // Upstream keeps these pins current through `lerna version`, which rewrites
+    // dependents. EP bumps its own packages by hand, so nothing updates the
+    // harness — elastic-path silently fell three versions behind this way.
+    it("plasmicpkgs-dev pins EP packages at their workspace version", () => {
+      const dirs = ["packages", "plasmicpkgs", "plasmicpkgs/commerce-providers"];
+      const workspaceVersions: Record<string, string> = {};
+      for (const dir of dirs) {
+        for (const entry of fs.readdirSync(path.join(REPO_ROOT, dir))) {
+          const manifest = `${dir}/${entry}/package.json`;
+          if (!fileExists(manifest)) {
+            continue;
+          }
+          const pkg = readJson(manifest);
+          if (pkg.name) {
+            workspaceVersions[pkg.name] = pkg.version;
+          }
+        }
+      }
+
+      const deps = readJson("plasmicpkgs-dev/package.json").dependencies ?? {};
+      for (const [name, range] of Object.entries(deps)) {
+        if (name in workspaceVersions) {
+          expect(`${name}@${range}`).toBe(`${name}@${workspaceVersions[name]}`);
+        }
+      }
+    });
+
     it("every platform project pins yarn so it survives the pnpm root", () => {
       const projects = [
         "platform/canvas-packages",
