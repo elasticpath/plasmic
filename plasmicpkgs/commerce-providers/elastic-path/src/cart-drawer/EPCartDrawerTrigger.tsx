@@ -73,11 +73,8 @@ export function EPCartDrawerTrigger(props: EPCartDrawerTriggerProps) {
   const itemCount = useMock
     ? previewState === "empty"
       ? 0
-      : MOCK_CART_LINE_ITEMS.reduce((sum, item) => sum + item.quantity, 0)
-    : cart?.lineItems.reduce(
-        (sum: number, item: any) => sum + (item.quantity ?? 1),
-        0
-      ) ?? 0;
+      : MOCK_CART_LINE_ITEMS.reduce((sum, item) => sum + (item.quantity ?? 0), 0)
+    : cart?.itemCount ?? 0;
 
   const isEmpty = itemCount === 0;
 

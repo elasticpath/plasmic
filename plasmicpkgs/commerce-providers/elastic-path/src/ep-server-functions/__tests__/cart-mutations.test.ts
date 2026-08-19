@@ -130,7 +130,7 @@ describe("epAddCartItem", () => {
 
     expect(result).not.toBeNull();
     expect(result.id).toBe("cart-id");
-    expect(result.lineItems).toHaveLength(1);
+    expect(result.items).toHaveLength(1);
     expect(mockManageCarts).toHaveBeenCalledWith(
       expect.objectContaining({
         path: { cartID: "cart-id" },

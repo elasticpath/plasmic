@@ -55,8 +55,8 @@ const { EP_CART_CACHE_KEY } = require("./cart-provider/cache-keys");
 
 const SAMPLE_PRODUCT = {
   id: "prod-1",
-  variants: [{ id: "variant-1" }],
-  options: [],
+  childProducts: [{ id: "child-1" }],
+  variations: [],
 };
 
 function setUp({
@@ -95,7 +95,7 @@ describe("EPAddToCartButton", () => {
 
     expect(mockCallEpProxy).toHaveBeenCalledWith(
       "addCartItem",
-      expect.objectContaining({ productId: "variant-1", quantity: 2 })
+      expect.objectContaining({ productId: "child-1", quantity: 2 })
     );
   });
 

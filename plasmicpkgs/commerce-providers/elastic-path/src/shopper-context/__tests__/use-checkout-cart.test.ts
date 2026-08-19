@@ -4,7 +4,6 @@ import { renderHook, waitFor } from "@testing-library/react";
 import React from "react";
 import { SWRConfig } from "swr";
 import { useCheckoutCart } from "../use-checkout-cart";
-import type { CheckoutCartData } from "../use-checkout-cart";
 
 // ---------------------------------------------------------------------------
 // Integration test: mock global.fetch, let real SWR + useCart + useCheckoutCart
@@ -110,7 +109,9 @@ describe("useCheckoutCart", () => {
     expect(result.current.isLoading).toBe(true);
   });
 
-  it("returns null when cart has no meta", async () => {
+  it("returns an empty cart, not null, when the shopper has no items", async () => {
+    // An empty cart used to be indistinguishable from one that had not loaded,
+    // which is how an empty cart rendered "Loading cart…".
     mockFetchSuccess({ items: [], meta: null });
 
     const { result } = renderHook(() => useCheckoutCart(), {
@@ -121,8 +122,9 @@ describe("useCheckoutCart", () => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    // useCheckoutCart returns null when meta is null
-    expect(result.current.data).toBeNull();
+    expect(result.current.data).not.toBeNull();
+    expect(result.current.data!.items).toEqual([]);
+    expect(result.current.data!.itemCount).toBe(0);
   });
 
   it("normalizes cart items with flattened price fields", async () => {
@@ -139,23 +141,23 @@ describe("useCheckoutCart", () => {
     const data = result.current.data!;
     expect(data.items).toHaveLength(2);
 
-    // First item — has image
-    expect(data.items[0]).toEqual({
+    // First item — Elastic Path's line, verbatim, with the decimal filled in
+    expect(data.items[0]).toMatchObject({
       id: "item-1",
-      productId: "prod-candle",
+      product_id: "prod-candle",
       name: "Ember Glow Soy Candle",
       sku: "EW-EMB-001",
       quantity: 2,
-      unitPrice: 3800,
-      linePrice: 7600,
-      formattedUnitPrice: "$38.00",
-      formattedLinePrice: "$76.00",
-      imageUrl: "https://example.com/candle.jpg",
+      image: { href: "https://example.com/candle.jpg" },
+    });
+    expect(data.items[0].meta?.display_price?.with_tax?.unit).toMatchObject({
+      amount: 3800,
+      formatted: "$38.00",
+      float_price: 38,
     });
 
-    // Second item — no image → null
-    expect(data.items[1].imageUrl).toBeNull();
-    expect(data.items[1].productId).toBe("prod-diffuser");
+    expect(data.items[1].image).toBeUndefined();
+    expect(data.items[1].product_id).toBe("prod-diffuser");
   });
 
   it("computes correct totals from cart meta", async () => {
@@ -170,15 +172,18 @@ describe("useCheckoutCart", () => {
     });
 
     const data = result.current.data!;
-    expect(data.subtotal).toBe(10000);
-    expect(data.tax).toBe(825);
-    expect(data.shipping).toBe(0); // Always 0 in cart
-    expect(data.total).toBe(10825);
-    expect(data.formattedSubtotal).toBe("$100.00");
-    expect(data.formattedTax).toBe("$8.25");
-    expect(data.formattedShipping).toBe("$0.00");
-    expect(data.formattedTotal).toBe("$108.25");
-    expect(data.currencyCode).toBe("USD");
+    const price = data.meta?.display_price;
+    expect(price?.without_tax).toMatchObject({
+      amount: 10000,
+      formatted: "$100.00",
+      float_price: 100,
+    });
+    expect(price?.tax).toMatchObject({ amount: 825, formatted: "$8.25" });
+    expect(price?.with_tax).toMatchObject({
+      amount: 10825,
+      formatted: "$108.25",
+    });
+    expect(price?.without_tax?.currency).toBe("USD");
   });
 
   it("computes itemCount as sum of quantities", async () => {
@@ -194,24 +199,6 @@ describe("useCheckoutCart", () => {
 
     // 2 (candle) + 1 (diffuser) = 3
     expect(result.current.data!.itemCount).toBe(3);
-  });
-
-  it("stubs promo fields for future use", async () => {
-    mockFetchSuccess(RAW_CART_RESPONSE);
-
-    const { result } = renderHook(() => useCheckoutCart(), {
-      wrapper: swrWrapper,
-    });
-
-    await waitFor(() => {
-      expect(result.current.data).not.toBeNull();
-    });
-
-    const data = result.current.data!;
-    expect(data.hasPromo).toBe(false);
-    expect(data.promoCode).toBeNull();
-    expect(data.promoDiscount).toBe(0);
-    expect(data.formattedPromoDiscount).toBeNull();
   });
 
   it("reports error when fetch fails", async () => {

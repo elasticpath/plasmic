@@ -54,7 +54,11 @@ export async function epGetRelatedProducts({
     const data = response.data?.data;
     if (!Array.isArray(data) || data.length === 0) return [];
     return data.map((p: any) =>
-      normalizeProductFromList(p, response.data, auth.locale ?? "en-US")
+      normalizeProductFromList(
+        p,
+        auth.locale ?? "en-US",
+        response.data?.included
+      )
     );
   } catch {
     return [];

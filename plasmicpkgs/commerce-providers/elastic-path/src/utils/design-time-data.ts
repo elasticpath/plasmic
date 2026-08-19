@@ -6,10 +6,12 @@
  * designers can style every scenario.
  */
 
+import type { Cart, CartItem, SelectedOption } from "../types/cart";
 import type {
+  ChildProduct,
   Product,
-  ProductOption,
-  ProductVariant,
+  ProductImage,
+  Variation,
 } from "../types/product";
 import type {
   StockLocationData,
@@ -20,77 +22,128 @@ import type {
 // Variation mock data
 // ---------------------------------------------------------------------------
 
-export const MOCK_VARIATION_OPTIONS: ProductOption[] = [
+/**
+ * Builds a design-time product in Elastic Path's own shape, so mocks and real
+ * responses bind identically in canvas.
+ */
+export function mockProduct(spec: {
+  id: string;
+  name: string;
+  slug?: string;
+  sku?: string;
+  description?: string;
+  /** Minor units, as Elastic Path reports them. */
+  amount?: number;
+  currency?: string;
+  formatted?: string;
+  images?: ProductImage[];
+  variations?: Variation[];
+  childProducts?: ChildProduct[];
+}): Product {
+  const currency = spec.currency ?? "USD";
+  const amount = spec.amount ?? 0;
+  return {
+    id: spec.id,
+    type: "product",
+    attributes: {
+      name: spec.name,
+      slug: spec.slug,
+      sku: spec.sku,
+      description: spec.description,
+    },
+    meta: {
+      display_price: {
+        without_tax: {
+          amount,
+          currency,
+          float_price: amount / 100,
+          formatted: spec.formatted ?? `$${(amount / 100).toFixed(2)}`,
+        },
+      },
+    },
+    images: spec.images ?? [],
+    variations: spec.variations ?? [],
+    childProducts: spec.childProducts ?? [],
+  };
+}
+
+export const MOCK_VARIATIONS: Variation[] = [
   {
     id: "sample-color",
-    displayName: "Sample Color",
-    values: [
-      { label: "Midnight Blue", hexColors: ["#191970"] },
-      { label: "Forest Green", hexColors: ["#228B22"] },
-      { label: "Warm Sand", hexColors: ["#C2B280"] },
+    name: "Sample Color",
+    options: [
+      { id: "sample-color-midnight", name: "Midnight Blue" },
+      { id: "sample-color-forest", name: "Forest Green" },
+      { id: "sample-color-sand", name: "Warm Sand" },
     ],
   },
   {
     id: "sample-size",
-    displayName: "Sample Size",
-    values: [
-      { label: "Small" },
-      { label: "Medium" },
-      { label: "Large" },
+    name: "Sample Size",
+    options: [
+      { id: "sample-size-s", name: "Small" },
+      { id: "sample-size-m", name: "Medium" },
+      { id: "sample-size-l", name: "Large" },
     ],
   },
 ];
 
-function buildMockVariants(): ProductVariant[] {
-  const colors = MOCK_VARIATION_OPTIONS[0].values;
-  const sizes = MOCK_VARIATION_OPTIONS[1].values;
-  const variants: ProductVariant[] = [];
+function buildMockChildProducts(): ChildProduct[] {
+  const [colors, sizes] = [MOCK_VARIATIONS[0].options, MOCK_VARIATIONS[1].options];
+  const children: ChildProduct[] = [];
   let idx = 0;
 
   for (const color of colors) {
     for (const size of sizes) {
       idx++;
-      variants.push({
-        id: `sample-variant-${idx}`,
-        name: `Sample Product – ${color.label} / ${size.label}`,
-        price: 49.99,
-        availableForSale: true,
-        options: [
-          {
-            id: "sample-color",
-            displayName: "Sample Color",
-            values: [{ label: color.label, hexColors: color.hexColors }],
-          },
-          {
-            id: "sample-size",
-            displayName: "Sample Size",
-            values: [{ label: size.label }],
-          },
-        ],
+      children.push({
+        id: `sample-child-${idx}`,
+        name: `Sample Product – ${color.name} / ${size.name}`,
+        sku: `SAMPLE-${idx}`,
+        price: {
+          amount: 4999,
+          currency: "USD",
+          formatted: "$49.99",
+          float_price: 49.99,
+        },
+        optionIds: [color.id, size.id],
+        images: [],
       });
     }
   }
 
-  return variants;
+  return children;
 }
 
-export const MOCK_VARIANTS: ProductVariant[] = buildMockVariants();
+export const MOCK_CHILD_PRODUCTS: ChildProduct[] = buildMockChildProducts();
 
 export const MOCK_EP_PRODUCT: Product = {
   id: "sample-product-001",
-  name: "Sample Variation Product",
-  description: "This is sample data for design-time preview",
-  slug: "sample-variation-product",
-  path: "/sample-variation-product",
+  type: "product",
+  attributes: {
+    name: "Sample Variation Product",
+    description: "This is sample data for design-time preview",
+    slug: "sample-variation-product",
+    sku: "SAMPLE-PARENT",
+  },
+  meta: {
+    display_price: {
+      without_tax: {
+        amount: 4999,
+        currency: "USD",
+        formatted: "$49.99",
+        float_price: 49.99,
+      },
+    },
+  },
   images: [
     {
       url: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
       alt: "Sample Product",
     },
   ],
-  variants: MOCK_VARIANTS,
-  price: { value: 49.99, currencyCode: "USD" },
-  options: MOCK_VARIATION_OPTIONS,
+  variations: MOCK_VARIATIONS,
+  childProducts: MOCK_CHILD_PRODUCTS,
 };
 
 // ---------------------------------------------------------------------------
@@ -142,169 +195,158 @@ export const MOCK_PRODUCT_STOCK: ProductStockSummary = {
 // Cart mock data
 // ---------------------------------------------------------------------------
 
-export interface MockCartItemData {
+/** Builds a design-time cart line in Elastic Path's own shape. */
+export function mockCartItem(spec: {
   id: string;
-  variantId: string;
   productId: string;
   name: string;
-  quantity: number;
-  path: string;
   sku: string;
-  price: number;
-  listPrice: number;
-  formattedPrice: string;
-  formattedListPrice: string;
-  lineTotal: number;
-  formattedLineTotal: string;
-  imageUrl: string;
-  imageAlt: string;
-  options: { name: string; value: string }[];
-  hasDiscount: boolean;
-  locationSlug: string;
-  locationName: string;
-  stockAvailable: number | null;
-  stockStatus: string;
+  quantity: number;
+  /** Unit price in minor units. */
+  amount: number;
+  currency?: string;
+  imageUrl?: string;
+  options?: SelectedOption[];
+  location?: string;
+  /** Pre-discount unit price in minor units, when the line is discounted. */
+  listAmount?: number;
+  locationName?: string;
+  stockAvailable?: number | null;
+  stockStatus?: string;
+}): CartItem {
+  const currency = spec.currency ?? "USD";
+  const money = (minor: number) => ({
+    amount: minor,
+    currency,
+    float_price: minor / 100,
+    formatted: `$${(minor / 100).toFixed(2)}`,
+  });
+  return {
+    id: spec.id,
+    type: "cart_item",
+    product_id: spec.productId,
+    name: spec.name,
+    sku: spec.sku,
+    quantity: spec.quantity,
+    ...(spec.imageUrl && { image: { href: spec.imageUrl } }),
+    ...(spec.location && { location: spec.location }),
+    ...(spec.options?.length && {
+      custom_inputs: { _selectedOptions: spec.options },
+    }),
+    meta: {
+      display_price: {
+        without_tax: {
+          unit: money(spec.amount),
+          value: money(spec.amount * spec.quantity),
+        },
+        ...(spec.listAmount && {
+          without_discount: {
+            unit: money(spec.listAmount),
+            value: money(spec.listAmount * spec.quantity),
+          },
+        }),
+      },
+    },
+    // The design-time line stands in for an enriched one, so the cart-item
+    // field components resolve every choice in canvas.
+    options: spec.options ?? [],
+    locationName: spec.locationName ?? "",
+    stockAvailable: spec.stockAvailable ?? null,
+    stockStatus: spec.stockStatus ?? "",
+  } as unknown as CartItem;
 }
 
-export const MOCK_CART_LINE_ITEMS: MockCartItemData[] = [
-  {
+export const MOCK_CART_LINE_ITEMS: CartItem[] = [
+  mockCartItem({
     id: "sample-cart-item-1",
-    variantId: "sample-variant-1",
     productId: "sample-product-001",
     name: "Sample Lightweight Jacket",
-    quantity: 2,
-    path: "/sample-lightweight-jacket",
     sku: "SLJ-BLU-M",
-    price: 49.99,
-    listPrice: 59.99,
-    formattedPrice: "$49.99",
-    formattedListPrice: "$59.99",
-    lineTotal: 99.98,
-    formattedLineTotal: "$99.98",
-    imageUrl:
-      "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
-    imageAlt: "Sample Lightweight Jacket",
+    quantity: 2,
+    amount: 4999,
+    listAmount: 5999,
+    imageUrl: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
     options: [
       { name: "Color", value: "Midnight Blue" },
       { name: "Size", value: "Medium" },
     ],
-    hasDiscount: true,
-    locationSlug: "sample-downtown",
+    location: "sample-downtown",
     locationName: "Sample Downtown Store",
     stockAvailable: 25,
     stockStatus: "in-stock",
-  },
-  {
+  }),
+  mockCartItem({
     id: "sample-cart-item-2",
-    variantId: "sample-variant-5",
     productId: "sample-product-002",
     name: "Sample Cotton T-Shirt",
-    quantity: 1,
-    path: "/sample-cotton-tshirt",
     sku: "SCT-WHT-L",
-    price: 24.99,
-    listPrice: 24.99,
-    formattedPrice: "$24.99",
-    formattedListPrice: "$24.99",
-    lineTotal: 24.99,
-    formattedLineTotal: "$24.99",
-    imageUrl:
-      "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
-    imageAlt: "Sample Cotton T-Shirt",
-    options: [
-      { name: "Color", value: "White" },
-      { name: "Size", value: "Large" },
-    ],
-    hasDiscount: false,
-    locationSlug: "sample-westside",
-    locationName: "Sample Westside Mall",
-    stockAvailable: 3,
-    stockStatus: "low",
-  },
-  {
-    id: "sample-cart-item-3",
-    variantId: "sample-variant-9",
-    productId: "sample-product-003",
-    name: "Sample Leather Belt",
     quantity: 1,
-    path: "/sample-leather-belt",
-    sku: "SLB-BRN-32",
-    price: 34.99,
-    listPrice: 34.99,
-    formattedPrice: "$34.99",
-    formattedListPrice: "$34.99",
-    lineTotal: 34.99,
-    formattedLineTotal: "$34.99",
-    imageUrl:
-      "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
-    imageAlt: "Sample Leather Belt",
-    options: [{ name: "Size", value: "32" }],
-    hasDiscount: false,
-    locationSlug: "",
-    locationName: "",
-    stockAvailable: null,
-    stockStatus: "",
-  },
+    amount: 2499,
+    imageUrl: "https://static1.plasmic.app/commerce/cotton-tshirt-0.png",
+    options: [{ name: "Size", value: "Large" }],
+  }),
 ];
 
-export const MOCK_CART_DATA = {
+const mockCartMoney = (minor: number) => ({
+  amount: minor,
+  currency: "USD",
+  float_price: minor / 100,
+  formatted: `$${(minor / 100).toFixed(2)}`,
+});
+
+export const MOCK_CART_DATA: Cart = {
   id: "sample-cart-001",
-  lineItems: MOCK_CART_LINE_ITEMS,
-  itemCount: 4,
-  isEmpty: false,
-  subtotalPrice: 159.96,
-  totalPrice: 159.96,
-  formattedSubtotal: "$159.96",
-  formattedTotal: "$159.96",
-  currencyCode: "USD",
+  type: "cart",
+  items: MOCK_CART_LINE_ITEMS,
+  itemCount: 3,
+  meta: {
+    display_price: {
+      without_tax: mockCartMoney(12497),
+      tax: mockCartMoney(2499),
+      with_tax: mockCartMoney(14996),
+    },
+  },
 };
 
 /** Empty-cart variant of {@link MOCK_CART_DATA} for the design-time "empty" preview. */
-export const MOCK_EMPTY_CART_DATA = {
+export const MOCK_EMPTY_CART_DATA: Cart = {
   ...MOCK_CART_DATA,
-  lineItems: [],
+  items: [],
   itemCount: 0,
-  isEmpty: true,
+  meta: {
+    display_price: {
+      without_tax: mockCartMoney(0),
+      tax: mockCartMoney(0),
+      with_tax: mockCartMoney(0),
+    },
+  },
 };
 
 // ---------------------------------------------------------------------------
 // Checkout cart mock data
 // ---------------------------------------------------------------------------
 
-export interface MockCheckoutCartItem {
-  id: string;
-  name: string;
-  quantity: number;
-  price: number;
-  formattedPrice: string;
-  imageUrl: string;
-  sku: string;
-  options: { name: string; value: string }[];
-}
-
-export const MOCK_CHECKOUT_CART_ITEMS: MockCheckoutCartItem[] = [
-  {
+export const MOCK_CHECKOUT_CART_ITEMS: CartItem[] = [
+  mockCartItem({
     id: "sample-checkout-item-1",
+    productId: "sample-checkout-product-1",
     name: "Fireside Amber Candle",
-    quantity: 1,
-    price: 38.0,
-    formattedPrice: "$38.00",
-    imageUrl:
-      "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
     sku: "EW-FA-001",
-    options: [{ name: "Size", value: "8 oz" }],
-  },
-  {
-    id: "sample-checkout-item-2",
-    name: "Woodland Sage Candle",
     quantity: 1,
-    price: 24.0,
-    formattedPrice: "$24.00",
-    imageUrl:
-      "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
+    amount: 3800,
+    imageUrl: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
+    options: [{ name: "Size", value: "8 oz" }],
+  }),
+  mockCartItem({
+    id: "sample-checkout-item-2",
+    productId: "sample-checkout-product-2",
+    name: "Woodland Sage Candle",
     sku: "EW-WS-001",
+    quantity: 1,
+    amount: 2400,
+    imageUrl: "https://static1.plasmic.app/commerce/lightweight-jacket-0.png",
     options: [{ name: "Size", value: "4 oz" }],
-  },
+  }),
 ];
 
 export const MOCK_CHECKOUT_CART_DATA = {

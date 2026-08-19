@@ -3,6 +3,7 @@ import registerGlobalContext from "@plasmicapp/host/registerGlobalContext";
 import React from "react";
 import { ElasticPathCredentials } from "./client";
 import { Registerable } from "./registerable";
+import type { CurrencyDisplay } from "./utils/price";
 import { EpCommerceProvider } from "./shopper-context/EpCommerceContext";
 import { ServerCartActionsProvider } from "./shopper-context/ServerCartActionsProvider";
 
@@ -38,7 +39,7 @@ interface CommerceProviderProps extends ElasticPathCredentials {
   children?: React.ReactNode;
   locale?: string;
   currency?: string;
-  currencyDisplay?: "symbol" | "code";
+  currencyDisplay?: CurrencyDisplay;
   customHost?: string;
 }
 
@@ -85,13 +86,14 @@ export const commerceProviderMeta: any = {
     currencyDisplay: {
       type: "choice",
       options: [
+        { label: "As configured in Commerce Manager", value: "platform" },
         { label: "Symbol ($179.00)", value: "symbol" },
         { label: "Code (USD 179.00)", value: "code" },
       ],
-      defaultValue: "symbol",
+      defaultValue: "platform",
       displayName: "Currency Display",
       description:
-        "How money renders across cart line prices and totals: a currency symbol or its ISO code prefix.",
+        "How money renders across product prices, cart lines and totals. The default uses Elastic Path's own formatted price, so a store's Commerce Manager settings are honoured; the other two re-format through the browser's Intl instead.",
       advanced: true,
     },
     // Retired, but hostless prop schemas are append-only: removing one
@@ -121,7 +123,7 @@ export function CommerceProviderComponent(props: CommerceProviderProps) {
     customHost,
     locale = "en-US",
     currency,
-    currencyDisplay = "symbol",
+    currencyDisplay = "platform",
   } = props;
 
   const cartActions = (

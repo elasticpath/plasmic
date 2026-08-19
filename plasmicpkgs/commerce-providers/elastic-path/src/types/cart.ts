@@ -1,49 +1,60 @@
+import type {
+  CartItemObject,
+  CartResponse as EpCart,
+} from "@epcc-sdk/sdks-shopper";
+import type { FormattedPrice } from "../utils/price";
+
+/** A variation option chosen at add-to-cart time, persisted in `custom_inputs`. */
 export type SelectedOption = {
   id?: string;
   name: string;
   value: string;
 };
 
-export type CartItemBody = {
-  variantId: string;
-  productId?: string;
-  quantity?: number;
+type EpCartMeta = NonNullable<EpCart["meta"]>;
+/** EP's cart line. The union `CartIncluded["items"]` also covers custom and
+ * subscription items; a storefront line is always this one. */
+type EpCartItem = CartItemObject;
+
+export type CartMeta = Omit<EpCartMeta, "display_price"> & {
+  display_price?: {
+    with_tax?: FormattedPrice;
+    without_tax?: FormattedPrice;
+    tax?: FormattedPrice;
+    discount?: FormattedPrice;
+    without_discount?: FormattedPrice;
+    shipping?: FormattedPrice;
+  };
 };
 
-/** The subset of variant data a cart line carries; see normalizeLineItem. */
-export type CartLineVariant = {
-  id: string;
-  name: string;
-  sku: string;
-  price: number;
-  listPrice: number;
-  requiresShipping: boolean;
-  image?: { url: string; alt?: string };
+type CartItemPricePair = {
+  unit?: FormattedPrice;
+  value?: FormattedPrice;
 };
 
-export type LineItem = {
-  id: string;
-  variantId: string;
-  productId: string;
-  name: string;
-  quantity: number;
-  /** Human-friendly path derived from the product id. */
-  path: string;
-  variant: CartLineVariant;
-  options?: SelectedOption[];
+export type CartItem = EpCartItem & {
+  meta?: {
+    display_price?: {
+      with_tax?: CartItemPricePair;
+      without_tax?: CartItemPricePair;
+      without_discount?: CartItemPricePair;
+      discount?: CartItemPricePair;
+      tax?: CartItemPricePair;
+    };
+  };
+  custom_inputs?: Record<string, unknown>;
+  /** EP returns this for multilocation lines; the shopper SDK type omits it. */
+  location?: string;
 };
 
-export type Cart = {
-  id: string;
-  customerId?: string;
-  email?: string;
-  createdAt: string;
-  currency: { code: string };
-  taxesIncluded: boolean;
-  lineItems: LineItem[];
-  /** Sum of all item prices, excluding duties, taxes, shipping and discounts. */
-  lineItemsSubtotalPrice: number;
-  subtotalPrice: number;
-  totalPrice: number;
-  url?: string;
+/**
+ * Elastic Path's cart, augmented with only what a Studio binding expression
+ * cannot compute. See docs/adr/0002-augmented-ep-shapes-not-normalized.md.
+ */
+export type Cart = Omit<EpCart, "meta"> & {
+  meta?: CartMeta;
+  /** Elastic Path side-loads these under `included`. */
+  items: CartItem[];
+  /** Quantity sum; Elastic Path exposes only a line count. */
+  itemCount: number;
 };

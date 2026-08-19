@@ -147,20 +147,13 @@ export function EPAddToCartButton(props: EPAddToCartButtonProps) {
         return;
       }
 
-      const cartItem = extractCartItemFromForm(formValues, product, {});
-      const customInputs = cartItem.selectedOptions?.length
-        ? { _selectedOptions: cartItem.selectedOptions }
-        : undefined;
-
-      await callEpProxy("addCartItem", {
-        productId: cartItem.variantId || cartItem.productId || product.id,
-        quantity: cartItem.quantity ?? 1,
-        ...(customInputs ? { customInputs } : {}),
-        ...(cartItem.bundleConfiguration
-          ? { bundleConfiguration: cartItem.bundleConfiguration }
-          : {}),
-        ...(cartItem.locationId ? { location: cartItem.locationId } : {}),
-      });
+      await callEpProxy(
+        "addCartItem",
+        extractCartItemFromForm(formValues, product, {}) as unknown as Record<
+          string,
+          unknown
+        >
+      );
 
       // Refresh any EPCartProvider in the tree.
       await swrMutate(epCartCacheKey());

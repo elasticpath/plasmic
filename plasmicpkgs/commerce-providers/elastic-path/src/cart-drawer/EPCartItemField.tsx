@@ -21,7 +21,6 @@ type CartItemFieldName =
   | "options"
   | "optionValues"
   | "productId"
-  | "variantId"
   | "locationName"
   | "locationSlug"
   | "stockAvailable"
@@ -58,7 +57,6 @@ export const epCartItemFieldMeta: CodeComponentMeta<EPCartItemFieldProps> = {
         { label: "Stock Available", value: "stockAvailable" },
         { label: "Stock Status", value: "stockStatus" },
         { label: "Product ID", value: "productId" },
-        { label: "Variant ID", value: "variantId" },
       ],
       defaultValue: "name",
       displayName: "Field",
@@ -85,6 +83,36 @@ export const epCartItemFieldMeta: CodeComponentMeta<EPCartItemFieldProps> = {
   providesData: true,
 };
 
+/**
+ * Resolves a saved field choice against an Elastic Path cart line.
+ *
+ * The choice *values* are the binding contract, so they stay stable while the
+ * paths behind them move with Elastic Path's shape.
+ */
+function cartItemFieldValue(
+  item: Record<string, any>,
+  field: CartItemFieldName
+): unknown {
+  const price = item.meta?.display_price;
+  switch (field) {
+    case "formattedPrice":
+      return price?.without_tax?.unit?.formatted;
+    case "formattedListPrice":
+      return (
+        price?.without_discount?.unit?.formatted ??
+        price?.without_tax?.unit?.formatted
+      );
+    case "formattedLineTotal":
+      return price?.without_tax?.value?.formatted;
+    case "productId":
+      return item.product_id;
+    case "locationSlug":
+      return item.location;
+    default:
+      return item[field];
+  }
+}
+
 /** Resolve the display string + structured options + presence for a field. */
 function resolveCartItemField(
   item: Record<string, any>,
@@ -104,7 +132,7 @@ function resolveCartItemField(
     return { resolvedValue, options, hasValue: resolvedValue !== "" };
   }
 
-  const raw = item[field];
+  const raw = cartItemFieldValue(item, field);
   const resolvedValue = raw == null ? "" : String(raw);
   return { resolvedValue, options, hasValue: resolvedValue !== "" };
 }

@@ -42,6 +42,9 @@ import type {
   ElasticPathOrder,
   ShippingRate,
 } from "../types";
+import { formatMinor } from "../../utils/price";
+import { DEFAULT_LOCALE } from "../../utils/field-format";
+import { useEpCommerce } from "../../shopper-context/EpCommerceContext";
 
 const log = createLogger("EPCheckoutProvider");
 
@@ -268,18 +271,14 @@ const EPCheckoutProviderRuntime = React.forwardRef<
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Build the formatted summary from state
+  const commerce = useEpCommerce();
+  const currencyDisplay = commerce?.currencyDisplay ?? "platform";
+  const locale = commerce?.locale ?? DEFAULT_LOCALE;
+
   const summary = useMemo(() => {
     const cur = state.order?.total?.currency ?? "USD";
-    const fmt = (cents: number) => {
-      try {
-        return new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: cur,
-        }).format(cents / 100);
-      } catch {
-        return `$${(cents / 100).toFixed(2)}`;
-      }
-    };
+    const fmt = (minor: number) =>
+      formatMinor(minor, cur, currencyDisplay, locale);
 
     const subtotal = state.order?.subtotal?.amount ?? 0;
     const tax = state.order?.tax?.amount ?? 0;
@@ -481,10 +480,12 @@ const EPCheckoutProviderRuntime = React.forwardRef<
             id: state.selectedShippingRate.id,
             name: state.selectedShippingRate.name,
             price: state.selectedShippingRate.amount,
-            priceFormatted: new Intl.NumberFormat("en-US", {
-              style: "currency",
-              currency: state.selectedShippingRate.currency || "USD",
-            }).format(state.selectedShippingRate.amount / 100),
+            priceFormatted: formatMinor(
+              state.selectedShippingRate.amount,
+              state.selectedShippingRate.currency || "USD",
+              currencyDisplay,
+              locale
+            ),
             currency: state.selectedShippingRate.currency || "USD",
             estimatedDays: state.selectedShippingRate.delivery_time,
             carrier: state.selectedShippingRate.carrier,

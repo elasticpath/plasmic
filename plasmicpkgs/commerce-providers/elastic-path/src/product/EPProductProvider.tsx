@@ -34,6 +34,7 @@ import { Registerable } from "../registerable";
 import useProduct from "./use-product";
 import { createLogger } from "../utils/logger";
 import type { Product } from "../types/product";
+import { mockProduct } from "../utils/design-time-data";
 import { extractRawExtensions, normalizeExtensions } from "../utils/field-format";
 import { buildExtensionsMap } from "../utils/extensions-map";
 import { MOCK_EXTENSION_TEMPLATES } from "../utils/extensions-mock";
@@ -50,26 +51,23 @@ function ProductFormScope({ children }: { children: React.ReactNode }) {
  * is available. Keys match the normalized Product shape so bindings like
  * `$ctx.currentProduct.name` resolve to something sensible at design time.
  */
-const MOCK_PRODUCT: Product = {
+const MOCK_PRODUCT: Product = mockProduct({
   id: "mock-product",
   name: "Sample Product",
   description:
     "This is a placeholder product shown only at design time. Add a real product ID (or bind productId to $ctx.params.slug) to fetch live data.",
   slug: "sample-product",
   sku: "MOCK-SKU",
+  amount: 13500,
+  currency: "CHF",
+  formatted: "CHF 135.00",
   images: [
     {
-      url: "https://picsum.photos/seed/ep-product-provider/800/800",
+      url: "https://picsum.photos/seed/ep-product/800/800",
       alt: "Sample product",
     },
   ],
-  variants: [],
-  price: {
-    value: 99,
-    currencyCode: "USD",
-  },
-  options: [],
-};
+});
 
 type PreviewState = "auto" | "withData" | "loading" | "error" | "empty";
 

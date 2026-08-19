@@ -58,7 +58,7 @@ export function EPVariationOptionTrigger(
     | undefined;
 
   const currentOption = useSelector("currentVariationOption") as
-    | { label: string; hexColors?: string[]; isSelected: boolean }
+    | { id: string; name: string; isSelected: boolean }
     | undefined;
 
   const a11y = useSelector("optionTriggerA11y") as
@@ -78,8 +78,8 @@ export function EPVariationOptionTrigger(
 
   const effectiveOption = currentOption ?? (useMock
     ? {
-        label: "Midnight Blue",
-        hexColors: ["#191970"] as string[],
+        id: "opt-sample",
+        name: "Midnight Blue",
         isSelected: previewState === "selected",
       }
     : undefined);
@@ -97,7 +97,7 @@ export function EPVariationOptionTrigger(
 
   const handleSelect = () => {
     if (picker && currentVariation && currentOption) {
-      picker.selectOption(currentVariation.id, currentOption.label);
+      picker.selectOption(currentVariation.id, currentOption.name);
     }
   };
 
@@ -114,7 +114,7 @@ export function EPVariationOptionTrigger(
           handleSelect();
         }
       }}
-      aria-label={effectiveOption?.label}
+      aria-label={effectiveOption?.name}
       data-selected={isSelected || undefined}
     >
       {children}
