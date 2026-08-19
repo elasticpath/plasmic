@@ -1,5 +1,6 @@
 {
   "name": "integration-tests",
+  "packageManager": "yarn@1.22.22",
   "version": "0.0.1",
   "description": "",
   "private": true,

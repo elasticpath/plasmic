@@ -1,5 +1,6 @@
 {
   "name": "canvas-packages",
+  "packageManager": "yarn@1.22.22",
   "scripts": {
     "build": "tsc && NODE_ENV=production node ./esbuild.js",
     "watch": "ESBUILD_WATCH=true node ./esbuild.js",

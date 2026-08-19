@@ -1,5 +1,6 @@
 {
   "name": "live-frame",
+  "packageManager": "yarn@1.22.22",
   "dependencies": {
     "@plasmicapp/react-web": "link:../wab/node_modules/@plasmicapp/react-web"
   },

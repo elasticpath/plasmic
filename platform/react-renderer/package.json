@@ -1,5 +1,6 @@
 {
   "name": "react-renderer",
+  "packageManager": "yarn@1.22.22",
   "scripts": {
     "start": "npm run run-ts -- src/main.ts",
     "start:debug": "debug=1 bash tools/run.bash src/main.ts",
