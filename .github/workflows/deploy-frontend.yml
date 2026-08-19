@@ -60,6 +60,10 @@ jobs:
           cache: "yarn"
           cache-dependency-path: platform/wab/yarn.lock
 
+      # deploy-frontend.sh installs the root workspace with pnpm.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Deploy frontend application
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}

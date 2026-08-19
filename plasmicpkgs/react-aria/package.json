@@ -49,8 +49,8 @@
     "storybook": "storybook dev -p 6006 --no-open",
     "build-storybook": "storybook build",
     "test-storybook": "test-storybook",
-    "test": "TEST_CWD=`pwd` yarn --cwd=../.. test",
-    "upgrade-aria": "yarn upgrade --latest --scope @react-stately && yarn upgrade --latest --scope @react-aria && yarn upgrade --latest --scope react-aria-components"
+    "test": "TEST_CWD=`pwd` pnpm -w test",
+    "upgrade-aria": "pnpm update --latest \"@react-stately/*\" \"@react-aria/*\" react-aria-components"
   },
   "dependencies": {
     "@react-aria/i18n": "^3.12.9",

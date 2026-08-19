@@ -98,7 +98,7 @@ export function useBundleForm({
     const errorMessages: Record<string, string> = {};
     
     Object.entries(formErrors).forEach(([key, error]) => {
-      if (error?.message) {
+      if (typeof error?.message === "string") {
         errorMessages[key] = error.message;
       }
     });

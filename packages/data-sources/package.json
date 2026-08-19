@@ -26,7 +26,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "yarn build:types && yarn build:index",
+    "build": "pnpm build:types && pnpm build:index",
     "build:types": "tsc",
     "build:index": "node ../../build.mjs ./src/index.tsx",
     "test": "vitest run --silent=passed-only",

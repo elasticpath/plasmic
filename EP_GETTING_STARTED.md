@@ -7,7 +7,12 @@ Set up and run Plasmic Studio locally.
 - Git
 - Docker and Docker Compose
 - Node.js (see `.tool-versions` for exact version)
-- Yarn 1.22.x
+- pnpm, at the version pinned by the `packageManager` field in the root `package.json`.
+  `corepack enable` provisions it. Check with `pnpm --version` before installing: a pnpm
+  supplied by volta or asdf can sit earlier on `PATH` and shadow corepack's shim, and pnpm 9
+  silently ignores everything in `pnpm-workspace.yaml` — `overrides`, `allowBuilds`,
+  `shamefullyHoist` — so it resolves a different dependency tree.
+- Yarn 1.22.x, for the `platform/*` apps
 
 ## Clone the repository
 
@@ -44,14 +49,20 @@ NODE_ENV=development
 
 ### 2. Installing dependencies
 
-Run `yarn install` twice -- once in the root folder, and second time in the `./platform/wab`
+The root workspace (`packages/`, `plasmicpkgs/`, `plasmicpkgs-dev`) uses pnpm; every
+`platform/*` app uses yarn 1. So install twice:
+
+```bash
+pnpm install
+cd platform/wab && yarn install
+```
 
 ### 3. Setup application and run migrations
 
 In the root directory run (this may take several minutes):
 
 ```bash
-yarn setup && yarn setup:canvas-packages && cd platform/wab && yarn typeorm migration:run && yarn migrate-dev-bundles
+pnpm setup && pnpm setup:canvas-packages && cd platform/wab && yarn typeorm migration:run && yarn migrate-dev-bundles
 ```
 
 ### 4. Seeding the database
@@ -77,7 +88,7 @@ yarn plume:dev update
 Build all SDK packages (this may take several minutes):
 
 ```bash
-yarn bootstrap
+pnpm bootstrap
 ```
 
 ### 7. Start Plasmic Studio

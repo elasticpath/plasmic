@@ -36,7 +36,7 @@ jobs:
         uses: ./.github/actions/setup-env
 
       - name: Install root dependencies
-        run: yarn install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Install platform/wab dependencies
         working-directory: platform/wab
@@ -120,7 +120,7 @@ jobs:
           df -h
 
       - name: Validate cached dependencies
-        run: yarn install --frozen-lockfile --check-files
+        run: pnpm install --frozen-lockfile
 
       - name: Ensure platform/wab binaries
         working-directory: platform/wab
@@ -206,7 +206,7 @@ jobs:
           df -h
 
       - name: Validate cached dependencies
-        run: yarn install --frozen-lockfile --check-files
+        run: pnpm install --frozen-lockfile
 
       - name: Ensure platform/wab binaries
         working-directory: platform/wab
@@ -262,10 +262,10 @@ jobs:
 
       - name: Setup environment
         uses: ./.github/actions/setup-env
-        # Cache speeds up yarn install but isn't required
+        # Cache speeds up the install but isn't required
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Debug environment
         run: |
@@ -276,25 +276,25 @@ jobs:
           echo "packages/query SWR exists: $(ls packages/query/node_modules/swr/package.json 2>/dev/null && cat packages/query/node_modules/swr/package.json | grep version || echo 'NOT FOUND')"
 
       - name: Build SDK packages
-        run: yarn lerna run build --scope '@plasmicapp/*' --verbose
+        run: pnpm lerna run build --scope '@plasmicapp/*' --verbose
 
       - name: Run SDK packages Jest tests
         env:
           CI: true
           NODE_OPTIONS: '--max-old-space-size=4096 --experimental-vm-modules'
-        run: yarn jest --testPathPattern='packages/' --testPathIgnorePatterns='packages/data-sources/src|packages/host/src|packages/plasmic-mcp' --passWithNoTests
+        run: pnpm jest --testPathPattern='packages/' --testPathIgnorePatterns='packages/data-sources/src|packages/host/src|packages/plasmic-mcp' --passWithNoTests
 
       - name: Run SDK packages Vitest tests (data-sources)
         env:
           CI: true
         working-directory: packages/data-sources
-        run: yarn test
+        run: pnpm test
 
       - name: Run SDK packages Vitest tests (host)
         env:
           CI: true
         working-directory: packages/host
-        run: yarn test
+        run: pnpm test
 
       - name: Test Summary
         if: always()
@@ -317,19 +317,19 @@ jobs:
 
       - name: Setup environment
         uses: ./.github/actions/setup-env
-        # Cache speeds up yarn install but isn't required
+        # Cache speeds up the install but isn't required
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Build @plasmicapp/host and @plasmicpkgs/commerce
-        run: yarn lerna run build --scope '@plasmicapp/host' --scope '@plasmicpkgs/commerce'
+        run: pnpm lerna run build --scope '@plasmicapp/host' --scope '@plasmicpkgs/commerce'
 
       - name: Run plasmicpkgs Jest tests
         env:
           CI: true
           NODE_OPTIONS: '--max-old-space-size=4096 --experimental-vm-modules'
-        run: yarn jest --testPathPattern='plasmicpkgs/' --testPathIgnorePatterns='plasmicpkgs/wordpress|plasmicpkgs/contentful|plasmicpkgs/commerce-providers/elastic-path/src/auth/ep-plugin' --passWithNoTests
+        run: pnpm jest --testPathPattern='plasmicpkgs/' --testPathIgnorePatterns='plasmicpkgs/wordpress|plasmicpkgs/contentful|plasmicpkgs/commerce-providers/elastic-path/src/auth/ep-plugin' --passWithNoTests
 
       - name: Run plasmicpkgs Vitest tests
         env:
@@ -340,7 +340,7 @@ jobs:
         env:
           CI: true
         working-directory: plasmicpkgs/commerce-providers/elastic-path
-        run: yarn vitest run
+        run: pnpm vitest run
 
       - name: Test Summary
         if: always()
@@ -393,7 +393,7 @@ jobs:
           df -h
 
       - name: Validate cached dependencies
-        run: yarn install --frozen-lockfile --check-files
+        run: pnpm install --frozen-lockfile
 
       - name: Ensure platform/wab binaries
         working-directory: platform/wab
