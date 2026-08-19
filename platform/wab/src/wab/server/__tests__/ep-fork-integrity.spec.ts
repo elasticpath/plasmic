@@ -323,16 +323,54 @@ describe("EP Fork Integrity", () => {
     });
   });
 
-  describe("EP monorepo tooling (yarn, MCP workspaces)", () => {
+  describe("EP monorepo tooling (pnpm root, yarn platform apps)", () => {
     const rootPkg = readJson("package.json");
 
-    it("root stays on yarn", () => {
-      expect(rootPkg.packageManager).toMatch(/^yarn@/);
+    it("root uses pnpm, matching upstream", () => {
+      expect(rootPkg.packageManager).toMatch(/^pnpm@/);
     });
 
-    it("workspaces include the MCP packages", () => {
-      expect(rootPkg.workspaces).toContain("packages/plasmic-mcp");
-      expect(rootPkg.workspaces).toContain("packages/plasmic-mcp-registry");
+    it("root has no yarn.lock", () => {
+      expect(fileExists("yarn.lock")).toBe(false);
+    });
+
+    it("pnpm lockfile has importers for the EP-only packages", () => {
+      const lock = readFile("pnpm-lock.yaml");
+      for (const dir of [
+        "packages/plasmic-mcp",
+        "packages/plasmic-mcp-registry",
+        "plasmicpkgs/commerce-providers/elastic-path",
+      ]) {
+        expect(lock).toContain(`\n  ${dir}:\n`);
+      }
+    });
+
+    it("pnpm does not prompt to reinstall before running scripts", () => {
+      expect(readFile("pnpm-workspace.yaml")).toContain(
+        "verifyDepsBeforeRun: false"
+      );
+    });
+
+    it("every platform project pins yarn so it survives the pnpm root", () => {
+      const projects = [
+        "platform/canvas-packages",
+        "platform/host-test",
+        "platform/integration-tests",
+        "platform/live-frame",
+        "platform/loader-bundle-env",
+        "platform/loader-html-hydrate",
+        "platform/loader-tests",
+        "platform/react-renderer",
+        "platform/react-web-bundle",
+        "platform/sub",
+        "platform/wab",
+        "platform/wab/playwright",
+      ];
+      for (const project of projects) {
+        expect(readJson(`${project}/package.json`).packageManager).toMatch(
+          /^yarn@1\./
+        );
+      }
     });
   });
 
