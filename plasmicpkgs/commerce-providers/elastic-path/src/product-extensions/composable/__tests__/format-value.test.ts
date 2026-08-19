@@ -11,7 +11,21 @@ import {
 } from "../../../utils/field-format";
 
 describe("extractRawExtensions", () => {
-  it("reads the EP wire path off a product's rawData", () => {
+  it("reads attributes.extensions off Elastic Path's own product shape", () => {
+    const extensions = { "products(x)": { a: 1 } };
+    expect(extractRawExtensions({ attributes: { extensions } })).toBe(
+      extensions,
+    );
+  });
+
+  it("reads a bundle's rawData, which holds the product object", () => {
+    const extensions = { "products(x)": { a: 1 } };
+    expect(
+      extractRawExtensions({ rawData: { attributes: { extensions } } }),
+    ).toBe(extensions);
+  });
+
+  it("still reads the pre-0.4.0 response envelope", () => {
     const extensions = { "products(x)": { a: 1 } };
     expect(
       extractRawExtensions({
@@ -20,9 +34,20 @@ describe("extractRawExtensions", () => {
     ).toBe(extensions);
   });
 
-  it("is fail-soft for missing rawData / attributes / extensions", () => {
+  it("prefers the product's own attributes over a stale rawData", () => {
+    const current = { "products(x)": { a: 1 } };
+    expect(
+      extractRawExtensions({
+        attributes: { extensions: current },
+        rawData: { data: { attributes: { extensions: { old: {} } } } },
+      }),
+    ).toBe(current);
+  });
+
+  it("is fail-soft for missing attributes / rawData / extensions", () => {
     expect(extractRawExtensions(undefined)).toBeNull();
     expect(extractRawExtensions({})).toBeNull();
+    expect(extractRawExtensions({ attributes: {} })).toBeNull();
     expect(extractRawExtensions({ rawData: { data: {} } })).toBeNull();
   });
 });
