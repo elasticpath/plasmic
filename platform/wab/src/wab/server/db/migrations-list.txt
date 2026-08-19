@@ -256,3 +256,4 @@ platform/wab/src/wab/server/bundle-migrations/255-fix-ep-addtocart-import-path.t
 platform/wab/src/wab/server/bundle-migrations/256-wrap-page-meta-og-image-in-ref.ts
 platform/wab/src/wab/server/bundle-migrations/257-add-custom-function-is-mutation.ts
 platform/wab/src/wab/server/bundle-migrations/258-add-code-component-subtree-prefetching-config.ts
+platform/wab/src/wab/server/bundle-migrations/259-repoint-ep-commerce-bindings.ts

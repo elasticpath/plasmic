@@ -1135,7 +1135,7 @@
           }
         },
         "deps": [],
-        "version": "258-add-code-component-subtree-prefetching-config"
+        "version": "259-repoint-ep-commerce-bindings"
       },
       "projectId": "aH1hFXMTo8YybdGp5ScZNk",
       "version": "0.0.1",
@@ -2275,7 +2275,7 @@
           }
         },
         "deps": [],
-        "version": "258-add-code-component-subtree-prefetching-config"
+        "version": "259-repoint-ep-commerce-bindings"
       }
     },
     {
@@ -3403,7 +3403,7 @@
           }
         },
         "deps": [],
-        "version": "258-add-code-component-subtree-prefetching-config"
+        "version": "259-repoint-ep-commerce-bindings"
       }
     }
   ]
