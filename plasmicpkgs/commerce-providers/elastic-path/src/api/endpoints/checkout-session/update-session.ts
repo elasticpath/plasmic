@@ -37,11 +37,6 @@ function cartWithTaxAmount(cartResponse: unknown): number | null {
   return typeof amount === "number" && Number.isFinite(amount) ? amount : null;
 }
 
-/**
- * Drop a previously selected shipping cost from session totals when the
- * destination changes. Uses the existing create-session subtotal + tax — never
- * invents a client-side amount.
- */
 function totalsWithoutShipping(totals: SessionTotals | null): SessionTotals | null {
   if (!totals) return totals;
   return {
@@ -126,11 +121,6 @@ export async function handleUpdateSession(
     }
   }
 
-  // A real destination change invalidates previously quoted rates and the
-  // shopper's selection so a stale selectedShippingRateId cannot be applied
-  // (or charged) against a new address. An equivalent address (optional
-  // fields as undefined / missing / "") preserves both — Place Order may
-  // defensively re-PATCH the same shippingAddress.
   const shippingAddressChanged =
     update.shippingAddress !== undefined &&
     !sessionAddressesEquivalent(session.shippingAddress, update.shippingAddress);
@@ -164,11 +154,6 @@ export async function handleUpdateSession(
   // a write hiccup here is non-fatal and a forged/un-offered id simply fails to
   // resolve (no line written). Skip when no rates have been computed yet
   // (selection before calculate-shipping): nothing to resolve against.
-  //
-  // On success, refresh session.totals from the server rate amount + the
-  // re-priced cart's meta.display_price.with_tax.amount so Order Totals
-  // Breakdown matches the cart before pay. A failed write leaves totals as
-  // they were (selection is still stored; /pay remains final authority).
   if (
     !shippingAddressChanged &&
     update.selectedShippingRateId !== undefined &&
