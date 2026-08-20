@@ -461,7 +461,10 @@ jobs:
           (cd platform/wab && yarn build-css)
 
           echo "Cleaning yarn cache..."
-          yarn cache clean
+          # From a yarn-pinned dir: the repo root is pnpm, and yarn 1 refuses
+          # to run against it. The cache itself is global, so this is the same
+          # cache the sibling installs above filled.
+          (cd platform/wab && yarn cache clean)
 
           echo "=== Final disk space ==="
           df -h
