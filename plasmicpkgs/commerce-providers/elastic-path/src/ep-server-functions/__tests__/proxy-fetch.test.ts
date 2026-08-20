@@ -174,3 +174,26 @@ describe("callEpProxy error codes", () => {
     expect(epProxyErrorCode(undefined)).toBeUndefined();
   });
 });
+
+describe("callEpProxy unknown fn", () => {
+  it("throws the route's message rather than the bare unknown_fn token", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({
+        error: "unknown_fn",
+        code: "unknown_fn",
+        fn: "placeOrder",
+        message:
+          'ep proxy: "placeOrder" is not a registered EP proxy function — ' +
+          "the proxy dispatch table cannot serve it, so this call only works server-side",
+      }),
+    });
+
+    const err = await callEpProxy("placeOrder", {}).catch((e: unknown) => e);
+
+    expect((err as Error).message).toContain("placeOrder");
+    expect((err as Error).message).not.toBe("unknown_fn");
+    expect(epProxyErrorCode(err)).toBe("unknown_fn");
+  });
+});

@@ -442,3 +442,64 @@ describe("createEpProxyRoutes error sanitization", () => {
     expect(body.code).toBe("insufficient_stock");
   });
 });
+
+describe("createEpProxyRoutes unknown fn", () => {
+  function unknownFnRequest(fn: string) {
+    const proxy = createEpProxyRoutes({
+      config: { trustedOrigins: ["http://localhost:3000"] },
+      api: { getSession: vi.fn() },
+    } as any);
+    return proxy.handle(
+      new Request(`http://localhost:3000/api/ep/proxy/${fn}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "http://localhost:3000",
+        },
+        body: "{}",
+      }),
+      { params: Promise.resolve({ fn }) }
+    );
+  }
+
+  it("404s with a message that names the fn and why it failed", async () => {
+    const res = await unknownFnRequest("placeOrder");
+    const body = await res.json();
+
+    expect(res.status).toBe(404);
+    // The whole point of #386: `readProxyError` prefers `message`, so this
+    // string is what a shopper and the browser console see instead of the
+    // bare `unknown_fn` token.
+    expect(body.message).toContain("placeOrder");
+    expect(body.message).toMatch(/not a registered EP proxy function/);
+    expect(body.message).not.toBe("unknown_fn");
+  });
+
+  it("carries an unknown_fn code callers can branch on", async () => {
+    const res = await unknownFnRequest("noSuchFn");
+
+    expect(await res.json()).toMatchObject({
+      error: "unknown_fn",
+      code: "unknown_fn",
+      fn: "noSuchFn",
+    });
+  });
+
+  it("does not reach the session lookup", async () => {
+    const getSession = vi.fn();
+    const proxy = createEpProxyRoutes({
+      config: { trustedOrigins: ["http://localhost:3000"] },
+      api: { getSession },
+    } as any);
+    await proxy.handle(
+      new Request("http://localhost:3000/api/ep/proxy/nope", {
+        method: "POST",
+        headers: { Origin: "http://localhost:3000" },
+        body: "{}",
+      }),
+      { params: Promise.resolve({ fn: "nope" }) }
+    );
+
+    expect(getSession).not.toHaveBeenCalled();
+  });
+});
