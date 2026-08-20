@@ -95,6 +95,24 @@ const FN_DISPATCH: Record<
     epRemoveCartItem(args as unknown as EpRemoveCartItemInput),
 };
 
+/**
+ * Names `createEpProxyRoutes` can dispatch. Exported so a parity test can
+ * assert every `callEpProxy` call site has a home here.
+ */
+export const EP_PROXY_FN_NAMES: readonly string[] = Object.keys(FN_DISPATCH);
+
+/**
+ * Message for a name the dispatch table has no entry for. The bare
+ * `unknown_fn` token reaches shoppers and browser consoles verbatim
+ * (`readProxyError` in `proxy-fetch.ts`), so it has to say what went wrong.
+ */
+function unknownFnMessage(fnName: string): string {
+  return (
+    `ep proxy: "${fnName}" is not a registered EP proxy function — the ` +
+    `proxy dispatch table cannot serve it, so this call only works server-side`
+  );
+}
+
 export interface EpProxyRoutes {
   handle: (request: Request, context: ProxyRouteContext) => Promise<Response>;
   options: (request: Request) => Response;
@@ -134,8 +152,16 @@ export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes {
       const fnName = params.fn ?? "";
       const dispatch = FN_DISPATCH[fnName];
       if (!dispatch) {
+        console.error(
+          `[ep-commerce] proxy unknown_fn fn=${fnName} — not in the proxy dispatch table`
+        );
         return new Response(
-          JSON.stringify({ error: "unknown_fn", fn: fnName }),
+          JSON.stringify({
+            error: "unknown_fn",
+            code: "unknown_fn",
+            fn: fnName,
+            message: unknownFnMessage(fnName),
+          }),
           {
             status: 404,
             headers: { "Content-Type": "application/json", ...cors },

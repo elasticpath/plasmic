@@ -77,17 +77,13 @@ function setEditorMode(inEditor: boolean) {
   );
 }
 
-/** A live product whose rawData carries one extension template. */
+/** A live product whose attributes carry one extension template. */
 function productWithExtensions() {
   return {
     id: "p1",
-    rawData: {
-      data: {
-        attributes: {
-          extensions: {
-            "products(example-template-2)": { name: "my name" },
-          },
-        },
+    attributes: {
+      extensions: {
+        "products(example-template-2)": { name: "my name" },
       },
     },
   };
@@ -97,7 +93,7 @@ function productWithExtensions() {
 function productWithoutExtensions() {
   return {
     id: "p2",
-    rawData: { data: { attributes: { extensions: null } } },
+    attributes: { extensions: null },
   };
 }
 

@@ -28,8 +28,9 @@ needs repointing.
 | `currentCartItem.imageUrl` | `currentCartItem.image.href` |
 | search hit `currentProduct.path` / `._highlightedName` | `$ctx.currentHit.path` / `.highlightedName` |
 
-`EPProductField`, `EPCartField` and `EPCartItemField` selections survive: the
-saved choice values are unchanged and only the paths behind them moved.
+`EPProductField`, `EPCartField`, `EPCartItemField` and `EPCheckoutCartField`
+selections survive: the saved choice values are unchanged and only the paths
+behind them moved.
 `EPCartItemField`'s "Variant ID" choice is removed — it always held the same
 value as "Product ID".
 
@@ -67,7 +68,14 @@ previously rendered 100x too small.
   documents as the display-order contract.
 - The variation picker matched child products on option display names, so
   renaming an option in Commerce Manager silently stopped resolving a child.
-  It matches on option ids.
+  It matches on option ids, and a selection that resolves to no child now
+  selects nothing rather than falling back to the first one — that fallback
+  showed the shopper a different variant at a different price.
+- Checkout money displays kept the formatting they were first rendered with:
+  the three memos that format totals, order summaries and shipping rates closed
+  over `currencyDisplay` and `locale` without depending on them, so a
+  designer-bound currency or locale switcher left them stale until unrelated
+  data forced a recompute. They share a bound `useMoneyFormat` instead.
 - An empty cart rendered "Loading cart…", being indistinguishable from a cart
   that had not loaded. `EPCartProvider` gains `loading`/`error`/`empty` slots.
 

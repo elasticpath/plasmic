@@ -26,9 +26,7 @@ import React, {
 import { Registerable } from "../../registerable";
 import { MOCK_SHIPPING_RATES } from "../../utils/design-time-data";
 import { createLogger } from "../../utils/logger";
-import { formatMinor } from "../../utils/price";
-import { DEFAULT_LOCALE } from "../../utils/field-format";
-import { useEpCommerce } from "../../shopper-context/EpCommerceContext";
+import { useMoneyFormat } from "../../shopper-context/use-money-format";
 
 const log = createLogger("EPShippingMethodSelector");
 
@@ -213,9 +211,7 @@ const EPShippingMethodSelectorRuntime = React.forwardRef<
   EPShippingMethodSelectorActions,
   RuntimeProps
 >(function EPShippingMethodSelectorRuntime(props, ref) {
-  const commerce = useEpCommerce();
-  const currencyDisplay = commerce?.currencyDisplay ?? "platform";
-  const locale = commerce?.locale ?? DEFAULT_LOCALE;
+  const money = useMoneyFormat();
   const {
     children,
     loadingContent,
@@ -238,8 +234,7 @@ const EPShippingMethodSelectorRuntime = React.forwardRef<
   const sessionDerivedRates = useMemo<ShippingMethod[]>(() => {
     if (!sessionRates) return [];
     const cur = (sessionRates[0]?.currency ?? "USD").toUpperCase();
-    const fmt = (minor: number) =>
-      formatMinor(minor, cur, currencyDisplay, locale);
+    const fmt = (minor: number) => money.minor(minor, cur);
     return sessionRates.map((r) => ({
       id: r.id,
       name: r.name,
@@ -249,7 +244,7 @@ const EPShippingMethodSelectorRuntime = React.forwardRef<
       carrier: r.carrier ?? "",
       isSelected: false,
     }));
-  }, [sessionRates]);
+  }, [sessionRates, money]);
 
   // Legacy mode: fetch shipping rates when address is valid
   useEffect(() => {

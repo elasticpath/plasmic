@@ -4,7 +4,12 @@
  * Covers toEPAddress (camelCase → snake_case), fromEPAddress (snake_case →
  * camelCase), round-trip identity, and optional-field handling.
  */
-import { toEPAddress, fromEPAddress, toEPCustomer } from "../address-utils";
+import {
+  toEPAddress,
+  fromEPAddress,
+  toEPCustomer,
+  sessionAddressesEquivalent,
+} from "../address-utils";
 import type { SessionAddress, SessionCustomerInfo } from "../types";
 import type { EPAddress } from "../address-utils";
 
@@ -167,6 +172,52 @@ describe("address round-trip", () => {
 // ---------------------------------------------------------------------------
 // toEPCustomer
 // ---------------------------------------------------------------------------
+
+describe("sessionAddressesEquivalent", () => {
+  it("treats undefined, missing, and empty optional fields as equal", () => {
+    const withEmpty: SessionAddress = {
+      ...SESSION_ADDRESS_MINIMAL,
+      company: "",
+      line2: "",
+      county: "",
+    };
+    const missingOptional: SessionAddress = { ...SESSION_ADDRESS_MINIMAL };
+    expect(sessionAddressesEquivalent(withEmpty, missingOptional)).toBe(true);
+    expect(
+      sessionAddressesEquivalent(withEmpty, {
+        ...SESSION_ADDRESS_MINIMAL,
+        company: undefined,
+        line2: undefined,
+        county: undefined,
+      })
+    ).toBe(true);
+  });
+
+  it("trims whitespace before comparing", () => {
+    expect(
+      sessionAddressesEquivalent(
+        { ...SESSION_ADDRESS_MINIMAL, city: " Springfield " },
+        { ...SESSION_ADDRESS_MINIMAL, city: "Springfield" }
+      )
+    ).toBe(true);
+  });
+
+  it("returns false when a geographic field changes", () => {
+    expect(
+      sessionAddressesEquivalent(SESSION_ADDRESS_MINIMAL, {
+        ...SESSION_ADDRESS_MINIMAL,
+        postcode: "99999",
+      })
+    ).toBe(false);
+  });
+
+  it("returns false when one side is null", () => {
+    expect(sessionAddressesEquivalent(SESSION_ADDRESS_MINIMAL, null)).toBe(
+      false
+    );
+    expect(sessionAddressesEquivalent(null, null)).toBe(true);
+  });
+});
 
 describe("toEPCustomer", () => {
   it("returns name and email from SessionCustomerInfo", () => {

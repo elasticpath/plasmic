@@ -21,6 +21,7 @@ import { registerEPFormField } from "./checkout/composable/EPFormField";
 import { registerEPSelectField } from "./checkout/composable/EPSelectField";
 import { registerEPConsentCheckbox } from "./checkout/composable/EPConsentCheckbox";
 import { registerEPPlaceOrderButton } from "./checkout/composable/EPPlaceOrderButton";
+import { registerEPCheckoutShippingRates } from "./checkout/session/EPCheckoutShippingRates";
 import { registerEPCheckoutFormProvider } from "./checkout/composable/EPCheckoutFormProvider";
 import { registerEPCheckoutSessionProvider } from "./checkout/session/EPCheckoutSessionProvider";
 import { registerEPCloverPayment } from "./checkout/session/EPCloverPayment";
@@ -64,6 +65,7 @@ export function registerEPCheckout(loader?: Registerable) {
   registerEPSelectField(loader);
   registerEPConsentCheckbox(loader);
   registerEPPlaceOrderButton(loader);
+  registerEPCheckoutShippingRates(loader);
   registerEPCheckoutFormProvider(loader);
 
   // Session-based checkout components (leaf-first)
@@ -107,6 +109,7 @@ export {
   registerEPStripePayment,
   registerStripeProvider,
   registerEPCheckoutFormProvider,
+  registerEPCheckoutShippingRates,
   registerEPFormField,
   registerEPSelectField,
   registerEPConsentCheckbox,
@@ -207,3 +210,6 @@ export {
 export {
   epPlaceOrderButtonMeta,
 } from "./checkout/composable/EPPlaceOrderButton";
+export {
+  epCheckoutShippingRatesMeta,
+} from "./checkout/session/EPCheckoutShippingRates";

@@ -95,7 +95,7 @@ export const epFormFieldMeta: CodeComponentMeta<EPFormFieldProps> = {
       type: "string",
       defaultValue: "field",
       description:
-        "Form key. Reserved names (firstName, lastName, email, company, address, line2, city, county, postal, country) map to the order; anything else is saved as a cart custom attribute.",
+        "Form key. Reserved names (firstName, lastName, email, company, address, line2, city, county, postal, country, shippingFirstName, shippingLastName, shippingCompany, shippingAddress, shippingLine2, shippingCity, shippingCounty, shippingPostal, shippingCountry) map to the order / shipping address; anything else is saved as a cart custom attribute.",
     },
     label: { type: "string", defaultValue: "Label" },
     inputType: {

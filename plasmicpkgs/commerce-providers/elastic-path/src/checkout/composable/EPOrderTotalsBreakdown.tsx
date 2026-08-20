@@ -2,9 +2,9 @@
  * EPOrderTotalsBreakdown — exposes financial totals for the checkout.
  *
  * Reads from `checkoutData.summary` (inside EPCheckoutProvider) or falls
- * back to `checkoutCartData` (inside EPCheckoutCartSummary). Designer
- * binds any elements to individual fields like subtotalFormatted,
- * taxFormatted, shippingFormatted, totalFormatted.
+ * back to `cart` (inside EPCheckoutCartSummary). Designer binds any
+ * elements to individual fields like subtotalFormatted, taxFormatted,
+ * shippingFormatted, totalFormatted.
  */
 import {
   DataProvider,
@@ -18,10 +18,8 @@ import React, { useMemo } from "react";
 import { Registerable } from "../../registerable";
 import { MOCK_ORDER_TOTALS_DATA } from "../../utils/design-time-data";
 import { createLogger } from "../../utils/logger";
-import { formatMinor, formatPrice } from "../../utils/price";
 import type { Cart } from "../../types/cart";
-import { DEFAULT_LOCALE } from "../../utils/field-format";
-import { useEpCommerce } from "../../shopper-context/EpCommerceContext";
+import { useMoneyFormat } from "../../shopper-context/use-money-format";
 
 const log = createLogger("EPOrderTotalsBreakdown");
 
@@ -56,12 +54,10 @@ interface OrderTotalsData {
 // Component
 // ---------------------------------------------------------------------------
 export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
-  const commerce = useEpCommerce();
-  const currencyDisplay = commerce?.currencyDisplay ?? "platform";
-  const locale = commerce?.locale ?? DEFAULT_LOCALE;
+  const money = useMoneyFormat();
   const { children, className, previewState = "auto" } = props;
 
-  // Priority: checkoutData.summary (EPCheckoutProvider) > checkoutSession.totals > checkoutCartData > mock
+  // Priority: checkoutData.summary (EPCheckoutProvider) > checkoutSession.totals > cart > mock
   const checkoutData = useSelector("checkoutData") as
     | { summary?: OrderTotalsData }
     | undefined;
@@ -94,8 +90,7 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
     // Source 2: checkoutSession.totals (from EPCheckoutSessionProvider)
     if (sessionTotals) {
       const cur = (sessionTotals.currency ?? "USD").toUpperCase();
-      const fmt = (minor: number) =>
-        formatMinor(minor, cur, currencyDisplay, locale);
+      const fmt = (minor: number) => money.minor(minor, cur);
       return {
         subtotal: sessionTotals.subtotal ?? 0,
         subtotalFormatted: fmt(sessionTotals.subtotal ?? 0),
@@ -119,22 +114,18 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
       const discount = price?.discount?.amount ?? 0;
       return {
         subtotal: price?.without_tax?.amount ?? 0,
-        subtotalFormatted: formatPrice(
-          price?.without_tax,
-          currencyDisplay,
-          locale
-        ),
+        subtotalFormatted: money.price(price?.without_tax),
         tax: price?.tax?.amount ?? 0,
-        taxFormatted: formatPrice(price?.tax, currencyDisplay, locale),
+        taxFormatted: money.price(price?.tax),
         shipping: price?.shipping?.amount ?? 0,
         shippingFormatted: price?.shipping
-          ? formatPrice(price.shipping, currencyDisplay, locale)
+          ? money.price(price.shipping)
           : "TBD",
         discount,
-        discountFormatted: formatPrice(price?.discount, currencyDisplay, locale),
+        discountFormatted: money.price(price?.discount),
         hasDiscount: discount > 0,
         total: price?.with_tax?.amount ?? 0,
-        totalFormatted: formatPrice(price?.with_tax, currencyDisplay, locale),
+        totalFormatted: money.price(price?.with_tax),
         currency: price?.without_tax?.currency ?? "USD",
         itemCount: checkoutCart.itemCount,
       };
@@ -145,7 +136,7 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
       log.warn("EPOrderTotalsBreakdown used outside both EPCheckoutSessionProvider and EPCheckoutCartSummary — using mock data");
     }
     return MOCK_ORDER_TOTALS_DATA;
-  }, [useMock, composableSummary, sessionTotals, checkoutCart]);
+  }, [useMock, composableSummary, sessionTotals, checkoutCart, money]);
 
   return (
     <DataProvider name="orderTotalsData" data={totalsData}>

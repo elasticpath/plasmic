@@ -42,9 +42,7 @@ import type {
   ElasticPathOrder,
   ShippingRate,
 } from "../types";
-import { formatMinor } from "../../utils/price";
-import { DEFAULT_LOCALE } from "../../utils/field-format";
-import { useEpCommerce } from "../../shopper-context/EpCommerceContext";
+import { useMoneyFormat } from "../../shopper-context/use-money-format";
 
 const log = createLogger("EPCheckoutProvider");
 
@@ -271,14 +269,11 @@ const EPCheckoutProviderRuntime = React.forwardRef<
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Build the formatted summary from state
-  const commerce = useEpCommerce();
-  const currencyDisplay = commerce?.currencyDisplay ?? "platform";
-  const locale = commerce?.locale ?? DEFAULT_LOCALE;
+  const money = useMoneyFormat();
 
   const summary = useMemo(() => {
     const cur = state.order?.total?.currency ?? "USD";
-    const fmt = (minor: number) =>
-      formatMinor(minor, cur, currencyDisplay, locale);
+    const fmt = (minor: number) => money.minor(minor, cur);
 
     const subtotal = state.order?.subtotal?.amount ?? 0;
     const tax = state.order?.tax?.amount ?? 0;
@@ -300,7 +295,7 @@ const EPCheckoutProviderRuntime = React.forwardRef<
       currency: cur,
       itemCount: state.order?.relationships?.items?.data?.length ?? 0,
     };
-  }, [state.order, state.selectedShippingRate]);
+  }, [state.order, state.selectedShippingRate, money]);
 
   // Derive customerInfo from state
   const customerInfo = useMemo(() => {
@@ -480,11 +475,9 @@ const EPCheckoutProviderRuntime = React.forwardRef<
             id: state.selectedShippingRate.id,
             name: state.selectedShippingRate.name,
             price: state.selectedShippingRate.amount,
-            priceFormatted: formatMinor(
+            priceFormatted: money.minor(
               state.selectedShippingRate.amount,
-              state.selectedShippingRate.currency || "USD",
-              currencyDisplay,
-              locale
+              state.selectedShippingRate.currency || "USD"
             ),
             currency: state.selectedShippingRate.currency || "USD",
             estimatedDays: state.selectedShippingRate.delivery_time,
@@ -512,6 +505,7 @@ const EPCheckoutProviderRuntime = React.forwardRef<
       paymentStatus,
       errorMsg,
       summary,
+      money,
     ]
   );
 

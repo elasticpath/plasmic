@@ -5,16 +5,21 @@
  * selectedShippingRateId) onto the existing session. Only permitted when the
  * session is in "open" status. Returns 410 if no session exists.
  */
+import { getACart } from "@epcc-sdk/sdks-shopper";
 import type {
   SessionRequest,
   SessionResponse,
   SessionHandlerContext,
   CheckoutSession,
   ClientCheckoutSession,
+  SessionTotals,
   UpdateSessionRequest,
 } from "../../../checkout/session/types";
 import { filterAllowedCustomAttributes } from "../../../checkout/session/custom-attributes-allowlist";
 import { applyShippingSelection } from "../../../checkout/session/apply-shipping-selection";
+import { resolveShippingRate } from "../../../checkout/session/cart-shipping";
+import { buildAdminEpClient } from "../../../checkout/session/admin-client";
+import { sessionAddressesEquivalent } from "../../../checkout/session/address-utils";
 import { createLogger } from "../../../utils/logger";
 
 const log = createLogger("UpdateSession");
@@ -22,6 +27,23 @@ const log = createLogger("UpdateSession");
 function toClientSession(s: CheckoutSession): ClientCheckoutSession {
   const { cartHash, ...rest } = s;
   return rest;
+}
+
+/** EP cart `meta.display_price.with_tax.amount` (minor units), or null. */
+function cartWithTaxAmount(cartResponse: unknown): number | null {
+  const amount = (cartResponse as {
+    data?: { data?: { meta?: { display_price?: { with_tax?: { amount?: unknown } } } } };
+  })?.data?.data?.meta?.display_price?.with_tax?.amount;
+  return typeof amount === "number" && Number.isFinite(amount) ? amount : null;
+}
+
+function totalsWithoutShipping(totals: SessionTotals | null): SessionTotals | null {
+  if (!totals) return totals;
+  return {
+    ...totals,
+    shipping: 0,
+    total: totals.subtotal + totals.tax,
+  };
 }
 
 export async function handleUpdateSession(
@@ -99,21 +121,76 @@ export async function handleUpdateSession(
     }
   }
 
-  const updated: CheckoutSession = {
+  const shippingAddressChanged =
+    update.shippingAddress !== undefined &&
+    !sessionAddressesEquivalent(session.shippingAddress, update.shippingAddress);
+
+  let updated: CheckoutSession = {
     ...session,
     ...(update.customerInfo !== undefined && { customerInfo: update.customerInfo }),
     ...(update.shippingAddress !== undefined && { shippingAddress: update.shippingAddress }),
     ...(update.billingAddress !== undefined && { billingAddress: update.billingAddress }),
-    ...(update.selectedShippingRateId !== undefined && {
-      selectedShippingRateId: update.selectedShippingRateId,
-    }),
     ...(update.requiresShipping !== undefined && {
       requiresShipping: update.requiresShipping,
     }),
     ...(update.customAttributes !== undefined && {
       customAttributes: nextCustomAttributes,
     }),
+    ...(shippingAddressChanged
+      ? {
+          availableShippingRates: [],
+          selectedShippingRateId: null,
+          totals: totalsWithoutShipping(session.totals),
+        }
+      : update.selectedShippingRateId !== undefined
+        ? { selectedShippingRateId: update.selectedShippingRateId }
+        : {}),
   };
+
+  // When the shopper picks a shipping rate (an id only — never an amount), write
+  // the SERVER-resolved cost into the cart credentialed so the cart shows it
+  // before pay. Best-effort: this is a UX convenience, NOT the integrity
+  // boundary — /pay re-asserts the shipping line authoritatively (ADR-0013), so
+  // a write hiccup here is non-fatal and a forged/un-offered id simply fails to
+  // resolve (no line written). Skip when no rates have been computed yet
+  // (selection before calculate-shipping): nothing to resolve against.
+  if (
+    !shippingAddressChanged &&
+    update.selectedShippingRateId !== undefined &&
+    updated.availableShippingRates.length > 0
+  ) {
+    try {
+      const client = await buildAdminEpClient(ctx);
+      await applyShippingSelection(ctx, updated, { client });
+      const rate = resolveShippingRate(
+        updated.availableShippingRates,
+        updated.selectedShippingRateId ?? ""
+      );
+      const reread = await getACart({
+        client,
+        path: { cartID: updated.cartId },
+      });
+      const freshTotal = cartWithTaxAmount(reread);
+      if (freshTotal != null) {
+        updated = {
+          ...updated,
+          totals: {
+            subtotal: updated.totals?.subtotal ?? 0,
+            tax: updated.totals?.tax ?? 0,
+            shipping: rate.amount,
+            total: freshTotal,
+            currency: updated.totals?.currency || rate.currency,
+          },
+        };
+      }
+    } catch (err) {
+      log.warn("Could not write shipping line on selection (deferred to /pay)", {
+        sessionId: updated.id,
+        rateId: updated.selectedShippingRateId,
+        error: err instanceof Error ? err.message : String(err),
+      } as Record<string, unknown>);
+    }
+  }
 
   let setResult: { headers: Record<string, string> };
   try {
@@ -130,28 +207,6 @@ export async function handleUpdateSession(
         error: { message: "Failed to store session", code: "STORE_ERROR" },
       },
     };
-  }
-
-  // When the shopper picks a shipping rate (an id only — never an amount), write
-  // the SERVER-resolved cost into the cart credentialed so the cart shows it
-  // before pay. Best-effort: this is a UX convenience, NOT the integrity
-  // boundary — /pay re-asserts the shipping line authoritatively (ADR-0013), so
-  // a write hiccup here is non-fatal and a forged/un-offered id simply fails to
-  // resolve (no line written). Skip when no rates have been computed yet
-  // (selection before calculate-shipping): nothing to resolve against.
-  if (
-    update.selectedShippingRateId !== undefined &&
-    updated.availableShippingRates.length > 0
-  ) {
-    try {
-      await applyShippingSelection(ctx, updated);
-    } catch (err) {
-      log.warn("Could not write shipping line on selection (deferred to /pay)", {
-        sessionId: updated.id,
-        rateId: updated.selectedShippingRateId,
-        error: err instanceof Error ? err.message : String(err),
-      } as Record<string, unknown>);
-    }
   }
 
   log.info("Session updated", {
