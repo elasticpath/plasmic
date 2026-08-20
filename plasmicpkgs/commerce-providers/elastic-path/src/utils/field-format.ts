@@ -216,14 +216,30 @@ function formatDisplayValueShallow(value: unknown): string {
   return "";
 }
 
-/** The single place that knows the EP `attributes.extensions` wire path. */
+type WithExtensions = {
+  attributes?: { extensions?: Record<string, unknown> | null };
+};
+
+/**
+ * The single place that knows the EP `attributes.extensions` wire path.
+ *
+ * A product is Elastic Path's own shape (ADR-0002), so extensions sit on
+ * `attributes`. The two `rawData` forms are read after it: a bundle keeps the
+ * product object there, and a product saved before 0.4.0 kept the whole
+ * response envelope.
+ */
 export function extractRawExtensions(
   product: unknown,
 ): Record<string, unknown> | null {
-  const rawData = (product as { rawData?: unknown } | undefined)?.rawData as
-    | { data?: { attributes?: { extensions?: Record<string, unknown> | null } } }
+  const p = product as
+    | (WithExtensions & { rawData?: WithExtensions & { data?: WithExtensions } })
     | undefined;
-  return rawData?.data?.attributes?.extensions ?? null;
+  return (
+    p?.attributes?.extensions ??
+    p?.rawData?.attributes?.extensions ??
+    p?.rawData?.data?.attributes?.extensions ??
+    null
+  );
 }
 
 /**
