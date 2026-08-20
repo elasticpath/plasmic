@@ -22,7 +22,11 @@ function optionIdsByName(
 }
 
 /**
- * The child product a set of choices selects.
+ * The child product a set of choices selects, or `undefined` when they select
+ * none — an unchosen variation, an option renamed in Commerce Manager, or a
+ * stale saved selection all land here. Callers surface the no-match; there is
+ * no child that stands in for one, since every candidate is a different
+ * variant at a different price.
  *
  * Matching is on option **ids**, which is what `meta.variation_matrix` yields;
  * names are display strings a merchandiser can rename at any time.
@@ -35,12 +39,13 @@ export function findChildProduct(
   if (!children.length) return undefined;
 
   const byVariation = optionIdsByName(product!);
-  const chosenIds = Object.entries(selected)
-    .map(([variationId, name]) => byVariation.get(variationId)?.get(name))
-    .filter((id): id is string => !!id);
-
-  if (chosenIds.length !== (product?.variations?.length ?? 0)) {
-    return children[0];
+  const chosenIds: string[] = [];
+  for (const variation of product?.variations ?? []) {
+    const name = selected[variation.id];
+    const id =
+      name === undefined ? undefined : byVariation.get(variation.id)?.get(name);
+    if (!id) return undefined;
+    chosenIds.push(id);
   }
 
   return children.find((child) =>
