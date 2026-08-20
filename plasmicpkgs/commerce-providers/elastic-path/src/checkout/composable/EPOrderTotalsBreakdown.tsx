@@ -2,9 +2,9 @@
  * EPOrderTotalsBreakdown — exposes financial totals for the checkout.
  *
  * Reads from `checkoutData.summary` (inside EPCheckoutProvider) or falls
- * back to `checkoutCartData` (inside EPCheckoutCartSummary). Designer
- * binds any elements to individual fields like subtotalFormatted,
- * taxFormatted, shippingFormatted, totalFormatted.
+ * back to `cart` (inside EPCheckoutCartSummary). Designer binds any
+ * elements to individual fields like subtotalFormatted, taxFormatted,
+ * shippingFormatted, totalFormatted.
  */
 import {
   DataProvider,
@@ -61,7 +61,7 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
   const locale = commerce?.locale ?? DEFAULT_LOCALE;
   const { children, className, previewState = "auto" } = props;
 
-  // Priority: checkoutData.summary (EPCheckoutProvider) > checkoutSession.totals > checkoutCartData > mock
+  // Priority: checkoutData.summary (EPCheckoutProvider) > checkoutSession.totals > cart > mock
   const checkoutData = useSelector("checkoutData") as
     | { summary?: OrderTotalsData }
     | undefined;

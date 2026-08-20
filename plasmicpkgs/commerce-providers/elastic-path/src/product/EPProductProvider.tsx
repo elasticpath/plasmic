@@ -228,7 +228,7 @@ export function EPProductProvider(props: EPProductProviderProps) {
   // Flat, null-safe map of the product's extensions, keyed by raw template
   // slug (e.g. `products(iso-standard)`), published alongside currentProduct so
   // designers bind `$ctx.productExtensions['<slug>'].<field>` instead of the
-  // raw `currentProduct.rawData.data.attributes.extensions[...]` chain.
+  // raw `currentProduct.attributes.extensions[...]` chain.
   // Design-time parity: this provider's own MOCK_PRODUCT carries no extensions,
   // so fall back to the shared mock templates in canvas — keeping the map
   // populated and consistent with the field dropdowns.

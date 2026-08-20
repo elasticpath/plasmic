@@ -124,8 +124,8 @@ describe("EPOrderTotalsBreakdown", () => {
             },
           };
         }
-        if (name === "checkoutCartData") {
-          return { subtotal: 1000, total: 1000, currencyCode: "USD" };
+        if (name === "cart") {
+          return cartWithTotals(1000);
         }
         return undefined;
       });
@@ -142,4 +142,53 @@ describe("EPOrderTotalsBreakdown", () => {
       expect(data.subtotal).toBe(5000);
     });
   });
+
+  describe("cart mode (the cart published by EPCheckoutCartSummary)", () => {
+    it("reads totals off the cart's display_price", () => {
+      mockUseSelector.mockImplementation((name: string) =>
+        name === "cart" ? cartWithTotals(6200) : undefined
+      );
+
+      render(
+        <EPOrderTotalsBreakdown>
+          <span>Totals</span>
+        </EPOrderTotalsBreakdown>
+      );
+
+      const dp = screen.getByTestId("dp-orderTotalsData");
+      const data = JSON.parse(dp.getAttribute("data-value") || "{}");
+      expect(data.subtotal).toBe(6200);
+      expect(data.tax).toBe(496);
+      expect(data.shipping).toBe(595);
+      expect(data.total).toBe(7291);
+      expect(data.currency).toBe("USD");
+      expect(data.itemCount).toBe(2);
+      expect(data.subtotalFormatted).toBe("$62.00");
+      expect(data.totalFormatted).toBe("$72.91");
+    });
+  });
 });
+
+/** A cart in Elastic Path's own shape, with `subtotal` as the without-tax amount. */
+function cartWithTotals(subtotal: number) {
+  const money = (amount: number) => ({
+    amount,
+    currency: "USD",
+    float_price: amount / 100,
+    formatted: `$${(amount / 100).toFixed(2)}`,
+  });
+  return {
+    id: "cart-1",
+    type: "cart",
+    items: [],
+    itemCount: 2,
+    meta: {
+      display_price: {
+        without_tax: money(subtotal),
+        tax: money(496),
+        shipping: money(595),
+        with_tax: money(subtotal + 496 + 595),
+      },
+    },
+  };
+}

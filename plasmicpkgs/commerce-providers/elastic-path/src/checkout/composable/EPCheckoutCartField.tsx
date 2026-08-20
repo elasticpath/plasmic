@@ -4,6 +4,7 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../../registerable";
+import type { Cart, CartItem } from "../../types/cart";
 import {
   MOCK_CHECKOUT_CART_DATA,
   MOCK_CHECKOUT_CART_ITEMS,
@@ -33,6 +34,10 @@ const CART_FIELDS = new Set<string>([
   "itemCount",
 ]);
 
+function isCartField(field: FieldName): field is CartFieldName {
+  return CART_FIELDS.has(field);
+}
+
 type PreviewState = "auto" | "withData";
 
 interface EPCheckoutCartFieldProps {
@@ -45,7 +50,7 @@ export const epCheckoutCartFieldMeta: CodeComponentMeta<EPCheckoutCartFieldProps
   name: "plasmic-commerce-ep-checkout-cart-field",
   displayName: "EP Checkout Cart Field",
   description:
-    "Displays a checkout cart field. Reads from checkoutCartData or currentCheckoutItem depending on the field.",
+    "Displays a checkout cart field. Reads from the cart published by EP Checkout Cart Summary, or from the current checkout item, depending on the field.",
   props: {
     field: {
       type: "choice",
@@ -78,53 +83,84 @@ export const epCheckoutCartFieldMeta: CodeComponentMeta<EPCheckoutCartFieldProps
   importName: "EPCheckoutCartField",
 };
 
+/**
+ * Resolves a saved field choice against the checkout cart.
+ *
+ * The choice *values* are the binding contract, so they stay stable while the
+ * paths behind them move with Elastic Path's shape.
+ */
+function checkoutCartFieldValue(
+  cart: Cart,
+  field: CartFieldName
+): string | number | undefined {
+  const price = cart.meta?.display_price;
+  switch (field) {
+    case "formattedSubtotal":
+      return price?.without_tax?.formatted;
+    case "formattedTotal":
+      return price?.with_tax?.formatted ?? price?.without_tax?.formatted;
+    case "formattedShipping":
+      return price?.shipping?.formatted;
+    case "formattedTax":
+      return price?.tax?.formatted;
+    case "itemCount":
+      return cart.itemCount;
+  }
+}
+
+/** The same contract for the fields addressed against a single checkout line. */
+function checkoutItemFieldValue(
+  item: CartItem,
+  field: ItemFieldName
+): string | number | undefined {
+  switch (field) {
+    case "formattedPrice":
+      return item.meta?.display_price?.without_tax?.unit?.formatted;
+    case "imageUrl":
+      return item.image?.href;
+    default:
+      return item[field];
+  }
+}
+
 export function EPCheckoutCartField(props: EPCheckoutCartFieldProps) {
   const { field, className, previewState = "auto" } = props;
 
   const inEditor = !!usePlasmicCanvasContext();
-  const cartData = useSelector("checkoutCartData") as
-    | Record<string, any>
-    | undefined;
+  const cart = useSelector("cart") as Cart | undefined;
   const currentItem = useSelector("currentCheckoutItem") as
-    | Record<string, any>
+    | CartItem
     | undefined;
 
-  const isCartField = CART_FIELDS.has(field);
+  if (isCartField(field)) {
+    const useMock = previewState === "withData" || (!cart && inEditor);
 
-  if (isCartField) {
-    const useMock =
-      previewState === "withData" || (!cartData && inEditor);
-
-    const effectiveData = useMock
-      ? (MOCK_CHECKOUT_CART_DATA as Record<string, any>)
-      : cartData;
+    const effectiveData = useMock ? MOCK_CHECKOUT_CART_DATA : cart;
     if (!effectiveData) return null;
 
-    const value = effectiveData[field];
+    const value = checkoutCartFieldValue(effectiveData, field);
     return <span className={className}>{value ?? ""}</span>;
   }
 
   // Item field
-  const useMock =
-    previewState === "withData" || (!currentItem && inEditor);
+  const useMock = previewState === "withData" || (!currentItem && inEditor);
 
-  const effectiveItem = useMock
-    ? (MOCK_CHECKOUT_CART_ITEMS[0] as Record<string, any>)
-    : currentItem;
+  const effectiveItem = useMock ? MOCK_CHECKOUT_CART_ITEMS[0] : currentItem;
   if (!effectiveItem) return null;
+
+  const value = checkoutItemFieldValue(effectiveItem, field);
 
   if (field === "imageUrl") {
     return (
       <img
         className={className}
-        src={effectiveItem.imageUrl}
+        src={value as string | undefined}
         alt={effectiveItem.name ?? ""}
         style={{ maxWidth: "100%", height: "auto" }}
       />
     );
   }
 
-  const value = effectiveItem[field];
   return <span className={className}>{value ?? ""}</span>;
 }
 

@@ -28,8 +28,9 @@ needs repointing.
 | `currentCartItem.imageUrl` | `currentCartItem.image.href` |
 | search hit `currentProduct.path` / `._highlightedName` | `$ctx.currentHit.path` / `.highlightedName` |
 
-`EPProductField`, `EPCartField` and `EPCartItemField` selections survive: the
-saved choice values are unchanged and only the paths behind them moved.
+`EPProductField`, `EPCartField`, `EPCartItemField` and `EPCheckoutCartField`
+selections survive: the saved choice values are unchanged and only the paths
+behind them moved.
 `EPCartItemField`'s "Variant ID" choice is removed — it always held the same
 value as "Product ID".
 

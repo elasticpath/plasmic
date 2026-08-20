@@ -349,23 +349,34 @@ export const MOCK_CHECKOUT_CART_ITEMS: CartItem[] = [
   }),
 ];
 
-export const MOCK_CHECKOUT_CART_DATA = {
+export const MOCK_CHECKOUT_CART_DATA: Cart = {
   id: "sample-checkout-cart-001",
+  type: "cart",
   items: MOCK_CHECKOUT_CART_ITEMS,
   itemCount: 2,
-  subtotal: 62.0,
-  tax: 4.96,
-  shipping: 5.95,
-  total: 72.91,
-  formattedSubtotal: "$62.00",
-  formattedTax: "$4.96",
-  formattedShipping: "$5.95",
-  formattedTotal: "$72.91",
-  currencyCode: "USD",
-  hasPromo: false,
-  promoCode: null as string | null,
-  promoDiscount: 0,
-  formattedPromoDiscount: null as string | null,
+  meta: {
+    display_price: {
+      without_tax: mockCartMoney(6200),
+      tax: mockCartMoney(496),
+      shipping: mockCartMoney(595),
+      with_tax: mockCartMoney(7291),
+    },
+  },
+};
+
+/** Empty-cart variant of {@link MOCK_CHECKOUT_CART_DATA} for the design-time "empty" preview. */
+export const MOCK_EMPTY_CHECKOUT_CART_DATA: Cart = {
+  ...MOCK_CHECKOUT_CART_DATA,
+  items: [],
+  itemCount: 0,
+  meta: {
+    display_price: {
+      without_tax: mockCartMoney(0),
+      tax: mockCartMoney(0),
+      shipping: mockCartMoney(0),
+      with_tax: mockCartMoney(0),
+    },
+  },
 };
 
 // ---------------------------------------------------------------------------

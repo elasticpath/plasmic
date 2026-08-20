@@ -10,7 +10,10 @@ import { Registerable } from "../../registerable";
 import { useCheckoutCart } from "../../shopper-context/use-checkout-cart";
 import type { Cart } from "../../types/cart";
 import { createLogger } from "../../utils/logger";
-import { MOCK_CHECKOUT_CART_DATA } from "../../utils/design-time-data";
+import {
+  MOCK_CHECKOUT_CART_DATA,
+  MOCK_EMPTY_CHECKOUT_CART_DATA,
+} from "../../utils/design-time-data";
 
 const log = createLogger("EPCheckoutCartSummary");
 
@@ -154,16 +157,7 @@ function EPCheckoutCartSummaryInternal(
   const effectiveData = useMock
     ? { ...MOCK_CHECKOUT_CART_DATA, showImages }
     : previewState === "empty"
-      ? {
-          ...MOCK_CHECKOUT_CART_DATA,
-          items: [],
-          itemCount: 0,
-          subtotal: 0,
-          total: 0,
-          formattedSubtotal: "$0.00",
-          formattedTotal: "$0.00",
-          showImages,
-        }
+      ? { ...MOCK_EMPTY_CHECKOUT_CART_DATA, showImages }
       : cartData;
 
   if (useMock) {
