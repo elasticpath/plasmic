@@ -170,6 +170,30 @@ describe("EPOrderTotalsBreakdown", () => {
       expect(data.subtotalFormatted).toBe("$62.00");
       expect(data.totalFormatted).toBe("$72.91");
     });
+
+    it("flags a discount the cart reports as a reduction", () => {
+      const cart = cartWithTotals(6200) as any;
+      cart.meta.display_price.discount = {
+        amount: -500,
+        currency: "USD",
+        float_price: -5,
+        formatted: "-$5.00",
+      };
+      mockUseSelector.mockImplementation((name: string) =>
+        name === "cart" ? cart : undefined
+      );
+
+      render(
+        <EPOrderTotalsBreakdown>
+          <span>Totals</span>
+        </EPOrderTotalsBreakdown>
+      );
+
+      const dp = screen.getByTestId("dp-orderTotalsData");
+      expect(JSON.parse(dp.getAttribute("data-value") || "{}").hasDiscount).toBe(
+        true
+      );
+    });
   });
 
   describe("provider money settings", () => {

@@ -131,7 +131,7 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
           : "TBD",
         discount,
         discountFormatted: money.price(price?.discount),
-        hasDiscount: discount > 0,
+        hasDiscount: discount !== 0,
         total: price?.with_tax?.amount ?? 0,
         totalFormatted: money.price(price?.with_tax),
         currency: price?.without_tax?.currency ?? "USD",

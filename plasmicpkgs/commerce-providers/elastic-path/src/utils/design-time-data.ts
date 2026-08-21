@@ -395,6 +395,7 @@ const MOCK_CHECKOUT_SUMMARY = {
   shippingFormatted: "$0.00",
   discount: 0,
   discountFormatted: "$0.00",
+  hasDiscount: false,
   total: 6696,
   totalFormatted: "$66.96",
   currency: "USD",

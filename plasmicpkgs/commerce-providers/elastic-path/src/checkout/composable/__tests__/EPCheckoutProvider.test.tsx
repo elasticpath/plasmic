@@ -33,12 +33,15 @@ const mockNextStep = jest.fn();
 const mockPreviousStep = jest.fn();
 const mockReset = jest.fn();
 
+// The checkout state the provider derives its summary from.
+const defaultCheckoutState = {
+  currentStep: "customer_info",
+  isLoading: false,
+};
+let mockCheckoutState: any = defaultCheckoutState;
 jest.mock("../../hooks/use-checkout", () => ({
-  useCheckout: jest.fn().mockReturnValue({
-    state: {
-      currentStep: "customer_info",
-      isLoading: false,
-    },
+  useCheckout: jest.fn(() => ({
+    state: mockCheckoutState,
     submitCustomerInfo: mockSubmitCustomerInfo,
     calculateShipping: mockCalculateShipping,
     selectShippingRate: mockSelectShippingRate,
@@ -51,7 +54,7 @@ jest.mock("../../hooks/use-checkout", () => ({
     reset: mockReset,
     canProceedToNext: false,
     totalAmount: 7291,
-  }),
+  })),
 }));
 
 // The cart the provider reads for pre-order totals.
@@ -331,6 +334,7 @@ describe("EPCheckoutProvider — totals before the order exists", () => {
 
   afterEach(() => {
     mockCart = null;
+    mockCheckoutState = defaultCheckoutState;
   });
 
   function readSummary() {
@@ -369,6 +373,188 @@ describe("EPCheckoutProvider — totals before the order exists", () => {
     expect(summary.total).toBe(3000);
     expect(summary.subtotalFormatted).toBe("$30.00");
     expect(summary.itemCount).toBe(2);
+  });
+
+  it("flags a cart discount so the Discount row renders", async () => {
+    // The default rows gate Discount on hasDiscount, a key the summary never
+    // set — so the composable path computed a discount and dropped it. EP
+    // reports the cart discount as a reduction, hence the sign-agnostic test.
+    mockCart = {
+      id: "cart-1",
+      itemCount: 1,
+      items: [],
+      meta: {
+        display_price: {
+          without_tax: money(2500),
+          tax: money(0),
+          with_tax: money(2500),
+          discount: money(-500),
+          without_discount: money(3000),
+        },
+      },
+    };
+
+    await act(async () => {
+      render(
+        <EPCheckoutProvider>
+          <span>content</span>
+        </EPCheckoutProvider>
+      );
+    });
+
+    const summary = readSummary();
+    expect(summary.hasDiscount).toBe(true);
+    expect(summary.discount).toBe(-500);
+  });
+
+  it("does not flag a discount the cart does not have", async () => {
+    mockCart = {
+      id: "cart-1",
+      itemCount: 1,
+      items: [],
+      meta: {
+        display_price: {
+          without_tax: money(2500),
+          tax: money(0),
+          with_tax: money(2500),
+          discount: money(0),
+        },
+      },
+    };
+
+    await act(async () => {
+      render(
+        <EPCheckoutProvider>
+          <span>content</span>
+        </EPCheckoutProvider>
+      );
+    });
+
+    expect(readSummary().hasDiscount).toBe(false);
+  });
+
+  it("shows the cart's own shipping instead of TBD", async () => {
+    // meta.display_price.shipping is what the cart path already reads; the
+    // composable summary looked only at the locally selected rate.
+    mockCart = {
+      id: "cart-1",
+      itemCount: 1,
+      items: [],
+      meta: {
+        display_price: {
+          without_tax: money(2500),
+          tax: money(0),
+          with_tax: money(3499),
+          discount: money(0),
+          shipping: money(999),
+        },
+      },
+    };
+
+    await act(async () => {
+      render(
+        <EPCheckoutProvider>
+          <span>content</span>
+        </EPCheckoutProvider>
+      );
+    });
+
+    const summary = readSummary();
+    expect(summary.shipping).toBe(999);
+    expect(summary.shippingFormatted).toBe("$9.99");
+    // with_tax already carries the cart's shipping — adding it again would
+    // overstate the total.
+    expect(summary.total).toBe(3499);
+  });
+
+  it("adds a locally selected rate on top of the cart total", async () => {
+    mockCart = {
+      id: "cart-1",
+      itemCount: 1,
+      items: [],
+      meta: {
+        display_price: {
+          without_tax: money(2500),
+          tax: money(0),
+          with_tax: money(2500),
+          discount: money(0),
+        },
+      },
+    };
+    mockCheckoutState = {
+      currentStep: "shipping",
+      isLoading: false,
+      selectedShippingRate: {
+        id: "rate-1",
+        name: "Standard",
+        amount: 500,
+        currency: "USD",
+        service_level: "standard",
+      },
+    };
+
+    await act(async () => {
+      render(
+        <EPCheckoutProvider>
+          <span>content</span>
+        </EPCheckoutProvider>
+      );
+    });
+
+    const summary = readSummary();
+    expect(summary.shipping).toBe(500);
+    expect(summary.total).toBe(3000);
+  });
+
+  it("does not tell a placed order its tax is still pending", async () => {
+    // Zero tax on a placed order means zero, not "not calculated yet".
+    mockCheckoutState = {
+      currentStep: "confirmation",
+      isLoading: false,
+      order: {
+        id: "order-1",
+        subtotal: money(2500),
+        tax: money(0),
+        total: money(2500),
+        relationships: { items: { data: [{ id: "item-1" }] } },
+      },
+    };
+
+    await act(async () => {
+      render(
+        <EPCheckoutProvider>
+          <span>content</span>
+        </EPCheckoutProvider>
+      );
+    });
+
+    expect(readSummary().taxFormatted).toBe("$0.00");
+  });
+
+  it("still defers tax before the order exists", async () => {
+    mockCart = {
+      id: "cart-1",
+      itemCount: 1,
+      items: [],
+      meta: {
+        display_price: {
+          without_tax: money(2500),
+          tax: money(0),
+          with_tax: money(2500),
+          discount: money(0),
+        },
+      },
+    };
+
+    await act(async () => {
+      render(
+        <EPCheckoutProvider>
+          <span>content</span>
+        </EPCheckoutProvider>
+      );
+    });
+
+    expect(readSummary().taxFormatted).toBe("Calculated at next step");
   });
 
   it("still reports zeros when there is no cart at all", async () => {

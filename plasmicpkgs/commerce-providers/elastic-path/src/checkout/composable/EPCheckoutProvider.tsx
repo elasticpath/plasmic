@@ -295,22 +295,29 @@ const EPCheckoutProviderRuntime = React.forwardRef<
     const tax = hasOrder
       ? state.order?.tax?.amount ?? 0
       : cartPrice?.tax?.amount ?? 0;
-    const shipping = state.selectedShippingRate?.amount ?? 0;
+    // A rate the shopper picked here is local state — it never reaches the
+    // cart — so it adds to the cart total. The cart's own shipping is already
+    // inside `with_tax`, so it is shown but not added again.
+    const cartShipping = cartPrice?.shipping?.amount;
+    const selectedShipping = state.selectedShippingRate?.amount;
+    const shipping = selectedShipping ?? cartShipping ?? 0;
+    const hasShipping = selectedShipping != null || cartShipping != null;
     const discount = hasOrder ? 0 : cartPrice?.discount?.amount ?? 0;
     const total = hasOrder
       ? state.order?.total?.amount ?? subtotal + tax + shipping
-      : (cartPrice?.with_tax?.amount ?? subtotal + tax) + shipping;
+      : (cartPrice?.with_tax?.amount ?? subtotal + tax) + (selectedShipping ?? 0);
 
     return {
       subtotal,
       subtotalFormatted: fmt(subtotal),
       tax,
-      taxFormatted: tax > 0 ? fmt(tax) : "Calculated at next step",
+      // A placed order with no tax has no tax, rather than tax still to come.
+      taxFormatted: tax > 0 || hasOrder ? fmt(tax) : "Calculated at next step",
       shipping,
-      shippingFormatted:
-        state.selectedShippingRate != null ? fmt(shipping) : "TBD",
+      shippingFormatted: hasShipping ? fmt(shipping) : "TBD",
       discount,
       discountFormatted: fmt(discount),
+      hasDiscount: discount !== 0,
       total,
       totalFormatted: fmt(total),
       currency: cur,
