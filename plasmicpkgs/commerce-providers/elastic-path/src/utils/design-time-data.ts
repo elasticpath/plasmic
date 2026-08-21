@@ -299,6 +299,7 @@ export const MOCK_CART_DATA: Cart = {
   type: "cart",
   items: MOCK_CART_LINE_ITEMS,
   itemCount: 3,
+  promotions: [],
   meta: {
     display_price: {
       without_tax: mockCartMoney(12497),
@@ -313,6 +314,7 @@ export const MOCK_EMPTY_CART_DATA: Cart = {
   ...MOCK_CART_DATA,
   items: [],
   itemCount: 0,
+  promotions: [],
   meta: {
     display_price: {
       without_tax: mockCartMoney(0),
@@ -354,6 +356,7 @@ export const MOCK_CHECKOUT_CART_DATA: Cart = {
   type: "cart",
   items: MOCK_CHECKOUT_CART_ITEMS,
   itemCount: 2,
+  promotions: [],
   meta: {
     display_price: {
       without_tax: mockCartMoney(6200),
@@ -369,6 +372,7 @@ export const MOCK_EMPTY_CHECKOUT_CART_DATA: Cart = {
   ...MOCK_CHECKOUT_CART_DATA,
   items: [],
   itemCount: 0,
+  promotions: [],
   meta: {
     display_price: {
       without_tax: mockCartMoney(0),

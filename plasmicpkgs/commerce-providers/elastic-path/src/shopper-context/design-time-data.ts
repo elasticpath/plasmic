@@ -12,6 +12,7 @@ export const MOCK_SERVER_CART_DATA: Cart = {
   id: "mock-cart-001",
   type: "cart",
   itemCount: 3,
+  promotions: [],
   items: [
     mockCartItem({
       id: "mock-item-1",
