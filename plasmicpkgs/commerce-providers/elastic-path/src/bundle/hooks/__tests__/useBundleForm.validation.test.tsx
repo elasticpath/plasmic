@@ -247,6 +247,36 @@ describe("useBundleForm — validation reaches the caller", () => {
     });
   });
 
+  it("does not re-add the bare parent after a variant is chosen", async () => {
+    // Selecting a variation also toggles the option checkbox, which writes the
+    // bare parent with no variationId. Whichever write lands last, the option
+    // must not count twice — the component read "2 of 0-3" for one gift.
+    const gift = {
+      gift: {
+        name: "Gift",
+        min: 0,
+        max: 3,
+        sort_order: 0,
+        options: [{ id: "parent", type: "product" as const, quantity: 1 }],
+      },
+    };
+
+    const { result } = renderHook(() =>
+      useBundleForm({
+        components: gift,
+        defaultConfiguration: btoa(JSON.stringify({ gift: { "parent:A": 1 } })),
+      })
+    );
+
+    await act(async () => {
+      result.current.handleComponentSelection("gift", "parent", 1);
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedOptions.gift).toEqual({ "parent:A": 1 });
+    });
+  });
+
   it("keeps a different option's selection when a variant is chosen", async () => {
     const gift = {
       gift: {

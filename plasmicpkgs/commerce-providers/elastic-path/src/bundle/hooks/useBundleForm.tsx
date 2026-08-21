@@ -144,6 +144,14 @@ export function useBundleForm({
       // switch left another child behind.
       const supersedesVariants = !!variationId && quantity > 0;
 
+      // The same rule read the other way. Choosing a variation also toggles the
+      // option checkbox, which writes the bare parent with no variationId, so
+      // whichever write lands last the option must not count twice.
+      const supersededByVariant =
+        !variationId &&
+        quantity > 0 &&
+        Object.keys(current).some((key) => key.startsWith(`${optionId}:`));
+
       Object.entries(current).forEach(([key, qty]) => {
         if (key === selectionKey) return; // rewritten below
         if (isSingleSelect) return; // single-select: this choice replaces the rest
@@ -156,7 +164,7 @@ export function useBundleForm({
         if (qty > 0) next[key] = qty;
       });
 
-      if (quantity > 0) {
+      if (quantity > 0 && !supersededByVariant) {
         next[selectionKey] = quantity;
       }
 
