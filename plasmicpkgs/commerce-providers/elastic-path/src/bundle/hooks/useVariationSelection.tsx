@@ -31,29 +31,33 @@ export function useVariationSelection({
 }: UseVariationSelectionProps): UseVariationSelectionReturn {
   const [variationSelections, setVariationSelections] = useState<Record<string, string>>({});
 
-  // Handle variation selection change
+  // Handle variation selection change.
+  //
+  // onSelectionChange stays outside the state updater. React runs updaters
+  // during render, so notifying from inside one made the bundle provider's
+  // setValue a render-phase update on another component, and StrictMode ran
+  // the whole selection twice.
   const handleVariationChange = useCallback((variationId: string, value: string) => {
-    setVariationSelections(prev => {
-      const newSelections = { ...prev, [variationId]: value };
-      
-      // Find matching variant with updated selections
-      const matchingVariant = findMatchingVariant(newSelections, parentInfo);
-      
-      // Update bundle selection with new variant
-      if (matchingVariant) {
-        // If we have a different variant selected, clear the old one first
-        if (selectedVariationId && selectedVariationId !== matchingVariant.id) {
-          onSelectionChange(componentKey, optionId, 0, selectedVariationId);
-        }
-        // Select new variant
-        onSelectionChange(componentKey, optionId, 1, matchingVariant.id);
-      }
-      // Note: If no matching variant is found, we don't add anything to selections
-      // The parent product checkbox state is handled separately in the UI
-      
-      return newSelections;
-    });
-  }, [parentInfo, onSelectionChange, componentKey, optionId, selectedVariationId]);
+    const newSelections = { ...variationSelections, [variationId]: value };
+    setVariationSelections(newSelections);
+
+    const matchingVariant = findMatchingVariant(newSelections, parentInfo);
+    // No matching variant means an incomplete combination: nothing to select
+    // yet, and the parent checkbox state is handled separately in the UI.
+    if (!matchingVariant) return;
+
+    if (selectedVariationId && selectedVariationId !== matchingVariant.id) {
+      onSelectionChange(componentKey, optionId, 0, selectedVariationId);
+    }
+    onSelectionChange(componentKey, optionId, 1, matchingVariant.id);
+  }, [
+    variationSelections,
+    parentInfo,
+    onSelectionChange,
+    componentKey,
+    optionId,
+    selectedVariationId,
+  ]);
 
   // Calculate matching variant for current selections
   const matchingVariant = findMatchingVariant(variationSelections, parentInfo);

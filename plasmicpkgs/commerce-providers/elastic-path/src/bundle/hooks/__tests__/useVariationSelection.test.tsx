@@ -1,7 +1,8 @@
 /**
  * @jest-environment jsdom
  */
-import { renderHook, act } from "@testing-library/react";
+import React, { StrictMode } from "react";
+import { render, renderHook, act } from "@testing-library/react";
 
 // Mock variationMatching
 jest.mock("../../utils/variationMatching", () => ({
@@ -131,6 +132,79 @@ describe("useVariationSelection", () => {
       1,
       "child-red-512"
     );
+  });
+
+  it("does not update the bundle provider during the picker's render", () => {
+    // onSelectionChange used to run inside the setVariationSelections updater,
+    // and React runs updaters during render — so the setValue it performs was a
+    // render-phase update on another component: "Cannot update a component
+    // (EPBundleProviderInner) while rendering a different component
+    // (EPBundleVariationPicker)".
+    findMatchingVariant.mockReturnValue({
+      id: "child-red-512",
+      name: "Red 512GB",
+      sku: "RED-512",
+    });
+
+    function Picker({
+      onSelectionChange,
+    }: {
+      onSelectionChange: (...args: any[]) => void;
+    }) {
+      const { handleVariationChange } = useVariationSelection({
+        parentInfo: baseParentInfo,
+        onSelectionChange,
+        componentKey: "storage",
+        optionId: "parent-1",
+      });
+      // A pending update on this fiber is what makes React defer the
+      // setVariationSelections updater to the render phase instead of running
+      // it eagerly during dispatch — which is the situation in the real app.
+      const [, bump] = React.useState(0);
+      return (
+        <button
+          onClick={() => {
+            bump((n) => n + 1);
+            handleVariationChange("var-color", "opt-red");
+          }}
+        >
+          pick
+        </button>
+      );
+    }
+
+    // Stands in for EPBundleProviderInner: the selection writes its state.
+    function Provider() {
+      const [writes, setWrites] = React.useState(0);
+      const onSelectionChange = React.useCallback(() => {
+        setWrites((n) => n + 1);
+      }, []);
+      return (
+        <>
+          <span data-testid="writes">{writes}</span>
+          <Picker onSelectionChange={onSelectionChange} />
+        </>
+      );
+    }
+
+    const errors: string[] = [];
+    const spy = jest
+      .spyOn(console, "error")
+      .mockImplementation((...args) => errors.push(String(args[0])));
+
+    try {
+      const { getByText, getByTestId } = render(<Provider />);
+      act(() => {
+        getByText("pick").click();
+      });
+
+      expect(
+        errors.filter((e) => /Cannot update a component/.test(e))
+      ).toEqual([]);
+      expect(getByTestId("writes").textContent).toBe("1");
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("does not call onSelectionChange when no matching variant is found", () => {
