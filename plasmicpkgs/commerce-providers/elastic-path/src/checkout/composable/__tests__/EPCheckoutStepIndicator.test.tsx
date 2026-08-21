@@ -196,4 +196,42 @@ describe("EPCheckoutStepIndicator", () => {
       );
     });
   });
+
+  describe("with an empty slot", () => {
+    it("names each step instead of repeating placeholder words", () => {
+      // The default was the literal words "Step" and "Name", once per step.
+      const { container } = render(<EPCheckoutStepIndicator />);
+
+      const steps = container.querySelectorAll("[data-ep-step]");
+      expect(steps).toHaveLength(4);
+      const names = [...container.querySelectorAll("[data-ep-step-name]")].map(
+        (n) => n.textContent
+      );
+      expect(names).not.toContain("Name");
+      expect(names.every((n) => !!n && n.length > 1)).toBe(true);
+      expect(
+        [...container.querySelectorAll("[data-ep-step-number]")].map(
+          (n) => n.textContent
+        )
+      ).toEqual(["1", "2", "3", "4"]);
+    });
+
+    it("marks which step the shopper is on", () => {
+      const { container } = render(<EPCheckoutStepIndicator />);
+
+      const active = container.querySelectorAll('[data-state="active"]');
+      expect(active).toHaveLength(1);
+      expect(active[0].getAttribute("aria-current")).toBe("step");
+    });
+
+    it("leaves the slot content alone when there is any", () => {
+      const { container } = render(
+        <EPCheckoutStepIndicator>
+          <span data-testid="mine">mine</span>
+        </EPCheckoutStepIndicator>
+      );
+
+      expect(container.querySelectorAll("[data-ep-step]")).toHaveLength(0);
+    });
+  });
 });
