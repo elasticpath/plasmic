@@ -45,9 +45,15 @@ export interface UseResolvedFieldResult {
 /** Shared host wiring for both field components: read the product, mock in the canvas, delegate to the pure resolvers. */
 export function useResolvedField(args: ResolveArgs): UseResolvedFieldResult {
   const liveProduct = useSelector("currentProduct") as Product | undefined;
+  // The chosen child product, published by EPProductProvider. A variant carries
+  // its own price and SKU, so a field that the variant answers must come from
+  // the variant — otherwise the page quotes the parent's price and the cart
+  // charges the child's.
+  const currentVariant = useSelector("currentVariant") as Product | undefined;
   const inEditor = !!usePlasmicCanvasContext();
   const useMock = args.forceMock || (!liveProduct && inEditor);
   const product = useMock ? MOCK_PRODUCT : liveProduct;
+  const variant = useMock ? undefined : currentVariant;
   const locale = args.locale || DEFAULT_LOCALE;
 
   const templates = useMemo(
@@ -60,7 +66,20 @@ export function useResolvedField(args: ResolveArgs): UseResolvedFieldResult {
 
   const resolved = useMemo(() => {
     if (args.kind === "topLevel") {
-      return resolveTopLevelField(product, args.leafId, args.format, locale);
+      const fromProduct = resolveTopLevelField(
+        product,
+        args.leafId,
+        args.format,
+        locale,
+      );
+      if (!variant) return fromProduct;
+      const fromVariant = resolveTopLevelField(
+        variant,
+        args.leafId,
+        args.format,
+        locale,
+      );
+      return fromVariant.hasValue ? fromVariant : fromProduct;
     }
     return resolveExtensionField(
       templates,
@@ -73,6 +92,7 @@ export function useResolvedField(args: ResolveArgs): UseResolvedFieldResult {
   }, [
     args.kind,
     product,
+    variant,
     templates,
     locale,
     args.format,

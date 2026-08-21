@@ -59,6 +59,7 @@ const {
   EPProductExtensionFieldList,
 } = require("../EPProductExtensionFieldList");
 const { EPProductExtensionField } = require("../EPProductExtensionField");
+const { EPProductField } = require("../EPProductField");
 const { MOCK_EXTENSION_TEMPLATES } = require("../../../utils/extensions-mock");
 
 // ---------------------------------------------------------------------------
@@ -339,5 +340,68 @@ describe("EPProductExtensionField", () => {
       <EPProductExtensionField field="displayValue" />,
     );
     expect(container.textContent).toBe("");
+  });
+});
+
+// ===========================================================================
+// EPProductField — the selected variant's money
+// ===========================================================================
+
+describe("EPProductField with a selected variant", () => {
+  const price = (amount: number) => ({
+    amount,
+    currency: "USD",
+    float_price: amount / 100,
+    formatted: `$${(amount / 100).toFixed(2)}`,
+  });
+
+  const parent = {
+    id: "parent-1",
+    attributes: { name: "Sandle", sku: "sandle" },
+    meta: { display_price: { without_tax: price(2000) } },
+  };
+
+  const child = {
+    id: "child-1",
+    attributes: { name: "Sandle", sku: "sandlesm" },
+    meta: { display_price: { without_tax: price(1500) } },
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setEditorMode(false);
+  });
+
+  it("quotes the parent's price when nothing is selected", () => {
+    setupSelector({ currentProduct: parent });
+    const { container } = render(<EPProductField field="price" />);
+    expect(container.textContent).toContain("20.00");
+  });
+
+  it("quotes the chosen variant's price, not the parent's", () => {
+    // The picker resolved a child at $15.00 while the page showed the parent's
+    // $20.00 — and the cart charged $15.00.
+    setupSelector({ currentProduct: parent, currentVariant: child });
+    const { container } = render(<EPProductField field="price" />);
+    expect(container.textContent).toContain("15.00");
+    expect(container.textContent).not.toContain("20.00");
+  });
+
+  it("uses the variant's SKU", () => {
+    setupSelector({ currentProduct: parent, currentVariant: child });
+    const { container } = render(<EPProductField field="sku" />);
+    expect(container.textContent).toBe("sandlesm");
+  });
+
+  it("falls back to the parent for a field the variant does not carry", () => {
+    setupSelector({
+      currentProduct: {
+        ...parent,
+        attributes: { ...parent.attributes, description: "A sandle" },
+      },
+      currentVariant: child,
+    });
+    const { container } = render(<EPProductField field="description" />);
+    expect(container.textContent).toBe("A sandle");
   });
 });

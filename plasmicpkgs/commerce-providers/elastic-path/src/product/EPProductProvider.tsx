@@ -29,7 +29,7 @@ import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useMemo } from "react";
-import { FormProvider, useForm } from "react-hook-form";
+import { FormProvider, useForm, useWatch } from "react-hook-form";
 import { Registerable } from "../registerable";
 import useProduct from "./use-product";
 import { createLogger } from "../utils/logger";
@@ -44,6 +44,44 @@ const log = createLogger("EPProductProvider");
 function ProductFormScope({ children }: { children: React.ReactNode }) {
   const methods = useForm();
   return <FormProvider {...methods}>{children}</FormProvider>;
+}
+
+/**
+ * Publishes the child product the shopper has actually chosen as
+ * `currentVariant`.
+ *
+ * EPVariationPicker resolves the matching child and writes its id to the
+ * `ProductVariant` form field, but kept the child itself in a React context of
+ * its own — so nothing outside the picker could read it. A buybox price bound to
+ * `currentProduct` therefore showed the *parent's* price while the cart charged
+ * the child's: $20.00 on the page, $15.00 at checkout for the same click.
+ *
+ * This sits inside the form scope (to watch the field) and above the content (so
+ * the buybox, not just the picker's own subtree, can read it).
+ */
+function CurrentVariantScope({
+  product,
+  children,
+}: {
+  product: Product | undefined;
+  children: React.ReactNode;
+}) {
+  const variantId = useWatch({ name: "ProductVariant" }) as
+    | string
+    | undefined;
+
+  const currentVariant = useMemo(() => {
+    if (!variantId) return undefined;
+    const children = (product as unknown as { childProducts?: Product[] })
+      ?.childProducts;
+    return children?.find((child) => child?.id === variantId);
+  }, [product, variantId]);
+
+  return (
+    <DataProvider name="currentVariant" data={currentVariant}>
+      {children}
+    </DataProvider>
+  );
 }
 
 /**
@@ -243,9 +281,11 @@ export function EPProductProvider(props: EPProductProviderProps) {
     <DataProvider name="currentProduct" data={dataProduct}>
       <DataProvider name="productExtensions" data={productExtensions}>
         <ProductFormScope key={dataProduct?.id}>
-          <div className={className} data-ep-product-provider="">
-            {content}
-          </div>
+          <CurrentVariantScope product={dataProduct}>
+            <div className={className} data-ep-product-provider="">
+              {content}
+            </div>
+          </CurrentVariantScope>
         </ProductFormScope>
       </DataProvider>
     </DataProvider>
