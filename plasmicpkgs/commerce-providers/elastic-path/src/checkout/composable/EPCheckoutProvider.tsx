@@ -43,6 +43,7 @@ import type {
   ShippingRate,
 } from "../types";
 import { useMoneyFormat } from "../../shopper-context/use-money-format";
+import { useEpCart } from "../../cart-provider/use-ep-cart";
 
 const log = createLogger("EPCheckoutProvider");
 
@@ -271,31 +272,64 @@ const EPCheckoutProviderRuntime = React.forwardRef<
   // Build the formatted summary from state
   const money = useMoneyFormat();
 
+  // The order only exists once payment succeeds, so before that the cart is the
+  // only source of real money. Deriving the summary from `state.order` alone
+  // published zeros for the whole flow, and EPOrderTotalsBreakdown prefers this
+  // summary over the cart — so the shopper read "Total $0.00" on a cart worth
+  // $30 right up to the confirmation step.
+  const { cart } = useEpCart();
+
   const summary = useMemo(() => {
-    const cur = state.order?.total?.currency ?? "USD";
+    const cartPrice = cart?.meta?.display_price;
+    const cur =
+      state.order?.total?.currency ??
+      cartPrice?.without_tax?.currency ??
+      "USD";
     const fmt = (minor: number) => money.minor(minor, cur);
 
-    const subtotal = state.order?.subtotal?.amount ?? 0;
-    const tax = state.order?.tax?.amount ?? 0;
-    const shipping = state.selectedShippingRate?.amount ?? 0;
-    const total = state.order?.total?.amount ?? subtotal + tax + shipping;
+    const hasOrder = state.order != null;
+
+    // without_tax is already post-discount, so a Discount row beside it read
+    // "13.50 - 1.50 = 13.50". without_discount is the pre-discount figure.
+    const cartSubtotal =
+      cartPrice?.without_discount ?? cartPrice?.without_tax;
+    const subtotal = hasOrder
+      ? state.order?.subtotal?.amount ?? 0
+      : cartSubtotal?.amount ?? 0;
+    const tax = hasOrder
+      ? state.order?.tax?.amount ?? 0
+      : cartPrice?.tax?.amount ?? 0;
+    // A rate the shopper picked here is local state — it never reaches the
+    // cart — so it adds to the cart total. The cart's own shipping is already
+    // inside `with_tax`, so it is shown but not added again.
+    const cartShipping = cartPrice?.shipping?.amount;
+    const selectedShipping = state.selectedShippingRate?.amount;
+    const shipping = selectedShipping ?? cartShipping ?? 0;
+    const hasShipping = selectedShipping != null || cartShipping != null;
+    const discount = hasOrder ? 0 : cartPrice?.discount?.amount ?? 0;
+    const total = hasOrder
+      ? state.order?.total?.amount ?? subtotal + tax + shipping
+      : (cartPrice?.with_tax?.amount ?? subtotal + tax) + (selectedShipping ?? 0);
 
     return {
       subtotal,
       subtotalFormatted: fmt(subtotal),
       tax,
-      taxFormatted: tax > 0 ? fmt(tax) : "Calculated at next step",
+      // A placed order with no tax has no tax, rather than tax still to come.
+      taxFormatted: tax > 0 || hasOrder ? fmt(tax) : "Calculated at next step",
       shipping,
-      shippingFormatted:
-        state.selectedShippingRate != null ? fmt(shipping) : "TBD",
-      discount: 0,
-      discountFormatted: fmt(0),
+      shippingFormatted: hasShipping ? fmt(shipping) : "TBD",
+      discount,
+      discountFormatted: fmt(discount),
+      hasDiscount: discount !== 0,
       total,
       totalFormatted: fmt(total),
       currency: cur,
-      itemCount: state.order?.relationships?.items?.data?.length ?? 0,
+      itemCount: hasOrder
+        ? state.order?.relationships?.items?.data?.length ?? 0
+        : cart?.itemCount ?? 0,
     };
-  }, [state.order, state.selectedShippingRate, money]);
+  }, [state.order, state.selectedShippingRate, money, cart]);
 
   // Derive customerInfo from state
   const customerInfo = useMemo(() => {

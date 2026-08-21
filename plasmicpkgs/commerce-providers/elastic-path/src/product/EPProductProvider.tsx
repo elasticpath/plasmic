@@ -29,7 +29,7 @@ import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useMemo } from "react";
-import { FormProvider, useForm } from "react-hook-form";
+import { FormProvider, useForm, useWatch } from "react-hook-form";
 import { Registerable } from "../registerable";
 import useProduct from "./use-product";
 import { createLogger } from "../utils/logger";
@@ -44,6 +44,73 @@ const log = createLogger("EPProductProvider");
 function ProductFormScope({ children }: { children: React.ReactNode }) {
   const methods = useForm();
   return <FormProvider {...methods}>{children}</FormProvider>;
+}
+
+/**
+ * Publishes the child product the shopper has actually chosen as
+ * `currentVariant`.
+ *
+ * EPVariationPicker resolves the matching child and writes its id to the
+ * `ProductVariant` form field, but kept the child itself in a React context of
+ * its own — so nothing outside the picker could read it. A buybox price bound to
+ * `currentProduct` therefore showed the *parent's* price while the cart charged
+ * the child's: $20.00 on the page, $15.00 at checkout for the same click.
+ *
+ * This sits inside the form scope (to watch the field) and above the content (so
+ * the buybox, not just the picker's own subtree, can read it).
+ */
+function CurrentVariantScope({
+  product,
+  children,
+}: {
+  product: Product | undefined;
+  children: React.ReactNode;
+}) {
+  const variantId = useWatch({ name: "ProductVariant" }) as
+    | string
+    | undefined;
+
+  const currentVariant = useMemo(() => {
+    if (!variantId || !product) return undefined;
+    const child = product.childProducts?.find((c) => c?.id === variantId);
+    if (!child) return undefined;
+
+    // A ChildProduct is flat (`name`, `sku`, `price`); everything that reads a
+    // product — Studio bindings, EP Product Field's field catalog — looks under
+    // `attributes` and `meta.display_price`. Project it onto the product shape
+    // so the variant is a drop-in for `currentProduct`.
+    //
+    // `display_price` carries only `without_tax`, which is all a child reports.
+    // Keeping the parent's `with_tax` would quote the parent's tax-inclusive
+    // price against the child's net one.
+    return {
+      ...product,
+      id: child.id,
+      attributes: {
+        ...(product.attributes ?? {}),
+        name: child.name || product.attributes?.name,
+        sku: child.sku ?? product.attributes?.sku,
+      },
+      // A variant with no photo of its own shows the product's, which is
+      // reasonable in a way that inheriting a price is not.
+      images: child.images.length > 0 ? child.images : product.images,
+      meta: {
+        ...(product.meta ?? {}),
+        // Always the child's own price, even when that means none: inheriting
+        // the parent's would quote a price this variant cannot be bought at.
+        display_price:
+          child.price || child.priceWithTax
+            ? { without_tax: child.price, with_tax: child.priceWithTax }
+            : undefined,
+      },
+    } as Product;
+  }, [product, variantId]);
+
+  return (
+    <DataProvider name="currentVariant" data={currentVariant}>
+      {children}
+    </DataProvider>
+  );
 }
 
 /**
@@ -243,9 +310,11 @@ export function EPProductProvider(props: EPProductProviderProps) {
     <DataProvider name="currentProduct" data={dataProduct}>
       <DataProvider name="productExtensions" data={productExtensions}>
         <ProductFormScope key={dataProduct?.id}>
-          <div className={className} data-ep-product-provider="">
-            {content}
-          </div>
+          <CurrentVariantScope product={dataProduct}>
+            <div className={className} data-ep-product-provider="">
+              {content}
+            </div>
+          </CurrentVariantScope>
         </ProductFormScope>
       </DataProvider>
     </DataProvider>

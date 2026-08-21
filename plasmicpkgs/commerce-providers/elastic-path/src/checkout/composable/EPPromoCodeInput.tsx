@@ -14,6 +14,7 @@ import { Registerable } from "../../registerable";
 import { useEpCommerce } from "../../shopper-context/EpCommerceContext";
 import { getCartIdFromSession } from "../../cart/cart-session";
 import { useShopperFetch } from "../../shopper-context/useShopperFetch";
+import { useEpCart } from "../../cart-provider/use-ep-cart";
 import { createLogger } from "../../utils/logger";
 
 const log = createLogger("EPPromoCodeInput");
@@ -112,6 +113,18 @@ const MOCK_PROMO_DATA = {
   formattedDiscount: "-$10.00",
   errorMessage: null as string | null,
 };
+
+/**
+ * The promotion the cart already carries. Without this the applied state lived
+ * only in local component state, so any navigation lost the chip while the
+ * discount was still live on the cart.
+ */
+function useCartPromotion(): { id?: string; label: string | null } | null {
+  const { cart } = useEpCart();
+  const promotion = cart?.promotions?.[0];
+  if (!promotion) return null;
+  return { id: promotion.id, label: promotion.name ?? null };
+}
 
 /**
  * Outer wrapper that dispatches to server or client inner component.
@@ -278,6 +291,7 @@ function EPPromoCodeInputClient(props: EPPromoCodeInputProps) {
   const [code, setCode] = useState("");
   const [state, setState] = useState<PromoState>("idle");
   const [appliedCode, setAppliedCode] = useState<string | null>(null);
+  const cartPromotion = useCartPromotion();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleApply = useCallback(async () => {
@@ -359,9 +373,9 @@ function EPPromoCodeInputClient(props: EPPromoCodeInputProps) {
       handleRemove={handleRemove}
       code={code}
       setCode={setCode}
-      state={state}
+      state={state === "idle" && cartPromotion ? "applied" : state}
       setState={setState}
-      appliedCode={appliedCode}
+      appliedCode={appliedCode ?? cartPromotion?.label ?? null}
       errorMessage={errorMessage}
       setErrorMessage={setErrorMessage}
     />
@@ -377,6 +391,7 @@ function EPPromoCodeInputServer(props: EPPromoCodeInputProps) {
   const [code, setCode] = useState("");
   const [state, setState] = useState<PromoState>("idle");
   const [appliedCode, setAppliedCode] = useState<string | null>(null);
+  const cartPromotion = useCartPromotion();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleApply = useCallback(async () => {
@@ -439,9 +454,9 @@ function EPPromoCodeInputServer(props: EPPromoCodeInputProps) {
       handleRemove={handleRemove}
       code={code}
       setCode={setCode}
-      state={state}
+      state={state === "idle" && cartPromotion ? "applied" : state}
       setState={setState}
-      appliedCode={appliedCode}
+      appliedCode={appliedCode ?? cartPromotion?.label ?? null}
       errorMessage={errorMessage}
       setErrorMessage={setErrorMessage}
     />

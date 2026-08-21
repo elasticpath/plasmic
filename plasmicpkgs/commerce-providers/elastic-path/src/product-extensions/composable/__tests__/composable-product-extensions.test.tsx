@@ -59,6 +59,7 @@ const {
   EPProductExtensionFieldList,
 } = require("../EPProductExtensionFieldList");
 const { EPProductExtensionField } = require("../EPProductExtensionField");
+const { EPProductField } = require("../EPProductField");
 const { MOCK_EXTENSION_TEMPLATES } = require("../../../utils/extensions-mock");
 
 // ---------------------------------------------------------------------------
@@ -339,5 +340,103 @@ describe("EPProductExtensionField", () => {
       <EPProductExtensionField field="displayValue" />,
     );
     expect(container.textContent).toBe("");
+  });
+});
+
+// ===========================================================================
+// EPProductField — the selected variant's money
+// ===========================================================================
+
+describe("EPProductField with a selected variant", () => {
+  const price = (amount: number) => ({
+    amount,
+    currency: "USD",
+    float_price: amount / 100,
+    formatted: `$${(amount / 100).toFixed(2)}`,
+  });
+
+  const parent = {
+    id: "parent-1",
+    attributes: { name: "Sandle", sku: "sandle" },
+    meta: { display_price: { without_tax: price(2000) } },
+  };
+
+  // What EPProductProvider publishes: the flat ChildProduct projected onto the
+  // product shape, carrying only the child's own without_tax price.
+  const child = {
+    ...parent,
+    id: "child-1",
+    attributes: { name: "Sandle", sku: "sandlesm" },
+    meta: { display_price: { without_tax: price(1500) } },
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setEditorMode(false);
+  });
+
+  it("quotes the parent's price when nothing is selected", () => {
+    setupSelector({ currentProduct: parent });
+    const { container } = render(<EPProductField field="price" />);
+    expect(container.textContent).toContain("20.00");
+  });
+
+  it("quotes the chosen variant's price, not the parent's", () => {
+    // The picker resolved a child at $15.00 while the page showed the parent's
+    // $20.00 — and the cart charged $15.00.
+    setupSelector({ currentProduct: parent, currentVariant: child });
+    const { container } = render(<EPProductField field="price" />);
+    expect(container.textContent).toContain("15.00");
+    expect(container.textContent).not.toContain("20.00");
+  });
+
+  it("uses the variant's SKU", () => {
+    setupSelector({ currentProduct: parent, currentVariant: child });
+    const { container } = render(<EPProductField field="sku" />);
+    expect(container.textContent).toBe("sandlesm");
+  });
+
+  it("falls back to the parent for a field the variant does not carry", () => {
+    setupSelector({
+      currentProduct: {
+        ...parent,
+        attributes: { ...parent.attributes, description: "A sandle" },
+      },
+      currentVariant: child,
+    });
+    const { container } = render(<EPProductField field="description" />);
+    expect(container.textContent).toBe("A sandle");
+  });
+
+  it("does not quote the parent's tax-inclusive price for the variant", () => {
+    // A child reports only without_tax. Keeping the parent's with_tax would put
+    // the parent's number behind a priceWithTax binding.
+    setupSelector({
+      currentProduct: {
+        ...parent,
+        meta: {
+          display_price: { without_tax: price(2000), with_tax: price(2400) },
+        },
+      },
+      currentVariant: child,
+    });
+    const { container } = render(<EPProductField field="priceWithTax" />);
+    expect(container.textContent).not.toContain("24.00");
+  });
+
+  it("shows no price for a variant that has none, rather than the parent's", () => {
+    // A child with no price of its own cannot be bought at the parent's price —
+    // EP rejects the add — so quoting it would be a lie.
+    setupSelector({
+      currentProduct: parent,
+      currentVariant: {
+        ...parent,
+        id: "child-2",
+        attributes: { name: "Sandle", sku: "sandlexl" },
+        meta: { display_price: undefined },
+      },
+    });
+    const { container } = render(<EPProductField field="price" />);
+    expect(container.textContent).not.toContain("20.00");
   });
 });

@@ -15,7 +15,8 @@ type BundleOptionFieldName =
   | "sku"
   | "description"
   | "isDefault"
-  | "isParentProduct";
+  | "isParentProduct"
+  | "isUnavailable";
 
 type PreviewState = "auto" | "withData";
 
@@ -43,6 +44,7 @@ export const epBundleOptionFieldMeta: CodeComponentMeta<EPBundleOptionFieldProps
         { label: "Description", value: "description" },
         { label: "Is Default", value: "isDefault" },
         { label: "Is Parent Product", value: "isParentProduct" },
+        { label: "Is Unavailable", value: "isUnavailable" },
       ],
       defaultValue: "name",
       displayName: "Field",
@@ -76,7 +78,7 @@ export function EPBundleOptionField(props: EPBundleOptionFieldProps) {
   const data = useMock ? MOCK_BUNDLE_COMPONENTS[0].options[0] : currentOption;
   if (!data) return null;
 
-  let value: any = data[field];
+  let value: any = (data as Record<string, any>)[field];
 
   // Boolean fields get string representation
   if (typeof value === "boolean") {

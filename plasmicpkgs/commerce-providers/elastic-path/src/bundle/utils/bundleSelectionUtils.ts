@@ -14,35 +14,56 @@ export const sortByOrder = <T extends { sort_order?: number | null }>(items: T[]
 /**
  * Convert parent product selections to API format
  * Transforms parent:child format to just child ID for API calls
+ *
+ * Two things never reach Elastic Path:
+ *
+ * - A zero (or negative) quantity. `selected_options` quantities must be >= 1;
+ *   a single zero entry fails the whole add with "Must be greater than or equal
+ *   to 1", so a deselected option is dropped rather than sent as 0.
+ * - A bare parent id whose variation has been chosen. The child selection
+ *   supersedes it, and sending both counts as two selections against the
+ *   component's max ("too many selections"), besides being rejected outright
+ *   because a parent product is not purchasable.
  */
 export const convertSelectionsForAPI = (
   selections: Record<string, Record<string, number>>
 ): Record<string, Record<string, number>> => {
   const apiSelections: Record<string, Record<string, number>> = {};
-  
+
   // Special form fields to exclude from API calls
   const excludedFields = ['BundleConfiguration', 'ConfiguredBundleId'];
-  
+
   Object.entries(selections).forEach(([componentKey, options]) => {
     // Skip excluded form fields
     if (excludedFields.includes(componentKey)) {
       return;
     }
-    
+
     apiSelections[componentKey] = {};
-    
-    Object.entries(options).forEach(([selectionKey, quantity]) => {
+
+    const entries = Object.entries(options ?? {}).filter(
+      ([, quantity]) => typeof quantity === "number" && quantity > 0
+    );
+
+    // Parents whose variation is among the live selections.
+    const supersededParents = new Set(
+      entries
+        .filter(([selectionKey]) => selectionKey.includes(":"))
+        .map(([selectionKey]) => selectionKey.split(":")[0])
+    );
+
+    entries.forEach(([selectionKey, quantity]) => {
       if (selectionKey.includes(':')) {
         // Parent product variation: use the child product ID
-        const [parentId, childId] = selectionKey.split(':');
+        const [, childId] = selectionKey.split(':');
         apiSelections[componentKey][childId] = quantity;
-      } else {
+      } else if (!supersededParents.has(selectionKey)) {
         // Simple product: use as-is
         apiSelections[componentKey][selectionKey] = quantity;
       }
     });
   });
-  
+
   return apiSelections;
 };
 

@@ -75,7 +75,27 @@ export function EPCheckoutStepIndicator(props: EPCheckoutStepIndicatorProps) {
       {stepsData.map((step, i) => (
         <DataProvider key={step.stepKey} name="currentStep" data={step}>
           <DataProvider name="currentStepIndex" data={i}>
-            {repeatedElement(i, children)}
+            {children ? (
+              repeatedElement(i, children)
+            ) : (
+              // An empty slot used to be filled with the literal words "Step"
+              // and "Name", repeated once per step. The default says which step
+              // it is and where the shopper has got to.
+              <div
+                data-ep-step=""
+                data-state={
+                  step.isActive
+                    ? "active"
+                    : step.isCompleted
+                    ? "completed"
+                    : "future"
+                }
+                aria-current={step.isActive ? "step" : undefined}
+              >
+                <span data-ep-step-number="">{i + 1}</span>
+                <span data-ep-step-name="">{step.name}</span>
+              </div>
+            )}
           </DataProvider>
         </DataProvider>
       ))}
@@ -95,15 +115,9 @@ export const epCheckoutStepIndicatorMeta: CodeComponentMeta<EPCheckoutStepIndica
     props: {
       children: {
         type: "slot",
-        defaultValue: [
-          {
-            type: "hbox",
-            children: [
-              { type: "text", value: "Step" },
-              { type: "text", value: "Name" },
-            ],
-          },
-        ],
+        description:
+          "Optional. Leave empty for a default number + name per step; fill it to compose your own against currentStep (name, isActive, isCompleted, isFuture).",
+        hidePlaceholder: true,
       },
       previewState: {
         type: "choice",

@@ -82,31 +82,49 @@ export function useBundleForm({
     mode: 'onChange', // Enable real-time validation
   });
 
-  const { 
+  const {
     handleSubmit: rhfHandleSubmit,
     watch,
     setValue,
-    formState: { errors: formErrors, isValid },
+    getValues,
     reset: rhfReset,
   } = form;
 
   // Watch all form values for real-time updates
   const selectedOptions = watch();
 
-  // Convert form errors to simple string format for backward compatibility
-  const errors = useMemo(() => {
-    const errorMessages: Record<string, string> = {};
-    
-    Object.entries(formErrors).forEach(([key, error]) => {
-      if (typeof error?.message === "string") {
-        errorMessages[key] = error.message;
-      }
-    });
-    
-    return errorMessages;
-  }, [formErrors]);
+  // Validity and messages come from the schema, run against the current
+  // selections.
+  //
+  // Not from `formState`: react-hook-form only fills `errors` for fields it has
+  // seen written, so a bundle that arrived invalid — a shared link, a catalog
+  // default that cannot be satisfied — reported `isValid: false` with no message
+  // to show for it. The shopper got a disabled button and no reason. One
+  // safeParse answers both, for every path into the page.
+  const { isValid, errors } = useMemo(() => {
+    const result = (bundleSchema as { safeParse: (v: unknown) => any }).safeParse(
+      selectedOptions
+    );
+    if (result.success) {
+      return { isValid: true, errors: {} as Record<string, string> };
+    }
 
-  // Handle component selection - maintains existing API
+    const errorMessages: Record<string, string> = {};
+    for (const issue of result.error?.issues ?? []) {
+      // First issue per component wins: one message per thing to fix.
+      const key = String(issue.path?.[0] ?? "");
+      if (key && !errorMessages[key]) {
+        errorMessages[key] = issue.message;
+      }
+    }
+    return { isValid: false, errors: errorMessages };
+  }, [bundleSchema, selectedOptions]);
+
+  // An option is either present with a positive quantity or absent: Elastic Path
+  // rejects a zero-quantity selection outright. The current map comes from
+  // `getValues`, not the render-time `watch()` snapshot, because switching a
+  // variation fires two calls in one tick and a stale snapshot let the second
+  // reinstate the child the first removed.
   const handleComponentSelection = useCallback(
     (componentKey: string, optionId: string, quantity: number, variationId?: string) => {
       const component = components[componentKey];
@@ -114,38 +132,48 @@ export function useBundleForm({
 
       // Use variationId if provided (for parent products)
       const selectionKey = variationId ? `${optionId}:${variationId}` : optionId;
-      
-      setValue(`${componentKey}.${selectionKey}`, quantity, {
+
+      const next: Record<string, number> = {};
+      const isSingleSelect = component.max === 1 && quantity > 0;
+      const current = (getValues(componentKey) ?? {}) as Record<string, number>;
+
+      // An option resolves to exactly one variant, so choosing one supersedes
+      // the option's other variants and its bare parent. Relying on the caller
+      // to clear the old variant first is not enough: EPBundleVariationPicker
+      // never passes `selectedVariationId`, so nothing is cleared and every
+      // switch left another child behind.
+      const supersedesVariants = !!variationId && quantity > 0;
+
+      // The same rule read the other way. Choosing a variation also toggles the
+      // option checkbox, which writes the bare parent with no variationId, so
+      // whichever write lands last the option must not count twice.
+      const supersededByVariant =
+        !variationId &&
+        quantity > 0 &&
+        Object.keys(current).some((key) => key.startsWith(`${optionId}:`));
+
+      Object.entries(current).forEach(([key, qty]) => {
+        if (key === selectionKey) return; // rewritten below
+        if (isSingleSelect) return; // single-select: this choice replaces the rest
+        if (
+          supersedesVariants &&
+          (key === optionId || key.startsWith(`${optionId}:`))
+        ) {
+          return;
+        }
+        if (qty > 0) next[key] = qty;
+      });
+
+      if (quantity > 0 && !supersededByVariant) {
+        next[selectionKey] = quantity;
+      }
+
+      setValue(componentKey, next, {
         shouldValidate: true,
         shouldDirty: true,
       });
-
-      // Handle single-select components (max=1) - clear other selections
-      if (component.max === 1 && quantity > 0) {
-        const currentSelections = selectedOptions[componentKey] || {};
-        Object.keys(currentSelections).forEach(key => {
-          if (key !== selectionKey) {
-            setValue(`${componentKey}.${key}`, 0, {
-              shouldValidate: true,
-              shouldDirty: true,
-            });
-          }
-        });
-      }
-
-      // Remove zero quantities
-      if (quantity === 0) {
-        const currentSelections = { ...selectedOptions[componentKey] };
-        delete currentSelections[selectionKey];
-        
-        // Update the entire component object
-        setValue(componentKey, currentSelections, {
-          shouldValidate: true,
-          shouldDirty: true,
-        });
-      }
     },
-    [components, selectedOptions, setValue]
+    [components, getValues, setValue]
   );
 
   // Handle form submission

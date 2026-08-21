@@ -31,6 +31,12 @@ interface EPCheckoutButtonProps {
   onComplete?: (data: { orderId: string }) => void;
   className?: string;
   previewState?: PreviewState;
+  /**
+   * Where to send the shopper when this button sits outside an
+   * EP Checkout Provider — on a cart page, for instance. Inside a provider the
+   * button advances the flow instead and this is ignored.
+   */
+  checkoutUrl?: string;
 }
 
 interface CheckoutButtonData {
@@ -66,7 +72,13 @@ function mockForStep(step: string): CheckoutButtonData {
 // Component
 // ---------------------------------------------------------------------------
 export function EPCheckoutButton(props: EPCheckoutButtonProps) {
-  const { children, onComplete, className, previewState = "auto" } = props;
+  const {
+    children,
+    onComplete,
+    className,
+    previewState = "auto",
+    checkoutUrl = "/checkout",
+  } = props;
 
   const inEditor = !!usePlasmicCanvasContext();
 
@@ -79,6 +91,11 @@ export function EPCheckoutButton(props: EPCheckoutButtonProps) {
         order?: { id: string } | null;
       }
     | undefined;
+
+  // Outside a provider there is no flow to advance, so the button is a plain
+  // "go to checkout" control. It used to render permanently disabled with a
+  // dead click handler, which is what a cart page got.
+  const isStandalone = !checkoutData;
 
   const step = checkoutData?.step ?? "customer_info";
   const canProceed = checkoutData?.canProceed ?? false;
@@ -101,17 +118,33 @@ export function EPCheckoutButton(props: EPCheckoutButtonProps) {
       return mockForStep(stepKey);
     }
 
+    if (isStandalone) {
+      return {
+        label: "Checkout",
+        isDisabled: false,
+        isProcessing: false,
+        step: "cart",
+      };
+    }
+
     return {
       label: STEP_LABELS[step] ?? "Continue",
       isDisabled: isProcessing || !canProceed,
       isProcessing,
       step,
     };
-  }, [useMock, previewState, step, canProceed, isProcessing]);
+  }, [useMock, previewState, step, canProceed, isProcessing, isStandalone]);
 
   const handleClick = useCallback(() => {
     if (inEditor) return; // No action in editor
     if (buttonData.isDisabled) return;
+
+    if (isStandalone) {
+      if (typeof window !== "undefined" && checkoutUrl) {
+        window.location.assign(checkoutUrl);
+      }
+      return;
+    }
 
     // The actual action is triggered via Plasmic interactions on the parent
     // EPCheckoutProvider's refActions. This component just provides data.
@@ -119,7 +152,15 @@ export function EPCheckoutButton(props: EPCheckoutButtonProps) {
     if (step === "confirmation" && checkoutData?.order) {
       onComplete?.({ orderId: checkoutData.order.id });
     }
-  }, [inEditor, buttonData.isDisabled, step, checkoutData?.order, onComplete]);
+  }, [
+    inEditor,
+    buttonData.isDisabled,
+    step,
+    checkoutData?.order,
+    onComplete,
+    isStandalone,
+    checkoutUrl,
+  ]);
 
   return (
     <DataProvider name="checkoutButtonData" data={buttonData}>
@@ -131,8 +172,16 @@ export function EPCheckoutButton(props: EPCheckoutButtonProps) {
         role="button"
         tabIndex={0}
         aria-disabled={buttonData.isDisabled || undefined}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            handleClick();
+          }
+        }}
       >
-        {children}
+        {children ?? (
+          <span data-ep-checkout-button-label="">{buttonData.label}</span>
+        )}
       </div>
     </DataProvider>
   );
@@ -145,11 +194,20 @@ export const epCheckoutButtonMeta: CodeComponentMeta<EPCheckoutButtonProps> = {
   name: "plasmic-commerce-ep-checkout-button",
   displayName: "EP Checkout Button",
   description:
-    "Step-aware checkout button that derives its label from the current step. Bind any content to checkoutButtonData.label.",
+    "Step-aware checkout button that derives its label from the current step. Outside an EP Checkout Provider it navigates to the checkout page instead. Bind any content to checkoutButtonData.label.",
   props: {
     children: {
       type: "slot",
-      defaultValue: [{ type: "text", value: "Continue" }],
+      description:
+        "Optional. Leave empty for the step-aware label; fill it to compose your own against checkoutButtonData.",
+      hidePlaceholder: true,
+    },
+    checkoutUrl: {
+      type: "string",
+      displayName: "Checkout URL",
+      description:
+        "Where to navigate when this button is outside an EP Checkout Provider (e.g. on a cart page).",
+      defaultValue: "/checkout",
     },
     onComplete: {
       type: "eventHandler",

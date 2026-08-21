@@ -46,39 +46,9 @@ export const epCurrentRefinementsMeta: CodeComponentMeta<EPCurrentRefinementsPro
   props: {
     children: {
       type: "slot",
-      defaultValue: [
-        {
-          type: "hbox",
-          styles: {
-            alignItems: "center",
-            gap: "4px",
-            paddingTop: "4px",
-            paddingRight: "8px",
-            paddingBottom: "4px",
-            paddingLeft: "8px",
-            borderTopLeftRadius: "999px",
-            borderTopRightRadius: "999px",
-            borderBottomLeftRadius: "999px",
-            borderBottomRightRadius: "999px",
-            borderTopWidth: "1px",
-            borderRightWidth: "1px",
-            borderBottomWidth: "1px",
-            borderLeftWidth: "1px",
-            borderTopStyle: "solid",
-            borderRightStyle: "solid",
-            borderBottomStyle: "solid",
-            borderLeftStyle: "solid",
-            borderTopColor: "#d1d5db",
-            borderRightColor: "#d1d5db",
-            borderBottomColor: "#d1d5db",
-            borderLeftColor: "#d1d5db",
-          },
-          children: [
-            { type: "text", value: "Brand: Leather" },
-            { type: "text", value: "×" },
-          ],
-        },
-      ],
+      description:
+        "Optional. Leave empty for the applied refinement's real attribute, value and a remove affordance; fill it to compose your own against currentRefinementChip.",
+      hidePlaceholder: true,
     },
     includedAttributes: {
       type: "array",
@@ -120,6 +90,32 @@ interface RawCurrentRefinementsItem {
   label: string;
   refinements: RawRefinement[];
   refine: (refinement: RawRefinement) => void;
+}
+
+
+/**
+ * What an applied refinement renders when the slot is empty.
+ *
+ * The default was a correctly shaped chip carrying the hardcoded text
+ * "Brand: Leather", so it named a refinement nobody had applied. The row this
+ * sits in already calls `chip.refine` on click, so the "×" is a real affordance
+ * rather than an invented one.
+ */
+function DefaultRefinementChip(props: {
+  attributeLabel: string;
+  label: string;
+}) {
+  const { attributeLabel, label } = props;
+  return (
+    <span data-ep-refinement-chip="">
+      <span data-ep-refinement-chip-label="">
+        {attributeLabel}: {label}
+      </span>
+      <span data-ep-refinement-chip-remove="" aria-hidden="true">
+        {"\u00d7"}
+      </span>
+    </span>
+  );
 }
 
 export function EPCurrentRefinements(props: EPCurrentRefinementsProps) {
@@ -175,7 +171,14 @@ function MockCurrentRefinements({
         >
           <DataProvider name="currentRefinementChip" data={chip}>
             <DataProvider name="currentRefinementChipIndex" data={i}>
-              {repeatedElement(i, children)}
+            {children ? (
+              repeatedElement(i, children)
+            ) : (
+              <DefaultRefinementChip
+                attributeLabel={chip.attributeLabel}
+                label={chip.label}
+              />
+            )}
             </DataProvider>
           </DataProvider>
         </div>
@@ -232,7 +235,14 @@ function EPCurrentRefinementsInner({
         >
           <DataProvider name="currentRefinementChip" data={chip}>
             <DataProvider name="currentRefinementChipIndex" data={i}>
-              {repeatedElement(i, children)}
+            {children ? (
+              repeatedElement(i, children)
+            ) : (
+              <DefaultRefinementChip
+                attributeLabel={chip.attributeLabel}
+                label={chip.label}
+              />
+            )}
             </DataProvider>
           </DataProvider>
         </div>

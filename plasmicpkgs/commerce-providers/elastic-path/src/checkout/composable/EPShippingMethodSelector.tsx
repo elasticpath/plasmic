@@ -94,6 +94,7 @@ export const EPShippingMethodSelector = React.forwardRef<
           }>;
           selectedShippingRateId?: string | null;
         };
+        isLoading?: boolean;
         updateSession?: (data: Record<string, unknown>) => Promise<void>;
       }
     | undefined;
@@ -146,15 +147,20 @@ export const EPShippingMethodSelector = React.forwardRef<
 
     return (
       <div className={className} data-ep-shipping-method-selector="">
-        {(MOCK_SHIPPING_RATES as ShippingMethod[]).map((rate, i) =>
-          children ? (
-            <DataProvider key={rate.id} name="currentShippingMethod" data={rate}>
-              <DataProvider name="currentShippingMethodIndex" data={i}>
-                {repeatedElement(i, children)}
-              </DataProvider>
+        {(MOCK_SHIPPING_RATES as ShippingMethod[]).map((rate, i) => (
+          <DataProvider key={rate.id} name="currentShippingMethod" data={rate}>
+            <DataProvider name="currentShippingMethodIndex" data={i}>
+              {children ?? (
+                <DefaultRateRow
+                  name={rate.name}
+                  priceFormatted={rate.priceFormatted}
+                  estimatedDays={rate.estimatedDays}
+                  isSelected={rate.isSelected}
+                />
+              )}
             </DataProvider>
-          ) : null
-        )}
+          </DataProvider>
+        ))}
       </div>
     );
   }
@@ -194,6 +200,7 @@ interface RuntimeProps {
       }>;
       selectedShippingRateId?: string | null;
     };
+    isLoading?: boolean;
     updateSession?: (data: Record<string, unknown>) => Promise<void>;
   };
   shippingAddress?: {
@@ -205,6 +212,48 @@ interface RuntimeProps {
     postcode?: string;
     country?: string;
   };
+}
+
+
+/**
+ * The row a rate renders when the slot is empty.
+ *
+ * The default used to be the literal text "Shipping Method" and "$0.00", and the
+ * live repeater rendered nothing at all without slot content — so the shipping
+ * step was either fake or blank. Selecting is a ref action the designer wires,
+ * so the default row does it itself: otherwise the shopper can read the rates
+ * and not choose one.
+ */
+function DefaultRateRow(props: {
+  name: string;
+  priceFormatted: string;
+  estimatedDays?: string;
+  isSelected?: boolean;
+  onSelect?: () => void;
+}) {
+  const { name, priceFormatted, estimatedDays, isSelected, onSelect } = props;
+  return (
+    <div
+      data-ep-rate-row=""
+      data-selected={isSelected || undefined}
+      role="radio"
+      aria-checked={!!isSelected}
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect?.();
+        }
+      }}
+    >
+      <span data-ep-rate-name="">{name}</span>
+      {estimatedDays ? (
+        <span data-ep-rate-eta="">{estimatedDays}</span>
+      ) : null}
+      <span data-ep-rate-price="">{priceFormatted}</span>
+    </div>
+  );
 }
 
 const EPShippingMethodSelectorRuntime = React.forwardRef<
@@ -224,8 +273,9 @@ const EPShippingMethodSelectorRuntime = React.forwardRef<
   const sessionRates = checkoutSessionCtx?.session?.availableShippingRates;
   const useSessionMode = !!(sessionRates && sessionRates.length > 0);
 
-  const [fetchedRates, setFetchedRates] = useState<ShippingMethod[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  // Nothing is fetched here any more (see below): rates arrive with the
+  // session, so its loading state is ours.
+  const isLoading = !!checkoutSessionCtx?.isLoading;
   const [selectedId, setSelectedId] = useState<string | null>(
     checkoutSessionCtx?.session?.selectedShippingRateId ?? null
   );
@@ -246,64 +296,19 @@ const EPShippingMethodSelectorRuntime = React.forwardRef<
     }));
   }, [sessionRates, money]);
 
-  // Legacy mode: fetch shipping rates when address is valid
+  // Rates come from the checkout session, which sources them server-side via
+  // `ctx.shippingRateResolver` (#371/#374). There is no shopper-facing shipping
+  // rates endpoint in Elastic Path: this component used to POST to
+  // /api/checkout/calculate-shipping, a route the package deliberately retired
+  // and answers with 410 Gone, so the request could only ever fail and the
+  // shipping step sat empty with no explanation.
+  const needsSession = !useSessionMode && !!shippingAddress?.isValid;
   useEffect(() => {
-    if (useSessionMode) return; // skip fetch in session mode
-    if (!shippingAddress?.isValid) return;
-
-    let cancelled = false;
-    setIsLoading(true);
-
-    fetch("/api/checkout/calculate-shipping", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
-      body: JSON.stringify({
-        shippingAddress: {
-          first_name: shippingAddress.firstName ?? "",
-          last_name: shippingAddress.lastName ?? "",
-          line_1: shippingAddress.line1 ?? "",
-          city: shippingAddress.city ?? "",
-          postcode: shippingAddress.postcode ?? "",
-          country: shippingAddress.country ?? "",
-        },
-      }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (cancelled) return;
-        const rates: ShippingMethod[] = (
-          data?.data?.shippingRates ?? []
-        ).map((r: any) => ({
-          id: r.id ?? r.name,
-          name: r.name ?? "Shipping",
-          price: r.amount ?? r.price ?? 0,
-          priceFormatted: r.priceFormatted ?? r.formatted_amount ?? "$0.00",
-          estimatedDays: r.estimatedDays ?? r.estimated_days ?? "",
-          carrier: r.carrier ?? "",
-          isSelected: false,
-        }));
-        setFetchedRates(rates);
-        setIsLoading(false);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        log.warn("Failed to fetch shipping rates:", err);
-        setFetchedRates([]);
-        setIsLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    useSessionMode,
-    shippingAddress?.isValid,
-    shippingAddress?.line1,
-    shippingAddress?.city,
-    shippingAddress?.postcode,
-    shippingAddress?.country,
-  ]);
+    if (!needsSession) return;
+    log.warn(
+      "Shipping rates require an EP Checkout Session Provider — rates are resolved server-side and are not fetchable from the browser"
+    );
+  }, [needsSession]);
 
   // Sync selectedId from session
   useEffect(() => {
@@ -325,7 +330,7 @@ const EPShippingMethodSelectorRuntime = React.forwardRef<
   useImperativeHandle(ref, () => ({ selectMethod }), [selectMethod]);
 
   // Choose rate source: session or fetched
-  const rates = useSessionMode ? sessionDerivedRates : fetchedRates;
+  const rates = useSessionMode ? sessionDerivedRates : [];
 
   // Apply selection state to rates
   const ratesWithSelection = useMemo(
@@ -354,16 +359,31 @@ const EPShippingMethodSelectorRuntime = React.forwardRef<
   }
 
   return (
-    <div className={className} data-ep-shipping-method-selector="">
-      {ratesWithSelection.map((rate, i) =>
-        children ? (
-          <DataProvider key={rate.id} name="currentShippingMethod" data={rate}>
-            <DataProvider name="currentShippingMethodIndex" data={i}>
-              {repeatedElement(i, children)}
-            </DataProvider>
+    <div
+      className={className}
+      data-ep-shipping-method-selector=""
+      // Only the default rows are radios; a filled slot is the designer's own
+      // markup and must not be described as a radio group.
+      role={children ? undefined : "radiogroup"}
+      aria-label={children ? undefined : "Shipping methods"}
+    >
+      {ratesWithSelection.map((rate, i) => (
+        <DataProvider key={rate.id} name="currentShippingMethod" data={rate}>
+          <DataProvider name="currentShippingMethodIndex" data={i}>
+            {children ? (
+              repeatedElement(i, children)
+            ) : (
+              <DefaultRateRow
+                name={rate.name}
+                priceFormatted={rate.priceFormatted}
+                estimatedDays={rate.estimatedDays}
+                isSelected={rate.isSelected}
+                onSelect={() => selectMethod(rate.id)}
+              />
+            )}
           </DataProvider>
-        ) : null
-      )}
+        </DataProvider>
+      ))}
     </div>
   );
 });
@@ -380,15 +400,9 @@ export const epShippingMethodSelectorMeta: CodeComponentMeta<EPShippingMethodSel
     props: {
       children: {
         type: "slot",
-        defaultValue: [
-          {
-            type: "hbox",
-            children: [
-              { type: "text", value: "Shipping Method" },
-              { type: "text", value: "$0.00" },
-            ],
-          },
-        ],
+        description:
+          "Optional. Leave empty for a selectable default row per rate; fill it to compose your own against currentShippingMethod.",
+        hidePlaceholder: true,
       },
       loadingContent: {
         type: "slot",

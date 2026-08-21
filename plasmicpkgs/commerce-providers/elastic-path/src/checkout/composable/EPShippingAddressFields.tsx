@@ -18,6 +18,10 @@ import registerComponent, {
 import React, { useCallback, useImperativeHandle, useMemo, useState } from "react";
 import { Registerable } from "../../registerable";
 import {
+  ADDRESS_DEFAULT_FIELDS,
+  DefaultFieldsForm,
+} from "./default-fields";
+import {
   MOCK_SHIPPING_ADDRESS_EMPTY,
   MOCK_SHIPPING_ADDRESS_FILLED,
   MOCK_SHIPPING_ADDRESS_WITH_ERRORS,
@@ -26,6 +30,14 @@ import {
 import { createLogger } from "../../utils/logger";
 
 const log = createLogger("EPShippingAddressFields");
+
+
+/** Default field set, minus the phone field when the caller hides it. */
+function shippingDefaultFields(showPhoneField?: boolean) {
+  return showPhoneField === false
+    ? ADDRESS_DEFAULT_FIELDS.filter((field) => field.name !== "phone")
+    : ADDRESS_DEFAULT_FIELDS;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -221,7 +233,15 @@ export const EPShippingAddressFields = React.forwardRef<
     return (
       <DataProvider name="shippingAddressFieldsData" data={mockData}>
         <div className={className} data-ep-shipping-address-fields="">
-          {children}
+          {children ?? (
+            <DefaultFieldsForm
+              fields={shippingDefaultFields(showPhoneField)}
+              values={mockData as unknown as Record<string, unknown>}
+              errors={mockData.errors}
+              onChange={() => undefined}
+              readOnly
+            />
+          )}
         </div>
       </DataProvider>
     );
@@ -403,7 +423,14 @@ const EPShippingAddressFieldsRuntime = React.forwardRef<
     return (
       <DataProvider name="shippingAddressFieldsData" data={MOCK_SHIPPING_ADDRESS_EMPTY}>
         <div className={className} data-ep-shipping-address-fields="">
-          {children}
+          {children ?? (
+            <DefaultFieldsForm
+              fields={shippingDefaultFields(showPhoneField)}
+              values={MOCK_SHIPPING_ADDRESS_EMPTY as unknown as Record<string, unknown>}
+              onChange={() => undefined}
+              readOnly
+            />
+          )}
         </div>
       </DataProvider>
     );
@@ -412,7 +439,14 @@ const EPShippingAddressFieldsRuntime = React.forwardRef<
   return (
     <DataProvider name="shippingAddressFieldsData" data={data}>
       <div className={className} data-ep-shipping-address-fields="">
-        {children}
+        {children ?? (
+          <DefaultFieldsForm
+            fields={shippingDefaultFields(showPhoneField)}
+            values={data as unknown as Record<string, unknown>}
+            errors={data.errors}
+            onChange={(name, value) => setField(name as AddressFieldName, value)}
+          />
+        )}
       </div>
     </DataProvider>
   );
@@ -430,21 +464,9 @@ export const epShippingAddressFieldsMeta: CodeComponentMeta<EPShippingAddressFie
     props: {
       children: {
         type: "slot",
-        defaultValue: [
-          {
-            type: "vbox",
-            children: [
-              { type: "text", value: "First Name" },
-              { type: "text", value: "Last Name" },
-              { type: "text", value: "Address Line 1" },
-              { type: "text", value: "City" },
-              { type: "text", value: "State/Province" },
-              { type: "text", value: "Postal Code" },
-              { type: "text", value: "Country" },
-              { type: "text", value: "Phone" },
-            ],
-          },
-        ],
+        description:
+          "Optional. Leave empty for working default inputs; fill it to compose your own markup against shippingAddressFieldsData and the setField ref action.",
+        hidePlaceholder: true,
       },
       showPhoneField: {
         type: "boolean",

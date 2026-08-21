@@ -22,74 +22,73 @@ export function createBundleSchema(components: Record<string, ComponentProduct>)
       z.number().min(1, "Quantity must be at least 1") // quantity
     );
 
-    // Add component-level min validation
-    if (min > 0) {
-      optionSchema = optionSchema.refine(
-        (options: Record<string, number>) => {
-          const totalCount = Object.values(options).reduce((sum: number, qty: number) => sum + qty, 0);
-          return totalCount >= min;
-        },
-        {
-          message: min === 1 
-            ? `Please select one option for ${componentName}`
-            : min === max
-            ? `Please select exactly ${min} options for ${componentName}`
-            : `Please select at least ${min} options for ${componentName}`,
-          path: [componentKey]
+    // Component and option constraints, reported against this component's own
+    // path. `refine`'s `path` is relative to the schema being refined, so a
+    // `path: [componentKey]` here produced `[componentKey, componentKey]` —
+    // which `useBundleForm` then failed to read, leaving every bundle silently
+    // valid. `superRefine` with no path keeps the issue on the component.
+    optionSchema = optionSchema.superRefine(
+      (options: Record<string, number>, ctx: z.RefinementCtx) => {
+        const selected = Object.values(options).reduce(
+          (sum: number, qty: number) => sum + qty,
+          0
+        );
+
+        if (min > 0 && selected < min) {
+          const remaining = min - selected;
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message:
+              min === max
+                ? min === 1
+                  ? `Please select one option for ${componentName}`
+                  : `Please select exactly ${min} options for ${componentName}`
+                : remaining === 1
+                ? `Please select 1 more option for ${componentName}`
+                : `Please select ${remaining} more options for ${componentName} (minimum: ${min})`,
+          });
         }
-      );
-    }
 
-    // Add component-level max validation
-    if (max < Number.MAX_SAFE_INTEGER) {
-      optionSchema = optionSchema.refine(
-        (options: Record<string, number>) => {
-          const totalCount = Object.values(options).reduce((sum: number, qty: number) => sum + qty, 0);
-          return totalCount <= max;
-        },
-        {
-          message: `Maximum ${max} selections allowed for ${componentName}`,
-          path: [componentKey]
+        if (max < Number.MAX_SAFE_INTEGER && selected > max) {
+          const excess = selected - max;
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message:
+              excess === 1
+                ? `Please remove 1 option from ${componentName} (maximum: ${max})`
+                : `Please remove ${excess} options from ${componentName} (maximum: ${max})`,
+          });
         }
-      );
-    }
 
-    // Add option-level quantity validation if any options have min/max constraints
-    const hasQuantityConstraints = component.options?.some(option => 
-      option.min !== null && option.min !== undefined ||
-      option.max !== null && option.max !== undefined
-    );
+        // Per-option quantity constraints
+        for (const [optionId, quantity] of Object.entries(options)) {
+          // Handle both direct IDs and parent:child IDs
+          const baseOptionId = optionId.includes(":")
+            ? optionId.split(":")[0]
+            : optionId;
+          const option = component.options?.find(
+            (opt) => opt.id === baseOptionId
+          );
+          if (!option) continue;
 
-    if (hasQuantityConstraints && component.options) {
-      optionSchema = optionSchema.refine(
-        (options: Record<string, number>) => {
-          // Validate each selected option's quantity constraints
-          for (const [optionId, quantity] of Object.entries(options)) {
-            // Find the option definition (handle both direct IDs and parent:child IDs)
-            const baseOptionId = optionId.includes(':') ? optionId.split(':')[0] : optionId;
-            const option = component.options?.find(opt => opt.id === baseOptionId);
-            
-            if (option) {
-              const minQty = option.min;
-              const maxQty = option.max;
-              
-              if (minQty !== null && minQty !== undefined && quantity < minQty) {
-                return false;
-              }
-              
-              if (maxQty !== null && maxQty !== undefined && quantity > maxQty) {
-                return false;
-              }
-            }
+          const minQty = option.min;
+          const maxQty = option.max;
+
+          if (minQty !== null && minQty !== undefined && quantity < minQty) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `${componentName}: this option requires at least ${minQty} (currently ${quantity})`,
+            });
           }
-          return true;
-        },
-        {
-          message: `One or more options have invalid quantities for ${componentName}`,
-          path: [componentKey]
+          if (maxQty !== null && maxQty !== undefined && quantity > maxQty) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `${componentName}: this option allows at most ${maxQty} (currently ${quantity})`,
+            });
+          }
         }
-      );
-    }
+      }
+    );
 
     // Handle optional vs required components
     componentSchemas[componentKey] = min === 0 
@@ -139,15 +138,22 @@ export function createBundleDefaultValues(
     }
   }
   
-  // Priority 2: Use bundle's API configuration
+  // Priority 2: Use bundle's API configuration.
+  //
+  // Per component, not per option: merging option-by-option let the catalog's
+  // default selection reappear alongside a higher-priority choice. Selecting a
+  // variation of a parent product stores `parentId:childId`, and the merge then
+  // re-added the bare `parentId` — which Elastic Path rejects with "too many
+  // selections". A component the caller has already spoken for is left alone.
   if (bundleProduct?.meta?.bundle_configuration?.selected_options) {
     const apiSelections = bundleProduct.meta.bundle_configuration.selected_options;
-    
-    // Convert BigInt values to numbers
+
     Object.entries(apiSelections).forEach(([componentKey, options]: [string, any]) => {
-      if (!defaults[componentKey]) {
-        defaults[componentKey] = {};
+      if (defaults[componentKey] && Object.keys(defaults[componentKey]).length > 0) {
+        return;
       }
+      defaults[componentKey] = {};
+      // Convert BigInt values to numbers
       Object.entries(options).forEach(([optionId, quantity]) => {
         defaults[componentKey][optionId] = Number(quantity);
       });

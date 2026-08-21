@@ -27,7 +27,7 @@ jest.mock("@plasmicapp/host/registerComponent", () => {
 });
 
 import React from "react";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { EPShippingAddressFields } = require("../EPShippingAddressFields");
@@ -317,6 +317,50 @@ describe("EPShippingAddressFields", () => {
         result = ref.current.validate();
       });
       expect(result).toBe(true);
+    });
+  });
+
+  describe("with an empty slot", () => {
+    it("renders working inputs including a country dropdown", () => {
+      const { container } = render(<EPShippingAddressFields />);
+
+      expect(
+        container.querySelectorAll("input[data-ep-field-input]").length
+      ).toBeGreaterThan(5);
+      const country = container.querySelector("select[data-ep-field-input]");
+      expect(country).toBeTruthy();
+      expect(country!.querySelectorAll("option").length).toBeGreaterThan(100);
+    });
+
+    it("captures typing into the published field data", () => {
+      const { container } = render(<EPShippingAddressFields />);
+
+      fireEvent.change(container.querySelector("#ep-field-city")!, {
+        target: { value: "Bristol" },
+      });
+
+      const dp = screen.getByTestId("data-provider-shippingAddressFieldsData");
+      expect(JSON.parse(dp.getAttribute("data-value")!).city).toBe("Bristol");
+    });
+
+    it("drops the phone field when the caller hides it", () => {
+      const { container } = render(
+        <EPShippingAddressFields showPhoneField={false} />
+      );
+
+      expect(container.querySelector("#ep-field-phone")).toBeNull();
+      expect(container.querySelector("#ep-field-postcode")).toBeTruthy();
+    });
+
+    it("leaves the slot content alone when there is any", () => {
+      const { container } = render(
+        <EPShippingAddressFields>
+          <span data-testid="mine">mine</span>
+        </EPShippingAddressFields>
+      );
+
+      expect(screen.getByTestId("mine")).toBeTruthy();
+      expect(container.querySelectorAll("[data-ep-field-input]")).toHaveLength(0);
     });
   });
 });

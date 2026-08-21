@@ -26,7 +26,7 @@ jest.mock("@plasmicapp/host/registerComponent", () => {
 });
 
 import React from "react";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { EPCustomerInfoFields } = require("../EPCustomerInfoFields");
@@ -238,6 +238,61 @@ describe("EPCustomerInfoFields", () => {
       const data = JSON.parse(dp.getAttribute("data-value")!);
       expect(data.firstName).toBe("");
       expect(data.email).toBe("");
+    });
+  });
+
+  describe("with an empty slot", () => {
+    // The slot used to default to three text labels: a thing that looks like a
+    // form, collects nothing, and leaves the checkout unable to advance.
+    it("renders working inputs", () => {
+      const { container } = render(<EPCustomerInfoFields />);
+
+      const inputs = container.querySelectorAll("[data-ep-field-input]");
+      expect(inputs).toHaveLength(3);
+      expect(
+        Array.from(inputs).map((i) => (i as HTMLInputElement).id)
+      ).toEqual(["ep-field-firstName", "ep-field-lastName", "ep-field-email"]);
+    });
+
+    it("captures typing into the published field data", () => {
+      const { container } = render(<EPCustomerInfoFields />);
+
+      fireEvent.change(container.querySelector("#ep-field-email")!, {
+        target: { value: "shopper@example.com" },
+      });
+
+      const dp = screen.getByTestId("data-provider-customerInfoFieldsData");
+      const data = JSON.parse(dp.getAttribute("data-value")!);
+      expect(data.email).toBe("shopper@example.com");
+      expect(data.isDirty).toBe(true);
+    });
+
+    it("reports validity once the fields are filled", () => {
+      const { container } = render(<EPCustomerInfoFields />);
+
+      fireEvent.change(container.querySelector("#ep-field-firstName")!, {
+        target: { value: "Ada" },
+      });
+      fireEvent.change(container.querySelector("#ep-field-lastName")!, {
+        target: { value: "Lovelace" },
+      });
+      fireEvent.change(container.querySelector("#ep-field-email")!, {
+        target: { value: "ada@example.com" },
+      });
+
+      const dp = screen.getByTestId("data-provider-customerInfoFieldsData");
+      expect(JSON.parse(dp.getAttribute("data-value")!).isValid).toBe(true);
+    });
+
+    it("leaves the slot content alone when there is any", () => {
+      const { container } = render(
+        <EPCustomerInfoFields>
+          <span data-testid="mine">mine</span>
+        </EPCustomerInfoFields>
+      );
+
+      expect(screen.getByTestId("mine")).toBeTruthy();
+      expect(container.querySelectorAll("[data-ep-field-input]")).toHaveLength(0);
     });
   });
 });

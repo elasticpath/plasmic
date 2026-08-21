@@ -30,6 +30,8 @@ export type ChildProduct = {
   name: string;
   sku?: string;
   price?: FormattedPrice;
+  /** The child's own tax-inclusive price; absent unless EP reports one. */
+  priceWithTax?: FormattedPrice;
   /** The variation options that select this child, from `meta.variation_matrix`. */
   optionIds: string[];
   images: ProductImage[];

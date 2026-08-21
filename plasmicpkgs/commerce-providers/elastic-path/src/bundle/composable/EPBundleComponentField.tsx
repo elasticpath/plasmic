@@ -80,7 +80,19 @@ export function EPBundleComponentField(props: EPBundleComponentFieldProps) {
     const selected = data.selectedCount ?? 0;
     const min = data.min ?? 0;
     const max = data.max ?? 0;
-    value = min === max ? `${selected} of ${min}` : `${selected} of ${min}\u2013${max}`;
+    // A component with no maximum arrives as Number.MAX_SAFE_INTEGER, which was
+    // printed literally ("1 of 0\u20139007199254740991").
+    const isUnbounded = max >= Number.MAX_SAFE_INTEGER;
+    value = isUnbounded
+      ? min > 0
+        ? `${selected} of ${min}+`
+        : `${selected} selected`
+      : min === max
+      ? `${selected} of ${min}`
+      : `${selected} of ${min}\u2013${max}`;
+  } else if (field === "max") {
+    const max = data.max ?? 0;
+    value = max >= Number.MAX_SAFE_INTEGER ? "" : max;
   } else {
     value = data[field];
   }

@@ -20,6 +20,10 @@ import registerComponent, {
 import React, { useCallback, useImperativeHandle, useMemo, useState } from "react";
 import { Registerable } from "../../registerable";
 import {
+  BILLING_DEFAULT_FIELDS,
+  DefaultFieldsForm,
+} from "./default-fields";
+import {
   MOCK_SHIPPING_ADDRESS_FILLED,
   MOCK_BILLING_ADDRESS_DIFFERENT,
 } from "../../utils/design-time-data";
@@ -237,7 +241,15 @@ export const EPBillingAddressFields = React.forwardRef<
     return (
       <DataProvider name="billingAddressFieldsData" data={mockData}>
         <div className={className} data-ep-billing-address-fields="">
-          {children}
+          {children ?? (
+            <DefaultFieldsForm
+              fields={BILLING_DEFAULT_FIELDS}
+              values={mockData as unknown as Record<string, unknown>}
+              errors={mockData.errors}
+              onChange={() => undefined}
+              readOnly
+            />
+          )}
         </div>
       </DataProvider>
     );
@@ -331,7 +343,14 @@ const BillingMirrorWrapper = React.forwardRef<
   return (
     <DataProvider name="billingAddressFieldsData" data={data}>
       <div className={className} data-ep-billing-address-fields="">
-        {children}
+        {children ?? (
+          <DefaultFieldsForm
+            fields={BILLING_DEFAULT_FIELDS}
+            values={data as unknown as Record<string, unknown>}
+            onChange={() => undefined}
+            readOnly
+          />
+        )}
       </div>
     </DataProvider>
   );
@@ -437,7 +456,14 @@ const EPBillingAddressFieldsRuntime = React.forwardRef<
   return (
     <DataProvider name="billingAddressFieldsData" data={data}>
       <div className={className} data-ep-billing-address-fields="">
-        {children}
+        {children ?? (
+          <DefaultFieldsForm
+            fields={BILLING_DEFAULT_FIELDS}
+            values={data as unknown as Record<string, unknown>}
+            errors={data.errors}
+            onChange={(name, value) => setField(name as BillingFieldName, value)}
+          />
+        )}
       </div>
     </DataProvider>
   );
@@ -455,20 +481,9 @@ export const epBillingAddressFieldsMeta: CodeComponentMeta<EPBillingAddressField
     props: {
       children: {
         type: "slot",
-        defaultValue: [
-          {
-            type: "vbox",
-            children: [
-              { type: "text", value: "First Name" },
-              { type: "text", value: "Last Name" },
-              { type: "text", value: "Address Line 1" },
-              { type: "text", value: "City" },
-              { type: "text", value: "State/Province" },
-              { type: "text", value: "Postal Code" },
-              { type: "text", value: "Country" },
-            ],
-          },
-        ],
+        description:
+          "Optional. Leave empty for working default inputs; fill it to compose your own markup against billingAddressFieldsData and the setField ref action.",
+        hidePlaceholder: true,
       },
       previewState: {
         type: "choice",

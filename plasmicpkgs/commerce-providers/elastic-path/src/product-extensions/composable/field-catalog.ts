@@ -90,6 +90,22 @@ export function getProductFieldLeaf(id: string): ProductFieldLeaf | undefined {
   return PRODUCT_FIELD_LEAVES.find((leaf) => leaf.id === id);
 }
 
+/**
+ * Whether a leaf reads the product's money.
+ *
+ * A variant carries its own price and reports only `without_tax`, so a money
+ * leaf must never fall back to the parent: an absent variant price is empty, not
+ * the parent's number. Anything under `meta.display_price`, plus `priceFrom`,
+ * belongs to the product being priced.
+ */
+export function isMoneyLeaf(leaf: ProductFieldLeaf): boolean {
+  return (
+    (leaf.path[0] === "meta" && leaf.path[1] === "display_price") ||
+    leaf.path[0] === "priceFrom" ||
+    !!leaf.currencyPath
+  );
+}
+
 /** Shared `format` choice options for both field components — one source of truth. */
 export const FORMAT_CHOICE_OPTIONS: ChoiceObject[] = [
   { label: "Auto", value: "auto" },

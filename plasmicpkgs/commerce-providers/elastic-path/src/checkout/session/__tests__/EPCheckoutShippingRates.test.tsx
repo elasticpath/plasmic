@@ -21,7 +21,7 @@ jest.mock("@plasmicapp/host/registerComponent", () => {
 });
 
 import React from "react";
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { EPCheckoutShippingRates } = require("../EPCheckoutShippingRates");
@@ -169,5 +169,80 @@ describe("EPCheckoutShippingRates", () => {
       </EPCheckoutShippingRates>
     );
     expect(screen.getAllByTestId("rate").length).toBeGreaterThan(0);
+  });
+
+  describe("with an empty slot", () => {
+    // The default was the literal text "Shipping rate" and "$0.00", and the
+    // repeater rendered nothing at all without slot content — so the rates were
+    // either fake or invisible.
+    function withRates(updateSession = jest.fn().mockResolvedValue({})) {
+      mockUseSelector.mockImplementation((name: string) =>
+        name === "checkoutSession"
+          ? {
+              session: {
+                availableShippingRates: SESSION_RATES,
+                selectedShippingRateId: "rate-standard",
+              },
+              updateSession,
+            }
+          : undefined
+      );
+      return updateSession;
+    }
+
+    it("renders a row per rate, with its real name and price", () => {
+      withRates();
+
+      const { container } = render(<EPCheckoutShippingRates />);
+
+      const rows = container.querySelectorAll("[data-ep-rate-row]");
+      expect(rows).toHaveLength(2);
+      const names = Array.from(
+        container.querySelectorAll("[data-ep-rate-name]")
+      ).map((n) => n.textContent);
+      expect(names).toContain("Standard Shipping");
+      const prices = Array.from(
+        container.querySelectorAll("[data-ep-rate-price]")
+      ).map((n) => n.textContent);
+      expect(prices).toContain("$5.99");
+      expect(prices).not.toContain("$0.00");
+    });
+
+    it("marks the selected rate", () => {
+      withRates();
+
+      const { container } = render(<EPCheckoutShippingRates />);
+
+      const selected = container.querySelectorAll('[data-ep-rate-row][data-selected]');
+      expect(selected).toHaveLength(1);
+      expect(selected[0].getAttribute("aria-checked")).toBe("true");
+    });
+
+    it("lets the shopper pick one, which a read-only default could not", () => {
+      const updateSession = withRates();
+
+      const { container } = render(<EPCheckoutShippingRates />);
+
+      const rows = container.querySelectorAll("[data-ep-rate-row]");
+      act(() => {
+        fireEvent.click(rows[1]);
+      });
+
+      expect(updateSession).toHaveBeenCalledWith({
+        selectedShippingRateId: SESSION_RATES[1].id,
+      });
+    });
+
+    it("leaves the slot content alone when there is any", () => {
+      withRates();
+
+      const { container } = render(
+        <EPCheckoutShippingRates>
+          <span data-testid="mine">mine</span>
+        </EPCheckoutShippingRates>
+      );
+
+      expect(container.querySelectorAll("[data-ep-rate-row]")).toHaveLength(0);
+    });
   });
 });

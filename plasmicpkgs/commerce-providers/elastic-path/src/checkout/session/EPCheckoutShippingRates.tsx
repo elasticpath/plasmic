@@ -12,6 +12,7 @@ import { Registerable } from "../../registerable";
 import { MOCK_SESSION_COLLECTING } from "./design-time-data";
 import type { SessionShippingRate } from "./types";
 import { createLogger } from "../../utils/logger";
+import { useMoneyFormat } from "../../shopper-context/use-money-format";
 
 const log = createLogger("EPCheckoutShippingRates");
 
@@ -56,19 +57,55 @@ function RatesList(props: {
   rates: CheckoutShippingRateView[];
   children?: React.ReactNode;
   className?: string;
+  onSelect?: (rateId: string) => void;
 }) {
-  const { rates, children, className } = props;
+  const { rates, children, className, onSelect } = props;
+  const money = useMoneyFormat();
   return (
-    <div className={className} data-ep-checkout-shipping-rates="">
-      {rates.map((rate, i) =>
-        children ? (
-          <DataProvider key={rate.id} name="currentCheckoutShippingRate" data={rate}>
-            <DataProvider name="currentCheckoutShippingRateIndex" data={i}>
-              {repeatedElement(i, children)}
-            </DataProvider>
+    <div
+      className={className}
+      data-ep-checkout-shipping-rates=""
+      // Only the default rows are radios; a filled slot is the designer's own
+      // markup and must not be described as a radio group.
+      role={children ? undefined : "radiogroup"}
+      aria-label={children ? undefined : "Shipping rates"}
+    >
+      {rates.map((rate, i) => (
+        <DataProvider key={rate.id} name="currentCheckoutShippingRate" data={rate}>
+          <DataProvider name="currentCheckoutShippingRateIndex" data={i}>
+            {children ? (
+              repeatedElement(i, children)
+            ) : (
+              // The default was the literal text "Shipping rate" and "$0.00",
+              // and without slot content the repeater rendered nothing at all.
+              // Selecting is a ref action the designer wires, so the default row
+              // does it itself — otherwise the rates are unpickable.
+              <div
+                data-ep-rate-row=""
+                data-selected={rate.isSelected || undefined}
+                role="radio"
+                aria-checked={rate.isSelected}
+                tabIndex={0}
+                onClick={() => onSelect?.(rate.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onSelect?.(rate.id);
+                  }
+                }}
+              >
+                <span data-ep-rate-name="">{rate.name}</span>
+                {rate.deliveryTime ? (
+                  <span data-ep-rate-eta="">{rate.deliveryTime}</span>
+                ) : null}
+                <span data-ep-rate-price="">
+                  {money.minor(rate.amount, rate.currency)}
+                </span>
+              </div>
+            )}
           </DataProvider>
-        ) : null
-      )}
+        </DataProvider>
+      ))}
     </div>
   );
 }
@@ -167,7 +204,7 @@ export const EPCheckoutShippingRates = React.forwardRef<
   }
 
   return (
-    <RatesList rates={rates} className={className}>
+    <RatesList rates={rates} className={className} onSelect={selectRate}>
       {children}
     </RatesList>
   );
@@ -182,15 +219,9 @@ export const epCheckoutShippingRatesMeta: CodeComponentMeta<EPCheckoutShippingRa
     props: {
       children: {
         type: "slot",
-        defaultValue: [
-          {
-            type: "hbox",
-            children: [
-              { type: "text", value: "Shipping rate" },
-              { type: "text", value: "$0.00" },
-            ],
-          },
-        ],
+        description:
+          "Optional. Leave empty for a selectable default row per rate; fill it to compose your own against currentCheckoutShippingRate.",
+        hidePlaceholder: true,
       },
       loadingContent: {
         type: "slot",

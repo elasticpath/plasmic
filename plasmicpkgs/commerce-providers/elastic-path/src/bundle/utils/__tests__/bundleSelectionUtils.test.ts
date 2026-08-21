@@ -296,3 +296,46 @@ describe("getDefaultSelections", () => {
     expect(result.processor).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression: what Elastic Path refuses to accept in selected_options
+// ---------------------------------------------------------------------------
+describe("convertSelectionsForAPI — rejected payload shapes", () => {
+  it("drops a deselected option rather than sending quantity 0", () => {
+    // A single zero fails the whole add with "Must be greater than or equal
+    // to 1", so deselecting one option used to break add-to-cart for the
+    // entire bundle.
+    const result = convertSelectionsForAPI({
+      games: { "game-a": 1, "game-b": 0 },
+    });
+    expect(result).toEqual({ games: { "game-a": 1 } });
+  });
+
+  it("drops negative quantities too", () => {
+    const result = convertSelectionsForAPI({
+      games: { "game-a": -1, "game-b": 2 },
+    });
+    expect(result).toEqual({ games: { "game-b": 2 } });
+  });
+
+  it("drops the bare parent once one of its variations is selected", () => {
+    // Sending both counts as two selections against the component's max, and
+    // a parent product is not purchasable in its own right.
+    const result = convertSelectionsForAPI({
+      material: { "parent-1:child-9": 1, "parent-1": 1 },
+    });
+    expect(result).toEqual({ material: { "child-9": 1 } });
+  });
+
+  it("keeps an unrelated parent that has no variation selected", () => {
+    const result = convertSelectionsForAPI({
+      gift: { "parent-1:child-9": 1, "parent-2": 1 },
+    });
+    expect(result).toEqual({ gift: { "child-9": 1, "parent-2": 1 } });
+  });
+
+  it("leaves a component empty when every selection was zeroed", () => {
+    const result = convertSelectionsForAPI({ games: { "game-a": 0 } });
+    expect(result).toEqual({ games: {} });
+  });
+});

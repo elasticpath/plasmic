@@ -11,6 +11,7 @@ import { Cart, CartItem, CartMeta } from "../types/cart";
 import {
   ChildProduct,
   Product,
+  ProductImage,
   ProductMeta,
   Variation,
 } from "../types/product";
@@ -39,6 +40,16 @@ const getOptionsFromSkuId = (
     return true;
   });
   return acc;
+};
+
+/** EP references one file from both `main_image` and `files`. */
+const dedupeByUrl = <T extends { url: string }>(images: T[]): T[] => {
+  const seen = new Set<string>();
+  return images.filter((image) => {
+    if (seen.has(image.url)) return false;
+    seen.add(image.url);
+    return true;
+  });
 };
 
 const normalizeProductImages = (product: ProductData) => {
@@ -71,7 +82,7 @@ const normalizeProductImages = (product: ProductData) => {
     });
   }
 
-  return images;
+  return dedupeByUrl(images);
 };
 
 /**
@@ -86,6 +97,37 @@ const lowestChildPrice = (
     .filter((price): price is FormattedPrice => !!price)
     .sort((a, b) => a.amount - b.amount)[0];
 
+/**
+ * A child's own images, resolved from the list response's shared `included`
+ * block. The child fetch already asks for `main_image` and `files`.
+ */
+const normalizeChildImages = (
+  child: NonNullable<ProductListData["data"]>[number],
+  included: ProductListData["included"]
+): ProductImage[] => {
+  const images: ProductImage[] = [];
+  const alt = child.attributes?.name || "";
+
+  const mainImageId = child.relationships?.main_image?.data?.id;
+  if (mainImageId) {
+    const mainImage = included?.main_images?.find(
+      (img) => img.id === mainImageId
+    );
+    if (mainImage?.link?.href) {
+      images.push({ url: mainImage.link.href, alt });
+    }
+  }
+
+  child.relationships?.files?.data?.forEach((fileRef) => {
+    const file = included?.files?.find((f) => f.id === fileRef.id);
+    if (file?.link?.href) {
+      images.push({ url: file.link.href, alt });
+    }
+  });
+
+  return dedupeByUrl(images);
+};
+
 const normalizeChildProducts = (
   product: ProductData,
   childProducts?: ProductListData
@@ -99,11 +141,12 @@ const normalizeChildProducts = (
     name: child.attributes?.name || "",
     sku: child.attributes?.sku,
     price: completePrice(child.meta?.display_price?.without_tax),
+    priceWithTax: completePrice(child.meta?.display_price?.with_tax),
     optionIds:
       (child.id && matrix
         ? getOptionsFromSkuId(child.id, matrix)
         : undefined) ?? [],
-    images: [],
+    images: normalizeChildImages(child, childProducts?.included),
   }));
 };
 
@@ -216,11 +259,19 @@ export const normalizeCart = (
   locale?: string
 ): Cart => {
   const data = cart.data ?? {};
-  const items = (cart.included?.items ?? []).map(normalizeCartItem);
+  // An applied promotion comes back as a promotion_item beside the real lines.
+  // It is not something the shopper bought, so it is neither a line to render
+  // nor a unit to count — but it is what tells the promo input a code is still
+  // applied, so it is published separately rather than dropped. custom_item is
+  // kept as a line: that is a real adjustment.
+  const allItems = (cart.included?.items ?? []).map(normalizeCartItem);
+  const items = allItems.filter((item) => item.type !== "promotion_item");
+  const promotions = allItems.filter((item) => item.type === "promotion_item");
   return {
     ...data,
     meta: completeCartMeta(data.meta),
     items,
+    promotions,
     itemCount: items.reduce(
       (units, item) => units + ("quantity" in item ? item.quantity ?? 0 : 0),
       0

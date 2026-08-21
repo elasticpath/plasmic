@@ -81,10 +81,18 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
       return MOCK_ORDER_TOTALS_DATA;
     }
 
-    // Source 1: checkoutData.summary (from EPCheckoutProvider)
+    // Source 1: checkoutData.summary (from EPCheckoutProvider).
+    // An all-zero summary next to a cart that has money in it is not an answer
+    // — it is a provider that has nothing to report yet, so fall through to the
+    // cart rather than showing the shopper a $0.00 order.
     if (composableSummary) {
-      log.debug("Using checkoutData.summary from EPCheckoutProvider");
-      return composableSummary;
+      const summaryIsEmpty = !composableSummary.total && !composableSummary.subtotal;
+      const cartHasMoney = !!checkoutCart?.meta?.display_price?.with_tax?.amount;
+      if (!summaryIsEmpty || !cartHasMoney) {
+        log.debug("Using checkoutData.summary from EPCheckoutProvider");
+        return composableSummary;
+      }
+      log.debug("checkoutData.summary is empty; falling through to cart totals");
     }
 
     // Source 2: checkoutSession.totals (from EPCheckoutSessionProvider)
@@ -112,9 +120,11 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
     if (checkoutCart) {
       const price = checkoutCart.meta?.display_price;
       const discount = price?.discount?.amount ?? 0;
+      // Pre-discount, so Subtotal + Tax + Shipping + Discount = Total.
+      const subtotalPrice = price?.without_discount ?? price?.without_tax;
       return {
-        subtotal: price?.without_tax?.amount ?? 0,
-        subtotalFormatted: money.price(price?.without_tax),
+        subtotal: subtotalPrice?.amount ?? 0,
+        subtotalFormatted: money.price(subtotalPrice),
         tax: price?.tax?.amount ?? 0,
         taxFormatted: money.price(price?.tax),
         shipping: price?.shipping?.amount ?? 0,
@@ -123,7 +133,7 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
           : "TBD",
         discount,
         discountFormatted: money.price(price?.discount),
-        hasDiscount: discount > 0,
+        hasDiscount: discount !== 0,
         total: price?.with_tax?.amount ?? 0,
         totalFormatted: money.price(price?.with_tax),
         currency: price?.without_tax?.currency ?? "USD",
@@ -141,7 +151,26 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
   return (
     <DataProvider name="orderTotalsData" data={totalsData}>
       <div className={className} data-ep-order-totals-breakdown="">
-        {children}
+        {children ?? (
+          // The default used to be four rows of the literal text "$0.00" — a
+          // page that looks priced and isn't. These read the real figures.
+          <div data-ep-totals-rows="">
+            {[
+              { label: "Subtotal", value: totalsData.subtotalFormatted },
+              { label: "Shipping", value: totalsData.shippingFormatted },
+              { label: "Tax", value: totalsData.taxFormatted },
+              ...(totalsData.hasDiscount
+                ? [{ label: "Discount", value: totalsData.discountFormatted }]
+                : []),
+              { label: "Total", value: totalsData.totalFormatted },
+            ].map((row) => (
+              <div key={row.label} data-ep-totals-row="">
+                <span data-ep-totals-label="">{row.label}</span>
+                <span data-ep-totals-value="">{row.value}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </DataProvider>
   );
@@ -159,41 +188,9 @@ export const epOrderTotalsBreakdownMeta: CodeComponentMeta<EPOrderTotalsBreakdow
     props: {
       children: {
         type: "slot",
-        defaultValue: [
-          {
-            type: "vbox",
-            children: [
-              {
-                type: "hbox",
-                children: [
-                  { type: "text", value: "Subtotal" },
-                  { type: "text", value: "$0.00" },
-                ],
-              },
-              {
-                type: "hbox",
-                children: [
-                  { type: "text", value: "Shipping" },
-                  { type: "text", value: "$0.00" },
-                ],
-              },
-              {
-                type: "hbox",
-                children: [
-                  { type: "text", value: "Tax" },
-                  { type: "text", value: "$0.00" },
-                ],
-              },
-              {
-                type: "hbox",
-                children: [
-                  { type: "text", value: "Total" },
-                  { type: "text", value: "$0.00" },
-                ],
-              },
-            ],
-          },
-        ],
+        description:
+          "Optional. Leave empty for the default rows; fill it to compose your own against orderTotalsData.",
+        hidePlaceholder: true,
       },
       previewState: {
         type: "choice",
