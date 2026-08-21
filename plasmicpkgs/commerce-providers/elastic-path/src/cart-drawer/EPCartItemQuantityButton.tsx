@@ -24,7 +24,9 @@ export const epCartItemQuantityButtonMeta: CodeComponentMeta<EPCartItemQuantityB
     props: {
       children: {
         type: "slot",
-        defaultValue: [{ type: "text", value: "+" }],
+        description:
+          "Optional. Leave empty for the glyph matching this button's action; fill it to supply your own.",
+        hidePlaceholder: true,
       },
       action: {
         type: "choice",
@@ -101,7 +103,13 @@ export function EPCartItemQuantityButton(
       data-disabled={isDisabled || undefined}
       data-loading={isBusy || undefined}
     >
-      {children}
+      {children ?? (
+        // The slot default was "+" for both directions, so a decrement
+        // button dropped in as-is read "+". The glyph follows `action`.
+        <span data-ep-quantity-glyph="">
+          {action === "increment" ? "+" : "\u2212"}
+        </span>
+      )}
     </button>
   );
 }

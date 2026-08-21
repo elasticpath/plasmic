@@ -322,6 +322,43 @@ describe("EPOrderTotalsBreakdown — an empty composable summary", () => {
   });
 });
 
+describe("EPOrderTotalsBreakdown — with an empty slot", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUsePlasmicCanvasContext.mockReturnValue(false);
+  });
+
+  it("renders the real figures, not four rows of $0.00", () => {
+    mockUseSelector.mockImplementation((name: string) =>
+      name === "cart" ? cartWithTotals(3000) : undefined
+    );
+
+    const { container } = render(<EPOrderTotalsBreakdown />);
+
+    const values = [...container.querySelectorAll("[data-ep-totals-value]")].map(
+      (n) => n.textContent
+    );
+    expect(values).toContain("$30.00");
+    expect(values.filter((v) => v === "$0.00").length).toBeLessThan(
+      values.length
+    );
+  });
+
+  it("leaves the slot content alone when there is any", () => {
+    mockUseSelector.mockImplementation((name: string) =>
+      name === "cart" ? cartWithTotals(3000) : undefined
+    );
+
+    const { container } = render(
+      <EPOrderTotalsBreakdown>
+        <span data-testid="mine">mine</span>
+      </EPOrderTotalsBreakdown>
+    );
+
+    expect(container.querySelectorAll("[data-ep-totals-row]")).toHaveLength(0);
+  });
+});
+
 function cartWithTotals(subtotal: number) {
   const money = (amount: number) => ({
     amount,

@@ -615,6 +615,39 @@ describe("EPBundleOptionQuantityButton", () => {
     );
   }
 
+  it("shows the glyph for its own direction when the slot is empty", () => {
+    // The slot default was "+" for both directions, so a decrement button
+    // dropped in as-is read "+".
+    setupSelector({ currentBundleOption: { minQty: 1, maxQty: 4 } });
+    const optionCtx = {
+      componentKey: "memory",
+      optionId: "opt-mem-1",
+      isSelected: true,
+      quantity: 2,
+      toggleOption: jest.fn(),
+      setQuantity: mockSetQuantity,
+    };
+
+    const dec = render(
+      <BundleOptionContext.Provider value={optionCtx}>
+        <EPBundleOptionQuantityButton action="decrement" />
+      </BundleOptionContext.Provider>
+    );
+    expect(dec.container.textContent).toBe("\u2212");
+
+    const inc = render(
+      <BundleOptionContext.Provider value={optionCtx}>
+        <EPBundleOptionQuantityButton action="increment" />
+      </BundleOptionContext.Provider>
+    );
+    expect(inc.container.textContent).toBe("+");
+  });
+
+  it("keeps slot content when there is any", () => {
+    const { container } = renderButton("decrement", { quantity: 2 });
+    expect(container.textContent).toBe("-");
+  });
+
   it("increments quantity on click", () => {
     renderButton("increment", { quantity: 2 });
     fireEvent.click(screen.getByRole("button"));

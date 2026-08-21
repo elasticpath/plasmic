@@ -147,15 +147,20 @@ export const EPShippingMethodSelector = React.forwardRef<
 
     return (
       <div className={className} data-ep-shipping-method-selector="">
-        {(MOCK_SHIPPING_RATES as ShippingMethod[]).map((rate, i) =>
-          children ? (
-            <DataProvider key={rate.id} name="currentShippingMethod" data={rate}>
-              <DataProvider name="currentShippingMethodIndex" data={i}>
-                {repeatedElement(i, children)}
-              </DataProvider>
+        {(MOCK_SHIPPING_RATES as ShippingMethod[]).map((rate, i) => (
+          <DataProvider key={rate.id} name="currentShippingMethod" data={rate}>
+            <DataProvider name="currentShippingMethodIndex" data={i}>
+              {children ?? (
+                <DefaultRateRow
+                  name={rate.name}
+                  priceFormatted={rate.priceFormatted}
+                  estimatedDays={rate.estimatedDays}
+                  isSelected={rate.isSelected}
+                />
+              )}
             </DataProvider>
-          ) : null
-        )}
+          </DataProvider>
+        ))}
       </div>
     );
   }
@@ -207,6 +212,48 @@ interface RuntimeProps {
     postcode?: string;
     country?: string;
   };
+}
+
+
+/**
+ * The row a rate renders when the slot is empty.
+ *
+ * The default used to be the literal text "Shipping Method" and "$0.00", and the
+ * live repeater rendered nothing at all without slot content — so the shipping
+ * step was either fake or blank. Selecting is a ref action the designer wires,
+ * so the default row does it itself: otherwise the shopper can read the rates
+ * and not choose one.
+ */
+function DefaultRateRow(props: {
+  name: string;
+  priceFormatted: string;
+  estimatedDays?: string;
+  isSelected?: boolean;
+  onSelect?: () => void;
+}) {
+  const { name, priceFormatted, estimatedDays, isSelected, onSelect } = props;
+  return (
+    <div
+      data-ep-rate-row=""
+      data-selected={isSelected || undefined}
+      role="radio"
+      aria-checked={!!isSelected}
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect?.();
+        }
+      }}
+    >
+      <span data-ep-rate-name="">{name}</span>
+      {estimatedDays ? (
+        <span data-ep-rate-eta="">{estimatedDays}</span>
+      ) : null}
+      <span data-ep-rate-price="">{priceFormatted}</span>
+    </div>
+  );
 }
 
 const EPShippingMethodSelectorRuntime = React.forwardRef<
@@ -313,15 +360,23 @@ const EPShippingMethodSelectorRuntime = React.forwardRef<
 
   return (
     <div className={className} data-ep-shipping-method-selector="">
-      {ratesWithSelection.map((rate, i) =>
-        children ? (
-          <DataProvider key={rate.id} name="currentShippingMethod" data={rate}>
-            <DataProvider name="currentShippingMethodIndex" data={i}>
-              {repeatedElement(i, children)}
-            </DataProvider>
+      {ratesWithSelection.map((rate, i) => (
+        <DataProvider key={rate.id} name="currentShippingMethod" data={rate}>
+          <DataProvider name="currentShippingMethodIndex" data={i}>
+            {children ? (
+              repeatedElement(i, children)
+            ) : (
+              <DefaultRateRow
+                name={rate.name}
+                priceFormatted={rate.priceFormatted}
+                estimatedDays={rate.estimatedDays}
+                isSelected={rate.isSelected}
+                onSelect={() => selectMethod(rate.id)}
+              />
+            )}
           </DataProvider>
-        ) : null
-      )}
+        </DataProvider>
+      ))}
     </div>
   );
 });
@@ -338,15 +393,9 @@ export const epShippingMethodSelectorMeta: CodeComponentMeta<EPShippingMethodSel
     props: {
       children: {
         type: "slot",
-        defaultValue: [
-          {
-            type: "hbox",
-            children: [
-              { type: "text", value: "Shipping Method" },
-              { type: "text", value: "$0.00" },
-            ],
-          },
-        ],
+        description:
+          "Optional. Leave empty for a selectable default row per rate; fill it to compose your own against currentShippingMethod.",
+        hidePlaceholder: true,
       },
       loadingContent: {
         type: "slot",

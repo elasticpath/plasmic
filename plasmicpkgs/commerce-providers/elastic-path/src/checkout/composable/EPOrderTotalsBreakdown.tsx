@@ -149,7 +149,26 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
   return (
     <DataProvider name="orderTotalsData" data={totalsData}>
       <div className={className} data-ep-order-totals-breakdown="">
-        {children}
+        {children ?? (
+          // The default used to be four rows of the literal text "$0.00" — a
+          // page that looks priced and isn't. These read the real figures.
+          <div data-ep-totals-rows="">
+            {[
+              { label: "Subtotal", value: totalsData.subtotalFormatted },
+              { label: "Shipping", value: totalsData.shippingFormatted },
+              { label: "Tax", value: totalsData.taxFormatted },
+              ...(totalsData.hasDiscount
+                ? [{ label: "Discount", value: totalsData.discountFormatted }]
+                : []),
+              { label: "Total", value: totalsData.totalFormatted },
+            ].map((row) => (
+              <div key={row.label} data-ep-totals-row="">
+                <span data-ep-totals-label="">{row.label}</span>
+                <span data-ep-totals-value="">{row.value}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </DataProvider>
   );
@@ -167,41 +186,9 @@ export const epOrderTotalsBreakdownMeta: CodeComponentMeta<EPOrderTotalsBreakdow
     props: {
       children: {
         type: "slot",
-        defaultValue: [
-          {
-            type: "vbox",
-            children: [
-              {
-                type: "hbox",
-                children: [
-                  { type: "text", value: "Subtotal" },
-                  { type: "text", value: "$0.00" },
-                ],
-              },
-              {
-                type: "hbox",
-                children: [
-                  { type: "text", value: "Shipping" },
-                  { type: "text", value: "$0.00" },
-                ],
-              },
-              {
-                type: "hbox",
-                children: [
-                  { type: "text", value: "Tax" },
-                  { type: "text", value: "$0.00" },
-                ],
-              },
-              {
-                type: "hbox",
-                children: [
-                  { type: "text", value: "Total" },
-                  { type: "text", value: "$0.00" },
-                ],
-              },
-            ],
-          },
-        ],
+        description:
+          "Optional. Leave empty for the default rows; fill it to compose your own against orderTotalsData.",
+        hidePlaceholder: true,
       },
       previewState: {
         type: "choice",
