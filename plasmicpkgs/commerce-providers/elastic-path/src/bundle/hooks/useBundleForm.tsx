@@ -82,29 +82,42 @@ export function useBundleForm({
     mode: 'onChange', // Enable real-time validation
   });
 
-  const { 
+  const {
     handleSubmit: rhfHandleSubmit,
     watch,
     setValue,
-    formState: { errors: formErrors, isValid },
     reset: rhfReset,
   } = form;
 
   // Watch all form values for real-time updates
   const selectedOptions = watch();
 
-  // Convert form errors to simple string format for backward compatibility
-  const errors = useMemo(() => {
+  // Validity and messages come from the schema, run against the current
+  // selections.
+  //
+  // Not from `formState`: react-hook-form only fills `errors` for fields it has
+  // seen written, so a bundle that arrived invalid — a shared link, a catalog
+  // default that cannot be satisfied — reported `isValid: false` with no message
+  // to show for it. The shopper got a disabled button and no reason. One
+  // safeParse answers both, for every path into the page.
+  const { isValid, errors } = useMemo(() => {
+    const result = (bundleSchema as { safeParse: (v: unknown) => any }).safeParse(
+      selectedOptions
+    );
+    if (result.success) {
+      return { isValid: true, errors: {} as Record<string, string> };
+    }
+
     const errorMessages: Record<string, string> = {};
-    
-    Object.entries(formErrors).forEach(([key, error]) => {
-      if (typeof error?.message === "string") {
-        errorMessages[key] = error.message;
+    for (const issue of result.error?.issues ?? []) {
+      // First issue per component wins: one message per thing to fix.
+      const key = String(issue.path?.[0] ?? "");
+      if (key && !errorMessages[key]) {
+        errorMessages[key] = issue.message;
       }
-    });
-    
-    return errorMessages;
-  }, [formErrors]);
+    }
+    return { isValid: false, errors: errorMessages };
+  }, [bundleSchema, selectedOptions]);
 
   // Handle component selection - maintains existing API
   //

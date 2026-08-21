@@ -31,12 +31,16 @@ jest.mock("@hookform/resolvers/zod", () => ({
   zodResolver: jest.fn(() => jest.fn()),
 }));
 
+// Validity and messages come from the schema, so the stub has to answer
+// safeParse. Tests that care set `mockSafeParseResult`.
+let mockSafeParseResult: any = { success: true };
+
 // Mock the schema module
 jest.mock("../../schemas/bundleSchema", () => ({
   createBundleSchema: jest.fn(() => ({
     // Minimal Zod-like schema shape
     parse: jest.fn(),
-    safeParse: jest.fn(),
+    safeParse: jest.fn(() => mockSafeParseResult),
   })),
   createBundleDefaultValues: jest.fn(
     (components: Record<string, any>) => {
@@ -119,6 +123,7 @@ describe("useBundleForm", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockSafeParseResult = { success: true };
     mockWatch.mockReturnValue({
       processor: {},
       memory: {},
@@ -155,7 +160,7 @@ describe("useBundleForm", () => {
     expect(result.current).toHaveProperty("reset");
   });
 
-  it("reports isValid from form state", () => {
+  it("reports isValid from the schema", () => {
     const { result } = renderHook(() =>
       useBundleForm({
         components: defaultComponents,
@@ -381,19 +386,18 @@ describe("useBundleForm", () => {
   });
 
   describe("errors", () => {
-    it("converts form errors to simple string format", () => {
-      (useForm as jest.Mock).mockReturnValueOnce({
-        handleSubmit: mockHandleSubmit,
-        watch: mockWatch,
-        setValue: mockSetValue,
-        formState: {
-          errors: {
-            processor: { message: "Please select one option for Processor" },
-          },
-          isValid: false,
+    it("keys schema issues by their component", () => {
+      mockSafeParseResult = {
+        success: false,
+        error: {
+          issues: [
+            {
+              path: ["processor"],
+              message: "Please select one option for Processor",
+            },
+          ],
         },
-        reset: mockReset,
-      });
+      };
 
       const { result } = renderHook(() =>
         useBundleForm({ components: defaultComponents })
@@ -403,6 +407,24 @@ describe("useBundleForm", () => {
       expect(result.current.errors.processor).toBe(
         "Please select one option for Processor"
       );
+    });
+
+    it("keeps the first message per component", () => {
+      mockSafeParseResult = {
+        success: false,
+        error: {
+          issues: [
+            { path: ["memory"], message: "first" },
+            { path: ["memory"], message: "second" },
+          ],
+        },
+      };
+
+      const { result } = renderHook(() =>
+        useBundleForm({ components: defaultComponents })
+      );
+
+      expect(result.current.errors.memory).toBe("first");
     });
 
     it("returns empty errors object when no form errors", () => {

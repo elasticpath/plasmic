@@ -129,4 +129,54 @@ describe("useBundleForm — validation reaches the caller", () => {
       expect(result.current.isValid).toBe(false);
     });
   });
+
+  it("has a message ready on first render, with no interaction at all", async () => {
+    // react-hook-form only fills formState.errors for fields it has seen
+    // written, so an invalid configuration that arrived with the page — a shared
+    // link, an unsatisfiable catalog default — left the shopper with a disabled
+    // button and nothing explaining why. Caught in a browser, not here.
+    const { result } = renderHook(() =>
+      useBundleForm({ components, defaultConfiguration: configFor(1) })
+    );
+
+    await waitFor(() => {
+      expect(result.current.errors.games).toBe(
+        "Please select exactly 2 options for Games"
+      );
+    });
+    expect(result.current.isValid).toBe(false);
+  });
+
+  it("reports a message for every component that needs one", async () => {
+    // Both need two and the auto-select can only pick one, so both are short.
+    // A min-1 component would have been satisfied by the auto-select and is not
+    // a test of anything.
+    const twoShort = {
+      games: components.games,
+      extras: {
+        name: "Extras",
+        min: 2,
+        max: 2,
+        sort_order: 1,
+        options: [
+          { id: "x", type: "product" as const, quantity: 1 },
+          { id: "y", type: "product" as const, quantity: 1 },
+        ],
+      },
+    };
+
+    const { result } = renderHook(() =>
+      useBundleForm({ components: twoShort })
+    );
+
+    await waitFor(() => {
+      expect(Object.keys(result.current.errors).sort()).toEqual([
+        "extras",
+        "games",
+      ]);
+    });
+    expect(result.current.errors.extras).toBe(
+      "Please select exactly 2 options for Extras"
+    );
+  });
 });
