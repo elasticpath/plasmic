@@ -213,4 +213,72 @@ describe("useBundleForm — validation reaches the caller", () => {
       expect(result.current.selectedOptions.games).toEqual({ "parent:B": 1 });
     });
   });
+
+  it("replaces the variant even when nobody clears the old one", async () => {
+    // EPBundleVariationPicker never passes selectedVariationId, so
+    // useVariationSelection's clear branch does not fire and the set call
+    // arrives alone. One option resolves to one variant, so the write itself
+    // has to supersede the option's other variants and its bare parent.
+    const gift = {
+      gift: {
+        name: "Gift",
+        min: 0,
+        max: 3,
+        sort_order: 0,
+        options: [{ id: "parent", type: "product" as const, quantity: 1 }],
+      },
+    };
+
+    const { result } = renderHook(() =>
+      useBundleForm({
+        components: gift,
+        defaultConfiguration: btoa(
+          JSON.stringify({ gift: { parent: 1, "parent:A": 1 } })
+        ),
+      })
+    );
+
+    await act(async () => {
+      result.current.handleComponentSelection("gift", "parent", 1, "B");
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedOptions.gift).toEqual({ "parent:B": 1 });
+    });
+  });
+
+  it("keeps a different option's selection when a variant is chosen", async () => {
+    const gift = {
+      gift: {
+        name: "Gift",
+        min: 0,
+        max: 3,
+        sort_order: 0,
+        options: [
+          { id: "parent", type: "product" as const, quantity: 1 },
+          { id: "other", type: "product" as const, quantity: 1 },
+        ],
+      },
+    };
+
+    const { result } = renderHook(() =>
+      useBundleForm({
+        components: gift,
+        defaultConfiguration: btoa(
+          JSON.stringify({ gift: { other: 1, "parent:A": 1 } })
+        ),
+      })
+    );
+
+    await act(async () => {
+      result.current.handleComponentSelection("gift", "parent", 1, "B");
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedOptions.gift).toEqual({
+        other: 1,
+        "parent:B": 1,
+      });
+    });
+  });
 });

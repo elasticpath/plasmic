@@ -137,9 +137,22 @@ export function useBundleForm({
       const isSingleSelect = component.max === 1 && quantity > 0;
       const current = (getValues(componentKey) ?? {}) as Record<string, number>;
 
+      // An option resolves to exactly one variant, so choosing one supersedes
+      // the option's other variants and its bare parent. Relying on the caller
+      // to clear the old variant first is not enough: EPBundleVariationPicker
+      // never passes `selectedVariationId`, so nothing is cleared and every
+      // switch left another child behind.
+      const supersedesVariants = !!variationId && quantity > 0;
+
       Object.entries(current).forEach(([key, qty]) => {
         if (key === selectionKey) return; // rewritten below
         if (isSingleSelect) return; // single-select: this choice replaces the rest
+        if (
+          supersedesVariants &&
+          (key === optionId || key.startsWith(`${optionId}:`))
+        ) {
+          return;
+        }
         if (qty > 0) next[key] = qty;
       });
 
