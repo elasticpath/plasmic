@@ -1672,7 +1672,7 @@
         "eWxy7ITden5Q": { "__type": "RawText", "markers": [], "text": "Home" }
       },
       "deps": [],
-      "version": "258-add-code-component-subtree-prefetching-config"
+      "version": "259-repoint-ep-commerce-bindings"
     }
   ]
 ]
