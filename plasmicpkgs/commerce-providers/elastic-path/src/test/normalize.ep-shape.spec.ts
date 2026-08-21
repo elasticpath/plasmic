@@ -263,6 +263,38 @@ describe("normalizeProduct", () => {
     ]);
   });
 
+  it("does not list the same image twice", () => {
+    // EP references one file from both main_image and files, so a gallery bound
+    // to `images` showed the same photo twice.
+    const dupe: ProductListData = {
+      data: [
+        {
+          id: "child-m",
+          type: "product",
+          attributes: { name: "Merino Jumper Medium", sku: "MJ-M", status: "live" },
+          relationships: {
+            main_image: { data: { id: "img-shared", type: "main_image" } },
+            files: { data: [{ id: "img-shared", type: "file" }] },
+          },
+        } as any,
+      ],
+      included: {
+        main_images: [
+          { id: "img-shared", type: "file", link: { href: "https://cdn.example/one.jpg" } },
+        ],
+        files: [
+          { id: "img-shared", type: "file", link: { href: "https://cdn.example/one.jpg" } },
+        ],
+      } as any,
+    };
+
+    const product = normalizeProduct(baseProduct, "en-GB", dupe);
+
+    expect(product.childProducts[0].images).toEqual([
+      { url: "https://cdn.example/one.jpg", alt: "Merino Jumper Medium" },
+    ]);
+  });
+
   it("gives a base product a priceFrom taken from its cheapest child", () => {
     const product = normalizeProduct(baseProduct, "en-GB", children);
 

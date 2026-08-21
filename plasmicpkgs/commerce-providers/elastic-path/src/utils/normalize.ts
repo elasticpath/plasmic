@@ -42,6 +42,16 @@ const getOptionsFromSkuId = (
   return acc;
 };
 
+/** EP references one file from both `main_image` and `files`. */
+const dedupeByUrl = <T extends { url: string }>(images: T[]): T[] => {
+  const seen = new Set<string>();
+  return images.filter((image) => {
+    if (seen.has(image.url)) return false;
+    seen.add(image.url);
+    return true;
+  });
+};
+
 const normalizeProductImages = (product: ProductData) => {
   const images: Array<{ url: string; alt?: string }> = [];
 
@@ -72,7 +82,7 @@ const normalizeProductImages = (product: ProductData) => {
     });
   }
 
-  return images;
+  return dedupeByUrl(images);
 };
 
 /**
@@ -115,7 +125,7 @@ const normalizeChildImages = (
     }
   });
 
-  return images;
+  return dedupeByUrl(images);
 };
 
 const normalizeChildProducts = (
