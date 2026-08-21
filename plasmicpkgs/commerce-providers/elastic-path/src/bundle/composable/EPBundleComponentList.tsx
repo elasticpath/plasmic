@@ -126,9 +126,15 @@ export function EPBundleComponentList(props: EPBundleComponentListProps) {
           const isParentProduct = parentInfo?.isParent ?? false;
 
           const sortOrd = option.sort_order ?? 0;
+          // An option whose product never resolved has no name to show. It used
+          // to fall back to the option id, which put a raw UUID in front of the
+          // shopper; an empty name plus `isUnavailable` lets the design say
+          // something honest instead.
+          const isUnavailable = !productInfo.name;
           return {
             id: optionId,
-            name: productInfo.name ?? optionId,
+            name: productInfo.name ?? "",
+            isUnavailable,
             quantity,
             minQty: option.min ?? null,
             maxQty: option.max ?? null,

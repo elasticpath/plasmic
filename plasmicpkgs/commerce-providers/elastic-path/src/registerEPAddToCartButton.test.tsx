@@ -63,12 +63,16 @@ function setUp({
   product = SAMPLE_PRODUCT,
   formValues = { ProductQuantity: 2 },
   inEditor = false,
+  bundleData = undefined,
 }: {
   product?: unknown;
   formValues?: Record<string, unknown>;
   inEditor?: boolean;
+  bundleData?: { isValid?: boolean; errors?: string[] };
 } = {}) {
-  mockUseSelector.mockReturnValue(product);
+  mockUseSelector.mockImplementation((name: string) =>
+    name === "bundleData" ? bundleData : product
+  );
   mockUsePlasmicCanvasContext.mockReturnValue(inEditor);
   mockUseFormContext.mockReturnValue({
     getValues: () => formValues,
@@ -282,5 +286,75 @@ describe("EPAddToCartButton", () => {
     } else {
       expect(mockCallEpProxy).not.toHaveBeenCalled();
     }
+  });
+
+  describe("an invalid bundle configuration", () => {
+    // Elastic Path rejects an under- or over-filled bundle, so offering the add
+    // at all just produces a 500 the shopper never sees a reason for.
+    it("disables the button", () => {
+      setUp({ bundleData: { isValid: false, errors: ["Please select 1 more option for Games"] } });
+
+      render(<EPAddToCartButton>Add</EPAddToCartButton>);
+
+      expect(readState().isDisabled).toBe(true);
+    });
+
+    it("does not call the proxy when clicked", async () => {
+      setUp({ bundleData: { isValid: false, errors: ["nope"] } });
+
+      render(<EPAddToCartButton>Add</EPAddToCartButton>);
+      await act(async () => {
+        fireEvent.click(screen.getByText("Add"));
+      });
+
+      expect(mockCallEpProxy).not.toHaveBeenCalled();
+    });
+
+    it("stays enabled for a valid bundle", () => {
+      setUp({ bundleData: { isValid: true, errors: [] } });
+
+      render(<EPAddToCartButton>Add</EPAddToCartButton>);
+
+      expect(readState().isDisabled).toBe(false);
+    });
+
+    it("stays enabled for a product that is not a bundle", () => {
+      setUp();
+
+      render(<EPAddToCartButton>Add</EPAddToCartButton>);
+
+      expect(readState().isDisabled).toBe(false);
+    });
+  });
+
+  describe("a failed add", () => {
+    it("shows the shopper why, instead of swallowing it", async () => {
+      setUp();
+      mockCallEpProxy.mockRejectedValue(new Error("Cart is locked"));
+
+      const { container } = render(<EPAddToCartButton>Add</EPAddToCartButton>);
+      await act(async () => {
+        fireEvent.click(screen.getByText("Add"));
+      });
+
+      expect(
+        container.querySelector("[data-ep-add-to-cart-error]")?.textContent
+      ).toBe("Cart is locked");
+    });
+
+    it("stays quiet when the consumer renders the error itself", async () => {
+      setUp();
+      mockCallEpProxy.mockRejectedValue(new Error("Cart is locked"));
+
+      const { container } = render(
+        <EPAddToCartButton showError={false}>Add</EPAddToCartButton>
+      );
+      await act(async () => {
+        fireEvent.click(screen.getByText("Add"));
+      });
+
+      expect(container.querySelector("[data-ep-add-to-cart-error]")).toBeNull();
+      expect(readState().error).toBe("Cart is locked");
+    });
   });
 });

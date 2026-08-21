@@ -166,7 +166,7 @@ describe("useBundleForm", () => {
   });
 
   describe("handleComponentSelection", () => {
-    it("calls setValue with correct path and quantity", () => {
+    it("writes the whole component map in one call", () => {
       const { result } = renderHook(() =>
         useBundleForm({ components: defaultComponents })
       );
@@ -175,10 +175,12 @@ describe("useBundleForm", () => {
         result.current.handleComponentSelection("processor", "opt-1", 1);
       });
 
-      expect(mockSetValue).toHaveBeenCalledWith("processor.opt-1", 1, {
-        shouldValidate: true,
-        shouldDirty: true,
-      });
+      expect(mockSetValue).toHaveBeenCalledTimes(1);
+      expect(mockSetValue).toHaveBeenCalledWith(
+        "processor",
+        { "opt-1": 1 },
+        { shouldValidate: true, shouldDirty: true }
+      );
     });
 
     it("builds parentId:childId key when variationId is provided", () => {
@@ -196,13 +198,13 @@ describe("useBundleForm", () => {
       });
 
       expect(mockSetValue).toHaveBeenCalledWith(
-        "processor.parent-1:child-1",
-        1,
+        "processor",
+        { "parent-1:child-1": 1 },
         expect.objectContaining({ shouldValidate: true })
       );
     });
 
-    it("clears other selections for single-select components (max=1)", () => {
+    it("replaces the previous choice for single-select components (max=1)", () => {
       mockWatch.mockReturnValue({
         processor: { "opt-1": 1 },
         memory: {},
@@ -216,19 +218,42 @@ describe("useBundleForm", () => {
         result.current.handleComponentSelection("processor", "opt-2", 1);
       });
 
-      // Should set new selection
-      expect(mockSetValue).toHaveBeenCalledWith("processor.opt-2", 1, {
-        shouldValidate: true,
-        shouldDirty: true,
-      });
-      // Should clear old selection
-      expect(mockSetValue).toHaveBeenCalledWith("processor.opt-1", 0, {
-        shouldValidate: true,
-        shouldDirty: true,
-      });
+      // The replaced option is gone, not held at zero: Elastic Path rejects a
+      // zero-quantity entry outright ("Must be greater than or equal to 1").
+      expect(mockSetValue).toHaveBeenCalledWith(
+        "processor",
+        { "opt-2": 1 },
+        { shouldValidate: true, shouldDirty: true }
+      );
     });
 
-    it("does not clear other selections for multi-select components", () => {
+    it("drops the bare parent when one of its variations is chosen", () => {
+      mockWatch.mockReturnValue({
+        processor: { "parent-1": 1 },
+        memory: {},
+      });
+
+      const { result } = renderHook(() =>
+        useBundleForm({ components: defaultComponents })
+      );
+
+      act(() => {
+        result.current.handleComponentSelection(
+          "processor",
+          "parent-1",
+          1,
+          "child-9"
+        );
+      });
+
+      expect(mockSetValue).toHaveBeenCalledWith(
+        "processor",
+        { "parent-1:child-9": 1 },
+        { shouldValidate: true, shouldDirty: true }
+      );
+    });
+
+    it("keeps other selections for multi-select components", () => {
       mockWatch.mockReturnValue({
         processor: {},
         memory: { "mem-1": 1 },
@@ -242,22 +267,17 @@ describe("useBundleForm", () => {
         result.current.handleComponentSelection("memory", "mem-2", 1);
       });
 
-      // Should set new selection
-      expect(mockSetValue).toHaveBeenCalledWith("memory.mem-2", 1, {
-        shouldValidate: true,
-        shouldDirty: true,
-      });
-      // Should NOT clear mem-1
-      const clearCalls = mockSetValue.mock.calls.filter(
-        (call: any[]) => call[0] === "memory.mem-1" && call[1] === 0
+      expect(mockSetValue).toHaveBeenCalledWith(
+        "memory",
+        { "mem-1": 1, "mem-2": 1 },
+        { shouldValidate: true, shouldDirty: true }
       );
-      expect(clearCalls).toHaveLength(0);
     });
 
-    it("removes zero quantities by setting component-level value", () => {
+    it("removes a deselected option from the component map", () => {
       mockWatch.mockReturnValue({
         processor: { "opt-1": 1 },
-        memory: { "mem-1": 1 },
+        memory: { "mem-1": 1, "mem-2": 2 },
       });
 
       const { result } = renderHook(() =>
@@ -268,17 +288,31 @@ describe("useBundleForm", () => {
         result.current.handleComponentSelection("memory", "mem-1", 0);
       });
 
-      // Should set the option to 0 first
-      expect(mockSetValue).toHaveBeenCalledWith("memory.mem-1", 0, {
-        shouldValidate: true,
-        shouldDirty: true,
-      });
-      // Should update the entire component object without the key
+      expect(mockSetValue).toHaveBeenCalledTimes(1);
       expect(mockSetValue).toHaveBeenCalledWith(
         "memory",
-        {},
+        { "mem-2": 2 },
         { shouldValidate: true, shouldDirty: true }
       );
+    });
+
+    it("never emits a zero quantity, whatever the starting state", () => {
+      mockWatch.mockReturnValue({
+        processor: {},
+        memory: { "mem-1": 0, "mem-2": 1 },
+      });
+
+      const { result } = renderHook(() =>
+        useBundleForm({ components: defaultComponents })
+      );
+
+      act(() => {
+        result.current.handleComponentSelection("memory", "mem-2", 2);
+      });
+
+      const written = mockSetValue.mock.calls[0][1] as Record<string, number>;
+      expect(Object.values(written).every((qty) => qty > 0)).toBe(true);
+      expect(written).toEqual({ "mem-2": 2 });
     });
 
     it("does nothing for unknown component key", () => {

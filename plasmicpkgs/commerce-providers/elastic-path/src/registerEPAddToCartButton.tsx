@@ -36,6 +36,12 @@ interface EPAddToCartButtonProps {
   previewState?: PreviewState;
   /** Fired after the item is successfully added to the cart. */
   onAddedToCart?: () => void;
+  /**
+   * Render the failure reason inside the button when an add fails and nothing
+   * in the slot is bound to `addToCartState.error`. On by default: a silently
+   * swallowed rejection leaves the shopper with no idea why nothing happened.
+   */
+  showError?: boolean;
   /** @deprecated Inert. Use EPStockProvider / EPStockField. */
   enableStockCheck?: boolean;
   /** @deprecated Inert. Use EPLocationPicker. */
@@ -69,6 +75,13 @@ export const epAddToCartButtonMeta: CodeComponentMeta<EPAddToCartButtonProps> = 
       description:
         "Force a preview state with sample data for design-time editing",
       advanced: true,
+    },
+    showError: {
+      type: "boolean",
+      displayName: "Show Error",
+      description:
+        "Render the failure reason inside the button when an add fails. Turn off if you bind addToCartState.error yourself.",
+      defaultValue: true,
     },
     onAddedToCart: {
       type: "eventHandler" as const,
@@ -106,9 +119,20 @@ export const epAddToCartButtonMeta: CodeComponentMeta<EPAddToCartButtonProps> = 
 };
 
 export function EPAddToCartButton(props: EPAddToCartButtonProps) {
-  const { children, className, previewState = "auto", onAddedToCart } = props;
+  const {
+    children,
+    className,
+    previewState = "auto",
+    onAddedToCart,
+    showError = true,
+  } = props;
 
   const product = useSelector("currentProduct") as Product | undefined;
+  // An invalid bundle configuration is rejected by Elastic Path, so the button
+  // must not offer the add in the first place.
+  const bundleData = useSelector("bundleData") as
+    | { isValid?: boolean; errors?: string[] }
+    | undefined;
   const form = useFormContext();
   const inEditor = !!usePlasmicCanvasContext();
 
@@ -122,11 +146,12 @@ export function EPAddToCartButton(props: EPAddToCartButtonProps) {
   const effectiveError = useMock
     ? previewState === "error" ? "Sample error message" : null
     : error;
+  const isBundleInvalid = bundleData ? bundleData.isValid === false : false;
   const effectiveIsDisabled = useMock
     ? false
     : (previewState === "auto" && inEditor && !product)
       ? false
-      : (!product || isLoading);
+      : (!product || isLoading || isBundleInvalid);
 
   const addToCart = async () => {
     if (!product) {
@@ -209,6 +234,11 @@ export function EPAddToCartButton(props: EPAddToCartButtonProps) {
         data-loading={effectiveIsLoading || undefined}
       >
         {children}
+        {showError && effectiveError ? (
+          <span data-ep-add-to-cart-error="" role="alert">
+            {effectiveError}
+          </span>
+        ) : null}
       </div>
     </DataProvider>
   );

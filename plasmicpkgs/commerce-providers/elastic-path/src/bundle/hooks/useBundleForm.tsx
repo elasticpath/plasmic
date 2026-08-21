@@ -107,6 +107,14 @@ export function useBundleForm({
   }, [formErrors]);
 
   // Handle component selection - maintains existing API
+  //
+  // The next component map is computed in one pass and written with a single
+  // setValue. Writing the key first and then patching siblings meant a
+  // deselected option lingered at quantity 0: the max=1 branch zeroed the other
+  // keys instead of removing them, and the removal branch read a stale
+  // `selectedOptions` from the previous render. Elastic Path rejects a
+  // zero-quantity selection outright ("Must be greater than or equal to 1"), so
+  // an option is either present with a positive quantity or absent.
   const handleComponentSelection = useCallback(
     (componentKey: string, optionId: string, quantity: number, variationId?: string) => {
       const component = components[componentKey];
@@ -114,36 +122,24 @@ export function useBundleForm({
 
       // Use variationId if provided (for parent products)
       const selectionKey = variationId ? `${optionId}:${variationId}` : optionId;
-      
-      setValue(`${componentKey}.${selectionKey}`, quantity, {
+
+      const next: Record<string, number> = {};
+      const isSingleSelect = component.max === 1 && quantity > 0;
+
+      Object.entries(selectedOptions[componentKey] || {}).forEach(([key, qty]) => {
+        if (key === selectionKey) return; // rewritten below
+        if (isSingleSelect) return; // single-select: this choice replaces the rest
+        if (qty > 0) next[key] = qty;
+      });
+
+      if (quantity > 0) {
+        next[selectionKey] = quantity;
+      }
+
+      setValue(componentKey, next, {
         shouldValidate: true,
         shouldDirty: true,
       });
-
-      // Handle single-select components (max=1) - clear other selections
-      if (component.max === 1 && quantity > 0) {
-        const currentSelections = selectedOptions[componentKey] || {};
-        Object.keys(currentSelections).forEach(key => {
-          if (key !== selectionKey) {
-            setValue(`${componentKey}.${key}`, 0, {
-              shouldValidate: true,
-              shouldDirty: true,
-            });
-          }
-        });
-      }
-
-      // Remove zero quantities
-      if (quantity === 0) {
-        const currentSelections = { ...selectedOptions[componentKey] };
-        delete currentSelections[selectionKey];
-        
-        // Update the entire component object
-        setValue(componentKey, currentSelections, {
-          shouldValidate: true,
-          shouldDirty: true,
-        });
-      }
     },
     [components, selectedOptions, setValue]
   );

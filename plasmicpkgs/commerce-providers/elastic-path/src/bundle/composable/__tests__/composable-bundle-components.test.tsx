@@ -132,6 +132,65 @@ describe("EPBundleComponentField", () => {
     expect(container.textContent).toBe("Processor");
   });
 
+  it("renders a bounded range in selectionInfo", () => {
+    setupSelector({
+      currentBundleComponent: { name: "Gift", min: 0, max: 3, selectedCount: 1, options: [] },
+    });
+    const { container } = render(<EPBundleComponentField field="selectionInfo" />);
+    expect(container.textContent).toBe("1 of 0\u20133");
+  });
+
+  it("renders an exact requirement in selectionInfo", () => {
+    setupSelector({
+      currentBundleComponent: { name: "Games", min: 2, max: 2, selectedCount: 1, options: [] },
+    });
+    const { container } = render(<EPBundleComponentField field="selectionInfo" />);
+    expect(container.textContent).toBe("1 of 2");
+  });
+
+  it("does not print MAX_SAFE_INTEGER for a component with no maximum", () => {
+    // A component with no max arrives as Number.MAX_SAFE_INTEGER, and used to
+    // render as "1 of 0\u20139007199254740991".
+    setupSelector({
+      currentBundleComponent: {
+        name: "Test",
+        min: 0,
+        max: Number.MAX_SAFE_INTEGER,
+        selectedCount: 1,
+        options: [],
+      },
+    });
+    const { container } = render(<EPBundleComponentField field="selectionInfo" />);
+    expect(container.textContent).toBe("1 selected");
+  });
+
+  it("shows the minimum when unbounded above it", () => {
+    setupSelector({
+      currentBundleComponent: {
+        name: "Test",
+        min: 2,
+        max: Number.MAX_SAFE_INTEGER,
+        selectedCount: 3,
+        options: [],
+      },
+    });
+    const { container } = render(<EPBundleComponentField field="selectionInfo" />);
+    expect(container.textContent).toBe("3 of 2+");
+  });
+
+  it("renders an empty max rather than MAX_SAFE_INTEGER", () => {
+    setupSelector({
+      currentBundleComponent: {
+        name: "Test",
+        min: 0,
+        max: Number.MAX_SAFE_INTEGER,
+        options: [],
+      },
+    });
+    const { container } = render(<EPBundleComponentField field="max" />);
+    expect(container.textContent).toBe("");
+  });
+
   it("renders min field", () => {
     setupSelector({
       currentBundleComponent: { name: "Memory", min: 1, max: 4, options: [] },
@@ -801,6 +860,59 @@ describe("EPBundleComponentList", () => {
     // Should render items for each component (processor + memory)
     const items = container.querySelectorAll("[role='listitem']");
     expect(items.length).toBe(2);
+  });
+
+  it("never shows a product id where a name belongs", () => {
+    // optionProducts had no entry for this option, and `name` fell back to the
+    // option id — putting a raw UUID in front of the shopper.
+    setupSelector({ bundleData: { componentCount: 1 } });
+
+    const { container } = render(
+      <BundleFormContext.Provider
+        value={{
+          ...TEST_FORM_CONTEXT,
+          selectedOptions: { unresolved: { "9dc2b489-60f8-426f-a29c-787d710937a6": 1 } },
+          components: {
+            unresolved: {
+              name: "Mystery",
+              min: 1,
+              max: 1,
+              sort_order: 1,
+              options: [
+                { id: "9dc2b489-60f8-426f-a29c-787d710937a6", sort_order: 1, min: null, max: null },
+              ],
+            },
+          },
+          optionProducts: {},
+        }}
+      >
+        <EPBundleComponentList>
+          <span>Item</span>
+        </EPBundleComponentList>
+      </BundleFormContext.Provider>
+    );
+
+    const provider = container.querySelector("[data-provider='currentBundleComponent']");
+    const data = JSON.parse(provider!.getAttribute("data-provider-value")!);
+    expect(data.options[0].name).toBe("");
+    expect(data.options[0].isUnavailable).toBe(true);
+  });
+
+  it("marks a resolved option as available", () => {
+    setupSelector({ bundleData: { componentCount: 2 } });
+
+    const { container } = render(
+      <BundleFormContext.Provider value={TEST_FORM_CONTEXT}>
+        <EPBundleComponentList>
+          <span>Item</span>
+        </EPBundleComponentList>
+      </BundleFormContext.Provider>
+    );
+
+    const provider = container.querySelector("[data-provider='currentBundleComponent']");
+    const data = JSON.parse(provider!.getAttribute("data-provider-value")!);
+    expect(data.options[0].name).toBe("Core i5");
+    expect(data.options[0].isUnavailable).toBe(false);
   });
 
   it("has role=list with aria-label", () => {
