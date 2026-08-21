@@ -179,4 +179,38 @@ describe("useBundleForm — validation reaches the caller", () => {
       "Please select exactly 2 options for Extras"
     );
   });
+
+  it("switching a variation leaves one child, not both", async () => {
+    // useVariationSelection clears the old child and sets the new one with two
+    // synchronous calls. Rebuilding the map from the render-time `watch()`
+    // snapshot made the second call overwrite the first with stale data, so both
+    // children survived and EP rejected the add with "too many selections" —
+    // the very failure the branch set out to remove.
+    const twoPicks = {
+      games: {
+        name: "Games",
+        min: 1,
+        max: 2,
+        sort_order: 0,
+        options: [{ id: "parent", type: "product" as const, quantity: 1 }],
+      },
+    };
+
+    const { result } = renderHook(() =>
+      useBundleForm({
+        components: twoPicks,
+        defaultConfiguration: btoa(JSON.stringify({ games: { "parent:A": 1 } })),
+      })
+    );
+
+    await act(async () => {
+      // Exactly what useVariationSelection does, in one tick.
+      result.current.handleComponentSelection("games", "parent", 0, "A");
+      result.current.handleComponentSelection("games", "parent", 1, "B");
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedOptions.games).toEqual({ "parent:B": 1 });
+    });
+  });
 });

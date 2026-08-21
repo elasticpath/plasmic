@@ -86,6 +86,7 @@ export function useBundleForm({
     handleSubmit: rhfHandleSubmit,
     watch,
     setValue,
+    getValues,
     reset: rhfReset,
   } = form;
 
@@ -119,15 +120,11 @@ export function useBundleForm({
     return { isValid: false, errors: errorMessages };
   }, [bundleSchema, selectedOptions]);
 
-  // Handle component selection - maintains existing API
-  //
-  // The next component map is computed in one pass and written with a single
-  // setValue. Writing the key first and then patching siblings meant a
-  // deselected option lingered at quantity 0: the max=1 branch zeroed the other
-  // keys instead of removing them, and the removal branch read a stale
-  // `selectedOptions` from the previous render. Elastic Path rejects a
-  // zero-quantity selection outright ("Must be greater than or equal to 1"), so
-  // an option is either present with a positive quantity or absent.
+  // An option is either present with a positive quantity or absent: Elastic Path
+  // rejects a zero-quantity selection outright. The current map comes from
+  // `getValues`, not the render-time `watch()` snapshot, because switching a
+  // variation fires two calls in one tick and a stale snapshot let the second
+  // reinstate the child the first removed.
   const handleComponentSelection = useCallback(
     (componentKey: string, optionId: string, quantity: number, variationId?: string) => {
       const component = components[componentKey];
@@ -138,8 +135,9 @@ export function useBundleForm({
 
       const next: Record<string, number> = {};
       const isSingleSelect = component.max === 1 && quantity > 0;
+      const current = (getValues(componentKey) ?? {}) as Record<string, number>;
 
-      Object.entries(selectedOptions[componentKey] || {}).forEach(([key, qty]) => {
+      Object.entries(current).forEach(([key, qty]) => {
         if (key === selectionKey) return; // rewritten below
         if (isSingleSelect) return; // single-select: this choice replaces the rest
         if (qty > 0) next[key] = qty;
@@ -154,7 +152,7 @@ export function useBundleForm({
         shouldDirty: true,
       });
     },
-    [components, selectedOptions, setValue]
+    [components, getValues, setValue]
   );
 
   // Handle form submission

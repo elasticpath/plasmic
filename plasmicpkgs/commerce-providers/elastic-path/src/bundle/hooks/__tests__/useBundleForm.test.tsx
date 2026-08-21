@@ -22,7 +22,9 @@ jest.mock("react-hook-form", () => ({
     formState: { errors: {}, isValid: true },
     reset: mockReset,
     register: jest.fn(),
-    getValues: jest.fn(),
+    getValues: jest.fn((name?: string) =>
+      name === undefined ? mockWatch() : mockWatch()[name]
+    ),
   })),
 }));
 
