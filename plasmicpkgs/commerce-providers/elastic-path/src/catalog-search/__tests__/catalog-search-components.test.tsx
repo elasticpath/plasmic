@@ -1708,6 +1708,15 @@ describe("EPCurrentRefinements — empty slot", () => {
 
     expect(container.querySelectorAll("[data-ep-refinement-chip]")).toHaveLength(0);
   });
+
+  // Studio materialises a slot's defaultValue on insert, so any default at all
+  // makes `children` truthy on a fresh instance and the chip above is dead code.
+  it("ships no slot default, so a fresh instance reaches the chip", () => {
+    const slot = (epCurrentRefinementsMeta.props as any).children;
+
+    expect(slot.defaultValue).toBeUndefined();
+    expect(slot.hidePlaceholder).toBe(true);
+  });
 });
 
 describe("EPCurrentRefinements", () => {

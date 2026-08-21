@@ -46,37 +46,9 @@ export const epCurrentRefinementsMeta: CodeComponentMeta<EPCurrentRefinementsPro
   props: {
     children: {
       type: "slot",
-      defaultValue: [
-        {
-          type: "hbox",
-          styles: {
-            alignItems: "center",
-            gap: "4px",
-            paddingTop: "4px",
-            paddingRight: "8px",
-            paddingBottom: "4px",
-            paddingLeft: "8px",
-            borderTopLeftRadius: "999px",
-            borderTopRightRadius: "999px",
-            borderBottomLeftRadius: "999px",
-            borderBottomRightRadius: "999px",
-            borderTopWidth: "1px",
-            borderRightWidth: "1px",
-            borderBottomWidth: "1px",
-            borderLeftWidth: "1px",
-            borderTopStyle: "solid",
-            borderRightStyle: "solid",
-            borderBottomStyle: "solid",
-            borderLeftStyle: "solid",
-            borderTopColor: "#d1d5db",
-            borderRightColor: "#d1d5db",
-            borderBottomColor: "#d1d5db",
-            borderLeftColor: "#d1d5db",
-          },
-        },
-      ],
       description:
         "Optional. Leave empty for the applied refinement's real attribute, value and a remove affordance; fill it to compose your own against currentRefinementChip.",
+      hidePlaceholder: true,
     },
     includedAttributes: {
       type: "array",
