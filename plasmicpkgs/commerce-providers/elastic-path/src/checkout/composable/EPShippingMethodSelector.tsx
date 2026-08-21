@@ -94,6 +94,7 @@ export const EPShippingMethodSelector = React.forwardRef<
           }>;
           selectedShippingRateId?: string | null;
         };
+        isLoading?: boolean;
         updateSession?: (data: Record<string, unknown>) => Promise<void>;
       }
     | undefined;
@@ -194,6 +195,7 @@ interface RuntimeProps {
       }>;
       selectedShippingRateId?: string | null;
     };
+    isLoading?: boolean;
     updateSession?: (data: Record<string, unknown>) => Promise<void>;
   };
   shippingAddress?: {
@@ -224,8 +226,9 @@ const EPShippingMethodSelectorRuntime = React.forwardRef<
   const sessionRates = checkoutSessionCtx?.session?.availableShippingRates;
   const useSessionMode = !!(sessionRates && sessionRates.length > 0);
 
-  const [fetchedRates, setFetchedRates] = useState<ShippingMethod[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  // Nothing is fetched here any more (see below): rates arrive with the
+  // session, so its loading state is ours.
+  const isLoading = !!checkoutSessionCtx?.isLoading;
   const [selectedId, setSelectedId] = useState<string | null>(
     checkoutSessionCtx?.session?.selectedShippingRateId ?? null
   );
@@ -246,64 +249,19 @@ const EPShippingMethodSelectorRuntime = React.forwardRef<
     }));
   }, [sessionRates, money]);
 
-  // Legacy mode: fetch shipping rates when address is valid
+  // Rates come from the checkout session, which sources them server-side via
+  // `ctx.shippingRateResolver` (#371/#374). There is no shopper-facing shipping
+  // rates endpoint in Elastic Path: this component used to POST to
+  // /api/checkout/calculate-shipping, a route the package deliberately retired
+  // and answers with 410 Gone, so the request could only ever fail and the
+  // shipping step sat empty with no explanation.
+  const needsSession = !useSessionMode && !!shippingAddress?.isValid;
   useEffect(() => {
-    if (useSessionMode) return; // skip fetch in session mode
-    if (!shippingAddress?.isValid) return;
-
-    let cancelled = false;
-    setIsLoading(true);
-
-    fetch("/api/checkout/calculate-shipping", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
-      body: JSON.stringify({
-        shippingAddress: {
-          first_name: shippingAddress.firstName ?? "",
-          last_name: shippingAddress.lastName ?? "",
-          line_1: shippingAddress.line1 ?? "",
-          city: shippingAddress.city ?? "",
-          postcode: shippingAddress.postcode ?? "",
-          country: shippingAddress.country ?? "",
-        },
-      }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (cancelled) return;
-        const rates: ShippingMethod[] = (
-          data?.data?.shippingRates ?? []
-        ).map((r: any) => ({
-          id: r.id ?? r.name,
-          name: r.name ?? "Shipping",
-          price: r.amount ?? r.price ?? 0,
-          priceFormatted: r.priceFormatted ?? r.formatted_amount ?? "$0.00",
-          estimatedDays: r.estimatedDays ?? r.estimated_days ?? "",
-          carrier: r.carrier ?? "",
-          isSelected: false,
-        }));
-        setFetchedRates(rates);
-        setIsLoading(false);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        log.warn("Failed to fetch shipping rates:", err);
-        setFetchedRates([]);
-        setIsLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    useSessionMode,
-    shippingAddress?.isValid,
-    shippingAddress?.line1,
-    shippingAddress?.city,
-    shippingAddress?.postcode,
-    shippingAddress?.country,
-  ]);
+    if (!needsSession) return;
+    log.warn(
+      "Shipping rates require an EP Checkout Session Provider — rates are resolved server-side and are not fetchable from the browser"
+    );
+  }, [needsSession]);
 
   // Sync selectedId from session
   useEffect(() => {
@@ -325,7 +283,7 @@ const EPShippingMethodSelectorRuntime = React.forwardRef<
   useImperativeHandle(ref, () => ({ selectMethod }), [selectMethod]);
 
   // Choose rate source: session or fetched
-  const rates = useSessionMode ? sessionDerivedRates : fetchedRates;
+  const rates = useSessionMode ? sessionDerivedRates : [];
 
   // Apply selection state to rates
   const ratesWithSelection = useMemo(

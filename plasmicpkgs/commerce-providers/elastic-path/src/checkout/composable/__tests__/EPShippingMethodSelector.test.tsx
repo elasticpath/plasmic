@@ -167,4 +167,53 @@ describe("EPShippingMethodSelector", () => {
       });
     });
   });
+
+  describe("without a checkout session", () => {
+    // The component used to POST to /api/checkout/calculate-shipping — a route
+    // the package retired and answers with 410 Gone — so the shipping step sat
+    // empty while a doomed request went out on every valid address.
+    it("does not call the retired shipping endpoint", async () => {
+      const fetchSpy = jest.fn();
+      const originalFetch = global.fetch;
+      (global as any).fetch = fetchSpy;
+
+      mockUseSelector.mockImplementation((name: string) =>
+        name === "shippingAddressFieldsData"
+          ? {
+              isValid: true,
+              firstName: "Ada",
+              lastName: "Lovelace",
+              line1: "1 Main St",
+              city: "Bristol",
+              postcode: "BS1 1AA",
+              country: "GB",
+            }
+          : undefined
+      );
+
+      render(
+        <EPShippingMethodSelector>
+          <span>rate</span>
+        </EPShippingMethodSelector>
+      );
+
+      await Promise.resolve();
+      expect(fetchSpy).not.toHaveBeenCalled();
+      (global as any).fetch = originalFetch;
+    });
+
+    it("renders the empty state rather than hanging on a load", () => {
+      mockUseSelector.mockImplementation((name: string) =>
+        name === "shippingAddressFieldsData" ? { isValid: true } : undefined
+      );
+
+      const { container } = render(
+        <EPShippingMethodSelector>
+          <span>rate</span>
+        </EPShippingMethodSelector>
+      );
+
+      expect(container.textContent).toContain("No shipping methods available");
+    });
+  });
 });

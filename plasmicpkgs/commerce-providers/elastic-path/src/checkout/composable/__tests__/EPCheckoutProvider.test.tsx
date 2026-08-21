@@ -54,6 +54,17 @@ jest.mock("../../hooks/use-checkout", () => ({
   }),
 }));
 
+// The cart the provider reads for pre-order totals.
+let mockCart: any = null;
+jest.mock("../../../cart-provider/use-ep-cart", () => ({
+  useEpCart: () => ({
+    cart: mockCart,
+    isLoading: false,
+    error: null,
+    refresh: jest.fn(),
+  }),
+}));
+
 // Mock cart-session (PRD #273: replaces the legacy elasticpath_cart cookie).
 jest.mock("../../../cart/cart-session", () => ({
   getCartIdFromSession: jest.fn().mockResolvedValue("cart-123"),
@@ -309,4 +320,69 @@ describe("EPCheckoutProvider", () => {
       );
     });
   });
+
+describe("EPCheckoutProvider — totals before the order exists", () => {
+  const money = (amount: number) => ({
+    amount,
+    currency: "USD",
+    float_price: amount / 100,
+    formatted: `$${(amount / 100).toFixed(2)}`,
+  });
+
+  afterEach(() => {
+    mockCart = null;
+  });
+
+  function readSummary() {
+    const dp = screen.getByTestId("data-provider-checkoutData");
+    return JSON.parse(dp.getAttribute("data-value")!).summary;
+  }
+
+  it("reports the cart's money, not zeros", async () => {
+    // The order only exists after payment. Building the summary from it alone
+    // published "Total $0.00" for the entire flow, beside a cart summary that
+    // correctly showed real money.
+    mockCart = {
+      id: "cart-1",
+      itemCount: 2,
+      items: [],
+      meta: {
+        display_price: {
+          without_tax: money(3000),
+          tax: money(0),
+          with_tax: money(3000),
+          discount: money(0),
+        },
+      },
+    };
+
+    await act(async () => {
+      render(
+        <EPCheckoutProvider>
+          <span>content</span>
+        </EPCheckoutProvider>
+      );
+    });
+
+    const summary = readSummary();
+    expect(summary.subtotal).toBe(3000);
+    expect(summary.total).toBe(3000);
+    expect(summary.subtotalFormatted).toBe("$30.00");
+    expect(summary.itemCount).toBe(2);
+  });
+
+  it("still reports zeros when there is no cart at all", async () => {
+    mockCart = null;
+
+    await act(async () => {
+      render(
+        <EPCheckoutProvider>
+          <span>content</span>
+        </EPCheckoutProvider>
+      );
+    });
+
+    expect(readSummary().total).toBe(0);
+  });
+});
 });

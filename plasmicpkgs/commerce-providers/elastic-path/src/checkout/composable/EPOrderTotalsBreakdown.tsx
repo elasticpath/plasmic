@@ -81,10 +81,18 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
       return MOCK_ORDER_TOTALS_DATA;
     }
 
-    // Source 1: checkoutData.summary (from EPCheckoutProvider)
+    // Source 1: checkoutData.summary (from EPCheckoutProvider).
+    // An all-zero summary next to a cart that has money in it is not an answer
+    // — it is a provider that has nothing to report yet, so fall through to the
+    // cart rather than showing the shopper a $0.00 order.
     if (composableSummary) {
-      log.debug("Using checkoutData.summary from EPCheckoutProvider");
-      return composableSummary;
+      const summaryIsEmpty = !composableSummary.total && !composableSummary.subtotal;
+      const cartHasMoney = !!checkoutCart?.meta?.display_price?.with_tax?.amount;
+      if (!summaryIsEmpty || !cartHasMoney) {
+        log.debug("Using checkoutData.summary from EPCheckoutProvider");
+        return composableSummary;
+      }
+      log.debug("checkoutData.summary is empty; falling through to cart totals");
     }
 
     // Source 2: checkoutSession.totals (from EPCheckoutSessionProvider)

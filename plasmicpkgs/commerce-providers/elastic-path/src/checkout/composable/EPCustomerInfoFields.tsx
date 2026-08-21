@@ -18,6 +18,10 @@ import registerComponent, {
 import React, { useCallback, useImperativeHandle, useMemo, useState } from "react";
 import { Registerable } from "../../registerable";
 import {
+  CUSTOMER_INFO_DEFAULT_FIELDS,
+  DefaultFieldsForm,
+} from "./default-fields";
+import {
   MOCK_CUSTOMER_INFO_EMPTY,
   MOCK_CUSTOMER_INFO_FILLED,
   MOCK_CUSTOMER_INFO_WITH_ERRORS,
@@ -169,7 +173,15 @@ export const EPCustomerInfoFields = React.forwardRef<
     return (
       <DataProvider name="customerInfoFieldsData" data={mockData}>
         <div className={className} data-ep-customer-info-fields="">
-          {children}
+          {children ?? (
+            <DefaultFieldsForm
+              fields={CUSTOMER_INFO_DEFAULT_FIELDS}
+              values={mockData as unknown as Record<string, unknown>}
+              errors={mockData.errors}
+              onChange={() => undefined}
+              readOnly
+            />
+          )}
         </div>
       </DataProvider>
     );
@@ -291,7 +303,14 @@ const EPCustomerInfoFieldsRuntime = React.forwardRef<
     return (
       <DataProvider name="customerInfoFieldsData" data={MOCK_CUSTOMER_INFO_EMPTY}>
         <div className={className} data-ep-customer-info-fields="">
-          {children}
+          {children ?? (
+            <DefaultFieldsForm
+              fields={CUSTOMER_INFO_DEFAULT_FIELDS}
+              values={MOCK_CUSTOMER_INFO_EMPTY as unknown as Record<string, unknown>}
+              onChange={() => undefined}
+              readOnly
+            />
+          )}
         </div>
       </DataProvider>
     );
@@ -300,7 +319,14 @@ const EPCustomerInfoFieldsRuntime = React.forwardRef<
   return (
     <DataProvider name="customerInfoFieldsData" data={data}>
       <div className={className} data-ep-customer-info-fields="">
-        {children}
+        {children ?? (
+          <DefaultFieldsForm
+            fields={CUSTOMER_INFO_DEFAULT_FIELDS}
+            values={data as unknown as Record<string, unknown>}
+            errors={data.errors}
+            onChange={(name, value) => setField(name as FieldName, value)}
+          />
+        )}
       </div>
     </DataProvider>
   );
@@ -318,16 +344,9 @@ export const epCustomerInfoFieldsMeta: CodeComponentMeta<EPCustomerInfoFieldsPro
     props: {
       children: {
         type: "slot",
-        defaultValue: [
-          {
-            type: "vbox",
-            children: [
-              { type: "text", value: "First Name" },
-              { type: "text", value: "Last Name" },
-              { type: "text", value: "Email" },
-            ],
-          },
-        ],
+        description:
+          "Optional. Leave empty for working default inputs; fill it to compose your own markup against customerInfoFieldsData and the setField ref action.",
+        hidePlaceholder: true,
       },
       previewState: {
         type: "choice",

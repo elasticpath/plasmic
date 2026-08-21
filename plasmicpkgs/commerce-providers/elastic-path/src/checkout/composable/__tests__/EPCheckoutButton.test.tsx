@@ -289,4 +289,74 @@ describe("EPCheckoutButton", () => {
       );
     });
   });
+
+  describe("outside an EP Checkout Provider", () => {
+    // On a cart page there is no flow to advance. The button used to render
+    // permanently aria-disabled with a dead click handler, so the composition
+    // the skeletons spec calls for did nothing at all.
+    const originalLocation = window.location;
+
+    beforeEach(() => {
+      mockCheckoutData = undefined;
+      delete (window as any).location;
+      (window as any).location = { assign: jest.fn() } as any;
+    });
+
+    afterEach(() => {
+      (window as any).location = originalLocation;
+    });
+
+    it("is enabled and labelled for the cart", () => {
+      render(
+        <EPCheckoutButton>
+          <span>Button</span>
+        </EPCheckoutButton>
+      );
+
+      const dp = screen.getByTestId("data-provider-checkoutButtonData");
+      const data = JSON.parse(dp.getAttribute("data-value")!);
+      expect(data.isDisabled).toBe(false);
+      expect(data.label).toBe("Checkout");
+      expect(data.step).toBe("cart");
+    });
+
+    it("navigates to the checkout page on click", () => {
+      const { container } = render(
+        <EPCheckoutButton>
+          <span>Button</span>
+        </EPCheckoutButton>
+      );
+
+      fireEvent.click(container.querySelector("[data-ep-checkout-button]")!);
+      expect(window.location.assign).toHaveBeenCalledWith("/checkout");
+    });
+
+    it("honours a custom checkout URL", () => {
+      const { container } = render(
+        <EPCheckoutButton checkoutUrl="/basket/checkout">
+          <span>Button</span>
+        </EPCheckoutButton>
+      );
+
+      fireEvent.click(container.querySelector("[data-ep-checkout-button]")!);
+      expect(window.location.assign).toHaveBeenCalledWith("/basket/checkout");
+    });
+
+    it("does not navigate when a provider is present", () => {
+      mockCheckoutData = {
+        step: "customer_info",
+        canProceed: true,
+        isProcessing: false,
+      };
+
+      const { container } = render(
+        <EPCheckoutButton>
+          <span>Button</span>
+        </EPCheckoutButton>
+      );
+
+      fireEvent.click(container.querySelector("[data-ep-checkout-button]")!);
+      expect(window.location.assign).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -43,6 +43,7 @@ import type {
   ShippingRate,
 } from "../types";
 import { useMoneyFormat } from "../../shopper-context/use-money-format";
+import { useEpCart } from "../../cart-provider/use-ep-cart";
 
 const log = createLogger("EPCheckoutProvider");
 
@@ -271,14 +272,34 @@ const EPCheckoutProviderRuntime = React.forwardRef<
   // Build the formatted summary from state
   const money = useMoneyFormat();
 
+  // The order only exists once payment succeeds, so before that the cart is the
+  // only source of real money. Deriving the summary from `state.order` alone
+  // published zeros for the whole flow, and EPOrderTotalsBreakdown prefers this
+  // summary over the cart — so the shopper read "Total $0.00" on a cart worth
+  // $30 right up to the confirmation step.
+  const { cart } = useEpCart();
+
   const summary = useMemo(() => {
-    const cur = state.order?.total?.currency ?? "USD";
+    const cartPrice = cart?.meta?.display_price;
+    const cur =
+      state.order?.total?.currency ??
+      cartPrice?.without_tax?.currency ??
+      "USD";
     const fmt = (minor: number) => money.minor(minor, cur);
 
-    const subtotal = state.order?.subtotal?.amount ?? 0;
-    const tax = state.order?.tax?.amount ?? 0;
+    const hasOrder = state.order != null;
+
+    const subtotal = hasOrder
+      ? state.order?.subtotal?.amount ?? 0
+      : cartPrice?.without_tax?.amount ?? 0;
+    const tax = hasOrder
+      ? state.order?.tax?.amount ?? 0
+      : cartPrice?.tax?.amount ?? 0;
     const shipping = state.selectedShippingRate?.amount ?? 0;
-    const total = state.order?.total?.amount ?? subtotal + tax + shipping;
+    const discount = hasOrder ? 0 : cartPrice?.discount?.amount ?? 0;
+    const total = hasOrder
+      ? state.order?.total?.amount ?? subtotal + tax + shipping
+      : (cartPrice?.with_tax?.amount ?? subtotal + tax) + shipping;
 
     return {
       subtotal,
@@ -288,14 +309,16 @@ const EPCheckoutProviderRuntime = React.forwardRef<
       shipping,
       shippingFormatted:
         state.selectedShippingRate != null ? fmt(shipping) : "TBD",
-      discount: 0,
-      discountFormatted: fmt(0),
+      discount,
+      discountFormatted: fmt(discount),
       total,
       totalFormatted: fmt(total),
       currency: cur,
-      itemCount: state.order?.relationships?.items?.data?.length ?? 0,
+      itemCount: hasOrder
+        ? state.order?.relationships?.items?.data?.length ?? 0
+        : cart?.itemCount ?? 0,
     };
-  }, [state.order, state.selectedShippingRate, money]);
+  }, [state.order, state.selectedShippingRate, money, cart]);
 
   // Derive customerInfo from state
   const customerInfo = useMemo(() => {

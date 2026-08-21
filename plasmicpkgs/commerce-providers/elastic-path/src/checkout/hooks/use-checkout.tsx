@@ -120,30 +120,18 @@ export function useCheckout(options: UseCheckoutOptions = {}): UseCheckoutReturn
     }
   }, [autoAdvanceSteps, onError]);
 
-  // Calculate shipping rates for the given address.
-  // cartId is optional — in server-cart mode the server resolves identity
-  // from the httpOnly cookie / X-Shopper-Context header.
-  const calculateShipping = useCallback(async (address: AddressData): Promise<ShippingRate[]> => {
-    setState(prev => ({ ...prev, isLoading: true }));
-
-    try {
-      const response = await apiCall('/checkout/calculate-shipping', {
-        method: 'POST',
-        body: JSON.stringify({
-          ...(cartId && { cartId }),
-          shippingAddress: address
-        })
-      });
-
-      setState(prev => ({ ...prev, isLoading: false }));
-      return response.data?.shippingRates || [];
-
-    } catch (error) {
-      const errorObj = error instanceof Error ? error : new Error('Failed to calculate shipping');
-      setState(prev => ({ ...prev, error: errorObj, isLoading: false }));
-      throw errorObj;
-    }
-  }, [cartId, apiCall]);
+  // Shipping rates are resolved server-side by the checkout session
+  // (`ctx.shippingRateResolver`, #371/#374). Elastic Path has no shopper
+  // shipping-rates endpoint, and `/checkout/calculate-shipping` was retired
+  // and answers 410 Gone — so this said what it could not do. It fails with
+  // the reason rather than issuing a request that cannot succeed.
+  const calculateShipping = useCallback(async (): Promise<ShippingRate[]> => {
+    const errorObj = new Error(
+      "Shipping rates come from the checkout session: mount EP Checkout Session Provider and configure a server-side shipping rate resolver. There is no shopper-facing rates endpoint to call from the browser."
+    );
+    setState(prev => ({ ...prev, error: errorObj, isLoading: false }));
+    throw errorObj;
+  }, []);
 
   // Select a shipping rate
   const selectShippingRate = useCallback((rate: ShippingRate) => {
