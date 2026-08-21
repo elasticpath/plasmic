@@ -361,7 +361,10 @@ describe("EPProductField with a selected variant", () => {
     meta: { display_price: { without_tax: price(2000) } },
   };
 
+  // What EPProductProvider publishes: the flat ChildProduct projected onto the
+  // product shape, carrying only the child's own without_tax price.
   const child = {
+    ...parent,
     id: "child-1",
     attributes: { name: "Sandle", sku: "sandlesm" },
     meta: { display_price: { without_tax: price(1500) } },
@@ -403,5 +406,37 @@ describe("EPProductField with a selected variant", () => {
     });
     const { container } = render(<EPProductField field="description" />);
     expect(container.textContent).toBe("A sandle");
+  });
+
+  it("does not quote the parent's tax-inclusive price for the variant", () => {
+    // A child reports only without_tax. Keeping the parent's with_tax would put
+    // the parent's number behind a priceWithTax binding.
+    setupSelector({
+      currentProduct: {
+        ...parent,
+        meta: {
+          display_price: { without_tax: price(2000), with_tax: price(2400) },
+        },
+      },
+      currentVariant: child,
+    });
+    const { container } = render(<EPProductField field="priceWithTax" />);
+    expect(container.textContent).not.toContain("24.00");
+  });
+
+  it("shows no price for a variant that has none, rather than the parent's", () => {
+    // A child with no price of its own cannot be bought at the parent's price —
+    // EP rejects the add — so quoting it would be a lie.
+    setupSelector({
+      currentProduct: parent,
+      currentVariant: {
+        ...parent,
+        id: "child-2",
+        attributes: { name: "Sandle", sku: "sandlexl" },
+        meta: { display_price: undefined },
+      },
+    });
+    const { container } = render(<EPProductField field="price" />);
+    expect(container.textContent).not.toContain("20.00");
   });
 });

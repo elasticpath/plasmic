@@ -71,10 +71,33 @@ function CurrentVariantScope({
     | undefined;
 
   const currentVariant = useMemo(() => {
-    if (!variantId) return undefined;
-    const children = (product as unknown as { childProducts?: Product[] })
-      ?.childProducts;
-    return children?.find((child) => child?.id === variantId);
+    if (!variantId || !product) return undefined;
+    const child = product.childProducts?.find((c) => c?.id === variantId);
+    if (!child) return undefined;
+
+    // A ChildProduct is flat (`name`, `sku`, `price`); everything that reads a
+    // product — Studio bindings, EP Product Field's field catalog — looks under
+    // `attributes` and `meta.display_price`. Project it onto the product shape
+    // so the variant is a drop-in for `currentProduct`.
+    //
+    // `display_price` carries only `without_tax`, which is all a child reports.
+    // Keeping the parent's `with_tax` would quote the parent's tax-inclusive
+    // price against the child's net one.
+    return {
+      ...product,
+      id: child.id,
+      attributes: {
+        ...(product.attributes ?? {}),
+        name: child.name || product.attributes?.name,
+        sku: child.sku ?? product.attributes?.sku,
+      },
+      meta: {
+        ...(product.meta ?? {}),
+        // Always the child's own price, even when that means none: inheriting
+        // the parent's would quote a price this variant cannot be bought at.
+        display_price: child.price ? { without_tax: child.price } : undefined,
+      },
+    } as Product;
   }, [product, variantId]);
 
   return (

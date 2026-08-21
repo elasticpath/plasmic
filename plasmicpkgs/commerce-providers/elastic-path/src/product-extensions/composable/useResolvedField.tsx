@@ -17,6 +17,7 @@ import {
   resolveTopLevelField,
 } from "./resolve-field";
 import type { ResolvedField } from "./resolve-field";
+import { getProductFieldLeaf, isMoneyLeaf } from "./field-catalog";
 import type { ExtensionTemplate } from "../../types/extensions";
 
 type ResolveArgs =
@@ -79,7 +80,13 @@ export function useResolvedField(args: ResolveArgs): UseResolvedFieldResult {
         args.format,
         locale,
       );
-      return fromVariant.hasValue ? fromVariant : fromProduct;
+      if (fromVariant.hasValue) return fromVariant;
+      // Money belongs to the thing being priced. Once a variant is chosen its
+      // price is the only one that applies, so an absent one renders empty
+      // rather than falling back to the parent's number.
+      const leaf = getProductFieldLeaf(args.leafId);
+      if (leaf && isMoneyLeaf(leaf)) return fromVariant;
+      return fromProduct;
     }
     return resolveExtensionField(
       templates,
