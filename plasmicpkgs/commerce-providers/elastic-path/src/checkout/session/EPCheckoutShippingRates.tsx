@@ -62,7 +62,14 @@ function RatesList(props: {
   const { rates, children, className, onSelect } = props;
   const money = useMoneyFormat();
   return (
-    <div className={className} data-ep-checkout-shipping-rates="">
+    <div
+      className={className}
+      data-ep-checkout-shipping-rates=""
+      // Only the default rows are radios; a filled slot is the designer's own
+      // markup and must not be described as a radio group.
+      role={children ? undefined : "radiogroup"}
+      aria-label={children ? undefined : "Shipping rates"}
+    >
       {rates.map((rate, i) => (
         <DataProvider key={rate.id} name="currentCheckoutShippingRate" data={rate}>
           <DataProvider name="currentCheckoutShippingRateIndex" data={i}>

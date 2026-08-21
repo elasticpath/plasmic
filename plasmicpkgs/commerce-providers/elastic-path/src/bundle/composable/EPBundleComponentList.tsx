@@ -83,8 +83,13 @@ export function EPBundleComponentList(props: EPBundleComponentListProps) {
     if (useMock) return MOCK_BUNDLE_COMPONENTS;
     if (!formCtx) return [];
 
-    const { components, selectedOptions, optionProducts, parentProducts } =
-      formCtx;
+    const {
+      components,
+      selectedOptions,
+      optionProducts,
+      parentProducts,
+      productsLoading,
+    } = formCtx;
 
     return Object.entries(components).map(([componentKey, component]) => {
       const selections = selectedOptions[componentKey] || {};
@@ -129,8 +134,9 @@ export function EPBundleComponentList(props: EPBundleComponentListProps) {
           // An option whose product never resolved has no name to show. It used
           // to fall back to the option id, which put a raw UUID in front of the
           // shopper; an empty name plus `isUnavailable` lets the design say
-          // something honest instead.
-          const isUnavailable = !productInfo.name;
+          // something honest instead. While the fetch is still in flight every
+          // name is missing, which is not the same thing as unavailable.
+          const isUnavailable = !productsLoading && !productInfo.name;
           return {
             id: optionId,
             name: productInfo.name ?? "",

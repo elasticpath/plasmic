@@ -236,6 +236,33 @@ describe("normalizeProduct", () => {
     });
   });
 
+  it("carries each child's own image", () => {
+    // The child fetch already asks for main_image and files, but the normalizer
+    // discarded them, so the variant projection had nothing but the parent's
+    // photo to show.
+    const withImages: ProductListData = {
+      data: [
+        {
+          id: "child-m",
+          type: "product",
+          attributes: { name: "Merino Jumper Medium", sku: "MJ-M", status: "live" },
+          relationships: { main_image: { data: { id: "img-m", type: "main_image" } } },
+        } as any,
+      ],
+      included: {
+        main_images: [
+          { id: "img-m", type: "file", link: { href: "https://cdn.example/m.jpg" } },
+        ],
+      } as any,
+    };
+
+    const product = normalizeProduct(baseProduct, "en-GB", withImages);
+
+    expect(product.childProducts[0].images).toEqual([
+      { url: "https://cdn.example/m.jpg", alt: "Merino Jumper Medium" },
+    ]);
+  });
+
   it("gives a base product a priceFrom taken from its cheapest child", () => {
     const product = normalizeProduct(baseProduct, "en-GB", children);
 

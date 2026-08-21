@@ -91,6 +91,9 @@ function CurrentVariantScope({
         name: child.name || product.attributes?.name,
         sku: child.sku ?? product.attributes?.sku,
       },
+      // A variant with no photo of its own shows the product's, which is
+      // reasonable in a way that inheriting a price is not.
+      images: child.images.length > 0 ? child.images : product.images,
       meta: {
         ...(product.meta ?? {}),
         // Always the child's own price, even when that means none: inheriting

@@ -58,7 +58,7 @@ const PARENT = {
   meta: {
     display_price: { without_tax: price(2000), with_tax: price(2400) },
   },
-  images: [],
+  images: [{ url: "https://cdn.example/parent.jpg", alt: "Sandle" }],
   variations: [],
   childProducts: [
     {
@@ -85,6 +85,14 @@ const PARENT = {
       priceWithTax: price(1800),
       optionIds: ["opt-md"],
       images: [],
+    },
+    {
+      id: "child-photo",
+      name: "Sandle",
+      sku: "sandlelg",
+      price: price(1500),
+      optionIds: ["opt-lg"],
+      images: [{ url: "https://cdn.example/child.jpg", alt: "Sandle" }],
     },
   ],
 };
@@ -148,6 +156,22 @@ describe("EPProductProvider — currentVariant", () => {
     await renderWith("child-taxed");
 
     expect(readVariant().meta.display_price.with_tax.formatted).toBe("$18.00");
+  });
+
+  it("publishes the child's own image, not the parent's", async () => {
+    await renderWith("child-photo");
+
+    expect(readVariant().images).toEqual([
+      { url: "https://cdn.example/child.jpg", alt: "Sandle" },
+    ]);
+  });
+
+  it("falls back to the parent's image for a child without one", async () => {
+    // Unlike price, showing the product's photo for a variant that has none is
+    // reasonable — a blank image slot is not.
+    await renderWith("child-sm");
+
+    expect(readVariant().images).toEqual(PARENT.images);
   });
 
   it("keeps the parent's non-price fields", async () => {

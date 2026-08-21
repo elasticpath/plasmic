@@ -931,6 +931,30 @@ describe("EPBundleComponentList", () => {
     expect(data.options[0].isUnavailable).toBe(true);
   });
 
+  it("does not call an option unavailable while the products are still loading", () => {
+    // optionProducts is empty on first paint, so !name flagged every option in
+    // the bundle as unavailable until the fetch landed.
+    setupSelector({ bundleData: { componentCount: 1 } });
+
+    const { container } = render(
+      <BundleFormContext.Provider
+        value={{
+          ...TEST_FORM_CONTEXT,
+          optionProducts: {},
+          productsLoading: true,
+        }}
+      >
+        <EPBundleComponentList>
+          <span>Item</span>
+        </EPBundleComponentList>
+      </BundleFormContext.Provider>
+    );
+
+    const provider = container.querySelector("[data-provider='currentBundleComponent']");
+    const data = JSON.parse(provider!.getAttribute("data-provider-value")!);
+    expect(data.options[0].isUnavailable).toBe(false);
+  });
+
   it("marks a resolved option as available", () => {
     setupSelector({ bundleData: { componentCount: 2 } });
 

@@ -83,6 +83,39 @@ describe("normalizeCart", () => {
     expect(cart.itemCount).toBe(5);
   });
 
+  it("leaves promotions out of the lines and the count", () => {
+    // EP returns an applied promotion as a promotion_item alongside the real
+    // lines. Rendered as one, it got an image, a quantity stepper and a Remove
+    // button, and it inflated itemCount.
+    const cart = normalizeCart({
+      ...cartResponse,
+      included: {
+        items: [
+          { id: "line-1", type: "cart_item", quantity: 1 },
+          { id: "promo-1", type: "promotion_item", quantity: 1 },
+        ] as any,
+      },
+    });
+
+    expect(cart.items.map((i) => i.id)).toEqual(["line-1"]);
+    expect(cart.itemCount).toBe(1);
+  });
+
+  it("keeps a custom_item, which is a real line the shopper added", () => {
+    const cart = normalizeCart({
+      ...cartResponse,
+      included: {
+        items: [
+          { id: "line-1", type: "cart_item", quantity: 1 },
+          { id: "adj-1", type: "custom_item", quantity: 1 },
+        ] as any,
+      },
+    });
+
+    expect(cart.items.map((i) => i.id)).toEqual(["line-1", "adj-1"]);
+    expect(cart.itemCount).toBe(2);
+  });
+
   it("passes the line through verbatim, including fields the SDK type omits", () => {
     const [line] = normalizeCart(cartResponse).items;
 

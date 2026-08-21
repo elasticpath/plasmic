@@ -47,6 +47,7 @@ export function DefaultFieldsForm(props: DefaultFieldsFormProps) {
     <div data-ep-default-fields="">
       {fields.map((field) => {
         const id = `ep-field-${field.name}`;
+        const errorId = `${id}-error`;
         const rawError = (errors as Record<string, unknown> | undefined)?.[
           field.name
         ];
@@ -68,6 +69,7 @@ export function DefaultFieldsForm(props: DefaultFieldsFormProps) {
                 required={field.required}
                 autoComplete={field.autoComplete}
                 aria-invalid={error ? true : undefined}
+                aria-describedby={error ? errorId : undefined}
                 aria-label={field.label}
                 disabled={readOnly}
                 onChange={(e) => onChange(field.name, e.target.value)}
@@ -89,6 +91,7 @@ export function DefaultFieldsForm(props: DefaultFieldsFormProps) {
                 required={field.required}
                 autoComplete={field.autoComplete}
                 aria-invalid={error ? true : undefined}
+                aria-describedby={error ? errorId : undefined}
                 onChange={(e) => onChange(field.name, e.target.value)}
                 readOnly={readOnly}
               />
@@ -97,7 +100,11 @@ export function DefaultFieldsForm(props: DefaultFieldsFormProps) {
               {field.label}
               {field.required ? " *" : ""}
             </label>
-            {error ? <span data-ep-field-error="">{error}</span> : null}
+            {error ? (
+              <span id={errorId} data-ep-field-error="">
+                {error}
+              </span>
+            ) : null}
           </div>
         );
       })}

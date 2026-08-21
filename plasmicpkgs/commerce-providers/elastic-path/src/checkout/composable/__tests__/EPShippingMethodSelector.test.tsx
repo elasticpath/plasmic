@@ -202,6 +202,61 @@ describe("EPShippingMethodSelector", () => {
       (global as any).fetch = originalFetch;
     });
 
+    it("groups the default radio rows in a radiogroup", () => {
+      // role="radio" rows without a radiogroup give assistive technology a set
+      // of radios with no group semantics or membership.
+      mockUseSelector.mockImplementation((name: string) =>
+        name === "checkoutSession"
+          ? {
+              session: {
+                availableShippingRates: [
+                  { id: "rate_1", name: "Standard", amount: 500, currency: "usd" },
+                  { id: "rate_2", name: "Express", amount: 1200, currency: "usd" },
+                ],
+                selectedShippingRateId: null,
+              },
+              updateSession: jest.fn().mockResolvedValue(undefined),
+            }
+          : undefined
+      );
+
+      const { container } = render(<EPShippingMethodSelector />);
+
+      const group = container.querySelector("[data-ep-shipping-method-selector]")!;
+      expect(group.getAttribute("role")).toBe("radiogroup");
+      expect(group.getAttribute("aria-label")).toBeTruthy();
+      expect(group.querySelectorAll('[role="radio"]').length).toBeGreaterThan(0);
+    });
+
+    it("does not claim radiogroup when the designer supplies the rows", () => {
+      mockUseSelector.mockImplementation((name: string) =>
+        name === "checkoutSession"
+          ? {
+              session: {
+                availableShippingRates: [
+                  { id: "rate_1", name: "Standard", amount: 500, currency: "usd" },
+                  { id: "rate_2", name: "Express", amount: 1200, currency: "usd" },
+                ],
+                selectedShippingRateId: null,
+              },
+              updateSession: jest.fn().mockResolvedValue(undefined),
+            }
+          : undefined
+      );
+
+      const { container } = render(
+        <EPShippingMethodSelector>
+          <span>mine</span>
+        </EPShippingMethodSelector>
+      );
+
+      expect(
+        container
+          .querySelector("[data-ep-shipping-method-selector]")!
+          .getAttribute("role")
+      ).toBeNull();
+    });
+
     it("renders the empty state rather than hanging on a load", () => {
       mockUseSelector.mockImplementation((name: string) =>
         name === "shippingAddressFieldsData" ? { isValid: true } : undefined

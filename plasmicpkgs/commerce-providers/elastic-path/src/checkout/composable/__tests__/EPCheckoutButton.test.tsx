@@ -272,6 +272,22 @@ describe("EPCheckoutButton", () => {
   });
 
   describe("registration", () => {
+    it("renders the step-aware label when the slot is empty", () => {
+      const { container } = render(<EPCheckoutButton />);
+
+      expect(container.textContent).toContain("Checkout");
+    });
+
+    it("ships no label of its own, so buttonData.label shows through", () => {
+      // The default read "Continue" while a standalone button's label is
+      // "Checkout", so a cart page contradicted itself unless the designer
+      // bound the label.
+      const slot = (epCheckoutButtonMeta.props as any).children;
+
+      expect(slot.defaultValue).toBeUndefined();
+      expect(slot.hidePlaceholder).toBe(true);
+    });
+
     it("has correct meta shape", () => {
       expect(epCheckoutButtonMeta.name).toBe(
         "plasmic-commerce-ep-checkout-button"
@@ -329,6 +345,21 @@ describe("EPCheckoutButton", () => {
 
       fireEvent.click(container.querySelector("[data-ep-checkout-button]")!);
       expect(window.location.assign).toHaveBeenCalledWith("/checkout");
+    });
+
+    it("navigates on Enter and Space, like any other control", () => {
+      const { container } = render(
+        <EPCheckoutButton>
+          <span>Button</span>
+        </EPCheckoutButton>
+      );
+
+      const el = container.querySelector("[data-ep-checkout-button]")!;
+      fireEvent.keyDown(el, { key: "Enter" });
+      expect(window.location.assign).toHaveBeenCalledTimes(1);
+
+      fireEvent.keyDown(el, { key: " " });
+      expect(window.location.assign).toHaveBeenCalledTimes(2);
     });
 
     it("honours a custom checkout URL", () => {

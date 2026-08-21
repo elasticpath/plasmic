@@ -172,8 +172,16 @@ export function EPCheckoutButton(props: EPCheckoutButtonProps) {
         role="button"
         tabIndex={0}
         aria-disabled={buttonData.isDisabled || undefined}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            handleClick();
+          }
+        }}
       >
-        {children}
+        {children ?? (
+          <span data-ep-checkout-button-label="">{buttonData.label}</span>
+        )}
       </div>
     </DataProvider>
   );
@@ -190,7 +198,9 @@ export const epCheckoutButtonMeta: CodeComponentMeta<EPCheckoutButtonProps> = {
   props: {
     children: {
       type: "slot",
-      defaultValue: [{ type: "text", value: "Continue" }],
+      description:
+        "Optional. Leave empty for the step-aware label; fill it to compose your own against checkoutButtonData.",
+      hidePlaceholder: true,
     },
     checkoutUrl: {
       type: "string",

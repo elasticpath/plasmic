@@ -359,7 +359,14 @@ const EPShippingMethodSelectorRuntime = React.forwardRef<
   }
 
   return (
-    <div className={className} data-ep-shipping-method-selector="">
+    <div
+      className={className}
+      data-ep-shipping-method-selector=""
+      // Only the default rows are radios; a filled slot is the designer's own
+      // markup and must not be described as a radio group.
+      role={children ? undefined : "radiogroup"}
+      aria-label={children ? undefined : "Shipping methods"}
+    >
       {ratesWithSelection.map((rate, i) => (
         <DataProvider key={rate.id} name="currentShippingMethod" data={rate}>
           <DataProvider name="currentShippingMethodIndex" data={i}>

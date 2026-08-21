@@ -11,6 +11,7 @@ import { Cart, CartItem, CartMeta } from "../types/cart";
 import {
   ChildProduct,
   Product,
+  ProductImage,
   ProductMeta,
   Variation,
 } from "../types/product";
@@ -86,6 +87,37 @@ const lowestChildPrice = (
     .filter((price): price is FormattedPrice => !!price)
     .sort((a, b) => a.amount - b.amount)[0];
 
+/**
+ * A child's own images, resolved from the list response's shared `included`
+ * block. The child fetch already asks for `main_image` and `files`.
+ */
+const normalizeChildImages = (
+  child: NonNullable<ProductListData["data"]>[number],
+  included: ProductListData["included"]
+): ProductImage[] => {
+  const images: ProductImage[] = [];
+  const alt = child.attributes?.name || "";
+
+  const mainImageId = child.relationships?.main_image?.data?.id;
+  if (mainImageId) {
+    const mainImage = included?.main_images?.find(
+      (img) => img.id === mainImageId
+    );
+    if (mainImage?.link?.href) {
+      images.push({ url: mainImage.link.href, alt });
+    }
+  }
+
+  child.relationships?.files?.data?.forEach((fileRef) => {
+    const file = included?.files?.find((f) => f.id === fileRef.id);
+    if (file?.link?.href) {
+      images.push({ url: file.link.href, alt });
+    }
+  });
+
+  return images;
+};
+
 const normalizeChildProducts = (
   product: ProductData,
   childProducts?: ProductListData
@@ -104,7 +136,7 @@ const normalizeChildProducts = (
       (child.id && matrix
         ? getOptionsFromSkuId(child.id, matrix)
         : undefined) ?? [],
-    images: [],
+    images: normalizeChildImages(child, childProducts?.included),
   }));
 };
 
@@ -217,7 +249,12 @@ export const normalizeCart = (
   locale?: string
 ): Cart => {
   const data = cart.data ?? {};
-  const items = (cart.included?.items ?? []).map(normalizeCartItem);
+  // An applied promotion comes back as a promotion_item beside the real lines.
+  // It is not something the shopper bought, so it is neither a line to render
+  // nor a unit to count. custom_item is kept: that is a real adjustment line.
+  const items = (cart.included?.items ?? [])
+    .filter((item) => item.type !== "promotion_item")
+    .map(normalizeCartItem);
   return {
     ...data,
     meta: completeCartMeta(data.meta),
