@@ -13,6 +13,7 @@
   "dependencies": {
     "@ant-design/icons": "^5.1.4",
     "@ant-design/pro-components": "2.6.4",
+    "@elasticpath/plasmic-ep-commerce-elastic-path": "^0.4.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@faker-js/faker": "^8.4.1",
@@ -24,7 +25,6 @@
     "@plasmicpkgs/antd": "^2.0.180",
     "@plasmicpkgs/antd5": "^0.0.366",
     "@plasmicpkgs/cms": "^0.0.36",
-    "@elasticpath/plasmic-ep-commerce-elastic-path": "^0.2.0",
     "@plasmicpkgs/commerce": "^0.0.256",
     "@plasmicpkgs/commerce-commercetools": "^0.0.206",
     "@plasmicpkgs/commerce-local": "^0.0.256",
