@@ -171,6 +171,33 @@ describe("EPOrderTotalsBreakdown", () => {
       expect(data.totalFormatted).toBe("$72.91");
     });
 
+    it("uses the pre-discount subtotal so the rows add up", () => {
+      const cart = cartWithTotals(6200) as any;
+      cart.meta.display_price.discount = {
+        amount: -500, currency: "USD", float_price: -5, formatted: "-$5.00",
+      };
+      cart.meta.display_price.without_discount = {
+        amount: 6700, currency: "USD", float_price: 67, formatted: "$67.00",
+      };
+      mockUseSelector.mockImplementation((name: string) =>
+        name === "cart" ? cart : undefined
+      );
+
+      render(
+        <EPOrderTotalsBreakdown>
+          <span>Totals</span>
+        </EPOrderTotalsBreakdown>
+      );
+
+      const data = JSON.parse(
+        screen.getByTestId("dp-orderTotalsData").getAttribute("data-value") || "{}"
+      );
+      expect(data.subtotal).toBe(6700);
+      expect(data.subtotal + data.tax + data.shipping + data.discount).toBe(
+        data.total
+      );
+    });
+
     it("flags a discount the cart reports as a reduction", () => {
       const cart = cartWithTotals(6200) as any;
       cart.meta.display_price.discount = {

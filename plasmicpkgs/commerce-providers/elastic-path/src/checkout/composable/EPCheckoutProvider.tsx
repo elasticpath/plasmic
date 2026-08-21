@@ -289,9 +289,13 @@ const EPCheckoutProviderRuntime = React.forwardRef<
 
     const hasOrder = state.order != null;
 
+    // without_tax is already post-discount, so a Discount row beside it read
+    // "13.50 - 1.50 = 13.50". without_discount is the pre-discount figure.
+    const cartSubtotal =
+      cartPrice?.without_discount ?? cartPrice?.without_tax;
     const subtotal = hasOrder
       ? state.order?.subtotal?.amount ?? 0
-      : cartPrice?.without_tax?.amount ?? 0;
+      : cartSubtotal?.amount ?? 0;
     const tax = hasOrder
       ? state.order?.tax?.amount ?? 0
       : cartPrice?.tax?.amount ?? 0;

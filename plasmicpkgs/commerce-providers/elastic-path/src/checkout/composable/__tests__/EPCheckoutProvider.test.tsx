@@ -407,6 +407,67 @@ describe("EPCheckoutProvider — totals before the order exists", () => {
     expect(summary.discount).toBe(-500);
   });
 
+  it("reports a subtotal the discount row can be subtracted from", async () => {
+    // EP's without_tax is already post-discount, so using it made the rows read
+    // 13.50 - 1.50 = 13.50. without_discount is the pre-discount figure and is
+    // always present on an EP cart.
+    mockCart = {
+      id: "cart-1",
+      itemCount: 1,
+      items: [],
+      meta: {
+        display_price: {
+          without_tax: money(1350),
+          tax: money(0),
+          with_tax: money(1350),
+          discount: money(-150),
+          without_discount: money(1500),
+        },
+      },
+    };
+
+    await act(async () => {
+      render(
+        <EPCheckoutProvider>
+          <span>content</span>
+        </EPCheckoutProvider>
+      );
+    });
+
+    const summary = readSummary();
+    expect(summary.subtotal).toBe(1500);
+    expect(summary.subtotalFormatted).toBe("$15.00");
+    expect(summary.subtotal + summary.tax + summary.shipping + summary.discount).toBe(
+      summary.total
+    );
+  });
+
+  it("falls back to without_tax when the cart omits without_discount", async () => {
+    mockCart = {
+      id: "cart-1",
+      itemCount: 1,
+      items: [],
+      meta: {
+        display_price: {
+          without_tax: money(1350),
+          tax: money(0),
+          with_tax: money(1350),
+          discount: money(0),
+        },
+      },
+    };
+
+    await act(async () => {
+      render(
+        <EPCheckoutProvider>
+          <span>content</span>
+        </EPCheckoutProvider>
+      );
+    });
+
+    expect(readSummary().subtotal).toBe(1350);
+  });
+
   it("does not flag a discount the cart does not have", async () => {
     mockCart = {
       id: "cart-1",
