@@ -95,7 +95,10 @@ function CurrentVariantScope({
         ...(product.meta ?? {}),
         // Always the child's own price, even when that means none: inheriting
         // the parent's would quote a price this variant cannot be bought at.
-        display_price: child.price ? { without_tax: child.price } : undefined,
+        display_price:
+          child.price || child.priceWithTax
+            ? { without_tax: child.price, with_tax: child.priceWithTax }
+            : undefined,
       },
     } as Product;
   }, [product, variantId]);

@@ -206,6 +206,36 @@ describe("normalizeProduct", () => {
     });
   });
 
+  it("carries the child's tax-inclusive price through", () => {
+    // Discarding with_tax left a tax-inclusive storefront blank the moment a
+    // variant was chosen: the projection has no with_tax to publish and
+    // correctly refuses to fall back to the parent's.
+    const taxed: ProductListData = {
+      data: [
+        {
+          id: "child-m",
+          type: "product",
+          attributes: { name: "Merino Jumper Medium", sku: "MJ-M", status: "live" },
+          meta: {
+            display_price: {
+              without_tax: { amount: 8999, currency: "GBP", formatted: "£89.99" },
+              with_tax: { amount: 10799, currency: "GBP", formatted: "£107.99" },
+            },
+          },
+        },
+      ],
+    };
+
+    const product = normalizeProduct(baseProduct, "en-GB", taxed);
+
+    expect(product.childProducts[0].priceWithTax).toEqual({
+      amount: 10799,
+      currency: "GBP",
+      formatted: "£107.99",
+      float_price: 107.99,
+    });
+  });
+
   it("gives a base product a priceFrom taken from its cheapest child", () => {
     const product = normalizeProduct(baseProduct, "en-GB", children);
 

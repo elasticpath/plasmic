@@ -99,6 +99,7 @@ const normalizeChildProducts = (
     name: child.attributes?.name || "",
     sku: child.attributes?.sku,
     price: completePrice(child.meta?.display_price?.without_tax),
+    priceWithTax: completePrice(child.meta?.display_price?.with_tax),
     optionIds:
       (child.id && matrix
         ? getOptionsFromSkuId(child.id, matrix)

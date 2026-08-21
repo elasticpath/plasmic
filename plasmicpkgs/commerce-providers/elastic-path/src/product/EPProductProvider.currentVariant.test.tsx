@@ -77,6 +77,15 @@ const PARENT = {
       optionIds: ["opt-xl"],
       images: [],
     },
+    {
+      id: "child-taxed",
+      name: "Sandle",
+      sku: "sandlemd",
+      price: price(1500),
+      priceWithTax: price(1800),
+      optionIds: ["opt-md"],
+      images: [],
+    },
   ],
 };
 
@@ -131,6 +140,14 @@ describe("EPProductProvider — currentVariant", () => {
     await renderWith("child-sm");
 
     expect(readVariant().meta.display_price.with_tax).toBeUndefined();
+  });
+
+  it("publishes the child's own tax-inclusive price when it has one", async () => {
+    // Without this the projection had no with_tax to publish and correctly
+    // refused the parent's, so a tax-inclusive PDP went blank on selection.
+    await renderWith("child-taxed");
+
+    expect(readVariant().meta.display_price.with_tax.formatted).toBe("$18.00");
   });
 
   it("keeps the parent's non-price fields", async () => {
