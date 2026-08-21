@@ -1,7 +1,23 @@
 /** @jest-environment jsdom */
 import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { EPPromoCodeInput } from "../EPPromoCodeInput";
+
+// The cart the input reads its already-applied promotion from.
+let mockCart: any = null;
+jest.mock("../../../cart-provider/use-ep-cart", () => ({
+  useEpCart: () => ({
+    cart: mockCart,
+    isLoading: false,
+    error: null,
+    refresh: jest.fn(),
+  }),
+}));
+
+// Required after the mock above: jest.mock does not hoist under this project's
+// esbuild transform, so a static import would bind the real module.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { EPPromoCodeInput } =
+  require("../EPPromoCodeInput") as typeof import("../EPPromoCodeInput");
 
 // ---------------------------------------------------------------------------
 // jest.mock doesn't hoist with this project's esbuild transform.
@@ -32,6 +48,34 @@ function mockFetchFailure(message: string) {
 
 beforeEach(() => {
   mockFetch.mockReset();
+  mockCart = null;
+});
+
+describe("EPPromoCodeInput — a promotion the cart already carries", () => {
+  it("shows it as applied without any interaction", () => {
+    // The applied state lived only in local useState, so any navigation lost
+    // the chip while the discount stayed live on the cart.
+    mockCart = {
+      id: "cart-1",
+      items: [],
+      promotions: [{ id: "promo-1", type: "promotion_item", name: "TEST1" }],
+      itemCount: 1,
+    };
+
+    const { container } = render(<EPPromoCodeInput useServerRoutes />);
+
+    expect(container.querySelector("[data-ep-promo-applied]")).toBeTruthy();
+    expect(container.textContent).toContain("TEST1");
+  });
+
+  it("offers the input when the cart carries no promotion", () => {
+    mockCart = { id: "cart-1", items: [], promotions: [], itemCount: 1 };
+
+    const { container } = render(<EPPromoCodeInput useServerRoutes />);
+
+    expect(container.querySelector("[data-ep-promo-applied]")).toBeNull();
+    expect(screen.getByPlaceholderText("Promo code")).toBeTruthy();
+  });
 });
 
 describe("EPPromoCodeInput (useServerRoutes)", () => {

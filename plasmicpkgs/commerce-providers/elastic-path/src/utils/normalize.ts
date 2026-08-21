@@ -261,14 +261,17 @@ export const normalizeCart = (
   const data = cart.data ?? {};
   // An applied promotion comes back as a promotion_item beside the real lines.
   // It is not something the shopper bought, so it is neither a line to render
-  // nor a unit to count. custom_item is kept: that is a real adjustment line.
-  const items = (cart.included?.items ?? [])
-    .filter((item) => item.type !== "promotion_item")
-    .map(normalizeCartItem);
+  // nor a unit to count — but it is what tells the promo input a code is still
+  // applied, so it is published separately rather than dropped. custom_item is
+  // kept as a line: that is a real adjustment.
+  const allItems = (cart.included?.items ?? []).map(normalizeCartItem);
+  const items = allItems.filter((item) => item.type !== "promotion_item");
+  const promotions = allItems.filter((item) => item.type === "promotion_item");
   return {
     ...data,
     meta: completeCartMeta(data.meta),
     items,
+    promotions,
     itemCount: items.reduce(
       (units, item) => units + ("quantity" in item ? item.quantity ?? 0 : 0),
       0

@@ -32,7 +32,18 @@ type CartItemPricePair = {
   value?: FormattedPrice;
 };
 
-export type CartItem = EpCartItem & {
+/**
+ * Elastic Path side-loads more than purchasable lines under `included.items`.
+ * The shopper SDK types the response as `cart_item` only.
+ */
+export type CartItemType =
+  | "cart_item"
+  | "custom_item"
+  | "promotion_item"
+  | "subscription_item";
+
+export type CartItem = Omit<EpCartItem, "type"> & {
+  type?: CartItemType;
   meta?: {
     display_price?: {
       with_tax?: CartItemPricePair;
@@ -55,6 +66,8 @@ export type Cart = Omit<EpCart, "meta"> & {
   meta?: CartMeta;
   /** Elastic Path side-loads these under `included`. */
   items: CartItem[];
+  /** Applied promotions, kept out of `items` so they are not sold as lines. */
+  promotions: CartItem[];
   /** Quantity sum; Elastic Path exposes only a line count. */
   itemCount: number;
 };

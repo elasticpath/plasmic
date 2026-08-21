@@ -101,6 +101,33 @@ describe("normalizeCart", () => {
     expect(cart.itemCount).toBe(1);
   });
 
+  it("keeps the promotion where the promo input can find it", () => {
+    // Filtering promotions out of the lines is right, but dropping them
+    // altogether left nothing to rehydrate "TEST1 applied" from after a
+    // navigation.
+    const cart = normalizeCart({
+      ...cartResponse,
+      included: {
+        items: [
+          { id: "line-1", type: "cart_item", quantity: 1 },
+          {
+            id: "promo-1",
+            type: "promotion_item",
+            name: "Test 10% off cart",
+            quantity: 1,
+          },
+        ] as any,
+      },
+    });
+
+    expect(cart.items.map((i) => i.id)).toEqual(["line-1"]);
+    expect(cart.promotions.map((p) => p.name)).toEqual(["Test 10% off cart"]);
+  });
+
+  it("reports no promotions on a cart that has none", () => {
+    expect(normalizeCart(cartResponse).promotions).toEqual([]);
+  });
+
   it("keeps a custom_item, which is a real line the shopper added", () => {
     const cart = normalizeCart({
       ...cartResponse,
