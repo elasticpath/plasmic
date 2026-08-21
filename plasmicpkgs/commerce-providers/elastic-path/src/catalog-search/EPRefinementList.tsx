@@ -51,15 +51,9 @@ export const epRefinementListMeta: CodeComponentMeta<EPRefinementListProps> = {
   props: {
     children: {
       type: "slot",
-      defaultValue: [
-        {
-          type: "hbox",
-          children: [
-            { type: "text", value: "Filter Value" },
-            { type: "text", value: "(0)" },
-          ],
-        },
-      ],
+      description:
+        "Optional. Leave empty for the value's real label, count and refined state; fill it to compose your own against currentRefinement (including its toggle()).",
+      hidePlaceholder: true,
     },
     attribute: {
       type: "string",
@@ -123,6 +117,29 @@ export const epRefinementListMeta: CodeComponentMeta<EPRefinementListProps> = {
     },
   },
 };
+
+/**
+ * What a facet value renders when the slot is empty.
+ *
+ * The registered default was the literal text "Filter Value" and "(0)", so every
+ * value looked identical and priced at nothing. This shows the real label, count
+ * and refined state — and nothing more: the component deliberately pre-renders
+ * no button or <a>, exposing `toggle` on the item instead so the designer wires
+ * the click in Studio.
+ */
+function DefaultRefinementRow(props: {
+  label: string;
+  count: number;
+  isRefined?: boolean;
+}) {
+  const { label, count, isRefined } = props;
+  return (
+    <span data-ep-refinement="" data-refined={isRefined || undefined}>
+      <span data-ep-refinement-label="">{label}</span>
+      <span data-ep-refinement-count="">{count}</span>
+    </span>
+  );
+}
 
 export const EPRefinementList = React.forwardRef<
   EPRefinementListActions,
@@ -229,7 +246,15 @@ const MockRefinementList = React.forwardRef<
           <div key={item.value} role="listitem">
             <DataProvider name="currentRefinement" data={item}>
               <DataProvider name="currentRefinementIndex" data={i}>
-                {repeatedElement(i, children)}
+                {children ? (
+                  repeatedElement(i, children)
+                ) : (
+                  <DefaultRefinementRow
+                    label={item.label}
+                    count={item.count}
+                    isRefined={item.isRefined}
+                  />
+                )}
               </DataProvider>
             </DataProvider>
           </div>
@@ -292,7 +317,15 @@ const EPRefinementListInner = React.forwardRef<
           <div key={item.value} role="listitem">
             <DataProvider name="currentRefinement" data={item}>
               <DataProvider name="currentRefinementIndex" data={i}>
-                {repeatedElement(i, children)}
+                {children ? (
+                  repeatedElement(i, children)
+                ) : (
+                  <DefaultRefinementRow
+                    label={item.label}
+                    count={item.count}
+                    isRefined={item.isRefined}
+                  />
+                )}
               </DataProvider>
             </DataProvider>
           </div>
@@ -364,7 +397,15 @@ const EPMenuListInner = React.forwardRef<
           <div key={item.value} role="listitem">
             <DataProvider name="currentRefinement" data={item}>
               <DataProvider name="currentRefinementIndex" data={i}>
-                {repeatedElement(i, children)}
+                {children ? (
+                  repeatedElement(i, children)
+                ) : (
+                  <DefaultRefinementRow
+                    label={item.label}
+                    count={item.count}
+                    isRefined={item.isRefined}
+                  />
+                )}
               </DataProvider>
             </DataProvider>
           </div>

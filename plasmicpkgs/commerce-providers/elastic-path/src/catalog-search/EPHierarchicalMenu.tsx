@@ -39,15 +39,9 @@ export const epHierarchicalMenuMeta: CodeComponentMeta<EPHierarchicalMenuProps> 
   props: {
     children: {
       type: "slot",
-      defaultValue: [
-        {
-          type: "hbox",
-          children: [
-            { type: "text", value: "Category" },
-            { type: "text", value: "(0)" },
-          ],
-        },
-      ],
+      description:
+        "Optional. Leave empty for the category's real label, count, depth and refined state; fill it to compose your own against currentCategory (including its refine()).",
+      hidePlaceholder: true,
     },
     attributes: {
       type: "string",
@@ -101,6 +95,36 @@ function flattenHierarchicalItems(
   return result;
 }
 
+
+/**
+ * What a category renders when the slot is empty.
+ *
+ * The registered default was the literal text "Category" and "(0)". Like
+ * EPRefinementList this pre-renders nothing interactive — `refine` is on the
+ * item so the designer wires the click — and it carries `data-depth` because a
+ * flattened tree is unreadable without indentation.
+ */
+function DefaultCategoryRow(props: {
+  label: string;
+  count: number;
+  depth: number;
+  isRefined?: boolean;
+  hasChildren?: boolean;
+}) {
+  const { label, count, depth, isRefined, hasChildren } = props;
+  return (
+    <span
+      data-ep-category=""
+      data-depth={depth}
+      data-refined={isRefined || undefined}
+      data-has-children={hasChildren || undefined}
+    >
+      <span data-ep-category-label="">{label}</span>
+      <span data-ep-category-count="">{count}</span>
+    </span>
+  );
+}
+
 export const EPHierarchicalMenu = React.forwardRef<
   EPHierarchicalMenuActions,
   EPHierarchicalMenuProps
@@ -144,7 +168,17 @@ const MockHierarchicalMenu = React.forwardRef<
         {MOCK_CATEGORY_ITEMS.map((item, i) => (
           <div key={item.value} role="listitem">
             <DataProvider name="currentCategory" data={item}>
-              {repeatedElement(i, children)}
+              {children ? (
+                repeatedElement(i, children)
+              ) : (
+                <DefaultCategoryRow
+                  label={item.label}
+                  count={item.count}
+                  depth={item.depth ?? 0}
+                  isRefined={item.isRefined}
+                  hasChildren={item.hasChildren}
+                />
+              )}
             </DataProvider>
           </div>
         ))}
@@ -200,7 +234,17 @@ const EPHierarchicalMenuInner = React.forwardRef<
         {flatItems.map((item: any, i: number) => (
           <div key={item.value} role="listitem">
             <DataProvider name="currentCategory" data={item}>
-              {repeatedElement(i, children)}
+              {children ? (
+                repeatedElement(i, children)
+              ) : (
+                <DefaultCategoryRow
+                  label={item.label}
+                  count={item.count}
+                  depth={item.depth ?? 0}
+                  isRefined={item.isRefined}
+                  hasChildren={item.hasChildren}
+                />
+              )}
             </DataProvider>
           </div>
         ))}

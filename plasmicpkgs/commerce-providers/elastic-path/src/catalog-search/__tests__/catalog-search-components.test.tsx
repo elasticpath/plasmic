@@ -178,7 +178,7 @@ jest.mock("@elasticpath/catalog-search-instantsearch-adapter", () => ({
 }));
 
 /* ---------- code under test (after mocks) ---------- */
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import { describeHeadlessStylingContract } from "./headless-styling-contract";
 
 function setEditorMode(inEditor: boolean) {
@@ -1005,6 +1005,136 @@ describe("EPSearchHits", () => {
 /* ================================================================
  * EPRefinementList tests
  * ================================================================ */
+describe("EPRefinementList — empty slot", () => {
+  // The registered slot default was the literal text "Filter Value" and "(0)",
+  // so a designer dropping the facet in saw the same fake row for every value.
+  // The component deliberately pre-renders nothing interactive (the click is
+  // wired via $ctx.currentRefinement.toggle()), so the default is text only.
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUsePlasmicCanvasContext.mockReturnValue(null);
+    mockUseRefinementList.mockReturnValue({
+      items: [
+        { value: "leather", label: "Leather", count: 12, isRefined: false },
+        { value: "suede", label: "Suede", count: 8, isRefined: true },
+      ],
+      refine: jest.fn(),
+    });
+  });
+
+  it("renders each value's real label", () => {
+    const { container } = render(<EPRefinementList attribute="material" />);
+
+    const labels = Array.from(
+      container.querySelectorAll("[data-ep-refinement-label]")
+    ).map((n) => n.textContent);
+    expect(labels).toEqual(["Leather", "Suede"]);
+  });
+
+  it("shows each value's real count, not (0)", () => {
+    const { container } = render(<EPRefinementList attribute="material" />);
+
+    const counts = Array.from(
+      container.querySelectorAll("[data-ep-refinement-count]")
+    ).map((n) => n.textContent);
+    expect(counts).toEqual(["12", "8"]);
+  });
+
+  it("marks which value is refined", () => {
+    const { container } = render(<EPRefinementList attribute="material" />);
+
+    const refined = container.querySelectorAll("[data-ep-refinement][data-refined]");
+    expect(refined).toHaveLength(1);
+    expect(refined[0].textContent).toContain("Suede");
+  });
+
+  it("pre-renders nothing interactive — the click is the designer's to wire", () => {
+    // Both this component and EPHierarchicalMenu expose `toggle` on the item
+    // data specifically so they do NOT have to pre-render a button or <a>.
+    // The default honours that: real values, no affordance invented for them.
+    const refine = jest.fn();
+    mockUseRefinementList.mockReturnValue({
+      items: [{ value: "leather", label: "Leather", count: 12, isRefined: false }],
+      refine,
+    });
+
+    const { container } = render(<EPRefinementList attribute="material" />);
+
+    expect(container.querySelector("button")).toBeNull();
+    expect(container.querySelector("a")).toBeNull();
+    expect(container.querySelector("[role=button]")).toBeNull();
+    expect(container.querySelector("[role=checkbox]")).toBeNull();
+
+    fireEvent.click(container.querySelector("[data-ep-refinement]")!);
+    expect(refine).not.toHaveBeenCalled();
+  });
+
+  it("still exposes toggle on the item data for that wiring", () => {
+    const refine = jest.fn();
+    mockUseRefinementList.mockReturnValue({
+      items: [{ value: "leather", label: "Leather", count: 12, isRefined: false }],
+      refine,
+    });
+
+    const { container } = render(
+      <EPRefinementList attribute="material">
+        <span>x</span>
+      </EPRefinementList>
+    );
+
+    const dp = container.querySelector(
+      '[data-testid="data-provider-currentRefinement"]'
+    );
+    expect(dp).toBeTruthy();
+  });
+
+  it("leaves the slot content alone when there is any", () => {
+    const { container } = render(
+      <EPRefinementList attribute="material">
+        <span data-testid="mine">mine</span>
+      </EPRefinementList>
+    );
+
+    expect(container.querySelectorAll("[data-ep-refinement]")).toHaveLength(0);
+    expect(container.querySelectorAll('[data-testid="mine"]')).toHaveLength(2);
+  });
+
+  it("does the same in single-select mode", () => {
+    // singleSelect swaps in InstantSearch's menu widget — a separate render
+    // path, so it needs the default too or radio-style facets stay blank.
+    mockUseMenu.mockReturnValue({
+      items: [
+        { value: "leather", label: "Leather", count: 12, isRefined: true },
+      ],
+      refine: jest.fn(),
+    });
+
+    const { container } = render(
+      <EPRefinementList attribute="material" singleSelect />
+    );
+
+    expect(
+      container.querySelector("[data-ep-refinement-label]")?.textContent
+    ).toBe("Leather");
+    expect(
+      container.querySelector("[data-ep-refinement-count]")?.textContent
+    ).toBe("12");
+    expect(container.querySelector("[data-ep-refinement][data-refined]")).toBeTruthy();
+  });
+
+  it("shows the default on the Studio canvas too", () => {
+    mockUsePlasmicCanvasContext.mockReturnValue({});
+
+    const { container } = render(<EPRefinementList attribute="material" />);
+
+    const labels = Array.from(
+      container.querySelectorAll("[data-ep-refinement-label]")
+    );
+    expect(labels.length).toBeGreaterThan(0);
+    expect(labels[0].textContent).not.toBe("Filter Value");
+  });
+});
+
 describe("EPRefinementList", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -1107,6 +1237,89 @@ describe("EPRefinementList", () => {
 /* ================================================================
  * EPHierarchicalMenu tests
  * ================================================================ */
+describe("EPHierarchicalMenu — empty slot", () => {
+  // Same defect and same constraint as EPRefinementList: the registered default
+  // was the literal text "Category" and "(0)", and the component deliberately
+  // pre-renders nothing interactive (the click is wired via
+  // $ctx.currentCategory.refine()).
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUsePlasmicCanvasContext.mockReturnValue(null);
+    mockUseHierarchicalMenu.mockReturnValue({
+      items: [
+        {
+          value: "shoes",
+          label: "Shoes",
+          count: 24,
+          isRefined: true,
+          data: [
+            { value: "shoes > sandals", label: "Sandals", count: 6, isRefined: false, data: null },
+          ],
+        },
+      ],
+      refine: jest.fn(),
+    });
+  });
+
+  it("renders each category's real label and count", () => {
+    const { container } = render(<EPHierarchicalMenu attributes="categories" />);
+
+    const labels = Array.from(
+      container.querySelectorAll("[data-ep-category-label]")
+    ).map((n) => n.textContent);
+    expect(labels).toEqual(["Shoes", "Sandals"]);
+
+    const counts = Array.from(
+      container.querySelectorAll("[data-ep-category-count]")
+    ).map((n) => n.textContent);
+    expect(counts).toEqual(["24", "6"]);
+  });
+
+  it("carries the nesting depth so a design can indent", () => {
+    const { container } = render(<EPHierarchicalMenu attributes="categories" />);
+
+    const depths = Array.from(
+      container.querySelectorAll("[data-ep-category]")
+    ).map((n) => n.getAttribute("data-depth"));
+    expect(depths).toEqual(["0", "1"]);
+  });
+
+  it("marks the refined category", () => {
+    const { container } = render(<EPHierarchicalMenu attributes="categories" />);
+
+    const refined = container.querySelectorAll("[data-ep-category][data-refined]");
+    expect(refined).toHaveLength(1);
+    expect(refined[0].textContent).toContain("Shoes");
+  });
+
+  it("pre-renders nothing interactive", () => {
+    const refine = jest.fn();
+    mockUseHierarchicalMenu.mockReturnValue({
+      items: [{ value: "shoes", label: "Shoes", count: 24, isRefined: false, data: null }],
+      refine,
+    });
+
+    const { container } = render(<EPHierarchicalMenu attributes="categories" />);
+
+    expect(container.querySelector("button")).toBeNull();
+    expect(container.querySelector("a")).toBeNull();
+    expect(container.querySelector("[role=button]")).toBeNull();
+
+    fireEvent.click(container.querySelector("[data-ep-category]")!);
+    expect(refine).not.toHaveBeenCalled();
+  });
+
+  it("leaves the slot content alone when there is any", () => {
+    const { container } = render(
+      <EPHierarchicalMenu attributes="categories">
+        <span data-testid="mine">mine</span>
+      </EPHierarchicalMenu>
+    );
+
+    expect(container.querySelectorAll("[data-ep-category]")).toHaveLength(0);
+  });
+});
+
 describe("EPHierarchicalMenu", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -1434,6 +1647,69 @@ describe("EPClearRefinements", () => {
 /* ================================================================
  * EPCurrentRefinements tests
  * ================================================================ */
+describe("EPCurrentRefinements — empty slot", () => {
+  // The default was a nicely shaped chip with the hardcoded text
+  // "Brand: Leather" — the affordance was right, the content was fiction.
+  // Unlike the facet lists, the row already carries onClick={chip.refine}, so
+  // the chip is interactive by design and the "×" means something.
+  const refineOne = jest.fn();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUsePlasmicCanvasContext.mockReturnValue(null);
+    mockUseCurrentRefinements.mockReturnValue({
+      items: [
+        {
+          attribute: "material",
+          label: "Material",
+          refinements: [
+            { attribute: "material", type: "disjunctive", value: "leather", label: "Leather" },
+          ],
+          refine: refineOne,
+        },
+      ],
+      canRefine: true,
+      refine: jest.fn(),
+      createURL: jest.fn(),
+    });
+  });
+
+  it("names the refinement actually applied", () => {
+    const { container } = render(<EPCurrentRefinements />);
+
+    const chip = container.querySelector("[data-ep-refinement-chip]");
+    expect(chip?.textContent).toContain("Material");
+    expect(chip?.textContent).toContain("Leather");
+    expect(chip?.textContent).not.toContain("Brand");
+  });
+
+  it("offers a way to remove it", () => {
+    const { container } = render(<EPCurrentRefinements />);
+
+    expect(
+      container.querySelector("[data-ep-refinement-chip-remove]")
+    ).toBeTruthy();
+  });
+
+  it("removes that refinement when clicked", () => {
+    const { container } = render(<EPCurrentRefinements />);
+
+    fireEvent.click(container.querySelector("[data-ep-refinement-chip]")!);
+
+    expect(refineOne).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves the slot content alone when there is any", () => {
+    const { container } = render(
+      <EPCurrentRefinements>
+        <span data-testid="mine">mine</span>
+      </EPCurrentRefinements>
+    );
+
+    expect(container.querySelectorAll("[data-ep-refinement-chip]")).toHaveLength(0);
+  });
+});
+
 describe("EPCurrentRefinements", () => {
   beforeEach(() => {
     jest.clearAllMocks();
