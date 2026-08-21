@@ -92,16 +92,15 @@
   dependencies:
     vitest "^3.2.4"
 
-"@elasticpath/plasmic-ep-commerce-elastic-path@^0.3.0":
-  version "0.3.0"
-  resolved "https://registry.yarnpkg.com/@elasticpath/plasmic-ep-commerce-elastic-path/-/plasmic-ep-commerce-elastic-path-0.3.0.tgz#3a69ef709e01989f48b265d3c5601627d8e43b39"
-  integrity sha512-u81p/ZNLQKHXUnyVGNDoT0nWPPybk9BJb/kAGObCpog15ZB2HEZCkKr9jAK0al2zWivxBGAgsN8Q4SasbGbKhg==
+"@elasticpath/plasmic-ep-commerce-elastic-path@^0.4.0":
+  version "0.4.0"
+  resolved "https://registry.yarnpkg.com/@elasticpath/plasmic-ep-commerce-elastic-path/-/plasmic-ep-commerce-elastic-path-0.4.0.tgz#6d665d220295f860fceff38cb85e1dffd058f6c9"
+  integrity sha512-5obNsRRY8PixnUVxR/N5BFbP6lMk5MVAz05qG2luZMRLFe5c993LF18xZ+bx5Kf5fYGGfGiVl1bQk0zEAilHXw==
   dependencies:
     "@algolia/autocomplete-core" "^1.17.7"
     "@elasticpath/catalog-search-instantsearch-adapter" "0.1.0"
     "@epcc-sdk/sdks-shopper" "^0.1.0"
     "@hookform/resolvers" "^3.3.2"
-    "@plasmicpkgs/commerce" "~0.0.256"
     "@stripe/react-stripe-js" "^2.4.0"
     "@stripe/stripe-js" "^2.4.0"
     "@types/react" "^18.0.27"
@@ -601,18 +600,6 @@
   version "0.0.257"
   resolved "https://registry.yarnpkg.com/@plasmicpkgs/commerce/-/commerce-0.0.257.tgz#9804c797d33fccb94aa257263c718e9245d48f6c"
   integrity sha512-nqeIDviHoo3a8c2itstbueviQuCYoE34gLb6AMYqWL7q2ZqsOgKtdjvuH91EifNWu0dGAy+Iac4vKVuLnIGPGQ==
-  dependencies:
-    "@vercel/fetch" "^6.2.0"
-    debounce "^1.2.1"
-    js-cookie "^3.0.1"
-    lodash.debounce "^4.0.8"
-    react-hook-form "^7.28.0"
-    swr "^1.2.2"
-
-"@plasmicpkgs/commerce@~0.0.256":
-  version "0.0.258"
-  resolved "https://registry.yarnpkg.com/@plasmicpkgs/commerce/-/commerce-0.0.258.tgz#4c9f1b562f680c305dbeff3d2e1aa9f82ed612f5"
-  integrity sha512-xjIJ328XpUUZ555KR0v6Q5NTbOIQkxmxUDnGWE+2RXQClaUn/MH/QRMsd+v+C3PwYJDrA5A1D3dMGpCsggCXAA==
   dependencies:
     "@vercel/fetch" "^6.2.0"
     debounce "^1.2.1"
