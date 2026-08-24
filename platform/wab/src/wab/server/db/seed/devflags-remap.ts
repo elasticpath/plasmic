@@ -23,7 +23,7 @@ const ENTRY_PROJECT_MAP: Record<string, string | string[]> = {
   "More HTML elements": [],
 
   // Commerce providers (array: commerce base + specific provider)
-  "Elastic Path": ["commerce", "commerce-elastic-path"],
+  "Elastic Path": ["commerce-elastic-path"],
   Shopify: ["commerce", "commerce-shopify"],
   Swell: ["commerce", "commerce-swell"],
   Saleor: ["commerce", "commerce-saleor"],
