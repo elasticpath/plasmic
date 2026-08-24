@@ -10,12 +10,12 @@
 
 // Handler functions
 export {
+  handleCalculateShipping,
+  handleConfirm,
   handleCreateSession,
   handleGetSession,
-  handleUpdateSession,
-  handleCalculateShipping,
   handlePay,
-  handleConfirm,
+  handleUpdateSession,
 } from "./api/endpoints/checkout-session";
 
 // Session store
@@ -31,9 +31,7 @@ export { createStripeAdapter } from "./checkout/session/adapters/stripe-adapter"
 export type { StripeAdapterConfig } from "./checkout/session/adapters/stripe-adapter";
 
 // Client-credentials token resolver (request-scoped, memoized per request).
-export {
-  createClientCredentialsTokenResolver,
-} from "./auth/ep-plugin/client-credentials-resolver";
+export { createClientCredentialsTokenResolver } from "./auth/ep-plugin/client-credentials-resolver";
 export type {
   ClientCredentialsResolverConfig,
   ClientCredentialsTokenResolver,
@@ -41,88 +39,99 @@ export type {
 
 // Types needed by consumer route files
 export type {
+  AdapterRegistry,
+  EPCredentials,
+  PaymentAdapter,
+  SessionHandlerContext,
   SessionRequest,
   SessionResponse,
-  SessionHandlerContext,
-  EPCredentials,
-  AdapterRegistry,
   SessionStore,
-  PaymentAdapter,
 } from "./checkout/session/types";
 
 // Auth — better-auth-backed (PRD #273). Mount the handler via
 // `createEpAuthRoutes`, not better-auth's `toNextJsHandler` directly:
 // the raw handler's /get-session returns the shopper's EP access token.
 export {
-  createEpAuth,
+  DEFAULT_HOST_ALLOWLIST,
+  assertProductionSecret,
   createBetterEpAuth,
-  extractEpProviderConfig,
-  epPlugin,
-  epAuthMiddleware,
-  createEpAuthRoutes,
   createCartRoutes,
+  createEpAuth,
+  createEpAuthRoutes,
   createEpProxyRoutes,
   enforceOriginGate,
+  epAuthMiddleware,
+  epPlugin,
+  extractEpProviderConfig,
+  isAllowedEpHost,
   isTrustedOrigin,
   passesOriginGate,
-  assertProductionSecret,
   resolveAuthSecret,
-  DEFAULT_HOST_ALLOWLIST,
-  isAllowedEpHost,
 } from "./auth";
 export type {
   EpAuth,
   EpAuthConfig,
-  EpSession,
-  EpProviderBundleConfig,
-  ExtractEpProviderConfigOptions,
   EpPluginOptions,
+  EpProviderBundleConfig,
   EpProxyRoutes,
+  EpSession,
+  ExtractEpProviderConfigOptions,
 } from "./auth";
+
+// Bare names registered with Studio (`ep.getProduct`). `registerFunction`
+// has no `importName`, so generated loader code imports these exact
+// symbols from this entry.
+export {
+  addCartItem,
+  applyCartAdjustment,
+  getCart,
+  getProduct,
+  getProductList,
+  getRelatedProducts,
+  removeCartItem,
+  updateCartItem,
+} from "./ep-server-functions";
 
 // Server-side custom functions for Studio Server Queries (PRD #262 / #272)
 export {
-  epGetProduct,
-  epGetCart,
-  epGetProductList,
-  epGetRelatedProducts,
+  CART_ADJUSTMENT_KINDS,
+  addCustomCartItem,
+  buildEpCtx,
   epAddCartItem,
   epApplyCartAdjustment,
-  epUpdateCartItem,
-  epRemoveCartItem,
+  epGetCart,
+  epGetProduct,
+  epGetProductList,
+  epGetRelatedProducts,
   epPlaceOrder,
-  addCustomCartItem,
-  CART_ADJUSTMENT_KINDS,
-  registerEpCustomFunctions,
-  buildEpCtx,
-  withEpSession,
+  epRemoveCartItem,
+  epUpdateCartItem,
   getCurrentEpSession,
+  registerEpCustomFunctions,
+  withEpSession,
 } from "./ep-server-functions";
 export type {
-  EpGetProductInput,
-  EpGetCartInput,
-  EpGetProductListInput,
-  EpGetRelatedProductsInput,
+  AddCustomCartItemInput,
+  BuildEpCtxSessionInput,
+  CartAdjustmentKind,
   EpAddCartItemInput,
   EpApplyCartAdjustmentInput,
-  EpUpdateCartItemInput,
-  EpRemoveCartItemInput,
-  EpPlaceOrderInput,
-  EpPlaceOrderAddress,
-  EpPlaceOrderResult,
-  AddCustomCartItemInput,
-  CartAdjustmentKind,
-  BuildEpCtxSessionInput,
   EpCtx,
-  EpSessionContext,
+  EpGetCartInput,
+  EpGetProductInput,
+  EpGetProductListInput,
+  EpGetRelatedProductsInput,
+  EpPlaceOrderAddress,
+  EpPlaceOrderInput,
+  EpPlaceOrderResult,
+  EpRemoveCartItemInput,
   EpServerAuth,
+  EpSessionContext,
+  EpUpdateCartItemInput,
 } from "./ep-server-functions";
 
 // SSR cart-seed helper (consumed in a Next root layout to prime the SWR
 // fallback so EPCartProvider has correct data on first paint).
-export { seedCartFallback } from "./cart-provider/seed-cart-fallback";
-export {
-  epCartCacheKey,
-  EP_CART_CACHE_KEY,
-} from "./cart-provider/cache-keys";
+export { EP_CART_CACHE_KEY, epCartCacheKey } from "./cart-provider/cache-keys";
 export type { EpCartCacheKey } from "./cart-provider/cache-keys";
+export { seedCartFallback } from "./cart-provider/seed-cart-fallback";
