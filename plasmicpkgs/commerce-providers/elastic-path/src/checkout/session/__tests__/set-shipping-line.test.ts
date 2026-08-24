@@ -9,8 +9,13 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { setCartShippingLine, EP_SHIPPING_LINE_SKU } = require("../set-shipping-line") as {
+const {
+  setCartShippingLine,
+  clearCartShippingLine,
+  EP_SHIPPING_LINE_SKU,
+} = require("../set-shipping-line") as {
   setCartShippingLine: typeof import("../set-shipping-line").setCartShippingLine;
+  clearCartShippingLine: typeof import("../set-shipping-line").clearCartShippingLine;
   EP_SHIPPING_LINE_SKU: string;
 };
 
@@ -175,5 +180,72 @@ describe("setCartShippingLine — bounds & errors", () => {
     await expect(
       setCartShippingLine(CLIENT, { cartId: "cart-id", rate: RATE })
     ).rejects.toThrow(/cart locked/);
+  });
+});
+
+describe("clearCartShippingLine", () => {
+  it("deletes only sentinel-sku managed shipping lines", async () => {
+    mockGetACart.mockResolvedValueOnce(
+      cartWith([
+        { id: "ship-1", sku: EP_SHIPPING_LINE_SKU },
+        { id: "prod-1", sku: "BOOK-1" },
+        { id: "fee-1", sku: "custom-fee" },
+      ])
+    );
+
+    await clearCartShippingLine(CLIENT, { cartId: "cart-id" });
+
+    expect(mockDeleteACartItem).toHaveBeenCalledTimes(1);
+    expect(mockDeleteACartItem).toHaveBeenCalledWith(
+      expect.objectContaining({ path: { cartID: "cart-id", cartitemID: "ship-1" } })
+    );
+    expect(mockManageCarts).not.toHaveBeenCalled();
+  });
+
+  it("leaves catalog and other custom lines untouched", async () => {
+    mockGetACart.mockResolvedValueOnce(
+      cartWith([
+        { id: "prod-1", sku: "BOOK-1" },
+        { id: "adj-1", sku: "store-fee" },
+      ])
+    );
+
+    await clearCartShippingLine(CLIENT, { cartId: "cart-id" });
+
+    expect(mockDeleteACartItem).not.toHaveBeenCalled();
+  });
+
+  it("deletes every matching __ep_shipping line defensively", async () => {
+    mockGetACart.mockResolvedValueOnce(
+      cartWith([
+        { id: "ship-a", sku: EP_SHIPPING_LINE_SKU },
+        { id: "ship-b", sku: EP_SHIPPING_LINE_SKU },
+        { id: "prod-1", sku: "BOOK-1" },
+      ])
+    );
+
+    await clearCartShippingLine(CLIENT, { cartId: "cart-id" });
+
+    expect(mockDeleteACartItem).toHaveBeenCalledTimes(2);
+    const deletedIds = mockDeleteACartItem.mock.calls
+      .map((c) => c[0].path.cartitemID)
+      .sort();
+    expect(deletedIds).toEqual(["ship-a", "ship-b"]);
+  });
+
+  it("no-ops when no managed shipping line exists", async () => {
+    mockGetACart.mockResolvedValueOnce(cartWith([{ id: "prod-1", sku: "BOOK-1" }]));
+
+    await clearCartShippingLine(CLIENT, { cartId: "cart-id" });
+
+    expect(mockDeleteACartItem).not.toHaveBeenCalled();
+    expect(mockManageCarts).not.toHaveBeenCalled();
+  });
+
+  it("throws (no SDK calls) on a missing cartId", async () => {
+    await expect(clearCartShippingLine(CLIENT, { cartId: "" })).rejects.toThrow(
+      /cartId is required/i
+    );
+    expect(mockGetACart).not.toHaveBeenCalled();
   });
 });

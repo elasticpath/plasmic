@@ -48,7 +48,10 @@ import {
   applyShippingSelection,
   ShippingResolutionError,
 } from "../../../checkout/session/apply-shipping-selection";
-import { EP_SHIPPING_LINE_SKU } from "../../../checkout/session/set-shipping-line";
+import {
+  EP_SHIPPING_LINE_SKU,
+  clearCartShippingLine,
+} from "../../../checkout/session/set-shipping-line";
 import {
   applyPaymentSucceeded,
   applyPaymentFailed,
@@ -435,27 +438,21 @@ export async function handlePay(
   const adminClient = await buildAdminEpClient(ctx);
   await persistCustomAttributes(adminClient, session.cartId, session);
 
-  // 3b-bis. [Slice #4] Re-assert the authoritative shipping line — the durable
-  //   guarantee (ADR-0013). The cart is shopper-mutable, so the shipping line
-  //   written at selection time can be lowered or stripped before pay.
+  // 3b-bis. [Slice #4] Authoritative shipping line at pay.
   //
-  //   FAIL CLOSED on requiresShipping: when shipping is required the charge MUST
-  //   include a server-resolved shipping amount, so a resolvable rate has to
-  //   back it. step 3a already requires selectedShippingRateId here; this
-  //   additionally requires that id to resolve against the server-computed
-  //   availableShippingRates. If the rates were never computed, or the selected
-  //   id is not among them, the selection is irreconcilable → 409 (recalculate
-  //   shipping). We must NOT merely skip when rates are empty: a physical cart
-  //   reaching pay without computed rates would otherwise charge no shipping at
-  //   all (a free ship). The amount is always server-owned — the client never
-  //   supplies it.
+  //   When requiresShipping: re-assert the server-resolved shipping line. The
+  //   cart is shopper-mutable, so a line written at selection can be lowered or
+  //   stripped before pay. FAIL CLOSED: a resolvable rate must back the charge
+  //   (step 3a already requires selectedShippingRateId). Empty /
+  //   irreconcilable rates → 409, never a free ship. The amount is always
+  //   server-owned — the client never supplies it. Re-write BEFORE the charge
+  //   (adapter PaymentIntent / free-settlement checkout).
   //
-  //   On success we re-resolve and re-write the line (idempotent) so the charge
-  //   reflects EXACTLY the server amount, never a tampered cart line. The charge
-  //   is computed by EP from this cart (the adapter creates the PaymentIntent /
-  //   the free-settlement checkout reads it), so the re-write must land BEFORE
-  //   both. (Digital / requiresShipping:false checkouts skip this entirely —
-  //   there is no shipping to assert.)
+  //   When !requiresShipping: CLEAR every managed __ep_shipping line
+  //   before free/paid branching or payment init. A digital cart may still
+  //   carry a stale line (rate selected then shipping requirement cleared, or
+  //   selectedShippingRateId left populated). Effective requiresShipping is
+  //   authoritative — never re-write shipping just because a rate id exists.
   if (requiresShipping) {
     try {
       await applyShippingSelection(ctx, session, { client: adminClient });
@@ -506,6 +503,44 @@ export async function handlePay(
       cartMetaTotal = typeof metaAmount === "number" ? metaAmount : null;
     } catch (err) {
       log.error("Failed to re-read cart total after shipping re-assertion", {
+        cartId: session.cartId,
+        error: err instanceof Error ? err.message : String(err),
+      } as Record<string, unknown>);
+      return {
+        status: 502,
+        body: {
+          success: false,
+          error: { message: "Failed to fetch cart", code: "EP_ERROR" },
+        },
+      };
+    }
+  } else {
+    try {
+      await clearCartShippingLine(adminClient, { cartId: session.cartId });
+    } catch (err) {
+      log.error("Failed to clear stale shipping line before pay", {
+        cartId: session.cartId,
+        error: err instanceof Error ? err.message : String(err),
+      } as Record<string, unknown>);
+      return {
+        status: 502,
+        body: {
+          success: false,
+          error: { message: "Failed to apply shipping", code: "EP_ERROR" },
+        },
+      };
+    }
+
+    try {
+      const reread = await getACart({
+        client: shopperClient,
+        path: { cartID: session.cartId },
+      });
+      const metaAmount = (reread.data as any)?.data?.meta?.display_price
+        ?.with_tax?.amount;
+      cartMetaTotal = typeof metaAmount === "number" ? metaAmount : null;
+    } catch (err) {
+      log.error("Failed to re-read cart total after clearing shipping line", {
         cartId: session.cartId,
         error: err instanceof Error ? err.message : String(err),
       } as Record<string, unknown>);
