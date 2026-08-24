@@ -5,7 +5,6 @@
  * selectedShippingRateId) onto the existing session. Only permitted when the
  * session is in "open" status. Returns 410 if no session exists.
  */
-import { getACart } from "@epcc-sdk/sdks-shopper";
 import type {
   SessionRequest,
   SessionResponse,
@@ -15,6 +14,7 @@ import type {
   SessionTotals,
   UpdateSessionRequest,
 } from "../../../checkout/session/types";
+import type { Cart } from "../../../types/cart";
 import { filterAllowedCustomAttributes } from "../../../checkout/session/custom-attributes-allowlist";
 import { applyShippingSelection } from "../../../checkout/session/apply-shipping-selection";
 import { resolveShippingRate } from "../../../checkout/session/cart-shipping";
@@ -29,11 +29,9 @@ function toClientSession(s: CheckoutSession): ClientCheckoutSession {
   return rest;
 }
 
-/** EP cart `meta.display_price.with_tax.amount` (minor units), or null. */
-function cartWithTaxAmount(cartResponse: unknown): number | null {
-  const amount = (cartResponse as {
-    data?: { data?: { meta?: { display_price?: { with_tax?: { amount?: unknown } } } } };
-  })?.data?.data?.meta?.display_price?.with_tax?.amount;
+/** Authoritative cart total from a normalized Cart (minor units), or null. */
+function cartWithTaxAmount(cart: Cart): number | null {
+  const amount = cart.meta?.display_price?.with_tax?.amount;
   return typeof amount === "number" && Number.isFinite(amount) ? amount : null;
 }
 
@@ -161,16 +159,13 @@ export async function handleUpdateSession(
   ) {
     try {
       const client = await buildAdminEpClient(ctx);
-      await applyShippingSelection(ctx, updated, { client });
+      // setCartShippingLine returns the re-priced cart — reuse it (no extra GET).
+      const pricedCart = await applyShippingSelection(ctx, updated, { client });
       const rate = resolveShippingRate(
         updated.availableShippingRates,
         updated.selectedShippingRateId ?? ""
       );
-      const reread = await getACart({
-        client,
-        path: { cartID: updated.cartId },
-      });
-      const freshTotal = cartWithTaxAmount(reread);
+      const freshTotal = cartWithTaxAmount(pricedCart);
       if (freshTotal != null) {
         updated = {
           ...updated,

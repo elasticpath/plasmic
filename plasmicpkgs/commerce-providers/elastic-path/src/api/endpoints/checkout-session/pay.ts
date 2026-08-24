@@ -455,7 +455,16 @@ export async function handlePay(
   //   authoritative — never re-write shipping just because a rate id exists.
   if (requiresShipping) {
     try {
-      await applyShippingSelection(ctx, session, { client: adminClient });
+      // setCartShippingLine already re-reads the cart after the write; reuse
+      // that authoritative meta total instead of a duplicate getACart.
+      const pricedCart = await applyShippingSelection(ctx, session, {
+        client: adminClient,
+      });
+      const metaAmount = pricedCart.meta?.display_price?.with_tax?.amount;
+      cartMetaTotal =
+        typeof metaAmount === "number" && Number.isFinite(metaAmount)
+          ? metaAmount
+          : null;
     } catch (err) {
       if (err instanceof ShippingResolutionError) {
         log.warn("Selected shipping rate no longer resolvable at pay", {
@@ -487,24 +496,11 @@ export async function handlePay(
       };
     }
 
-    // Re-asserting shipping changes the cart total, so recompute the
-    // authoritative total from the re-priced cart before the free-vs-paid
-    // decision — else a stripped line that had zeroed the total would route a
-    // genuinely-paid (shipping-bearing) cart to free settlement. Fail closed:
-    // if we can't read the authoritative total back, refuse rather than risk a
-    // free settlement.
-    try {
-      const reread = await getACart({
-        client: shopperClient,
-        path: { cartID: session.cartId },
-      });
-      const metaAmount = (reread.data as any)?.data?.meta?.display_price
-        ?.with_tax?.amount;
-      cartMetaTotal = typeof metaAmount === "number" ? metaAmount : null;
-    } catch (err) {
-      log.error("Failed to re-read cart total after shipping re-assertion", {
+    // Fail closed: re-assertion mutates the cart; without an authoritative
+    // post-mutation total we must not free-settle or charge on a stale total.
+    if (cartMetaTotal === null) {
+      log.error("Shipping re-assertion returned cart without authoritative total", {
         cartId: session.cartId,
-        error: err instanceof Error ? err.message : String(err),
       } as Record<string, unknown>);
       return {
         status: 502,
@@ -515,8 +511,12 @@ export async function handlePay(
       };
     }
   } else {
+    let deletedCount = 0;
     try {
-      await clearCartShippingLine(adminClient, { cartId: session.cartId });
+      const clearResult = await clearCartShippingLine(adminClient, {
+        cartId: session.cartId,
+      });
+      deletedCount = clearResult.deletedCount;
     } catch (err) {
       log.error("Failed to clear stale shipping line before pay", {
         cartId: session.cartId,
@@ -531,26 +531,46 @@ export async function handlePay(
       };
     }
 
-    try {
-      const reread = await getACart({
-        client: shopperClient,
-        path: { cartID: session.cartId },
-      });
-      const metaAmount = (reread.data as any)?.data?.meta?.display_price
-        ?.with_tax?.amount;
-      cartMetaTotal = typeof metaAmount === "number" ? metaAmount : null;
-    } catch (err) {
-      log.error("Failed to re-read cart total after clearing shipping line", {
-        cartId: session.cartId,
-        error: err instanceof Error ? err.message : String(err),
-      } as Record<string, unknown>);
-      return {
-        status: 502,
-        body: {
-          success: false,
-          error: { message: "Failed to fetch cart", code: "EP_ERROR" },
-        },
-      };
+    // Only refresh meta when the cart actually changed. A no-op clear leaves
+    // the hash-step cartMetaTotal authoritative.
+    if (deletedCount > 0) {
+      try {
+        const reread = await getACart({
+          client: shopperClient,
+          path: { cartID: session.cartId },
+        });
+        const metaAmount = (reread.data as any)?.data?.meta?.display_price
+          ?.with_tax?.amount;
+        cartMetaTotal =
+          typeof metaAmount === "number" && Number.isFinite(metaAmount)
+            ? metaAmount
+            : null;
+      } catch (err) {
+        log.error("Failed to re-read cart total after clearing shipping line", {
+          cartId: session.cartId,
+          error: err instanceof Error ? err.message : String(err),
+        } as Record<string, unknown>);
+        return {
+          status: 502,
+          body: {
+            success: false,
+            error: { message: "Failed to fetch cart", code: "EP_ERROR" },
+          },
+        };
+      }
+
+      if (cartMetaTotal === null) {
+        log.error("Post-clear cart read missing authoritative total", {
+          cartId: session.cartId,
+        } as Record<string, unknown>);
+        return {
+          status: 502,
+          body: {
+            success: false,
+            error: { message: "Failed to fetch cart", code: "EP_ERROR" },
+          },
+        };
+      }
     }
   }
 
