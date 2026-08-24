@@ -28,6 +28,11 @@ export const EP_SHIPPING_LINE_SKU = "__ep_shipping";
 
 type EpClient = Parameters<typeof manageCarts>[0]["client"];
 
+export interface ClearCartShippingLineInput {
+  /** Cart whose managed shipping line(s) should be removed. */
+  cartId: string;
+}
+
 export interface SetCartShippingLineInput {
   /** Cart to write the shipping line into. */
   cartId: string;
@@ -42,6 +47,38 @@ export interface SetCartShippingLineInput {
 /** True for a line previously written by this primitive (sentinel SKU). */
 function isManagedShippingLine(item: { sku?: unknown }): boolean {
   return item?.sku === EP_SHIPPING_LINE_SKU;
+}
+
+/**
+ * Remove every storefront-managed shipping line (`sku === EP_SHIPPING_LINE_SKU`)
+ * from the cart.
+ */
+export async function clearCartShippingLine(
+  client: EpClient,
+  input: ClearCartShippingLineInput
+): Promise<void> {
+  const { cartId } = input;
+
+  if (!cartId) {
+    throw new Error("clearCartShippingLine: cartId is required");
+  }
+
+  const current = await getACart({
+    client,
+    path: { cartID: cartId },
+    query: { include: ["items"] },
+  });
+  const items: Array<{ id?: string; sku?: unknown }> =
+    (current.data as { included?: { items?: unknown } })?.included?.items as never ??
+    (current.data as { data?: { items?: unknown } })?.data?.items as never ??
+    [];
+  const staleIds = items
+    .filter(isManagedShippingLine)
+    .map((it) => it.id)
+    .filter((id): id is string => Boolean(id));
+  for (const cartitemID of staleIds) {
+    await deleteACartItem({ client, path: { cartID: cartId, cartitemID } });
+  }
 }
 
 /**
@@ -68,22 +105,7 @@ export async function setCartShippingLine(
 
   // 1. Idempotency — clear any existing managed shipping line(s) so a
   //    re-selection replaces rather than stacks.
-  const current = await getACart({
-    client,
-    path: { cartID: cartId },
-    query: { include: ["items"] },
-  });
-  const items: Array<{ id?: string; sku?: unknown }> =
-    (current.data as { included?: { items?: unknown } })?.included?.items as never ??
-    (current.data as { data?: { items?: unknown } })?.data?.items as never ??
-    [];
-  const staleIds = items
-    .filter(isManagedShippingLine)
-    .map((it) => it.id)
-    .filter((id): id is string => Boolean(id));
-  for (const cartitemID of staleIds) {
-    await deleteACartItem({ client, path: { cartID: cartId, cartitemID } });
-  }
+  await clearCartShippingLine(client, { cartId });
 
   // 2. Write the new shipping line — a custom_item carrying the SERVER amount.
   await manageCarts({

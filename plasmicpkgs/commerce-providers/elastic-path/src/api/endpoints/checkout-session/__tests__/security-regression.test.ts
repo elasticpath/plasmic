@@ -866,6 +866,251 @@ describe("authoritative shipping re-assertion (setShippingLine #4)", () => {
 });
 
 // ===========================================================================
+// 1e-bis. Clear stale managed shipping on non-shipping pay (#436).
+//     When effective requiresShipping is false, /pay must strip every
+//     __ep_shipping line before free/paid branching or payment init — even if
+//     selectedShippingRateId is still set. Physical re-assertion is unchanged.
+// ===========================================================================
+
+describe("clear stale managed shipping on non-shipping pay (#436)", () => {
+  // No product_id → cartHasPhysicalItem short-circuits to false (empty id list),
+  // so requiresShipping:false stays effective without a commodity_type mock.
+  const DIGITAL_ITEMS = [
+    { id: "dig-1", quantity: 1, unit_price: { amount: 1111 } },
+  ];
+  const PRODUCT_TOTAL = 1111;
+  const SHIP_AMOUNT = 599;
+
+  it("deletes a stale __ep_shipping line before payment; never re-writes shipping", async () => {
+    const withStaleShip = [
+      ...DIGITAL_ITEMS,
+      { id: "ship-stale", sku: SHIP_SKU, quantity: 1, unit_price: { amount: SHIP_AMOUNT } },
+    ];
+    let call = 0;
+    const callOrder: string[] = [];
+    epSdk.getACart.mockImplementation(async () => {
+      call += 1;
+      // 1 = hash/total (inflated), 2 = clearCartShippingLine read, 3 = post-clear total
+      if (call === 1) return cartFetch(withStaleShip, PRODUCT_TOTAL + SHIP_AMOUNT);
+      if (call === 2) return cartFetch(withStaleShip, PRODUCT_TOTAL + SHIP_AMOUNT);
+      return cartFetch(DIGITAL_ITEMS, PRODUCT_TOTAL);
+    });
+    epSdk.deleteACartItem.mockImplementation(async () => {
+      callOrder.push("delete");
+      return {};
+    });
+    const adapter = createMockAdapter();
+    (adapter.initializePayment as jest.Mock).mockImplementation(async () => {
+      callOrder.push("initializePayment");
+      return {
+        status: "succeeded",
+        gatewayOrderId: "pi_abc",
+        gatewayMetadata: { paymentIntentId: "pi_abc" },
+      };
+    });
+    const ctx = createMockCtx(
+      makeSession({
+        cartHash: hashCart(DIGITAL_ITEMS),
+        requiresShipping: false,
+        selectedShippingRateId: null,
+        availableShippingRates: [],
+      }),
+      adapter
+    );
+
+    const res = await handlePay(
+      createMockReq({ gateway: "stripe", confirmation_token: "ctok" }),
+      ctx
+    );
+
+    expect(res.status).toBe(200);
+    expect((res.body as any).data.session.status).toBe("complete");
+    expect(epSdk.deleteACartItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { cartID: "cart-abc", cartitemID: "ship-stale" },
+      })
+    );
+    expect(epSdk.manageCarts).not.toHaveBeenCalled();
+    expect(callOrder).toEqual(["delete", "initializePayment"]);
+    // Post-clear authoritative total excludes shipping (product only).
+    expect(adapter.initializePayment).toHaveBeenCalledTimes(1);
+  });
+
+  it("still clears shipping when selectedShippingRateId remains populated on a digital cart", async () => {
+    const withStaleShip = [
+      ...DIGITAL_ITEMS,
+      { id: "ship-stale", sku: SHIP_SKU, quantity: 1, unit_price: { amount: SHIP_AMOUNT } },
+    ];
+    let call = 0;
+    epSdk.getACart.mockImplementation(async () => {
+      call += 1;
+      if (call <= 2) return cartFetch(withStaleShip, PRODUCT_TOTAL + SHIP_AMOUNT);
+      return cartFetch(DIGITAL_ITEMS, PRODUCT_TOTAL);
+    });
+    const adapter = createMockAdapter();
+    const ctx = createMockCtx(
+      makeSession({
+        cartHash: hashCart(DIGITAL_ITEMS),
+        requiresShipping: false,
+        // Rate still selected — must NOT cause a shipping re-write/charge.
+        selectedShippingRateId: "rate-standard",
+        availableShippingRates: SHIPPING_RATES,
+      }),
+      adapter
+    );
+
+    const res = await handlePay(
+      createMockReq({ gateway: "stripe", confirmation_token: "ctok" }),
+      ctx
+    );
+
+    expect(res.status).toBe(200);
+    expect(epSdk.deleteACartItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { cartID: "cart-abc", cartitemID: "ship-stale" },
+      })
+    );
+    // applyShippingSelection would manageCarts — must not run.
+    expect(epSdk.manageCarts).not.toHaveBeenCalled();
+    expect(adapter.initializePayment).toHaveBeenCalledTimes(1);
+  });
+
+  it("deletes every managed __ep_shipping line when multiple exist", async () => {
+    const withDupShips = [
+      ...DIGITAL_ITEMS,
+      { id: "ship-a", sku: SHIP_SKU, quantity: 1, unit_price: { amount: 300 } },
+      { id: "ship-b", sku: SHIP_SKU, quantity: 1, unit_price: { amount: 299 } },
+    ];
+    let call = 0;
+    epSdk.getACart.mockImplementation(async () => {
+      call += 1;
+      if (call <= 2) return cartFetch(withDupShips, PRODUCT_TOTAL + 599);
+      return cartFetch(DIGITAL_ITEMS, PRODUCT_TOTAL);
+    });
+    const adapter = createMockAdapter();
+    const ctx = createMockCtx(
+      makeSession({
+        cartHash: hashCart(DIGITAL_ITEMS),
+        requiresShipping: false,
+        selectedShippingRateId: null,
+      }),
+      adapter
+    );
+
+    const res = await handlePay(
+      createMockReq({ gateway: "stripe", confirmation_token: "ctok" }),
+      ctx
+    );
+
+    expect(res.status).toBe(200);
+    expect(epSdk.deleteACartItem).toHaveBeenCalledTimes(2);
+    const deletedIds = epSdk.deleteACartItem.mock.calls
+      .map((c) => c[0].path.cartitemID)
+      .sort();
+    expect(deletedIds).toEqual(["ship-a", "ship-b"]);
+    expect(epSdk.manageCarts).not.toHaveBeenCalled();
+  });
+
+  it("is a harmless no-op when the digital cart has no __ep_shipping line", async () => {
+    epSdk.getACart.mockResolvedValue(cartFetch(DIGITAL_ITEMS, PRODUCT_TOTAL));
+    const adapter = createMockAdapter();
+    const ctx = createMockCtx(
+      makeSession({
+        cartHash: hashCart(DIGITAL_ITEMS),
+        requiresShipping: false,
+        selectedShippingRateId: null,
+      }),
+      adapter
+    );
+
+    const res = await handlePay(
+      createMockReq({ gateway: "stripe", confirmation_token: "ctok" }),
+      ctx
+    );
+
+    expect(res.status).toBe(200);
+    expect((res.body as any).data.session.status).toBe("complete");
+    expect(epSdk.deleteACartItem).not.toHaveBeenCalled();
+    expect(epSdk.manageCarts).not.toHaveBeenCalled();
+    expect(adapter.initializePayment).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes free product + stale shipping to free settlement after clearing", async () => {
+    // First fetch sees free product + stale shipping → inflated non-zero total.
+    // Without clear+re-read this would take the paid path. After clear the
+    // authoritative total is 0 → manual free settlement.
+    const FREE_ITEMS = [{ id: "free-1", quantity: 1 }];
+    const withStaleShip = [
+      ...FREE_ITEMS,
+      { id: "ship-stale", sku: SHIP_SKU, quantity: 1, unit_price: { amount: SHIP_AMOUNT } },
+    ];
+    let call = 0;
+    epSdk.getACart.mockImplementation(async () => {
+      call += 1;
+      if (call <= 2) return cartFetch(withStaleShip, SHIP_AMOUNT);
+      return cartFetch(FREE_ITEMS, 0);
+    });
+    const adapter = createMockAdapter();
+    const ctx = createMockCtx(
+      makeSession({
+        cartHash: hashCart(FREE_ITEMS),
+        requiresShipping: false,
+        selectedShippingRateId: null,
+      }),
+      adapter
+    );
+
+    // Free checkout attempt — no gateway.
+    const res = await handlePay(createMockReq({}), ctx);
+
+    expect(res.status).toBe(200);
+    expect((res.body as any).data.session.status).toBe("complete");
+    expect(epSdk.deleteACartItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { cartID: "cart-abc", cartitemID: "ship-stale" },
+      })
+    );
+    expect(epSdk.manageCarts).not.toHaveBeenCalled();
+    expect(adapter.initializePayment).not.toHaveBeenCalled();
+    expect(epSdk.paymentSetup).toHaveBeenCalledTimes(1);
+    expect(epSdk.paymentSetup.mock.calls[0][0].body.data).toEqual({
+      gateway: "manual",
+      method: "purchase",
+    });
+  });
+
+  it("502s (fail closed) when clearing the stale shipping line fails", async () => {
+    const withStaleShip = [
+      ...DIGITAL_ITEMS,
+      { id: "ship-stale", sku: SHIP_SKU, quantity: 1, unit_price: { amount: SHIP_AMOUNT } },
+    ];
+    epSdk.getACart.mockResolvedValue(
+      cartFetch(withStaleShip, PRODUCT_TOTAL + SHIP_AMOUNT)
+    );
+    epSdk.deleteACartItem.mockRejectedValue(new Error("delete failed"));
+    const adapter = createMockAdapter();
+    const ctx = createMockCtx(
+      makeSession({
+        cartHash: hashCart(DIGITAL_ITEMS),
+        requiresShipping: false,
+        selectedShippingRateId: null,
+      }),
+      adapter
+    );
+
+    const res = await handlePay(
+      createMockReq({ gateway: "stripe", confirmation_token: "ctok" }),
+      ctx
+    );
+
+    expect(res.status).toBe(502);
+    expect((res.body as any).error.code).toBe("EP_ERROR");
+    expect(adapter.initializePayment).not.toHaveBeenCalled();
+    expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
 // 1f. Studio extension API — applyCartAdjustment money integrity (#371).
 //     A tenant designer can inject a labelled fee into the EP cart from a
 //     server query (ep.applyCartAdjustment → a custom_item line). The trust
