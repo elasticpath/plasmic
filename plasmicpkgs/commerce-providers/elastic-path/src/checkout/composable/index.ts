@@ -1,4 +1,8 @@
 // Components
+export { EPCheckoutProvider, registerEPCheckoutProvider, epCheckoutProviderMeta } from "./EPCheckoutProvider";
+export { EPCheckoutButton, registerEPCheckoutButton, epCheckoutButtonMeta } from "./EPCheckoutButton";
+export { EPCheckoutStepIndicator, registerEPCheckoutStepIndicator, epCheckoutStepIndicatorMeta } from "./EPCheckoutStepIndicator";
+export { EPPaymentElements, registerEPPaymentElements, epPaymentElementsMeta } from "./EPPaymentElements";
 export { EPCheckoutCartField, registerEPCheckoutCartField, epCheckoutCartFieldMeta } from "./EPCheckoutCartField";
 export { EPCheckoutCartItemList, registerEPCheckoutCartItemList, epCheckoutCartItemListMeta } from "./EPCheckoutCartItemList";
 export { EPCheckoutCartSummary, registerEPCheckoutCartSummary, epCheckoutCartSummaryMeta } from "./EPCheckoutCartSummary";

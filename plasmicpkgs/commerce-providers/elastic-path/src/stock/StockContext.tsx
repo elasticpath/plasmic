@@ -33,14 +33,17 @@ export interface StockContextValue {
 // or webpack resolving the package through different paths).
 const STOCK_CTX_KEY = Symbol.for("@elasticpath/ep-stock-context");
 
-type SymbolRecord = Record<symbol, React.Context<StockContextValue | null> | undefined>;
+// tsdx builds this package with TypeScript 3.9, which predates symbol index
+// signatures (TS 4.4), so a `Record<symbol, ...>` lookup fails to compile
+// there. Index through `any` instead — the runtime behaviour is identical.
+type StockContextType = React.Context<StockContextValue | null>;
 
-function getStockContext(): React.Context<StockContextValue | null> {
-  const g = globalThis as unknown as SymbolRecord;
+function getStockContext(): StockContextType {
+  const g = globalThis as any;
   if (!g[STOCK_CTX_KEY]) {
     g[STOCK_CTX_KEY] = React.createContext<StockContextValue | null>(null);
   }
-  return g[STOCK_CTX_KEY]!;
+  return g[STOCK_CTX_KEY] as StockContextType;
 }
 
 const StockContext = getStockContext();
