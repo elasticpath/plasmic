@@ -10,7 +10,6 @@
 /** Packages that depend on the "commerce" package */
 const COMMERCE_DEPENDENTS = [
   "commerce-commercetools",
-  "commerce-elastic-path",
   "commerce-local",
   "commerce-saleor",
   "commerce-shopify",
