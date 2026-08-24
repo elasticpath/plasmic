@@ -865,16 +865,7 @@ describe("authoritative shipping re-assertion (setShippingLine #4)", () => {
   });
 });
 
-// ===========================================================================
-// 1e-bis. Clear stale managed shipping on non-shipping pay (#436).
-//     When effective requiresShipping is false, /pay must strip every
-//     __ep_shipping line before free/paid branching or payment init — even if
-//     selectedShippingRateId is still set. Physical re-assertion is unchanged.
-// ===========================================================================
-
 describe("clear stale managed shipping on non-shipping pay (#436)", () => {
-  // No product_id → cartHasPhysicalItem short-circuits to false (empty id list),
-  // so requiresShipping:false stays effective without a commodity_type mock.
   const DIGITAL_ITEMS = [
     { id: "dig-1", quantity: 1, unit_price: { amount: 1111 } },
   ];
@@ -1036,9 +1027,6 @@ describe("clear stale managed shipping on non-shipping pay (#436)", () => {
   });
 
   it("routes free product + stale shipping to free settlement after clearing", async () => {
-    // First fetch sees free product + stale shipping → inflated non-zero total.
-    // Without clear+re-read this would take the paid path. After clear the
-    // authoritative total is 0 → manual free settlement.
     const FREE_ITEMS = [{ id: "free-1", quantity: 1 }];
     const withStaleShip = [
       ...FREE_ITEMS,

@@ -438,7 +438,7 @@ export async function handlePay(
   const adminClient = await buildAdminEpClient(ctx);
   await persistCustomAttributes(adminClient, session.cartId, session);
 
-  // 3b-bis. [Slice #4] Authoritative shipping line at pay (ADR-0013).
+  // 3b-bis. [Slice #4] Authoritative shipping line at pay.
   //
   //   When requiresShipping: re-assert the server-resolved shipping line. The
   //   cart is shopper-mutable, so a line written at selection can be lowered or
@@ -448,7 +448,7 @@ export async function handlePay(
   //   server-owned — the client never supplies it. Re-write BEFORE the charge
   //   (adapter PaymentIntent / free-settlement checkout).
   //
-  //   When !requiresShipping (#436): CLEAR every managed __ep_shipping line
+  //   When !requiresShipping: CLEAR every managed __ep_shipping line
   //   before free/paid branching or payment init. A digital cart may still
   //   carry a stale line (rate selected then shipping requirement cleared, or
   //   selectedShippingRateId left populated). Effective requiresShipping is
