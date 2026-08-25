@@ -455,8 +455,6 @@ export async function handlePay(
   //   authoritative — never re-write shipping just because a rate id exists.
   if (requiresShipping) {
     try {
-      // setCartShippingLine already re-reads the cart after the write; reuse
-      // that authoritative meta total instead of a duplicate getACart.
       const pricedCart = await applyShippingSelection(ctx, session, {
         client: adminClient,
       });

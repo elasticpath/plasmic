@@ -159,7 +159,6 @@ export async function handleUpdateSession(
   ) {
     try {
       const client = await buildAdminEpClient(ctx);
-      // setCartShippingLine returns the re-priced cart — reuse it (no extra GET).
       const pricedCart = await applyShippingSelection(ctx, updated, { client });
       const rate = resolveShippingRate(
         updated.availableShippingRates,
