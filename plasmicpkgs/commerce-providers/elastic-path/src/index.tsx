@@ -99,6 +99,12 @@ export {
 export type { EpCartCacheKey } from "./cart-provider/cache-keys";
 export * from "./registerEPBundleConfigurator";
 export * from "./registerEPProductVariantPicker";
+export * from "./registerEPMultiLocationStock";
+export {
+  EPProductProvider,
+  registerEPProductProvider,
+  epProductProviderMeta,
+} from "./product/EPProductProvider";
 export * from "./registerCheckout";
 export * from "./checkout";
 export * from "./registerable";
