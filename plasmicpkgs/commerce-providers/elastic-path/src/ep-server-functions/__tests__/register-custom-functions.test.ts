@@ -1,8 +1,15 @@
-import { registerEpCustomFunctions } from "../register-custom-functions";
 import { epGetProduct } from "../getProduct";
-import { epGetCart } from "../getCart";
-import { epGetProductList } from "../getProductList";
-import { epGetRelatedProducts } from "../getRelatedProducts";
+import {
+  addCartItem,
+  applyCartAdjustment,
+  getCart,
+  getProduct,
+  getProductList,
+  getRelatedProducts,
+  registerEpCustomFunctions,
+  removeCartItem,
+  updateCartItem,
+} from "../register-custom-functions";
 
 describe("registerEpCustomFunctions", () => {
   it("registers ep.getProduct with the correct meta shape", () => {
@@ -116,11 +123,82 @@ describe("registerEpCustomFunctions", () => {
     const registerFunction = jest.fn();
     registerEpCustomFunctions({ registerFunction } as any);
 
-    const reads = ["getProduct", "getCart", "getProductList", "getRelatedProducts"];
+    const reads = [
+      "getProduct",
+      "getCart",
+      "getProductList",
+      "getRelatedProducts",
+    ];
     for (const name of reads) {
       const call = registerFunction.mock.calls.find((a) => a[1]?.name === name);
       expect(call![1].isMutation).toBeUndefined();
     }
+  });
+
+  // The loader imports the bare `meta.name` symbol from the "/server" entry
+  // and calls it positionally. These exports must therefore be the adapted
+  // functions, not the object-input `ep*` originals.
+  it.each([
+    ["getProduct", getProduct],
+    ["getCart", getCart],
+    ["getProductList", getProductList],
+    ["getRelatedProducts", getRelatedProducts],
+    ["addCartItem", addCartItem],
+    ["applyCartAdjustment", applyCartAdjustment],
+    ["updateCartItem", updateCartItem],
+    ["removeCartItem", removeCartItem],
+  ])("exports %s as the adapted function it registers", (name, exported) => {
+    const registerFunction = jest.fn();
+    registerEpCustomFunctions({ registerFunction } as any);
+
+    const call = registerFunction.mock.calls.find(
+      (args) => args[1]?.name === name
+    );
+    expect(call).toBeDefined();
+    expect(exported).toBe(call![0]);
+  });
+
+  // Studio's ServerQueryOpPicker filters on `mode === "mutation" ? fn.isMutation
+  // : fn.isQuery`, so a function flagged as neither is offered in no picker at
+  // all — it silently disappears from the UI. Upstream added that filter after
+  // these functions were written, which is how the reads went missing.
+  describe("every registered function is discoverable in Studio", () => {
+    const register = () => {
+      const registerFunction = jest.fn();
+      registerEpCustomFunctions({ registerFunction } as any);
+      return registerFunction.mock.calls.map((args) => args[1]);
+    };
+
+    it.each([
+      ["getProduct"],
+      ["getCart"],
+      ["getProductList"],
+      ["getRelatedProducts"],
+    ])("offers ep.%s as a data query", (name) => {
+      const meta = register().find((m) => m?.name === name);
+      expect(meta).toBeDefined();
+      expect(meta.isQuery).toBe(true);
+      expect(meta.isMutation).toBeUndefined();
+    });
+
+    it.each([
+      ["addCartItem"],
+      ["applyCartAdjustment"],
+      ["updateCartItem"],
+      ["removeCartItem"],
+    ])("offers ep.%s as a mutation", (name) => {
+      const meta = register().find((m) => m?.name === name);
+      expect(meta).toBeDefined();
+      expect(meta.isMutation).toBe(true);
+      expect(meta.isQuery).toBeUndefined();
+    });
+
+    it("flags each function as exactly one of query or mutation", () => {
+      const neither = register().filter((m) => !m.isQuery && !m.isMutation);
+      const both = register().filter((m) => m.isQuery && m.isMutation);
+      expect(neither.map((m) => m.name)).toEqual([]);
+      expect(both.map((m) => m.name)).toEqual([]);
+    });
   });
 
   it("adapted function reassembles flat positional args into the input object", () => {
@@ -137,9 +215,10 @@ describe("registerEpCustomFunctions", () => {
     // null for an unusable session — no EP fetch fires. Verify the
     // adapter's reassembly via the input it would have built; we test
     // by passing a mock session via the optional input.auth fallback.
-    const realFn = jest.requireActual("../getProduct").epGetProduct as (
-      input: { id: string; auth?: any }
-    ) => Promise<unknown>;
+    const realFn = jest.requireActual("../getProduct").epGetProduct as (input: {
+      id: string;
+      auth?: any;
+    }) => Promise<unknown>;
     void realFn; // adapter calls spec.fn directly; the fact that
     // adapted("test-id") returns the same Promise as
     // epGetProduct({id: "test-id"}) is the regression net.

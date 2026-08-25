@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.4.1
+
+### Fixed
+
+Studio offered none of the eight `ep.*` server functions in its Server Query
+pickers. `ServerQueryOpPicker` filters on `mode === "mutation" ? fn.isMutation
+: fn.isQuery`; the four reads set neither flag, and three of the four cart
+writes set neither either, so they were invisible in both pickers. The reads
+worked until that filter arrived from upstream. Registration now derives
+`isQuery` from `isMutation` so the two are exhaustive and a new function
+cannot be registered as neither.
+
+Code components and server functions registered with an `importPath` of the
+package root or `/server` were not all exported from those entry points.
+Studio resolves registrations through live JS references, so the dev host and
+add-drawer worked; the loader resolves `importName` against the real export
+surface, so publishing a project that used one failed to bundle with
+`No matching export`. 15 components and all 8 `ep.*` server functions were
+affected. The server functions are exported as their adapted, positional-arg
+forms — the shape the loader calls them with.
+
+Three enums (`CheckoutStep`, `OrderStatus`, `PaymentStatus`) were re-exported
+via `export type`, which erases them at runtime. They are values again.
+
 ## 0.4.0
 
 ### Breaking
@@ -10,23 +34,23 @@ reference: what the docs describe is what `$ctx.currentProduct` and `$ctx.cart`
 carry. Every saved binding that reached into the old Shopify-lineage shape
 needs repointing.
 
-| Was | Now |
-| --- | --- |
-| `currentProduct.name` | `currentProduct.attributes.name` |
-| `currentProduct.description` / `.sku` / `.slug` | `currentProduct.attributes.*` |
-| `currentProduct.price.value` | `currentProduct.meta.display_price.without_tax.float_price` |
-| `currentProduct.price.currencyCode` | `currentProduct.meta.display_price.without_tax.currency` |
-| `currentProduct.options` | `currentProduct.variations` |
-| `currentProduct.variants` | `currentProduct.childProducts` |
-| `currentProduct.path` | removed — build it from `attributes.slug` |
-| `cart.lineItems` | `cart.items` |
-| `cart.subtotalPrice` / `.totalPrice` | `cart.meta.display_price.without_tax` / `.with_tax` |
-| `cart.currency.code` | `cart.meta.display_price.without_tax.currency` |
-| `$ctx.cartData` | `$ctx.cart` |
-| `$ctx.checkoutCartData` | `$ctx.cart` |
-| `currentVariationOption.label` | `currentVariationOption.name` |
-| `currentCartItem.imageUrl` | `currentCartItem.image.href` |
-| search hit `currentProduct.path` / `._highlightedName` | `$ctx.currentHit.path` / `.highlightedName` |
+| Was                                                    | Now                                                         |
+| ------------------------------------------------------ | ----------------------------------------------------------- |
+| `currentProduct.name`                                  | `currentProduct.attributes.name`                            |
+| `currentProduct.description` / `.sku` / `.slug`        | `currentProduct.attributes.*`                               |
+| `currentProduct.price.value`                           | `currentProduct.meta.display_price.without_tax.float_price` |
+| `currentProduct.price.currencyCode`                    | `currentProduct.meta.display_price.without_tax.currency`    |
+| `currentProduct.options`                               | `currentProduct.variations`                                 |
+| `currentProduct.variants`                              | `currentProduct.childProducts`                              |
+| `currentProduct.path`                                  | removed — build it from `attributes.slug`                   |
+| `cart.lineItems`                                       | `cart.items`                                                |
+| `cart.subtotalPrice` / `.totalPrice`                   | `cart.meta.display_price.without_tax` / `.with_tax`         |
+| `cart.currency.code`                                   | `cart.meta.display_price.without_tax.currency`              |
+| `$ctx.cartData`                                        | `$ctx.cart`                                                 |
+| `$ctx.checkoutCartData`                                | `$ctx.cart`                                                 |
+| `currentVariationOption.label`                         | `currentVariationOption.name`                               |
+| `currentCartItem.imageUrl`                             | `currentCartItem.image.href`                                |
+| search hit `currentProduct.path` / `._highlightedName` | `$ctx.currentHit.path` / `.highlightedName`                 |
 
 Instances of the generic `@plasmicpkgs/commerce` components — any
 `plasmic-commerce-*` name without the `ep-` segment — stop rendering entirely,
@@ -105,12 +129,12 @@ between them, are gone.
 **Removed hooks** — all four called the Elastic Path SDK directly from the
 browser using the leaked token:
 
-| Removed | Replacement |
-| --- | --- |
-| `cart/use-cart` | `useCart` from `shopper-context` |
-| `cart/use-add-item` | `useAddItem` from `shopper-context`, or `EPAddToCartButton` |
-| `cart/use-update-item` | `useUpdateItem` from `shopper-context` |
-| `cart/use-remove-item` | `useRemoveItem` from `shopper-context` |
+| Removed                | Replacement                                                 |
+| ---------------------- | ----------------------------------------------------------- |
+| `cart/use-cart`        | `useCart` from `shopper-context`                            |
+| `cart/use-add-item`    | `useAddItem` from `shopper-context`, or `EPAddToCartButton` |
+| `cart/use-update-item` | `useUpdateItem` from `shopper-context`                      |
+| `cart/use-remove-item` | `useRemoveItem` from `shopper-context`                      |
 
 **Removed provider surface** — `getElasticPathProvider` and
 `getCommerceProvider` no longer take a `serverToken` argument, and the returned
