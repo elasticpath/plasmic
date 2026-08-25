@@ -158,6 +158,49 @@ describe("registerEpCustomFunctions", () => {
     expect(exported).toBe(call![0]);
   });
 
+  // Studio's ServerQueryOpPicker filters on `mode === "mutation" ? fn.isMutation
+  // : fn.isQuery`, so a function flagged as neither is offered in no picker at
+  // all — it silently disappears from the UI. Upstream added that filter after
+  // these functions were written, which is how the reads went missing.
+  describe("every registered function is discoverable in Studio", () => {
+    const register = () => {
+      const registerFunction = jest.fn();
+      registerEpCustomFunctions({ registerFunction } as any);
+      return registerFunction.mock.calls.map((args) => args[1]);
+    };
+
+    it.each([
+      ["getProduct"],
+      ["getCart"],
+      ["getProductList"],
+      ["getRelatedProducts"],
+    ])("offers ep.%s as a data query", (name) => {
+      const meta = register().find((m) => m?.name === name);
+      expect(meta).toBeDefined();
+      expect(meta.isQuery).toBe(true);
+      expect(meta.isMutation).toBeUndefined();
+    });
+
+    it.each([
+      ["addCartItem"],
+      ["applyCartAdjustment"],
+      ["updateCartItem"],
+      ["removeCartItem"],
+    ])("offers ep.%s as a mutation", (name) => {
+      const meta = register().find((m) => m?.name === name);
+      expect(meta).toBeDefined();
+      expect(meta.isMutation).toBe(true);
+      expect(meta.isQuery).toBeUndefined();
+    });
+
+    it("flags each function as exactly one of query or mutation", () => {
+      const neither = register().filter((m) => !m.isQuery && !m.isMutation);
+      const both = register().filter((m) => m.isQuery && m.isMutation);
+      expect(neither.map((m) => m.name)).toEqual([]);
+      expect(both.map((m) => m.name)).toEqual([]);
+    });
+  });
+
   it("adapted function reassembles flat positional args into the input object", () => {
     const registerFunction = jest.fn();
     registerEpCustomFunctions({ registerFunction } as any);

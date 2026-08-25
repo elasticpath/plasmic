@@ -4,6 +4,14 @@
 
 ### Fixed
 
+Studio offered none of the eight `ep.*` server functions in its Server Query
+pickers. `ServerQueryOpPicker` filters on `mode === "mutation" ? fn.isMutation
+: fn.isQuery`; the four reads set neither flag, and three of the four cart
+writes set neither either, so they were invisible in both pickers. The reads
+worked until that filter arrived from upstream. Registration now derives
+`isQuery` from `isMutation` so the two are exhaustive and a new function
+cannot be registered as neither.
+
 Code components and server functions registered with an `importPath` of the
 package root or `/server` were not all exported from those entry points.
 Studio resolves registrations through live JS references, so the dev host and

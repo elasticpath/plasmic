@@ -38,6 +38,11 @@ interface EpFunctionSpec {
    * When true, registers the function as a mutation (a Studio Server Query
    * the designer invokes to *change* state, not to read it). Cart writes set
    * this so Studio surfaces them as actions rather than data sources.
+   *
+   * Exhaustive with `isQuery`: Studio's pickers filter on one or the other
+   * (`ServerQueryOpPicker` -> `mode === "mutation" ? fn.isMutation : fn.isQuery`),
+   * so a function flagged as neither is invisible in both. Registration
+   * derives `isQuery` from this field rather than repeating it per spec.
    */
   isMutation?: boolean;
   /**
@@ -105,6 +110,7 @@ const EP_FUNCTIONS: EpFunctionSpec[] = [
   {
     fn: epAddCartItem,
     name: "addCartItem",
+    isMutation: true,
     description:
       "Add an item to the current shopper's cart. Auto-creates a cart on the first add. Throws on backend error.",
     params: [
@@ -160,6 +166,7 @@ const EP_FUNCTIONS: EpFunctionSpec[] = [
   {
     fn: epUpdateCartItem,
     name: "updateCartItem",
+    isMutation: true,
     description:
       "Update the quantity of a line item in the current cart. Throws when no cart exists.",
     params: [
@@ -170,6 +177,7 @@ const EP_FUNCTIONS: EpFunctionSpec[] = [
   {
     fn: epRemoveCartItem,
     name: "removeCartItem",
+    isMutation: true,
     description:
       "Remove a line item from the current cart. Throws when no cart exists.",
     params: [
@@ -228,7 +236,9 @@ export function registerEpCustomFunctions(loader: Registerable): void {
       importPath: IMPORT_PATH,
       description: spec.description,
       params: spec.params,
-      ...(spec.isMutation !== undefined && { isMutation: spec.isMutation }),
+      ...(spec.isMutation
+        ? { isMutation: spec.isMutation }
+        : { isQuery: true }),
     });
   }
 }
