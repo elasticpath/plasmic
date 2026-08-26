@@ -510,7 +510,7 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 
 ### Stock / Inventory
 - **EPStockProvider** — Multi-location inventory
-- **EPLocationPicker** / **EPLocationList** / **EPLocationField** — Location selection
+- **EPLocationPicker** / **EPLocationField** — Location selection
 - **EPStockField** — Stock level display
 
 ### Catalog Search
