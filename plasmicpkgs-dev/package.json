@@ -3,7 +3,7 @@
   "version": "0.0.83",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3011",
+    "dev": "next dev --port 3001",
     "dev-inspect": "NODE_OPTIONS='--inspect' next dev",
     "test": "vitest run"
   },
