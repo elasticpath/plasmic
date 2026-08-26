@@ -52,6 +52,17 @@ needs repointing.
 | `currentCartItem.imageUrl`                             | `currentCartItem.image.href`                                |
 | search hit `currentProduct.path` / `._highlightedName` | `$ctx.currentHit.path` / `.highlightedName`                 |
 
+Instances of the generic `@plasmicpkgs/commerce` components — any
+`plasmic-commerce-*` name without the `ep-` segment — stop rendering entirely,
+with `TypeError: Cannot read properties of undefined (reading 'current')`. The
+framework context they read is no longer supplied, so no amount of repointing
+fixes them; they have to be replaced with their `plasmic-commerce-ep-*`
+equivalents. `product-collection` becomes an `ep-product-list-provider`
+wrapping an `ep-product-grid`; `product-box` becomes `ep-product-provider`,
+whose `id` prop is now `productId`; `product-text-field` and `product-price`
+become `ep-product-field`; `product-media` becomes a plain image bound to
+`currentProduct.images[0].url`; `cart-provider` becomes `ep-cart-provider`.
+
 `EPProductField`, `EPCartField`, `EPCartItemField` and `EPCheckoutCartField`
 selections survive: the saved choice values are unchanged and only the paths
 behind them moved.
