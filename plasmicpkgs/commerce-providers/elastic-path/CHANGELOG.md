@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Removed
+
+`EPLocationList` and its `epLocationListMeta`. The component was exported from
+the package root but never registered, so it was never usable from Studio, and
+it read its locations from a `StockContext` that nothing has ever rendered — it
+would have shown "No locations available" in every case. `EPStockProvider`
+already repeats its children once per location and provides `currentLocation`,
+`currentLocationIndex` and the roving-focus data `EPLocationPicker` needs.
+
+`LocationAwareAddToCartProps` and the `src/inventory/index.ts` re-export of
+`./components/LocationAwareAddToCart`, a module that has never existed. The
+barrel only stayed green because nothing imports it — the package entry reaches
+`MultiLocationStock` directly — so any import of `src/inventory` failed to
+compile.
+
 ## 0.4.1
 
 ### Fixed
