@@ -790,6 +790,8 @@ PlasmicClientRootProvider <-------- prefetchedQueryData
 | `ep.getProductPage` | `{ limit?, offset?, search?, categoryId?, sort? }` | `{ data: Product[], meta: { results: { total }, page: { limit, offset } } }` — one page in Elastic Path's envelope, with the total count. `limit` defaults to 25 |
 | `ep.getRelatedProducts` | `{ productId, relationshipSlug, limit? }` | `Product[]` — products linked by EP custom relationship |
 
+`categoryId` takes a hierarchy **node** ID and reads that node's products from `/catalog/nodes/{id}/relationships/products`. Elastic Path's catalog product endpoints have no filterable category key, and they compose `filter` terms with a comma — `and(...)` is rejected.
+
 The session (`accessToken`, `host`, `clientId`, `cartId?`, `accountId?`, `locale?`) is **not** an argument. `withEpSession(epCtx, callback)` establishes a per-request `AsyncLocalStorage` scope; each `ep.*` function reads the active session via `getCurrentEpSession()` internally. Outside any `withEpSession` scope (Studio canvas, mistakes), functions fail-soft to `null` / `[]` without calling EP.
 
 ### Studio binding

@@ -85,7 +85,11 @@ const EP_FUNCTIONS: EpFunctionSpec[] = [
     params: [
       { name: "limit", type: "number", description: "Page size." },
       { name: "search", type: "string", description: "Search query." },
-      { name: "categoryId", type: "string", description: "EP hierarchy ID." },
+      {
+        name: "categoryId",
+        type: "string",
+        description: "EP hierarchy node (category) ID.",
+      },
       { name: "sort", type: "string", description: "Sort key." },
     ],
   },
@@ -102,7 +106,11 @@ const EP_FUNCTIONS: EpFunctionSpec[] = [
         description: "Zero-based record offset.",
       },
       { name: "search", type: "string", description: "Search query." },
-      { name: "categoryId", type: "string", description: "EP hierarchy ID." },
+      {
+        name: "categoryId",
+        type: "string",
+        description: "EP hierarchy node (category) ID.",
+      },
       { name: "sort", type: "string", description: "Sort key." },
     ],
   },

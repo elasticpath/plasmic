@@ -1,4 +1,7 @@
-import { getByContextAllProducts } from "@epcc-sdk/sdks-shopper";
+import {
+  getByContextAllProducts,
+  getByContextProductsForNode,
+} from "@epcc-sdk/sdks-shopper";
 import { normalizeProductFromList } from "../utils/normalize";
 import { getSortVariables } from "../utils";
 import type { Product } from "../types/product";
@@ -32,7 +35,7 @@ export interface EpGetProductPageInput {
   offset?: number;
   /** Search query applied against product name. */
   search?: string;
-  /** Filter by EP hierarchy (category) ID. */
+  /** Products of one hierarchy node (a category), by node ID. */
   categoryId?: string | number;
   /** Sort key understood by the shared `getSortVariables` helper. */
   sort?: string;
@@ -80,11 +83,13 @@ export async function epGetProductPage({
     "page[offset]": pageOffset,
   };
 
+  // Elastic Path's catalog filter grammar composes terms with a comma, not
+  // `and(...)` — the catalog endpoints reject `and(...)` outright. There is no
+  // filterable category key either, so `categoryId` selects the endpoint below
+  // rather than adding a term here.
   const filters: string[] = [];
   if (search) filters.push(`eq(name,${search})`);
-  if (categoryId) filters.push(`eq(category.id,${categoryId})`);
-  if (filters.length === 1) query["filter"] = filters[0];
-  else if (filters.length > 1) query["filter"] = `and(${filters.join(",")})`;
+  if (filters.length > 0) query["filter"] = filters.join(",");
 
   if (sort) {
     const sortVariable = getSortVariables(sort);
@@ -92,10 +97,16 @@ export async function epGetProductPage({
   }
 
   try {
-    const response = await getByContextAllProducts({
-      client,
-      query: query as any,
-    });
+    const response = categoryId
+      ? await getByContextProductsForNode({
+          client,
+          path: { node_id: String(categoryId) },
+          query: query as any,
+        })
+      : await getByContextAllProducts({
+          client,
+          query: query as any,
+        });
     const rows = response.data?.data;
     if (!Array.isArray(rows)) return emptyPage(pageLimit, pageOffset);
 

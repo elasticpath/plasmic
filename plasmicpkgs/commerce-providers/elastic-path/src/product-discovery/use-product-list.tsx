@@ -9,7 +9,10 @@
 
 import { useMemo } from "react";
 import { useMutablePlasmicQueryData } from "@plasmicapp/query";
-import { getByContextAllProducts } from "@epcc-sdk/sdks-shopper";
+import {
+  getByContextAllProducts,
+  getByContextProductsForNode,
+} from "@epcc-sdk/sdks-shopper";
 import { useEpCommerce } from "../shopper-context/EpCommerceContext";
 import { normalizeProductFromList } from "../utils";
 import getSortVariables from "../utils/get-sort-variables";
@@ -76,18 +79,11 @@ export function useProductList(options: UseProductListOptions): UseProductListRe
         "page[offset]": BigInt(page * pageSize),
       };
 
-      // Add search filter
+      // Elastic Path composes filter terms with a comma; `and(...)` is
+      // rejected. There is no filterable category key, so a categoryId
+      // selects the node endpoint below instead of adding a term here.
       if (search) {
         query["filter"] = `eq(name,${search})`;
-      }
-
-      // Add category filter
-      if (categoryId) {
-        const existingFilter = query["filter"] as string | undefined;
-        const catFilter = `eq(category.id,${categoryId})`;
-        query["filter"] = existingFilter
-          ? `and(${existingFilter},${catFilter})`
-          : catFilter;
       }
 
       // Add sorting
@@ -99,10 +95,16 @@ export function useProductList(options: UseProductListOptions): UseProductListRe
       }
 
       try {
-        const response = await getByContextAllProducts({
-          client: client!,
-          query,
-        });
+        const response = categoryId
+          ? await getByContextProductsForNode({
+              client: client!,
+              path: { node_id: categoryId },
+              query,
+            })
+          : await getByContextAllProducts({
+              client: client!,
+              query,
+            });
 
         const products = response.data?.data
           ? response.data.data.map((product) =>

@@ -115,8 +115,9 @@ export const epProductListProviderMeta: CodeComponentMeta<EPProductListProviderP
     },
     categoryId: {
       type: "string",
-      displayName: "Category ID",
-      description: "Filter products by category ID",
+      displayName: "Category (node) ID",
+      description:
+        "Show only the products of one hierarchy node. Takes a node ID, not a hierarchy ID.",
     },
     search: {
       type: "string",

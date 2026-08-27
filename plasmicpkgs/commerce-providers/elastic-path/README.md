@@ -370,7 +370,7 @@ This registers five read functions in the `ep` namespace, callable from Studio's
 
 - `ep.getProduct({ id })` — single product by EP product UUID.
 - `ep.getCart()` — current cart contents.
-- `ep.getProductList({ limit?, search?, categoryId?, sort? })` — a flat array of products.
+- `ep.getProductList({ limit?, search?, categoryId?, sort? })` — a flat array of products. `categoryId` is a hierarchy **node** ID; it reads that node's products rather than filtering the whole catalog.
 - `ep.getProductPage({ limit?, offset?, search?, categoryId?, sort? })` — one page of products **with the total count**, in Elastic Path's envelope: `data`, plus `meta.results.total` and `meta.page`. Bind it to EP Product List Provider's **Products (pre-fetched)** prop to server-render a listing. Prefer this over `getProductList` whenever the page has pagination controls — the flat array carries no total, so ranges and next/previous cannot be computed.
 - `ep.getRelatedProducts({ productId, relationshipSlug, limit? })` — products linked by an EP custom relationship.
 

@@ -1,4 +1,5 @@
 const mockGetByContextAllProducts = jest.fn();
+const mockGetByContextProductsForNode = jest.fn();
 
 jest.mock("@epcc-sdk/sdks-shopper", () => ({
   createShopperClient: jest.fn(() => ({
@@ -8,6 +9,8 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
   })),
   getByContextAllProducts: (...args: unknown[]) =>
     mockGetByContextAllProducts(...args),
+  getByContextProductsForNode: (...args: unknown[]) =>
+    mockGetByContextProductsForNode(...args),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -23,6 +26,7 @@ const SESSION = {
 
 beforeEach(() => {
   mockGetByContextAllProducts.mockReset();
+  mockGetByContextProductsForNode.mockReset();
 });
 
 const makeProduct = (id: string, name: string) => ({
@@ -106,41 +110,32 @@ describe("epGetProductPage", () => {
     expect(result.meta.page.offset).toBe(0);
   });
 
-  it("combines search and category into one EP filter expression", async () => {
-    mockGetByContextAllProducts.mockResolvedValue({ data: { data: [] } });
+  it("reads a category's products from the node endpoint, not a filter", async () => {
+    mockGetByContextProductsForNode.mockResolvedValue({ data: { data: [] } });
 
     await withEpSession(SESSION, () =>
-      epGetProductPage({ search: "chair", categoryId: "cat-1" })
+      epGetProductPage({ search: "chair", categoryId: "node-1" })
     );
 
-    expect(mockGetByContextAllProducts).toHaveBeenCalledWith(
+    // EP has no filterable category key, so the node ID picks the endpoint and
+    // only the search term reaches `filter`.
+    expect(mockGetByContextAllProducts).not.toHaveBeenCalled();
+    expect(mockGetByContextProductsForNode).toHaveBeenCalledWith(
       expect.objectContaining({
-        query: expect.objectContaining({
-          filter: "and(eq(name,chair),eq(category.id,cat-1))",
-        }),
+        path: { node_id: "node-1" },
+        query: expect.objectContaining({ filter: "eq(name,chair)" }),
       })
     );
   });
 
-  it.each([
-    ["chair", undefined, "eq(name,chair)"],
-    [undefined, "cat-1", "eq(category.id,cat-1)"],
-  ])(
-    "wraps a lone filter term without and() (search=%s category=%s)",
-    async (search, categoryId, expected) => {
-      mockGetByContextAllProducts.mockResolvedValue({ data: { data: [] } });
+  it("sends no filter when there is no search term", async () => {
+    mockGetByContextAllProducts.mockResolvedValue({ data: { data: [] } });
 
-      await withEpSession(SESSION, () =>
-        epGetProductPage({ search, categoryId })
-      );
+    await withEpSession(SESSION, () => epGetProductPage({}));
 
-      expect(mockGetByContextAllProducts).toHaveBeenCalledWith(
-        expect.objectContaining({
-          query: expect.objectContaining({ filter: expected }),
-        })
-      );
-    }
-  );
+    const query = mockGetByContextAllProducts.mock.calls[0][0].query;
+    expect(query.filter).toBeUndefined();
+  });
 
   it("returns an empty page rather than throwing when EP errors", async () => {
     mockGetByContextAllProducts.mockRejectedValue(new Error("boom"));
