@@ -468,7 +468,7 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 
 ### Product Display
 - **EPProductProvider** — Single product data
-- **EPProductListProvider** — Paginated product listing
+- **EPProductListProvider** — Paginated product listing. **Products (pre-fetched)** (`initialPage`, advanced) seeds the first page from an `ep.getProductPage` Server Query result, and that query's `page[limit]` overrides **Page Size**; sorting or paging discards the seed and falls back to client fetching
 - **EPRelatedProductsProvider** — Related products
 - **EPProductGrid** — Repeater for product list items
 

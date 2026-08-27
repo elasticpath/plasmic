@@ -786,7 +786,8 @@ PlasmicClientRootProvider <-------- prefetchedQueryData
 |---|---|---|
 | `ep.getProduct` | `{ id }` | `Product \| null` — single product by EP UUID |
 | `ep.getCart` | `{}` | `Cart \| null` — current cart contents |
-| `ep.getProductList` | `{ limit?, search?, categoryId?, sort? }` | `Product[]` — paginated list |
+| `ep.getProductList` | `{ limit?, search?, categoryId?, sort? }` | `Product[]` — the first page only, as a flat array with no total count |
+| `ep.getProductPage` | `{ limit?, offset?, search?, categoryId?, sort? }` | `{ data: Product[], meta: { results: { total }, page: { limit, offset } } }` — one page in Elastic Path's envelope, with the total count. `limit` defaults to 25 |
 | `ep.getRelatedProducts` | `{ productId, relationshipSlug, limit? }` | `Product[]` — products linked by EP custom relationship |
 
 The session (`accessToken`, `host`, `clientId`, `cartId?`, `accountId?`, `locale?`) is **not** an argument. `withEpSession(epCtx, callback)` establishes a per-request `AsyncLocalStorage` scope; each `ep.*` function reads the active session via `getCurrentEpSession()` internally. Outside any `withEpSession` scope (Studio canvas, mistakes), functions fail-soft to `null` / `[]` without calling EP.
@@ -795,10 +796,12 @@ The session (`accessToken`, `host`, `clientId`, `cartId?`, `accountId?`, `locale
 
 For each Server Query in the Plasmic UI:
 
-- **Function:** `ep.getProduct` (or `getCart`/`getProductList`/`getRelatedProducts`)
+- **Function:** `ep.getProduct` (or `getCart`/`getProductList`/`getProductPage`/`getRelatedProducts`)
 - **Arguments (object editor):** `{ id: $ctx.params.slug }` — note `$q` (server queries) vs `$queries` (client data queries) when binding the result.
 
 Then bind the consuming component's `product` / `cart` / `products` prop (advanced section) to `$q.<queryName>.data`.
+
+For a server-rendered listing, bind an `ep.getProductPage` query to **EP Product List Provider** → **Products (pre-fetched)** (`initialPage`, advanced section) as `$q.<queryName>.data`. The provider renders that page without a browser fetch, and takes its page boundaries from the query's `page[limit]` rather than the **Page Size** prop. Sorting or changing page discards the seed and falls back to client fetching; in load-more mode the seeded products are the buffer the next page appends to. Where server queries do not execute — the Studio canvas — the binding evaluates to an unresolved Promise, and anything that is not a settled object carrying a `data` array counts as no seed, so the provider fetches for itself.
 
 ### Add to Cart errors (`$ctx.addToCartState.error`)
 
