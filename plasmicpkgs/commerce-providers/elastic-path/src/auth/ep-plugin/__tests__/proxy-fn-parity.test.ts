@@ -67,7 +67,7 @@ describe("callEpProxy / FN_DISPATCH parity", () => {
     expect(found).toEqual(
       expect.arrayContaining([
         "getCart",
-        "getProductList",
+        "getProductPage",
         "addCartItem",
         "removeCartItem",
         ...KNOWN_UNWIRED,
