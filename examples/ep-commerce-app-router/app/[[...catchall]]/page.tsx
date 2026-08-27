@@ -1,5 +1,4 @@
 import { PLASMIC } from "@/plasmic-init";
-import "@/plasmic-register";
 import { PlasmicClientRootProvider } from "@/plasmic-init-client";
 import { PlasmicComponent } from "@plasmicapp/loader-nextjs";
 import {
