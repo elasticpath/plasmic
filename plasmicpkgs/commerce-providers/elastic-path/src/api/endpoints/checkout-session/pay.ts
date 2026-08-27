@@ -341,7 +341,9 @@ export async function handlePay(
     );
     const metaAmount = (cartResponse.data as any)?.data?.meta?.display_price
       ?.with_tax?.amount;
-    if (typeof metaAmount === "number") cartMetaTotal = metaAmount;
+    if (typeof metaAmount === "number" && Number.isFinite(metaAmount)) {
+      cartMetaTotal = metaAmount;
+    }
   } catch (err) {
     log.error("Failed to re-fetch cart for hash check", {
       cartId: session.cartId,
