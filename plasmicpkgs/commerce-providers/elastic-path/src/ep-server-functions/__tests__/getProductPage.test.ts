@@ -122,6 +122,26 @@ describe("epGetProductPage", () => {
     );
   });
 
+  it.each([
+    ["chair", undefined, "eq(name,chair)"],
+    [undefined, "cat-1", "eq(category.id,cat-1)"],
+  ])(
+    "wraps a lone filter term without and() (search=%s category=%s)",
+    async (search, categoryId, expected) => {
+      mockGetByContextAllProducts.mockResolvedValue({ data: { data: [] } });
+
+      await withEpSession(SESSION, () =>
+        epGetProductPage({ search, categoryId })
+      );
+
+      expect(mockGetByContextAllProducts).toHaveBeenCalledWith(
+        expect.objectContaining({
+          query: expect.objectContaining({ filter: expected }),
+        })
+      );
+    }
+  );
+
   it("returns an empty page rather than throwing when EP errors", async () => {
     mockGetByContextAllProducts.mockRejectedValue(new Error("boom"));
 

@@ -60,6 +60,22 @@ describe("epGetProductList", () => {
     );
   });
 
+  it("filters by category with a valid EP filter expression", async () => {
+    mockGetByContextAllProducts.mockResolvedValue({ data: { data: [] } });
+
+    await withEpSession(SESSION, () =>
+      epGetProductList({ search: "chair", categoryId: "cat-1" })
+    );
+
+    expect(mockGetByContextAllProducts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        query: expect.objectContaining({
+          filter: "and(eq(name,chair),eq(category.id,cat-1))",
+        }),
+      })
+    );
+  });
+
   it("returns empty array when EP returns no products", async () => {
     mockGetByContextAllProducts.mockResolvedValue({
       data: { data: [], included: {} },

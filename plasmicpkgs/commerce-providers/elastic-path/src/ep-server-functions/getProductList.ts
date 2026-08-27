@@ -1,10 +1,5 @@
-import { getByContextAllProducts } from "@epcc-sdk/sdks-shopper";
-import { normalizeProductFromList } from "../utils/normalize";
-import { getSortVariables } from "../utils";
 import type { Product } from "../types/product";
-import { buildEpClient, isUsableAuth } from "./ep-client";
-import { getCurrentEpSession } from "./session-context";
-import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
+import { epGetProductPage } from "./getProductPage";
 import type { EpServerAuth } from "./types";
 
 export interface EpGetProductListInput {
@@ -20,54 +15,16 @@ export interface EpGetProductListInput {
   auth?: EpServerAuth;
 }
 
-export async function epGetProductList({
-  limit,
-  search,
-  categoryId,
-  sort,
-  auth: inputAuth,
-}: EpGetProductListInput = {}): Promise<Product[]> {
-  const auth = getCurrentEpSession() ?? inputAuth;
-
-  if (!isUsableAuth(auth) && shouldUseProxy()) {
-    return callEpProxy<Product[]>(
-      "getProductList",
-      { limit, search, categoryId, sort },
-      []
-    );
-  }
-
-  if (!isUsableAuth(auth)) return [];
-  const client = buildEpClient(auth);
-  const query: Record<string, unknown> = {};
-  if (limit) query["page[limit]"] = limit;
-  if (search) query["filter"] = `eq(name,${search})`;
-  if (categoryId) {
-    query["filter"] = query["filter"]
-      ? `${query["filter"]},category.id=${categoryId}`
-      : `category.id=${categoryId}`;
-  }
-  if (sort) {
-    const sortVariable = getSortVariables(sort);
-    if (sortVariable) query["sort"] = sortVariable;
-  }
-  query["include"] = ["main_image", "files", "component_products"];
-
-  try {
-    const response = await getByContextAllProducts({
-      client,
-      query: query as any,
-    });
-    const data = response.data?.data;
-    if (!Array.isArray(data) || data.length === 0) return [];
-    return data.map((p: any) =>
-      normalizeProductFromList(
-        p,
-        auth.locale ?? "en-US",
-        response.data?.included
-      )
-    );
-  } catch {
-    return [];
-  }
+/**
+ * The first page of products as a flat array, dropping Elastic Path's envelope.
+ *
+ * Kept for callers that never needed the total count. `epGetProductPage` is the
+ * one implementation — everything about auth, proxying, filtering and
+ * normalization lives there.
+ */
+export async function epGetProductList(
+  input: EpGetProductListInput = {}
+): Promise<Product[]> {
+  const page = await epGetProductPage(input);
+  return page.data;
 }
