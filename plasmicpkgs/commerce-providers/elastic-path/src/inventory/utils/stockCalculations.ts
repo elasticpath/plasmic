@@ -66,35 +66,6 @@ export function calculateTotalStock(locationStocks: LocationStock[]): StockTotal
 }
 
 /**
- * Filters stock data by specific location IDs/slugs
- * @param stock ProductStock object containing all locations
- * @param locationIds Array of location IDs or slugs to filter by
- * @returns Filtered ProductStock object
- */
-export function filterStockByLocation(
-  stock: ProductStock,
-  locationIds: string[]
-): ProductStock {
-  if (!locationIds || locationIds.length === 0) {
-    return stock;
-  }
-
-  const filteredLocations = stock.locations.filter(locationStock => {
-    const slug = getLocationSlug(locationStock.location);
-    return locationIds.includes(locationStock.location.id) ||
-      (slug && locationIds.includes(slug));
-  });
-
-  const totals = calculateTotalStock(filteredLocations);
-
-  return {
-    ...stock,
-    locations: filteredLocations,
-    ...totals,
-  };
-}
-
-/**
  * Finds available stock for a specific location
  * @param stock ProductStock object
  * @param locationSlug Location slug to find stock for
