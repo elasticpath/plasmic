@@ -14,6 +14,24 @@ type ComponentRegistrationMap = Map<
 >;
 
 /**
+ * Per-registration tracing, off unless EP_DEBUG_REGISTRATION is set. Left
+ * unfiltered it emits a line per registration per request, which buries real
+ * errors in the dev-server output.
+ */
+function debugLog(
+  kind: string,
+  name: string,
+  devMeta: unknown,
+  devName?: string,
+) {
+  if (!process.env.EP_DEBUG_REGISTRATION) {
+    return;
+  }
+  const as = devName ? ` as "${devName}"` : "";
+  console.debug(`Registering ${kind} "${name}"${as} with dev meta:`, devMeta);
+}
+
+/**
  * Registers with altered names so they don't conflict with names on production.
  *
  * This function overrides the loader's methods to do this.
@@ -31,10 +49,7 @@ export function registerWithDevMeta(
         name: toDevName(meta.name),
         displayName: toDevDisplayName(meta.displayName),
       };
-      console.debug(
-        `Registering global context "${meta.name}" with dev meta:`,
-        devMeta,
-      );
+      debugLog("global context", meta.name, devMeta);
       orig(context, devMeta);
     },
   );
@@ -47,10 +62,7 @@ export function registerWithDevMeta(
         name: toDevName(meta.name),
         displayName: toDevDisplayName(meta.displayName),
       };
-      console.debug(
-        `Registering function "${meta.name}" with dev meta:`,
-        devMeta,
-      );
+      debugLog("function", meta.name, devMeta);
       orig(fn, devMeta);
     },
   );
@@ -63,10 +75,7 @@ export function registerWithDevMeta(
         name: toDevName(token.name),
         displayName: toDevDisplayName(token.displayName),
       };
-      console.debug(
-        `Registering token "${token.name}" with dev meta:`,
-        devToken,
-      );
+      debugLog("token", token.name, devToken);
       orig(devToken);
     },
   );
@@ -79,10 +88,7 @@ export function registerWithDevMeta(
         ...meta,
         label: toDevDisplayName(meta.label),
       };
-      console.debug(
-        `Registering trait "${trait}" as "${devTrait}" with dev meta:`,
-        devMeta,
-      );
+      debugLog("trait", trait, devMeta, devTrait);
       orig(devTrait, devMeta);
     },
   );
@@ -127,10 +133,7 @@ export function registerWithDevMeta(
       section: codeComponentMeta.importPath,
       ...(devParentName && { parentComponentName: devParentName }),
     };
-    console.debug(
-      `Registering component "${meta.name}" with dev meta:`,
-      devMeta,
-    );
+    debugLog("component", meta.name, devMeta);
     registerComponent.orig(component, devMeta);
   });
 }
