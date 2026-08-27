@@ -401,7 +401,7 @@ describe("handleUpdateSession — shipping selection write", () => {
     expect((res.body as any).data.session.selectedShippingRateId).toBe("rate-standard");
   });
 
-  it("refreshes session.totals from the server rate + fresh EP cart total after a successful selection", async () => {
+  it("refreshes session.totals from the server rate + shipping-write cart (no extra GET)", async () => {
     epSdk.getACart.mockResolvedValue(cartFetch([], 1999, "USD"));
     const store = createMockStore(
       makeSession({
@@ -429,6 +429,8 @@ describe("handleUpdateSession — shipping selection write", () => {
     expect(session.totals.shipping).toBe(599);
     expect(session.totals.total).toBe(1999);
     expect(session.totals.subtotal).toBe(1400);
+
+    expect(epSdk.getACart).toHaveBeenCalledTimes(2);
 
     expect(store.set).toHaveBeenCalledTimes(1);
     const persisted: CheckoutSession = store.set.mock.calls[0][1];

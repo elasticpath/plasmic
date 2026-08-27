@@ -193,8 +193,9 @@ describe("clearCartShippingLine", () => {
       ])
     );
 
-    await clearCartShippingLine(CLIENT, { cartId: "cart-id" });
+    const result = await clearCartShippingLine(CLIENT, { cartId: "cart-id" });
 
+    expect(result.deletedCount).toBe(1);
     expect(mockDeleteACartItem).toHaveBeenCalledTimes(1);
     expect(mockDeleteACartItem).toHaveBeenCalledWith(
       expect.objectContaining({ path: { cartID: "cart-id", cartitemID: "ship-1" } })
@@ -210,8 +211,9 @@ describe("clearCartShippingLine", () => {
       ])
     );
 
-    await clearCartShippingLine(CLIENT, { cartId: "cart-id" });
+    const result = await clearCartShippingLine(CLIENT, { cartId: "cart-id" });
 
+    expect(result.deletedCount).toBe(0);
     expect(mockDeleteACartItem).not.toHaveBeenCalled();
   });
 
@@ -224,8 +226,9 @@ describe("clearCartShippingLine", () => {
       ])
     );
 
-    await clearCartShippingLine(CLIENT, { cartId: "cart-id" });
+    const result = await clearCartShippingLine(CLIENT, { cartId: "cart-id" });
 
+    expect(result.deletedCount).toBe(2);
     expect(mockDeleteACartItem).toHaveBeenCalledTimes(2);
     const deletedIds = mockDeleteACartItem.mock.calls
       .map((c) => c[0].path.cartitemID)
@@ -236,8 +239,9 @@ describe("clearCartShippingLine", () => {
   it("no-ops when no managed shipping line exists", async () => {
     mockGetACart.mockResolvedValueOnce(cartWith([{ id: "prod-1", sku: "BOOK-1" }]));
 
-    await clearCartShippingLine(CLIENT, { cartId: "cart-id" });
+    const result = await clearCartShippingLine(CLIENT, { cartId: "cart-id" });
 
+    expect(result.deletedCount).toBe(0);
     expect(mockDeleteACartItem).not.toHaveBeenCalled();
     expect(mockManageCarts).not.toHaveBeenCalled();
   });
