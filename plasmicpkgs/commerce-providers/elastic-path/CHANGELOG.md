@@ -19,6 +19,21 @@ seed and falls back to client fetching; in load-more mode the seeded products
 are the buffer the next page appends to. Leaving it empty preserves today's
 client-fetch behaviour.
 
+### Fixed
+
+Filtering a listing by category never worked. Elastic Path's catalog product
+endpoint has no filterable `category.id` key, and it rejects `and(...)` — terms
+compose with a comma. `categoryId` is now understood as a hierarchy **node** ID
+and reads `/catalog/nodes/{node_id}/relationships/products`, which also accepts
+a name filter, so searching within a category works for the first time. The
+Studio prop is relabelled **Category (node) ID**; a hierarchy ID in that prop
+returns nothing, as it did before. Both the server functions and the
+browser-side listing hook are fixed together.
+
+`ep.getProductList` is now a wrapper over `ep.getProductPage`, dropping the
+envelope and returning the first page as a flat array. Its published return
+type is unchanged.
+
 ### Removed
 
 `EPMultiLocationStock`, its `epMultiLocationStockMeta` registration, and the
