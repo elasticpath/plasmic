@@ -32,6 +32,35 @@ import type { Product } from "../types/product";
 
 type PreviewState = "auto" | "withData" | "empty" | "loading" | "error";
 
+interface SeedPage {
+  products: Product[];
+  totalCount: number;
+  pageSize?: number;
+}
+
+/**
+ * Reads an `ep.getProductPage` envelope off the `initialPage` prop.
+ *
+ * Studio canvas does not execute server queries — the binding evaluates to an
+ * unresolved Promise rather than a page — so anything that is not a settled
+ * object carrying a `data` array counts as "no seed" and the provider falls
+ * through to its own fetch.
+ */
+function readSeedPage(value: unknown): SeedPage | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  if (typeof (value as { then?: unknown }).then === "function") return undefined;
+  const data = (value as { data?: unknown }).data;
+  if (!Array.isArray(data)) return undefined;
+  const meta = (value as { meta?: any }).meta;
+  const total = Number(meta?.results?.total);
+  const limit = Number(meta?.page?.limit);
+  return {
+    products: data as Product[],
+    totalCount: Number.isFinite(total) ? total : data.length,
+    pageSize: Number.isFinite(limit) && limit > 0 ? limit : undefined,
+  };
+}
+
 interface EPProductListProviderProps {
   children?: React.ReactNode;
   loadingContent?: React.ReactNode;
@@ -41,6 +70,7 @@ interface EPProductListProviderProps {
   search?: string;
   initialSort?: string;
   pageSize?: number;
+  initialPage?: unknown;
   previewState?: PreviewState;
   className?: string;
 }
@@ -105,6 +135,13 @@ export const epProductListProviderMeta: CodeComponentMeta<EPProductListProviderP
       description: "Number of products per page",
       defaultValue: 12,
     },
+    initialPage: {
+      type: "object",
+      displayName: "Products (pre-fetched)",
+      description:
+        "Bind to an ep.getProductPage Server Query result (e.g. $q.plp.data) to server-render the first page instead of fetching it in the browser. The query's page[limit] wins over Page Size. Sorting or paging discards it and falls back to client fetching. Leave empty to fetch client-side.",
+      advanced: true,
+    },
     previewState: {
       type: "choice",
       options: ["auto", "withData", "empty", "loading", "error"],
@@ -155,6 +192,7 @@ export const EPProductListProvider = React.forwardRef<
     search,
     initialSort = "",
     pageSize = 12,
+    initialPage,
     previewState = "auto",
     className,
   } = props;
@@ -215,6 +253,7 @@ export const EPProductListProvider = React.forwardRef<
       search={search}
       initialSort={initialSort}
       pageSize={pageSize}
+      initialPage={initialPage}
       className={className}
       loadingContent={loadingContent}
       errorContent={errorContent}
@@ -257,6 +296,7 @@ const EPProductListProviderInner = React.forwardRef<
     search?: string;
     initialSort?: string;
     pageSize?: number;
+    initialPage?: unknown;
     className?: string;
     loadingContent?: React.ReactNode;
     errorContent?: React.ReactNode;
@@ -269,6 +309,7 @@ const EPProductListProviderInner = React.forwardRef<
     search,
     initialSort = "",
     pageSize = 12,
+    initialPage,
     className,
     loadingContent,
     errorContent,
@@ -282,21 +323,43 @@ const EPProductListProviderInner = React.forwardRef<
   // Track the last page whose products were appended to avoid double-appending
   const lastAppendedPageRef = useRef(-1);
 
-  const { products, totalCount, isLoading, error } = useProductList({
+  const seed = useMemo(() => readSeedPage(initialPage), [initialPage]);
+  const [seedDismissed, setSeedDismissed] = useState(false);
+  // The seed is page 0 at `initialSort`. Any sort or page change makes it
+  // stale, so it is dropped for good rather than resurrected on a return to
+  // page 0 — SWR already makes that re-fetch cheap, and reviving it would
+  // show SSR-era data after a mutation elsewhere in the session.
+  const seedActive = !!seed && !seedDismissed;
+  const dismissSeed = useCallback(() => setSeedDismissed(true), []);
+  // A seed fetched with its own page[limit] defines the page boundaries; a
+  // mismatched Page Size prop would otherwise make every range and total wrong.
+  const effectivePageSize = seed?.pageSize ?? pageSize;
+
+  const {
+    products: fetchedProducts,
+    totalCount: fetchedTotalCount,
+    isLoading,
+    error,
+  } = useProductList({
     categoryId,
     search,
     sort,
     page: currentPage,
-    pageSize,
+    pageSize: effectivePageSize,
+    skip: seedActive,
   });
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const products = seedActive ? seed!.products : fetchedProducts;
+  const totalCount = seedActive ? seed!.totalCount : fetchedTotalCount;
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / effectivePageSize));
   const hasNextPage = currentPage < totalPages - 1;
   const hasPreviousPage = currentPage > 0;
 
   // Append products in load-more mode when a new page arrives
   useEffect(() => {
     if (
+      !seedActive &&
       isLoadMoreMode &&
       !isLoading &&
       products.length > 0 &&
@@ -309,7 +372,7 @@ const EPProductListProviderInner = React.forwardRef<
         return newProducts.length > 0 ? [...prev, ...newProducts] : prev;
       });
     }
-  }, [isLoadMoreMode, isLoading, products, currentPage]);
+  }, [seedActive, isLoadMoreMode, isLoading, products, currentPage]);
 
   const displayProducts =
     isLoadMoreMode && loadMoreProducts.length > 0
@@ -319,8 +382,12 @@ const EPProductListProviderInner = React.forwardRef<
   const isEmpty =
     !isLoading && displayProducts.length === 0 && totalCount === 0;
 
-  const rangeStart = totalCount === 0 ? 0 : currentPage * pageSize + 1;
-  const rangeEnd = Math.min((currentPage + 1) * pageSize, totalCount);
+  const rangeStart =
+    totalCount === 0 ? 0 : currentPage * effectivePageSize + 1;
+  const rangeEnd = Math.min(
+    (currentPage + 1) * effectivePageSize,
+    totalCount
+  );
   const displayCount = isLoadMoreMode ? loadMoreProducts.length : displayProducts.length;
   const summary = isEmpty
     ? "No products found"
@@ -334,7 +401,7 @@ const EPProductListProviderInner = React.forwardRef<
       totalCount,
       currentPage,
       totalPages,
-      pageSize,
+      pageSize: effectivePageSize,
       sort,
       isLoading,
       hasNextPage,
@@ -349,7 +416,7 @@ const EPProductListProviderInner = React.forwardRef<
       totalCount,
       currentPage,
       totalPages,
-      pageSize,
+      effectivePageSize,
       sort,
       isLoading,
       hasNextPage,
@@ -373,46 +440,53 @@ const EPProductListProviderInner = React.forwardRef<
     (value: string) => {
       setSort(value);
       setCurrentPage(0);
+      dismissSeed();
       resetLoadMore();
     },
-    [resetLoadMore]
+    [dismissSeed, resetLoadMore]
   );
 
   const handleGoToPage = useCallback(
     (page: number) => {
       const safePage = Math.max(0, Math.min(page, totalPages - 1));
       setCurrentPage(safePage);
+      dismissSeed();
       resetLoadMore();
     },
-    [totalPages, resetLoadMore]
+    [totalPages, dismissSeed, resetLoadMore]
   );
 
   const handleNextPage = useCallback(() => {
     if (hasNextPage) {
       setCurrentPage((p) => p + 1);
+      dismissSeed();
       if (!isLoadMoreMode) {
         resetLoadMore();
       }
     }
-  }, [hasNextPage, isLoadMoreMode, resetLoadMore]);
+  }, [hasNextPage, isLoadMoreMode, dismissSeed, resetLoadMore]);
 
   const handlePrevPage = useCallback(() => {
     if (hasPreviousPage) {
       setCurrentPage((p) => p - 1);
+      dismissSeed();
       resetLoadMore();
     }
-  }, [hasPreviousPage, resetLoadMore]);
+  }, [hasPreviousPage, dismissSeed, resetLoadMore]);
 
   const handleLoadMore = useCallback(() => {
     if (!hasNextPage) return;
     if (!isLoadMoreMode) {
-      // First loadMore: enter load-more mode, seed with current products
+      // First loadMore: enter load-more mode, seed with current products.
+      // With a server-rendered seed those ARE the current products — without
+      // this the grid would flash back to a client-fetched page 0.
       setIsLoadMoreMode(true);
       setLoadMoreProducts([...products]);
       lastAppendedPageRef.current = currentPage;
     }
+    dismissSeed();
     setCurrentPage((p) => p + 1);
-  }, [hasNextPage, isLoadMoreMode, products, currentPage]);
+  }, [hasNextPage, isLoadMoreMode, products, currentPage, dismissSeed]);
 
   useImperativeHandle(ref, () => ({
     setSort: handleSetSort,

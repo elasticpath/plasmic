@@ -26,6 +26,13 @@ export interface UseProductListOptions {
   page?: number;
   pageSize?: number;
   locale?: string;
+  /**
+   * Skips the fetch entirely, leaving the hook in a resolved-but-empty state.
+   * `EPProductListProvider` sets this while a server-rendered seed is still
+   * the displayed page, so the browser makes no duplicate request for data
+   * the page already carries.
+   */
+  skip?: boolean;
 }
 
 export interface UseProductListResult {
@@ -44,6 +51,7 @@ export function useProductList(options: UseProductListOptions): UseProductListRe
     page = 0,
     pageSize = 12,
     locale,
+    skip = false,
   } = options;
 
   const commerce = useEpCommerce();
@@ -51,9 +59,10 @@ export function useProductList(options: UseProductListOptions): UseProductListRe
   const provider = commerce;
 
   // Stable query key — null skips the fetch
-  const queryKey = client
-    ? ["ep-product-list", categoryId ?? "", search ?? "", sort ?? "", page, pageSize, locale ?? ""]
-    : null;
+  const queryKey =
+    client && !skip
+      ? ["ep-product-list", categoryId ?? "", search ?? "", sort ?? "", page, pageSize, locale ?? ""]
+      : null;
 
   const { data, error, isLoading, mutate } = useMutablePlasmicQueryData<
     { products: Product[]; totalCount: number },
@@ -131,7 +140,7 @@ export function useProductList(options: UseProductListOptions): UseProductListRe
   return {
     products: result.products,
     totalCount: result.totalCount,
-    isLoading: isLoading ?? false,
+    isLoading: skip ? false : isLoading ?? false,
     error: error ?? null,
     refetch: () => mutate(),
   };

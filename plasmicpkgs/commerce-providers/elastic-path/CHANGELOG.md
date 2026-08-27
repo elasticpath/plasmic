@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Added
+
+`ep.getProductPage({ limit?, offset?, search?, categoryId?, sort? })` — one page
+of products with the total count, in Elastic Path's envelope (`data`, plus
+`meta.results.total` and `meta.page`). `getProductList` returns a flat array
+with no total, so a listing bound to it cannot compute ranges or next/previous.
+Counts are `number`, not the SDK's `BigInt`, which `JSON.stringify` rejects.
+
+EP Product List Provider gains **Products (pre-fetched)** (`initialPage`),
+mirroring EP Product Provider's pre-fetched `product`. Bind it to an
+`ep.getProductPage` Server Query result to server-render the first page with no
+browser request for data the page already carries. The query's `page[limit]`
+sets the page boundaries, overriding Page Size. Sorting or paging discards the
+seed and falls back to client fetching; in load-more mode the seeded products
+are the buffer the next page appends to. Leaving it empty preserves today's
+client-fetch behaviour.
+
 ### Removed
 
 `EPMultiLocationStock`, its `epMultiLocationStockMeta` registration, and the
