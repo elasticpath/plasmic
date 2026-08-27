@@ -4,6 +4,32 @@
 
 ### Removed
 
+`EPMultiLocationStock`, its `epMultiLocationStockMeta` registration, and the
+three presentational components it alone consumed — `MultiLocationStock`,
+`StockIndicator` and `LocationSelector`. Unlike the removals below, this
+component was registered and worked, so this is a breaking change: a saved
+Studio project that uses it will no longer render, and because the set of
+registered components changes, the next `publish-hostless` cuts a new hostless
+package version.
+
+None of it was designable. The component exposed no `className` and no slots,
+so every style it drew — the `#e0e0e0` borders, the `8px` corners, the literal
+`<h4>Stock Availability</h4>` heading — was fixed at build time. It also fought
+the newer components over `SelectedLocationSlug`, the form field Add To Cart
+reads to decide which location to fulfil from: it cleared that field on mount
+whenever it had no selection of its own, so placing it beside `EPStockProvider`
+could wipe a location the shopper had already chosen. `EPStockProvider` with
+`EPLocationPicker` and `EPLocationField` produces the same result, is fully
+designable, and adds a dropdown mode and `?location=` URL syncing.
+
+The helpers those components were the only callers of went with them:
+`filterStockByLocation` in `inventory/utils/stockCalculations.ts`, and
+`createStockSummaryMessage`, `shouldShowMoreLocationsIndicator` and
+`createMoreLocationsText` in `inventory/utils/displayHelpers.ts`.
+`getStockIndicatorStyle` and its `StockIndicatorStyle` type are gone too —
+already unreferenced before this change, but named for a component that no
+longer exists.
+
 `EPLocationList` and its `epLocationListMeta`. The component was exported from
 the package root but never registered, so it was never usable from Studio, and
 it read its locations from a `StockContext` that nothing has ever rendered — it
