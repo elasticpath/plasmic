@@ -128,6 +128,21 @@ describe("epGetProductPage", () => {
     );
   });
 
+  /**
+   * The catalog product endpoints take no `sort`, and ignore an unsupported
+   * one rather than rejecting it, so a dead sort leaves no runtime trace.
+   */
+  it("sends no sort, because catalog product endpoints do not support it", async () => {
+    mockGetByContextAllProducts.mockResolvedValue({ data: { data: [] } });
+
+    await withEpSession(SESSION, () =>
+      epGetProductPage({ sort: "price-asc" } as never)
+    );
+
+    const query = mockGetByContextAllProducts.mock.calls[0][0].query;
+    expect(query).not.toHaveProperty("sort");
+  });
+
   it("sends no filter when there is no search term", async () => {
     mockGetByContextAllProducts.mockResolvedValue({ data: { data: [] } });
 

@@ -1140,7 +1140,7 @@ importers:
   plasmicpkgs-dev:
     dependencies:
       '@elasticpath/plasmic-ep-commerce-elastic-path':
-        specifier: 0.4.1
+        specifier: 0.5.0
         version: link:../plasmicpkgs/commerce-providers/elastic-path
       '@elasticpath/plasmic-mcp-registry':
         specifier: 0.2.2
@@ -10188,6 +10188,7 @@ packages:
   '@xmldom/xmldom@0.8.14':
     resolution: {integrity: sha512-T4EDRUBVZYRldYApjEJiU0e1stYWaRAX7CuSnKzrpwdZKo53zGV8/pqfzV6FfwNl9YThD2OumQYvqtvjvgG7aQ==}
     engines: {node: '>=10.0.0'}
+    deprecated: this version has critical issues, please update to the latest version
 
   '@xobotyi/scrollbar-width@1.9.5':
     resolution: {integrity: sha512-N8tkAACJx2ww8vFMneJmaAgmjAG1tnVBZJRLRcx061tmsLRZHSEZSLuGWnwPtunsSLvSqXQ2wfp7Mgqg1I+2dQ==}

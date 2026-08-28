@@ -81,7 +81,7 @@ const EP_FUNCTIONS: EpFunctionSpec[] = [
     fn: epGetProductList,
     name: "getProductList",
     description:
-      "Fetch a list of products with optional filter/sort/limit, server-side. Returns an empty array on error.",
+      "Fetch a list of products with an optional search term, category and limit, server-side. Returns an empty array on error.",
     params: [
       { name: "limit", type: "number", description: "Page size." },
       { name: "search", type: "string", description: "Search query." },
@@ -90,7 +90,6 @@ const EP_FUNCTIONS: EpFunctionSpec[] = [
         type: "string",
         description: "EP hierarchy node (category) ID.",
       },
-      { name: "sort", type: "string", description: "Sort key." },
     ],
   },
   {
@@ -111,7 +110,6 @@ const EP_FUNCTIONS: EpFunctionSpec[] = [
         type: "string",
         description: "EP hierarchy node (category) ID.",
       },
-      { name: "sort", type: "string", description: "Sort key." },
     ],
   },
   {

@@ -15,7 +15,6 @@ import {
 } from "@epcc-sdk/sdks-shopper";
 import { useEpCommerce } from "../shopper-context/EpCommerceContext";
 import { normalizeProductFromList } from "../utils";
-import getSortVariables from "../utils/get-sort-variables";
 import { handleAPIError } from "../utils/errorHandling";
 import { createLogger } from "../utils/logger";
 import type { Product } from "../types/product";
@@ -25,7 +24,6 @@ const log = createLogger("useProductList");
 export interface UseProductListOptions {
   categoryId?: string;
   search?: string;
-  sort?: string;
   page?: number;
   pageSize?: number;
   locale?: string;
@@ -50,7 +48,6 @@ export function useProductList(options: UseProductListOptions): UseProductListRe
   const {
     categoryId,
     search,
-    sort,
     page = 0,
     pageSize = 12,
     locale,
@@ -64,7 +61,7 @@ export function useProductList(options: UseProductListOptions): UseProductListRe
   // Stable query key — null skips the fetch
   const queryKey =
     client && !skip
-      ? ["ep-product-list", categoryId ?? "", search ?? "", sort ?? "", page, pageSize, locale ?? ""]
+      ? ["ep-product-list", categoryId ?? "", search ?? "", page, pageSize, locale ?? ""]
       : null;
 
   const { data, error, isLoading, mutate } = useMutablePlasmicQueryData<
@@ -84,14 +81,6 @@ export function useProductList(options: UseProductListOptions): UseProductListRe
       // selects the node endpoint below instead of adding a term here.
       if (search) {
         query["filter"] = `eq(name,${search})`;
-      }
-
-      // Add sorting
-      if (sort) {
-        const sortVariable = getSortVariables(sort);
-        if (sortVariable) {
-          query["sort"] = sortVariable;
-        }
       }
 
       try {
