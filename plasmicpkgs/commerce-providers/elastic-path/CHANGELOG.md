@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+### Added
+
+`ep.getProductPage({ limit?, offset?, search?, categoryId?, sort? })` — one page
+of products with the total count, in Elastic Path's envelope (`data`, plus
+`meta.results.total` and `meta.page`). `getProductList` returns a flat array
+with no total, so a listing bound to it cannot compute ranges or next/previous.
+Counts are `number`, not the SDK's `BigInt`, which `JSON.stringify` rejects.
+
+EP Product List Provider gains **Products (pre-fetched)** (`initialPage`),
+mirroring EP Product Provider's pre-fetched `product`. Bind it to an
+`ep.getProductPage` Server Query result to server-render the first page with no
+browser request for data the page already carries. The query's `page[limit]`
+sets the page boundaries, overriding Page Size. Sorting or paging discards the
+seed and falls back to client fetching; in load-more mode the seeded products
+are the buffer the next page appends to. Leaving it empty preserves today's
+client-fetch behaviour.
+
+### Fixed
+
+Filtering a listing by category never worked. Elastic Path's catalog product
+endpoint has no filterable `category.id` key, and it rejects `and(...)` — terms
+compose with a comma. `categoryId` is now understood as a hierarchy **node** ID
+and reads `/catalog/nodes/{node_id}/relationships/products`, which also accepts
+a name filter, so searching within a category works for the first time. The
+Studio prop is relabelled **Category (node) ID**; a hierarchy ID in that prop
+returns nothing, as it did before. Both the server functions and the
+browser-side listing hook are fixed together.
+
+`ep.getProductList` is now a wrapper over `ep.getProductPage`, dropping the
+envelope and returning the first page as a flat array. Its published return
+type is unchanged.
+
 ### Removed
 
 `EPMultiLocationStock`, its `epMultiLocationStockMeta` registration, and the

@@ -20,6 +20,7 @@ import {
 import { epGetCart } from "./getCart";
 import { epGetProduct } from "./getProduct";
 import { epGetProductList } from "./getProductList";
+import { epGetProductPage } from "./getProductPage";
 import { epGetRelatedProducts } from "./getRelatedProducts";
 
 // `meta` stays `any`: CustomFunctionMeta is re-declared in both
@@ -84,7 +85,32 @@ const EP_FUNCTIONS: EpFunctionSpec[] = [
     params: [
       { name: "limit", type: "number", description: "Page size." },
       { name: "search", type: "string", description: "Search query." },
-      { name: "categoryId", type: "string", description: "EP hierarchy ID." },
+      {
+        name: "categoryId",
+        type: "string",
+        description: "EP hierarchy node (category) ID.",
+      },
+      { name: "sort", type: "string", description: "Sort key." },
+    ],
+  },
+  {
+    fn: epGetProductPage,
+    name: "getProductPage",
+    description:
+      "Fetch one page of products with the total count, server-side. Returns Elastic Path's envelope: `data` plus `meta.results.total` and `meta.page`. Use this over getProductList when the page needs pagination controls.",
+    params: [
+      { name: "limit", type: "number", description: "Page size." },
+      {
+        name: "offset",
+        type: "number",
+        description: "Zero-based record offset.",
+      },
+      { name: "search", type: "string", description: "Search query." },
+      {
+        name: "categoryId",
+        type: "string",
+        description: "EP hierarchy node (category) ID.",
+      },
       { name: "sort", type: "string", description: "Sort key." },
     ],
   },
@@ -215,6 +241,7 @@ for (const spec of EP_FUNCTIONS) {
 export const getProduct = ADAPTED.getProduct;
 export const getCart = ADAPTED.getCart;
 export const getProductList = ADAPTED.getProductList;
+export const getProductPage = ADAPTED.getProductPage;
 export const getRelatedProducts = ADAPTED.getRelatedProducts;
 export const addCartItem = ADAPTED.addCartItem;
 export const applyCartAdjustment = ADAPTED.applyCartAdjustment;

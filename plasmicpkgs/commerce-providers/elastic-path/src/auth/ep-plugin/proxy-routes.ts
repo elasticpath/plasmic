@@ -25,6 +25,7 @@ import {
   epGetCart,
   epGetProduct,
   epGetProductList,
+  epGetProductPage,
   epGetRelatedProducts,
   epRemoveCartItem,
   epUpdateCartItem,
@@ -84,6 +85,7 @@ const FN_DISPATCH: Record<
   getProduct: (args) => epGetProduct(args as { id: string }),
   getCart: () => epGetCart(),
   getProductList: (args) => epGetProductList(args as never),
+  getProductPage: (args) => epGetProductPage(args as never),
   getRelatedProducts: (args) =>
     epGetRelatedProducts(
       args as { productId: string; relationshipSlug: string; limit?: number }

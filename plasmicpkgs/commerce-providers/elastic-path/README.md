@@ -366,11 +366,12 @@ import { registerEpCustomFunctions } from "@elasticpath/plasmic-ep-commerce-elas
 registerEpCustomFunctions(PLASMIC);
 ```
 
-This registers four functions in the `ep` namespace, callable from Studio's Server Query builder:
+This registers five read functions in the `ep` namespace, callable from Studio's Server Query builder:
 
 - `ep.getProduct({ id })` — single product by EP product UUID.
 - `ep.getCart()` — current cart contents.
-- `ep.getProductList({ limit?, search?, categoryId?, sort? })` — paginated product list.
+- `ep.getProductList({ limit?, search?, categoryId?, sort? })` — a flat array of products. `categoryId` is a hierarchy **node** ID; it reads that node's products rather than filtering the whole catalog.
+- `ep.getProductPage({ limit?, offset?, search?, categoryId?, sort? })` — one page of products **with the total count**, in Elastic Path's envelope: `data`, plus `meta.results.total` and `meta.page`. Bind it to EP Product List Provider's **Products (pre-fetched)** prop to server-render a listing. Prefer this over `getProductList` whenever the page has pagination controls — the flat array carries no total, so ranges and next/previous cannot be computed.
 - `ep.getRelatedProducts({ productId, relationshipSlug, limit? })` — products linked by an EP custom relationship.
 
 Auth is **not** an argument. The session (`accessToken`, `clientId`, `host`, `cartId`, …) is propagated through `AsyncLocalStorage` — see step 3.
@@ -467,7 +468,7 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 
 ### Product Display
 - **EPProductProvider** — Single product data
-- **EPProductListProvider** — Paginated product listing
+- **EPProductListProvider** — Paginated product listing. **Products (pre-fetched)** (`initialPage`, advanced) seeds the first page from an `ep.getProductPage` Server Query result, and that query's `page[limit]` overrides **Page Size**; sorting or paging discards the seed and falls back to client fetching
 - **EPRelatedProductsProvider** — Related products
 - **EPProductGrid** — Repeater for product list items
 

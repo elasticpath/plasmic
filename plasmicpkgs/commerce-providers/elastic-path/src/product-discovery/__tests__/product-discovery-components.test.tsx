@@ -17,6 +17,7 @@ import React from "react";
 
 /* ---------- mock variables (declared before jest.mock) ---------- */
 const mockGetByContextAllProducts = jest.fn();
+const mockGetByContextProductsForNode = jest.fn();
 const mockUseMutablePlasmicQueryData = jest.fn();
 const mockUseCommerce = jest.fn();
 const mockUsePlasmicCanvasContext = jest.fn();
@@ -32,6 +33,8 @@ const mockHandleAPIError = jest.fn().mockImplementation((err: unknown) => {
 jest.mock("@epcc-sdk/sdks-shopper", () => ({
   getByContextAllProducts: (...a: unknown[]) =>
     mockGetByContextAllProducts(...a),
+  getByContextProductsForNode: (...a: unknown[]) =>
+    mockGetByContextProductsForNode(...a),
 }));
 
 jest.mock("@plasmicapp/query", () => ({
@@ -345,7 +348,7 @@ describe("useProductList", () => {
       }
     );
 
-    mockGetByContextAllProducts.mockResolvedValue({
+    mockGetByContextProductsForNode.mockResolvedValue({
       data: { data: [], included: {}, meta: { results: { total: BigInt(0) } } },
     });
 
@@ -355,8 +358,12 @@ describe("useProductList", () => {
 
     await capturedFetcher!();
 
-    const callArgs = mockGetByContextAllProducts.mock.calls[0][0];
-    expect(callArgs.query.filter).toContain("eq(category.id,cat-123)");
+    // Elastic Path has no filterable category key — a categoryId is a node ID
+    // and selects the node's products endpoint.
+    expect(mockGetByContextAllProducts).not.toHaveBeenCalled();
+    const callArgs = mockGetByContextProductsForNode.mock.calls[0][0];
+    expect(callArgs.path).toEqual({ node_id: "cat-123" });
+    expect(callArgs.query.filter).toBeUndefined();
   });
 
   it("should convert BigInt total count from API response", async () => {
