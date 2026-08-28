@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.5.1
+
+### Fixed
+
+`EPMultiLocationStock` is registered again, as **deprecated**. 0.5.0 removed it
+outright, which makes `publish-hostless` fail with `Hostless package removed
+components plasmic-commerce-ep-multi-location-stock` — a component that
+disappears from a hostless package's registered set is a fatal error there, and
+the repair path exists only in Studio's client, so a headless publish cannot get
+past it. 0.5.0 therefore cannot be published as a hostless bundle at all.
+
+Components in a hostless package can be deprecated but not removed. Upstream
+does the same thing (`Table (deprecated)` in `antd5`, `Aria Heading
+(deprecated)` in `react-aria`): keep the registration, mark it in the
+`displayName`.
+
+Do not use it. `EPStockProvider` with `EPLocationPicker` and `EPLocationField`
+replaces it, is fully designable, and adds a dropdown mode and `?location=` URL
+syncing. This one exposes no `className` and no slots, and it clears the shared
+`SelectedLocationSlug` field on mount, so placing it beside `EPStockProvider`
+can wipe a location the shopper already picked.
+
 ## 0.5.0
 
 ### Added
@@ -36,6 +58,12 @@ type is unchanged.
 
 ### Removed
 
+`EPMultiLocationStock`, its `epMultiLocationStockMeta` registration, and the
+three presentational components it alone consumed — `MultiLocationStock`,
+`StockIndicator` and `LocationSelector`. This removal is reverted in 0.5.1: it
+prevents the hostless bundle from being published at all, so 0.5.0 should not be
+adopted.
+
 The product listing's **Sort** control, along with `setSort`, the `sort` key on
 `productGridData`, the `sort` argument to `ep.getProductList` and
 `ep.getProductPage`, and the `getSortVariables` helper. It never worked and
@@ -53,32 +81,6 @@ loses that binding, and the set of registered function arguments changes, so the
 next `publish-hostless` cuts a new hostless package version. For a sortable
 listing use `EPCatalogSearchProvider` with `EPSearchSortBy`, which sorts on the
 catalog search index.
-
-`EPMultiLocationStock`, its `epMultiLocationStockMeta` registration, and the
-three presentational components it alone consumed — `MultiLocationStock`,
-`StockIndicator` and `LocationSelector`. Unlike the removals below, this
-component was registered and worked, so this is a breaking change: a saved
-Studio project that uses it will no longer render, and because the set of
-registered components changes, the next `publish-hostless` cuts a new hostless
-package version.
-
-None of it was designable. The component exposed no `className` and no slots,
-so every style it drew — the `#e0e0e0` borders, the `8px` corners, the literal
-`<h4>Stock Availability</h4>` heading — was fixed at build time. It also fought
-the newer components over `SelectedLocationSlug`, the form field Add To Cart
-reads to decide which location to fulfil from: it cleared that field on mount
-whenever it had no selection of its own, so placing it beside `EPStockProvider`
-could wipe a location the shopper had already chosen. `EPStockProvider` with
-`EPLocationPicker` and `EPLocationField` produces the same result, is fully
-designable, and adds a dropdown mode and `?location=` URL syncing.
-
-The helpers those components were the only callers of went with them:
-`filterStockByLocation` in `inventory/utils/stockCalculations.ts`, and
-`createStockSummaryMessage`, `shouldShowMoreLocationsIndicator` and
-`createMoreLocationsText` in `inventory/utils/displayHelpers.ts`.
-`getStockIndicatorStyle` and its `StockIndicatorStyle` type are gone too —
-already unreferenced before this change, but named for a component that no
-longer exists.
 
 `EPLocationList` and its `epLocationListMeta`. The component was exported from
 the package root but never registered, so it was never usable from Studio, and

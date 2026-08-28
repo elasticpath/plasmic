@@ -1,6 +1,7 @@
 import {
   mapStockResponseToLocationStock,
   calculateTotalStock,
+  filterStockByLocation,
   getAvailableStockForLocation,
   createProductStock,
   isLowStock,
@@ -103,6 +104,39 @@ describe('stockCalculations', () => {
       expect(result.totalAvailable).toBe(0);
       expect(result.totalAllocated).toBe(0);
       expect(result.totalStock).toBe(0);
+    });
+  });
+
+  describe('filterStockByLocation', () => {
+    const mockProductStock: ProductStock = {
+      productId: 'prod-123',
+      locations: mockLocationStocks,
+      totalAvailable: 15,
+      totalAllocated: 3,
+      totalStock: 18,
+    };
+
+    it('should filter by location IDs', () => {
+      const result = filterStockByLocation(mockProductStock, ['warehouse-1', 'store-ny']);
+
+      expect(result.locations).toHaveLength(2);
+      expect(result.totalAvailable).toBe(15); // 10 + 5
+      expect(result.totalAllocated).toBe(3);  // 2 + 1
+    });
+
+    it('should filter by location slugs', () => {
+      const result = filterStockByLocation(mockProductStock, ['store-ny']);
+
+      expect(result.locations).toHaveLength(1);
+      expect(result.locations[0].location.id).toBe('store-ny');
+      expect(result.totalAvailable).toBe(5);
+    });
+
+    it('should return all locations when no filter provided', () => {
+      const result = filterStockByLocation(mockProductStock, []);
+
+      expect(result.locations).toHaveLength(3);
+      expect(result.totalAvailable).toBe(15);
     });
   });
 

@@ -3,6 +3,7 @@ import { registerShopperContext } from "./shopper-context/registerShopperContext
 import { registerEPAddToCartButton } from "./registerEPAddToCartButton";
 import { registerEPCartProvider } from "./cart-provider/EPCartProvider";
 import { registerEPBundleConfigurator } from "./registerEPBundleConfigurator";
+import { registerEPMultiLocationStock } from "./registerEPMultiLocationStock";
 import { registerEPProductVariantPicker } from "./registerEPProductVariantPicker";
 import { registerEPCheckout } from "./registerCheckout";
 import { registerEPVariationPicker } from "./variant-picker/EPVariationPicker";
@@ -98,6 +99,7 @@ export {
 export type { EpCartCacheKey } from "./cart-provider/cache-keys";
 export * from "./registerEPBundleConfigurator";
 export * from "./registerEPProductVariantPicker";
+export * from "./registerEPMultiLocationStock";
 export {
   EPProductProvider,
   registerEPProductProvider,
@@ -226,6 +228,7 @@ export function registerAll(loader?: Registerable) {
 
   // Deprecated — kept for backwards compatibility
   registerEPProductVariantPicker(loader);
+  registerEPMultiLocationStock(loader);
 
   // Checkout
   registerEPCheckout(loader);
