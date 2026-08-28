@@ -7,17 +7,19 @@
  *   3. Re-fetch cart, compare hash (→ 409 with refreshed session if mismatch)
  *   4. Adapter.initializePayment(session, { confirmation_token, ... })
  *      - The adapter calls EP's createCartPaymentIntent({ confirm: true, ... })
- *      - Returns "succeeded" or "failed" (slice 1)
+ *      - Returns "succeeded", "failed", or "requires_action" (3DS)
  *   5. On succeeded:
  *      a. checkoutApi (cart→order) using admin token
  *      b. confirmOrder (sync PI status to EP) using admin token
  *      c. Run cart cleanup (deletes the EP cart; failures swallowed)
  *      d. applyPaymentSucceeded → session.status = "complete"
  *   6. On failed: applyPaymentFailed → session stays open, payment.status=failed
- *   7. Persist session, return 200
+ *   7. On requires_action: applyPaymentRequiresAction → session stays open,
+ *      payment.status=requires_action. No order, no cart cleanup.
+ *   8. Persist session, return 200
  *
- * Slices 2+ add: requires_action (3DS), subscription gate (ACCOUNT_REQUIRED),
- * account checkout body, resume-payment route.
+ * Slices 2+ add: resume-payment route, subscription gate (ACCOUNT_REQUIRED),
+ * account checkout body.
  */
 import {
   getACart,
@@ -55,6 +57,7 @@ import {
 import {
   applyPaymentSucceeded,
   applyPaymentFailed,
+  applyPaymentRequiresAction,
 } from "../../../checkout/session/session-state-transition";
 import { toCustomAttributes } from "../../../ep-server-functions/place-order";
 import { createLogger } from "../../../utils/logger";
@@ -638,6 +641,47 @@ export async function handlePay(
     };
   }
 
+  // 7. 3DS / SCA — persist challenge data and return without creating an order.
+  // Resume (handleNextAction + checkoutApi) is a later slice.
+  if (adapterResult.status === "requires_action") {
+    const actionSession: CheckoutSession = applyPaymentRequiresAction(
+      {
+        ...session,
+        payment: { ...session.payment, gateway },
+      },
+      {
+        clientToken: adapterResult.clientToken ?? null,
+        actionData: adapterResult.actionData ?? null,
+        gatewayMetadata: adapterResult.gatewayMetadata,
+      }
+    );
+
+    let setResult: { headers: Record<string, string> };
+    try {
+      setResult = await ctx.sessionStore.set("current", actionSession, ttl, req);
+    } catch (err) {
+      log.error("Failed to persist requires_action session", {
+        error: err instanceof Error ? err.message : String(err),
+      } as Record<string, unknown>);
+      return {
+        status: 500,
+        body: {
+          success: false,
+          error: { message: "Failed to store session", code: "STORE_ERROR" },
+        },
+      };
+    }
+
+    return {
+      status: 200,
+      body: {
+        success: true,
+        data: { session: toClientSession(actionSession) },
+      },
+      headers: setResult.headers,
+    };
+  }
+
   // 6. Failed branch — leave session open for retry
   if (adapterResult.status === "failed") {
     const failedSession: CheckoutSession = applyPaymentFailed(
@@ -682,7 +726,8 @@ export async function handlePay(
 
   // 5. Succeeded branch — create EP order, confirm, clean up cart
   if (adapterResult.status !== "succeeded") {
-    // requires_action / ready ship in slice 2; treat as failed for slice 1.
+    // "ready" (and any other non-terminal status) is not part of the
+    // single-shot Stripe path; treat as failed.
     log.warn("Adapter returned non-terminal status; treating as failed", {
       status: adapterResult.status,
     } as Record<string, unknown>);

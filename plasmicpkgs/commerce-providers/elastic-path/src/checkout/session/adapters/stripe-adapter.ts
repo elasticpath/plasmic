@@ -7,8 +7,10 @@
  * its side. The host calls one EP endpoint with `confirm: true` plus a
  * `confirmation_token` minted client-side via Stripe Elements.
  *
- * Slice 1 (this PR): cover the succeeded and failed branches. The
- * `requires_action` (3DS) branch ships in slice 2.
+ * Maps Stripe PaymentIntent status to PaymentAdapterResult:
+ *   succeeded / requires_capture / processing → succeeded
+ *   requires_action (3DS) → requires_action with client_secret
+ *   anything else → failed
  */
 import { createCartPaymentIntent } from "@epcc-sdk/sdks-shopper";
 import type {
@@ -118,6 +120,20 @@ export function createStripeAdapter(
       const piId: string | undefined =
         pi?.id ?? cart?.payment_intent_id ?? body?.payment_intent_id;
       const piStatus: string | undefined = pi?.status;
+      const clientSecret: string | undefined =
+        typeof pi?.client_secret === "string" ? pi.client_secret : undefined;
+
+      if (piStatus === "requires_action" && piId) {
+        return {
+          status: "requires_action",
+          clientToken: clientSecret,
+          gatewayMetadata: { paymentIntentId: piId },
+          actionData: {
+            type: "stripe_3ds",
+            paymentIntentId: piId,
+          },
+        };
+      }
 
       // Success when the PI confirmed (succeeded / requires_capture for an
       // auth), or — tolerant fallback — when EP returned a PaymentIntent id
