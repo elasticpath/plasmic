@@ -50,3 +50,29 @@ export interface UseLocationsOptions {
   type?: InventoryLocationType;
   enabled?: boolean;
 }
+
+// Component props
+export interface StockIndicatorProps {
+  stock: number;
+  threshold?: {
+    low: number;
+    medium: number;
+  };
+  showExact?: boolean;
+}
+
+export interface LocationSelectorProps {
+  locations: Location[];
+  selectedLocationId?: string;
+  onLocationChange: (locationId: string) => void;
+  loading?: boolean;
+  placeholder?: string;
+}
+
+export interface MultiLocationStockProps {
+  productId?: string;
+  showLocationSelector?: boolean;
+  maxLocationsDisplay?: number;
+  showStockNumbers?: boolean;
+  lowStockThreshold?: number;
+}
