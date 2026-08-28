@@ -9,7 +9,7 @@ ENV PUPPETEER_SKIP_DOWNLOAD=1
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=1
 ENV PLAYWRIGHT_DOWNLOAD_HOST=https://playwright-akamai.azureedge.net
 
-RUN apk add --no-cache make~=4 bubblewrap~=0.11 python3 build-base bash g++ gcc libc-dev
+RUN apk add --no-cache make~=4 bubblewrap~=0.12 python3 build-base bash g++ gcc libc-dev
 
 # loader-bundle-env is expected to be a peer folder to wab, so we copy it there
 WORKDIR /app/loader-bundle-env
@@ -39,7 +39,7 @@ RUN PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 yarn install --production --frozen-lockfi
 FROM node:24.16.0-alpine AS runner
 
 # System setup
-RUN apk add --no-cache make~=4 bubblewrap~=0.11 python3 build-base bash g++ gcc libc-dev
+RUN apk add --no-cache make~=4 bubblewrap~=0.12 python3 build-base bash g++ gcc libc-dev
 
 COPY --from=builder /app/loader-bundle-env ./app/loader-bundle-env
 COPY --from=builder /app/loader-html-hydrate ./app/loader-html-hydrate
