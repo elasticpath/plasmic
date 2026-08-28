@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.5.2
+
+### Fixed
+
+EP Product List Provider's `initialSort` prop and `setSort` ref action are
+registered again, as **deprecated and inert**. 0.5.0 removed them, which makes
+`publish-hostless` fail with `Deleted param initialSort of component
+plasmic-commerce-ep-product-list-provider` — a hostless package cannot drop a
+published prop or slot any more than it can drop a component, and the repair
+path exists only in Studio's client, so a headless publish cannot get past it.
+0.5.0 and 0.5.1 therefore cannot be published as hostless bundles.
+
+Neither does anything. `initialSort` is hidden in Studio and is not threaded
+into the query; `setSort` is a no-op that exists so an interaction already
+wired to it does not throw. Elastic Path's catalog product endpoints take no
+`sort` parameter, so no sort here can work — that is what 0.5.0 fixed, and it
+still holds: nothing sends `sort` to Elastic Path. To sort a listing, use
+`EPCatalogSearchProvider` with `EPSearchSortBy`, which sorts on the catalog
+search index.
+
 ## 0.5.1
 
 ### Fixed

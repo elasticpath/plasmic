@@ -14,6 +14,10 @@
  * rejecting it, so a sort control here cannot work and cannot report that it
  * did nothing. EPCatalogSearchProvider with EPSearchSortBy sorts on the
  * catalog search index.
+ *
+ * `initialSort` and `setSort` stay registered but inert: hostless publishing
+ * rejects a package that removes a published prop, and an interaction wired to
+ * a removed ref action throws.
  */
 
 import {
@@ -74,6 +78,8 @@ interface EPProductListProviderProps {
   emptyContent?: React.ReactNode;
   categoryId?: string;
   search?: string;
+  /** @deprecated Inert. Use EPCatalogSearchProvider with EPSearchSortBy. */
+  initialSort?: string;
   pageSize?: number;
   initialPage?: unknown;
   previewState?: PreviewState;
@@ -81,6 +87,8 @@ interface EPProductListProviderProps {
 }
 
 interface EPProductListProviderActions {
+  /** @deprecated No-op. Use EPCatalogSearchProvider with EPSearchSortBy. */
+  setSort(value: string): void;
   goToPage(page: number): void;
   nextPage(): void;
   prevPage(): void;
@@ -128,6 +136,14 @@ export const epProductListProviderMeta: CodeComponentMeta<EPProductListProviderP
       displayName: "Search",
       description: "Search products by name",
     },
+    // Inert. Hostless publishing rejects removing a published prop.
+    initialSort: {
+      type: "choice",
+      options: ["", "price-asc", "price-desc", "latest-desc", "trending-desc"],
+      hidden: () => true,
+      description:
+        "Deprecated and ignored. Elastic Path's catalog product endpoints take no sort parameter. Use EP Catalog Search Provider with EP Search Sort By.",
+    },
     pageSize: {
       type: "number",
       displayName: "Page Size",
@@ -155,6 +171,11 @@ export const epProductListProviderMeta: CodeComponentMeta<EPProductListProviderP
   importName: "EPProductListProvider",
   providesData: true,
   refActions: {
+    setSort: {
+      description:
+        "Deprecated — does nothing. Elastic Path's catalog product endpoints take no sort parameter. Use EP Catalog Search Provider with EP Search Sort By.",
+      argTypes: [{ name: "value", type: "string" }],
+    },
     goToPage: {
       description: "Navigate to a specific page (0-indexed)",
       argTypes: [{ name: "page", type: "number" }],
@@ -263,6 +284,7 @@ const MockProductListProvider = React.forwardRef<
   { children?: React.ReactNode; className?: string }
 >(function MockProductListProvider({ children, className }, ref) {
   useImperativeHandle(ref, () => ({
+    setSort: () => {},
     goToPage: () => {},
     nextPage: () => {},
     prevPage: () => {},
@@ -465,6 +487,7 @@ const EPProductListProviderInner = React.forwardRef<
   }, [hasNextPage, isLoadMoreMode, products, currentPage, dismissSeed]);
 
   useImperativeHandle(ref, () => ({
+    setSort: () => {},
     goToPage: handleGoToPage,
     nextPage: handleNextPage,
     prevPage: handlePrevPage,

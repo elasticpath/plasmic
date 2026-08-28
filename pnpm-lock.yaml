@@ -1140,7 +1140,7 @@ importers:
   plasmicpkgs-dev:
     dependencies:
       '@elasticpath/plasmic-ep-commerce-elastic-path':
-        specifier: 0.5.1
+        specifier: 0.5.2
         version: link:../plasmicpkgs/commerce-providers/elastic-path
       '@elasticpath/plasmic-mcp-registry':
         specifier: 0.2.2
