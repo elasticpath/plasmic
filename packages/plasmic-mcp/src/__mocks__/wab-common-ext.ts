@@ -13,3 +13,19 @@ export function xDifference<T>(a: Iterable<T>, b: Iterable<T>): Set<T> {
 export function notNil<T>(x: T | null | undefined): x is T {
   return x != null;
 }
+
+export function assertNever(x: never): never {
+  throw new Error(`Unexpected value: ${x}`);
+}
+
+export function jsonClone<T>(x: T): T {
+  return JSON.parse(JSON.stringify(x));
+}
+
+export function last<T>(xs: readonly T[]): T {
+  return xs[xs.length - 1];
+}
+
+export function withoutNils<T>(xs: readonly (T | null | undefined)[]): T[] {
+  return xs.filter((x): x is T => x != null);
+}

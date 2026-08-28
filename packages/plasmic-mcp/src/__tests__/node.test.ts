@@ -1026,9 +1026,28 @@ describe("edit-tools", () => {
       // The vsettings[0].text should now be an ExprText
       const vs = textNode.vsettings[0];
       expect(vs.text._type).toBe("ExprText");
-      expect(vs.text.expr._type).toBe("CustomCode");
-      expect(vs.text.expr.code).toBe("$ctx.product.price");
+      expect(vs.text.expr._type).toBe("ObjectPath");
+      expect(vs.text.expr.path).toEqual(["$ctx", "product", "price"]);
       expect(vs.text.html).toBe(false);
+    });
+
+    it("wraps a code expression in parens so Studio reads it as a real code expr", async () => {
+      const textNode = mkTag({ uuid: "dyn-code-1", name: "Total" });
+      const root = mkTag({ uuid: "root-1", children: [textNode] });
+      const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+
+      mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+      setupSession(comp);
+
+      await updateText(
+        api, "comp-1", "Total", "$ctx.cart.total.toFixed(2)",
+        undefined, true
+      );
+
+      const vs = textNode.vsettings[0];
+      expect(vs.text._type).toBe("ExprText");
+      expect(vs.text.expr._type).toBe("CustomCode");
+      expect(vs.text.expr.code).toBe("($ctx.cart.total.toFixed(2))");
     });
 
     it("creates ExprText with fallback when provided", async () => {
@@ -1130,8 +1149,8 @@ describe("edit-tools", () => {
       setupSession(comp);
 
       // Should succeed (not throw container error)
-      const result = await updateText(api, "comp-1", "DynText", "new-expr", undefined, true);
-      expect(result.newText).toBe("new-expr");
+      const result = await updateText(api, "comp-1", "DynText", "$ctx.newExpr", undefined, true);
+      expect(result.newText).toBe("$ctx.newExpr");
     });
 
     it("replaces one dynamic expression with another", async () => {
@@ -1155,7 +1174,7 @@ describe("edit-tools", () => {
       expect(result.previousText).toBe("$ctx.old");
       expect(result.dynamic).toBe(true);
       const vs = textNode.vsettings[0];
-      expect(vs.text.expr.code).toBe("$ctx.new");
+      expect(vs.text.expr.path).toEqual(["$ctx", "new"]);
     });
   });
 
@@ -3403,12 +3422,10 @@ describe("edit-tools", () => {
       });
 
       const attrs = node.vsettings[0].attrs;
-      expect(attrs.href._type).toBe("CustomCode");
-      // $props.url → strips $ → detects bare "props." → corrects to "$props.url"
-      // Stored wrapped in parens — matches Studio's `createExprForDataPickerValue`
-      // so `isRealCodeExpr` returns true and Plasmic codegen emits the safe
-      // wrapper around scope references ($q, $queries, $ctx, $state, $props).
-      expect(attrs.href.code).toBe("($props.url)");
+      // $props.url → strips $ → detects bare "props." → corrects to "$props.url",
+      // a simple scope path, which Studio's data picker stores as an ObjectPath.
+      expect(attrs.href._type).toBe("ObjectPath");
+      expect(attrs.href.path).toEqual(["$props", "url"]);
       expect(result.warnings).toBeDefined();
       expect(result.warnings![0]).toContain("corrected");
     });
@@ -3689,8 +3706,8 @@ describe("edit-tools", () => {
       expect(result.warnings).toBeDefined();
       expect(result.warnings![0]).toContain("corrected");
       const attrs = node.vsettings[0].attrs;
-      expect(attrs.value._type).toBe("CustomCode");
-      expect(attrs.value.code).toBe("($state.firstName)");
+      expect(attrs.value._type).toBe("ObjectPath");
+      expect(attrs.value.path).toEqual(["$state", "firstName"]);
     });
 
     it("rejects invalid JS expression with $ prefix", async () => {
@@ -6620,12 +6637,12 @@ describe("updateProps", () => {
 
     expect(result.updatedProps).toEqual(["orderId"]);
     const callArgs = mockSetTplComponentArg.mock.calls[0];
-    expect(callArgs[3]._type).toBe("CustomCode");
+    expect(callArgs[3]._type).toBe("ObjectPath");
     // $ctx.params.orderId → strips $ → detects bare "ctx." → corrects to "$ctx.params.orderId"
     // Wrapped in parens per Studio's `createExprForDataPickerValue` convention
     // — ensures `isRealCodeExpr` returns true and Plasmic codegen wraps the
     // expression in a safe IIFE that exposes $q / $queries / $ctx in scope.
-    expect(callArgs[3].code).toBe("($ctx.params.orderId)");
+    expect(callArgs[3].path).toEqual(["$ctx", "params", "orderId"]);
     expect(result.warnings).toBeDefined();
     expect(result.warnings![0]).toContain("corrected");
   });
@@ -6645,7 +6662,12 @@ describe("updateProps", () => {
 
     expect(result.updatedProps).toEqual(["amount"]);
     const callArgs = mockSetTplComponentArg.mock.calls[0];
-    expect(callArgs[3].code).toBe("($queries.cart.data.total)");
+    expect(callArgs[3].path).toEqual([
+      "$queries",
+      "cart",
+      "data",
+      "total",
+    ]);
   });
 
   it("sets boolean and number props", async () => {
