@@ -92,10 +92,10 @@
   dependencies:
     vitest "^3.2.4"
 
-"@elasticpath/plasmic-ep-commerce-elastic-path@^0.4.1":
-  version "0.4.1"
-  resolved "https://registry.yarnpkg.com/@elasticpath/plasmic-ep-commerce-elastic-path/-/plasmic-ep-commerce-elastic-path-0.4.1.tgz#5a3f12f2bc976ede3224a22df7fa69702f77f544"
-  integrity sha512-2siobMMaeeRy6fObHMtWPyxrgySrL74KWI1F/c6vj43aj1ukVDfNa8DABv7Ex4sNXNf4eCFMu48zDVQwYyR+WA==
+"@elasticpath/plasmic-ep-commerce-elastic-path@^0.5.0":
+  version "0.5.0"
+  resolved "https://registry.yarnpkg.com/@elasticpath/plasmic-ep-commerce-elastic-path/-/plasmic-ep-commerce-elastic-path-0.5.0.tgz#129346e042ed1f31f6741c37015774cf7e083a95"
+  integrity sha512-ec2UNXMD+HBjJaAx49PlQN53oRseU22npl0cqlzol/qN4ymRMee10TNG3yWEXCRMcxYEGTE39rJVOFTvc/IXoA==
   dependencies:
     "@algolia/autocomplete-core" "^1.17.7"
     "@elasticpath/catalog-search-instantsearch-adapter" "0.1.0"
