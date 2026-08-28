@@ -76,8 +76,8 @@ export function applyPaymentRequiresAction(
     payment: {
       ...session.payment,
       status: "requires_action",
-      clientToken: event.clientToken ?? session.payment.clientToken,
-      actionData: event.actionData ?? session.payment.actionData,
+      clientToken: event.clientToken ?? null,
+      actionData: event.actionData ?? null,
       gatewayMetadata: {
         ...session.payment.gatewayMetadata,
         ...(event.gatewayMetadata ?? {}),

@@ -641,7 +641,7 @@ export async function handlePay(
     };
   }
 
-  // 3DS / SCA — persist challenge data and return without creating an order.
+  // 7. 3DS / SCA — persist challenge data and return without creating an order.
   // Resume (handleNextAction + checkoutApi) is a later slice.
   if (adapterResult.status === "requires_action") {
     const actionSession: CheckoutSession = applyPaymentRequiresAction(

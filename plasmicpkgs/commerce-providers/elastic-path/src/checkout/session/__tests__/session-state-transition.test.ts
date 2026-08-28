@@ -6,9 +6,9 @@
  * Stripe 3DS: open → open with payment.status=requires_action (no order).
  */
 import {
-  applyPaymentSucceeded,
   applyPaymentFailed,
   applyPaymentRequiresAction,
+  applyPaymentSucceeded,
 } from "../session-state-transition";
 import type { CheckoutSession } from "../types";
 
@@ -120,5 +120,25 @@ describe("applyPaymentRequiresAction", () => {
     expect(after.customerInfo).toBe(before.customerInfo);
     expect(after.shippingAddress).toBe(before.shippingAddress);
     expect(after.billingAddress).toBe(before.billingAddress);
+  });
+
+  it("clears a stale clientToken when the event carries none", () => {
+    const first = applyPaymentRequiresAction(makeSession(), {
+      clientToken: "pi_1_secret_old",
+      actionData: { type: "stripe_3ds", paymentIntentId: "pi_1" },
+      gatewayMetadata: { paymentIntentId: "pi_1" },
+    });
+
+    const second = applyPaymentRequiresAction(first, {
+      clientToken: null,
+      actionData: null,
+      gatewayMetadata: { paymentIntentId: "pi_2" },
+    });
+
+    expect(second.payment.clientToken).toBeNull();
+    expect(second.payment.actionData).toBeNull();
+    expect(second.payment.gatewayMetadata).toMatchObject({
+      paymentIntentId: "pi_2",
+    });
   });
 });
