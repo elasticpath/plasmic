@@ -156,6 +156,28 @@ describe("EPProductListProvider initialPage", () => {
     expect(gridData().isEmpty).toBe(true);
   });
 
+  /**
+   * setSort survives only so an interaction already wired to it does not
+   * throw. It must not discard the seed or re-fetch.
+   */
+  it("does nothing when the deprecated setSort is invoked", () => {
+    const ref = React.createRef<any>();
+    render(
+      <EPProductListProvider ref={ref} initialPage={SEED}>
+        <div>children</div>
+      </EPProductListProvider>
+    );
+
+    act(() => ref.current.setSort("price-asc"));
+
+    expect(lastOptions().skip).toBe(true);
+    expect(lastOptions().page).toBe(0);
+    expect(gridData().products.map((p: any) => p.id)).toEqual([
+      "seed-1",
+      "seed-2",
+    ]);
+  });
+
   it("discards the seed on page change", () => {
     const ref = React.createRef<any>();
     render(

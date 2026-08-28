@@ -634,15 +634,24 @@ describe("component registration", () => {
   });
 
   /**
-   * The catalog product endpoints cannot sort, so the listing must offer no
-   * Sort prop and no setSort action — a control that silently does nothing is
-   * the defect itself. EPCatalogSearchProvider + EPSearchSortBy sorts instead.
+   * The catalog product endpoints cannot sort, so the listing's sort does
+   * nothing — but hostless publishing rejects a package that drops a
+   * published prop, so it stays registered and hidden rather than removed.
+   * EPCatalogSearchProvider + EPSearchSortBy sorts instead.
    */
-  it("EPProductListProvider offers no sort prop or action", () => {
-    expect(
-      Object.keys(epProductListProviderMeta.props ?? {})
-    ).not.toContain("initialSort");
-    expect(epProductListProviderMeta.refActions!.setSort).toBeUndefined();
+  it("keeps initialSort registered but hidden and undocumented", () => {
+    const initialSort = (epProductListProviderMeta.props as any)?.initialSort;
+    expect(initialSort).toBeDefined();
+    expect(initialSort.type).toBe("choice");
+    expect(initialSort.hidden()).toBe(true);
+    expect(initialSort.displayName).toBeUndefined();
+    expect(initialSort.description).toMatch(/deprecated and ignored/i);
+  });
+
+  it("keeps setSort registered as a deprecated no-op", () => {
+    const setSort = epProductListProviderMeta.refActions!.setSort as any;
+    expect(setSort).toBeDefined();
+    expect(setSort.description).toMatch(/deprecated/i);
   });
 
   it("EPProductListProvider meta should have correct name and refActions", () => {
