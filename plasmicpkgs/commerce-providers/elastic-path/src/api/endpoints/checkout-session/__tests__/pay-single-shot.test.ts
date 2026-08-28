@@ -9,6 +9,8 @@
  *      → applyPaymentSucceeded → 200 with status=complete.
  *   5. On failed: applyPaymentFailed → 200 with session.payment.status=failed,
  *      session.status=open (retryable). No EP order created.
+ *   6. On requires_action: applyPaymentRequiresAction → 200 with
+ *      payment.status=requires_action. No EP order, no cart cleanup.
  *
  * Note: esbuild does not hoist jest.mock(). We use require() so interception
  * works regardless of import order.
@@ -241,6 +243,43 @@ describe("handlePay — single-shot guest happy path", () => {
     // No EP order created on payment failure
     expect(epSdk.checkoutApi).not.toHaveBeenCalled();
     expect(epSdk.confirmOrder).not.toHaveBeenCalled();
+  });
+
+  it("requires_action persists 3DS data, leaves session open, and does not create an order", async () => {
+    const adapter = createMockAdapter({
+      status: "requires_action",
+      clientToken: "pi_3ds_secret",
+      gatewayMetadata: { paymentIntentId: "pi_3ds" },
+      actionData: { type: "stripe_3ds", paymentIntentId: "pi_3ds" },
+    });
+    const ctx = createMockCtx(makeSession(), adapter);
+    const req = createMockReq({
+      gateway: "stripe",
+      confirmation_token: "ctoken_3ds",
+    });
+
+    const res = await handlePay(req, ctx);
+
+    expect(res.status).toBe(200);
+    const body = res.body as any;
+    expect(body.success).toBe(true);
+    expect(body.data.session.status).toBe("open");
+    expect(body.data.session.payment.status).toBe("requires_action");
+    expect(body.data.session.payment.gateway).toBe("stripe");
+    expect(body.data.session.payment.clientToken).toBe("pi_3ds_secret");
+    expect(body.data.session.payment.actionData).toEqual({
+      type: "stripe_3ds",
+      paymentIntentId: "pi_3ds",
+    });
+    expect(body.data.session.payment.gatewayMetadata).toMatchObject({
+      paymentIntentId: "pi_3ds",
+    });
+    expect(body.data.session.order).toBeNull();
+    expect(body.paymentError).toBeUndefined();
+
+    expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+    expect(epSdk.confirmOrder).not.toHaveBeenCalled();
+    expect(epSdk.deleteACart).not.toHaveBeenCalled();
   });
 
   it("cart-hash mismatch returns 409 before payment is attempted", async () => {

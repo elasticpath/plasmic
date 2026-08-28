@@ -6,8 +6,10 @@
  * EP holds the Stripe credentials. The host app no longer talks to Stripe
  * directly; the `stripe` npm package is no longer a runtime dependency.
  *
- * Slice 1 (this PR): cover the succeeded and failed branches. The
- * `requires_action` (3DS) branch ships in slice 2.
+ * Maps Stripe PaymentIntent status to PaymentAdapterResult:
+ *   succeeded / requires_capture / processing → succeeded
+ *   requires_action (3DS) → requires_action with client_secret
+ *   anything else → failed
  *
  * Note: esbuild does not hoist jest.mock(). We use require() to obtain the
  * mocked module reference so interception works regardless of import order.
@@ -183,6 +185,68 @@ describe("createStripeAdapter — Cart Payment Intent (EP-native)", () => {
       });
 
       expect(result.status).toBe("failed");
+    });
+
+    it("returns requires_action with client_secret and minimal actionData for 3DS", async () => {
+      epSdk.createCartPaymentIntent.mockResolvedValue({
+        data: {
+          data: { id: "cart_abc", payment_intent_id: "pi_3ds_001" },
+          meta: {
+            payment_intent: {
+              payment_intent: {
+                id: "pi_3ds_001",
+                status: "requires_action",
+                client_secret: "pi_3ds_001_secret_abc",
+                next_action: {
+                  type: "use_stripe_sdk",
+                  use_stripe_sdk: { type: "three_d_secure_redirect" },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      const adapter = createStripeAdapter(ADAPTER_CONFIG);
+      const result = await adapter.initializePayment(makeSession(), {
+        confirmation_token: "ctoken_3ds",
+      });
+
+      expect(result.status).toBe("requires_action");
+      expect(result.clientToken).toBe("pi_3ds_001_secret_abc");
+      expect(result.gatewayMetadata).toEqual({ paymentIntentId: "pi_3ds_001" });
+      expect(result.actionData).toEqual({
+        type: "stripe_3ds",
+        paymentIntentId: "pi_3ds_001",
+      });
+      expect(result.actionData).not.toHaveProperty("next_action");
+      expect(result.actionData).not.toHaveProperty("client_secret");
+    });
+
+    it("maps requires_action even when EP wraps the PI under a flat payment_intent", async () => {
+      epSdk.createCartPaymentIntent.mockResolvedValue({
+        data: {
+          data: {
+            payment_intent: {
+              id: "pi_flat_3ds",
+              status: "requires_action",
+              client_secret: "pi_flat_3ds_secret",
+            },
+          },
+        },
+      });
+
+      const adapter = createStripeAdapter(ADAPTER_CONFIG);
+      const result = await adapter.initializePayment(makeSession(), {
+        confirmation_token: "ctoken_3ds",
+      });
+
+      expect(result.status).toBe("requires_action");
+      expect(result.clientToken).toBe("pi_flat_3ds_secret");
+      expect(result.actionData).toEqual({
+        type: "stripe_3ds",
+        paymentIntentId: "pi_flat_3ds",
+      });
     });
 
     it("does not import the stripe npm package", () => {
