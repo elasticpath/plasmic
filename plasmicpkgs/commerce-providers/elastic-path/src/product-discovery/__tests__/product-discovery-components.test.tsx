@@ -167,7 +167,6 @@ describe("useProductList", () => {
       useProductList({
         categoryId: "cat-123",
         search: "jacket",
-        sort: "price-asc",
         page: 2,
         pageSize: 24,
         locale: "fr-FR",
@@ -175,10 +174,31 @@ describe("useProductList", () => {
     );
 
     expect(mockUseMutablePlasmicQueryData).toHaveBeenCalledWith(
-      ["ep-product-list", "cat-123", "jacket", "price-asc", 2, 24, "fr-FR"],
+      ["ep-product-list", "cat-123", "jacket", 2, 24, "fr-FR"],
       expect.any(Function),
       expect.objectContaining({ revalidateOnFocus: false })
     );
+  });
+
+  /** The browser-side hook must stay as sort-free as the server function. */
+  it("sends no sort to Elastic Path", async () => {
+    mockGetByContextAllProducts.mockResolvedValue({ data: { data: [] } });
+    mockUseMutablePlasmicQueryData.mockReturnValue({
+      data: null,
+      error: null,
+      isLoading: false,
+      mutate: jest.fn(),
+    });
+
+    renderHook(() =>
+      useProductList({ sort: "price-asc", page: 0, pageSize: 12 } as never)
+    );
+
+    const fetcher = mockUseMutablePlasmicQueryData.mock.calls[0][1];
+    await fetcher();
+
+    const query = mockGetByContextAllProducts.mock.calls[0][0].query;
+    expect(query).not.toHaveProperty("sort");
   });
 
   it("should report loading state", () => {
@@ -613,13 +633,24 @@ describe("component registration", () => {
     expect(epProductGridMeta.importName).toBe("EPProductGrid");
   });
 
+  /**
+   * The catalog product endpoints cannot sort, so the listing must offer no
+   * Sort prop and no setSort action — a control that silently does nothing is
+   * the defect itself. EPCatalogSearchProvider + EPSearchSortBy sorts instead.
+   */
+  it("EPProductListProvider offers no sort prop or action", () => {
+    expect(
+      Object.keys(epProductListProviderMeta.props ?? {})
+    ).not.toContain("initialSort");
+    expect(epProductListProviderMeta.refActions!.setSort).toBeUndefined();
+  });
+
   it("EPProductListProvider meta should have correct name and refActions", () => {
     expect(epProductListProviderMeta.name).toBe(
       "plasmic-commerce-ep-product-list-provider"
     );
     expect(epProductListProviderMeta.providesData).toBe(true);
     expect(epProductListProviderMeta.refActions).toBeDefined();
-    expect(epProductListProviderMeta.refActions!.setSort).toBeDefined();
     expect(epProductListProviderMeta.refActions!.goToPage).toBeDefined();
     expect(epProductListProviderMeta.refActions!.nextPage).toBeDefined();
     expect(epProductListProviderMeta.refActions!.prevPage).toBeDefined();

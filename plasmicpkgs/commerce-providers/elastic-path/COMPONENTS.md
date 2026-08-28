@@ -786,11 +786,13 @@ PlasmicClientRootProvider <-------- prefetchedQueryData
 |---|---|---|
 | `ep.getProduct` | `{ id }` | `Product \| null` — single product by EP UUID |
 | `ep.getCart` | `{}` | `Cart \| null` — current cart contents |
-| `ep.getProductList` | `{ limit?, search?, categoryId?, sort? }` | `Product[]` — the first page only, as a flat array with no total count |
-| `ep.getProductPage` | `{ limit?, offset?, search?, categoryId?, sort? }` | `{ data: Product[], meta: { results: { total }, page: { limit, offset } } }` — one page in Elastic Path's envelope, with the total count. `limit` defaults to 25 |
+| `ep.getProductList` | `{ limit?, search?, categoryId? }` | `Product[]` — the first page only, as a flat array with no total count |
+| `ep.getProductPage` | `{ limit?, offset?, search?, categoryId? }` | `{ data: Product[], meta: { results: { total }, page: { limit, offset } } }` — one page in Elastic Path's envelope, with the total count. `limit` defaults to 25 |
 | `ep.getRelatedProducts` | `{ productId, relationshipSlug, limit? }` | `Product[]` — products linked by EP custom relationship |
 
 `categoryId` takes a hierarchy **node** ID and reads that node's products from `/catalog/nodes/{id}/relationships/products`. Elastic Path's catalog product endpoints have no filterable category key, and they compose `filter` terms with a comma — `and(...)` is rejected.
+
+Neither function takes a `sort`. Elastic Path's catalog product endpoints do not support sorting: the [Sorting guide](https://developer.elasticpath.com/guides/Getting-Started/sorting) lists the eight endpoints that accept a `sort` parameter and no catalog endpoint is among them, and an unsupported value is ignored rather than rejected — a request with `sort` returns HTTP 200 in the store's own order, so nothing at runtime reveals that it did nothing. For a sortable listing use the catalog search components (`EPCatalogSearchProvider` with `EPSearchSortBy`), which sort on the search index.
 
 The session (`accessToken`, `host`, `clientId`, `cartId?`, `accountId?`, `locale?`) is **not** an argument. `withEpSession(epCtx, callback)` establishes a per-request `AsyncLocalStorage` scope; each `ep.*` function reads the active session via `getCurrentEpSession()` internally. Outside any `withEpSession` scope (Studio canvas, mistakes), functions fail-soft to `null` / `[]` without calling EP.
 
@@ -803,7 +805,7 @@ For each Server Query in the Plasmic UI:
 
 Then bind the consuming component's `product` / `cart` / `products` prop (advanced section) to `$q.<queryName>.data`.
 
-For a server-rendered listing, bind an `ep.getProductPage` query to **EP Product List Provider** → **Products (pre-fetched)** (`initialPage`, advanced section) as `$q.<queryName>.data`. The provider renders that page without a browser fetch, and takes its page boundaries from the query's `page[limit]` rather than the **Page Size** prop. Sorting or changing page discards the seed and falls back to client fetching; in load-more mode the seeded products are the buffer the next page appends to. Where server queries do not execute — the Studio canvas — the binding evaluates to an unresolved Promise, and anything that is not a settled object carrying a `data` array counts as no seed, so the provider fetches for itself.
+For a server-rendered listing, bind an `ep.getProductPage` query to **EP Product List Provider** → **Products (pre-fetched)** (`initialPage`, advanced section) as `$q.<queryName>.data`. The provider renders that page without a browser fetch, and takes its page boundaries from the query's `page[limit]` rather than the **Page Size** prop. Changing page discards the seed and falls back to client fetching; in load-more mode the seeded products are the buffer the next page appends to. Where server queries do not execute — the Studio canvas — the binding evaluates to an unresolved Promise, and anything that is not a settled object carrying a `data` array counts as no seed, so the provider fetches for itself.
 
 ### Add to Cart errors (`$ctx.addToCartState.error`)
 
@@ -839,6 +841,7 @@ Like Add to Cart, these values are shopper-facing copy derived from stable proxy
 | `EP OAuth failed (401)` in dev log | Override headers (`x-ep-client-id`/`x-ep-host`) returned empty — usually because `getEpProviderConfig` hardcoded `/` and the project has no homepage |
 | Auth works on the page but `/api/ep/cart` returns 500 | Pre-fix: `toNextJsHandler` was passing the native Next `Request` directly; resolved by the Request adapter committed in `a363aaf23` |
 | Studio binding still references `auth: $ctx.ep` | Project predates PRD #272 — drop `auth` from each Server Query argument |
+| A sort control over **EP Product List Provider** changes nothing | Expected — the catalog product endpoints cannot sort. Build the listing on `EPCatalogSearchProvider` + `EPSearchSortBy` instead |
 
 ## 8. Utility Components
 

@@ -1,13 +1,19 @@
 /**
- * EPProductListProvider — headless product listing with pagination and sort.
+ * EPProductListProvider — headless product listing with pagination.
  *
  * Fetches a single page of products via useProductList and exposes the results
  * plus pagination metadata through a `productGridData` DataProvider key (D4).
  * Supports both pagination mode (replace products per page) and load-more mode
  * (append products from successive pages).
  *
- * Actions (setSort, goToPage, nextPage, prevPage, loadMore) are exposed via
- * refActions so Plasmic interactions can invoke them.
+ * Actions (goToPage, nextPage, prevPage, loadMore) are exposed via refActions
+ * so Plasmic interactions can invoke them.
+ *
+ * There is deliberately no sort. Elastic Path's catalog product endpoints
+ * take no `sort` parameter and ignore an unsupported one rather than
+ * rejecting it, so a sort control here cannot work and cannot report that it
+ * did nothing. EPCatalogSearchProvider with EPSearchSortBy sorts on the
+ * catalog search index.
  */
 
 import {
@@ -68,7 +74,6 @@ interface EPProductListProviderProps {
   emptyContent?: React.ReactNode;
   categoryId?: string;
   search?: string;
-  initialSort?: string;
   pageSize?: number;
   initialPage?: unknown;
   previewState?: PreviewState;
@@ -76,7 +81,6 @@ interface EPProductListProviderProps {
 }
 
 interface EPProductListProviderActions {
-  setSort(value: string): void;
   goToPage(page: number): void;
   nextPage(): void;
   prevPage(): void;
@@ -124,12 +128,6 @@ export const epProductListProviderMeta: CodeComponentMeta<EPProductListProviderP
       displayName: "Search",
       description: "Search products by name",
     },
-    initialSort: {
-      type: "choice",
-      options: ["", "price-asc", "price-desc", "latest-desc", "trending-desc"],
-      displayName: "Sort",
-      description: "Initial sort order for products",
-    },
     pageSize: {
       type: "number",
       displayName: "Page Size",
@@ -140,7 +138,7 @@ export const epProductListProviderMeta: CodeComponentMeta<EPProductListProviderP
       type: "object",
       displayName: "Products (pre-fetched)",
       description:
-        "Bind to an ep.getProductPage Server Query result (e.g. $q.plp.data) to server-render the first page instead of fetching it in the browser. The query's page[limit] wins over Page Size. Sorting or paging discards it and falls back to client fetching. Leave empty to fetch client-side.",
+        "Bind to an ep.getProductPage Server Query result (e.g. $q.plp.data) to server-render the first page instead of fetching it in the browser. The query's page[limit] wins over Page Size. Paging discards it and falls back to client fetching. Leave empty to fetch client-side.",
       advanced: true,
     },
     previewState: {
@@ -157,10 +155,6 @@ export const epProductListProviderMeta: CodeComponentMeta<EPProductListProviderP
   importName: "EPProductListProvider",
   providesData: true,
   refActions: {
-    setSort: {
-      description: "Change the sort order and reset to page 0",
-      argTypes: [{ name: "value", type: "string" }],
-    },
     goToPage: {
       description: "Navigate to a specific page (0-indexed)",
       argTypes: [{ name: "page", type: "number" }],
@@ -191,7 +185,6 @@ export const EPProductListProvider = React.forwardRef<
     emptyContent,
     categoryId,
     search,
-    initialSort = "",
     pageSize = 12,
     initialPage,
     previewState = "auto",
@@ -252,7 +245,6 @@ export const EPProductListProvider = React.forwardRef<
       ref={ref}
       categoryId={categoryId}
       search={search}
-      initialSort={initialSort}
       pageSize={pageSize}
       initialPage={initialPage}
       className={className}
@@ -271,7 +263,6 @@ const MockProductListProvider = React.forwardRef<
   { children?: React.ReactNode; className?: string }
 >(function MockProductListProvider({ children, className }, ref) {
   useImperativeHandle(ref, () => ({
-    setSort: () => {},
     goToPage: () => {},
     nextPage: () => {},
     prevPage: () => {},
@@ -295,7 +286,6 @@ const EPProductListProviderInner = React.forwardRef<
     children?: React.ReactNode;
     categoryId?: string;
     search?: string;
-    initialSort?: string;
     pageSize?: number;
     initialPage?: unknown;
     className?: string;
@@ -308,7 +298,6 @@ const EPProductListProviderInner = React.forwardRef<
     children,
     categoryId,
     search,
-    initialSort = "",
     pageSize = 12,
     initialPage,
     className,
@@ -318,7 +307,6 @@ const EPProductListProviderInner = React.forwardRef<
   } = props;
 
   const [currentPage, setCurrentPage] = useState(0);
-  const [sort, setSort] = useState(initialSort);
   const [isLoadMoreMode, setIsLoadMoreMode] = useState(false);
   const [loadMoreProducts, setLoadMoreProducts] = useState<Product[]>([]);
   // Track the last page whose products were appended to avoid double-appending
@@ -326,10 +314,10 @@ const EPProductListProviderInner = React.forwardRef<
 
   const seed = useMemo(() => readSeedPage(initialPage), [initialPage]);
   const [seedDismissed, setSeedDismissed] = useState(false);
-  // The seed is page 0 at `initialSort`. Any sort or page change makes it
-  // stale, so it is dropped for good rather than resurrected on a return to
-  // page 0 — SWR already makes that re-fetch cheap, and reviving it would
-  // show SSR-era data after a mutation elsewhere in the session.
+  // The seed is page 0. Any page change makes it stale, so it is dropped for
+  // good rather than resurrected on a return to page 0 — SWR already makes
+  // that re-fetch cheap, and reviving it would show SSR-era data after a
+  // mutation elsewhere in the session.
   const seedActive = !!seed && !seedDismissed;
   const dismissSeed = useCallback(() => setSeedDismissed(true), []);
   // A seed fetched with its own page[limit] defines the page boundaries; a
@@ -344,7 +332,6 @@ const EPProductListProviderInner = React.forwardRef<
   } = useProductList({
     categoryId,
     search,
-    sort,
     page: currentPage,
     pageSize: effectivePageSize,
     skip: seedActive,
@@ -403,7 +390,6 @@ const EPProductListProviderInner = React.forwardRef<
       currentPage,
       totalPages,
       pageSize: effectivePageSize,
-      sort,
       isLoading,
       hasNextPage,
       hasPreviousPage,
@@ -418,7 +404,6 @@ const EPProductListProviderInner = React.forwardRef<
       currentPage,
       totalPages,
       effectivePageSize,
-      sort,
       isLoading,
       hasNextPage,
       hasPreviousPage,
@@ -436,16 +421,6 @@ const EPProductListProviderInner = React.forwardRef<
     setLoadMoreProducts([]);
     lastAppendedPageRef.current = -1;
   }, []);
-
-  const handleSetSort = useCallback(
-    (value: string) => {
-      setSort(value);
-      setCurrentPage(0);
-      dismissSeed();
-      resetLoadMore();
-    },
-    [dismissSeed, resetLoadMore]
-  );
 
   const handleGoToPage = useCallback(
     (page: number) => {
@@ -490,7 +465,6 @@ const EPProductListProviderInner = React.forwardRef<
   }, [hasNextPage, isLoadMoreMode, products, currentPage, dismissSeed]);
 
   useImperativeHandle(ref, () => ({
-    setSort: handleSetSort,
     goToPage: handleGoToPage,
     nextPage: handleNextPage,
     prevPage: handlePrevPage,

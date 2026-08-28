@@ -80,6 +80,17 @@ describe("epGetProductList", () => {
     );
   });
 
+  it("sends no sort, because it delegates to epGetProductPage", async () => {
+    mockGetByContextAllProducts.mockResolvedValue({ data: { data: [] } });
+
+    await withEpSession(SESSION, () =>
+      epGetProductList({ sort: "latest-desc" } as never)
+    );
+
+    const query = mockGetByContextAllProducts.mock.calls[0][0].query;
+    expect(query).not.toHaveProperty("sort");
+  });
+
   it("returns empty array when EP returns no products", async () => {
     mockGetByContextAllProducts.mockResolvedValue({
       data: { data: [], included: {} },

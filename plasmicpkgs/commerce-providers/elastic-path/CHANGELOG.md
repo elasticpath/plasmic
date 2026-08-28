@@ -1,10 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
 
 ### Added
 
-`ep.getProductPage({ limit?, offset?, search?, categoryId?, sort? })` — one page
+`ep.getProductPage({ limit?, offset?, search?, categoryId? })` — one page
 of products with the total count, in Elastic Path's envelope (`data`, plus
 `meta.results.total` and `meta.page`). `getProductList` returns a flat array
 with no total, so a listing bound to it cannot compute ranges or next/previous.
@@ -14,8 +14,8 @@ EP Product List Provider gains **Products (pre-fetched)** (`initialPage`),
 mirroring EP Product Provider's pre-fetched `product`. Bind it to an
 `ep.getProductPage` Server Query result to server-render the first page with no
 browser request for data the page already carries. The query's `page[limit]`
-sets the page boundaries, overriding Page Size. Sorting or paging discards the
-seed and falls back to client fetching; in load-more mode the seeded products
+sets the page boundaries, overriding Page Size. Paging discards the seed and
+falls back to client fetching; in load-more mode the seeded products
 are the buffer the next page appends to. Leaving it empty preserves today's
 client-fetch behaviour.
 
@@ -35,6 +35,24 @@ envelope and returning the first page as a flat array. Its published return
 type is unchanged.
 
 ### Removed
+
+The product listing's **Sort** control, along with `setSort`, the `sort` key on
+`productGridData`, the `sort` argument to `ep.getProductList` and
+`ep.getProductPage`, and the `getSortVariables` helper. It never worked and
+could not be made to: Elastic Path's catalog product endpoints take no `sort`
+parameter — the [Sorting guide](https://developer.elasticpath.com/guides/Getting-Started/sorting)
+lists the eight endpoints that accept one and no catalog endpoint is among them.
+An unsupported value is ignored rather than rejected, so a sorted request
+returned HTTP 200 in the store's unchanged order and nothing surfaced the
+problem. The values being sent (`price asc`, `createdAt desc`) were not Elastic
+Path syntax either — the helper was copied from another commerce provider,
+unused `isCategory` parameter included.
+
+This is a breaking change: a project binding **Sort** or invoking `setSort`
+loses that binding, and the set of registered function arguments changes, so the
+next `publish-hostless` cuts a new hostless package version. For a sortable
+listing use `EPCatalogSearchProvider` with `EPSearchSortBy`, which sorts on the
+catalog search index.
 
 `EPMultiLocationStock`, its `epMultiLocationStockMeta` registration, and the
 three presentational components it alone consumed — `MultiLocationStock`,

@@ -3,7 +3,6 @@ import {
   getByContextProductsForNode,
 } from "@epcc-sdk/sdks-shopper";
 import { normalizeProductFromList } from "../utils/normalize";
-import { getSortVariables } from "../utils";
 import type { Product } from "../types/product";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
@@ -37,8 +36,6 @@ export interface EpGetProductPageInput {
   search?: string;
   /** Products of one hierarchy node (a category), by node ID. */
   categoryId?: string | number;
-  /** Sort key understood by the shared `getSortVariables` helper. */
-  sort?: string;
   /** SSR-only explicit auth. Never advertised; never bind in Studio. */
   auth?: EpServerAuth;
 }
@@ -59,7 +56,6 @@ export async function epGetProductPage({
   offset,
   search,
   categoryId,
-  sort,
   auth: inputAuth,
 }: EpGetProductPageInput = {}): Promise<EpProductPage> {
   const pageLimit = limit && limit > 0 ? limit : DEFAULT_LIMIT;
@@ -69,7 +65,7 @@ export async function epGetProductPage({
   if (!isUsableAuth(auth) && shouldUseProxy()) {
     return callEpProxy<EpProductPage>(
       "getProductPage",
-      { limit: pageLimit, offset: pageOffset, search, categoryId, sort },
+      { limit: pageLimit, offset: pageOffset, search, categoryId },
       emptyPage(pageLimit, pageOffset)
     );
   }
@@ -90,11 +86,6 @@ export async function epGetProductPage({
   const filters: string[] = [];
   if (search) filters.push(`eq(name,${search})`);
   if (filters.length > 0) query["filter"] = filters.join(",");
-
-  if (sort) {
-    const sortVariable = getSortVariables(sort);
-    if (sortVariable) query["sort"] = sortVariable;
-  }
 
   try {
     const response = categoryId

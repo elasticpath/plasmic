@@ -9,8 +9,6 @@ export interface EpGetProductListInput {
   search?: string;
   /** Filter by EP hierarchy (category) ID. */
   categoryId?: string | number;
-  /** Sort key understood by the shared `getSortVariables` helper. */
-  sort?: string;
   /** SSR-only explicit auth. Never advertised; never bind in Studio. */
   auth?: EpServerAuth;
 }
