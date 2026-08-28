@@ -1,4 +1,5 @@
 const mockGetByContextAllProducts = jest.fn();
+const mockGetByContextProductsForNode = jest.fn();
 
 jest.mock("@epcc-sdk/sdks-shopper", () => ({
   createShopperClient: jest.fn(() => ({
@@ -8,6 +9,8 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
   })),
   getByContextAllProducts: (...args: unknown[]) =>
     mockGetByContextAllProducts(...args),
+  getByContextProductsForNode: (...args: unknown[]) =>
+    mockGetByContextProductsForNode(...args),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -23,6 +26,7 @@ const SESSION = {
 
 beforeEach(() => {
   mockGetByContextAllProducts.mockReset();
+  mockGetByContextProductsForNode.mockReset();
 });
 
 const makeProduct = (id: string, name: string) => ({
@@ -56,6 +60,22 @@ describe("epGetProductList", () => {
     expect(mockGetByContextAllProducts).toHaveBeenCalledWith(
       expect.objectContaining({
         query: expect.objectContaining({ "page[limit]": 10 }),
+      })
+    );
+  });
+
+  it("reads a category's products from the node endpoint", async () => {
+    mockGetByContextProductsForNode.mockResolvedValue({ data: { data: [] } });
+
+    await withEpSession(SESSION, () =>
+      epGetProductList({ search: "chair", categoryId: "node-1" })
+    );
+
+    expect(mockGetByContextAllProducts).not.toHaveBeenCalled();
+    expect(mockGetByContextProductsForNode).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { node_id: "node-1" },
+        query: expect.objectContaining({ filter: "eq(name,chair)" }),
       })
     );
   });
