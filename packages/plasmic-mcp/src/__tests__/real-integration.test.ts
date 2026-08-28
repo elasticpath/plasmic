@@ -6102,6 +6102,89 @@ function findNodeByUuid(tree: any, uuid: string): any {
 // pointers, ownerComponent reachability, and proper cleanup — using REAL
 // WAB model objects (not mocks).
 
+describe("stored code expressions (real wab exprs)", () => {
+  async function findVs(componentUuid: string, nodeUuid: string) {
+    const { requireSession } = await import("../session.js");
+    const session = requireSession();
+    const comp = session.site.components.find(
+      (c: any) => c.uuid === componentUuid
+    );
+    if (!comp) throw new Error(`Component ${componentUuid} not found in site`);
+    const { flattenTpls } = await import("@/wab/shared/core/tpls");
+    const node = flattenTpls(comp.tplTree).find(
+      (n: any) => n.uuid === nodeUuid
+    );
+    if (!node) throw new Error(`Node ${nodeUuid} not found`);
+    return node.vsettings[0];
+  }
+
+  it("data.set-data-cond stores an expr Studio reads as real code, and reads it back bare", async () => {
+    const comp = discoveredComponents[0];
+    const treeResult = await client.callTool({
+      name: "inspect",
+      arguments: { action: "tree", maxDepth: 1, componentUuid: comp.uuid },
+    });
+    const rootUuid = parseResponse(treeResult).tree.uuid;
+
+    const condition = '$ctx.params.slug === "sale"';
+    const editResult = await client.callTool({
+      name: "data",
+      arguments: {
+        action: "set-data-cond",
+        componentUuid: comp.uuid,
+        nodeRef: rootUuid,
+        condition,
+      },
+    });
+    expect(editResult.isError).toBeFalsy();
+
+    // The contract with Studio: `isRealCodeExpr` decides whether the stored
+    // string is evaluated or treated as an inert JSON literal.
+    const { isRealCodeExpr, trimCodeParens } = await import(
+      "@/wab/shared/core/exprs"
+    );
+    const vs = await findVs(comp.uuid, rootUuid);
+    expect(isRealCodeExpr(vs.dataCond)).toBe(true);
+    expect(vs.dataCond.code).toBe(`(${condition})`);
+    // Studio unwraps by slicing the first and last character; the result has to
+    // be the expression we were given.
+    expect(trimCodeParens(vs.dataCond.code)).toBe(condition);
+
+    const detailResult = await client.callTool({
+      name: "inspect",
+      arguments: { action: "node", componentUuid: comp.uuid, nodeRef: rootUuid },
+    });
+    expect(parseResponse(detailResult).node.dataCond).toBe(condition);
+  });
+
+  it("a simple scope path is stored as an ObjectPath, as Studio's data picker does", async () => {
+    const comp = discoveredComponents[0];
+    const treeResult = await client.callTool({
+      name: "inspect",
+      arguments: { action: "tree", maxDepth: 1, componentUuid: comp.uuid },
+    });
+    const rootUuid = parseResponse(treeResult).tree.uuid;
+
+    const editResult = await client.callTool({
+      name: "data",
+      arguments: {
+        action: "set-data-cond",
+        componentUuid: comp.uuid,
+        nodeRef: rootUuid,
+        condition: "$ctx.params.slug",
+      },
+    });
+    expect(editResult.isError).toBeFalsy();
+
+    const { isRealCodeExpr } = await import("@/wab/shared/core/exprs");
+    const { isKnownObjectPath } = await import("@/wab/shared/model/classes");
+    const vs = await findVs(comp.uuid, rootUuid);
+    expect(isKnownObjectPath(vs.dataCond)).toBe(true);
+    expect(isRealCodeExpr(vs.dataCond)).toBe(true);
+    expect(vs.dataCond.path).toEqual(["$ctx", "params", "slug"]);
+  });
+});
+
 describe("TplQuery tree integrity", () => {
   /**
    * Access the real in-memory model and verify parent pointers on all nodes.

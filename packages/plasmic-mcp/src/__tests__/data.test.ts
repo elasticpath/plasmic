@@ -88,9 +88,74 @@ describe("setDataCond", () => {
     expect(result.previousCondition).toBeNull();
     expect(result.nodeName).toBe("Banner");
     expect(result.nodeUuid).toBe("node-1");
-    expect(node.vsettings[0].dataCond._type).toBe("CustomCode");
-    expect(node.vsettings[0].dataCond.code).toBe("$ctx.showBanner");
+    expect(node.vsettings[0].dataCond._type).toBe("ObjectPath");
+    expect(node.vsettings[0].dataCond.path).toEqual(["$ctx", "showBanner"]);
     expect(result.save.revisionNum).toBe(11);
+  });
+
+  it("wraps a code condition in parens so Studio reads it as a real code expr", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    await setDataCond(api, "comp-1", "Banner", "$ctx.showBanner === true");
+
+    expect(node.vsettings[0].dataCond._type).toBe("CustomCode");
+    expect(node.vsettings[0].dataCond.code).toBe("($ctx.showBanner === true)");
+  });
+
+  it("stores a simple scope path as ObjectPath, matching Studio's data picker", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    await setDataCond(api, "comp-1", "Banner", "$ctx.showBanner");
+
+    expect(node.vsettings[0].dataCond._type).toBe("ObjectPath");
+    expect(node.vsettings[0].dataCond.path).toEqual(["$ctx", "showBanner"]);
+  });
+
+  it("keeps a condition whose own parens are unmatched at the ends balanced", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    // Studio unwraps by slicing the first and last character, so storing
+    // "(1) > 0" verbatim would leave "1) > " and fail codegen for the whole
+    // project. Wrapping keeps it parseable after that slice.
+    await setDataCond(api, "comp-1", "Banner", "(1) > 0");
+
+    expect(node.vsettings[0].dataCond.code).toBe("((1) > 0)");
+  });
+
+  it("wraps a condition that already carries its own parens", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    await setDataCond(api, "comp-1", "Banner", "($props.enabled)");
+
+    expect(node.vsettings[0].dataCond.code).toBe("(($props.enabled))");
+  });
+
+  it("rejects a condition that is not a parseable JS expression", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Banner" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    await expect(
+      setDataCond(api, "comp-1", "Banner", "1) > (0")
+    ).rejects.toThrow(/Invalid JS expression/);
   });
 
   it("removes condition with null", async () => {
@@ -137,7 +202,7 @@ describe("setDataCond", () => {
     await setDataCond(api, "comp-1", "Banner", "$ctx.showBanner");
 
     expect(node.vsettings[0].rs.values["plasmic-display-none"]).toBeUndefined();
-    expect(node.vsettings[0].dataCond.code).toBe("$ctx.showBanner");
+    expect(node.vsettings[0].dataCond.path).toEqual(["$ctx", "showBanner"]);
   });
 
   it("clears display-none marker when removing condition", async () => {
@@ -171,7 +236,7 @@ describe("setDataCond", () => {
     const result = await setDataCond(api, "comp-1", "Widget", "$ctx.showWidget");
 
     expect(result.newCondition).toBe("$ctx.showWidget");
-    expect(compNode.vsettings[0].dataCond.code).toBe("$ctx.showWidget");
+    expect(compNode.vsettings[0].dataCond.path).toEqual(["$ctx", "showWidget"]);
   });
 
   it("rejects TplSlot nodes", async () => {
@@ -219,7 +284,10 @@ describe("setDataCond", () => {
     );
 
     expect(result.newCondition).toBe("$ctx.isMobileUser");
-    expect((mobileVs as any).dataCond?.code).toBe("$ctx.isMobileUser");
+    expect((mobileVs as any).dataCond?.path).toEqual([
+      "$ctx",
+      "isMobileUser",
+    ]);
   });
 
   it("save is called and revision returned", async () => {
@@ -291,8 +359,28 @@ describe("setDataRep", () => {
     expect(vs.dataRep.element.name).toBe("currentItem");
     expect(vs.dataRep.index._type).toBe("Var");
     expect(vs.dataRep.index.name).toBe("currentIndex");
+    expect(vs.dataRep.collection._type).toBe("ObjectPath");
+    expect(vs.dataRep.collection.path).toEqual([
+      "$queries",
+      "products",
+      "data",
+    ]);
+  });
+
+  it("wraps a code collection in parens so Studio reads it as a real code expr", async () => {
+    const node = mkTag({ uuid: "node-1", name: "Card" });
+    const root = mkTag({ uuid: "root-1", children: [node] });
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    mockEnsureBaseVariantSetting.mockImplementation((tpl: any) => tpl.vsettings[0]);
+    setupSession(comp);
+
+    await setDataRep(api, "comp-1", "Card", "$queries.products.data.slice(0, 3)");
+
+    const vs = node.vsettings[0];
     expect(vs.dataRep.collection._type).toBe("CustomCode");
-    expect(vs.dataRep.collection.code).toBe("$queries.products.data");
+    expect(vs.dataRep.collection.code).toBe(
+      "($queries.products.data.slice(0, 3))"
+    );
   });
 
   it("sets data repetition with custom variable names", async () => {
