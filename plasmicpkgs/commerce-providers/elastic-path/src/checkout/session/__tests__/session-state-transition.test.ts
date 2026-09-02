@@ -141,4 +141,15 @@ describe("applyPaymentRequiresAction", () => {
       paymentIntentId: "pi_2",
     });
   });
+
+  it("preserves an existing unpaid order (resume retry)", () => {
+    const withOrder = makeSession({ order: { id: "order-unpaid" } });
+    const result = applyPaymentRequiresAction(withOrder, {
+      clientToken: "pi_secret",
+      actionData: { type: "stripe_3ds", paymentIntentId: "pi_1" },
+    });
+    expect(result.order).toEqual({ id: "order-unpaid" });
+    expect(result.status).toBe("open");
+    expect(result.payment.status).toBe("requires_action");
+  });
 });

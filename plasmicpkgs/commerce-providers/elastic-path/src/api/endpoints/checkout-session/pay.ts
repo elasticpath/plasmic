@@ -59,6 +59,7 @@ import {
   applyPaymentFailed,
   applyPaymentRequiresAction,
 } from "../../../checkout/session/session-state-transition";
+import { finalizePaidSession } from "../../../checkout/session/finalize-paid-session";
 import { toCustomAttributes } from "../../../ep-server-functions/place-order";
 import { createLogger } from "../../../utils/logger";
 
@@ -823,62 +824,22 @@ export async function handlePay(
     }
   }
 
-  // 5c. Cart cleanup — best-effort housekeeping
-  if (ctx.getClientCredentialsToken) {
-    await runCartCleanup({
-      host: ctx.epCredentials.apiBaseUrl,
-      clientId: ctx.epCredentials.clientId,
-      getClientCredentialsToken: ctx.getClientCredentialsToken,
-      cartId: session.cartId,
-    });
-  }
-
-  // 5d. Mark complete and persist. When confirmOrder couldn't reconcile, carry
-  //     a durable `needsReconciliation` marker on the session so the
-  //     charged-but-unreconciled order is discoverable later.
-  const completeSession = applyPaymentSucceeded(
-    { ...session, payment: { ...session.payment, gateway } },
-    {
-      orderId,
-      paymentIntentId: paymentIntentId ?? "",
-      gatewayMetadata: {
-        ...(adapterResult.gatewayMetadata ?? {}),
-        ...(reconciliationError ? { needsReconciliation: true } : {}),
-      },
-    }
-  );
-
-  let setResult: { headers: Record<string, string> };
-  try {
-    setResult = await ctx.sessionStore.set("current", completeSession, ttl, req);
-  } catch (err) {
-    log.error("Failed to persist complete session", {
-      error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
-    return {
-      status: 500,
-      body: {
-        success: false,
-        error: { message: "Failed to store session", code: "STORE_ERROR" },
-      },
-    };
-  }
-
+  // 5c–5d. Cart cleanup, mark complete, persist. Shared with resume-payment.
   log.info("Pay handler completed", {
-    sessionId: completeSession.id,
+    sessionId: session.id,
     orderId,
     reconciliationPending: reconciliationError !== null,
   } as Record<string, unknown>);
 
-  return {
-    status: 200,
-    body: {
-      success: true,
-      data: { session: toClientSession(completeSession) },
-      // Surface the charged-but-unreconciled state so the client / monitoring
-      // can act on it — the order is genuine and paid, but EP didn't confirm.
-      ...(reconciliationError ? { reconciliationPending: true } : {}),
-    },
-    headers: setResult.headers,
-  };
+  return finalizePaidSession({
+    ctx,
+    req,
+    ttl,
+    session,
+    gateway,
+    orderId,
+    paymentIntentId: paymentIntentId ?? "",
+    gatewayMetadata: adapterResult.gatewayMetadata,
+    reconciliationError,
+  });
 }

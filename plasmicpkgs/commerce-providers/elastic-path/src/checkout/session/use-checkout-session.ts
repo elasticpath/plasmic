@@ -49,7 +49,9 @@ export interface UseCheckoutSessionReturn {
   calculateShipping: () => Promise<SessionApiResponse>;
   /** Initiate payment with the registered gateway. */
   placeOrder: (gatewayData: Record<string, unknown>) => Promise<SessionApiResponse>;
-  /** Confirm a gateway action (e.g. 3DS). */
+  /** Resume a Stripe PaymentIntent after 3DS (POST …/resume-payment). */
+  resumePayment: (resumeData?: Record<string, unknown>) => Promise<SessionApiResponse>;
+  /** Confirm a gateway action (e.g. Clover 3DS). */
   confirmPayment: (confirmData: Record<string, unknown>) => Promise<SessionApiResponse>;
   /** Clear the session cookie and reset local state. */
   reset: () => Promise<void>;
@@ -126,6 +128,23 @@ export function useCheckoutSession(
     [sessionUrl, mutate]
   );
 
+  const resumePayment = useCallback(
+    async (
+      resumeData: Record<string, unknown> = {}
+    ): Promise<SessionApiResponse> => {
+      const resp = await sessionFetch<SessionApiResponse>(
+        `${sessionUrl}/resume-payment`,
+        {
+          method: "POST",
+          body: JSON.stringify(resumeData),
+        }
+      );
+      await mutate();
+      return resp;
+    },
+    [sessionUrl, mutate]
+  );
+
   const confirmPayment = useCallback(
     async (confirmData: Record<string, unknown>): Promise<SessionApiResponse> => {
       const resp = await sessionFetch<SessionApiResponse>(
@@ -159,6 +178,7 @@ export function useCheckoutSession(
     updateSession,
     calculateShipping,
     placeOrder,
+    resumePayment,
     confirmPayment,
     reset,
     refresh,

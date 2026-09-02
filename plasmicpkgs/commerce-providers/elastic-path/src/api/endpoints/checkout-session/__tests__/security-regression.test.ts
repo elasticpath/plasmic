@@ -78,6 +78,10 @@ const { handleCalculateShipping } = require("../calculate-shipping") as {
   handleCalculateShipping: typeof import("../calculate-shipping").handleCalculateShipping;
 };
 // eslint-disable-next-line @typescript-eslint/no-var-requires
+const { handleResumePayment } = require("../resume-payment") as {
+  handleResumePayment: typeof import("../resume-payment").handleResumePayment;
+};
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { resetLogConfig } = require("../../../../utils/logger") as {
   resetLogConfig: typeof import("../../../../utils/logger").resetLogConfig;
 };
@@ -1403,6 +1407,30 @@ describe("token-leak boundary — no admin/shopper token in any response", () =>
     const ctx = createMockCtx(makeSession());
     const res = await handleGetSession(createMockReq({}), ctx);
     expect(res.status).toBe(200);
+    expectNoTokenLeak(res);
+  });
+
+  it("resume-payment() never reflects a token", async () => {
+    const ctx = createMockCtx(
+      makeSession({
+        payment: {
+          gateway: "stripe",
+          status: "requires_action",
+          clientToken: "pi_secret",
+          gatewayMetadata: { paymentIntentId: "pi_abc" },
+          actionData: { type: "stripe_3ds", paymentIntentId: "pi_abc" },
+        },
+        customAttributes: { ...EXTRAS },
+      }),
+      undefined,
+      { allowedCustomAttributeKeys: "*" }
+    );
+    const res = await handleResumePayment(createMockReq({}), ctx);
+    expect(res.status).toBe(200);
+    expect(epSdk.updateAnOrder).toHaveBeenCalledTimes(1);
+    expect(epSdk.updateAnOrder.mock.calls[0][0].headers.Authorization).toBe(
+      `Bearer ${ADMIN_TOKEN}`
+    );
     expectNoTokenLeak(res);
   });
 });

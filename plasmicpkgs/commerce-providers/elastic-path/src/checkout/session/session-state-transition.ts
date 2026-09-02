@@ -64,7 +64,8 @@ export function applyPaymentFailed(
   };
 }
 
-/** Persist a 3DS / SCA challenge. Session stays open and retryable; no order. */
+/** Persist a 3DS / SCA challenge. Session stays open and retryable.
+ *  Does not create an order; an existing unpaid order (resume retry) is kept. */
 export function applyPaymentRequiresAction(
   session: CheckoutSession,
   event: PaymentRequiresActionEvent
@@ -72,7 +73,7 @@ export function applyPaymentRequiresAction(
   return {
     ...session,
     status: "open",
-    order: null,
+    order: session.order,
     payment: {
       ...session.payment,
       status: "requires_action",
