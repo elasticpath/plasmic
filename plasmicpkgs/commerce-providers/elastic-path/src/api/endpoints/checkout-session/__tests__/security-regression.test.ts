@@ -1411,6 +1411,9 @@ describe("token-leak boundary — no admin/shopper token in any response", () =>
   });
 
   it("resume-payment() never reflects a token", async () => {
+    epSdk.confirmOrder.mockResolvedValue({
+      data: { data: { id: "order-1", payment: "paid" } },
+    });
     const ctx = createMockCtx(
       makeSession({
         payment: {

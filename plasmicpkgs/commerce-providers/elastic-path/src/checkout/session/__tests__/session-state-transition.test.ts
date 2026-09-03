@@ -79,6 +79,16 @@ describe("applyPaymentFailed", () => {
     });
     expect(result.order).toBeNull();
   });
+
+  it("preserves an existing unpaid order (resume after checkoutApi)", () => {
+    const withOrder = makeSession({ order: { id: "order-unpaid" } });
+    const result = applyPaymentFailed(withOrder, {
+      errorMessage: "PaymentIntent canceled",
+    });
+    expect(result.order).toEqual({ id: "order-unpaid" });
+    expect(result.status).toBe("open");
+    expect(result.payment.status).toBe("failed");
+  });
 });
 
 describe("applyPaymentRequiresAction", () => {

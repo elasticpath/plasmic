@@ -183,7 +183,9 @@ beforeEach(() => {
     },
   });
   epSdk.checkoutApi.mockResolvedValue({ data: { data: { id: "order-1" } } });
-  epSdk.confirmOrder.mockResolvedValue({ data: { data: { id: "order-1" } } });
+  epSdk.confirmOrder.mockResolvedValue({
+    data: { data: { id: "order-1", payment: "paid" } },
+  });
   epSdk.createCartPaymentIntent.mockResolvedValue({ data: { data: {} } });
   epSdk.updateCartPaymentIntent.mockResolvedValue({ data: { data: {} } });
   epSdk.updateAnOrder.mockResolvedValue({ data: { data: { id: "order-1" } } });
@@ -192,10 +194,18 @@ beforeEach(() => {
 });
 
 describe("classifyConfirmOrderResult", () => {
-  it("treats a bare { data: { data: { id } } } 200 as succeeded (same as /pay)", () => {
+  it("treats a bare { data: { data: { id } } } 200 as unknown, not success", () => {
     expect(
       classifyConfirmOrderResult({ data: { data: { id: "order-1" } } }).outcome
-    ).toBe("succeeded");
+    ).toBe("unknown");
+  });
+
+  it("treats an unrecognised nested PI status as unknown", () => {
+    expect(
+      classifyConfirmOrderResult({
+        data: { payment_intent: { status: "requires_source" } },
+      }).outcome
+    ).toBe("unknown");
   });
 
   it("treats OrderResponse.payment paid/authorized as succeeded", () => {
@@ -360,6 +370,30 @@ describe("handleResumePayment — guards", () => {
     expect(epSdk.checkoutApi).not.toHaveBeenCalled();
     expect(epSdk.confirmOrder).not.toHaveBeenCalled();
   });
+
+  it("does not rewrite the stored cartHash on mismatch; a second resume still 409s", async () => {
+    const originalHash = hashCart(CART_ITEMS);
+    const mutatedItems = [{ id: "different", quantity: 99 }];
+    const store = createStatefulStore(makeSession());
+    const ctx = createMockCtx(makeSession(), { sessionStore: store });
+    epSdk.getACart.mockResolvedValue({
+      data: { included: { items: mutatedItems } },
+    });
+
+    const first = await handleResumePayment(createMockReq(), ctx);
+    expect(first.status).toBe(409);
+    expect((first.body as any).error.code).toBe("CART_MISMATCH");
+    expect((await store.get("current"))?.cartHash).toBe(originalHash);
+    expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+    expect(epSdk.confirmOrder).not.toHaveBeenCalled();
+
+    const second = await handleResumePayment(createMockReq(), ctx);
+    expect(second.status).toBe(409);
+    expect((second.body as any).error.code).toBe("CART_MISMATCH");
+    expect((await store.get("current"))?.cartHash).toBe(originalHash);
+    expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+    expect(epSdk.confirmOrder).not.toHaveBeenCalled();
+  });
 });
 
 describe("handleResumePayment — success", () => {
@@ -507,6 +541,26 @@ describe("handleResumePayment — unknown confirmOrder error", () => {
     expect(stored?.payment.status).toBe("requires_action");
     expect(stored?.order?.id).toBe("order-existing");
   });
+
+  it("returns 502 EP_ERROR on a bare confirmOrder { id } 200 (unrecognised success)", async () => {
+    const store = createStatefulStore(makeSession());
+    const ctx = createMockCtx(makeSession(), { sessionStore: store });
+    epSdk.confirmOrder.mockResolvedValue({ data: { data: { id: "order-1" } } });
+
+    const res = await handleResumePayment(createMockReq(), ctx);
+
+    expect(res.status).toBe(502);
+    expect((res.body as any).error.code).toBe("EP_ERROR");
+    expect((res.body as any).error.code).not.toBe(
+      "PAYMENT_STILL_REQUIRES_ACTION"
+    );
+    expect(epSdk.deleteACart).not.toHaveBeenCalled();
+
+    const stored = await store.get("current");
+    expect(stored?.status).toBe("open");
+    expect(stored?.payment.status).toBe("requires_action");
+    expect(stored?.order?.id).toBe("order-1");
+  });
 });
 
 describe("handleResumePayment — failed / cancelled PaymentIntent", () => {
@@ -524,7 +578,7 @@ describe("handleResumePayment — failed / cancelled PaymentIntent", () => {
     const session = (res.body as any).data.session;
     expect(session.status).toBe("open");
     expect(session.payment.status).toBe("failed");
-    expect(session.order).toBeNull();
+    expect(session.order?.id).toBe("order-1");
     expect(epSdk.deleteACart).not.toHaveBeenCalled();
     expect(epSdk.createCartPaymentIntent).not.toHaveBeenCalled();
   });
@@ -540,6 +594,7 @@ describe("handleResumePayment — failed / cancelled PaymentIntent", () => {
     expect(res.status).toBe(200);
     expect((res.body as any).data.session.status).toBe("open");
     expect((res.body as any).data.session.payment.status).toBe("failed");
+    expect((res.body as any).data.session.order?.id).toBe("order-1");
   });
 });
 

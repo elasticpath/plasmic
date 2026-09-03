@@ -83,12 +83,13 @@ type ConfirmOutcome = "succeeded" | "requires_action" | "failed" | "unknown";
 
 /**
  * Classify confirmOrder using documented/typed fields: OrderResponse.payment,
- * nested payment_intent.status, SDK error, or thrown Error. A 200 with only
- * { id } is success, matching /pay tests.
- * 
- * unknown is an internal outcome, not a PaymentStatus. It means EP failed
- * without a documented PI/order signal, so resume remains retryable without
- * claiming 3DS is still required.
+ * nested payment_intent.status, SDK error, or thrown Error.
+ *
+ * unknown is an internal outcome, not a PaymentStatus. Unrecognised 200s and
+ * confirm failures without a documented PI/order signal stay retryable
+ * without claiming 3DS is still required or completing the session.
+ * Unlike /pay, resume has no adapter result — only confirmOrder — so a bare
+ * `{ id }` must not be treated as success.
  */
 export function classifyConfirmOrderResult(
   result: unknown,
@@ -150,7 +151,7 @@ export function classifyConfirmOrderResult(
     return { outcome: "failed", errorMessage: "order cancelled" };
   }
 
-  return { outcome: "succeeded" };
+  return { outcome: "unknown" };
 }
 
 async function persistOpenSession(
@@ -310,14 +311,9 @@ export async function handleResumePayment(
 
   const freshHash = hashCart(freshCartItems);
   if (freshHash !== session.cartHash) {
-    const refreshed: CheckoutSession = { ...session, cartHash: freshHash };
-    const { headers, storeError } = await persistOpenSession(
-      ctx,
-      req,
-      ttl,
-      refreshed
-    );
-    if (storeError) return storeError;
+    // Do not persist the new hash. The stored hash is the snapshot the
+    // existing PaymentIntent was created against; rewriting it would let a
+    // later resume confirm that PI against a different cart.
     return {
       status: 409,
       body: {
@@ -326,9 +322,8 @@ export async function handleResumePayment(
           message: "Cart has changed since session was created",
           code: "CART_MISMATCH",
         },
-        data: { session: toClientSession(refreshed) },
+        data: { session: toClientSession(session) },
       },
-      headers,
     };
   }
 
