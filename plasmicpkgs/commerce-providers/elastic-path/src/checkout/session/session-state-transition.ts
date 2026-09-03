@@ -3,8 +3,9 @@
  * given the previous session and a transition event.
  *
  * Slice 1: open → complete on payment succeeded; open → open (with
- * payment.status=failed) on payment failed.
- * Stripe 3DS: open → open with payment.status=requires_action (no order).
+ * payment.status=failed) on payment failed. An existing unpaid order
+ * (resume after checkoutApi) is kept; /pay failure has no order yet.
+ * Stripe 3DS: open → open with payment.status=requires_action.
  */
 import type { CheckoutSession } from "./types";
 
@@ -52,7 +53,7 @@ export function applyPaymentFailed(
   return {
     ...session,
     status: "open",
-    order: null,
+    order: session.order,
     payment: {
       ...session.payment,
       status: "failed",
@@ -64,7 +65,8 @@ export function applyPaymentFailed(
   };
 }
 
-/** Persist a 3DS / SCA challenge. Session stays open and retryable; no order. */
+/** Persist a 3DS / SCA challenge. Session stays open and retryable.
+ *  Does not create an order; an existing unpaid order (resume retry) is kept. */
 export function applyPaymentRequiresAction(
   session: CheckoutSession,
   event: PaymentRequiresActionEvent
@@ -72,7 +74,7 @@ export function applyPaymentRequiresAction(
   return {
     ...session,
     status: "open",
-    order: null,
+    order: session.order,
     payment: {
       ...session.payment,
       status: "requires_action",

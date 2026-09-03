@@ -18,6 +18,7 @@ const mockUpdateSession = jest.fn().mockResolvedValue({});
 const mockCalcShipping = jest.fn().mockResolvedValue({});
 const mockPlaceOrder = jest.fn().mockResolvedValue({});
 const mockConfirmPayment = jest.fn().mockResolvedValue({});
+const mockResumePayment = jest.fn().mockResolvedValue({});
 const mockReset = jest.fn().mockResolvedValue(undefined);
 const mockRefresh = jest.fn().mockResolvedValue(undefined);
 
@@ -50,6 +51,7 @@ jest.mock("../use-checkout-session", () => ({
     calculateShipping: mockCalcShipping,
     placeOrder: mockPlaceOrder,
     confirmPayment: mockConfirmPayment,
+    resumePayment: mockResumePayment,
     reset: mockReset,
     refresh: mockRefresh,
   }),
@@ -216,6 +218,7 @@ describe("EPCheckoutSessionProvider", () => {
         calculateShipping: mockCalcShipping,
         placeOrder: mockPlaceOrder,
         confirmPayment: mockConfirmPayment,
+        resumePayment: mockResumePayment,
         reset: mockReset,
         refresh: mockRefresh,
       });
@@ -241,6 +244,7 @@ describe("EPCheckoutSessionProvider", () => {
         calculateShipping: mockCalcShipping,
         placeOrder: mockPlaceOrder,
         confirmPayment: mockConfirmPayment,
+        resumePayment: mockResumePayment,
         reset: mockReset,
         refresh: mockRefresh,
       });
@@ -292,6 +296,19 @@ describe("EPCheckoutSessionProvider", () => {
         await ref.current.confirmPayment({ paymentIntentId: "pi_123" });
       });
       expect(mockConfirmPayment).toHaveBeenCalledWith({ paymentIntentId: "pi_123" });
+    });
+
+    it("exposes resumePayment refAction", async () => {
+      const ref = React.createRef<any>();
+      render(
+        <EPCheckoutSessionProvider ref={ref}>
+          <span>content</span>
+        </EPCheckoutSessionProvider>
+      );
+      await act(async () => {
+        await ref.current.resumePayment({});
+      });
+      expect(mockResumePayment).toHaveBeenCalledWith({});
     });
 
     it("exposes reset refAction", async () => {
@@ -416,6 +433,7 @@ describe("EPCheckoutSessionProvider", () => {
       expect(actions.calculateShipping).toBeDefined();
       expect(actions.placeOrder).toBeDefined();
       expect(actions.confirmPayment).toBeDefined();
+      expect(actions.resumePayment).toBeDefined();
       expect(actions.reset).toBeDefined();
     });
   });
@@ -452,6 +470,7 @@ describe("EPCheckoutSessionProvider", () => {
         calculateShipping: mockCalcShipping,
         placeOrder: mockPlaceOrder,
         confirmPayment: mockConfirmPayment,
+        resumePayment: mockResumePayment,
         reset: mockReset,
         refresh: mockRefresh,
       });
@@ -479,6 +498,7 @@ describe("EPCheckoutSessionProvider", () => {
         calculateShipping: mockCalcShipping,
         placeOrder: mockPlaceOrder,
         confirmPayment: mockConfirmPayment,
+        resumePayment: mockResumePayment,
         reset: mockReset,
         refresh: mockRefresh,
       });

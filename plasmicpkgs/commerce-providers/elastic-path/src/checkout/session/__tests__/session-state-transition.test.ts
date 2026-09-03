@@ -79,6 +79,16 @@ describe("applyPaymentFailed", () => {
     });
     expect(result.order).toBeNull();
   });
+
+  it("preserves an existing unpaid order (resume after checkoutApi)", () => {
+    const withOrder = makeSession({ order: { id: "order-unpaid" } });
+    const result = applyPaymentFailed(withOrder, {
+      errorMessage: "PaymentIntent canceled",
+    });
+    expect(result.order).toEqual({ id: "order-unpaid" });
+    expect(result.status).toBe("open");
+    expect(result.payment.status).toBe("failed");
+  });
 });
 
 describe("applyPaymentRequiresAction", () => {
@@ -140,5 +150,16 @@ describe("applyPaymentRequiresAction", () => {
     expect(second.payment.gatewayMetadata).toMatchObject({
       paymentIntentId: "pi_2",
     });
+  });
+
+  it("preserves an existing unpaid order (resume retry)", () => {
+    const withOrder = makeSession({ order: { id: "order-unpaid" } });
+    const result = applyPaymentRequiresAction(withOrder, {
+      clientToken: "pi_secret",
+      actionData: { type: "stripe_3ds", paymentIntentId: "pi_1" },
+    });
+    expect(result.order).toEqual({ id: "order-unpaid" });
+    expect(result.status).toBe("open");
+    expect(result.payment.status).toBe("requires_action");
   });
 });

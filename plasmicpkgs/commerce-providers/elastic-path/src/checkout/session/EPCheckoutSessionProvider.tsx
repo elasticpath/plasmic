@@ -76,6 +76,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
     calculateShipping: calcShippingFn,
     placeOrder: placeOrderFn,
     confirmPayment: confirmPaymentFn,
+    resumePayment: resumePaymentFn,
     reset: resetFn,
     refresh,
   } = useCheckoutSession(apiBaseUrl);
@@ -202,6 +203,19 @@ const EPCheckoutSessionRuntime = React.forwardRef<
     [confirmPaymentFn]
   );
 
+  const handleResumePayment = useCallback(
+    async (resumeData?: Record<string, unknown>) => {
+      try {
+        return await resumePaymentFn(resumeData ?? {});
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        log.error("resumePayment failed", { message } as Record<string, unknown>);
+        return { success: false, error: { message } };
+      }
+    },
+    [resumePaymentFn]
+  );
+
   const handleReset = useCallback(async () => {
     try {
       await resetFn();
@@ -218,6 +232,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
     calculateShipping: handleCalculateShipping,
     placeOrder: handlePlaceOrder,
     confirmPayment: handleConfirmPayment,
+    resumePayment: handleResumePayment,
     reset: handleReset,
   }));
 
@@ -232,6 +247,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
       createSession: handleCreateSession,
       placeOrder: handlePlaceOrder,
       confirmPayment: handleConfirmPayment,
+      resumePayment: handleResumePayment,
       reset: handleReset,
     }),
     [
@@ -243,6 +259,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
       handleCreateSession,
       handlePlaceOrder,
       handleConfirmPayment,
+      handleResumePayment,
       handleReset,
     ]
   );
@@ -356,8 +373,13 @@ export const epCheckoutSessionProviderMeta: CodeComponentMeta<EPCheckoutSessionP
       },
       confirmPayment: {
         description:
-          "Confirm a gateway action (e.g. 3DS authentication)",
+          "Confirm a gateway action (e.g. Clover 3DS authentication)",
         argTypes: [{ name: "confirmData", type: "object" }],
+      },
+      resumePayment: {
+        description:
+          "Resume a Stripe PaymentIntent after 3DS (server checkoutApi + confirmOrder)",
+        argTypes: [{ name: "resumeData", type: "object" }],
       },
       reset: {
         description: "Reset the checkout session",
