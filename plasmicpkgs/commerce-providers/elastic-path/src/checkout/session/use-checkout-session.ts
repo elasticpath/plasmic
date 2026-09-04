@@ -51,6 +51,11 @@ export interface UseCheckoutSessionReturn {
   placeOrder: (gatewayData: Record<string, unknown>) => Promise<SessionApiResponse>;
   /** Resume a Stripe PaymentIntent after 3DS (POST …/resume-payment). */
   resumePayment: (resumeData?: Record<string, unknown>) => Promise<SessionApiResponse>;
+  /**
+   * Unlink the cart PaymentIntent after a failed/cancelled Stripe 3DS
+   * challenge (POST …/abandon-payment).
+   */
+  abandonPayment: () => Promise<SessionApiResponse>;
   /** Confirm a gateway action (e.g. Clover 3DS). */
   confirmPayment: (confirmData: Record<string, unknown>) => Promise<SessionApiResponse>;
   /** Clear the session cookie and reset local state. */
@@ -145,6 +150,18 @@ export function useCheckoutSession(
     [sessionUrl, mutate]
   );
 
+  const abandonPayment = useCallback(async (): Promise<SessionApiResponse> => {
+    const resp = await sessionFetch<SessionApiResponse>(
+      `${sessionUrl}/abandon-payment`,
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+      }
+    );
+    await mutate();
+    return resp;
+  }, [sessionUrl, mutate]);
+
   const confirmPayment = useCallback(
     async (confirmData: Record<string, unknown>): Promise<SessionApiResponse> => {
       const resp = await sessionFetch<SessionApiResponse>(
@@ -179,6 +196,7 @@ export function useCheckoutSession(
     calculateShipping,
     placeOrder,
     resumePayment,
+    abandonPayment,
     confirmPayment,
     reset,
     refresh,

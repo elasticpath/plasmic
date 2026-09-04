@@ -10,4 +10,5 @@ export { handleUpdateSession } from "./update-session";
 export { handleCalculateShipping } from "./calculate-shipping";
 export { handlePay } from "./pay";
 export { handleResumePayment } from "./resume-payment";
+export { handleAbandonPayment } from "./abandon-payment";
 export { handleConfirm } from "./confirm";

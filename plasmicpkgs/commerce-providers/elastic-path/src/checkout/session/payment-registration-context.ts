@@ -11,14 +11,46 @@
  */
 import React, { useContext } from "react";
 
+/**
+ * Session slice returned by /pay and passed into Stripe's requires_action
+ * continuation. clientToken is the server-persisted PaymentIntent
+ * client_secret — not a client-claimed PI id or status.
+ */
+export interface GatewayPaySession {
+  status?: string;
+  payment?: {
+    gateway?: string | null;
+    status?: string;
+    clientToken?: string | null;
+  } | null;
+}
+
+export interface GatewayContinuationResult {
+  success?: boolean;
+  data?: { session?: GatewayPaySession | null };
+  error?: { message?: string; code?: string };
+  paymentError?: string;
+}
+
 export interface GatewayRegistration {
   name: string;
   /** Called by the provider to get gateway-specific data for the /pay request. */
   confirm: () => Promise<Record<string, unknown>>;
+  /**
+   * Stripe-only. After /pay returns requires_action, the provider awaits this
+   * to run handleNextAction + resumePayment. Clover omits it.
+   */
+  completeRequiresAction?: (
+    paySession: GatewayPaySession
+  ) => Promise<GatewayContinuationResult>;
 }
 
 export interface PaymentRegistrationContextValue {
-  registerGateway(name: string, confirm: GatewayRegistration["confirm"]): void;
+  registerGateway(
+    name: string,
+    confirm: GatewayRegistration["confirm"],
+    options?: Pick<GatewayRegistration, "completeRequiresAction">
+  ): void;
   getRegisteredGateway(): GatewayRegistration | null;
 }
 

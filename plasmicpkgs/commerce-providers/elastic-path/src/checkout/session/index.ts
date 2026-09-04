@@ -24,6 +24,8 @@ export {
 export type {
   PaymentRegistrationContextValue,
   GatewayRegistration,
+  GatewayPaySession,
+  GatewayContinuationResult,
 } from "./payment-registration-context";
 
 // Session store
@@ -84,6 +86,7 @@ export {
   EPStripePayment,
   epStripePaymentMeta,
   registerEPStripePayment,
+  runStripeRequiresAction,
 } from "./EPStripePayment";
 
 export {

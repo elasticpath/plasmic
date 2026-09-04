@@ -16,6 +16,7 @@ export {
   handleGetSession,
   handlePay,
   handleResumePayment,
+  handleAbandonPayment,
   handleUpdateSession,
 } from "./api/endpoints/checkout-session";
 
