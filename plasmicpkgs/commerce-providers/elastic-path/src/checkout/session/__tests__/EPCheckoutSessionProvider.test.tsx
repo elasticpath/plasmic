@@ -514,3 +514,183 @@ describe("EPCheckoutSessionProvider", () => {
     });
   });
 });
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { usePaymentRegistration } = require("../payment-registration-context") as {
+  usePaymentRegistration: () => {
+    registerGateway: (
+      name: string,
+      confirm: () => Promise<Record<string, unknown>>,
+      options?: { completeRequiresAction?: (s: any) => Promise<any> }
+    ) => void;
+  } | null;
+};
+
+function RegisterGateway(props: {
+  name: string;
+  confirm: () => Promise<Record<string, unknown>>;
+  completeRequiresAction?: (s: any) => Promise<any>;
+}) {
+  const reg = usePaymentRegistration();
+  React.useEffect(() => {
+    reg?.registerGateway(props.name, props.confirm, {
+      completeRequiresAction: props.completeRequiresAction,
+    });
+  }, [reg, props.name, props.confirm, props.completeRequiresAction]);
+  return null;
+}
+
+describe("EPCheckoutSessionProvider placeOrder 3DS continuation", () => {
+  const mockConfirm = jest.fn().mockResolvedValue({ confirmation_token: "ct_1" });
+  const mockCompleteRequiresAction = jest.fn();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUsePlasmicCanvasContext.mockReturnValue(false);
+    mockConfirm.mockResolvedValue({ confirmation_token: "ct_1" });
+    mockCompleteRequiresAction.mockResolvedValue({
+      success: true,
+      data: { session: { status: "complete", order: { id: "ord-1" } } },
+    });
+  });
+
+  async function placeWithGateway(
+    name: string,
+    completeRequiresAction?: (s: any) => Promise<any>
+  ) {
+    const ref = React.createRef<any>();
+    render(
+      <EPCheckoutSessionProvider ref={ref} autoCreate={false}>
+        <RegisterGateway
+          name={name}
+          confirm={mockConfirm}
+          completeRequiresAction={completeRequiresAction}
+        />
+      </EPCheckoutSessionProvider>
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    let result: any;
+    await act(async () => {
+      result = await ref.current.placeOrder();
+    });
+    return result;
+  }
+
+  it("invokes Stripe completeRequiresAction after /pay requires_action", async () => {
+    const paySession = {
+      status: "open",
+      payment: {
+        gateway: "stripe",
+        status: "requires_action",
+        clientToken: "pi_secret",
+      },
+    };
+    mockPlaceOrder.mockResolvedValue({
+      success: true,
+      data: { session: paySession },
+    });
+
+    const result = await placeWithGateway("stripe", mockCompleteRequiresAction);
+
+    expect(mockConfirm).toHaveBeenCalledTimes(1);
+    expect(mockPlaceOrder).toHaveBeenCalledWith({
+      gateway: "stripe",
+      confirmation_token: "ct_1",
+    });
+    expect(mockCompleteRequiresAction).toHaveBeenCalledTimes(1);
+    expect(mockCompleteRequiresAction).toHaveBeenCalledWith(paySession);
+    expect(mockConfirmPayment).not.toHaveBeenCalled();
+    expect(mockResumePayment).not.toHaveBeenCalled();
+    expect(result.data.session.status).toBe("complete");
+  });
+
+  it("does not invoke completeRequiresAction on normal non-3DS success", async () => {
+    mockPlaceOrder.mockResolvedValue({
+      success: true,
+      data: { session: { status: "complete", order: { id: "ord-1" } } },
+    });
+
+    const result = await placeWithGateway("stripe", mockCompleteRequiresAction);
+
+    expect(mockCompleteRequiresAction).not.toHaveBeenCalled();
+    expect(result.data.session.status).toBe("complete");
+  });
+
+  it("does not invoke completeRequiresAction on failed payment", async () => {
+    mockPlaceOrder.mockResolvedValue({
+      success: true,
+      data: {
+        session: { status: "open", payment: { status: "failed", gateway: "stripe" } },
+      },
+      paymentError: "card declined",
+    });
+
+    await placeWithGateway("stripe", mockCompleteRequiresAction);
+
+    expect(mockCompleteRequiresAction).not.toHaveBeenCalled();
+  });
+
+  it("Clover placeOrder does not invoke Stripe 3DS continuation", async () => {
+    mockPlaceOrder.mockResolvedValue({
+      success: true,
+      data: {
+        session: {
+          status: "open",
+          payment: { status: "requires_action", gateway: "clover" },
+        },
+      },
+    });
+
+    await placeWithGateway("clover");
+
+    expect(mockCompleteRequiresAction).not.toHaveBeenCalled();
+    expect(mockConfirmPayment).not.toHaveBeenCalled();
+    expect(mockPlaceOrder).toHaveBeenCalledWith({
+      gateway: "clover",
+      confirmation_token: "ct_1",
+    });
+  });
+
+  it("rejects a second placeOrder while the first is in flight", async () => {
+    let resolvePay: (v: any) => void = () => {};
+    mockPlaceOrder.mockReturnValue(
+      new Promise((resolve) => {
+        resolvePay = resolve;
+      })
+    );
+    const ref = React.createRef<any>();
+    render(
+      <EPCheckoutSessionProvider ref={ref} autoCreate={false}>
+        <RegisterGateway
+          name="stripe"
+          confirm={mockConfirm}
+          completeRequiresAction={mockCompleteRequiresAction}
+        />
+      </EPCheckoutSessionProvider>
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    let first: Promise<any>;
+    await act(async () => {
+      first = ref.current.placeOrder();
+    });
+    let second: any;
+    await act(async () => {
+      second = await ref.current.placeOrder();
+    });
+    expect(second.error.code).toBe("IN_FLIGHT");
+    expect(mockConfirm).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolvePay({
+        success: true,
+        data: { session: { status: "complete" } },
+      });
+      await first;
+    });
+  });
+});

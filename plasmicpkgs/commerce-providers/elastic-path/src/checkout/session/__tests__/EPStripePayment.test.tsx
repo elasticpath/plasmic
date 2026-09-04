@@ -13,8 +13,11 @@
 
 // Mock @stripe/stripe-js
 jest.mock("@stripe/stripe-js", () => ({
+  __esModule: true,
   loadStripe: jest.fn().mockResolvedValue({
     confirmPayment: jest.fn(),
+    handleNextAction: jest.fn(),
+    createConfirmationToken: jest.fn(),
   }),
 }));
 
@@ -40,6 +43,7 @@ jest.mock("../use-checkout-session", () => ({
     calculateShipping: jest.fn(),
     placeOrder: jest.fn(),
     confirmPayment: mockConfirmPayment,
+    resumePayment: jest.fn(),
     reset: jest.fn(),
     refresh: jest.fn(),
   }),
@@ -66,9 +70,18 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { EPStripePayment, epStripePaymentMeta } = require("../EPStripePayment") as {
+const {
+  EPStripePayment,
+  epStripePaymentMeta,
+  runStripeRequiresAction,
+} = require("../EPStripePayment") as {
   EPStripePayment: React.FC<any>;
   epStripePaymentMeta: any;
+  runStripeRequiresAction: (opts: {
+    stripe: { handleNextAction: jest.Mock };
+    clientSecret: string;
+    resumePayment: jest.Mock;
+  }) => Promise<any>;
 };
 
 // ---------------------------------------------------------------------------
@@ -76,7 +89,11 @@ const { EPStripePayment, epStripePaymentMeta } = require("../EPStripePayment") a
 // ---------------------------------------------------------------------------
 
 describe("EPStripePayment", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    const { usePlasmicCanvasContext } = require("@plasmicapp/host");
+    usePlasmicCanvasContext.mockReturnValue(false);
+  });
 
   it("renders children in auto mode (outside editor)", () => {
     render(
@@ -174,5 +191,141 @@ describe("EPStripePayment", () => {
     expect(epStripePaymentMeta.props.layout).toBeDefined();
     expect(epStripePaymentMeta.props.previewState).toBeDefined();
     expect(epStripePaymentMeta.refActions.submitPayment).toBeDefined();
+  });
+});
+
+describe("runStripeRequiresAction", () => {
+  const mockHandleNextAction = jest.fn();
+  const mockResumePayment = jest.fn();
+  const stripe = { handleNextAction: mockHandleNextAction };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockHandleNextAction.mockResolvedValue({
+      paymentIntent: { status: "succeeded" },
+    });
+    mockResumePayment.mockResolvedValue({
+      success: true,
+      data: { session: { status: "complete", order: { id: "ord-1" } } },
+    });
+  });
+
+  it("handleNextAction uses the session client secret then resumePayment()", async () => {
+    const result = await runStripeRequiresAction({
+      stripe,
+      clientSecret: "pi_abc_secret",
+      resumePayment: mockResumePayment,
+    });
+
+    expect(mockHandleNextAction).toHaveBeenCalledTimes(1);
+    expect(mockHandleNextAction).toHaveBeenCalledWith({
+      clientSecret: "pi_abc_secret",
+    });
+    expect(mockResumePayment).toHaveBeenCalledTimes(1);
+    expect(mockResumePayment).toHaveBeenCalledWith();
+    expect(result.success).toBe(true);
+    expect(result.data.session.status).toBe("complete");
+  });
+
+  it("does not pass PI id, status, or client secret to resumePayment", async () => {
+    await runStripeRequiresAction({
+      stripe,
+      clientSecret: "pi_abc_secret",
+      resumePayment: mockResumePayment,
+    });
+
+    expect(mockResumePayment.mock.calls[0]).toEqual([]);
+  });
+
+  it("does not call resumePayment on authentication failure", async () => {
+    mockHandleNextAction.mockResolvedValue({
+      error: {
+        code: "payment_intent_authentication_failure",
+        message: "We are unable to authenticate your payment method.",
+      },
+      paymentIntent: { status: "requires_payment_method" },
+    });
+
+    const result = await runStripeRequiresAction({
+      stripe,
+      clientSecret: "pi_abc_secret",
+      resumePayment: mockResumePayment,
+    });
+
+    expect(mockResumePayment).not.toHaveBeenCalled();
+    expect(mockHandleNextAction).toHaveBeenCalledTimes(1);
+    expect(result.success).toBe(false);
+    expect(result.error.message).toMatch(/authentication failed/i);
+    expect(result.error.message).not.toMatch(/3DS still required/i);
+  });
+
+  it("does not call resumePayment when the shopper cancels 3DS", async () => {
+    mockHandleNextAction.mockResolvedValue({
+      error: { message: "canceled" },
+      paymentIntent: { status: "canceled" },
+    });
+
+    const result = await runStripeRequiresAction({
+      stripe,
+      clientSecret: "pi_abc_secret",
+      resumePayment: mockResumePayment,
+    });
+
+    expect(mockResumePayment).not.toHaveBeenCalled();
+    expect(result.success).toBe(false);
+    expect(result.error.message).toMatch(/cancelled|canceled/i);
+  });
+
+  it("does not call resumePayment for requires_source", async () => {
+    mockHandleNextAction.mockResolvedValue({
+      paymentIntent: { status: "requires_source" },
+    });
+
+    const result = await runStripeRequiresAction({
+      stripe,
+      clientSecret: "pi_abc_secret",
+      resumePayment: mockResumePayment,
+    });
+
+    expect(mockResumePayment).not.toHaveBeenCalled();
+    expect(result.success).toBe(false);
+  });
+
+  it("resume 409 PAYMENT_STILL_REQUIRES_ACTION does not call handleNextAction again", async () => {
+    mockResumePayment.mockResolvedValue({
+      success: false,
+      error: {
+        message: "Payment still requires action",
+        code: "PAYMENT_STILL_REQUIRES_ACTION",
+      },
+    });
+
+    await runStripeRequiresAction({
+      stripe,
+      clientSecret: "pi_abc_secret",
+      resumePayment: mockResumePayment,
+    });
+
+    expect(mockHandleNextAction).toHaveBeenCalledTimes(1);
+    expect(mockResumePayment).toHaveBeenCalledTimes(1);
+  });
+
+  it("resume 502 EP_ERROR does not call handleNextAction again or claim 3DS is required", async () => {
+    mockResumePayment.mockResolvedValue({
+      success: false,
+      error: { code: "EP_ERROR" },
+    });
+
+    const result = await runStripeRequiresAction({
+      stripe,
+      clientSecret: "pi_abc_secret",
+      resumePayment: mockResumePayment,
+    });
+
+    expect(mockHandleNextAction).toHaveBeenCalledTimes(1);
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe("EP_ERROR");
+    expect(result.error.message).not.toMatch(/3DS still required/i);
+    expect(result.error.message).toMatch(/couldn't confirm/i);
   });
 });

@@ -86,8 +86,12 @@ const EPCheckoutSessionRuntime = React.forwardRef<
 
   const paymentRegValue = useMemo<PaymentRegistrationContextValue>(
     () => ({
-      registerGateway(name, confirm) {
-        gatewayRef.current = { name, confirm };
+      registerGateway(name, confirm, options) {
+        gatewayRef.current = {
+          name,
+          confirm,
+          completeRequiresAction: options?.completeRequiresAction,
+        };
       },
       getRegisteredGateway() {
         return gatewayRef.current;
@@ -156,7 +160,19 @@ const EPCheckoutSessionRuntime = React.forwardRef<
     }
   }, [calcShippingFn]);
 
+  const placeOrderInFlightRef = useRef(false);
+
   const handlePlaceOrder = useCallback(async () => {
+    if (placeOrderInFlightRef.current) {
+      return {
+        success: false,
+        error: {
+          message: "Order is already being placed",
+          code: "IN_FLIGHT",
+        },
+      };
+    }
+    placeOrderInFlightRef.current = true;
     try {
       // Free orders (zero total) need no card / gateway — the server settles
       // them with the manual gateway. Don't ask a registered gateway to
@@ -182,11 +198,29 @@ const EPCheckoutSessionRuntime = React.forwardRef<
 
       // Ask the gateway component for its data (e.g. tokenize the card)
       const gwData = await gw.confirm();
-      return await placeOrderFn({ gateway: gw.name, ...gwData });
+      const payResp = await placeOrderFn({ gateway: gw.name, ...gwData });
+      const paySession = payResp?.data?.session;
+
+      // Stripe 3DS: /pay left the session open with requires_action. Run
+      // handleNextAction + resumePayment before returning so the form stays
+      // in "placing" until checkout is actually complete or failed.
+      // Clover (and any gateway without completeRequiresAction) is unchanged.
+      if (
+        payResp?.success &&
+        paySession?.payment?.status === "requires_action" &&
+        gw.name === "stripe" &&
+        typeof gw.completeRequiresAction === "function"
+      ) {
+        return await gw.completeRequiresAction(paySession);
+      }
+
+      return payResp;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       log.error("placeOrder failed", { message } as Record<string, unknown>);
       return { success: false, error: { message } };
+    } finally {
+      placeOrderInFlightRef.current = false;
     }
   }, [placeOrderFn, session]);
 
