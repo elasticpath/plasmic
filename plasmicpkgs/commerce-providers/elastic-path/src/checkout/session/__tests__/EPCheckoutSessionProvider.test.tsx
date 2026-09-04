@@ -19,6 +19,7 @@ const mockCalcShipping = jest.fn().mockResolvedValue({});
 const mockPlaceOrder = jest.fn().mockResolvedValue({});
 const mockConfirmPayment = jest.fn().mockResolvedValue({});
 const mockResumePayment = jest.fn().mockResolvedValue({});
+const mockAbandonPayment = jest.fn().mockResolvedValue({ success: true });
 const mockReset = jest.fn().mockResolvedValue(undefined);
 const mockRefresh = jest.fn().mockResolvedValue(undefined);
 
@@ -52,6 +53,7 @@ jest.mock("../use-checkout-session", () => ({
     placeOrder: mockPlaceOrder,
     confirmPayment: mockConfirmPayment,
     resumePayment: mockResumePayment,
+    abandonPayment: mockAbandonPayment,
     reset: mockReset,
     refresh: mockRefresh,
   }),
@@ -552,6 +554,40 @@ describe("EPCheckoutSessionProvider placeOrder 3DS continuation", () => {
       success: true,
       data: { session: { status: "complete", order: { id: "ord-1" } } },
     });
+    mockAbandonPayment.mockResolvedValue({ success: true });
+    useCheckoutSession.mockReturnValue({
+      session: {
+        id: "sess-test",
+        status: "open",
+        cartId: "cart-1",
+        customerInfo: null,
+        shippingAddress: null,
+        billingAddress: null,
+        selectedShippingRateId: null,
+        availableShippingRates: [],
+        totals: null,
+        payment: {
+          gateway: null,
+          status: "idle",
+          clientToken: null,
+          gatewayMetadata: {},
+          actionData: null,
+        },
+        order: null,
+        expiresAt: Date.now() + 60_000,
+      },
+      isLoading: false,
+      error: null,
+      createSession: mockCreateSession,
+      updateSession: mockUpdateSession,
+      calculateShipping: mockCalcShipping,
+      placeOrder: mockPlaceOrder,
+      confirmPayment: mockConfirmPayment,
+      resumePayment: mockResumePayment,
+      abandonPayment: mockAbandonPayment,
+      reset: mockReset,
+      refresh: mockRefresh,
+    });
   });
 
   async function placeWithGateway(
@@ -603,6 +639,7 @@ describe("EPCheckoutSessionProvider placeOrder 3DS continuation", () => {
     expect(mockCompleteRequiresAction).toHaveBeenCalledWith(paySession);
     expect(mockConfirmPayment).not.toHaveBeenCalled();
     expect(mockResumePayment).not.toHaveBeenCalled();
+    expect(mockAbandonPayment).not.toHaveBeenCalled();
     expect(result.data.session.status).toBe("complete");
   });
 
@@ -615,6 +652,7 @@ describe("EPCheckoutSessionProvider placeOrder 3DS continuation", () => {
     const result = await placeWithGateway("stripe", mockCompleteRequiresAction);
 
     expect(mockCompleteRequiresAction).not.toHaveBeenCalled();
+    expect(mockAbandonPayment).not.toHaveBeenCalled();
     expect(result.data.session.status).toBe("complete");
   });
 
@@ -630,6 +668,7 @@ describe("EPCheckoutSessionProvider placeOrder 3DS continuation", () => {
     await placeWithGateway("stripe", mockCompleteRequiresAction);
 
     expect(mockCompleteRequiresAction).not.toHaveBeenCalled();
+    expect(mockAbandonPayment).not.toHaveBeenCalled();
   });
 
   it("Clover placeOrder does not invoke Stripe 3DS continuation", async () => {
@@ -647,10 +686,117 @@ describe("EPCheckoutSessionProvider placeOrder 3DS continuation", () => {
 
     expect(mockCompleteRequiresAction).not.toHaveBeenCalled();
     expect(mockConfirmPayment).not.toHaveBeenCalled();
+    expect(mockAbandonPayment).not.toHaveBeenCalled();
     expect(mockPlaceOrder).toHaveBeenCalledWith({
       gateway: "clover",
       confirmation_token: "ct_1",
     });
+  });
+
+  function leftoverRequiresActionSession(overrides: Record<string, unknown> = {}) {
+    return {
+      session: {
+        id: "sess-test",
+        status: "open",
+        cartId: "cart-1",
+        customerInfo: null,
+        shippingAddress: null,
+        billingAddress: null,
+        selectedShippingRateId: null,
+        availableShippingRates: [],
+        totals: { total: 1000, currency: "USD" },
+        payment: {
+          gateway: "stripe",
+          status: "requires_action",
+          clientToken: "pi_old_secret",
+          gatewayMetadata: { paymentIntentId: "pi_old" },
+          actionData: { type: "stripe_3ds", paymentIntentId: "pi_old" },
+        },
+        order: null,
+        expiresAt: Date.now() + 60_000,
+        ...overrides,
+      },
+      isLoading: false,
+      error: null,
+      createSession: mockCreateSession,
+      updateSession: mockUpdateSession,
+      calculateShipping: mockCalcShipping,
+      placeOrder: mockPlaceOrder,
+      confirmPayment: mockConfirmPayment,
+      resumePayment: mockResumePayment,
+      abandonPayment: mockAbandonPayment,
+      reset: mockReset,
+      refresh: mockRefresh,
+    };
+  }
+
+  it("does not abandon merely because the session is still requires_action", async () => {
+    useCheckoutSession.mockReturnValue(leftoverRequiresActionSession());
+    mockPlaceOrder.mockResolvedValue({
+      success: true,
+      data: { session: { status: "complete", order: { id: "ord-2" } } },
+    });
+
+    const result = await placeWithGateway("stripe", mockCompleteRequiresAction);
+
+    expect(mockAbandonPayment).not.toHaveBeenCalled();
+    expect(mockPlaceOrder).toHaveBeenCalledTimes(1);
+    expect(mockResumePayment).not.toHaveBeenCalled();
+    expect(result.data.session.status).toBe("complete");
+  });
+
+  it("does not abandon a stuck resume (requires_action after 409/502, unpaid order present)", async () => {
+    useCheckoutSession.mockReturnValue(
+      leftoverRequiresActionSession({ order: { id: "order-unpaid" } })
+    );
+    const paySession = {
+      status: "open",
+      payment: {
+        gateway: "stripe",
+        status: "requires_action",
+        clientToken: "pi_old_secret",
+      },
+      order: { id: "order-unpaid" },
+    };
+    mockPlaceOrder.mockResolvedValue({
+      success: true,
+      data: { session: paySession },
+    });
+
+    await placeWithGateway("stripe", mockCompleteRequiresAction);
+
+    expect(mockAbandonPayment).not.toHaveBeenCalled();
+    expect(mockPlaceOrder).toHaveBeenCalledTimes(1);
+    expect(mockCompleteRequiresAction).toHaveBeenCalledWith(paySession);
+    expect(mockResumePayment).not.toHaveBeenCalled();
+  });
+
+  it("Clover leftover requires_action does not call abandonPayment", async () => {
+    useCheckoutSession.mockReturnValue(
+      leftoverRequiresActionSession({
+        payment: {
+          gateway: "clover",
+          status: "requires_action",
+          clientToken: "clover-token",
+          gatewayMetadata: {},
+          actionData: {},
+        },
+      })
+    );
+    mockPlaceOrder.mockResolvedValue({
+      success: true,
+      data: {
+        session: {
+          status: "open",
+          payment: { status: "requires_action", gateway: "clover" },
+        },
+      },
+    });
+
+    await placeWithGateway("clover");
+
+    expect(mockAbandonPayment).not.toHaveBeenCalled();
+    expect(mockPlaceOrder).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a second placeOrder while the first is in flight", async () => {

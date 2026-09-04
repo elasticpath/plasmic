@@ -44,6 +44,7 @@ jest.mock("../use-checkout-session", () => ({
     placeOrder: jest.fn(),
     confirmPayment: mockConfirmPayment,
     resumePayment: jest.fn(),
+    abandonPayment: jest.fn(),
     reset: jest.fn(),
     refresh: jest.fn(),
   }),
@@ -81,6 +82,7 @@ const {
     stripe: { handleNextAction: jest.Mock };
     clientSecret: string;
     resumePayment: jest.Mock;
+    abandonPayment: jest.Mock;
   }) => Promise<any>;
 };
 
@@ -197,7 +199,20 @@ describe("EPStripePayment", () => {
 describe("runStripeRequiresAction", () => {
   const mockHandleNextAction = jest.fn();
   const mockResumePayment = jest.fn();
+  const mockAbandonPayment = jest.fn();
   const stripe = { handleNextAction: mockHandleNextAction };
+
+  const clearedSession = {
+    status: "open",
+    payment: {
+      gateway: "stripe",
+      status: "failed",
+      clientToken: null,
+      actionData: null,
+      gatewayMetadata: {},
+    },
+    order: null,
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -208,6 +223,10 @@ describe("runStripeRequiresAction", () => {
       success: true,
       data: { session: { status: "complete", order: { id: "ord-1" } } },
     });
+    mockAbandonPayment.mockResolvedValue({
+      success: true,
+      data: { session: clearedSession },
+    });
   });
 
   it("handleNextAction uses the session client secret then resumePayment()", async () => {
@@ -215,6 +234,7 @@ describe("runStripeRequiresAction", () => {
       stripe,
       clientSecret: "pi_abc_secret",
       resumePayment: mockResumePayment,
+      abandonPayment: mockAbandonPayment,
     });
 
     expect(mockHandleNextAction).toHaveBeenCalledTimes(1);
@@ -223,6 +243,7 @@ describe("runStripeRequiresAction", () => {
     });
     expect(mockResumePayment).toHaveBeenCalledTimes(1);
     expect(mockResumePayment).toHaveBeenCalledWith();
+    expect(mockAbandonPayment).not.toHaveBeenCalled();
     expect(result.success).toBe(true);
     expect(result.data.session.status).toBe("complete");
   });
@@ -232,12 +253,14 @@ describe("runStripeRequiresAction", () => {
       stripe,
       clientSecret: "pi_abc_secret",
       resumePayment: mockResumePayment,
+      abandonPayment: mockAbandonPayment,
     });
 
     expect(mockResumePayment.mock.calls[0]).toEqual([]);
+    expect(mockAbandonPayment).not.toHaveBeenCalled();
   });
 
-  it("does not call resumePayment on authentication failure", async () => {
+  it("does not call resumePayment on authentication failure; clears the cart PI", async () => {
     mockHandleNextAction.mockResolvedValue({
       error: {
         code: "payment_intent_authentication_failure",
@@ -250,16 +273,22 @@ describe("runStripeRequiresAction", () => {
       stripe,
       clientSecret: "pi_abc_secret",
       resumePayment: mockResumePayment,
+      abandonPayment: mockAbandonPayment,
     });
 
     expect(mockResumePayment).not.toHaveBeenCalled();
+    expect(mockAbandonPayment).toHaveBeenCalledTimes(1);
+    expect(mockAbandonPayment).toHaveBeenCalledWith();
     expect(mockHandleNextAction).toHaveBeenCalledTimes(1);
     expect(result.success).toBe(false);
     expect(result.error.message).toMatch(/authentication failed/i);
     expect(result.error.message).not.toMatch(/3DS still required/i);
+    expect(result.data.session.payment.clientToken).toBeNull();
+    expect(result.data.session.payment.actionData).toBeNull();
+    expect(result.data.session.payment.gatewayMetadata.paymentIntentId).toBeUndefined();
   });
 
-  it("does not call resumePayment when the shopper cancels 3DS", async () => {
+  it("does not call resumePayment when the shopper cancels 3DS; clears the cart PI", async () => {
     mockHandleNextAction.mockResolvedValue({
       error: { message: "canceled" },
       paymentIntent: { status: "canceled" },
@@ -269,14 +298,17 @@ describe("runStripeRequiresAction", () => {
       stripe,
       clientSecret: "pi_abc_secret",
       resumePayment: mockResumePayment,
+      abandonPayment: mockAbandonPayment,
     });
 
     expect(mockResumePayment).not.toHaveBeenCalled();
+    expect(mockAbandonPayment).toHaveBeenCalledTimes(1);
     expect(result.success).toBe(false);
     expect(result.error.message).toMatch(/cancelled|canceled/i);
+    expect(result.data.session.payment.status).toBe("failed");
   });
 
-  it("does not call resumePayment for requires_source", async () => {
+  it("does not call resumePayment for requires_source; clears the cart PI", async () => {
     mockHandleNextAction.mockResolvedValue({
       paymentIntent: { status: "requires_source" },
     });
@@ -285,32 +317,76 @@ describe("runStripeRequiresAction", () => {
       stripe,
       clientSecret: "pi_abc_secret",
       resumePayment: mockResumePayment,
+      abandonPayment: mockAbandonPayment,
     });
 
     expect(mockResumePayment).not.toHaveBeenCalled();
+    expect(mockAbandonPayment).toHaveBeenCalledTimes(1);
     expect(result.success).toBe(false);
   });
 
-  it("resume 409 PAYMENT_STILL_REQUIRES_ACTION does not call handleNextAction again", async () => {
+  it("surfaces an EP error when clearing the cart PI fails and does not resume", async () => {
+    mockHandleNextAction.mockResolvedValue({
+      error: { message: "canceled" },
+      paymentIntent: { status: "canceled" },
+    });
+    mockAbandonPayment.mockResolvedValue({
+      success: false,
+      error: {
+        message: "cannot clear payment intent",
+        code: "EP_ERROR",
+      },
+    });
+
+    const result = await runStripeRequiresAction({
+      stripe,
+      clientSecret: "pi_abc_secret",
+      resumePayment: mockResumePayment,
+      abandonPayment: mockAbandonPayment,
+    });
+
+    expect(mockResumePayment).not.toHaveBeenCalled();
+    expect(mockAbandonPayment).toHaveBeenCalledTimes(1);
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe("EP_ERROR");
+    expect(result.error.message).toMatch(/cannot clear payment intent/i);
+  });
+
+  it("resume 409 PAYMENT_STILL_REQUIRES_ACTION does not abandon or retry handleNextAction", async () => {
     mockResumePayment.mockResolvedValue({
       success: false,
       error: {
         message: "Payment still requires action",
         code: "PAYMENT_STILL_REQUIRES_ACTION",
       },
+      data: {
+        session: {
+          status: "open",
+          order: { id: "order-unpaid" },
+          payment: {
+            status: "requires_action",
+            clientToken: "pi_abc_secret",
+            gatewayMetadata: { paymentIntentId: "pi_abc" },
+          },
+        },
+      },
     });
 
-    await runStripeRequiresAction({
+    const result = await runStripeRequiresAction({
       stripe,
       clientSecret: "pi_abc_secret",
       resumePayment: mockResumePayment,
+      abandonPayment: mockAbandonPayment,
     });
 
     expect(mockHandleNextAction).toHaveBeenCalledTimes(1);
     expect(mockResumePayment).toHaveBeenCalledTimes(1);
+    expect(mockAbandonPayment).not.toHaveBeenCalled();
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe("PAYMENT_STILL_REQUIRES_ACTION");
   });
 
-  it("resume 502 EP_ERROR does not call handleNextAction again or claim 3DS is required", async () => {
+  it("resume 502 EP_ERROR does not abandon or retry handleNextAction", async () => {
     mockResumePayment.mockResolvedValue({
       success: false,
       error: { code: "EP_ERROR" },
@@ -320,9 +396,11 @@ describe("runStripeRequiresAction", () => {
       stripe,
       clientSecret: "pi_abc_secret",
       resumePayment: mockResumePayment,
+      abandonPayment: mockAbandonPayment,
     });
 
     expect(mockHandleNextAction).toHaveBeenCalledTimes(1);
+    expect(mockAbandonPayment).not.toHaveBeenCalled();
     expect(result.success).toBe(false);
     expect(result.error.code).toBe("EP_ERROR");
     expect(result.error.message).not.toMatch(/3DS still required/i);

@@ -33,6 +33,7 @@ const epSdk = require("@epcc-sdk/sdks-shopper") as {
   confirmOrder: jest.Mock;
   createCartPaymentIntent: jest.Mock;
   updateCartPaymentIntent: jest.Mock;
+  updateACart: jest.Mock;
   updateAnOrder: jest.Mock;
   deleteACart: jest.Mock;
   manageCarts: jest.Mock;
@@ -435,6 +436,7 @@ describe("handleResumePayment — success", () => {
     );
     expect(epSdk.createCartPaymentIntent).not.toHaveBeenCalled();
     expect(epSdk.updateCartPaymentIntent).not.toHaveBeenCalled();
+    expect(epSdk.updateACart).not.toHaveBeenCalled();
     expect(adapter.initializePayment).not.toHaveBeenCalled();
     expect(adapter.confirmPayment).not.toHaveBeenCalled();
   });

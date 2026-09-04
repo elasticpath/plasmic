@@ -65,6 +65,32 @@ export function applyPaymentFailed(
   };
 }
 
+/**
+ * After a failed/cancelled Stripe 3DS challenge the cart PI has been
+ * unlinked via Update Cart (`payment_intent_id: ""`). Drop the stored
+ * clientToken / actionData / paymentIntentId so the next /pay is a fresh
+ * createCartPaymentIntent — not a continuation of the abandoned PI.
+ * Does not create or cancel an EP order (failed 3DS is pre-checkoutApi).
+ */
+export function applyAbandonedRequiresAction(
+  session: CheckoutSession
+): CheckoutSession {
+  const restMeta = { ...(session.payment.gatewayMetadata ?? {}) };
+  delete restMeta.paymentIntentId;
+  return {
+    ...session,
+    status: "open",
+    order: session.order,
+    payment: {
+      ...session.payment,
+      status: "failed",
+      clientToken: null,
+      actionData: null,
+      gatewayMetadata: restMeta,
+    },
+  };
+}
+
 /** Persist a 3DS / SCA challenge. Session stays open and retryable.
  *  Does not create an order; an existing unpaid order (resume retry) is kept. */
 export function applyPaymentRequiresAction(

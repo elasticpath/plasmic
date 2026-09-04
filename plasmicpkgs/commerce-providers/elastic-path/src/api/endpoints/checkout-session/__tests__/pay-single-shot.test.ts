@@ -280,6 +280,11 @@ describe("handlePay — single-shot guest happy path", () => {
     expect(epSdk.checkoutApi).not.toHaveBeenCalled();
     expect(epSdk.confirmOrder).not.toHaveBeenCalled();
     expect(epSdk.deleteACart).not.toHaveBeenCalled();
+    expect(epSdk.updateACart).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: { data: { payment_intent_id: "" } },
+      })
+    );
   });
 
   it("cart-hash mismatch returns 409 before payment is attempted", async () => {
