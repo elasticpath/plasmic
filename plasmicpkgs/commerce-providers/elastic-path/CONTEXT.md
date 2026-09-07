@@ -31,13 +31,29 @@ _Avoid_: unstyled components, default theme
 **Server Query**:
 A Studio-authored server-side data binding that invokes a registered `ep.*`
 function during SSR and surfaces the result under `$q.*`. The primary
-data-binding path; client-side provider fetching is the alternative.
+data-binding path; client-side provider fetching is the alternative. Not the
+only thing that renders on the server — see **search server pass**.
 _Avoid_: data query, `$queries` (that is the client data-queries namespace)
+
+**Search server pass**:
+The client-component server render in which `<InstantSearchNext>` executes the
+search and emits `initialResults` into the HTML. Distinct from a **Server
+Query**: no `ep.*` binding, no `$q.*`. It applies `<Configure>` but not
+`initialUiState` or routing state, so it renders the unrefined default first
+page.
+
+**Configure-scoped listing**:
+A catalog-search listing whose scope rides `<Configure filters>` (the
+`baseFilter` prop) rather than URL refinements, and which therefore
+server-renders correctly. The shape both the SEO recommendation and the
+`baseFilter` dev warning turn on.
 
 **EP session scope**:
 The per-request `AsyncLocalStorage` scope established by `withEpSession`
 inside which every `ep.*` function reads auth and cart context. Auth is never
-a function argument. Outside the scope, functions fail soft to `null`/`[]`.
+a function argument. Outside the scope, functions fail soft to `null`/`[]` —
+except in Studio's data-query Configure panel, which has no **mock floor**
+behind it and throws instead (ADR-0003).
 
 ### Checkout
 
@@ -91,6 +107,117 @@ origins when cross-site, and pass when no browser origin signal exists
 (non-browser client). Same semantics as Go's `CrossOriginProtection`;
 layered with `SameSite=Lax` cookies, not CSRF tokens.
 _Avoid_: CORS check (CORS is response readability; the gate is request rejection)
+
+### Identity & transport (ADR-0003)
+
+ADR-0003 decides this vocabulary. Entries marked *(not yet built)* name a
+decided concept the code does not carry yet.
+
+**Token surface**:
+Where an Elastic Path credential lives, and therefore from what origin a call
+carrying identity is made. Exactly one value: the server. Named despite having
+one value, because it is what makes "no per-component switch" a statable rule
+rather than a preference.
+_Avoid_: token strategy, auth mode
+
+**Shopper envelope**:
+The encrypted better-auth session cookie carrying every Elastic Path
+credential and the cart pointer; the sole input to Elastic Path identity on
+any request.
+_Avoid_: session cookie — that ambiguity is how `ep_cart`,
+`X-Shopper-Context` and `utils/cookies.ts` accumulated as parallel identity
+channels unnoticed
+
+**Account member**:
+The authenticated person, holding a password profile in Elastic Path's
+Accounts service. Distinct from the account they act for.
+_Avoid_: customer (a legacy Elastic Path service this package does not
+support), user (better-auth's record)
+
+**Selected account**:
+The organisation the account member is currently acting for, chosen from the
+accounts their membership grants. Determines account scope on every Elastic
+Path call. Auto-selected only when the member belongs to exactly one.
+
+**Account roster** *(not yet built)*:
+The member's accounts as `{id, name}`, derived from the token response,
+paginated, never carrying tokens to the browser. Distinct from the token list
+precisely because it is what survives the server stripping credentials off it.
+_Avoid_: account list
+
+**Anchor token** *(not yet built)*:
+An account token held only to keep re-minting possible while no account is
+selected. Never sent; not evidence of a selection. Mutually exclusive with the
+selected account's token, so an unselected session cannot send an account
+header.
+_Avoid_: default account token
+
+**Account switch**:
+Changing the selected account without re-authenticating. Re-mints, tears down
+any checkout session, clears the cart id, writes the new account last — the
+fallible step first.
+
+**Lapsed account**:
+The envelope is alive and still holds the cart, but the account token has
+expired and cannot be rolled; scope falls back to anonymous until the shopper
+re-authenticates. Surfaced as a positive fact, never inferred from a
+timestamp.
+_Avoid_: logged out (the shopper is not — envelope and basket persist),
+expired session (precisely what this is not)
+
+**Identity transition**:
+The moment the envelope's Elastic Path identity changes — a login or an
+account switch. The only moment the **session cart** is reselected.
+
+**Session cart**:
+The one Elastic Path cart the shopper envelope points at, held as `epCartId`.
+A shopper has exactly one at a time.
+_Avoid_: active cart, current cart, basket
+
+**Session cart resolver** *(not yet built)*:
+The config-time `sessionCartResolver` hook on `createEpAuth` that chooses the
+session cart at an identity transition. Absent, the package keeps the guest
+cart, or adopts the account cart with the most recent update when there is no
+guest cart.
+
+**Forwarded call**:
+A browser-originated request whose path and parameters come from the browser
+and whose credentials are attached server-side. Valid only against resources
+Elastic Path scopes by the credential. No live call site — the rule exists as
+the boundary a future resource is measured against.
+_Avoid_: proxy (the word implies a forwarder is all there is)
+
+**Named operation**:
+A browser-originated call that names a server function rather than a URL, so
+the server supplies the ids that constitute access control. Required wherever
+the request needs server-side handling or the resource is id-scoped.
+
+**Id-scoped resource**:
+One where a caller-supplied id *is* the access boundary and no credential
+narrows it. Carts and orders, confirmed live; the account family is
+credential-scoped.
+_Avoid_: unauthenticated (the call is authenticated; the resource is just not
+scoped by that authentication)
+
+### Design time & registration (ADR-0003)
+
+**Design-time catalog route** *(not yet built)*:
+The session-free route serving the store's default catalog to Studio under an
+anonymous implicit token, with four declared names and no cart or order
+access. Distinct from the shopper proxy, which carries session identity.
+
+**Mock floor**:
+The automatic canvas fallback to `"Sample"` fixtures beneath any design-time
+read. Existing, previously undocumented behaviour that ADR-0003 depends on:
+where a mock floor exists a missing read soft-fails, where none exists it
+throws.
+
+**Inert registration**:
+A registered surface kept alive solely because hostless publishing forbids its
+removal — hidden or marked deprecated, doing nothing. Registered components,
+global contexts, slots and props are append-only by enforcement; registered
+custom functions and code libraries are append-only by this package's policy,
+because the platform's asserts are commented out upstream.
 
 ### Money trust (ADR-0013, iso-storefront)
 
