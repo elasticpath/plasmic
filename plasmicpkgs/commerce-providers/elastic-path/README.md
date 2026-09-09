@@ -256,7 +256,7 @@ Returning visit:
   → buildEpCtx() → withEpSession() → Server Queries SSR → zero OAuth calls
 ```
 
-The access token never reaches the browser. It stays on the server:
+The session's access token stays on the server:
 1. `getSession()` reads or mints it, then writes it to an httpOnly cookie
 2. `buildEpCtx()` puts it on an `EpCtx`, which `withEpSession()` publishes
    through AsyncLocalStorage
@@ -267,9 +267,38 @@ The access token never reaches the browser. It stays on the server:
 `globalContextsProps` and serialized into the page HTML, so it never carries
 a credential.
 
-Browser-side catalog reads go through the Elastic Path SDK client, which mints
-its own anonymous token from the public `clientId` and holds it in memory —
-never localStorage, never a cookie.
+### Two token surfaces today, one from ADR-0003
+
+Browser-originated catalog reads currently go through the Elastic Path SDK
+client, which mints its **own** anonymous token from the public `clientId` and
+holds it in the JS heap. So the storefront has two Elastic Path identities: the
+session's on the server, an anonymous one in the browser.
+
+Earlier releases described the browser token's in-memory custody as a security
+property. It is not one, and that claim is retired. An Elastic Path implicit
+token is public by construction — anyone holding the `client_id` can mint one —
+so where it is kept protects nothing. It is also not read-only: it can write to
+`/carts` and `/checkout`.
+
+What is worth protecting is the **account token**, which carries shopper identity
+and unlocks order history, account and member records, and addresses. This
+package keeps that server-side and never hands it to the browser.
+
+[ADR-0003](docs/adr/0003-one-session-for-elastic-path-identity.md) decides the
+direction: one session, no Elastic Path credential in the browser at all, and
+every browser-originated call carrying identity routed through the storefront's
+own origin. The browser client is removed as part of that work; the ADR is the
+reference for what the surface becomes and why.
+
+Two platform facts to design against in the meantime:
+
+- **A cart id is the entire access boundary on a cart.** `GET /v2/carts/{id}`
+  succeeds for any known id under any token, and an unknown id creates rather
+  than 404s. Keep cart ids in server custody; storefront-side verification is the
+  whole defence, not a second layer.
+- **Account association is discoverability, not access control.** The
+  relationship is an appendable set, so any account that learns a cart id can
+  attach itself and thereafter enumerate that cart.
 
 **`next dev` is an exception.** Next's RSC debug instrumentation serializes a
 server component's local variables — including the EP session — into the flight
