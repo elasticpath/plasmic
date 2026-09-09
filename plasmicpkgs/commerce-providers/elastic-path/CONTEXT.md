@@ -199,7 +199,7 @@ credential-scoped.
 _Avoid_: unauthenticated (the call is authenticated; the resource is just not
 scoped by that authentication)
 
-### Design time & registration (ADR-0003)
+### Design time & registration (ADR-0003, ADR-0004)
 
 **Design-time catalog route** *(not yet built)*:
 The session-free route serving the store's default catalog to Studio under an
@@ -214,10 +214,10 @@ throws.
 
 **Inert registration**:
 A registered surface kept alive solely because hostless publishing forbids its
-removal — hidden or marked deprecated, doing nothing. Registered components,
-global contexts, slots and props are append-only by enforcement; registered
-custom functions and code libraries are append-only by this package's policy,
-because the platform's asserts are commented out upstream.
+removal — hidden or marked deprecated, doing nothing. The body is emptied, not
+just the behaviour: a husk that still threads props into a context nobody reads
+looks live to the next reader. Which surfaces are append-only, and the
+deprecation house style, are ADR-0004.
 
 ### Money trust (ADR-0013, iso-storefront)
 
