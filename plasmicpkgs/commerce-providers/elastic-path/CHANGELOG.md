@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.5.3
+
+### Fixed
+
+The package installs into a React 19 app again. The declared
+`react-instantsearch@^7.13.6` peer-requires React `<19`, so npm resolves it as
+an `ERESOLVE` conflict. The floor goes to `^7.32.0` and `instantsearch.js` to
+`^4.96.0`, the versions server-rendered catalog search will also need:
+`react-instantsearch-nextjs@1.4.5` deep-imports `isTwoPassWidget` from
+`instantsearch.js/cjs/lib/utils`, absent below 4.96.0.
+
+`react-instantsearch-nextjs` goes to `^1.4.5`. It stays in `dependencies`
+because a hostless bundle resolves npm dependencies at bundle time and cannot
+extend the externals list, so a `require` of a package that is not installed
+fails the bundle for every project using this one.
+
+### Removed
+
+The optional `@algolia/autocomplete-plugin-recent-searches` peer dependency.
+Nothing requires it.
+
 ## 0.5.2
 
 ### Fixed
