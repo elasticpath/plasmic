@@ -1085,7 +1085,11 @@ export const mkCanvasText = computedFn(
                     defaultStyleClassNames(studioDefaultStylesClassNameBase, {
                       tag,
                       projectId: canvasProjectId,
-                    })
+                    }),
+                    // `__wab_defaults__all` sets `display: block`, and only a few
+                    // tags (e.g. span) have a tag-specific override to undo it, so
+                    // inline tags need `__wab_inline` to stay in the text flow.
+                    isTagInline(tag) && "__wab_inline"
                   ),
                 },
                 children
