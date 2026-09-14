@@ -1,5 +1,5 @@
 /**
- * handlePay — order_first sequence (mock adapter; no Manual implementation).
+ * handlePay — order_first sequence (mock adapter + real Manual adapter).
  *
  * checkoutApi → buildPaymentSetup → paymentSetup. No confirmOrder.
  *
@@ -12,6 +12,7 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
   getAnOrder: jest.fn(),
   checkoutApi: jest.fn(),
   confirmOrder: jest.fn(),
+  createCartPaymentIntent: jest.fn(),
   paymentSetup: jest.fn(),
   updateACart: jest.fn(),
   updateAnOrder: jest.fn(),
@@ -27,6 +28,7 @@ const epSdk = require("@epcc-sdk/sdks-shopper") as {
   getAnOrder: jest.Mock;
   checkoutApi: jest.Mock;
   confirmOrder: jest.Mock;
+  createCartPaymentIntent: jest.Mock;
   paymentSetup: jest.Mock;
   updateACart: jest.Mock;
   updateAnOrder: jest.Mock;
@@ -50,6 +52,8 @@ import type {
   OrderFirstAdapter,
 } from "../../../../checkout/session/types";
 import { hashCart } from "../../../../checkout/session/cart-hash";
+import { createAdapterRegistry } from "../../../../checkout/session/adapter-registry";
+import { createManualAdapter } from "../../../../checkout/session/adapters/manual-adapter";
 
 const CART_ITEMS = [
   { id: "item-1", quantity: 2, unit_price: { amount: 1500 } },
@@ -160,6 +164,22 @@ function sessionWithExistingOrder(
     order: { id: orderId },
     payment,
   });
+}
+
+
+function createManualCtx(session: CheckoutSession | null): SessionHandlerContext {
+  const registry = createAdapterRegistry();
+  registry.register("manual", createManualAdapter());
+  return {
+    epCredentials: {
+      clientId: "test-id",
+      apiBaseUrl: "https://api.test.com",
+    },
+    adapterRegistry: registry,
+    sessionStore: createMockStore(session),
+    shopperAccessToken: "shopper-token",
+    getClientCredentialsToken: jest.fn(async () => "admin-token"),
+  };
 }
 
 function createMockReq(body: Record<string, unknown> = {}): SessionRequest {
@@ -493,5 +513,78 @@ describe("handlePay — order_first retry / idempotency", () => {
     expect((res.body as any).error.code).toBe("EP_ERROR");
     expect(epSdk.paymentSetup).not.toHaveBeenCalled();
     expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+  });
+});
+
+describe("handlePay — registered Manual adapter", () => {
+  it("reaches order-first /pay: checkout before paymentSetup, Manual purchase body, no confirmOrder or Cart PI", async () => {
+    const ctx = createManualCtx(makeSession());
+    const res = await handlePay(
+      createMockReq({ gateway: "manual" }),
+      ctx
+    );
+
+    expect(res.status).toBe(200);
+    const session = (res.body as any).data.session;
+    expect(session.status).toBe("complete");
+    expect(session.order?.id).toBe("order-1");
+    expect(session.order?.transactionId).toBe("txn-1");
+    expect(session.payment.gateway).toBe("manual");
+
+    expect(epSdk.checkoutApi).toHaveBeenCalledTimes(1);
+    expect(epSdk.paymentSetup).toHaveBeenCalledTimes(1);
+    const checkoutOrder = epSdk.checkoutApi.mock.invocationCallOrder[0];
+    const payOrder = epSdk.paymentSetup.mock.invocationCallOrder[0];
+    expect(checkoutOrder).toBeLessThan(payOrder);
+    expect(epSdk.paymentSetup.mock.calls[0][0].path).toEqual({
+      orderID: "order-1",
+    });
+    expect(epSdk.paymentSetup.mock.calls[0][0].body.data).toEqual({
+      gateway: "manual",
+      method: "purchase",
+    });
+    expect(epSdk.confirmOrder).not.toHaveBeenCalled();
+    expect(epSdk.createCartPaymentIntent).not.toHaveBeenCalled();
+    expect(epSdk.getAnOrder).not.toHaveBeenCalled();
+  });
+
+  it("failed payment keeps the unpaid order and remains retryable on the same order", async () => {
+    epSdk.paymentSetup
+      .mockResolvedValueOnce({
+        data: { data: { id: "txn-fail", status: "failed" } },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: { id: "txn-2", status: "complete", transaction_type: "purchase" },
+        },
+      });
+
+    const ctx1 = createManualCtx(makeSession());
+    const first = await handlePay(
+      createMockReq({ gateway: "manual" }),
+      ctx1
+    );
+    expect(first.status).toBe(200);
+    const firstSession = (first.body as any).data.session;
+    expect(firstSession.status).toBe("open");
+    expect(firstSession.payment.status).toBe("failed");
+    expect(firstSession.order?.id).toBe("order-1");
+    expect(epSdk.checkoutApi).toHaveBeenCalledTimes(1);
+    expect(epSdk.confirmOrder).not.toHaveBeenCalled();
+    expect(epSdk.createCartPaymentIntent).not.toHaveBeenCalled();
+
+    const ctx2 = createManualCtx(lastStoredSession(ctx1));
+    const second = await handlePay(
+      createMockReq({ gateway: "manual" }),
+      ctx2
+    );
+    expect(second.status).toBe(200);
+    expect((second.body as any).data.session.status).toBe("complete");
+    expect((second.body as any).data.session.order?.id).toBe("order-1");
+    expect(epSdk.checkoutApi).toHaveBeenCalledTimes(1);
+    expect(epSdk.paymentSetup).toHaveBeenCalledTimes(2);
+    expect(epSdk.paymentSetup.mock.calls[1][0].path.orderID).toBe("order-1");
+    expect(epSdk.confirmOrder).not.toHaveBeenCalled();
+    expect(epSdk.createCartPaymentIntent).not.toHaveBeenCalled();
   });
 });

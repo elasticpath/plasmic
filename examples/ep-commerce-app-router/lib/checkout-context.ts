@@ -7,7 +7,7 @@
  *     scoped to this request only (no process-level cache).
  *   - epCartId from the better-auth session (lets routes that need a cartId
  *     read it server-side instead of trusting the client).
- *   - adapterRegistry with Stripe registered when EP_CLIENT_SECRET is set.
+ *   - adapterRegistry with Stripe and Manual registered when EP_CLIENT_SECRET is set.
  *   - sessionStore (cookie-based JWE).
  *   - shippingRateResolver: one static example rate (demo only).
  */
@@ -15,6 +15,7 @@ import {
   CookieSessionStore,
   createAdapterRegistry,
   createClientCredentialsTokenResolver,
+  createManualAdapter,
   createStripeAdapter,
   resolveAuthSecret,
   type SessionHandlerContext,
@@ -74,7 +75,8 @@ export async function buildCheckoutContext(
       })
     : undefined;
 
-  // Adapter registry — register Stripe only when admin auth is available.
+  // Adapter registry — Stripe + Manual when admin auth is available
+  // (checkoutApi / paymentSetup need the client-credentials token).
   const adapterRegistry = createAdapterRegistry();
   if (getClientCredentialsToken) {
     adapterRegistry.register(
@@ -85,6 +87,7 @@ export async function buildCheckoutContext(
         getClientCredentialsToken,
       })
     );
+    adapterRegistry.register("manual", createManualAdapter());
   }
 
   const ctx: SessionHandlerContext = {

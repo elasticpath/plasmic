@@ -107,6 +107,7 @@ export { createCloverAdapter } from "./adapters/clover-adapter";
 export type { CloverAdapterConfig } from "./adapters/clover-adapter";
 export { createStripeAdapter } from "./adapters/stripe-adapter";
 export type { StripeAdapterConfig } from "./adapters/stripe-adapter";
+export { createManualAdapter } from "./adapters/manual-adapter";
 
 // Types
 export type {
