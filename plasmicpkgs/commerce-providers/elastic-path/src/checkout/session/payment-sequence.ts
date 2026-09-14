@@ -39,14 +39,8 @@ export function isLegacyPaymentAdapter(
   );
 }
 
-const SUCCEEDED_STATUSES = new Set([
-  "complete",
-  "completed",
-  "paid",
-  "captured",
-  "succeeded",
-  "authorized",
-]);
+/** EPCC TransactionResponse.status — not order.payment and not Stripe PI. */
+const SUCCEEDED_STATUSES = new Set(["complete", "completed"]);
 
 const FAILED_STATUSES = new Set([
   "failed",
@@ -128,16 +122,7 @@ export function mapTransactionResponse(
     };
   }
 
-  if (hasCustomerAction && !SUCCEEDED_STATUSES.has(status)) {
-    return {
-      status: "requires_action",
-      gatewayOrderId: id,
-      gatewayMetadata,
-      actionData,
-    };
-  }
-
-  if (SUCCEEDED_STATUSES.has(status) || (id && !status)) {
+  if (SUCCEEDED_STATUSES.has(status)) {
     return {
       status: "succeeded",
       gatewayOrderId: id,
@@ -145,12 +130,12 @@ export function mapTransactionResponse(
     };
   }
 
-  if (status === "incomplete" || status === "pending") {
+  if (hasCustomerAction) {
     return {
       status: "requires_action",
       gatewayOrderId: id,
       gatewayMetadata,
-      ...(Object.keys(actionData).length > 0 ? { actionData } : {}),
+      actionData,
     };
   }
 

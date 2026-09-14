@@ -42,8 +42,8 @@ describe("payment-sequence guards", () => {
 });
 
 describe("mapTransactionResponse", () => {
-  it("maps paid/complete/authorized to succeeded with transaction id", () => {
-    for (const status of ["paid", "complete", "authorized"]) {
+  it("maps complete and completed to succeeded with transaction id", () => {
+    for (const status of ["complete", "completed"]) {
       const result = mapTransactionResponse({
         data: {
           data: {
@@ -62,12 +62,53 @@ describe("mapTransactionResponse", () => {
     }
   });
 
-  it("maps failed/cancelled to failed", () => {
+  it("preserves transaction_type authorize without treating authorized as success", () => {
     const result = mapTransactionResponse({
-      data: { data: { id: "txn-2", status: "failed" } },
+      data: {
+        data: {
+          id: "txn-auth",
+          status: "complete",
+          transaction_type: "authorize",
+        },
+      },
+    });
+    expect(result.status).toBe("succeeded");
+    expect(result.gatewayMetadata).toMatchObject({
+      transactionId: "txn-auth",
+      transaction_type: "authorize",
+    });
+  });
+
+  it("does not treat order.payment or Stripe PI statuses as transaction success", () => {
+    for (const status of ["paid", "authorized", "captured", "succeeded"]) {
+      const result = mapTransactionResponse({
+        data: { data: { id: "txn-x", status, transaction_type: "purchase" } },
+      });
+      expect(result.status).toBe("failed");
+      expect(result.errorMessage).toMatch(new RegExp(status));
+      expect(result.gatewayMetadata).toMatchObject({
+        transactionId: "txn-x",
+        transaction_type: "purchase",
+      });
+    }
+  });
+
+  it("does not succeed on a transaction id with no status", () => {
+    const result = mapTransactionResponse({
+      data: { data: { id: "txn-bare" } },
     });
     expect(result.status).toBe("failed");
-    expect(result.errorMessage).toMatch(/failed/);
+    expect(result.errorMessage).toMatch(/Unrecognized/);
+  });
+
+  it("maps failed/cancelled/canceled/declined to failed", () => {
+    for (const status of ["failed", "cancelled", "canceled", "declined"]) {
+      const result = mapTransactionResponse({
+        data: { data: { id: "txn-2", status } },
+      });
+      expect(result.status).toBe("failed");
+      expect(result.errorMessage).toMatch(new RegExp(status));
+    }
   });
 
   it("maps incomplete + client_parameters/next_actions to requires_action", () => {
@@ -88,12 +129,30 @@ describe("mapTransactionResponse", () => {
     });
   });
 
+  it("does not complete checkout for pending/incomplete without customer action", () => {
+    for (const status of ["pending", "incomplete"]) {
+      const result = mapTransactionResponse({
+        data: { data: { id: "txn-pend", status } },
+      });
+      expect(result.status).toBe("failed");
+      expect(result.errorMessage).toMatch(new RegExp(status));
+    }
+  });
+
   it("does not use Stripe PaymentIntent statuses", () => {
     const result = mapTransactionResponse({
       data: { data: { id: "txn-4", status: "requires_action" } },
     });
     expect(result.status).toBe("failed");
     expect(result.errorMessage).toMatch(/requires_action/);
+  });
+
+  it("fails closed on an unknown status", () => {
+    const result = mapTransactionResponse({
+      data: { data: { id: "txn-u", status: "processing" } },
+    });
+    expect(result.status).toBe("failed");
+    expect(result.errorMessage).toMatch(/processing/);
   });
 
   it("maps a thrown error to failed", () => {

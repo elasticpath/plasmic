@@ -7,7 +7,8 @@
  *   3. Re-fetch cart, compare hash (→ 409 with refreshed session if mismatch)
  *   4. Dispatch on adapter.paymentSequence (explicit; no default sequence):
  *      - cart_payment_intent: initializePayment (Cart PaymentIntent)
- *      - order_first: checkoutApi → buildPaymentSetup → paymentSetup
+ *      - order_first: checkoutApi (or reuse session.order.id) →
+ *        buildPaymentSetup → paymentSetup. Retry never checkoutApi twice.
  *      - LegacyPaymentAdapter (Clover): existing initializePayment path only
  *   5. cart_payment_intent succeeded:
  *      a. checkoutApi (cart→order) using admin token
@@ -24,6 +25,7 @@
  */
 import {
   getACart,
+  getAnOrder,
   checkoutApi,
   confirmOrder,
   paymentSetup,
@@ -80,6 +82,41 @@ const log = createLogger("Pay");
  * practice, since third-party gateways reject a 0 charge. */
 const FREE_ORDER_GATEWAY = "manual";
 const FREE_ORDER_METHOD = "purchase";
+
+/** OrderResponse.payment values that mean funds are already captured or held. */
+const SETTLED_ORDER_PAYMENTS = new Set(["paid", "authorized"]);
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function unwrapOrderResource(payload: unknown): Record<string, unknown> | null {
+  const root = asRecord(payload);
+  if (!root) return null;
+  const data = asRecord(root.data);
+  const inner = data ? asRecord(data.data) : null;
+  return inner ?? data ?? (typeof root.payment === "string" ? root : null);
+}
+
+/**
+ * Read documented OrderResponse.payment from getAnOrder.
+ * `paid` / `authorized` are order-level payment, not TransactionResponse.status.
+ */
+function settledOrderFromGetAnOrder(payload: unknown): {
+  settled: boolean;
+  payment?: string;
+} {
+  const order = unwrapOrderResource(payload);
+  if (!order) return { settled: false };
+  const payment =
+    typeof order.payment === "string" ? order.payment.toLowerCase() : undefined;
+  return {
+    settled: payment != null && SETTLED_ORDER_PAYMENTS.has(payment),
+    payment,
+  };
+}
 
 function toClientSession(s: CheckoutSession): ClientCheckoutSession {
   const { cartHash, ...rest } = s;
@@ -479,49 +516,128 @@ async function handleOrderFirstPay(
 ): Promise<SessionResponse> {
   const { req, ctx, session, adminClient, ttl, gateway, gatewayData } = params;
 
+  const existingOrderId = session.order?.id;
+  const reuseOrder =
+    session.status === "open" &&
+    session.payment.status !== "succeeded" &&
+    typeof existingOrderId === "string" &&
+    existingOrderId.length > 0;
+
   let orderId: string;
-  try {
-    const checkoutResponse = await checkoutApi({
-      client: adminClient,
-      path: { cartID: session.cartId },
-      body: buildGuestCheckoutBody(session) as any,
-    });
-    const oid = (checkoutResponse.data as any)?.data?.id;
-    if (!oid) throw new Error("checkoutApi response missing order id");
-    orderId = oid;
-  } catch (err) {
-    log.error("EP checkoutApi failed before paymentSetup", {
-      cartId: session.cartId,
-      error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
-    return {
-      status: 502,
-      body: {
-        success: false,
-        error: { message: "Order creation failed", code: "EP_ERROR" },
-      },
-    };
-  }
+  let sessionWithOrder: CheckoutSession;
 
-  const sessionWithOrder: CheckoutSession = {
-    ...session,
-    order: { id: orderId },
-    payment: { ...session.payment, gateway },
-  };
-
-  try {
-    await ctx.sessionStore.set("current", sessionWithOrder, ttl, req);
-  } catch (err) {
-    log.error("Failed to persist unpaid order session", {
-      error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
-    return {
-      status: 500,
-      body: {
-        success: false,
-        error: { message: "Failed to store session", code: "STORE_ERROR" },
-      },
+  if (reuseOrder) {
+    orderId = existingOrderId;
+    sessionWithOrder = {
+      ...session,
+      order: { ...session.order, id: orderId },
+      payment: { ...session.payment, gateway },
     };
+
+    let orderPayload: unknown;
+    try {
+      orderPayload = await getAnOrder({
+        client: adminClient,
+        path: { orderID: orderId },
+      });
+    } catch (err) {
+      log.error("getAnOrder failed before retry paymentSetup", {
+        orderId,
+        error: err instanceof Error ? err.message : String(err),
+      } as Record<string, unknown>);
+      return {
+        status: 502,
+        body: {
+          success: false,
+          error: {
+            message: "Failed to load existing order",
+            code: "EP_ERROR",
+          },
+        },
+      };
+    }
+
+    const existing = settledOrderFromGetAnOrder(orderPayload);
+    const orderResource = unwrapOrderResource(orderPayload);
+    const epError = asRecord(orderPayload)?.error;
+    if (epError || !orderResource || typeof existing.payment !== "string") {
+      log.error("getAnOrder returned no usable order payment status", {
+        orderId,
+      } as Record<string, unknown>);
+      return {
+        status: 502,
+        body: {
+          success: false,
+          error: {
+            message: "Failed to load existing order",
+            code: "EP_ERROR",
+          },
+        },
+      };
+    }
+    if (existing.settled) {
+      log.info("Order-first retry found already-settled order", {
+        sessionId: session.id,
+        orderId,
+        payment: existing.payment,
+      } as Record<string, unknown>);
+      return finalizePaidSession({
+        ctx,
+        req,
+        ttl,
+        session: sessionWithOrder,
+        gateway,
+        orderId,
+        gatewayMetadata: {
+          ...(session.payment.gatewayMetadata ?? {}),
+          ...(existing.payment ? { orderPayment: existing.payment } : {}),
+        },
+      });
+    }
+  } else {
+    try {
+      const checkoutResponse = await checkoutApi({
+        client: adminClient,
+        path: { cartID: session.cartId },
+        body: buildGuestCheckoutBody(session) as any,
+      });
+      const oid = (checkoutResponse.data as any)?.data?.id;
+      if (!oid) throw new Error("checkoutApi response missing order id");
+      orderId = oid;
+    } catch (err) {
+      log.error("EP checkoutApi failed before paymentSetup", {
+        cartId: session.cartId,
+        error: err instanceof Error ? err.message : String(err),
+      } as Record<string, unknown>);
+      return {
+        status: 502,
+        body: {
+          success: false,
+          error: { message: "Order creation failed", code: "EP_ERROR" },
+        },
+      };
+    }
+
+    sessionWithOrder = {
+      ...session,
+      order: { id: orderId },
+      payment: { ...session.payment, gateway },
+    };
+
+    try {
+      await ctx.sessionStore.set("current", sessionWithOrder, ttl, req);
+    } catch (err) {
+      log.error("Failed to persist unpaid order session", {
+        error: err instanceof Error ? err.message : String(err),
+      } as Record<string, unknown>);
+      return {
+        status: 500,
+        body: {
+          success: false,
+          error: { message: "Failed to store session", code: "STORE_ERROR" },
+        },
+      };
+    }
   }
 
   await persistOrderCustomFields({
@@ -533,21 +649,22 @@ async function handleOrderFirstPay(
     input: session.customAttributes,
   });
 
+  const withOrder: PayContinuation = { ...params, session: sessionWithOrder };
+
   let setup;
   try {
     setup = await adapter.buildPaymentSetup(sessionWithOrder, gatewayData);
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     log.error("buildPaymentSetup threw", {
       gateway,
-      error: err instanceof Error ? err.message : String(err),
+      error: message,
     } as Record<string, unknown>);
-    return {
-      status: 502,
-      body: {
-        success: false,
-        error: { message: "Payment adapter error", code: "ADAPTER_ERROR" },
-      },
-    };
+    return persistFailedPayment(withOrder, {
+      status: "failed",
+      errorMessage: message,
+      gatewayMetadata: { lastError: message },
+    });
   }
 
   let payRes: unknown;
@@ -563,7 +680,6 @@ async function handleOrderFirstPay(
   }
 
   const adapterResult = mapTransactionResponse(payRes, payThrown);
-  const withOrder: PayContinuation = { ...params, session: sessionWithOrder };
 
   if (adapterResult.status === "requires_action") {
     return persistRequiresAction(withOrder, adapterResult);

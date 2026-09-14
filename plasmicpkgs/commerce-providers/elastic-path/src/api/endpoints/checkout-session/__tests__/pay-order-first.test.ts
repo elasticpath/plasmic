@@ -9,6 +9,7 @@
 
 jest.mock("@epcc-sdk/sdks-shopper", () => ({
   getACart: jest.fn(),
+  getAnOrder: jest.fn(),
   checkoutApi: jest.fn(),
   confirmOrder: jest.fn(),
   paymentSetup: jest.fn(),
@@ -23,6 +24,7 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const epSdk = require("@epcc-sdk/sdks-shopper") as {
   getACart: jest.Mock;
+  getAnOrder: jest.Mock;
   checkoutApi: jest.Mock;
   confirmOrder: jest.Mock;
   paymentSetup: jest.Mock;
@@ -145,6 +147,21 @@ function createMockCtx(
   };
 }
 
+function lastStoredSession(ctx: SessionHandlerContext): CheckoutSession {
+  const setMock = ctx.sessionStore.set as jest.Mock;
+  return setMock.mock.calls[setMock.mock.calls.length - 1][1] as CheckoutSession;
+}
+
+function sessionWithExistingOrder(
+  payment: CheckoutSession["payment"],
+  orderId = "order-1"
+): CheckoutSession {
+  return makeSession({
+    order: { id: orderId },
+    payment,
+  });
+}
+
 function createMockReq(body: Record<string, unknown> = {}): SessionRequest {
   return { body, headers: {}, cookies: {} };
 }
@@ -165,7 +182,10 @@ beforeEach(() => {
   });
   epSdk.confirmOrder.mockResolvedValue({ data: { data: { id: "order-1" } } });
   epSdk.paymentSetup.mockResolvedValue({
-    data: { data: { id: "txn-1", status: "paid", transaction_type: "purchase" } },
+    data: { data: { id: "txn-1", status: "complete", transaction_type: "purchase" } },
+  });
+  epSdk.getAnOrder.mockResolvedValue({
+    data: { data: { id: "order-1", payment: "unpaid" } },
   });
   epSdk.updateACart.mockResolvedValue({ data: { data: {} } });
   epSdk.updateAnOrder.mockResolvedValue({ data: { data: { id: "order-1" } } });
@@ -212,6 +232,7 @@ describe("handlePay — order_first sequence", () => {
       method: "purchase",
     });
     expect(epSdk.confirmOrder).not.toHaveBeenCalled();
+    expect(epSdk.getAnOrder).not.toHaveBeenCalled();
   });
 
   it("failed paymentSetup keeps the unpaid order and session open", async () => {
@@ -277,5 +298,200 @@ describe("handlePay — order_first sequence", () => {
     expect(res.status).toBe(200);
     expect(epSdk.paymentSetup).not.toHaveBeenCalled();
     expect(epSdk.confirmOrder).toHaveBeenCalledTimes(1);
+    expect(epSdk.getAnOrder).not.toHaveBeenCalled();
+  });
+});
+
+describe("handlePay — order_first retry / idempotency", () => {
+  const failedPayment = {
+    gateway: "manual" as const,
+    status: "failed" as const,
+    clientToken: null,
+    gatewayMetadata: {},
+    actionData: null,
+  };
+
+  it("failed first attempt → retry reuses same order, no second checkoutApi", async () => {
+    epSdk.paymentSetup
+      .mockResolvedValueOnce({
+        data: { data: { id: "txn-fail", status: "failed" } },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: { id: "txn-2", status: "complete", transaction_type: "purchase" },
+        },
+      });
+    const adapter = createOrderFirstAdapter();
+    const ctx1 = createMockCtx(makeSession(), adapter);
+    const first = await handlePay(
+      createMockReq({ gateway: "manual" }),
+      ctx1
+    );
+    expect(first.status).toBe(200);
+    expect((first.body as any).data.session.payment.status).toBe("failed");
+    expect(epSdk.checkoutApi).toHaveBeenCalledTimes(1);
+
+    const stored = lastStoredSession(ctx1);
+    const ctx2 = createMockCtx(stored, adapter);
+    const second = await handlePay(
+      createMockReq({ gateway: "manual" }),
+      ctx2
+    );
+
+    expect(second.status).toBe(200);
+    expect((second.body as any).data.session.status).toBe("complete");
+    expect((second.body as any).data.session.order?.id).toBe("order-1");
+    expect(epSdk.checkoutApi).toHaveBeenCalledTimes(1);
+    expect(epSdk.getAnOrder).toHaveBeenCalledTimes(1);
+    expect(epSdk.getAnOrder.mock.calls[0][0].path).toEqual({ orderID: "order-1" });
+    expect(epSdk.paymentSetup).toHaveBeenCalledTimes(2);
+    expect(epSdk.paymentSetup.mock.calls[1][0].path).toEqual({
+      orderID: "order-1",
+    });
+  });
+
+  it("requires_action first attempt → retry reuses same order", async () => {
+    epSdk.paymentSetup
+      .mockResolvedValueOnce({
+        data: {
+          data: {
+            id: "txn-act",
+            status: "incomplete",
+            client_parameters: { redirect_url: "https://example.test/approve" },
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: { id: "txn-2", status: "complete", transaction_type: "purchase" },
+        },
+      });
+    const adapter = createOrderFirstAdapter();
+    const ctx1 = createMockCtx(makeSession(), adapter);
+    const first = await handlePay(
+      createMockReq({ gateway: "manual" }),
+      ctx1
+    );
+    expect((first.body as any).data.session.payment.status).toBe(
+      "requires_action"
+    );
+    expect(epSdk.checkoutApi).toHaveBeenCalledTimes(1);
+
+    const second = await handlePay(
+      createMockReq({ gateway: "manual" }),
+      createMockCtx(lastStoredSession(ctx1), adapter)
+    );
+
+    expect(second.status).toBe(200);
+    expect((second.body as any).data.session.status).toBe("complete");
+    expect(epSdk.checkoutApi).toHaveBeenCalledTimes(1);
+    expect(epSdk.paymentSetup.mock.calls[1][0].path.orderID).toBe("order-1");
+  });
+
+  it("buildPaymentSetup() throws → order remains, payment becomes failed, retry reuses order", async () => {
+    const adapter = createOrderFirstAdapter();
+    (adapter.buildPaymentSetup as jest.Mock)
+      .mockRejectedValueOnce(new Error("adapter exploded"))
+      .mockResolvedValue({ gateway: "manual", method: "purchase" });
+
+    const ctx1 = createMockCtx(makeSession(), adapter);
+    const first = await handlePay(
+      createMockReq({ gateway: "manual" }),
+      ctx1
+    );
+
+    expect(first.status).toBe(200);
+    const firstSession = (first.body as any).data.session;
+    expect(firstSession.status).toBe("open");
+    expect(firstSession.payment.status).toBe("failed");
+    expect(firstSession.order?.id).toBe("order-1");
+    expect((first.body as any).paymentError).toMatch(/adapter exploded/);
+    expect(epSdk.paymentSetup).not.toHaveBeenCalled();
+    expect(epSdk.checkoutApi).toHaveBeenCalledTimes(1);
+
+    const second = await handlePay(
+      createMockReq({ gateway: "manual" }),
+      createMockCtx(lastStoredSession(ctx1), adapter)
+    );
+
+    expect(second.status).toBe(200);
+    expect((second.body as any).data.session.status).toBe("complete");
+    expect(epSdk.checkoutApi).toHaveBeenCalledTimes(1);
+    expect(epSdk.paymentSetup).toHaveBeenCalledTimes(1);
+    expect(epSdk.paymentSetup.mock.calls[0][0].path.orderID).toBe("order-1");
+  });
+
+  it("cart hash changed → 409, no checkoutApi, no paymentSetup", async () => {
+    epSdk.getACart.mockResolvedValue({
+      data: {
+        included: {
+          items: [{ id: "item-new", quantity: 1, unit_price: { amount: 100 } }],
+        },
+        data: {
+          id: "cart-abc",
+          meta: { display_price: { with_tax: { amount: 100, currency: "USD" } } },
+        },
+      },
+    });
+    const adapter = createOrderFirstAdapter();
+    const res = await handlePay(
+      createMockReq({ gateway: "manual" }),
+      createMockCtx(sessionWithExistingOrder(failedPayment), adapter)
+    );
+
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("CART_MISMATCH");
+    expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+    expect(epSdk.paymentSetup).not.toHaveBeenCalled();
+    expect(epSdk.getAnOrder).not.toHaveBeenCalled();
+  });
+
+  it("existing order already paid → finalize without second paymentSetup", async () => {
+    epSdk.getAnOrder.mockResolvedValue({
+      data: { data: { id: "order-1", payment: "paid" } },
+    });
+    const adapter = createOrderFirstAdapter();
+    const res = await handlePay(
+      createMockReq({ gateway: "manual" }),
+      createMockCtx(sessionWithExistingOrder(failedPayment), adapter)
+    );
+
+    expect(res.status).toBe(200);
+    expect((res.body as any).data.session.status).toBe("complete");
+    expect((res.body as any).data.session.order?.id).toBe("order-1");
+    expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+    expect(epSdk.paymentSetup).not.toHaveBeenCalled();
+    expect(adapter.buildPaymentSetup).not.toHaveBeenCalled();
+    expect(epSdk.getAnOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it("existing order already authorized → finalize without second paymentSetup", async () => {
+    epSdk.getAnOrder.mockResolvedValue({
+      data: { data: { id: "order-1", payment: "authorized" } },
+    });
+    const adapter = createOrderFirstAdapter();
+    const res = await handlePay(
+      createMockReq({ gateway: "manual" }),
+      createMockCtx(sessionWithExistingOrder(failedPayment), adapter)
+    );
+
+    expect(res.status).toBe(200);
+    expect((res.body as any).data.session.status).toBe("complete");
+    expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+    expect(epSdk.paymentSetup).not.toHaveBeenCalled();
+  });
+
+  it("getAnOrder failure does not call paymentSetup", async () => {
+    epSdk.getAnOrder.mockRejectedValue(new Error("EP get order 500"));
+    const adapter = createOrderFirstAdapter();
+    const res = await handlePay(
+      createMockReq({ gateway: "manual" }),
+      createMockCtx(sessionWithExistingOrder(failedPayment), adapter)
+    );
+
+    expect(res.status).toBe(502);
+    expect((res.body as any).error.code).toBe("EP_ERROR");
+    expect(epSdk.paymentSetup).not.toHaveBeenCalled();
+    expect(epSdk.checkoutApi).not.toHaveBeenCalled();
   });
 });
