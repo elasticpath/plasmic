@@ -31,7 +31,8 @@ export interface FinalizePaidSessionParams {
   session: CheckoutSession;
   gateway: string;
   orderId: string;
-  paymentIntentId: string;
+  paymentIntentId?: string;
+  transactionId?: string;
   gatewayMetadata?: Record<string, unknown>;
   reconciliationError?: string | null;
 }
@@ -47,6 +48,7 @@ export async function finalizePaidSession(
     gateway,
     orderId,
     paymentIntentId,
+    transactionId,
     gatewayMetadata,
     reconciliationError = null,
   } = params;
@@ -65,6 +67,7 @@ export async function finalizePaidSession(
     {
       orderId,
       paymentIntentId,
+      transactionId,
       gatewayMetadata: {
         ...(gatewayMetadata ?? {}),
         ...(reconciliationError ? { needsReconciliation: true } : {}),

@@ -14,7 +14,7 @@
  */
 import { createCartPaymentIntent } from "@epcc-sdk/sdks-shopper";
 import type {
-  PaymentAdapter,
+  CartPaymentIntentAdapter,
   PaymentAdapterResult,
   CheckoutSession,
 } from "../types";
@@ -60,10 +60,11 @@ interface EpPaymentIntentResponseShape {
 
 export function createStripeAdapter(
   config: StripeAdapterConfig
-): PaymentAdapter {
+): CartPaymentIntentAdapter {
   const { host, getClientCredentialsToken, getShopperToken } = config;
 
   return {
+    paymentSequence: "cart_payment_intent",
     async initializePayment(
       session: CheckoutSession,
       gatewayData: Record<string, unknown>
@@ -167,16 +168,6 @@ export function createStripeAdapter(
         errorMessage: `Payment did not complete (${errDetail})`,
         ...(piId ? { gatewayMetadata: { paymentIntentId: piId } } : {}),
       };
-    },
-
-    async confirmPayment(
-      _session: CheckoutSession,
-      _confirmData: Record<string, unknown>
-    ): Promise<PaymentAdapterResult> {
-      // Single-shot flow: confirmation happens inside initializePayment via
-      // EP's `confirm: true`. Kept as a no-op for interface compatibility;
-      // the legacy two-step path is removed in the follow-up rip-out.
-      return { status: "succeeded" };
     },
   };
 }

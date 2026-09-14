@@ -121,8 +121,8 @@ function createMockAdapter(
   }
 ): PaymentAdapter {
   return {
+    paymentSequence: "cart_payment_intent",
     initializePayment: jest.fn().mockResolvedValue(initResult),
-    confirmPayment: jest.fn().mockResolvedValue({ status: "succeeded" }),
   };
 }
 

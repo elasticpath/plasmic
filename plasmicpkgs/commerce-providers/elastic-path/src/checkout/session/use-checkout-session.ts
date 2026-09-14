@@ -49,11 +49,11 @@ export interface UseCheckoutSessionReturn {
   calculateShipping: () => Promise<SessionApiResponse>;
   /** Initiate payment with the registered gateway. */
   placeOrder: (gatewayData: Record<string, unknown>) => Promise<SessionApiResponse>;
-  /** Resume a Stripe PaymentIntent after 3DS (POST …/resume-payment). */
+  /** Resume cart PaymentIntent payment after a customer action (POST …/resume-payment). */
   resumePayment: (resumeData?: Record<string, unknown>) => Promise<SessionApiResponse>;
   /**
-   * Unlink the cart PaymentIntent after a failed/cancelled Stripe 3DS
-   * challenge (POST …/abandon-payment).
+   * Unlink the cart PaymentIntent after a failed/cancelled customer action
+   * (POST …/abandon-payment).
    */
   abandonPayment: () => Promise<SessionApiResponse>;
   /** Confirm a gateway action (e.g. Clover 3DS). */

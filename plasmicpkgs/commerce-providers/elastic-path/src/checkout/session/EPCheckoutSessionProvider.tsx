@@ -201,14 +201,13 @@ const EPCheckoutSessionRuntime = React.forwardRef<
       const payResp = await placeOrderFn({ gateway: gw.name, ...gwData });
       const paySession = payResp?.data?.session;
 
-      // Stripe 3DS: /pay left the session open with requires_action. Run
-      // handleNextAction + resumePayment before returning so the form stays
-      // in "placing" until checkout is actually complete or failed.
-      // Clover (and any gateway without completeRequiresAction) is unchanged.
+      // Gateway continuation: /pay left the session open with requires_action.
+      // Run the widget's completeRequiresAction (if registered) so the form
+      // stays in "placing" until checkout is actually complete or failed.
+      // Gateways without completeRequiresAction (e.g. Clover) are unchanged.
       if (
         payResp?.success &&
         paySession?.payment?.status === "requires_action" &&
-        gw.name === "stripe" &&
         typeof gw.completeRequiresAction === "function"
       ) {
         return await gw.completeRequiresAction(paySession);
@@ -412,7 +411,7 @@ export const epCheckoutSessionProviderMeta: CodeComponentMeta<EPCheckoutSessionP
       },
       resumePayment: {
         description:
-          "Resume a Stripe PaymentIntent after 3DS (server checkoutApi + confirmOrder)",
+          "Resume payment after a customer action (cart PaymentIntent sequence)",
         argTypes: [{ name: "resumeData", type: "object" }],
       },
       reset: {

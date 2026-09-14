@@ -138,9 +138,10 @@ function createStatefulStore(initial: CheckoutSession | null): SessionStore {
 
 function createMockAdapter(): PaymentAdapter {
   return {
+    paymentSequence: "cart_payment_intent",
     initializePayment: jest.fn().mockResolvedValue({ status: "succeeded" }),
     confirmPayment: jest.fn().mockResolvedValue({ status: "succeeded" }),
-  };
+  } as PaymentAdapter;
 }
 
 function createMockRegistry(adapter?: PaymentAdapter): AdapterRegistry {
@@ -308,13 +309,19 @@ describe("handleResumePayment — guards", () => {
     expect(epSdk.checkoutApi).not.toHaveBeenCalled();
   });
 
-  it("returns 400 UNKNOWN_GATEWAY for a non-stripe gateway", async () => {
+  it("returns 400 UNKNOWN_GATEWAY for a non-cart_payment_intent gateway", async () => {
+    const legacyAdapter: PaymentAdapter = {
+      initializePayment: jest.fn().mockResolvedValue({ status: "succeeded" }),
+      confirmPayment: jest.fn().mockResolvedValue({ status: "succeeded" }),
+    };
     const res = await handleResumePayment(
       createMockReq(),
       createMockCtx(
         makeSession({
           payment: { ...REQUIRES_ACTION_PAYMENT, gateway: "clover" },
-        })
+        }),
+        {},
+        legacyAdapter
       )
     );
     expect(res.status).toBe(400);

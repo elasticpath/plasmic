@@ -53,6 +53,15 @@ describe("applyPaymentSucceeded", () => {
     });
   });
 
+  it("does not stamp paymentIntentId when the event omits it", () => {
+    const result = applyPaymentSucceeded(makeSession(), {
+      orderId: "order_xyz",
+      gatewayMetadata: { transactionId: "txn_1" },
+    });
+    expect(result.payment.gatewayMetadata.paymentIntentId).toBeUndefined();
+    expect(result.order).toEqual({ id: "order_xyz" });
+  });
+
   it("preserves customerInfo and addresses unchanged", () => {
     const before = makeSession();
     const after = applyPaymentSucceeded(before, {

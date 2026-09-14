@@ -197,9 +197,10 @@ function createMockAdapter(
   confirmResult: PaymentAdapterResult = { status: "succeeded" }
 ): PaymentAdapter {
   return {
+    paymentSequence: "cart_payment_intent",
     initializePayment: jest.fn().mockResolvedValue(initResult),
     confirmPayment: jest.fn().mockResolvedValue(confirmResult),
-  };
+  } as PaymentAdapter;
 }
 
 function createMockRegistry(adapter?: PaymentAdapter): AdapterRegistry {
@@ -1425,7 +1426,7 @@ describe("token-leak boundary — no admin/shopper token in any response", () =>
         },
         customAttributes: { ...EXTRAS },
       }),
-      undefined,
+      createMockAdapter(),
       { allowedCustomAttributeKeys: "*" }
     );
     const res = await handleResumePayment(createMockReq({}), ctx);

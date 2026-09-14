@@ -42,8 +42,13 @@ export type {
 // Types needed by consumer route files
 export type {
   AdapterRegistry,
+  CartPaymentIntentAdapter,
   EPCredentials,
+  LegacyPaymentAdapter,
+  OrderFirstAdapter,
   PaymentAdapter,
+  PaymentSequence,
+  PaymentSetupRequest,
   SessionHandlerContext,
   SessionRequest,
   SessionResponse,

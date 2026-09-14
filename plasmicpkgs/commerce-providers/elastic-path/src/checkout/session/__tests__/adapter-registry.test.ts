@@ -13,6 +13,13 @@ import type { PaymentAdapter } from "../types";
 
 function makeAdapter(): PaymentAdapter {
   return {
+    paymentSequence: "cart_payment_intent",
+    initializePayment: jest.fn().mockResolvedValue({ status: "ready" }),
+  };
+}
+
+function makeLegacyAdapter(): PaymentAdapter {
+  return {
     initializePayment: jest.fn().mockResolvedValue({ status: "ready" }),
     confirmPayment: jest.fn().mockResolvedValue({ status: "succeeded" }),
   };
@@ -54,7 +61,7 @@ describe("createAdapterRegistry", () => {
   it("supports registering multiple adapters independently", () => {
     const registry = createAdapterRegistry();
     const stripeAdapter = makeAdapter();
-    const cloverAdapter = makeAdapter();
+    const cloverAdapter = makeLegacyAdapter();
 
     registry.register("stripe", stripeAdapter);
     registry.register("clover", cloverAdapter);
