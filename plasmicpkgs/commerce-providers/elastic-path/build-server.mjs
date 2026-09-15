@@ -85,7 +85,7 @@ for (const file of CLIENT_ENTRY_FILES) {
 // is hand-mirrored here; a missing line means the runtime export works but has
 // no type, breaking consumer typechecks.
 const dts = `\
-export { handleCreateSession, handleGetSession, handleUpdateSession, handleCalculateShipping, handlePay, handleConfirm } from "./api/endpoints/checkout-session";
+export { handleCreateSession, handleGetSession, handleUpdateSession, handleCalculateShipping, handlePay, handleConfirm, handleAbandonPayment, handleResumePayment } from "./api/endpoints/checkout-session";
 export { CookieSessionStore } from "./checkout/session/cookie-store";
 export { createAdapterRegistry } from "./checkout/session/adapter-registry";
 export { createCloverAdapter } from "./checkout/session/adapters/clover-adapter";
@@ -94,7 +94,13 @@ export { createStripeAdapter } from "./checkout/session/adapters/stripe-adapter"
 export type { StripeAdapterConfig } from "./checkout/session/adapters/stripe-adapter";
 export { createClientCredentialsTokenResolver } from "./auth/ep-plugin/client-credentials-resolver";
 export type { ClientCredentialsResolverConfig, ClientCredentialsTokenResolver } from "./auth/ep-plugin/client-credentials-resolver";
-export type { SessionRequest, SessionResponse, SessionHandlerContext, EPCredentials, AdapterRegistry, SessionStore, PaymentAdapter, CustomAttributeAllowList } from "./checkout/session/types";
+export { createManualAdapter } from "./checkout/session/adapters/manual-adapter";
+export type { ManualAdapterConfig, ManualPaymentMethod } from "./checkout/session/adapters/manual-adapter";
+export { isCartPaymentIntentAdapter, isLegacyPaymentAdapter, isOrderFirstAdapter } from "./checkout/session/payment-sequence";
+export { EP_CART_CACHE_KEY, epCartCacheKey } from "./cart-provider/cache-keys";
+export type { EpCartCacheKey } from "./cart-provider/cache-keys";
+export { seedCartFallback } from "./cart-provider/seed-cart-fallback";
+export type { SessionRequest, SessionResponse, SessionHandlerContext, EPCredentials, AdapterRegistry, SessionStore, PaymentAdapter, CustomAttributeAllowList, CartPaymentIntentAdapter, LegacyPaymentAdapter, OrderFirstAdapter, PaymentSequence, PaymentSetupRequest } from "./checkout/session/types";
 export { createEpAuth, createBetterEpAuth, extractEpProviderConfig, epPlugin, epAuthMiddleware, createEpAuthRoutes, createCartRoutes, createEpProxyRoutes, enforceOriginGate, isTrustedOrigin, passesOriginGate, assertProductionSecret, resolveAuthSecret, DEFAULT_HOST_ALLOWLIST, isAllowedEpHost } from "./auth";
 export type { EpAuth, EpAuthConfig, EpSession, EpProviderBundleConfig, ExtractEpProviderConfigOptions, EpPluginOptions, EpProxyRoutes } from "./auth";
 export { epGetProduct, epGetCart, epGetProductList, epGetProductPage, epGetRelatedProducts, epAddCartItem, epApplyCartAdjustment, epUpdateCartItem, epRemoveCartItem, epPlaceOrder, addCustomCartItem, CART_ADJUSTMENT_KINDS, registerEpCustomFunctions, buildEpCtx, withEpSession, getCurrentEpSession } from "./ep-server-functions";
