@@ -1,5 +1,67 @@
 # Changelog
 
+## 0.6.0
+
+### Added
+
+**EP Manual Payment** (`EPManualPayment`,
+`plasmic-commerce-ep-manual-payment`) — a checkout gateway component that
+collects no card details and needs no client-side gateway credentials. Drop it
+inside **EP Checkout Session Provider** in place of EP Stripe Payment or EP
+Clover Payment; Place Order is unchanged. The component only selects the
+`manual` gateway — all payment behaviour lives in the server adapter.
+
+`createManualAdapter(config?)`, from `/server`. It registers the `manual`
+gateway. The host chooses the EPCC payment method with
+`createManualAdapter({ method })` — `"purchase"` (the default) settles
+immediately; `"authorize"` leaves the transaction to be captured later, which
+this package does not yet do for you. `ManualAdapterConfig` and
+`ManualPaymentMethod` are exported alongside it.
+
+The **order-first** payment sequence, for gateways that cannot take payment
+against a cart. `/pay` checks the cart out to an unpaid order, asks the adapter
+for a payment-setup body, calls EPCC `paymentSetup`, and maps the returned
+transaction. Stripe keeps the existing cart PaymentIntent sequence.
+
+`PaymentSequence`, `PaymentSetupRequest`, `CartPaymentIntentAdapter`,
+`OrderFirstAdapter` and `LegacyPaymentAdapter`, exported from the package root
+and from `/server`.
+
+### Changed
+
+`PaymentAdapter` is now a union discriminated by a `paymentSequence` field:
+`CartPaymentIntentAdapter` (`"cart_payment_intent"`), `OrderFirstAdapter`
+(`"order_first"`), or `LegacyPaymentAdapter` — the pre-sequence two-method
+shape Clover still uses. Existing adapter objects satisfy the union unchanged.
+Code that _reads_ a `PaymentAdapter` must now narrow on `paymentSequence`
+before reaching `initializePayment` or `confirmPayment`; the package's own
+narrowing helpers are internal, so a consumer doing this writes its own check.
+
+`/pay` dispatches on the adapter's declared sequence instead of branching on
+the gateway name, so adding a gateway no longer means editing generic checkout.
+There is no default sequence: an adapter that declares none and does not match
+the legacy shape is rejected.
+
+A gateway's `requires_action` continuation is no longer Stripe-only. EP
+Checkout Session Provider ran `completeRequiresAction` only when the registered
+gateway was named `stripe`; it now runs for any gateway that registers one.
+Stripe 3DS behaviour is unchanged, and a gateway that registers no
+continuation — Clover — is unaffected.
+
+An unrecognised EPCC transaction status **fails closed**. A status that is
+neither a documented complete nor a documented failed value, carrying no
+`client_parameters` and no `next_actions`, is now reported as a failed payment
+instead of falling through as success.
+
+An order-first retry reuses the unpaid order recorded on the session rather
+than checking the cart out a second time, so retrying a failed payment cannot
+leave a second order behind.
+
+`SessionPayment.clientToken` and `PaymentAdapterResult.clientToken` are
+documented as opaque EPCC `client_parameters`, not a Stripe PaymentIntent
+client secret. Stripe stores its client secret there, but generic code must not
+read the field as a PaymentIntent. Type and wire format are unchanged.
+
 ## 0.5.3
 
 ### Fixed
