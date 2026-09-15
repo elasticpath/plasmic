@@ -11,7 +11,10 @@ import type { CheckoutSession } from "./types";
 
 export interface PaymentSucceededEvent {
   orderId: string;
-  paymentIntentId: string;
+  /** Stripe-private; omitted for order-first. Prefer gatewayMetadata. */
+  paymentIntentId?: string;
+  /** EPCC TransactionResponse.id when the sequence produced a transaction. */
+  transactionId?: string;
   gatewayMetadata?: Record<string, unknown>;
 }
 
@@ -30,16 +33,22 @@ export function applyPaymentSucceeded(
   session: CheckoutSession,
   event: PaymentSucceededEvent
 ): CheckoutSession {
+  const transactionId = event.transactionId ?? session.order?.transactionId;
   return {
     ...session,
     status: "complete",
-    order: { id: event.orderId },
+    order: {
+      id: event.orderId,
+      ...(transactionId ? { transactionId } : {}),
+    },
     payment: {
       ...session.payment,
       status: "succeeded",
       gatewayMetadata: {
         ...session.payment.gatewayMetadata,
-        paymentIntentId: event.paymentIntentId,
+        ...(event.paymentIntentId
+          ? { paymentIntentId: event.paymentIntentId }
+          : {}),
         ...(event.gatewayMetadata ?? {}),
       },
     },

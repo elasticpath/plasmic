@@ -643,6 +643,27 @@ describe("EPCheckoutSessionProvider placeOrder 3DS continuation", () => {
     expect(result.data.session.status).toBe("complete");
   });
 
+  it("invokes completeRequiresAction for a non-stripe gateway that registered it", async () => {
+    const paySession = {
+      status: "open",
+      payment: {
+        gateway: "paypal",
+        status: "requires_action",
+        clientToken: "opaque-params",
+      },
+    };
+    mockPlaceOrder.mockResolvedValue({
+      success: true,
+      data: { session: paySession },
+    });
+
+    const result = await placeWithGateway("paypal", mockCompleteRequiresAction);
+
+    expect(mockCompleteRequiresAction).toHaveBeenCalledTimes(1);
+    expect(mockCompleteRequiresAction).toHaveBeenCalledWith(paySession);
+    expect(result.data.session.status).toBe("complete");
+  });
+
   it("does not invoke completeRequiresAction on normal non-3DS success", async () => {
     mockPlaceOrder.mockResolvedValue({
       success: true,

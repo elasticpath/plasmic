@@ -3,9 +3,9 @@
  * checkout session model.
  *
  * Exposes a `checkoutSession` DataProvider with the current session state and
- * refActions for mutation. Gateway components (EPCloverPayment, EPStripePayment)
- * register via the PaymentRegistrationContext so the provider knows which
- * gateway to call when placeOrder() fires.
+ * refActions for mutation. Gateway components (EPCloverPayment, EPStripePayment,
+ * EPManualPayment) register via the PaymentRegistrationContext so the provider
+ * knows which gateway to call when placeOrder() fires.
  */
 import {
   DataProvider,
@@ -185,7 +185,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
       if (!gw) {
         log.error(
           "placeOrder called but no gateway registered. " +
-            "Place EPCloverPayment or EPStripePayment inside this provider."
+            "Place EPCloverPayment, EPStripePayment, or EPManualPayment inside this provider."
         );
         return {
           success: false,
@@ -201,14 +201,13 @@ const EPCheckoutSessionRuntime = React.forwardRef<
       const payResp = await placeOrderFn({ gateway: gw.name, ...gwData });
       const paySession = payResp?.data?.session;
 
-      // Stripe 3DS: /pay left the session open with requires_action. Run
-      // handleNextAction + resumePayment before returning so the form stays
-      // in "placing" until checkout is actually complete or failed.
-      // Clover (and any gateway without completeRequiresAction) is unchanged.
+      // Gateway continuation: /pay left the session open with requires_action.
+      // Run the widget's completeRequiresAction (if registered) so the form
+      // stays in "placing" until checkout is actually complete or failed.
+      // Gateways without completeRequiresAction (e.g. Clover) are unchanged.
       if (
         payResp?.success &&
         paySession?.payment?.status === "requires_action" &&
-        gw.name === "stripe" &&
         typeof gw.completeRequiresAction === "function"
       ) {
         return await gw.completeRequiresAction(paySession);
@@ -352,7 +351,7 @@ export const epCheckoutSessionProviderMeta: CodeComponentMeta<EPCheckoutSessionP
     name: "plasmic-commerce-ep-checkout-session-provider",
     displayName: "EP Checkout Session Provider",
     description:
-      "Server-authoritative checkout session. Exposes checkoutSession data and mutation refActions. Drop payment components (EPCloverPayment / EPStripePayment) inside.",
+      "Server-authoritative checkout session. Exposes checkoutSession data and mutation refActions. Drop payment components (EPCloverPayment / EPStripePayment / EPManualPayment) inside.",
     props: {
       children: {
         type: "slot",
@@ -412,7 +411,7 @@ export const epCheckoutSessionProviderMeta: CodeComponentMeta<EPCheckoutSessionP
       },
       resumePayment: {
         description:
-          "Resume a Stripe PaymentIntent after 3DS (server checkoutApi + confirmOrder)",
+          "Resume payment after a customer action (cart PaymentIntent sequence)",
         argTypes: [{ name: "resumeData", type: "object" }],
       },
       reset: {

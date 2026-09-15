@@ -31,6 +31,7 @@ export { createCloverAdapter } from "./checkout/session/adapters/clover-adapter"
 export type { CloverAdapterConfig } from "./checkout/session/adapters/clover-adapter";
 export { createStripeAdapter } from "./checkout/session/adapters/stripe-adapter";
 export type { StripeAdapterConfig } from "./checkout/session/adapters/stripe-adapter";
+export { createManualAdapter } from "./checkout/session/adapters/manual-adapter";
 
 // Client-credentials token resolver (request-scoped, memoized per request).
 export { createClientCredentialsTokenResolver } from "./auth/ep-plugin/client-credentials-resolver";
@@ -42,8 +43,13 @@ export type {
 // Types needed by consumer route files
 export type {
   AdapterRegistry,
+  CartPaymentIntentAdapter,
   EPCredentials,
+  LegacyPaymentAdapter,
+  OrderFirstAdapter,
   PaymentAdapter,
+  PaymentSequence,
+  PaymentSetupRequest,
   SessionHandlerContext,
   SessionRequest,
   SessionResponse,

@@ -87,9 +87,10 @@ function createMockStore(session: CheckoutSession | null = null): SessionStore {
 
 function createMockAdapter(): PaymentAdapter {
   return {
+    paymentSequence: "cart_payment_intent",
     initializePayment: jest.fn().mockResolvedValue({ status: "succeeded" }),
     confirmPayment: jest.fn().mockResolvedValue({ status: "succeeded" }),
-  };
+  } as PaymentAdapter;
 }
 
 function createMockRegistry(adapter?: PaymentAdapter): AdapterRegistry {
@@ -179,12 +180,18 @@ describe("handleAbandonPayment — guards", () => {
   });
 
   it("returns 400 UNKNOWN_GATEWAY for clover", async () => {
+    const legacyAdapter: PaymentAdapter = {
+      initializePayment: jest.fn().mockResolvedValue({ status: "succeeded" }),
+      confirmPayment: jest.fn().mockResolvedValue({ status: "succeeded" }),
+    };
     const res = await handleAbandonPayment(
       createMockReq(),
       createMockCtx(
         makeSession({
           payment: { ...REQUIRES_ACTION_PAYMENT, gateway: "clover" },
-        })
+        }),
+        {},
+        legacyAdapter
       )
     );
     expect(res.status).toBe(400);

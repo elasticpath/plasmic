@@ -32,3 +32,6 @@ export type {
 // Stripe adapter
 export { createStripeAdapter } from "./stripe-adapter";
 export type { StripeAdapterConfig } from "./stripe-adapter";
+
+// Manual adapter (order_first, purchase only)
+export { createManualAdapter } from "./manual-adapter";

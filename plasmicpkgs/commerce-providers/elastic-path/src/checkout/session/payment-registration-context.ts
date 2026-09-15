@@ -1,8 +1,8 @@
 /**
  * PaymentRegistrationContext — internal React context for gateway self-registration.
  *
- * When a designer drops EPCloverPayment or EPStripePayment inside
- * EPCheckoutSessionProvider, the gateway component registers itself via this
+ * When a designer drops EPCloverPayment, EPStripePayment, or EPManualPayment
+ * inside EPCheckoutSessionProvider, the gateway component registers itself via this
  * context. The provider reads the registration to know which gateway to use
  * when placeOrder() is called.
  *
@@ -12,9 +12,9 @@
 import React, { useContext } from "react";
 
 /**
- * Session slice returned by /pay and passed into Stripe's requires_action
- * continuation. clientToken is the server-persisted PaymentIntent
- * client_secret — not a client-claimed PI id or status.
+ * Session slice returned by /pay and passed into a gateway's requires_action
+ * continuation. clientToken is opaque client parameters persisted by /pay —
+ * not a client-claimed payment id or status.
  */
 export interface GatewayPaySession {
   status?: string;
@@ -37,8 +37,8 @@ export interface GatewayRegistration {
   /** Called by the provider to get gateway-specific data for the /pay request. */
   confirm: () => Promise<Record<string, unknown>>;
   /**
-   * Stripe-only. After /pay returns requires_action, the provider awaits this
-   * to run handleNextAction + resumePayment. Clover omits it.
+   * After /pay returns requires_action, the provider awaits this so the
+   * widget can run customer-action continuation (e.g. 3DS). Omit if unused.
    */
   completeRequiresAction?: (
     paySession: GatewayPaySession

@@ -50,6 +50,11 @@ export {
   epStripePaymentMeta,
 } from './session/EPStripePayment';
 export {
+  EPManualPayment,
+  registerEPManualPayment,
+  epManualPaymentMeta,
+} from './session/EPManualPayment';
+export {
   EPCloverPayment,
   registerEPCloverPayment,
   epCloverPaymentMeta,

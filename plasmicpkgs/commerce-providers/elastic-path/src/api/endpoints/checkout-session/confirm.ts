@@ -18,6 +18,7 @@ import type {
   SessionHandlerContext,
   CheckoutSession,
   ClientCheckoutSession,
+  PaymentAdapterResult,
 } from "../../../checkout/session/types";
 import { createLogger } from "../../../utils/logger";
 
@@ -108,7 +109,23 @@ export async function handleConfirm(
     };
   }
 
-  let adapterResult: Awaited<ReturnType<typeof adapter.confirmPayment>>;
+  if (
+    !("confirmPayment" in adapter) ||
+    typeof adapter.confirmPayment !== "function"
+  ) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        error: {
+          message: `Unknown payment gateway: ${session.payment.gateway}`,
+          code: "UNKNOWN_GATEWAY",
+        },
+      },
+    };
+  }
+
+  let adapterResult: PaymentAdapterResult;
   try {
     adapterResult = await adapter.confirmPayment(
       session,

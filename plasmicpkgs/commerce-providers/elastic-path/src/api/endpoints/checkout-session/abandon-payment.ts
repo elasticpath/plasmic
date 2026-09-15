@@ -22,11 +22,10 @@ import type {
   ClientCheckoutSession,
 } from "../../../checkout/session/types";
 import { applyAbandonedRequiresAction } from "../../../checkout/session/session-state-transition";
+import { isCartPaymentIntentAdapter } from "../../../checkout/session/payment-sequence";
 import { createLogger } from "../../../utils/logger";
 
 const log = createLogger("AbandonPayment");
-
-const STRIPE_GATEWAY = "stripe";
 
 function toClientSession(s: CheckoutSession): ClientCheckoutSession {
   const { cartHash, ...rest } = s;
@@ -120,13 +119,16 @@ export async function handleAbandonPayment(
     };
   }
 
-  if (session.payment.gateway !== STRIPE_GATEWAY) {
+  const adapter = session.payment.gateway
+    ? ctx.adapterRegistry.getAdapter(session.payment.gateway)
+    : undefined;
+  if (!adapter || !isCartPaymentIntentAdapter(adapter)) {
     return {
       status: 400,
       body: {
         success: false,
         error: {
-          message: `Abandon is only supported for stripe, not ${session.payment.gateway ?? "none"}`,
+          message: `Abandon is only supported for cart_payment_intent, not ${session.payment.gateway ?? "none"}`,
           code: "UNKNOWN_GATEWAY",
         },
       },

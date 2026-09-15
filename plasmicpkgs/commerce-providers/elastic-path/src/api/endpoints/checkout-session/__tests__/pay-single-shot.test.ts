@@ -124,8 +124,8 @@ function createMockAdapter(
   }
 ): PaymentAdapter {
   return {
+    paymentSequence: "cart_payment_intent",
     initializePayment: jest.fn().mockResolvedValue(initResult),
-    confirmPayment: jest.fn().mockResolvedValue({ status: "succeeded" }),
   };
 }
 
@@ -214,6 +214,7 @@ describe("handlePay — single-shot guest happy path", () => {
     // EP order creation happened AFTER payment succeeded
     expect(epSdk.checkoutApi).toHaveBeenCalledTimes(1);
     expect(epSdk.confirmOrder).toHaveBeenCalledTimes(1);
+    expect(epSdk.confirmOrder.mock.calls[0][0].path.paymentID).toBe("pi_abc");
 
     // Cart cleanup ran
     expect(epSdk.deleteACart).toHaveBeenCalledWith(

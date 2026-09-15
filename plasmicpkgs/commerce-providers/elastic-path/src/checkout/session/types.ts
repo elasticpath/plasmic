@@ -79,13 +79,17 @@ export interface SessionTotals {
 export interface SessionPayment {
   gateway: string | null;
   status: PaymentStatus;
-  /** Client-side token (e.g. Stripe PaymentIntent client_secret). */
+  /**
+   * Opaque client parameters for a customer action (EPCC `client_parameters`).
+   * Stripe stores a PaymentIntent client_secret here; generic code must not
+   * interpret this as a PaymentIntent id.
+   */
   clientToken: string | null;
   gatewayMetadata: {
     epTransactionId?: string;
     [key: string]: unknown;
   };
-  /** Data the client needs to complete a gateway action (e.g. 3DS). */
+  /** Opaque customer-action payload (EPCC `next_actions`, 3DS data, etc.). */
   actionData: Record<string, unknown> | null;
 }
 
@@ -145,8 +149,10 @@ export interface CheckoutSession {
 export type CustomAttributeAllowList = readonly string[] | "*";
 
 // ---------------------------------------------------------------------------
-// PaymentAdapter — implemented per gateway (Clover, Stripe)
+// PaymentAdapter — sequence-discriminated (Stripe cart PI, order-first)
 // ---------------------------------------------------------------------------
+
+export type PaymentSequence = "cart_payment_intent" | "order_first";
 
 export type PaymentAdapterResultStatus =
   | "ready"
@@ -156,24 +162,59 @@ export type PaymentAdapterResultStatus =
 
 export interface PaymentAdapterResult {
   status: PaymentAdapterResultStatus;
+  /** Opaque client parameters; not a generic PaymentIntent secret. */
   clientToken?: string;
+  /** Adapter-private metadata (Stripe may store paymentIntentId here). */
   gatewayMetadata?: Record<string, unknown>;
+  /** Cart-PI paymentID for confirmOrder, or TransactionResponse.id. */
   gatewayOrderId?: string;
+  /** Opaque customer-action payload (next_actions, redirects, etc.). */
   actionData?: Record<string, unknown>;
   errorMessage?: string;
 }
 
-export interface PaymentAdapter {
+/** Body of EPCC `paymentSetup` (`data`). Adapter fills this; /pay calls EP. */
+export interface PaymentSetupRequest {
+  gateway: string;
+  method: string;
+  [key: string]: unknown;
+}
+
+export interface CartPaymentIntentAdapter {
+  readonly paymentSequence: "cart_payment_intent";
   initializePayment(
     session: CheckoutSession,
     gatewayData: Record<string, unknown>
   ): Promise<PaymentAdapterResult>;
+}
 
+export interface OrderFirstAdapter {
+  readonly paymentSequence: "order_first";
+  buildPaymentSetup(
+    session: CheckoutSession,
+    gatewayData: Record<string, unknown>
+  ): PaymentSetupRequest | Promise<PaymentSetupRequest>;
+}
+
+/**
+ * Pre-sequence adapter shape (Clover). Not a payment sequence.
+ * Kept so existing Clover files type-check without being edited.
+ */
+export interface LegacyPaymentAdapter {
+  initializePayment(
+    session: CheckoutSession,
+    gatewayData: Record<string, unknown>
+  ): Promise<PaymentAdapterResult>;
   confirmPayment(
     session: CheckoutSession,
     confirmData: Record<string, unknown>
   ): Promise<PaymentAdapterResult>;
 }
+
+export type PaymentAdapter =
+  | CartPaymentIntentAdapter
+  | OrderFirstAdapter
+  | LegacyPaymentAdapter;
 
 // ---------------------------------------------------------------------------
 // SessionStore — persistence layer (cookie, KV, etc.)

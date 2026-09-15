@@ -90,6 +90,12 @@ export {
 } from "./EPStripePayment";
 
 export {
+  EPManualPayment,
+  epManualPaymentMeta,
+  registerEPManualPayment,
+} from "./EPManualPayment";
+
+export {
   EPCheckoutShippingRates,
   epCheckoutShippingRatesMeta,
   registerEPCheckoutShippingRates,
@@ -107,6 +113,7 @@ export { createCloverAdapter } from "./adapters/clover-adapter";
 export type { CloverAdapterConfig } from "./adapters/clover-adapter";
 export { createStripeAdapter } from "./adapters/stripe-adapter";
 export type { StripeAdapterConfig } from "./adapters/stripe-adapter";
+export { createManualAdapter } from "./adapters/manual-adapter";
 
 // Types
 export type {
@@ -122,6 +129,11 @@ export type {
   PaymentAdapter,
   PaymentAdapterResult,
   PaymentAdapterResultStatus,
+  PaymentSequence,
+  PaymentSetupRequest,
+  CartPaymentIntentAdapter,
+  OrderFirstAdapter,
+  LegacyPaymentAdapter,
   SessionStore,
   SessionSetResult,
   SessionRequest,

@@ -106,6 +106,8 @@ describe("createStripeAdapter — Cart Payment Intent (EP-native)", () => {
       });
 
       const adapter = createStripeAdapter(ADAPTER_CONFIG);
+      expect(adapter.paymentSequence).toBe("cart_payment_intent");
+      expect(adapter).not.toHaveProperty("confirmPayment");
       const result = await adapter.initializePayment(makeSession(), {
         confirmation_token: "ctoken_abc",
       });
