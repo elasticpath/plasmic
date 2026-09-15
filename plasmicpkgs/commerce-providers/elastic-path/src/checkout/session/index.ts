@@ -118,7 +118,11 @@ export type {
   ManualAdapterConfig,
   ManualPaymentMethod,
 } from "./adapters/manual-adapter";
-
+export {
+  isCartPaymentIntentAdapter,
+  isLegacyPaymentAdapter,
+  isOrderFirstAdapter,
+} from "./payment-sequence";
 
 // Types
 export type {

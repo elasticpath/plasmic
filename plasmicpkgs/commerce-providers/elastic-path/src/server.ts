@@ -36,7 +36,11 @@ export type {
   ManualAdapterConfig,
   ManualPaymentMethod,
 } from "./checkout/session/adapters/manual-adapter";
-
+export {
+  isCartPaymentIntentAdapter,
+  isLegacyPaymentAdapter,
+  isOrderFirstAdapter,
+} from "./checkout/session/payment-sequence";
 
 // Client-credentials token resolver (request-scoped, memoized per request).
 export { createClientCredentialsTokenResolver } from "./auth/ep-plugin/client-credentials-resolver";

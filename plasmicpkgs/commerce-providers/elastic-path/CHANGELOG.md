@@ -24,8 +24,14 @@ for a payment-setup body, calls EPCC `paymentSetup`, and maps the returned
 transaction. Stripe keeps the existing cart PaymentIntent sequence.
 
 `PaymentSequence`, `PaymentSetupRequest`, `CartPaymentIntentAdapter`,
-`OrderFirstAdapter` and `LegacyPaymentAdapter`, exported from the package root
-and from `/server`.
+`OrderFirstAdapter` and `LegacyPaymentAdapter`, exported from `/server`.
+
+`isCartPaymentIntentAdapter()`, `isOrderFirstAdapter()` and
+`isLegacyPaymentAdapter()`, also from `/server` — the narrowing guards for the
+`PaymentAdapter` union. They ship with the union they narrow, so a consumer
+holding a `PaymentAdapter` does not have to hand-roll the `paymentSequence`
+check. The adapter surface stays on `/server` rather than the package root, so
+server-only code stays out of the hostless client bundle.
 
 ### Changed
 
@@ -34,8 +40,8 @@ and from `/server`.
 (`"order_first"`), or `LegacyPaymentAdapter` — the pre-sequence two-method
 shape Clover still uses. Existing adapter objects satisfy the union unchanged.
 Code that _reads_ a `PaymentAdapter` must now narrow on `paymentSequence`
-before reaching `initializePayment` or `confirmPayment`; the package's own
-narrowing helpers are internal, so a consumer doing this writes its own check.
+before reaching `initializePayment`, `buildPaymentSetup` or `confirmPayment` —
+use the exported guards above.
 
 `/pay` dispatches on the adapter's declared sequence instead of branching on
 the gateway name, so adding a gateway no longer means editing generic checkout.
