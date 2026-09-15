@@ -32,6 +32,11 @@ export type { CloverAdapterConfig } from "./checkout/session/adapters/clover-ada
 export { createStripeAdapter } from "./checkout/session/adapters/stripe-adapter";
 export type { StripeAdapterConfig } from "./checkout/session/adapters/stripe-adapter";
 export { createManualAdapter } from "./checkout/session/adapters/manual-adapter";
+export type {
+  ManualAdapterConfig,
+  ManualPaymentMethod,
+} from "./checkout/session/adapters/manual-adapter";
+
 
 // Client-credentials token resolver (request-scoped, memoized per request).
 export { createClientCredentialsTokenResolver } from "./auth/ep-plugin/client-credentials-resolver";

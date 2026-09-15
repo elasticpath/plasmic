@@ -87,7 +87,11 @@ export async function buildCheckoutContext(
         getClientCredentialsToken,
       })
     );
-    adapterRegistry.register("manual", createManualAdapter());
+    // Manual settlement method is host config (purchase default; authorize optional).
+    adapterRegistry.register(
+      "manual",
+      createManualAdapter({ method: "purchase" })
+    );
   }
 
   const ctx: SessionHandlerContext = {

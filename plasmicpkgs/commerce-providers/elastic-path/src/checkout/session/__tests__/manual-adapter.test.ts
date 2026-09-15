@@ -1,5 +1,5 @@
 /**
- * Manual OrderFirstAdapter — purchase-only paymentSetup body.
+ * Manual OrderFirstAdapter — host-configurable purchase / authorize setup body.
  */
 
 import { createManualAdapter } from "../adapters/manual-adapter";
@@ -57,11 +57,27 @@ describe("createManualAdapter", () => {
     expect(adapter).not.toHaveProperty("confirmPayment");
   });
 
-  it("buildPaymentSetup returns Manual purchase body", () => {
+  it("defaults buildPaymentSetup to Manual purchase", () => {
     const adapter = createManualAdapter();
     expect(adapter.buildPaymentSetup(makeSession(), {})).toEqual({
       gateway: "manual",
       method: "purchase",
+    });
+  });
+
+  it("buildPaymentSetup returns explicit purchase when configured", () => {
+    const adapter = createManualAdapter({ method: "purchase" });
+    expect(adapter.buildPaymentSetup(makeSession(), {})).toEqual({
+      gateway: "manual",
+      method: "purchase",
+    });
+  });
+
+  it("buildPaymentSetup returns authorize when configured", () => {
+    const adapter = createManualAdapter({ method: "authorize" });
+    expect(adapter.buildPaymentSetup(makeSession(), {})).toEqual({
+      gateway: "manual",
+      method: "authorize",
     });
   });
 });
