@@ -3,9 +3,9 @@
  * checkout session model.
  *
  * Exposes a `checkoutSession` DataProvider with the current session state and
- * refActions for mutation. Gateway components (EPCloverPayment, EPStripePayment)
- * register via the PaymentRegistrationContext so the provider knows which
- * gateway to call when placeOrder() fires.
+ * refActions for mutation. Gateway components (EPCloverPayment, EPStripePayment,
+ * EPManualPayment) register via the PaymentRegistrationContext so the provider
+ * knows which gateway to call when placeOrder() fires.
  */
 import {
   DataProvider,
@@ -185,7 +185,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
       if (!gw) {
         log.error(
           "placeOrder called but no gateway registered. " +
-            "Place EPCloverPayment or EPStripePayment inside this provider."
+            "Place EPCloverPayment, EPStripePayment, or EPManualPayment inside this provider."
         );
         return {
           success: false,
@@ -351,7 +351,7 @@ export const epCheckoutSessionProviderMeta: CodeComponentMeta<EPCheckoutSessionP
     name: "plasmic-commerce-ep-checkout-session-provider",
     displayName: "EP Checkout Session Provider",
     description:
-      "Server-authoritative checkout session. Exposes checkoutSession data and mutation refActions. Drop payment components (EPCloverPayment / EPStripePayment) inside.",
+      "Server-authoritative checkout session. Exposes checkoutSession data and mutation refActions. Drop payment components (EPCloverPayment / EPStripePayment / EPManualPayment) inside.",
     props: {
       children: {
         type: "slot",

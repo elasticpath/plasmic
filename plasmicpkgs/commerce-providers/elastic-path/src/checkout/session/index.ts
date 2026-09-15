@@ -90,6 +90,12 @@ export {
 } from "./EPStripePayment";
 
 export {
+  EPManualPayment,
+  epManualPaymentMeta,
+  registerEPManualPayment,
+} from "./EPManualPayment";
+
+export {
   EPCheckoutShippingRates,
   epCheckoutShippingRatesMeta,
   registerEPCheckoutShippingRates,

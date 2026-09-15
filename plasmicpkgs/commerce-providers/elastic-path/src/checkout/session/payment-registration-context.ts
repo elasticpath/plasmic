@@ -1,8 +1,8 @@
 /**
  * PaymentRegistrationContext — internal React context for gateway self-registration.
  *
- * When a designer drops EPCloverPayment or EPStripePayment inside
- * EPCheckoutSessionProvider, the gateway component registers itself via this
+ * When a designer drops EPCloverPayment, EPStripePayment, or EPManualPayment
+ * inside EPCheckoutSessionProvider, the gateway component registers itself via this
  * context. The provider reads the registration to know which gateway to use
  * when placeOrder() is called.
  *
