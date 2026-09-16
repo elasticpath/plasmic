@@ -52,6 +52,7 @@ import {
 import { hashCart } from "../../../checkout/session/cart-hash";
 import { buildGuestCheckoutBody } from "../../../checkout/session/checkout-body-builder";
 import { runCartCleanup } from "../../../checkout/session/cart-cleanup";
+import { clearCartPaymentIntentId } from "../../../checkout/session/clear-cart-payment-intent";
 import { persistOrderCustomFields } from "../../../checkout/session/order-custom-fields";
 import { filterAllowedCustomAttributes } from "../../../checkout/session/custom-attributes-allowlist";
 import {
@@ -236,7 +237,24 @@ async function settleFreeOrder(
     };
   }
 
-  // 3. Cart cleanup — best-effort housekeeping.
+  // 3. Clear any leftover Cart PaymentIntent (e.g. earlier failed Stripe
+  //    attempt) before best-effort cart delete. Soft-fail: the free order is
+  //    already settled; do not turn cleanup into a retryable payment error.
+  const clearPi = await clearCartPaymentIntentId({
+    client: adminClient,
+    cartId: session.cartId,
+  });
+  if (!clearPi.ok) {
+    log.warn(
+      "Failed to clear cart payment_intent_id after free-order settlement (non-fatal)",
+      {
+        cartId: session.cartId,
+        error: clearPi.errorMessage,
+      } as Record<string, unknown>
+    );
+  }
+
+  // 4. Cart cleanup — best-effort housekeeping.
   if (ctx.getClientCredentialsToken) {
     await runCartCleanup({
       host: ctx.epCredentials.apiBaseUrl,
@@ -246,7 +264,7 @@ async function settleFreeOrder(
     });
   }
 
-  // 4. Mark complete and persist.
+  // 5. Mark complete and persist.
   const completeSession = applyPaymentSucceeded(
     { ...session, payment: { ...session.payment, gateway: FREE_ORDER_GATEWAY } },
     { orderId, gatewayMetadata: { free: true } }

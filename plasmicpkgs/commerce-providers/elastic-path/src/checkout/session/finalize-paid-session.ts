@@ -3,7 +3,9 @@
  * PaymentIntent is synced (or /pay confirm failed after the charge succeeded).
  *
  * For cart_payment_intent gateways, clears cart payment_intent_id before
- * best-effort cart deletion so a surviving cart cannot reattach a paid PI.
+ * best-effort cart deletion so a surviving cart cannot reattach a paid PI —
+ * but only when confirmOrder reconciliation succeeded. When
+ * reconciliationError is set, the Cart PI link is left in place.
  * Cart cleanup failures (and detach failures after a successful charge) are
  * logged and never turn a completed order into a retryable payment failure.
  * Callers handle order custom-field writes themselves so /pay can write them
@@ -58,24 +60,28 @@ async function detachCartPaymentIntentIfNeeded(
   }
   if (!cartId) return;
 
-  let token = ctx.shopperAccessToken ?? "";
-  if (!token && ctx.getClientCredentialsToken) {
+  // Prefer client_credentials (same as cart delete). A present-but-expired
+  // shopper token must not block success cleanup when admin credentials exist.
+  let token = "";
+  if (ctx.getClientCredentialsToken) {
     try {
       token = await ctx.getClientCredentialsToken();
     } catch (err) {
-      log.error(
-        "Cart PaymentIntent detach skipped — could not mint token after successful payment",
+      log.warn(
+        "Cart PaymentIntent detach — could not mint admin token after successful payment; trying shopper token",
         {
           cartId,
           gateway,
           error: err instanceof Error ? err.message : String(err),
         } as Record<string, unknown>
       );
-      return;
     }
   }
   if (!token) {
-    log.error(
+    token = ctx.shopperAccessToken ?? "";
+  }
+  if (!token) {
+    log.warn(
       "Cart PaymentIntent detach skipped — no shopper or admin token after successful payment",
       { cartId, gateway } as Record<string, unknown>
     );
@@ -88,7 +94,7 @@ async function detachCartPaymentIntentIfNeeded(
   });
   if (!result.ok) {
     // Order/payment already succeeded — do not fail the response (retry is dangerous).
-    log.error(
+    log.warn(
       "Failed to clear cart payment_intent_id after successful payment (non-fatal)",
       {
         cartId,
@@ -128,7 +134,11 @@ export async function finalizePaidSession(
     reconciliationError = null,
   } = params;
 
-  await detachCartPaymentIntentIfNeeded(ctx, gateway, session.cartId);
+  // Keep the Cart PI association when confirmOrder reconciliation failed —
+  // ops may still need the link. Clear only after a clean reconcile.
+  if (reconciliationError == null) {
+    await detachCartPaymentIntentIfNeeded(ctx, gateway, session.cartId);
+  }
 
   if (ctx.getClientCredentialsToken) {
     await runCartCleanup({

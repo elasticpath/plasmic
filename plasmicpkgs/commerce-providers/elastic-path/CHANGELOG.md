@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.1
+
+### Fixed
+
+After a successful **cart PaymentIntent** checkout, the cart's
+`payment_intent_id` is cleared (Update Cart with an empty id) before the
+best-effort cart delete — only when `confirmOrder` reconciliation succeeded.
+When reconciliation is pending, the Cart PI link is left in place. A surviving
+cart can no longer carry a paid Stripe PaymentIntent into a later order after
+a clean settle. Clear failures after a successful charge are non-fatal
+(logged); abandon still fails closed on clear failure.
+
+The zero-total (`settleFreeOrder`) path clears any leftover cart
+`payment_intent_id` the same way before cart delete, so an earlier failed
+Stripe attempt cannot leave a PI on a cart that then settles for free.
+
+Success-path clear prefers the `client_credentials` token (same as cart
+delete) so a present-but-expired shopper token cannot skip cleanup when admin
+credentials are available.
+
 ## 0.6.0
 
 ### Added
