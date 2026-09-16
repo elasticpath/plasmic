@@ -382,8 +382,12 @@ describe("order-fields allow-list (#369)", () => {
     // The order still completes; the extras are simply dropped.
     expect(res.status).toBe(200);
     expect((res.body as any).data.session.status).toBe("complete");
-    // Nothing to persist → neither write fires.
-    expect(epSdk.updateACart).not.toHaveBeenCalled();
+    // No custom-attribute cart write. Cart PaymentIntent detach may still run.
+    expect(
+      epSdk.updateACart.mock.calls.some(
+        (c) => c[0]?.body?.data?.custom_attributes
+      )
+    ).toBe(false);
     expect(epSdk.updateAnOrder).not.toHaveBeenCalled();
   });
 

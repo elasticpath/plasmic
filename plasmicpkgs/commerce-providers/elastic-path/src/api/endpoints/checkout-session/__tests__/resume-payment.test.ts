@@ -190,6 +190,7 @@ beforeEach(() => {
   });
   epSdk.createCartPaymentIntent.mockResolvedValue({ data: { data: {} } });
   epSdk.updateCartPaymentIntent.mockResolvedValue({ data: { data: {} } });
+  epSdk.updateACart.mockResolvedValue({ data: { data: {} } });
   epSdk.updateAnOrder.mockResolvedValue({ data: { data: { id: "order-1" } } });
   epSdk.deleteACart.mockResolvedValue({ data: undefined });
   epSdk.manageCarts.mockResolvedValue({});
@@ -430,6 +431,37 @@ describe("handleResumePayment — success", () => {
       orderID: "order-1",
       paymentID: "pi_abc",
     });
+    expect(epSdk.updateACart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { cartID: "cart-abc" },
+        body: { data: { payment_intent_id: "" } },
+      })
+    );
+    expect(epSdk.deleteACart).toHaveBeenCalledWith(
+      expect.objectContaining({ path: { cartID: "cart-abc" } })
+    );
+    expect(epSdk.updateACart.mock.invocationCallOrder[0]).toBeLessThan(
+      epSdk.deleteACart.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("PI detach failure after confirmOrder still completes and still deletes the cart", async () => {
+    epSdk.updateACart.mockRejectedValue(new Error("EP cart update 500"));
+    const res = await handleResumePayment(
+      createMockReq(),
+      createMockCtx(makeSession(), {}, createMockAdapter())
+    );
+
+    expect(res.status).toBe(200);
+    expect((res.body as any).success).toBe(true);
+    expect((res.body as any).data.session.status).toBe("complete");
+    expect((res.body as any).error).toBeUndefined();
+    expect(epSdk.confirmOrder).toHaveBeenCalledTimes(1);
+    expect(epSdk.updateACart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: { data: { payment_intent_id: "" } },
+      })
+    );
     expect(epSdk.deleteACart).toHaveBeenCalledWith(
       expect.objectContaining({ path: { cartID: "cart-abc" } })
     );
@@ -443,7 +475,12 @@ describe("handleResumePayment — success", () => {
     );
     expect(epSdk.createCartPaymentIntent).not.toHaveBeenCalled();
     expect(epSdk.updateCartPaymentIntent).not.toHaveBeenCalled();
-    expect(epSdk.updateACart).not.toHaveBeenCalled();
+    // Success clears payment_intent_id via Update Cart — not a Cart-PI recreate.
+    expect(epSdk.updateACart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: { data: { payment_intent_id: "" } },
+      })
+    );
     expect(adapter.initializePayment).not.toHaveBeenCalled();
     expect(adapter.confirmPayment).not.toHaveBeenCalled();
   });

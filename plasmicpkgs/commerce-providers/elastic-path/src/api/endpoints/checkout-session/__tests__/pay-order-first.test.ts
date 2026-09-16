@@ -546,6 +546,15 @@ describe("handlePay — registered Manual adapter", () => {
     expect(epSdk.confirmOrder).not.toHaveBeenCalled();
     expect(epSdk.createCartPaymentIntent).not.toHaveBeenCalled();
     expect(epSdk.getAnOrder).not.toHaveBeenCalled();
+    // Manual/order-first must not clear a Cart PaymentIntent association.
+    expect(epSdk.updateACart).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: { data: { payment_intent_id: "" } },
+      })
+    );
+    expect(epSdk.deleteACart).toHaveBeenCalledWith(
+      expect.objectContaining({ path: { cartID: "cart-abc" } })
+    );
   });
 
   it("failed payment keeps the unpaid order and remains retryable on the same order", async () => {

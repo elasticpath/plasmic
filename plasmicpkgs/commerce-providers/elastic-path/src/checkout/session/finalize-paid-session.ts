@@ -1,11 +1,15 @@
 /**
  * Shared tail for paid checkout once the EP order exists and the gateway
  * PaymentIntent is synced (or /pay confirm failed after the charge succeeded).
- * 
- * Cart cleanup is best-effort. applyPaymentSucceeded completes the session.
+ *
+ * For cart_payment_intent gateways, clears cart payment_intent_id before
+ * best-effort cart deletion so a surviving cart cannot reattach a paid PI.
+ * Cart cleanup failures (and detach failures after a successful charge) are
+ * logged and never turn a completed order into a retryable payment failure.
  * Callers handle order custom-field writes themselves so /pay can write them
  * before confirmOrder.
  */
+import { createShopperClient } from "@epcc-sdk/sdks-shopper";
 import type {
   CheckoutSession,
   ClientCheckoutSession,
@@ -15,6 +19,8 @@ import type {
 } from "./types";
 import { applyPaymentSucceeded } from "./session-state-transition";
 import { runCartCleanup } from "./cart-cleanup";
+import { clearCartPaymentIntentId } from "./clear-cart-payment-intent";
+import { isCartPaymentIntentAdapter } from "./payment-sequence";
 import { createLogger } from "../../utils/logger";
 
 const log = createLogger("FinalizePaidSession");
@@ -22,6 +28,75 @@ const log = createLogger("FinalizePaidSession");
 function toClientSession(s: CheckoutSession): ClientCheckoutSession {
   const { cartHash, ...rest } = s;
   return rest;
+}
+
+function buildEpClient(
+  ctx: SessionHandlerContext,
+  token: string
+): unknown {
+  const { client } = createShopperClient(
+    { baseUrl: ctx.epCredentials.apiBaseUrl },
+    {
+      clientId: ctx.epCredentials.clientId,
+      storage: {
+        get: () => token,
+        set: () => {},
+      },
+    }
+  );
+  return client;
+}
+
+async function detachCartPaymentIntentIfNeeded(
+  ctx: SessionHandlerContext,
+  gateway: string,
+  cartId: string
+): Promise<void> {
+  const adapter = ctx.adapterRegistry.getAdapter(gateway);
+  if (!adapter || !isCartPaymentIntentAdapter(adapter)) {
+    return;
+  }
+  if (!cartId) return;
+
+  let token = ctx.shopperAccessToken ?? "";
+  if (!token && ctx.getClientCredentialsToken) {
+    try {
+      token = await ctx.getClientCredentialsToken();
+    } catch (err) {
+      log.error(
+        "Cart PaymentIntent detach skipped — could not mint token after successful payment",
+        {
+          cartId,
+          gateway,
+          error: err instanceof Error ? err.message : String(err),
+        } as Record<string, unknown>
+      );
+      return;
+    }
+  }
+  if (!token) {
+    log.error(
+      "Cart PaymentIntent detach skipped — no shopper or admin token after successful payment",
+      { cartId, gateway } as Record<string, unknown>
+    );
+    return;
+  }
+
+  const result = await clearCartPaymentIntentId({
+    client: buildEpClient(ctx, token),
+    cartId,
+  });
+  if (!result.ok) {
+    // Order/payment already succeeded — do not fail the response (retry is dangerous).
+    log.error(
+      "Failed to clear cart payment_intent_id after successful payment (non-fatal)",
+      {
+        cartId,
+        gateway,
+        error: result.errorMessage,
+      } as Record<string, unknown>
+    );
+  }
 }
 
 export interface FinalizePaidSessionParams {
@@ -52,6 +127,8 @@ export async function finalizePaidSession(
     gatewayMetadata,
     reconciliationError = null,
   } = params;
+
+  await detachCartPaymentIntentIfNeeded(ctx, gateway, session.cartId);
 
   if (ctx.getClientCredentialsToken) {
     await runCartCleanup({
