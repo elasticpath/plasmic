@@ -382,8 +382,12 @@ describe("order-fields allow-list (#369)", () => {
     // The order still completes; the extras are simply dropped.
     expect(res.status).toBe(200);
     expect((res.body as any).data.session.status).toBe("complete");
-    // Nothing to persist → neither write fires.
-    expect(epSdk.updateACart).not.toHaveBeenCalled();
+    // No custom-attribute cart write. Cart PaymentIntent detach may still run.
+    expect(
+      epSdk.updateACart.mock.calls.some(
+        (c) => c[0]?.body?.data?.custom_attributes
+      )
+    ).toBe(false);
     expect(epSdk.updateAnOrder).not.toHaveBeenCalled();
   });
 
@@ -459,6 +463,14 @@ describe("confirmOrder reconciliation (#369)", () => {
     expect(body.data.session.payment.gatewayMetadata.needsReconciliation).toBe(
       true
     );
+    // Do not clear Cart PI while the order still needs reconciliation.
+    expect(epSdk.updateACart).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: { data: { payment_intent_id: "" } },
+      })
+    );
+    // Cart delete still runs (best-effort housekeeping).
+    expect(epSdk.deleteACart).toHaveBeenCalled();
   });
 
   it("does not call confirmOrder with an undefined paymentID; flags reconciliation instead", async () => {
@@ -481,6 +493,11 @@ describe("confirmOrder reconciliation (#369)", () => {
     expect(body.reconciliationPending).toBe(true);
     expect(body.data.session.payment.gatewayMetadata.needsReconciliation).toBe(
       true
+    );
+    expect(epSdk.updateACart).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: { data: { payment_intent_id: "" } },
+      })
     );
   });
 
@@ -506,6 +523,11 @@ describe("confirmOrder reconciliation (#369)", () => {
     expect(
       body.data.session.payment.gatewayMetadata.needsReconciliation
     ).toBeUndefined();
+    expect(epSdk.updateACart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: { data: { payment_intent_id: "" } },
+      })
+    );
   });
 });
 

@@ -13,7 +13,7 @@
  * Does not create a PaymentIntent, call updateCartPaymentIntent, confirmOrder,
  * checkoutApi, or /confirm.
  */
-import { createShopperClient, updateACart } from "@epcc-sdk/sdks-shopper";
+import { createShopperClient } from "@epcc-sdk/sdks-shopper";
 import type {
   SessionRequest,
   SessionResponse,
@@ -23,6 +23,7 @@ import type {
 } from "../../../checkout/session/types";
 import { applyAbandonedRequiresAction } from "../../../checkout/session/session-state-transition";
 import { isCartPaymentIntentAdapter } from "../../../checkout/session/payment-sequence";
+import { clearCartPaymentIntentId } from "../../../checkout/session/clear-cart-payment-intent";
 import { createLogger } from "../../../utils/logger";
 
 const log = createLogger("AbandonPayment");
@@ -30,19 +31,6 @@ const log = createLogger("AbandonPayment");
 function toClientSession(s: CheckoutSession): ClientCheckoutSession {
   const { cartHash, ...rest } = s;
   return rest;
-}
-
-function epErrorMessage(error: unknown): string {
-  const e: any = error;
-  const details = e?.errors
-    ?.map((item: any) => item?.detail || item?.title)
-    .filter(Boolean)
-    .join("; ");
-  if (details) return details;
-  if (typeof e?.detail === "string") return e.detail;
-  if (typeof e?.message === "string") return e.message;
-  if (error instanceof Error) return error.message;
-  return "Failed to reset cart payment";
 }
 
 function buildShopperEpClient(ctx: SessionHandlerContext) {
@@ -135,46 +123,21 @@ export async function handleAbandonPayment(
     };
   }
 
-  const shopperClient = buildShopperEpClient(ctx);
-  let updateResult: { error?: unknown };
-  try {
-    updateResult = (await updateACart({
-      client: shopperClient,
-      path: { cartID: session.cartId },
-      body: {
-        data: {
-          payment_intent_id: "",
-        },
-      },
-    })) as { error?: unknown };
-  } catch (err) {
-    log.error("updateACart threw while clearing payment_intent_id", {
-      cartId: session.cartId,
-      error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
-    return {
-      status: 502,
-      body: {
-        success: false,
-        error: {
-          message: epErrorMessage(err),
-          code: "EP_ERROR",
-        },
-      },
-    };
-  }
-
-  if (updateResult?.error) {
+  const clearResult = await clearCartPaymentIntentId({
+    client: buildShopperEpClient(ctx),
+    cartId: session.cartId,
+  });
+  if (!clearResult.ok) {
     log.error("updateACart failed while clearing payment_intent_id", {
       cartId: session.cartId,
-      error: epErrorMessage(updateResult.error),
+      error: clearResult.errorMessage,
     } as Record<string, unknown>);
     return {
       status: 502,
       body: {
         success: false,
         error: {
-          message: epErrorMessage(updateResult.error),
+          message: clearResult.errorMessage,
           code: "EP_ERROR",
         },
       },

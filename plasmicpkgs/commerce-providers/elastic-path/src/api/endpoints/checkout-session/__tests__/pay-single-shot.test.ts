@@ -26,7 +26,11 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
   deleteACart: jest.fn(),
   manageCarts: jest.fn(),
   deleteACartItem: jest.fn(),
-  createShopperClient: jest.fn(() => ({ client: {} })),
+  createShopperClient: jest.fn((_cfg: unknown, opts: { storage?: { get?: () => string } }) => ({
+    client: {
+      token: typeof opts?.storage?.get === "function" ? opts.storage.get() : "",
+    },
+  })),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -216,10 +220,95 @@ describe("handlePay — single-shot guest happy path", () => {
     expect(epSdk.confirmOrder).toHaveBeenCalledTimes(1);
     expect(epSdk.confirmOrder.mock.calls[0][0].path.paymentID).toBe("pi_abc");
 
-    // Cart cleanup ran
+    // Cart PI detached, then cart deleted
+    expect(epSdk.updateACart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { cartID: "cart-abc" },
+        body: { data: { payment_intent_id: "" } },
+      })
+    );
     expect(epSdk.deleteACart).toHaveBeenCalledWith(
       expect.objectContaining({ path: { cartID: "cart-abc" } })
     );
+    const detachOrder = epSdk.updateACart.mock.calls.findIndex(
+      (c) => c[0]?.body?.data?.payment_intent_id === ""
+    );
+    expect(detachOrder).toBeGreaterThanOrEqual(0);
+    // Success detach prefers client_credentials over a present shopper token.
+    expect(epSdk.updateACart.mock.calls[detachOrder][0].client.token).toBe(
+      "admin-token"
+    );
+    expect(
+      epSdk.updateACart.mock.invocationCallOrder[detachOrder]
+    ).toBeLessThan(epSdk.deleteACart.mock.invocationCallOrder[0]);
+  });
+
+  it("PI detach failure after confirmOrder still completes and still deletes the cart", async () => {
+    epSdk.updateACart.mockImplementation(async (args: any) => {
+      if (args?.body?.data?.payment_intent_id === "") {
+        throw new Error("EP cart update 500");
+      }
+      return { data: { data: {} } };
+    });
+    const adapter = createMockAdapter({
+      status: "succeeded",
+      gatewayOrderId: "pi_abc",
+      gatewayMetadata: { paymentIntentId: "pi_abc" },
+    });
+
+    const res = await handlePay(
+      createMockReq({
+        gateway: "stripe",
+        confirmation_token: "ctoken_xyz",
+      }),
+      createMockCtx(makeSession(), adapter)
+    );
+
+    expect(res.status).toBe(200);
+    expect((res.body as any).success).toBe(true);
+    expect((res.body as any).data.session.status).toBe("complete");
+    expect((res.body as any).error).toBeUndefined();
+    expect(epSdk.confirmOrder).toHaveBeenCalledTimes(1);
+    expect(epSdk.updateACart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: { data: { payment_intent_id: "" } },
+      })
+    );
+    expect(epSdk.deleteACart).toHaveBeenCalledWith(
+      expect.objectContaining({ path: { cartID: "cart-abc" } })
+    );
+  });
+
+  it("confirmOrder failure completes with reconciliationPending and does not clear Cart PI", async () => {
+    epSdk.confirmOrder.mockRejectedValue(new Error("EP confirmOrder 500"));
+    const adapter = createMockAdapter({
+      status: "succeeded",
+      gatewayOrderId: "pi_abc",
+      gatewayMetadata: { paymentIntentId: "pi_abc" },
+    });
+
+    const res = await handlePay(
+      createMockReq({
+        gateway: "stripe",
+        confirmation_token: "ctoken_xyz",
+      }),
+      createMockCtx(makeSession(), adapter)
+    );
+
+    expect(res.status).toBe(200);
+    const body = res.body as any;
+    expect(body.success).toBe(true);
+    expect(body.data.session.status).toBe("complete");
+    expect(body.reconciliationPending).toBe(true);
+    expect(body.data.session.payment.gatewayMetadata.needsReconciliation).toBe(
+      true
+    );
+    expect(epSdk.updateACart).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: { data: { payment_intent_id: "" } },
+      })
+    );
+    expect(epSdk.deleteACart).toHaveBeenCalled();
   });
 
   it("failed payment leaves session open, payment.status=failed, no order created", async () => {
@@ -360,6 +449,39 @@ describe("handlePay — zero-total (free) order", () => {
     });
     // confirmOrder is the PaymentIntent-sync step — not used for manual.
     expect(epSdk.confirmOrder).not.toHaveBeenCalled();
+    // Leftover Cart PI cleared before best-effort delete (same invariant as paid).
+    expect(epSdk.updateACart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { cartID: "cart-abc" },
+        body: { data: { payment_intent_id: "" } },
+      })
+    );
+    const clearOrder = epSdk.updateACart.mock.calls.findIndex(
+      (c: unknown[]) =>
+        (c[0] as { body?: { data?: { payment_intent_id?: string } } })?.body
+          ?.data?.payment_intent_id === ""
+    );
+    expect(clearOrder).toBeGreaterThanOrEqual(0);
+    expect(epSdk.deleteACart).toHaveBeenCalled();
+    expect(epSdk.updateACart.mock.invocationCallOrder[clearOrder]).toBeLessThan(
+      epSdk.deleteACart.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("free-order PI clear failure still completes and still deletes the cart", async () => {
+    epSdk.updateACart.mockImplementation(async (args: {
+      body?: { data?: { payment_intent_id?: string } };
+    }) => {
+      if (args?.body?.data?.payment_intent_id === "") {
+        return { error: { message: "cannot clear payment intent" } };
+      }
+      return { data: { data: {} } };
+    });
+    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS) }));
+    const res = await handlePay(createMockReq({}), ctx);
+
+    expect(res.status).toBe(200);
+    expect((res.body as any).data.session.status).toBe("complete");
     expect(epSdk.deleteACart).toHaveBeenCalled();
   });
 
@@ -466,12 +588,21 @@ describe("handlePay — generalised fields", () => {
       ctx
     );
 
-    expect(epSdk.updateACart).toHaveBeenCalledTimes(1);
-    const attrs = epSdk.updateACart.mock.calls[0][0].body.data.custom_attributes;
+    const attrsCall = epSdk.updateACart.mock.calls.find(
+      (c) => c[0]?.body?.data?.custom_attributes
+    );
+    expect(attrsCall).toBeDefined();
+    const attrs = attrsCall![0].body.data.custom_attributes;
     expect(attrs.industry).toEqual({ type: "string", value: "Tech" });
     expect(attrs.marketingOptIn).toEqual({ type: "boolean", value: true });
     // Empty values are dropped by toCustomAttributes.
     expect(attrs.vat).toBeUndefined();
+    // Success path also clears the Cart PaymentIntent after confirmOrder.
+    expect(epSdk.updateACart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: { data: { payment_intent_id: "" } },
+      })
+    );
   });
 
   it("writes session customAttributes onto the order as raw flow fields", async () => {
