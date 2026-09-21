@@ -23,8 +23,15 @@
 import { toNextJsHandler } from "better-auth/next-js";
 import type { EpAuth } from "./create-ep-auth-better";
 
+// Entries are dot-delimited PATHS, not field names. The account
+// credential lives inside `epAccount` alongside the organisation's id
+// and name, so allowlisting the field would release the credential with
+// it; naming paths releases the two readable values and nothing else.
+//
 // `token` is deliberately absent: it is the better-auth session id, which
 // lives in an HttpOnly cookie precisely so scripts cannot read it.
+// `epAccount.expires` is withheld too — it is a credential's timestamp,
+// and rolling on use makes it close to meaningless anyway.
 const SESSION_ALLOWLIST = [
   "id",
   "userId",
@@ -33,7 +40,38 @@ const SESSION_ALLOWLIST = [
   "updatedAt",
   "epCartId",
   "epExpires",
+  "epMemberId",
+  "epAccount.id",
+  "epAccount.name",
+  "epLapsedAccount.id",
+  "epLapsedAccount.name",
 ];
+
+function readPath(source: any, path: string[]): { found: boolean; value?: unknown } {
+  let cursor = source;
+  for (const segment of path) {
+    if (!cursor || typeof cursor !== "object" || !(segment in cursor)) {
+      return { found: false };
+    }
+    cursor = cursor[segment];
+  }
+  return { found: true, value: cursor };
+}
+
+function writePath(
+  target: Record<string, any>,
+  path: string[],
+  value: unknown
+): void {
+  let cursor = target;
+  for (const segment of path.slice(0, -1)) {
+    if (!cursor[segment] || typeof cursor[segment] !== "object") {
+      cursor[segment] = {};
+    }
+    cursor = cursor[segment];
+  }
+  cursor[path[path.length - 1]] = value;
+}
 
 function redactSessionPayload(payload: any): any {
   if (!payload || typeof payload !== "object") return payload;
@@ -41,8 +79,10 @@ function redactSessionPayload(payload: any): any {
   if (!session || typeof session !== "object") return payload;
 
   const kept: Record<string, unknown> = {};
-  for (const key of SESSION_ALLOWLIST) {
-    if (key in session) kept[key] = session[key];
+  for (const entry of SESSION_ALLOWLIST) {
+    const path = entry.split(".");
+    const read = readPath(session, path);
+    if (read.found) writePath(kept, path, read.value);
   }
   return { ...payload, session: kept };
 }

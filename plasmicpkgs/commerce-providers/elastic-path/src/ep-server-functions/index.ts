@@ -38,7 +38,11 @@ export type {
 // Bare-name aliases the loader imports for Studio Server Queries; see
 // `register-custom-functions.ts` for why these are the adapted forms.
 export { buildEpCtx } from "./build-ep-ctx";
-export type { BuildEpCtxSessionInput, EpCtx } from "./build-ep-ctx";
+export type {
+  BuildEpCtxAccountInput,
+  BuildEpCtxSessionInput,
+  EpCtx,
+} from "./build-ep-ctx";
 export {
   EP_FUNCTION_NAMES,
   addCartItem,

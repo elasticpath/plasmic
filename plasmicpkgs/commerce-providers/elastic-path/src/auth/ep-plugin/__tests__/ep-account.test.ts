@@ -78,10 +78,15 @@ function cookiesFromResponse(res: Response): string {
   return mergeCookies("", res);
 }
 
+const ACCOUNT_EXPIRES_ISO = new Date(Date.now() + 1800_000).toISOString();
+
 const ACCOUNT_INPUT = {
+  epMemberId: "member-123",
   epAccountId: "acct-123",
   epAccountToken: "acct-tok-xyz",
-  epAccountExpires: Math.floor(Date.now() / 1000) + 1800,
+  // Elastic Path's /v2/account-members/tokens returns ISO-8601, not
+  // epoch seconds.
+  epAccountExpires: ACCOUNT_EXPIRES_ISO,
   email: "shopper@example.com",
   name: "Test Shopper",
 };
@@ -143,13 +148,13 @@ describe("/ep/account/login + /ep/account/logout (PRD #273)", () => {
     });
     expect(loginResp.status).toBe(200);
     const loginBody = await loginResp.json();
-    expect(loginBody.session.epAccountId).toBe(CANONICAL_ID);
-    expect(loginBody.session.epAccountToken).toBe(
-      ACCOUNT_INPUT.epAccountToken
-    );
-    expect(loginBody.session.epAccountExpires).toBe(
-      ACCOUNT_INPUT.epAccountExpires
-    );
+    expect(loginBody.session.epMemberId).toBe(ACCOUNT_INPUT.epMemberId);
+    expect(loginBody.session.epAccount).toEqual({
+      id: CANONICAL_ID,
+      name: "Test Account",
+      token: ACCOUNT_INPUT.epAccountToken,
+      expires: Math.floor(Date.parse(ACCOUNT_EXPIRES_ISO) / 1000),
+    });
     // Anonymous EP token preserved.
     expect(loginBody.session.epAccessToken).toBe(
       anonBody.session.epAccessToken
@@ -184,12 +189,131 @@ describe("/ep/account/login + /ep/account/logout (PRD #273)", () => {
     });
     expect(logoutResp.status).toBe(200);
     const body = await logoutResp.json();
-    expect(body.session.epAccountId).toBeUndefined();
-    expect(body.session.epAccountToken).toBeUndefined();
-    expect(body.session.epAccountExpires).toBeUndefined();
+    expect(body.session.epMemberId).toBeUndefined();
+    expect(body.session.epAccount).toBeUndefined();
+    expect(body.session.epAnchorToken).toBeUndefined();
+    expect(body.session.epLapsedAccount).toBeUndefined();
+    expect(JSON.stringify(body)).not.toContain(ACCOUNT_INPUT.epAccountToken);
     expect(body.session.epAccessToken).toBe(anonBody.session.epAccessToken);
     // User downgraded back to anonymous.
     expect(body.user.email).toMatch(/@anonymous\.local$/);
+  });
+
+  it("login rejects a body with no account member", async () => {
+    const auth = buildAuth();
+    const anonResp = await (auth.api as any).epAnonymous({
+      body: {},
+      headers: new Headers(),
+      asResponse: true,
+    });
+    const anonCookies = cookiesFromResponse(anonResp);
+    mockEpVerificationSuccess();
+
+    const { epMemberId, ...withoutMember } = ACCOUNT_INPUT;
+    void epMemberId;
+    const resp = await (auth.api as any).epAccountLogin({
+      body: withoutMember,
+      headers: new Headers({ cookie: anonCookies }),
+      asResponse: true,
+    });
+
+    expect(resp.status).toBe(400);
+  });
+
+  it("login accepts an expiry in epoch seconds as well as ISO-8601", async () => {
+    const auth = buildAuth();
+    const anonResp = await (auth.api as any).epAnonymous({
+      body: {},
+      headers: new Headers(),
+      asResponse: true,
+    });
+    const anonCookies = cookiesFromResponse(anonResp);
+    mockEpVerificationSuccess();
+
+    const epochSeconds = Math.floor(Date.now() / 1000) + 1800;
+    const resp = await (auth.api as any).epAccountLogin({
+      body: { ...ACCOUNT_INPUT, epAccountExpires: epochSeconds },
+      headers: new Headers({ cookie: anonCookies }),
+      asResponse: true,
+    });
+
+    expect(resp.status).toBe(200);
+    expect((await resp.json()).session.epAccount.expires).toBe(epochSeconds);
+  });
+
+  it("login rejects an expiry in no format at all", async () => {
+    const auth = buildAuth();
+    const anonResp = await (auth.api as any).epAnonymous({
+      body: {},
+      headers: new Headers(),
+      asResponse: true,
+    });
+    const anonCookies = cookiesFromResponse(anonResp);
+    mockEpVerificationSuccess();
+
+    const resp = await (auth.api as any).epAccountLogin({
+      body: { ...ACCOUNT_INPUT, epAccountExpires: "next tuesday" },
+      headers: new Headers({ cookie: anonCookies }),
+      asResponse: true,
+    });
+
+    expect(resp.status).toBe(400);
+  });
+
+  it("login releases the anchor token, so both slots are never filled", async () => {
+    const auth = buildAuth();
+    const anonResp = await (auth.api as any).epAnonymous({
+      body: {},
+      headers: new Headers(),
+      asResponse: true,
+    });
+    const anonCookies = cookiesFromResponse(anonResp);
+    mockEpVerificationSuccess();
+
+    const resp = await (auth.api as any).epAccountLogin({
+      body: ACCOUNT_INPUT,
+      headers: new Headers({ cookie: anonCookies }),
+      asResponse: true,
+    });
+
+    expect((await resp.json()).session.epAnchorToken).toBeUndefined();
+  });
+
+  it("states a lapse on refresh rather than letting the shopper see list prices", async () => {
+    const auth = buildAuth();
+    const anonResp = await (auth.api as any).epAnonymous({
+      body: {},
+      headers: new Headers(),
+      asResponse: true,
+    });
+    const anonCookies = cookiesFromResponse(anonResp);
+    mockEpVerificationSuccess();
+
+    const loginResp = await (auth.api as any).epAccountLogin({
+      body: {
+        ...ACCOUNT_INPUT,
+        epAccountExpires: new Date(Date.now() - 1000).toISOString(),
+      },
+      headers: new Headers({ cookie: anonCookies }),
+      asResponse: true,
+    });
+    const loggedInCookies = mergeCookies(anonCookies, loginResp);
+
+    const refreshResp = await (auth.api as any).epRefresh({
+      body: {},
+      headers: new Headers({ cookie: loggedInCookies }),
+      asResponse: true,
+    });
+    const body = await refreshResp.json();
+
+    expect(body.session.epLapsedAccount).toEqual({
+      id: ACCOUNT_INPUT.epAccountId,
+      name: "Test Account",
+    });
+    expect(body.session.epAccount).toBeUndefined();
+    // Still signed in — the member is the authentication, the account is
+    // the selection.
+    expect(body.session.epMemberId).toBe(ACCOUNT_INPUT.epMemberId);
   });
 
   it("login returns 401 when no anonymous session exists", async () => {

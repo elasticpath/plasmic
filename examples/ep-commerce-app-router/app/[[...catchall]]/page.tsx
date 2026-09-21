@@ -53,7 +53,7 @@ export default async function PlasmicLoaderPage({
     session: {
       accessToken: session.session?.accessToken,
       cartId: session.cart?.id ?? undefined,
-      accountId: session.user?.accountId ?? undefined,
+      account: session.session?.account ?? null,
     },
     hostAllowlist: EP_HOST_ALLOWLIST,
   });

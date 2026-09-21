@@ -30,6 +30,11 @@ import {
   assertNonSentinelSecret,
   resolveAuthSecret,
 } from "./production-guard";
+import {
+  ENVELOPE_LIFETIME_SECONDS,
+  readEnvelopeAccount,
+} from "./envelope";
+import type { EpAccountSlot, EpLapsedAccount } from "./envelope";
 
 export interface CreateEpAuthBetterInput {
   clientId: string;
@@ -100,6 +105,16 @@ export interface EpSessionData {
   expires: number;
   clientId: string;
   host: string;
+  /** The authenticated account member, when one has signed in. */
+  memberId?: string;
+  /**
+   * The organisation the member is acting for, with the credential that
+   * acts for it. Null when no organisation is selected — including when
+   * the member holds an anchor token, which is never surfaced here.
+   */
+  account: EpAccountSlot | null;
+  /** A selection whose credential ran out, stated rather than inferred. */
+  lapsedAccount: EpLapsedAccount | null;
 }
 
 export interface EpSession {
@@ -228,10 +243,15 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
       nextCookies(),
     ],
     session: {
+      // Both clocks, explicitly. `cookieCache.maxAge` left unset falls
+      // back to better-auth's 300 seconds — an envelope 2,000× shorter
+      // than the seven-day cart it holds the only handle to.
+      expiresIn: ENVELOPE_LIFETIME_SECONDS,
       cookieCache: {
         enabled: true,
         strategy: "jwe" as any,
         refreshCache: true,
+        maxAge: ENVELOPE_LIFETIME_SECONDS,
       },
     } as any,
   });
@@ -323,12 +343,17 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
         const epSession = session?.session ?? null;
         const epUser = session?.user ?? null;
 
+        const envelopeAccount = readEnvelopeAccount(epSession);
+
         const sessionData: EpSessionData | null = epSession?.epAccessToken
           ? {
               accessToken: epSession.epAccessToken,
               expires: epSession.epExpires,
               clientId: epSession.epClientId,
               host: epSession.epHost,
+              memberId: envelopeAccount.memberId,
+              account: envelopeAccount.account,
+              lapsedAccount: envelopeAccount.lapsedAccount,
             }
           : null;
 
@@ -336,9 +361,11 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
           session: sessionData,
           user: epUser?.email?.endsWith("@anonymous.local") ? null : epUser,
           cart: epSession?.epCartId ? { id: epSession.epCartId } : null,
-          isAuthenticated: Boolean(
-            epUser && !epUser.email?.endsWith("@anonymous.local")
-          ),
+          // Authentication is the member, not the selection. A member
+          // belonging to no organisation — or one whose organisation
+          // lapsed — is signed in, and reading "an account is selected"
+          // as "signed in" made them look signed out.
+          isAuthenticated: envelopeAccount.memberId != null,
           headers() {
             const h: Record<string, string> = {};
             if (sessionData) {
