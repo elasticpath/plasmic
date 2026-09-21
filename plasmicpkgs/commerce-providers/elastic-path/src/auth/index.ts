@@ -23,11 +23,9 @@ export {
   ENVELOPE_LIFETIME_SECONDS,
   EP_ACCOUNT_TOKEN_HEADER,
 } from "./ep-plugin/envelope";
-export type {
-  EpAccountSlot,
-  EpAnchorTokenSlot,
-  EpLapsedAccount,
-} from "./ep-plugin/envelope";
+// `EpAnchorTokenSlot` is deliberately not published: nothing exported
+// references it, and ADR-0004 makes a published surface permanent.
+export type { EpAccountSlot, EpLapsedAccount } from "./ep-plugin/envelope";
 export { epAuthMiddleware } from "./ep-plugin/middleware";
 export { createEpAuthRoutes } from "./ep-plugin/auth-routes";
 export { createCartRoutes } from "../cart/server-routes";

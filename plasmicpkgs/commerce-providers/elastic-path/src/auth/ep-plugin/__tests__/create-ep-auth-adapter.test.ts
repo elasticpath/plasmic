@@ -212,6 +212,44 @@ describe("createEpAuth adapter (PRD #273)", () => {
     expect(envelope).toContain(`Max-Age=${ENVELOPE_LIFETIME_SECONDS}`);
   });
 
+  it("reads an existing envelope back rather than minting a fresh one", async () => {
+    // A seven-day cookie proves nothing if every page load re-mints: the
+    // cart pointer would go with the old session each time.
+    const epAuth = createEpAuth({
+      clientId: EP_CLIENT_ID,
+      host: EP_HOST,
+      secret: "x".repeat(48),
+    });
+
+    const first = await epAuth.api.getSession({ cookies: {} });
+    const flushed: string[] = [];
+    first.commitCookies({
+      appendHeader(_name: string, value: string) {
+        flushed.push(value);
+      },
+    });
+    // Next's `cookies().getAll()` hands back decoded values, which is
+    // what the adapter re-encodes; a raw Set-Cookie value is still
+    // encoded, so decode to match what a consumer actually passes.
+    const cookies: Record<string, string> = {};
+    for (const raw of flushed) {
+      const head = raw.split(";")[0];
+      const eq = head.indexOf("=");
+      if (eq < 0) continue;
+      cookies[head.slice(0, eq).trim()] = decodeURIComponent(
+        head.slice(eq + 1).trim()
+      );
+    }
+    const mintsAfterBootstrap = (globalThis.fetch as any).mock.calls.length;
+
+    const second = await epAuth.api.getSession({ cookies });
+
+    expect(second.session?.accessToken).toBe(first.session?.accessToken);
+    expect((globalThis.fetch as any).mock.calls.length).toBe(
+      mintsAfterBootstrap
+    );
+  });
+
   it("reads as signed out when the envelope carries no account member", async () => {
     const epAuth = createEpAuth({
       clientId: EP_CLIENT_ID,

@@ -325,12 +325,8 @@ run one on a shared host or against production Elastic Path credentials.
 The session holds the authenticated **account member** and the **selected
 account** — the organisation they are buying for — as two separate facts.
 `isAuthenticated` reports the member, so a member who belongs to no
-organisation reads as signed in.
-
-`get-session` releases `epMemberId`, `epAccount.{id,name}` and
-`epLapsedAccount.{id,name}` to the page. The account credential and its
-expiry are withheld: the response is filtered to an allowlist of paths, so
-a field added inside `epAccount` later is withheld by default.
+organisation reads as signed in. While an account is selected, every Elastic
+Path call carries `EP-Account-Management-Authentication-Token`.
 
 `POST /ep/account/login` takes `{ epMemberId, epAccountId, epAccountToken,
 epAccountExpires }` from Elastic Path's `/v2/account-members/tokens`.
@@ -338,10 +334,12 @@ epAccountExpires }` from Elastic Path's `/v2/account-members/tokens`.
 seconds. The account's name comes from Elastic Path's own record, not the
 request.
 
-When a selected account's credential runs out, the next `/ep/refresh`
-replaces it with `epLapsedAccount` — a stated fact the storefront can show,
-rather than a silent reversion to list prices. Every `ep.*` call carries
-`EP-Account-Management-Authentication-Token` while an account is selected.
+`get-session` releases `epMemberId`, `epAccount.{id,name}` and
+`epLapsedAccount.{id,name}`. The account credential and its expiry are
+withheld: the response is filtered to an allowlist of **paths**, so a field
+added inside `epAccount` later is withheld by default. `epLapsedAccount`
+states that a selection's credential ran out, rather than reverting the
+shopper to list prices with no signal.
 
 `createCartRoutes(epAuth)` mounts the cart routes:
 

@@ -32,6 +32,7 @@ import {
 } from "./production-guard";
 import {
   ENVELOPE_LIFETIME_SECONDS,
+  applyAccountLapse,
   readEnvelopeAccount,
 } from "./envelope";
 import type { EpAccountSlot, EpLapsedAccount } from "./envelope";
@@ -343,7 +344,17 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
         const epSession = session?.session ?? null;
         const epUser = session?.user ?? null;
 
-        const envelopeAccount = readEnvelopeAccount(epSession);
+        // Lapse on read, not only when a rotation happens to run. The
+        // envelope now lives seven days and only a near-expiry shopper
+        // token triggers a refresh, so reporting the stored selection
+        // would keep attaching a dead credential to every call and
+        // leave the lapse unsaid until the next rotation. /ep/refresh
+        // writes the same transition to the cookie when it next runs.
+        const envelopeAccount = readEnvelopeAccount(
+          epSession
+            ? applyAccountLapse(epSession, Math.floor(Date.now() / 1000))
+            : epSession
+        );
 
         const sessionData: EpSessionData | null = epSession?.epAccessToken
           ? {

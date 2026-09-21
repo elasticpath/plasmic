@@ -20,10 +20,10 @@ import {
   reportRejectedEpHost,
 } from "../host-allowlist";
 import {
-  ENVELOPE_LIFETIME_SECONDS,
   EP_ACCOUNT_TOKEN_HEADER,
   applyAccountLapse,
   clearAccount,
+  envelopeExpiresAt,
   parseEpExpires,
   selectAccount,
 } from "./envelope";
@@ -137,7 +137,7 @@ function buildAnonymousSnapshot(
     // hour. `epExpires` below carries the token's own lifetime, and
     // `isNearExpiry` rotates it through /ep/refresh while the envelope
     // — and the cart it points at — stays alive.
-    expiresAt: new Date((now + ENVELOPE_LIFETIME_SECONDS) * 1000),
+    expiresAt: envelopeExpiresAt(now),
     ipAddress: null,
     userAgent: null,
     createdAt: new Date(),
@@ -286,7 +286,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
               // Rolling on use, on the cart's clock — carts expire seven
               // days after their last update, and a shopper still making
               // calls has not abandoned their basket.
-              expiresAt: new Date((now + ENVELOPE_LIFETIME_SECONDS) * 1000),
+              expiresAt: envelopeExpiresAt(now),
               epAccessToken: tokenData.access_token,
               epClientId: clientId,
               epHost: host,

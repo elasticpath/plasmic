@@ -48,7 +48,7 @@ describe("buildEpCtx", () => {
     expect(ctx.host).toBe("https://epcc-integration.global.ssl.fastly.net");
   });
 
-  it("carries the selected organisation's id, name and credential", () => {
+  it("carries the selected organisation's id and credential", () => {
     const ctx = buildEpCtx(makePrefetchedData(), {
       session: {
         accessToken: "tok-abc",
@@ -62,7 +62,6 @@ describe("buildEpCtx", () => {
     });
 
     expect(ctx.accountId).toBe("acct-1");
-    expect(ctx.accountName).toBe("Acme Industrial");
     expect(ctx.accountToken).toBe("account-management-token");
   });
 

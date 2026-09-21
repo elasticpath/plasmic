@@ -369,7 +369,6 @@ describe("createEpProxyRoutes account scope", () => {
 
     expect(session).toMatchObject({
       accountId: "acct-1",
-      accountName: "Acme Industrial",
       accountToken: "account-management-token",
     });
   });

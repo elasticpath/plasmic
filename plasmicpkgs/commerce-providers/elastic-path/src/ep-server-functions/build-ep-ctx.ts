@@ -40,7 +40,6 @@ export interface EpCtx {
   clientId: string;
   cartId?: string;
   accountId?: string;
-  accountName?: string;
   accountToken?: string;
   locale?: string;
   currency?: string;
@@ -68,7 +67,6 @@ export function buildEpCtx(
     clientId: config.clientId,
     cartId: opts.session.cartId,
     accountId: opts.session.account?.id,
-    accountName: opts.session.account?.name,
     accountToken: opts.session.account?.token,
     locale: opts.session.locale,
     currency: opts.session.currency,

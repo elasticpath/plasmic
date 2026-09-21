@@ -217,7 +217,6 @@ export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes {
         clientId: session.clientId,
         cartId: sessionResult.cart?.id ?? undefined,
         accountId: session.account?.id,
-        accountName: session.account?.name,
         accountToken: session.account?.token,
         locale: session.locale,
       };

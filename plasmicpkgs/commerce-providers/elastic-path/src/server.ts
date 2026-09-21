@@ -89,7 +89,6 @@ export {
 } from "./auth";
 export type {
   EpAccountSlot,
-  EpAnchorTokenSlot,
   EpAuth,
   EpAuthConfig,
   EpLapsedAccount,

@@ -32,6 +32,7 @@
  * headers that better-auth's nextCookies() plugin emits.
  */
 import type { EpAuth } from "../auth/ep-plugin/create-ep-auth-better";
+import { accountTokenHeaders } from "../auth/ep-plugin/envelope";
 import { enforceOriginGate } from "../auth/ep-plugin/origin-gate";
 import { persistCartId } from "../auth/ep-plugin/persist-cart-id";
 import { parseCookieHeader } from "../utils/cookie-header";
@@ -48,6 +49,7 @@ interface SessionShape {
     host: string;
     clientId: string;
     expires: number;
+    account?: { id: string; name?: string; token: string } | null;
   } | null;
   cart: { id: string } | null;
 }
@@ -63,6 +65,9 @@ async function callEp(
       "Content-Type": "application/json",
       "EP-Inventories-Multi-Location": "true",
       Authorization: `Bearer ${session.accessToken}`,
+      // These routes reach Elastic Path directly rather than through
+      // `buildEpClient`, so account scope has to be attached here too.
+      ...accountTokenHeaders({ accountToken: session.account?.token }),
       ...((init?.headers as Record<string, string>) ?? {}),
     },
   });

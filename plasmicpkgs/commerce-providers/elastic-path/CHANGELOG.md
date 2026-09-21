@@ -15,9 +15,17 @@ without any function opting in.
 header is attached only from `epAccount.token`, so a session with no account
 selected cannot send an account credential.
 
-`epLapsedAccount { id, name }` states that a selection's credential ran out.
-`/ep/refresh` writes it, so the storefront can tell the shopper which
-organisation they lost instead of quietly showing list prices.
+`epLapsedAccount { id, name }` states that a selection's credential ran out,
+so the storefront can tell the shopper which organisation they lost instead of
+quietly showing list prices. Every session read reports the lapse — not only
+the reads where a token rotation happens to run — so an expired credential is
+never attached to a call. `/ep/refresh` writes the same transition to the
+cookie when it next runs.
+
+`createCartRoutes` carries the selected organisation's credential too. Those
+routes reach Elastic Path through their own client rather than through the
+`ep.*` client builder, so a signed-in member's cart reads and writes would
+otherwise have stayed list-priced while every other call was account-scoped.
 
 `get-session` releases `epMemberId`, `epAccount.{id,name}` and
 `epLapsedAccount.{id,name}`. The response filter now names paths rather than
@@ -25,7 +33,7 @@ whole fields, so the account credential and its expiry stay out of the page
 while the organisation's id and name are readable.
 
 `ENVELOPE_LIFETIME_SECONDS` and `EP_ACCOUNT_TOKEN_HEADER`, plus the
-`EpAccountSlot`, `EpAnchorTokenSlot`, `EpLapsedAccount`, `EpSessionData` and
+`EpAccountSlot`, `EpLapsedAccount`, `EpSessionData` and
 `BuildEpCtxAccountInput` types, are exported from `/server`.
 
 ### Changed

@@ -1,5 +1,5 @@
 /**
- * The shopper envelope's account identity (ADR-0003, issue #534).
+ * The shopper envelope's account identity (ADR-0003).
  *
  * The envelope holds an **account member** — the authenticated person —
  * and a **selected account** — the organisation they act for — as two
@@ -26,6 +26,11 @@ export const ENVELOPE_LIFETIME_SECONDS = 60 * 60 * 24 * 7;
 
 export const EP_ACCOUNT_TOKEN_HEADER =
   "EP-Account-Management-Authentication-Token";
+
+/** When an envelope minted or rolled at `nowSeconds` runs out. */
+export function envelopeExpiresAt(nowSeconds: number): Date {
+  return new Date((nowSeconds + ENVELOPE_LIFETIME_SECONDS) * 1000);
+}
 
 /** The selected organisation, with the credential that acts for it. */
 export interface EpAccountSlot {

@@ -31,17 +31,15 @@ export function buildEpClient(auth: EpServerAuth) {
   // Elastic Path applies the account-management token across Commerce
   // with nothing wired per endpoint, so attaching it once here gives
   // every `ep.*` function the organisation's scope. `auth.accountToken`
-  // is populated only from the envelope's selected-account slot, so a
-  // session with no account selected sends no account header.
-  const accountHeaders = accountTokenHeaders(auth);
-  if (Object.keys(accountHeaders).length > 0) {
-    client.interceptors.request.use(async (request: Request) => {
-      for (const [name, value] of Object.entries(accountHeaders)) {
-        request.headers.set(name, value);
-      }
-      return request;
-    });
-  }
+  // is populated only from the envelope's selected-account slot, so
+  // `accountTokenHeaders` yields nothing for a session with no account
+  // selected and no account header goes out.
+  client.interceptors.request.use(async (request: Request) => {
+    for (const [name, value] of Object.entries(accountTokenHeaders(auth))) {
+      request.headers.set(name, value);
+    }
+    return request;
+  });
 
   return client;
 }

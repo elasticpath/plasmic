@@ -19,8 +19,6 @@ export interface EpServerAuth {
   cartId?: string;
   /** The selected organisation's ID, when one is selected. */
   accountId?: string;
-  /** The selected organisation's display name, when one is selected. */
-  accountName?: string;
   /**
    * The credential that acts for the selected organisation. Populated
    * only from the envelope's `epAccount` slot, so a session holding an

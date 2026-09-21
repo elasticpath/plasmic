@@ -15,6 +15,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { betterAuth } from "better-auth";
 import { epPlugin } from "../ep-plugin";
+import { createEpAuth } from "../create-ep-auth-better";
 
 const SECRET = "x".repeat(48);
 const EP_HOST = "https://api.test.elasticpath.com";
@@ -76,6 +77,25 @@ function mergeCookies(prior: string, res: Response): string {
 
 function cookiesFromResponse(res: Response): string {
   return mergeCookies("", res);
+}
+
+/**
+ * A `Cookie:` header value as `createEpAuth().api.getSession` wants it.
+ * Next's `cookies().getAll()` hands back DECODED values and the adapter
+ * re-encodes them, so a raw Set-Cookie value — still encoded — would be
+ * double-encoded and read as no session at all.
+ */
+function nextStyleCookies(cookieHeader: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const part of cookieHeader.split(";")) {
+    const head = part.trim();
+    const eq = head.indexOf("=");
+    if (eq < 0) continue;
+    out[head.slice(0, eq).trim()] = decodeURIComponent(
+      head.slice(eq + 1).trim()
+    );
+  }
+  return out;
 }
 
 const ACCOUNT_EXPIRES_ISO = new Date(Date.now() + 1800_000).toISOString();
@@ -277,6 +297,45 @@ describe("/ep/account/login + /ep/account/logout (PRD #273)", () => {
     });
 
     expect((await resp.json()).session.epAnchorToken).toBeUndefined();
+  });
+
+  it("states a lapse on every read, not only when a refresh happens to run", async () => {
+    // The envelope outlives the account credential by days, and only a
+    // near-expiry shopper token triggers a refresh. A read that reported
+    // the stale selection would keep sending the dead credential and
+    // leave the lapse unsaid until the next rotation.
+    const epAuth = createEpAuth({
+      clientId: EP_CLIENT_ID,
+      host: EP_HOST,
+      secret: SECRET,
+      baseURL: "http://localhost:3000",
+    });
+    const anonResp = await (epAuth.handler.api as any).epAnonymous({
+      body: {},
+      headers: new Headers(),
+      asResponse: true,
+    });
+    const anonCookies = cookiesFromResponse(anonResp);
+    mockEpVerificationSuccess();
+
+    const loginResp = await (epAuth.handler.api as any).epAccountLogin({
+      body: {
+        ...ACCOUNT_INPUT,
+        epAccountExpires: new Date(Date.now() - 1000).toISOString(),
+      },
+      headers: new Headers({ cookie: anonCookies }),
+      asResponse: true,
+    });
+    const session = await epAuth.api.getSession({
+      cookies: nextStyleCookies(mergeCookies(anonCookies, loginResp)),
+    });
+
+    expect(session.session?.account).toBeNull();
+    expect(session.session?.lapsedAccount).toEqual({
+      id: ACCOUNT_INPUT.epAccountId,
+      name: "Test Account",
+    });
+    expect(session.isAuthenticated).toBe(true);
   });
 
   it("states a lapse on refresh rather than letting the shopper see list prices", async () => {

@@ -13,16 +13,16 @@ const ROOT = join(__dirname, "..", "..");
 
 /** Every name in an `export { ... } from "..."` / `export type { ... }`. */
 function exportedNames(source: string): string[] {
-  const names = new Set<string>();
+  const names: string[] = [];
   const blocks = source.match(/export\s+(?:type\s+)?\{[^}]*\}\s*from\s*["'][^"']+["']/g);
   for (const block of blocks ?? []) {
     const inner = block.slice(block.indexOf("{") + 1, block.indexOf("}"));
     for (const raw of inner.split(",")) {
       const name = raw.trim().split(/\s+as\s+/).pop()?.trim();
-      if (name) names.add(name);
+      if (name && names.indexOf(name) < 0) names.push(name);
     }
   }
-  return [...names];
+  return names;
 }
 
 describe("dist/server.d.ts mirrors src/server.ts", () => {
