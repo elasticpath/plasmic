@@ -3,9 +3,9 @@
  * checkout session model.
  *
  * Exposes a `checkoutSession` DataProvider with the current session state and
- * refActions for mutation. Gateway components (EPCloverPayment, EPStripePayment)
- * register via the PaymentRegistrationContext so the provider knows which
- * gateway to call when placeOrder() fires.
+ * refActions for mutation. Gateway components (EPCloverPayment, EPStripePayment,
+ * EPManualPayment) register via the PaymentRegistrationContext so the provider
+ * knows which gateway to call when placeOrder() fires.
  */
 import {
   DataProvider,
@@ -76,6 +76,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
     calculateShipping: calcShippingFn,
     placeOrder: placeOrderFn,
     confirmPayment: confirmPaymentFn,
+    resumePayment: resumePaymentFn,
     reset: resetFn,
     refresh,
   } = useCheckoutSession(apiBaseUrl);
@@ -85,8 +86,12 @@ const EPCheckoutSessionRuntime = React.forwardRef<
 
   const paymentRegValue = useMemo<PaymentRegistrationContextValue>(
     () => ({
-      registerGateway(name, confirm) {
-        gatewayRef.current = { name, confirm };
+      registerGateway(name, confirm, options) {
+        gatewayRef.current = {
+          name,
+          confirm,
+          completeRequiresAction: options?.completeRequiresAction,
+        };
       },
       getRegisteredGateway() {
         return gatewayRef.current;
@@ -155,7 +160,19 @@ const EPCheckoutSessionRuntime = React.forwardRef<
     }
   }, [calcShippingFn]);
 
+  const placeOrderInFlightRef = useRef(false);
+
   const handlePlaceOrder = useCallback(async () => {
+    if (placeOrderInFlightRef.current) {
+      return {
+        success: false,
+        error: {
+          message: "Order is already being placed",
+          code: "IN_FLIGHT",
+        },
+      };
+    }
+    placeOrderInFlightRef.current = true;
     try {
       // Free orders (zero total) need no card / gateway — the server settles
       // them with the manual gateway. Don't ask a registered gateway to
@@ -168,7 +185,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
       if (!gw) {
         log.error(
           "placeOrder called but no gateway registered. " +
-            "Place EPCloverPayment or EPStripePayment inside this provider."
+            "Place EPCloverPayment, EPStripePayment, or EPManualPayment inside this provider."
         );
         return {
           success: false,
@@ -181,11 +198,28 @@ const EPCheckoutSessionRuntime = React.forwardRef<
 
       // Ask the gateway component for its data (e.g. tokenize the card)
       const gwData = await gw.confirm();
-      return await placeOrderFn({ gateway: gw.name, ...gwData });
+      const payResp = await placeOrderFn({ gateway: gw.name, ...gwData });
+      const paySession = payResp?.data?.session;
+
+      // Gateway continuation: /pay left the session open with requires_action.
+      // Run the widget's completeRequiresAction (if registered) so the form
+      // stays in "placing" until checkout is actually complete or failed.
+      // Gateways without completeRequiresAction (e.g. Clover) are unchanged.
+      if (
+        payResp?.success &&
+        paySession?.payment?.status === "requires_action" &&
+        typeof gw.completeRequiresAction === "function"
+      ) {
+        return await gw.completeRequiresAction(paySession);
+      }
+
+      return payResp;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       log.error("placeOrder failed", { message } as Record<string, unknown>);
       return { success: false, error: { message } };
+    } finally {
+      placeOrderInFlightRef.current = false;
     }
   }, [placeOrderFn, session]);
 
@@ -200,6 +234,19 @@ const EPCheckoutSessionRuntime = React.forwardRef<
       }
     },
     [confirmPaymentFn]
+  );
+
+  const handleResumePayment = useCallback(
+    async (resumeData?: Record<string, unknown>) => {
+      try {
+        return await resumePaymentFn(resumeData ?? {});
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        log.error("resumePayment failed", { message } as Record<string, unknown>);
+        return { success: false, error: { message } };
+      }
+    },
+    [resumePaymentFn]
   );
 
   const handleReset = useCallback(async () => {
@@ -218,6 +265,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
     calculateShipping: handleCalculateShipping,
     placeOrder: handlePlaceOrder,
     confirmPayment: handleConfirmPayment,
+    resumePayment: handleResumePayment,
     reset: handleReset,
   }));
 
@@ -232,6 +280,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
       createSession: handleCreateSession,
       placeOrder: handlePlaceOrder,
       confirmPayment: handleConfirmPayment,
+      resumePayment: handleResumePayment,
       reset: handleReset,
     }),
     [
@@ -243,6 +292,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
       handleCreateSession,
       handlePlaceOrder,
       handleConfirmPayment,
+      handleResumePayment,
       handleReset,
     ]
   );
@@ -301,7 +351,7 @@ export const epCheckoutSessionProviderMeta: CodeComponentMeta<EPCheckoutSessionP
     name: "plasmic-commerce-ep-checkout-session-provider",
     displayName: "EP Checkout Session Provider",
     description:
-      "Server-authoritative checkout session. Exposes checkoutSession data and mutation refActions. Drop payment components (EPCloverPayment / EPStripePayment) inside.",
+      "Server-authoritative checkout session. Exposes checkoutSession data and mutation refActions. Drop payment components (EPCloverPayment / EPStripePayment / EPManualPayment) inside.",
     props: {
       children: {
         type: "slot",
@@ -356,8 +406,13 @@ export const epCheckoutSessionProviderMeta: CodeComponentMeta<EPCheckoutSessionP
       },
       confirmPayment: {
         description:
-          "Confirm a gateway action (e.g. 3DS authentication)",
+          "Confirm a gateway action (e.g. Clover 3DS authentication)",
         argTypes: [{ name: "confirmData", type: "object" }],
+      },
+      resumePayment: {
+        description:
+          "Resume payment after a customer action (cart PaymentIntent sequence)",
+        argTypes: [{ name: "resumeData", type: "object" }],
       },
       reset: {
         description: "Reset the checkout session",

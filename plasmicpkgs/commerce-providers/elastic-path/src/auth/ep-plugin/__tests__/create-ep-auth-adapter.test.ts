@@ -15,6 +15,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createEpAuth } from "../create-ep-auth-better";
+import { ENVELOPE_LIFETIME_SECONDS } from "../envelope";
 
 const EP_HOST = "https://api.test.elasticpath.com";
 const EP_CLIENT_ID = "test-client-id";
@@ -187,6 +188,76 @@ describe("createEpAuth adapter (PRD #273)", () => {
 
     // Bootstrap fired exactly one EP mint. No second mint for refresh.
     expect((globalThis.fetch as any).mock.calls.length).toBe(1);
+  });
+
+  it("gives the envelope the cart's lifetime rather than better-auth's five minutes", async () => {
+    const epAuth = createEpAuth({
+      clientId: EP_CLIENT_ID,
+      host: EP_HOST,
+      secret: "x".repeat(48),
+    });
+
+    const session = await epAuth.api.getSession({ cookies: {}, headers: {} });
+    const flushed: string[] = [];
+    session.commitCookies({
+      appendHeader(_name: string, value: string) {
+        flushed.push(value);
+      },
+    });
+
+    const envelope = flushed.find((c) =>
+      c.startsWith("better-auth.session_data=")
+    );
+    expect(envelope).toBeDefined();
+    expect(envelope).toContain(`Max-Age=${ENVELOPE_LIFETIME_SECONDS}`);
+  });
+
+  it("reads an existing envelope back rather than minting a fresh one", async () => {
+    const epAuth = createEpAuth({
+      clientId: EP_CLIENT_ID,
+      host: EP_HOST,
+      secret: "x".repeat(48),
+    });
+
+    const first = await epAuth.api.getSession({ cookies: {} });
+    const flushed: string[] = [];
+    first.commitCookies({
+      appendHeader(_name: string, value: string) {
+        flushed.push(value);
+      },
+    });
+    const cookies: Record<string, string> = {};
+    for (const raw of flushed) {
+      const head = raw.split(";")[0];
+      const eq = head.indexOf("=");
+      if (eq < 0) continue;
+      cookies[head.slice(0, eq).trim()] = decodeURIComponent(
+        head.slice(eq + 1).trim()
+      );
+    }
+    const mintsAfterBootstrap = (globalThis.fetch as any).mock.calls.length;
+
+    const second = await epAuth.api.getSession({ cookies });
+
+    expect(second.session?.accessToken).toBe(first.session?.accessToken);
+    expect((globalThis.fetch as any).mock.calls.length).toBe(
+      mintsAfterBootstrap
+    );
+  });
+
+  it("reads as signed out when the envelope carries no account member", async () => {
+    const epAuth = createEpAuth({
+      clientId: EP_CLIENT_ID,
+      host: EP_HOST,
+      secret: "x".repeat(48),
+    });
+
+    const session = await epAuth.api.getSession({ cookies: {}, headers: {} });
+
+    expect(session.isAuthenticated).toBe(false);
+    expect(session.session?.memberId).toBeUndefined();
+    expect(session.session?.account).toBeNull();
+    expect(session.session?.lapsedAccount).toBeNull();
   });
 
   it("config validation: rejects checkout.sessionSecret shorter than 16 chars", () => {

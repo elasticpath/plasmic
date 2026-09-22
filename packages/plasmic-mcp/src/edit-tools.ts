@@ -95,6 +95,9 @@ import { ensureVariantSetting, mkVariant } from "@/wab/shared/Variants";
 import { mkTplTagX, mkTplInlinedText, mkTplComponentX, clone as cloneTpl, TplTagType } from "@/wab/shared/core/tpls";
 import { flattenTpls, findExprsInComponent } from "@/wab/shared/core/tpls";
 import { isQueryUsedInExpr } from "@/wab/shared/refactoring";
+import { customCode } from "@/wab/shared/core/exprs";
+import { parseJsCode } from "@/wab/shared/parser-utils";
+import { stripCodeParens } from "./expr-parens.js";
 import { elementSchemaToTpl as studioElementSchemaToTpl } from "@/wab/shared/code-components/code-components";
 import { requireSession } from "./session.js";
 import { getChangeTracker } from "./change-tracker.js";
@@ -190,23 +193,58 @@ function isValidAttrName(name: string): { valid: boolean; reason?: string } {
 }
 
 /**
- * Validate that `code` is a syntactically valid JS expression using acorn.
- * Throws with a descriptive error if parsing fails.
+ * Builds the expr Studio stores for a user-authored JS expression.
+ *
+ * Studio decides whether a stored value is code to evaluate or an inert JSON
+ * literal by testing whether the string starts with `(` (`isRealCodeExpr`), and
+ * unwraps it by stripping the first and last character (`trimCodeParens`). So the
+ * code is validated in its wrapped form and stored wrapped, never stripped —
+ * that keeps the stored string balanced for any input, including one that
+ * already carries its own parens.
+ *
+ * A simple member path on a scope variable becomes an `ObjectPath` instead, which
+ * is what Studio's own writers produce for that shape (`visibility-utils` for
+ * `dataCond`, `ActionBuilder` for `condExpr`) and which `isRealCodeExpr` also
+ * accepts. Pass `objectPath: false` where the expr is executed rather than read,
+ * as in a `FunctionExpr` body.
+ *
+ * Delegates to `customCode` so the stored shape is Studio's by construction.
  */
-function validateJsExpression(code: string): void {
+const SCOPE_PATH_PATTERN =
+  /^\$(ctx|state|props|queries|pageCtx)(\.[A-Za-z_$][\w$]*)+$/;
+
+function toCodeExpr(
+  code: string,
+  opts?: { objectPath?: boolean; fallback?: any }
+): any {
+  const fallback = opts?.fallback ?? null;
+  if (opts?.objectPath !== false && SCOPE_PATH_PATTERN.test(code)) {
+    return new ObjectPath({ path: code.split("."), fallback });
+  }
+  const wrapped = `(${code})`;
   try {
-    const node = acorn.parseExpressionAt(code, 0, { ecmaVersion: 2020 });
-    const remaining = code.slice(node.end).trim();
-    if (remaining.length > 0) {
-      throw new Error(
-        `Unexpected content after expression at position ${node.end}: "${remaining}"`
-      );
-    }
+    parseJsCode(wrapped);
   } catch (err: any) {
     throw new Error(
       `Invalid JS expression: ${err.message}. Use $<valid-js-expr> or {{valid-js-expr}}.`
     );
   }
+  // Parsing is not enough: `1) > (0` wraps to `(1) > (0)`, which is valid JS but
+  // whose outer parens are not a matched pair. Studio unwraps by slicing the
+  // first and last character, so it would slice that back to `1) > (0` and fail
+  // codegen for every expression in the project. `preserveParens` reports a
+  // whole-span ParenthesizedExpression only when the wrap really is one pair.
+  const node: any = acorn.parseExpressionAt(wrapped, 0, {
+    ecmaVersion: 2020,
+    preserveParens: true,
+  });
+  if (node.type !== "ParenthesizedExpression" || node.end !== wrapped.length) {
+    throw new Error(
+      `Invalid JS expression: unbalanced parentheses in ${JSON.stringify(code)}. ` +
+        `Parens must be matched within the expression.`
+    );
+  }
+  return customCode(code, fallback);
 }
 
 /**
@@ -240,7 +278,14 @@ function walkAstNodes(node: any, visitor: (n: any) => void): void {
 function normalizeCustomFunctionCode(code: string): string {
   let ast: acorn.Node;
   try {
-    ast = acorn.parseExpressionAt(code, 0, { ecmaVersion: 2020 });
+    // `preserveParens` keeps a wrapping paren pair in the AST. Without it acorn
+    // collapses a ParenthesizedExpression to its inner node, whose `end` falls
+    // before the closing paren, so the Studio-native `(expr)` form is rejected
+    // as having trailing content.
+    ast = acorn.parseExpressionAt(code, 0, {
+      ecmaVersion: 2020,
+      preserveParens: true,
+    });
     const remaining = code.slice(ast.end).trim();
     if (remaining.length > 0) {
       throw new Error(
@@ -326,24 +371,14 @@ function createAttrExpr(value: unknown, warnings: string[]): any {
           `Expression "${code}" was corrected to "${corrected}". ` +
           `Plasmic scope variables use $ prefix ($props, $state, $ctx).`
         );
-        validateJsExpression(corrected);
-        // Wrap in parens so `isRealCodeExpr` returns true — same shape
-        // Studio's `createExprForDataPickerValue` uses. Without the parens,
-        // Plasmic's codegen emits the bare code unwrapped, which breaks
-        // server-query references like `$q.x.data` where `$q` is only a
-        // local after codegen inserts the parens-triggered safe wrapper.
-        return new CustomCode({ code: `(${corrected})`, fallback: null });
+        return toCodeExpr(corrected);
       }
-      validateJsExpression(code);
-      return new CustomCode({ code: `(${code})`, fallback: null });
+      return toCodeExpr(code);
     }
     // Dynamic value: {{expression}}
     if (value.startsWith("{{") && value.endsWith("}}")) {
       const code = value.slice(2, -2).trim();
-      validateJsExpression(code);
-      // See note above — parens wrap tells Plasmic codegen this is a
-      // real code expression (see `isRealCodeExpr` in @/wab/shared/core/exprs).
-      return new CustomCode({ code: `(${code})`, fallback: null });
+      return toCodeExpr(code);
     }
     // Static string literal — check for accidental expression patterns
     const warning = checkLiteralWarning(value);
@@ -1785,7 +1820,11 @@ export async function updateText(
       previousText = vs.text.text;
     } else if (vs.text && isKnownExprText(vs.text)) {
       const expr = vs.text.expr;
-      previousText = expr?.code ?? "[dynamic]";
+      previousText = isKnownObjectPath(expr)
+        ? expr.path.join(".")
+        : expr?.code != null
+        ? stripCodeParens(expr.code)
+        : "[dynamic]";
     }
 
     // Ensure the node is typed as text if converting from a non-text node.
@@ -1800,7 +1839,7 @@ export async function updateText(
         ? new CustomCode({ code: JSON.stringify(fallback), fallback: null })
         : null;
       vs.text = new ExprText({
-        expr: new CustomCode({ code: text, fallback: fallbackExpr }),
+        expr: toCodeExpr(text, { fallback: fallbackExpr }),
         html: html ?? false,
       });
     } else if (vs.text && isKnownRawText(vs.text)) {
@@ -4556,7 +4595,7 @@ export async function setDataCond(
 
     // Extract previous condition
     if (vs.dataCond && isKnownCustomCode(vs.dataCond)) {
-      previousCondition = vs.dataCond.code;
+      previousCondition = stripCodeParens(vs.dataCond.code);
     } else if (vs.dataCond && isKnownObjectPath(vs.dataCond)) {
       previousCondition = vs.dataCond.path.join(".");
     }
@@ -4566,7 +4605,7 @@ export async function setDataCond(
       vs.dataCond = null;
     } else {
       // Set custom code expression
-      vs.dataCond = new CustomCode({ code: condition, fallback: null });
+      vs.dataCond = toCodeExpr(condition);
     }
 
     // Clear display-none marker — condition now controls rendering
@@ -4673,7 +4712,7 @@ export async function setDataRep(
       vs.dataRep = new Rep({
         element: new Var({ name: elemName, uuid: randomUUID() }),
         index: idxName ? new Var({ name: idxName, uuid: randomUUID() }) : null,
-        collection: new CustomCode({ code: collection, fallback: null }),
+        collection: toCodeExpr(collection),
       });
     }
   });
@@ -4718,7 +4757,7 @@ function extractDataRepInfo(vs: any): DataRepInfo | null {
 
   let collection: string;
   if (isKnownCustomCode(rep.collection)) {
-    collection = rep.collection.code;
+    collection = stripCodeParens(rep.collection.code);
   } else if (isKnownObjectPath(rep.collection)) {
     collection = rep.collection.path.join(".");
   } else {
@@ -6012,7 +6051,7 @@ export function listInteractions(
       // Extract condition expression
       if (interaction.condExpr) {
         if (isKnownCustomCode(interaction.condExpr)) {
-          info.condition = interaction.condExpr.code;
+          info.condition = stripCodeParens(interaction.condExpr.code);
         } else if (isKnownObjectPath(interaction.condExpr)) {
           info.condition = interaction.condExpr.path.join(".");
         }
@@ -6023,12 +6062,12 @@ export function listInteractions(
       for (const arg of interaction.args ?? []) {
         const argExpr = arg.expr;
         if (isKnownCustomCode(argExpr)) {
-          info.args[arg.name] = argExpr.code;
+          info.args[arg.name] = stripCodeParens(argExpr.code);
         } else if (isKnownObjectPath(argExpr)) {
           info.args[arg.name] = argExpr.path.join(".");
         } else if (isKnownFunctionExpr(argExpr) && argExpr.bodyExpr) {
           if (isKnownCustomCode(argExpr.bodyExpr)) {
-            info.args[arg.name] = argExpr.bodyExpr.code;
+            info.args[arg.name] = stripCodeParens(argExpr.bodyExpr.code);
           }
         }
       }
@@ -6076,7 +6115,6 @@ function buildActionArgs(actionName: string, args: Record<string, string>, compo
       //   2. `$<expr>`             → strip one `$`, then route by content
       //   3. `"..."` / `'...'`     → string-literal expression as-is (URL-ish)
       //   4. anything else         → JSON-stringify as a plain URL string
-      const PATH_PATTERN = /^\$(ctx|state|props|queries|pageCtx)(\.[A-Za-z_$][\w$]*)+$/;
       const stripped = (() => {
         if (destination.startsWith("{{") && destination.endsWith("}}")) {
           return destination.slice(2, -2).trim();
@@ -6086,22 +6124,22 @@ function buildActionArgs(actionName: string, args: Record<string, string>, compo
         }
         return null;
       })();
-      if (stripped && PATH_PATTERN.test(stripped)) {
-        // Dotted member-access on $ctx / $state / etc. → ObjectPath.
-        // Plasmic resolves ObjectPath against the live data context at
-        // render time, so codegen emits a property access (not a
-        // string-quoted literal).
-        const path = stripped.split(".");
+      if (stripped) {
+        // An expression. `toCodeExpr` routes a dotted member-access on
+        // $ctx / $state / etc. to ObjectPath — Plasmic resolves that against
+        // the live data context at render time, whereas it emits CustomCode in
+        // a navigation destination as a string-coerced value.
         nameArgs.push(new NameArg({
           name: "destination",
-          expr: new ObjectPath({ path, fallback: null }),
+          expr: toCodeExpr(stripped),
         }));
       } else {
+        // A plain URL, stored as an inert string literal. The absent parens are
+        // what mark it as one, so this branch must not wrap.
         const code =
-          stripped ??
-          (destination.startsWith('"') || destination.startsWith("'")
+          destination.startsWith('"') || destination.startsWith("'")
             ? destination
-            : JSON.stringify(destination));
+            : JSON.stringify(destination);
         nameArgs.push(new NameArg({
           name: "destination",
           expr: new CustomCode({ code, fallback: null }),
@@ -6169,7 +6207,7 @@ function buildActionArgs(actionName: string, args: Record<string, string>, compo
       }));
       nameArgs.push(new NameArg({
         name: "value",
-        expr: new CustomCode({ code: value, fallback: null }),
+        expr: toCodeExpr(value),
       }));
       break;
     }
@@ -6193,7 +6231,7 @@ function buildActionArgs(actionName: string, args: Record<string, string>, compo
         name: "customFunction",
         expr: new FunctionExpr({
           argNames: ["$steps"],
-          bodyExpr: new CustomCode({ code: normalizedCode, fallback: null }),
+          bodyExpr: toCodeExpr(normalizedCode, { objectPath: false }),
         }),
       }));
       break;
@@ -6269,9 +6307,7 @@ export async function addInteraction(
     }
 
     // Build condition expr if provided
-    const condExpr = condition
-      ? new CustomCode({ code: condition, fallback: null })
-      : null;
+    const condExpr = condition ? toCodeExpr(condition) : null;
 
     const conditionalMode = condition ? "expression" : "always";
 
@@ -6474,7 +6510,7 @@ export async function updateInteraction(
         interaction.condExpr = null;
         interaction.conditionalMode = "always";
       } else {
-        interaction.condExpr = new CustomCode({ code: updates.condition, fallback: null });
+        interaction.condExpr = toCodeExpr(updates.condition);
         interaction.conditionalMode = "expression";
       }
     }
@@ -6896,16 +6932,10 @@ function buildCustomFunctionExpr(site: any, spec: FunctionCallSpec): any {
         `Arg "${argName}" must be a JS expression string (got ${typeof codeString}).`
       );
     }
-    validateJsExpression(codeString);
     args.push(
       new FunctionArg({
         uuid: randomUUID(),
-        // Wrap in parens so `isRealCodeExpr` returns true — Studio's UI
-        // reads the arg via `argsMap[param.argName][0].expr` then decomposes
-        // for display; unwrapped CustomCode shows as "unset" and the
-        // Plasmic codegen emits the bare code without the safe IIFE wrapper.
-        // Mirrors `createExprForDataPickerValue` in @/wab/shared/core/exprs.
-        expr: new CustomCode({ code: `(${codeString})`, fallback: null }),
+        expr: toCodeExpr(codeString),
         argType: param,
       })
     );

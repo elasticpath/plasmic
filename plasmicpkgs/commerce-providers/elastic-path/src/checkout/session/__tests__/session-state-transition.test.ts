@@ -3,11 +3,13 @@
  * lifecycle. Slice 1 covers the happy path (open + paymentSucceeded → complete)
  * and the failed path (open + paymentFailed → open with payment.status=failed).
  *
- * Slices 2+ add: requires_action (3DS), expired, processing.
+ * Stripe 3DS: open → open with payment.status=requires_action (no order).
  */
 import {
-  applyPaymentSucceeded,
+  applyAbandonedRequiresAction,
   applyPaymentFailed,
+  applyPaymentRequiresAction,
+  applyPaymentSucceeded,
 } from "../session-state-transition";
 import type { CheckoutSession } from "../types";
 
@@ -51,6 +53,15 @@ describe("applyPaymentSucceeded", () => {
     });
   });
 
+  it("does not stamp paymentIntentId when the event omits it", () => {
+    const result = applyPaymentSucceeded(makeSession(), {
+      orderId: "order_xyz",
+      gatewayMetadata: { transactionId: "txn_1" },
+    });
+    expect(result.payment.gatewayMetadata.paymentIntentId).toBeUndefined();
+    expect(result.order).toEqual({ id: "order_xyz" });
+  });
+
   it("preserves customerInfo and addresses unchanged", () => {
     const before = makeSession();
     const after = applyPaymentSucceeded(before, {
@@ -77,5 +88,120 @@ describe("applyPaymentFailed", () => {
       errorMessage: "card_declined",
     });
     expect(result.order).toBeNull();
+  });
+
+  it("preserves an existing unpaid order (resume after checkoutApi)", () => {
+    const withOrder = makeSession({ order: { id: "order-unpaid" } });
+    const result = applyPaymentFailed(withOrder, {
+      errorMessage: "PaymentIntent canceled",
+    });
+    expect(result.order).toEqual({ id: "order-unpaid" });
+    expect(result.status).toBe("open");
+    expect(result.payment.status).toBe("failed");
+  });
+});
+
+describe("applyAbandonedRequiresAction", () => {
+  it("marks payment failed and clears 3DS continuation fields", () => {
+    const challenged = applyPaymentRequiresAction(makeSession(), {
+      clientToken: "pi_abc_secret_xyz",
+      actionData: { type: "stripe_3ds", paymentIntentId: "pi_abc" },
+      gatewayMetadata: { paymentIntentId: "pi_abc", other: "keep" },
+    });
+
+    const result = applyAbandonedRequiresAction(challenged);
+
+    expect(result.status).toBe("open");
+    expect(result.payment.status).toBe("failed");
+    expect(result.payment.clientToken).toBeNull();
+    expect(result.payment.actionData).toBeNull();
+    expect(result.payment.gatewayMetadata.paymentIntentId).toBeUndefined();
+    expect(result.payment.gatewayMetadata).toMatchObject({ other: "keep" });
+    expect(result.order).toBeNull();
+  });
+
+  it("does not create or cancel an order", () => {
+    const withOrder = applyPaymentRequiresAction(
+      makeSession({ order: { id: "order-unpaid" } }),
+      {
+        clientToken: "pi_secret",
+        actionData: { type: "stripe_3ds", paymentIntentId: "pi_1" },
+      }
+    );
+    const result = applyAbandonedRequiresAction(withOrder);
+    expect(result.order).toEqual({ id: "order-unpaid" });
+  });
+});
+
+describe("applyPaymentRequiresAction", () => {
+  it("keeps status open and marks payment requires_action (no order)", () => {
+    const result = applyPaymentRequiresAction(makeSession(), {
+      clientToken: "pi_abc_secret_xyz",
+      actionData: { type: "stripe_3ds", paymentIntentId: "pi_abc" },
+      gatewayMetadata: { paymentIntentId: "pi_abc" },
+    });
+
+    expect(result.status).toBe("open");
+    expect(result.payment.status).toBe("requires_action");
+    expect(result.order).toBeNull();
+    expect(result.payment.clientToken).toBe("pi_abc_secret_xyz");
+    expect(result.payment.actionData).toEqual({
+      type: "stripe_3ds",
+      paymentIntentId: "pi_abc",
+    });
+    expect(result.payment.gatewayMetadata).toMatchObject({
+      paymentIntentId: "pi_abc",
+    });
+  });
+
+  it("does not mark the payment failed", () => {
+    const result = applyPaymentRequiresAction(makeSession(), {
+      clientToken: "pi_secret",
+      actionData: { type: "stripe_3ds", paymentIntentId: "pi_1" },
+    });
+    expect(result.payment.status).not.toBe("failed");
+    expect(result.payment.status).toBe("requires_action");
+  });
+
+  it("preserves customerInfo and addresses unchanged", () => {
+    const before = makeSession();
+    const after = applyPaymentRequiresAction(before, {
+      clientToken: "pi_secret",
+      actionData: { type: "stripe_3ds", paymentIntentId: "pi_1" },
+    });
+    expect(after.customerInfo).toBe(before.customerInfo);
+    expect(after.shippingAddress).toBe(before.shippingAddress);
+    expect(after.billingAddress).toBe(before.billingAddress);
+  });
+
+  it("clears a stale clientToken when the event carries none", () => {
+    const first = applyPaymentRequiresAction(makeSession(), {
+      clientToken: "pi_1_secret_old",
+      actionData: { type: "stripe_3ds", paymentIntentId: "pi_1" },
+      gatewayMetadata: { paymentIntentId: "pi_1" },
+    });
+
+    const second = applyPaymentRequiresAction(first, {
+      clientToken: null,
+      actionData: null,
+      gatewayMetadata: { paymentIntentId: "pi_2" },
+    });
+
+    expect(second.payment.clientToken).toBeNull();
+    expect(second.payment.actionData).toBeNull();
+    expect(second.payment.gatewayMetadata).toMatchObject({
+      paymentIntentId: "pi_2",
+    });
+  });
+
+  it("preserves an existing unpaid order (resume retry)", () => {
+    const withOrder = makeSession({ order: { id: "order-unpaid" } });
+    const result = applyPaymentRequiresAction(withOrder, {
+      clientToken: "pi_secret",
+      actionData: { type: "stripe_3ds", paymentIntentId: "pi_1" },
+    });
+    expect(result.order).toEqual({ id: "order-unpaid" });
+    expect(result.status).toBe("open");
+    expect(result.payment.status).toBe("requires_action");
   });
 });

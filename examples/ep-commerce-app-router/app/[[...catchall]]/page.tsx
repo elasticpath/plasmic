@@ -1,5 +1,4 @@
 import { PLASMIC } from "@/plasmic-init";
-import "@/plasmic-register";
 import { PlasmicClientRootProvider } from "@/plasmic-init-client";
 import { PlasmicComponent } from "@plasmicapp/loader-nextjs";
 import {
@@ -54,7 +53,7 @@ export default async function PlasmicLoaderPage({
     session: {
       accessToken: session.session?.accessToken,
       cartId: session.cart?.id ?? undefined,
-      accountId: session.user?.accountId ?? undefined,
+      account: session.session?.account ?? null,
     },
     hostAllowlist: EP_HOST_ALLOWLIST,
   });

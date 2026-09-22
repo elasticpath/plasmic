@@ -313,6 +313,70 @@ describe("useCheckoutSession", () => {
     });
   });
 
+  describe("resumePayment", () => {
+    it("calls POST /checkout/sessions/current/resume-payment", async () => {
+      mockSWRData = { success: true, data: { session: { id: "s1" } } };
+      mockFetchResponse({ success: true });
+
+      const { result } = renderHook(() => useCheckoutSession("/api"));
+      await act(async () => {
+        await result.current.resumePayment();
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/checkout/sessions/current/resume-payment",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({}),
+        })
+      );
+    });
+
+    it("calls mutate after resumePayment", async () => {
+      mockSWRData = { success: true, data: { session: { id: "s1" } } };
+      mockFetchResponse({ success: true });
+
+      const { result } = renderHook(() => useCheckoutSession("/api"));
+      await act(async () => {
+        await result.current.resumePayment({ gateway: "stripe" });
+      });
+
+      expect(mockMutate).toHaveBeenCalled();
+    });
+  });
+
+  describe("abandonPayment", () => {
+    it("calls POST /checkout/sessions/current/abandon-payment", async () => {
+      mockSWRData = { success: true, data: { session: { id: "s1" } } };
+      mockFetchResponse({ success: true });
+
+      const { result } = renderHook(() => useCheckoutSession("/api"));
+      await act(async () => {
+        await result.current.abandonPayment();
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/checkout/sessions/current/abandon-payment",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({}),
+        })
+      );
+    });
+
+    it("calls mutate after abandonPayment", async () => {
+      mockSWRData = { success: true, data: { session: { id: "s1" } } };
+      mockFetchResponse({ success: true });
+
+      const { result } = renderHook(() => useCheckoutSession("/api"));
+      await act(async () => {
+        await result.current.abandonPayment();
+      });
+
+      expect(mockMutate).toHaveBeenCalled();
+    });
+  });
+
   describe("reset", () => {
     it("calls mutate with null session data (optimistic clear)", async () => {
       mockSWRData = { success: true, data: { session: { id: "s1" } } };

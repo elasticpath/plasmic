@@ -30,6 +30,13 @@ import {
   assertNonSentinelSecret,
   resolveAuthSecret,
 } from "./production-guard";
+import {
+  ENVELOPE_LIFETIME_SECONDS,
+  accountNeedsRoll,
+  applyAccountLapse,
+  readEnvelopeAccount,
+} from "./envelope";
+import type { EpAccountSlot, EpLapsedAccount } from "./envelope";
 
 export interface CreateEpAuthBetterInput {
   clientId: string;
@@ -59,6 +66,12 @@ export interface CreateEpAuthBetterInput {
   resolveConfig?: () => Promise<
     { clientId?: string; host?: string } | null | undefined
   >;
+  /**
+   * The password profile account members sign in against. Discovered from the
+   * store when omitted; required when the store's authentication realm carries
+   * more than one, because nothing marks one of them as the default.
+   */
+  passwordProfileId?: string;
 }
 
 function defaultTrustedOrigins(baseURL: string): string[] {
@@ -100,6 +113,9 @@ export interface EpSessionData {
   expires: number;
   clientId: string;
   host: string;
+  memberId?: string;
+  account: EpAccountSlot | null;
+  lapsedAccount: EpLapsedAccount | null;
 }
 
 export interface EpSession {
@@ -219,6 +235,7 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
         host: input.host,
         hostAllowlist: input.hostAllowlist,
         resolveConfig: input.resolveConfig,
+        passwordProfileId: input.passwordProfileId,
       }),
       // `nextCookies()` MUST be the last plugin in the array per
       // better-auth's docs. It auto-forwards Set-Cookie headers from
@@ -228,10 +245,12 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
       nextCookies(),
     ],
     session: {
+      expiresIn: ENVELOPE_LIFETIME_SECONDS,
       cookieCache: {
         enabled: true,
         strategy: "jwe" as any,
         refreshCache: true,
+        maxAge: ENVELOPE_LIFETIME_SECONDS,
       },
     } as any,
   });
@@ -320,8 +339,39 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
           // near-expiry session — better than failing the page render.
         }
 
+        // Roll the account token while the shopper is active. Rolling
+        // reaches only sessions making calls, so an idle shopper still lapses
+        // — which the lapse states rather than hides.
+        if (
+          accountNeedsRoll(
+            session?.session?.epAccount ?? null,
+            Math.floor(Date.now() / 1000)
+          )
+        ) {
+          const carriedCookies = pendingSetCookies.length
+            ? cookieHeaderFromSetCookies(pendingSetCookies)
+            : cookiesToHeader(req.cookies);
+          const rollResponse = await (auth.api as any).epAccountRoll({
+            body: {},
+            headers: new Headers({ cookie: carriedCookies }),
+            asResponse: true,
+          });
+          if (rollResponse.ok) {
+            for (const c of extractSetCookies(rollResponse)) {
+              pendingSetCookies.push(c);
+            }
+            session = await rollResponse.json();
+          }
+        }
+
         const epSession = session?.session ?? null;
         const epUser = session?.user ?? null;
+
+        const envelopeAccount = readEnvelopeAccount(
+          epSession
+            ? applyAccountLapse(epSession, Math.floor(Date.now() / 1000))
+            : epSession
+        );
 
         const sessionData: EpSessionData | null = epSession?.epAccessToken
           ? {
@@ -329,6 +379,9 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
               expires: epSession.epExpires,
               clientId: epSession.epClientId,
               host: epSession.epHost,
+              memberId: envelopeAccount.memberId,
+              account: envelopeAccount.account,
+              lapsedAccount: envelopeAccount.lapsedAccount,
             }
           : null;
 
@@ -336,9 +389,7 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
           session: sessionData,
           user: epUser?.email?.endsWith("@anonymous.local") ? null : epUser,
           cart: epSession?.epCartId ? { id: epSession.epCartId } : null,
-          isAuthenticated: Boolean(
-            epUser && !epUser.email?.endsWith("@anonymous.local")
-          ),
+          isAuthenticated: envelopeAccount.memberId != null,
           headers() {
             const h: Record<string, string> = {};
             if (sessionData) {

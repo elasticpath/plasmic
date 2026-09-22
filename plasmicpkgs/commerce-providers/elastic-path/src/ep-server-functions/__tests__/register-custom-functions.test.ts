@@ -102,6 +102,27 @@ describe("registerEpCustomFunctions", () => {
     ]);
   });
 
+  /**
+   * The listing endpoints take no `sort`, so neither function may advertise
+   * one: Elastic Path ignores an unsupported sort silently, making a
+   * designer-visible param that cannot work worse than no param at all.
+   */
+  it("advertises no `sort` param on the product listing functions", () => {
+    const registerFunction = jest.fn();
+    registerEpCustomFunctions({ registerFunction } as any);
+
+    for (const name of ["getProductList", "getProductPage"]) {
+      const call = registerFunction.mock.calls.find(
+        (args) => args[1]?.name === name
+      );
+      expect(call).toBeDefined();
+      const paramNames: string[] = (call![1].params ?? []).map(
+        (p: { name: string }) => p.name
+      );
+      expect(paramNames).not.toContain("sort");
+    }
+  });
+
   it("registers ep.applyCartAdjustment as a mutation with a flat money-bearing param schema", () => {
     const registerFunction = jest.fn();
     registerEpCustomFunctions({ registerFunction } as any);

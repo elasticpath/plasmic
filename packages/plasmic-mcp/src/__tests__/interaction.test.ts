@@ -310,7 +310,7 @@ describe("addInteraction", () => {
 
     const dest = root.vsettings[0].attrs.onClick.interactions[0].args[0].expr;
     expect(dest._type).toBe("CustomCode");
-    expect(dest.code).toBe("`/product/${$ctx.currentProduct.id}`");
+    expect(dest.code).toBe("(`/product/${$ctx.currentProduct.id}`)");
   });
 
   it("JSON-stringifies a plain URL destination (existing behaviour)", async () => {
@@ -381,7 +381,7 @@ describe("addInteraction", () => {
     const codeArg = interaction.args.find((a: any) => a.name === "customFunction");
     expect(codeArg.expr._type).toBe("FunctionExpr");
     expect(codeArg.expr.bodyExpr._type).toBe("CustomCode");
-    expect(codeArg.expr.bodyExpr.code).toBe('alert("hello")');
+    expect(codeArg.expr.bodyExpr.code).toBe('(alert("hello"))');
   });
 
   it("appends to existing EventHandler interactions", async () => {
@@ -439,8 +439,91 @@ describe("addInteraction", () => {
     const interaction = root.vsettings[0].attrs.onClick.interactions[0];
     expect(interaction.interactionName).toBe("Go home");
     expect(interaction.conditionalMode).toBe("expression");
+    expect(interaction.condExpr._type).toBe("ObjectPath");
+    expect(interaction.condExpr.path).toEqual(["$state", "isLoggedIn"]);
+  });
+
+  it("wraps a code condition in parens so Studio reads it as a real code expr", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {};
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await addInteraction(
+      api, "comp-1", "root-1", "onClick", "navigation",
+      { destination: "/home" },
+      "Go home",
+      "$state.cart.items.length > 0"
+    );
+
+    const interaction = root.vsettings[0].attrs.onClick.interactions[0];
     expect(interaction.condExpr._type).toBe("CustomCode");
-    expect(interaction.condExpr.code).toBe("$state.isLoggedIn");
+    expect(interaction.condExpr.code).toBe("($state.cart.items.length > 0)");
+  });
+
+  it("reads back a condition and args without their wrapping parens", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {};
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await addInteraction(
+      api, "comp-1", "root-1", "onClick", "navigation",
+      { destination: '{{$ctx.params.slug || "/home"}}' },
+      "Go",
+      "$state.cart.items.length > 0"
+    );
+
+    const listed = listInteractions(comp, "root-1");
+    const onClick = listed.find((i: any) => i.event === "onClick")!;
+    expect(onClick.condition).toBe("$state.cart.items.length > 0");
+    expect(onClick.args.destination).toBe('$ctx.params.slug || "/home"');
+  });
+
+  it("accepts customFunction code that already carries its own parens", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {};
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await addInteraction(
+      api, "comp-1", "root-1", "onClick", "customFunction",
+      { code: "($refs.list.loadMore())" }
+    );
+
+    const codeArg = root.vsettings[0].attrs.onClick.interactions[0].args.find(
+      (a: any) => a.name === "customFunction"
+    );
+    expect(codeArg.expr.bodyExpr.code).toBe("(($refs.list.loadMore()))");
+  });
+
+  it("wraps a code navigation destination but leaves a plain URL a literal", async () => {
+    const root = mkTag({ uuid: "root-1" });
+    root.vsettings[0].attrs = {};
+    const comp = mkComponent({ uuid: "comp-1", tplTree: root });
+    const site = { components: [comp], styleTokens: [] };
+    const session = makeSession({ site } as any);
+    setSession(session);
+    initChangeTracker(session.site);
+
+    await addInteraction(
+      api, "comp-1", "root-1", "onClick", "navigation",
+      { destination: '{{$ctx.params.slug || "/home"}}' }
+    );
+    const codeArg = root.vsettings[0].attrs.onClick.interactions[0].args.find(
+      (a: any) => a.name === "destination"
+    );
+    expect(codeArg.expr._type).toBe("CustomCode");
+    expect(codeArg.expr.code).toBe('($ctx.params.slug || "/home")');
   });
 
   it("generates default interaction name when not provided", async () => {
@@ -582,7 +665,7 @@ describe("addInteraction", () => {
 
     const interaction = root.vsettings[0].attrs.onClick.interactions[0];
     const codeArg = interaction.args.find((a: any) => a.name === "customFunction");
-    expect(codeArg.expr.bodyExpr.code).toBe('console.log("hello")');
+    expect(codeArg.expr.bodyExpr.code).toBe('(console.log("hello"))');
   });
 
   it("preserves template literals with single quotes in customFunction", async () => {
@@ -602,7 +685,7 @@ describe("addInteraction", () => {
 
     const interaction = root.vsettings[0].attrs.onClick.interactions[0];
     const codeArg = interaction.args.find((a: any) => a.name === "customFunction");
-    expect(codeArg.expr.bodyExpr.code).toBe(code);
+    expect(codeArg.expr.bodyExpr.code).toBe(`(${code})`);
   });
 
   it("passes double-quoted strings through customFunction without normalization", async () => {
@@ -622,7 +705,7 @@ describe("addInteraction", () => {
 
     const interaction = root.vsettings[0].attrs.onClick.interactions[0];
     const codeArg = interaction.args.find((a: any) => a.name === "customFunction");
-    expect(codeArg.expr.bodyExpr.code).toBe(code);
+    expect(codeArg.expr.bodyExpr.code).toBe(`(${code})`);
   });
 
   // --- Gap #33: Variant group name resolution in updateVariable ---
@@ -819,7 +902,7 @@ describe("addInteraction", () => {
     const interaction = handler.interactions[0];
     const valueArg = interaction.args.find((a: any) => a.name === "value");
     expect(valueArg.expr._type).toBe("CustomCode");
-    expect(valueArg.expr.code).toBe("!$state.isOpen");
+    expect(valueArg.expr.code).toBe("(!$state.isOpen)");
   });
 
   it("uses explicit value for toggle when provided", async () => {
@@ -839,7 +922,7 @@ describe("addInteraction", () => {
     const handler = root.vsettings[0].attrs.onClick;
     const interaction = handler.interactions[0];
     const valueArg = interaction.args.find((a: any) => a.name === "value");
-    expect(valueArg.expr.code).toBe("!$state.isOpen || someCondition");
+    expect(valueArg.expr.code).toBe("(!$state.isOpen || someCondition)");
   });
 
   it("still requires value for non-toggle operations", async () => {
@@ -1141,8 +1224,8 @@ describe("updateInteraction", () => {
 
     const interaction = root.vsettings[0].attrs.onClick.interactions[0];
     expect(interaction.conditionalMode).toBe("expression");
-    expect(interaction.condExpr._type).toBe("CustomCode");
-    expect(interaction.condExpr.code).toBe("$state.isLoggedIn");
+    expect(interaction.condExpr._type).toBe("ObjectPath");
+    expect(interaction.condExpr.path).toEqual(["$state", "isLoggedIn"]);
   });
 
   it("removes condition when set to null", async () => {

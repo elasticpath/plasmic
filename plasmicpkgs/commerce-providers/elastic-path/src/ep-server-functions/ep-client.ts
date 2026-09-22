@@ -1,5 +1,6 @@
 import { createShopperClient } from "@epcc-sdk/sdks-shopper";
 import type { EpServerAuth } from "./types";
+import { accountTokenHeaders } from "../auth/ep-plugin/envelope";
 
 /**
  * Shared client-builder for the EP server functions.
@@ -26,5 +27,13 @@ export function buildEpClient(auth: EpServerAuth) {
       },
     }
   );
+
+  client.interceptors.request.use(async (request: Request) => {
+    for (const [name, value] of Object.entries(accountTokenHeaders(auth))) {
+      request.headers.set(name, value);
+    }
+    return request;
+  });
+
   return client;
 }

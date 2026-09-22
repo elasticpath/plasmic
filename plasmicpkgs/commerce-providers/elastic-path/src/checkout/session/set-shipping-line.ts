@@ -33,6 +33,10 @@ export interface ClearCartShippingLineInput {
   cartId: string;
 }
 
+export interface ClearCartShippingLineResult {
+  deletedCount: number;
+}
+
 export interface SetCartShippingLineInput {
   /** Cart to write the shipping line into. */
   cartId: string;
@@ -51,12 +55,13 @@ function isManagedShippingLine(item: { sku?: unknown }): boolean {
 
 /**
  * Remove every storefront-managed shipping line (`sku === EP_SHIPPING_LINE_SKU`)
- * from the cart.
+ * from the cart. Returns how many lines were deleted so callers can skip a
+ * post-clear total refresh when the cart was unchanged.
  */
 export async function clearCartShippingLine(
   client: EpClient,
   input: ClearCartShippingLineInput
-): Promise<void> {
+): Promise<ClearCartShippingLineResult> {
   const { cartId } = input;
 
   if (!cartId) {
@@ -79,6 +84,7 @@ export async function clearCartShippingLine(
   for (const cartitemID of staleIds) {
     await deleteACartItem({ client, path: { cartID: cartId, cartitemID } });
   }
+  return { deletedCount: staleIds.length };
 }
 
 /**

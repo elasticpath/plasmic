@@ -24,6 +24,8 @@ export {
 export type {
   PaymentRegistrationContextValue,
   GatewayRegistration,
+  GatewayPaySession,
+  GatewayContinuationResult,
 } from "./payment-registration-context";
 
 // Session store
@@ -84,7 +86,14 @@ export {
   EPStripePayment,
   epStripePaymentMeta,
   registerEPStripePayment,
+  runStripeRequiresAction,
 } from "./EPStripePayment";
+
+export {
+  EPManualPayment,
+  epManualPaymentMeta,
+  registerEPManualPayment,
+} from "./EPManualPayment";
 
 export {
   EPCheckoutShippingRates,
@@ -104,6 +113,16 @@ export { createCloverAdapter } from "./adapters/clover-adapter";
 export type { CloverAdapterConfig } from "./adapters/clover-adapter";
 export { createStripeAdapter } from "./adapters/stripe-adapter";
 export type { StripeAdapterConfig } from "./adapters/stripe-adapter";
+export { createManualAdapter } from "./adapters/manual-adapter";
+export type {
+  ManualAdapterConfig,
+  ManualPaymentMethod,
+} from "./adapters/manual-adapter";
+export {
+  isCartPaymentIntentAdapter,
+  isLegacyPaymentAdapter,
+  isOrderFirstAdapter,
+} from "./payment-sequence";
 
 // Types
 export type {
@@ -119,6 +138,11 @@ export type {
   PaymentAdapter,
   PaymentAdapterResult,
   PaymentAdapterResultStatus,
+  PaymentSequence,
+  PaymentSetupRequest,
+  CartPaymentIntentAdapter,
+  OrderFirstAdapter,
+  LegacyPaymentAdapter,
   SessionStore,
   SessionSetResult,
   SessionRequest,

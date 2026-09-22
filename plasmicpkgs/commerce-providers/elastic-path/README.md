@@ -256,7 +256,7 @@ Returning visit:
   → buildEpCtx() → withEpSession() → Server Queries SSR → zero OAuth calls
 ```
 
-The access token never reaches the browser. It stays on the server:
+The session's access token stays on the server:
 1. `getSession()` reads or mints it, then writes it to an httpOnly cookie
 2. `buildEpCtx()` puts it on an `EpCtx`, which `withEpSession()` publishes
    through AsyncLocalStorage
@@ -267,9 +267,38 @@ The access token never reaches the browser. It stays on the server:
 `globalContextsProps` and serialized into the page HTML, so it never carries
 a credential.
 
-Browser-side catalog reads go through the Elastic Path SDK client, which mints
-its own anonymous token from the public `clientId` and holds it in memory —
-never localStorage, never a cookie.
+### Two token surfaces today, one from ADR-0003
+
+Browser-originated catalog reads currently go through the Elastic Path SDK
+client, which mints its **own** anonymous token from the public `clientId` and
+holds it in the JS heap. So the storefront has two Elastic Path identities: the
+session's on the server, an anonymous one in the browser.
+
+Earlier releases described the browser token's in-memory custody as a security
+property. It is not one, and that claim is retired. An Elastic Path implicit
+token is public by construction — anyone holding the `client_id` can mint one —
+so where it is kept protects nothing. It is also not read-only: it can write to
+`/carts` and `/checkout`.
+
+What is worth protecting is the **account token**, which carries shopper identity
+and unlocks order history, account and member records, and addresses. This
+package keeps that server-side and never hands it to the browser.
+
+[ADR-0003](docs/adr/0003-one-session-for-elastic-path-identity.md) decides the
+direction: one session, no Elastic Path credential in the browser at all, and
+every browser-originated call carrying identity routed through the storefront's
+own origin. The browser client is removed as part of that work; the ADR is the
+reference for what the surface becomes and why.
+
+Two platform facts to design against in the meantime:
+
+- **A cart id is the entire access boundary on a cart.** `GET /v2/carts/{id}`
+  succeeds for any known id under any token, and an unknown id creates rather
+  than 404s. Keep cart ids in server custody; storefront-side verification is the
+  whole defence, not a second layer.
+- **Account association is discoverability, not access control.** The
+  relationship is an appendable set, so any account that learns a cart id can
+  attach itself and thereafter enumerate that cart.
 
 **`next dev` is an exception.** Next's RSC debug instrumentation serializes a
 server component's local variables — including the EP session — into the flight
@@ -287,8 +316,71 @@ run one on a shared host or against production Elastic Path credentials.
 | POST | `{basePath}/ep/anonymous` | Mint an anonymous session |
 | POST | `{basePath}/ep/refresh` | Rotate the EP token |
 | POST | `{basePath}/ep/cart` | Persist `epCartId` on the session |
-| POST | `{basePath}/ep/account/login` | Persist account fields |
+| POST | `{basePath}/ep/account/login` | Sign an account member in |
+| POST | `{basePath}/ep/account/roster` | Read the accounts the member belongs to |
+| POST | `{basePath}/ep/account/select` | Select or deselect the account being bought for |
+| POST | `{basePath}/ep/account/roll` | Re-mint the account credential before it runs out |
+| POST | `{basePath}/ep/account/logout` | Sign the account member out |
 | GET | `{basePath}/get-session` | Read the session, minus EP credentials |
+
+### Account identity
+
+The session holds the authenticated **account member** and the **selected
+account** — the organisation they are buying for — as two separate facts.
+`isAuthenticated` reports the member, so a member who belongs to no
+organisation reads as signed in. While an account is selected, every `ep.*`
+server function and every cart route carries
+`EP-Account-Management-Authentication-Token`. The checkout-session handlers
+do not yet — they take their own shopper token on `SessionHandlerContext`.
+
+`POST /ep/account/login` takes `{ username, password }`. The server calls
+Elastic Path's `/v2/account-members/tokens` itself, so no Elastic Path
+credential is ever in the browser. It answers with the roster —
+`{ accounts: [{ id, name }], total }` — alongside the session, so a chooser
+renders with no second call.
+
+Selection follows from the count. Exactly one account and the member is placed
+in it; several and **none** is chosen for them; none at all and the member is
+signed in anyway, authenticated but permanently unscoped.
+
+`POST /ep/account/roster` reads the same list later in the session, taking
+`{ limit?, offset? }`. Elastic Path caps a page at 100 and this forwards that
+cap rather than imposing a smaller one, so a member in more accounts than one
+page holds can still reach any of them. `total` is Elastic Path's own count.
+
+`POST /ep/account/select` takes `{ accountId }`, or `{ accountId: null }` to
+deselect. It re-mints the account credential first, then tears down any
+checkout session and clears the cart pointer, and writes the new account last —
+so a switch that fails leaves the previous selection exactly as it was.
+Selecting the account already selected does nothing at all. No password is
+needed: re-minting runs off the credential the session already holds.
+
+The checkout session it tears down is the one `CookieSessionStore` holds. A
+consumer who supplies their own `SessionStore` must clear it themselves on a
+switch — the auth handler has no handle on it.
+
+The account credential is re-minted while it has less than an hour left,
+without the shopper noticing. A shopper idle long enough for it to run out is
+reported as lapsed rather than quietly returned to list prices, and roster and
+select answer `account_lapsed` rather than presenting a dead credential to
+Elastic Path.
+
+The older `{ epMemberId, epAccountId, epAccountToken, epAccountExpires }` body
+still works and still verifies the supplied token against Elastic Path. It is
+removed in the breaking release.
+
+**A store whose authentication realm carries more than one password profile
+must pass `passwordProfileId` to `createEpAuth`.** Nothing in a profile record
+marks a default, and signing in against the wrong one fails with Elastic Path's
+own `authentication failed`, which says nothing about profiles. With one
+profile the package finds it.
+
+`get-session` releases `epMemberId`, `epAccount.{id,name}` and
+`epLapsedAccount.{id,name}`. The account credential and its expiry are
+withheld: the response is filtered to an allowlist of **paths**, so a field
+added inside `epAccount` later is withheld by default. `epLapsedAccount`
+states that a selection's credential ran out, rather than reverting the
+shopper to list prices with no signal.
 
 `createCartRoutes(epAuth)` mounts the cart routes:
 
@@ -366,11 +458,12 @@ import { registerEpCustomFunctions } from "@elasticpath/plasmic-ep-commerce-elas
 registerEpCustomFunctions(PLASMIC);
 ```
 
-This registers four functions in the `ep` namespace, callable from Studio's Server Query builder:
+This registers five read functions in the `ep` namespace, callable from Studio's Server Query builder:
 
 - `ep.getProduct({ id })` — single product by EP product UUID.
 - `ep.getCart()` — current cart contents.
-- `ep.getProductList({ limit?, search?, categoryId?, sort? })` — paginated product list.
+- `ep.getProductList({ limit?, search?, categoryId?, sort? })` — a flat array of products. `categoryId` is a hierarchy **node** ID; it reads that node's products rather than filtering the whole catalog.
+- `ep.getProductPage({ limit?, offset?, search?, categoryId?, sort? })` — one page of products **with the total count**, in Elastic Path's envelope: `data`, plus `meta.results.total` and `meta.page`. Bind it to EP Product List Provider's **Products (pre-fetched)** prop to server-render a listing. Prefer this over `getProductList` whenever the page has pagination controls — the flat array carries no total, so ranges and next/previous cannot be computed.
 - `ep.getRelatedProducts({ productId, relationshipSlug, limit? })` — products linked by an EP custom relationship.
 
 Auth is **not** an argument. The session (`accessToken`, `clientId`, `host`, `cartId`, …) is propagated through `AsyncLocalStorage` — see step 3.
@@ -408,7 +501,7 @@ export default async function PlasmicLoaderPage({ params, searchParams }) {
     session: {
       accessToken: session.session?.accessToken,
       cartId: session.cart?.id ?? undefined,
-      accountId: session.user?.accountId ?? undefined,
+      account: session.session?.account ?? null,
     },
   });
 
@@ -467,7 +560,7 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 
 ### Product Display
 - **EPProductProvider** — Single product data
-- **EPProductListProvider** — Paginated product listing
+- **EPProductListProvider** — Paginated product listing. **Products (pre-fetched)** (`initialPage`, advanced) seeds the first page from an `ep.getProductPage` Server Query result, and that query's `page[limit]` overrides **Page Size**; paging discards the seed and falls back to client fetching. Offers no sort — Elastic Path's catalog product endpoints take no `sort` parameter, so use `EPCatalogSearchProvider` with `EPSearchSortBy` for a sortable listing
 - **EPRelatedProductsProvider** — Related products
 - **EPProductGrid** — Repeater for product list items
 
@@ -510,7 +603,7 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 
 ### Stock / Inventory
 - **EPStockProvider** — Multi-location inventory
-- **EPLocationPicker** / **EPLocationList** / **EPLocationField** — Location selection
+- **EPLocationPicker** / **EPLocationField** — Location selection
 - **EPStockField** — Stock level display
 
 ### Catalog Search

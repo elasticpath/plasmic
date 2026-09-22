@@ -13,10 +13,23 @@ interface EPMultiLocationStockProps extends Omit<MultiLocationStockProps, 'produ
   // No productId needed as it comes from product context
 }
 
+/**
+ * Deprecated. Kept registered only so the hostless publish keeps working: a
+ * component that disappears from a hostless package's registered set makes
+ * `publish-hostless` fail outright, so retiring one means deprecating it here
+ * rather than deleting it.
+ *
+ * It cannot be styled — no className, no slots — and it clears the shared
+ * SelectedLocationSlug field on mount, so placing it beside EPStockProvider can
+ * wipe a location the shopper picked. EPStockProvider with EPLocationPicker and
+ * EPLocationField replaces it and is fully designable.
+ */
 export const epMultiLocationStockMeta: CodeComponentMeta<EPMultiLocationStockProps> = {
   name: "plasmic-commerce-ep-multi-location-stock",
-  displayName: "EP Multi-Location Stock",
-  description: "Display stock levels across multiple locations for Elastic Path products",
+  displayName: "EP Multi-Location Stock (deprecated)",
+  description:
+    "Deprecated — do not use. Replace with EP Stock Provider plus EP Location Picker and EP Location Field, which are designable and support a dropdown mode and ?location= URL syncing.",
+  hideFromContentCreators: true,
   props: {
     showLocationSelector: {
       type: "boolean",

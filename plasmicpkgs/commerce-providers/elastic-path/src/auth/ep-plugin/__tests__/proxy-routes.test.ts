@@ -24,11 +24,17 @@ vi.mock("../../../ep-server-functions/cart-mutations", () => ({
   epApplyCartAdjustment: vi.fn(),
 }));
 
+vi.mock("../../../ep-server-functions/getCart", () => ({
+  epGetCart: vi.fn(),
+}));
+
 // Imported AFTER vi.mock so the proxy picks up the mocked module.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { createEpProxyRoutes } = await import("../proxy-routes");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const cartMutations = await import("../../../ep-server-functions/cart-mutations");
+import { epGetCart } from "../../../ep-server-functions/getCart";
+import { getCurrentEpSession } from "../../../ep-server-functions/session-context";
 
 let originalFetch: typeof fetch;
 
@@ -306,6 +312,70 @@ describe("createEpProxyRoutes origin gate", () => {
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "untrusted_origin" });
     expect(cartMutations.epAddCartItem as any).not.toHaveBeenCalled();
+  });
+});
+
+describe("createEpProxyRoutes account scope", () => {
+  function dispatchWith(sessionAccount: unknown) {
+    const proxy = createEpProxyRoutes({
+      config: { trustedOrigins: ["http://localhost:3000"] },
+      api: {
+        getSession: vi.fn(async () => ({
+          session: {
+            accessToken: "shopper-token",
+            host: EP_HOST,
+            clientId: EP_CLIENT_ID,
+            expires: Math.floor(Date.now() / 1000) + 3600,
+            account: sessionAccount,
+          },
+          cart: { id: "cart-1" },
+        })),
+      },
+    } as any);
+    return proxy.handle(
+      new Request("http://localhost:3000/api/ep/proxy/getCart", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "http://localhost:3000",
+        },
+        body: "{}",
+      }),
+      { params: Promise.resolve({ fn: "getCart" }) }
+    );
+  }
+
+  async function sessionSeenBy(sessionAccount: unknown) {
+    const seen: any[] = [];
+    (epGetCart as any).mockImplementation(async () => {
+      seen.push(getCurrentEpSession());
+      return null;
+    });
+
+    await dispatchWith(sessionAccount);
+
+    return seen[0];
+  }
+
+  it("dispatches under the selected organisation's credential", async () => {
+    const session = await sessionSeenBy({
+      id: "acct-1",
+      name: "Acme Industrial",
+      token: "account-management-token",
+      expires: Math.floor(Date.now() / 1000) + 3600,
+    });
+
+    expect(session).toMatchObject({
+      accountId: "acct-1",
+      accountToken: "account-management-token",
+    });
+  });
+
+  it("dispatches with no account credential when none is selected", async () => {
+    const session = await sessionSeenBy(null);
+
+    expect(session.accountId).toBeUndefined();
+    expect(session.accountToken).toBeUndefined();
   });
 });
 

@@ -48,6 +48,32 @@ describe("buildEpCtx", () => {
     expect(ctx.host).toBe("https://epcc-integration.global.ssl.fastly.net");
   });
 
+  it("carries the selected organisation's id and credential", () => {
+    const ctx = buildEpCtx(makePrefetchedData(), {
+      session: {
+        accessToken: "tok-abc",
+        account: {
+          id: "acct-1",
+          name: "Acme Industrial",
+          token: "account-management-token",
+          expires: 1786630149,
+        },
+      },
+    });
+
+    expect(ctx.accountId).toBe("acct-1");
+    expect(ctx.accountToken).toBe("account-management-token");
+  });
+
+  it("carries no account credential when no organisation is selected", () => {
+    const ctx = buildEpCtx(makePrefetchedData(), {
+      session: { accessToken: "tok-abc", account: null },
+    });
+
+    expect(ctx.accountId).toBeUndefined();
+    expect(ctx.accountToken).toBeUndefined();
+  });
+
   it("rejects a host outside the allowlist, and accepts it once the deployment opts in", () => {
     const smcData = {
       bundle: {

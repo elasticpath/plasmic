@@ -78,6 +78,10 @@ const { handleCalculateShipping } = require("../calculate-shipping") as {
   handleCalculateShipping: typeof import("../calculate-shipping").handleCalculateShipping;
 };
 // eslint-disable-next-line @typescript-eslint/no-var-requires
+const { handleResumePayment } = require("../resume-payment") as {
+  handleResumePayment: typeof import("../resume-payment").handleResumePayment;
+};
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { resetLogConfig } = require("../../../../utils/logger") as {
   resetLogConfig: typeof import("../../../../utils/logger").resetLogConfig;
 };
@@ -193,9 +197,10 @@ function createMockAdapter(
   confirmResult: PaymentAdapterResult = { status: "succeeded" }
 ): PaymentAdapter {
   return {
+    paymentSequence: "cart_payment_intent",
     initializePayment: jest.fn().mockResolvedValue(initResult),
     confirmPayment: jest.fn().mockResolvedValue(confirmResult),
-  };
+  } as PaymentAdapter;
 }
 
 function createMockRegistry(adapter?: PaymentAdapter): AdapterRegistry {
@@ -377,8 +382,12 @@ describe("order-fields allow-list (#369)", () => {
     // The order still completes; the extras are simply dropped.
     expect(res.status).toBe(200);
     expect((res.body as any).data.session.status).toBe("complete");
-    // Nothing to persist → neither write fires.
-    expect(epSdk.updateACart).not.toHaveBeenCalled();
+    // No custom-attribute cart write. Cart PaymentIntent detach may still run.
+    expect(
+      epSdk.updateACart.mock.calls.some(
+        (c) => c[0]?.body?.data?.custom_attributes
+      )
+    ).toBe(false);
     expect(epSdk.updateAnOrder).not.toHaveBeenCalled();
   });
 
@@ -454,6 +463,14 @@ describe("confirmOrder reconciliation (#369)", () => {
     expect(body.data.session.payment.gatewayMetadata.needsReconciliation).toBe(
       true
     );
+    // Do not clear Cart PI while the order still needs reconciliation.
+    expect(epSdk.updateACart).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: { data: { payment_intent_id: "" } },
+      })
+    );
+    // Cart delete still runs (best-effort housekeeping).
+    expect(epSdk.deleteACart).toHaveBeenCalled();
   });
 
   it("does not call confirmOrder with an undefined paymentID; flags reconciliation instead", async () => {
@@ -476,6 +493,11 @@ describe("confirmOrder reconciliation (#369)", () => {
     expect(body.reconciliationPending).toBe(true);
     expect(body.data.session.payment.gatewayMetadata.needsReconciliation).toBe(
       true
+    );
+    expect(epSdk.updateACart).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: { data: { payment_intent_id: "" } },
+      })
     );
   });
 
@@ -501,6 +523,11 @@ describe("confirmOrder reconciliation (#369)", () => {
     expect(
       body.data.session.payment.gatewayMetadata.needsReconciliation
     ).toBeUndefined();
+    expect(epSdk.updateACart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: { data: { payment_intent_id: "" } },
+      })
+    );
   });
 });
 
@@ -765,8 +792,9 @@ describe("authoritative shipping re-assertion (setShippingLine #4)", () => {
       call += 1;
       // Call 1 = pay's hash/total fetch (stripped → total 0).
       if (call === 1) return cartFetch(FREE_ITEMS, 0);
-      // Subsequent reads (setCartShippingLine + the post-reassert recompute)
-      // see the re-written shipping line → non-zero total.
+      // Subsequent reads (setCartShippingLine clear + post-write re-read)
+      // see the re-written shipping line → non-zero total; /pay reuses that
+      // returned cart meta (no extra GET).
       return cartFetch(
         [...FREE_ITEMS, { id: "ship-new", sku: SHIP_SKU, quantity: 1, unit_price: { amount: 500 } }],
         500
@@ -923,7 +951,8 @@ describe("clear stale managed shipping on non-shipping pay (#436)", () => {
     );
     expect(epSdk.manageCarts).not.toHaveBeenCalled();
     expect(callOrder).toEqual(["delete", "initializePayment"]);
-    // Post-clear authoritative total excludes shipping (product only).
+    // Hash + clear read + post-mutation total refresh (lines were deleted).
+    expect(epSdk.getACart).toHaveBeenCalledTimes(3);
     expect(adapter.initializePayment).toHaveBeenCalledTimes(1);
   });
 
@@ -1023,6 +1052,59 @@ describe("clear stale managed shipping on non-shipping pay (#436)", () => {
     expect((res.body as any).data.session.status).toBe("complete");
     expect(epSdk.deleteACartItem).not.toHaveBeenCalled();
     expect(epSdk.manageCarts).not.toHaveBeenCalled();
+    expect(adapter.initializePayment).toHaveBeenCalledTimes(1);
+    expect(epSdk.getACart).toHaveBeenCalledTimes(2);
+  });
+
+  it("physical pay reuses setCartShippingLine cart meta (no extra post-assert GET)", async () => {
+    let call = 0;
+    epSdk.getACart.mockImplementation(async () => {
+      call += 1;
+      if (call === 1) {
+        return cartFetch(
+          [
+            ...PRICED_ITEMS,
+            { id: "ship-old", sku: SHIP_SKU, quantity: 1, unit_price: { amount: 500 } },
+          ],
+          5900
+        );
+      }
+      if (call === 2) {
+        return cartFetch(
+          [
+            ...PRICED_ITEMS,
+            { id: "ship-old", sku: SHIP_SKU, quantity: 1, unit_price: { amount: 500 } },
+          ],
+          5900
+        );
+      }
+      return cartFetch(
+        [
+          ...PRICED_ITEMS,
+          { id: "ship-new", sku: SHIP_SKU, quantity: 1, unit_price: { amount: 1500 } },
+        ],
+        6900
+      );
+    });
+    const adapter = createMockAdapter();
+    const ctx = createMockCtx(
+      makeSession({
+        cartHash: hashCart(PRICED_ITEMS),
+        availableShippingRates: SHIPPING_RATES,
+        selectedShippingRateId: "rate-express",
+      }),
+      adapter
+    );
+
+    const res = await handlePay(
+      createMockReq({ gateway: "stripe", confirmation_token: "ctok" }),
+      ctx
+    );
+
+    expect(res.status).toBe(200);
+    expect((res.body as any).data.session.status).toBe("complete");
+    expect(epSdk.manageCarts.mock.calls[0][0].body.data.price.amount).toBe(1500);
+    expect(epSdk.getACart).toHaveBeenCalledTimes(3);
     expect(adapter.initializePayment).toHaveBeenCalledTimes(1);
   });
 
@@ -1348,6 +1430,33 @@ describe("token-leak boundary — no admin/shopper token in any response", () =>
     const ctx = createMockCtx(makeSession());
     const res = await handleGetSession(createMockReq({}), ctx);
     expect(res.status).toBe(200);
+    expectNoTokenLeak(res);
+  });
+
+  it("resume-payment() never reflects a token", async () => {
+    epSdk.confirmOrder.mockResolvedValue({
+      data: { data: { id: "order-1", payment: "paid" } },
+    });
+    const ctx = createMockCtx(
+      makeSession({
+        payment: {
+          gateway: "stripe",
+          status: "requires_action",
+          clientToken: "pi_secret",
+          gatewayMetadata: { paymentIntentId: "pi_abc" },
+          actionData: { type: "stripe_3ds", paymentIntentId: "pi_abc" },
+        },
+        customAttributes: { ...EXTRAS },
+      }),
+      createMockAdapter(),
+      { allowedCustomAttributeKeys: "*" }
+    );
+    const res = await handleResumePayment(createMockReq({}), ctx);
+    expect(res.status).toBe(200);
+    expect(epSdk.updateAnOrder).toHaveBeenCalledTimes(1);
+    expect(epSdk.updateAnOrder.mock.calls[0][0].headers.Authorization).toBe(
+      `Bearer ${ADMIN_TOKEN}`
+    );
     expectNoTokenLeak(res);
   });
 });

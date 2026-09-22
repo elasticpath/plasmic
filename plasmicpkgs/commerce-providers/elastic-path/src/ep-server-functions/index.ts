@@ -21,6 +21,8 @@ export { epGetProduct } from "./getProduct";
 export type { EpGetProductInput } from "./getProduct";
 export { epGetProductList } from "./getProductList";
 export type { EpGetProductListInput } from "./getProductList";
+export { epGetProductPage } from "./getProductPage";
+export type { EpGetProductPageInput, EpProductPage } from "./getProductPage";
 export { epGetRelatedProducts } from "./getRelatedProducts";
 export type { EpGetRelatedProductsInput } from "./getRelatedProducts";
 export {
@@ -36,7 +38,11 @@ export type {
 // Bare-name aliases the loader imports for Studio Server Queries; see
 // `register-custom-functions.ts` for why these are the adapted forms.
 export { buildEpCtx } from "./build-ep-ctx";
-export type { BuildEpCtxSessionInput, EpCtx } from "./build-ep-ctx";
+export type {
+  BuildEpCtxAccountInput,
+  BuildEpCtxSessionInput,
+  EpCtx,
+} from "./build-ep-ctx";
 export {
   EP_FUNCTION_NAMES,
   addCartItem,
@@ -44,6 +50,7 @@ export {
   getCart,
   getProduct,
   getProductList,
+  getProductPage,
   getRelatedProducts,
   registerEpCustomFunctions,
   removeCartItem,

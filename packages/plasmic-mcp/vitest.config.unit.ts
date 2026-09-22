@@ -249,6 +249,18 @@ export default defineConfig({
         find: /^@\/wab\/shared\/utils\/url-utils$/,
         replacement: path.resolve(__dirname, "src/__mocks__/wab-url-utils"),
       },
+      // Resolves to the REAL upstream module, not a mock: `parseJsCode` is the
+      // parser Studio validates expressions with, and mirroring it would let a
+      // mock disagree with the code that actually runs. Its only wab import is
+      // @/wab/shared/common (mocked above); acorn/acorn-walk/escodegen are
+      // direct deps of this package.
+      {
+        find: /^@\/wab\/shared\/parser-utils$/,
+        replacement: path.resolve(
+          __dirname,
+          "../../platform/wab/src/wab/shared/parser-utils"
+        ),
+      },
     ],
     extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
   },

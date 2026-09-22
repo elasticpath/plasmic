@@ -38,6 +38,7 @@ import {
 } from "@/wab/shared/model/classes";
 import type { TreeNode, TreeNodeMark, TreeReadOptions } from "./types.js";
 import { isTokenRef, parseTokenRefUuid, resolveTokenValue } from "./token-reader.js";
+import { stripCodeParens } from "./expr-parens.js";
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -777,7 +778,7 @@ function extractVisibilityInfo(
   if (!vs?.dataCond) return {};
 
   if (isKnownCustomCode(vs.dataCond)) {
-    const code = vs.dataCond.code;
+    const code = stripCodeParens(vs.dataCond.code);
     if (code === "false") {
       return { visibility: "notRendered" };
     }
@@ -812,7 +813,7 @@ function extractDataRepInfo(
 
   let collection: string;
   if (isKnownCustomCode(rep.collection)) {
-    collection = rep.collection.code;
+    collection = stripCodeParens(rep.collection.code);
   } else if (isKnownObjectPath(rep.collection)) {
     collection = rep.collection.path.join(".");
   } else {
@@ -887,7 +888,7 @@ function extractText(richText: any): { text: string; marks?: TreeNodeMark[]; dyn
     let fallback: string | undefined;
 
     if (isKnownCustomCode(expr)) {
-      text = expr.code;
+      text = stripCodeParens(expr.code);
       fallback = extractFallbackValue(expr.fallback);
     } else if (isKnownObjectPath(expr)) {
       // Display ObjectPath as dot notation (e.g., "$ctx.product.name")
@@ -1109,7 +1110,9 @@ function extractExprValue(expr: any): unknown {
     try {
       return JSON.parse(expr.code);
     } catch {
-      return expr.code;
+      // Not a JSON literal, so it is a code expr: report it as the write tools
+      // accept it, without Studio's wrapping parens.
+      return stripCodeParens(expr.code);
     }
   }
 

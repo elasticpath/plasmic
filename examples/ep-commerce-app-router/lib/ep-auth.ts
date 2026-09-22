@@ -21,6 +21,9 @@ import { PLASMIC } from "@/plasmic-init";
  * Env vars consulted:
  *   - CHECKOUT_SESSION_SECRET — used as the better-auth JWE secret AND the
  *     checkout-session HMAC secret. Required in production.
+ *   - EP_PASSWORD_PROFILE_ID — which password profile account members sign
+ *     in against. Only needed when the store's authentication realm holds
+ *     more than one; with a single profile the package finds it.
  */
 const SECRET = process.env.CHECKOUT_SESSION_SECRET;
 
@@ -35,6 +38,7 @@ export const epAuth = createBetterEpAuth({
   baseURL: process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3456",
   basePath: "/api/ep",
   hostAllowlist: EP_HOST_ALLOWLIST,
+  passwordProfileId: process.env.EP_PASSWORD_PROFILE_ID,
   resolveConfig: async () => {
     const config = await getEpProviderConfig();
     if (!config) return null;

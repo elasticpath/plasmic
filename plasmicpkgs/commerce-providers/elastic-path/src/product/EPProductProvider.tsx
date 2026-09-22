@@ -146,7 +146,7 @@ interface EPProductProviderProps {
   productId?: string;
   /**
    * Pre-fetched product data. When bound (typically to a Plasmic Server
-   * Query result like `$queries.product.data`), the component skips its
+   * Query result like `$q.product.data`), the component skips its
    * internal SWR fetch and publishes the supplied product via DataProvider.
    * This is the SSR path — the fetch runs in Next's RSC layer via
    * `ep.getProduct` before hydration. Leave unset to use the legacy
@@ -199,7 +199,7 @@ export const epProductProviderMeta: CodeComponentMeta<EPProductProviderProps> =
         type: "object",
         displayName: "Product (pre-fetched)",
         description:
-          "Bind to a Plasmic Server Query result (e.g. $queries.product.data) to SSR the product from the catch-all route instead of fetching client-side. Leave empty to use the legacy client-fetch path based on Product ID.",
+          "Bind to a Plasmic Server Query result (e.g. $q.product.data) to SSR the product from the catch-all route instead of fetching client-side. Leave empty to use the legacy client-fetch path based on Product ID.",
         advanced: true,
       },
       previewState: {

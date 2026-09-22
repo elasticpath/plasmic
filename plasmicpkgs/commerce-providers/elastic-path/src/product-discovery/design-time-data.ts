@@ -99,7 +99,6 @@ export interface ProductGridData {
   currentPage: number;
   totalPages: number;
   pageSize: number;
-  sort: string;
   isLoading: boolean;
   hasNextPage: boolean;
   hasPreviousPage: boolean;
@@ -115,7 +114,6 @@ export const MOCK_PRODUCT_GRID_DATA: ProductGridData = {
   currentPage: 0,
   totalPages: 4,
   pageSize: 12,
-  sort: "",
   isLoading: false,
   hasNextPage: true,
   hasPreviousPage: false,
@@ -188,7 +186,6 @@ export const MOCK_RELATED_PRODUCT_GRID_DATA: ProductGridData = {
   currentPage: 0,
   totalPages: 1,
   pageSize: 4,
-  sort: "",
   isLoading: false,
   hasNextPage: false,
   hasPreviousPage: false,

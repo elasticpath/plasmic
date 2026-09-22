@@ -76,10 +76,3 @@ export interface MultiLocationStockProps {
   showStockNumbers?: boolean;
   lowStockThreshold?: number;
 }
-
-export interface LocationAwareAddToCartProps {
-  children?: React.ReactNode;
-  requireLocationSelection?: boolean;
-  defaultLocationId?: string;
-  onLocationRequired?: () => void;
-}

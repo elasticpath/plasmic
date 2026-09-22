@@ -272,7 +272,6 @@ function EPRelatedProductsProviderInner(props: {
     currentPage: 0,
     totalPages: 1,
     pageSize: limit,
-    sort: "",
     isLoading,
     hasNextPage: false,
     hasPreviousPage: false,

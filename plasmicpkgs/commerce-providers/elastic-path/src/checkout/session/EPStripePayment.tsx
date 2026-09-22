@@ -1,7 +1,6 @@
 /**
  * EPStripePayment — Plasmic component for the EP-native Stripe gateway.
  *
- * Slice 1 (this PR):
  *   - Renders <Elements mode="payment"> (deferred PaymentIntent).
  *   - Renders <PaymentElement> only (card). Billing name/address are NOT
  *     collected here — the checkout form already captures them and EP attaches
@@ -9,14 +8,17 @@
  *   - On submit: stripe.createConfirmationToken({ elements }) → token.
  *   - Self-registers as gateway "stripe" with PaymentRegistrationContext;
  *     the registered confirm callback returns { confirmation_token }.
+ *   - After /pay returns requires_action, completeRequiresAction runs
+ *     stripe.handleNextAction({ clientSecret: session.payment.clientToken })
+ *     then resumePayment() with an empty body. It does not call /confirm.
+ *     Failed/cancelled handleNextAction calls abandonPayment() to clear the
+ *     cart payment_intent_id; it does not call resumePayment.
  *   - Falls back to $ctx.stripe.publishableKey when the prop is unset
  *     (set by StripeProvider global context).
  *
  * The host app no longer holds a Stripe secret key. Server-side, the cart
  * payment-intent adapter calls EP's createCartPaymentIntent with confirm:true.
  * No client-side stripe.confirmPayment.
- *
- * 3DS (requires_action) ships in slice 2.
  */
 import {
   DataProvider,
@@ -36,7 +38,175 @@ import React, {
 import type { Registerable } from "../../registerable";
 import { createLogger } from "../../utils/logger";
 import { usePaymentRegistration } from "./payment-registration-context";
+import type {
+  GatewayContinuationResult,
+  GatewayPaySession,
+} from "./payment-registration-context";
 import { useCheckoutSession } from "./use-checkout-session";
+
+const FAILED_PI_STATUSES = new Set([
+  "requires_payment_method",
+  "requires_source",
+  "canceled",
+  "cancelled",
+]);
+
+function stripeNextActionFailureMessage(
+  err: { code?: string; message?: string } | null | undefined,
+  piStatus: string | undefined
+): string {
+  const code = err?.code;
+  if (
+    code === "payment_intent_authentication_failure" ||
+    piStatus === "requires_payment_method" ||
+    piStatus === "requires_source"
+  ) {
+    return "Card authentication failed. Please try again or use a different card.";
+  }
+  if (
+    piStatus === "canceled" ||
+    piStatus === "cancelled" ||
+    code === "canceled" ||
+    /cancel/i.test(err?.message ?? "")
+  ) {
+    return "Payment was cancelled. Please try again.";
+  }
+  return err?.message || "Payment authentication failed. Please try again.";
+}
+
+function resumeFailureMessage(resp: GatewayContinuationResult): string {
+  const code = resp?.error?.code;
+  if (code === "PAYMENT_STILL_REQUIRES_ACTION") {
+    return (
+      resp.error?.message ||
+      "Payment is still pending. Please wait a moment and try completing checkout again."
+    );
+  }
+  if (code === "EP_ERROR") {
+    return (
+      resp.error?.message ||
+      "We couldn't confirm your payment. Please try again."
+    );
+  }
+  if (code === "CART_MISMATCH") {
+    return (
+      resp.error?.message ||
+      "Your cart has changed. Please review your cart and start checkout again."
+    );
+  }
+  return (
+    resp.error?.message ||
+    resp.paymentError ||
+    "Payment did not complete. Please check your details and try again."
+  );
+}
+
+/**
+ * Stripe 3DS continuation used by EPCheckoutSessionProvider after /pay
+ * returns requires_action. Exported for tests (same pattern as handleClover3DS).
+ *
+ * handleNextAction success is not checkout completion — resumePayment is.
+ * Auth failure / cancel must not call resumePayment; they abandon the cart
+ * PI association so /pay can create a new PaymentIntent.
+ */
+export async function runStripeRequiresAction(options: {
+  stripe: { handleNextAction: (args: { clientSecret: string }) => Promise<any> };
+  clientSecret: string;
+  resumePayment: () => Promise<GatewayContinuationResult>;
+  abandonPayment: () => Promise<GatewayContinuationResult>;
+}): Promise<GatewayContinuationResult> {
+  const { stripe, clientSecret, resumePayment, abandonPayment } = options;
+  if (typeof clientSecret !== "string" || clientSecret.length === 0) {
+    return {
+      success: false,
+      error: { message: "Session has no payment client secret to continue" },
+    };
+  }
+
+  let failMessage: string | undefined;
+  try {
+    const result = await stripe.handleNextAction({ clientSecret });
+    const stripeError = result?.error as
+      | { code?: string; message?: string }
+      | undefined;
+    const piStatus: string | undefined = result?.paymentIntent?.status;
+
+    if (stripeError || FAILED_PI_STATUSES.has(piStatus ?? "")) {
+      failMessage = stripeNextActionFailureMessage(stripeError, piStatus);
+    }
+  } catch (err) {
+    failMessage =
+      err instanceof Error
+        ? err.message
+        : "Payment authentication failed. Please try again.";
+  }
+
+  if (failMessage) {
+    let abandoned: GatewayContinuationResult;
+    try {
+      const abandonResp = (await abandonPayment()) as
+        | GatewayContinuationResult
+        | undefined;
+      abandoned = abandonResp ?? {
+        success: false,
+        error: {
+          message: "Failed to reset cart payment",
+          code: "EP_ERROR",
+        },
+      };
+    } catch (err) {
+      abandoned = {
+        success: false,
+        error: {
+          message:
+            err instanceof Error
+              ? err.message
+              : "We couldn't reset your payment. Please try again.",
+          code: "EP_ERROR",
+        },
+      };
+    }
+
+    if (!abandoned.success) {
+      const resetMsg =
+        abandoned.error?.message ||
+        abandoned.paymentError ||
+        "We couldn't reset your payment. Please try again.";
+      return {
+        ...abandoned,
+        success: false,
+        error: abandoned.error
+          ? { ...abandoned.error, message: resetMsg }
+          : { message: resetMsg, code: "EP_ERROR" },
+      };
+    }
+
+    return {
+      success: false,
+      error: { message: failMessage },
+      paymentError: failMessage,
+      data: abandoned.data,
+    };
+  }
+
+  const resumeResp = (await resumePayment()) as
+    | GatewayContinuationResult
+    | undefined;
+  const resp: GatewayContinuationResult = resumeResp ?? {
+    success: false,
+    error: { message: "Failed to resume payment" },
+  };
+
+  if (resp.success && resp.data?.session?.status === "complete") {
+    return resp;
+  }
+
+  const msg = resumeFailureMessage(resp);
+  return {
+    ...resp,
+    error: resp.error ? { ...resp.error, message: msg } : { message: msg },
+  };
+}
 
 const log = createLogger("EPStripePayment");
 
@@ -184,9 +354,10 @@ const EPStripePaymentRuntime = React.forwardRef<
   } = props;
 
   const paymentReg = usePaymentRegistration();
-  const { session } = useCheckoutSession(apiBaseUrl);
+  const { session, resumePayment, abandonPayment } = useCheckoutSession(apiBaseUrl);
 
   const [isReady, setIsReady] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stripeInstance, setStripeInstance] = useState<any>(null);
   const [StripeComponents, setStripeComponents] = useState<{
@@ -200,6 +371,11 @@ const EPStripePaymentRuntime = React.forwardRef<
   const stripeRef = useRef<any>(null);
   const elementsRef = useRef<any>(null);
   const mountedRef = useRef(true);
+  const inFlightRef = useRef(false);
+  const resumePaymentRef = useRef(resumePayment);
+  resumePaymentRef.current = resumePayment;
+  const abandonPaymentRef = useRef(abandonPayment);
+  abandonPaymentRef.current = abandonPayment;
 
   // Lazy-load Stripe SDK
   useEffect(() => {
@@ -210,11 +386,15 @@ const EPStripePaymentRuntime = React.forwardRef<
       return;
     }
     Promise.all([
-      import("@stripe/stripe-js").then((m) => m.loadStripe),
+      import("@stripe/stripe-js"),
       import("@stripe/react-stripe-js"),
     ])
-      .then(([loadStripe, reactStripe]) => {
+      .then(([stripeJs, reactStripe]) => {
         if (cancelled) return;
+        const loadStripe =
+          stripeJs.loadStripe ??
+          stripeJs.default?.loadStripe ??
+          stripeJs.default;
         setStripeComponents({
           Elements: reactStripe.Elements,
           PaymentElement: reactStripe.PaymentElement,
@@ -254,6 +434,80 @@ const EPStripePaymentRuntime = React.forwardRef<
 
   // Register the gateway. confirm() captures a Stripe ConfirmationToken and
   // forwards it to placeOrder({ confirmation_token, gateway: "stripe" }).
+  // completeRequiresAction runs after /pay returns requires_action.
+  const confirmGateway = useCallback(async () => {
+    const stripe = stripeRef.current;
+    const elements = elementsRef.current;
+    if (!stripe || !elements) {
+      throw new Error("Stripe is not ready — wait for isReady");
+    }
+    const submit = await elements.submit();
+    if (submit?.error) {
+      throw new Error(submit.error.message ?? "Form validation failed");
+    }
+    const result = await stripe.createConfirmationToken({ elements });
+    if (result.error) {
+      throw new Error(
+        result.error.message ?? "Could not create confirmation token"
+      );
+    }
+    return { confirmation_token: result.confirmationToken.id };
+  }, []);
+
+  const completeRequiresAction = useCallback(
+    async (
+      paySession: GatewayPaySession
+    ): Promise<GatewayContinuationResult> => {
+      if (inFlightRef.current) {
+        return {
+          success: false,
+          error: {
+            message: "Payment is already being completed",
+            code: "IN_FLIGHT",
+          },
+        };
+      }
+      inFlightRef.current = true;
+      setIsProcessing(true);
+      setError(null);
+      try {
+        const stripe = stripeRef.current;
+        if (!stripe?.handleNextAction) {
+          throw new Error("Stripe is not ready — wait for isReady");
+        }
+        const clientSecret = paySession?.payment?.clientToken;
+        if (typeof clientSecret !== "string" || clientSecret.length === 0) {
+          throw new Error("Session has no payment client secret to continue");
+        }
+
+        const resp = await runStripeRequiresAction({
+          stripe,
+          clientSecret,
+          resumePayment: () => resumePaymentRef.current(),
+          abandonPayment: () => abandonPaymentRef.current(),
+        });
+
+        if (!(resp.success && resp.data?.session?.status === "complete")) {
+          const msg =
+            resp.error?.message ||
+            resp.paymentError ||
+            "Payment did not complete. Please check your details and try again.";
+          setError(msg);
+        }
+        return resp;
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Payment authentication failed.";
+        if (mountedRef.current) setError(message);
+        return { success: false, error: { message } };
+      } finally {
+        inFlightRef.current = false;
+        if (mountedRef.current) setIsProcessing(false);
+      }
+    },
+    []
+  );
+
   useEffect(() => {
     if (!paymentReg) {
       log.warn(
@@ -261,25 +515,10 @@ const EPStripePaymentRuntime = React.forwardRef<
       );
       return;
     }
-    paymentReg.registerGateway("stripe", async () => {
-      const stripe = stripeRef.current;
-      const elements = elementsRef.current;
-      if (!stripe || !elements) {
-        throw new Error("Stripe is not ready — wait for isReady");
-      }
-      const submit = await elements.submit();
-      if (submit?.error) {
-        throw new Error(submit.error.message ?? "Form validation failed");
-      }
-      const result = await stripe.createConfirmationToken({ elements });
-      if (result.error) {
-        throw new Error(
-          result.error.message ?? "Could not create confirmation token"
-        );
-      }
-      return { confirmation_token: result.confirmationToken.id };
+    paymentReg.registerGateway("stripe", confirmGateway, {
+      completeRequiresAction,
     });
-  }, [paymentReg]);
+  }, [paymentReg, confirmGateway, completeRequiresAction]);
 
   const handleReady = useCallback(() => setIsReady(true), []);
   const handleChange = useCallback((event: any) => {
@@ -288,8 +527,8 @@ const EPStripePaymentRuntime = React.forwardRef<
   }, []);
 
   const paymentData = useMemo(
-    () => ({ isReady, isProcessing: false, error }),
-    [isReady, error]
+    () => ({ isReady, isProcessing, error }),
+    [isReady, isProcessing, error]
   );
 
   // Stub refAction (kept for compatibility — placeOrder is the way now).

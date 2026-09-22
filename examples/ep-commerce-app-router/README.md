@@ -1,17 +1,21 @@
 # EP Commerce storefront (App Router)
 
-Reference storefront for `@elasticpath/plasmic-ep-commerce-elastic-path`. It
-mirrors a real consumer install: the Plasmic and Elastic Path packages resolve
-from the registry, not from this monorepo.
+Starting point for a custom app host storefront that consumes the
+`commerce-elastic-path` hostless package in Plasmic Studio. It mirrors a real
+consumer install: the Plasmic and Elastic Path packages resolve from the
+registry, not from this monorepo.
 
-> **Requires an unreleased package version.** This app uses
-> `createEpAuthRoutes`, added in 0.3.0. Until 0.3.0 publishes, `yarn install`
-> cannot resolve the dependency — use the local-source workflow below.
+The Elastic Path components are **not** registered here — they arrive inside the
+loader bundle from the hostless package installed in the Plasmic project. What
+this app supplies is the half the hostless components cannot: the `ep.*` server
+functions that Studio Server Queries call, and the API routes the components
+fetch from (`/api/ep/*`, `/api/checkout/*`). Register your storefront's own code
+components in `plasmic-init-client.tsx`.
 
 ## Running it
 
 ```bash
-cp .env.local.example .env.local   # fill in EP_CLIENT_ID, CHECKOUT_SESSION_SECRET, …
+cp .env.local.example .env.local   # fill in PLASMIC_PROJECT_TOKEN, EP_CLIENT_ID, …
 yarn install
 yarn dev                            # http://localhost:3456
 ```
@@ -21,9 +25,18 @@ yarn dev                            # http://localhost:3456
 origin that isn't trusted — so a different port means silently failing writes.
 To serve elsewhere, set `NEXT_PUBLIC_BASE_URL` to match.
 
-`plasmic-init.ts` points `host` at the Plasmic instance serving the project, so
-that instance has to be reachable — a local `platform/wab` on `:3003` for local
-development.
+`plasmic-init.ts` defaults to the "Elastic Path Storefront Starter" project on
+Elastic Path's integration instance. `host` must be the **codegen** origin, not
+the Studio origin — the Studio origin serves the SPA shell, so the loader fails
+on it with `Error parsing JSON response: Unexpected token '<'`. Override
+`PLASMIC_PROJECT_ID` and `PLASMIC_HOST` to point at your own project and
+instance.
+
+Under `next dev` the loader runs in preview mode and reads the project's latest
+unpublished state, so Studio edits appear on reload. Production builds pin to
+the last published version — anything unpublished is simply absent from the
+bundle, which shows up as server queries not executing and components falling
+back to their own client-side fetch.
 
 ## Testing an unreleased package change
 

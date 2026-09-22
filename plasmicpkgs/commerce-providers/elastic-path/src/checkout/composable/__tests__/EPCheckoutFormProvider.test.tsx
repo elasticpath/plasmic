@@ -53,6 +53,8 @@ const COMPLETE_SHIPPING = {
 interface FormHandle {
   setField: (name: string, value: string) => void;
   placeOrder: () => Promise<void>;
+  status: string;
+  error: string | null;
 }
 
 function FormHarness({
@@ -66,6 +68,8 @@ function FormHarness({
   handleRef.current = {
     setField: form.setField,
     placeOrder: form.placeOrder,
+    status: form.status,
+    error: form.error,
   };
   useEffect(() => {
     if (!seed) return;
@@ -305,5 +309,141 @@ describe("EPCheckoutFormProvider shipping sync", () => {
     });
     expect(payload.billingAddress.line1).toBe("1 Billing Rd");
     expect(mockPlaceOrder).toHaveBeenCalled();
+  });
+
+  it("treats a completed session placeOrder as success", async () => {
+    const handleRef = { current: null as FormHandle | null };
+    render(
+      <EPCheckoutFormProvider>
+        <FormHarness
+          seed={{
+            firstName: "Jane",
+            lastName: "Doe",
+            email: "jane@example.com",
+          }}
+          handleRef={handleRef}
+        />
+      </EPCheckoutFormProvider>
+    );
+
+    await act(async () => {
+      await handleRef.current?.placeOrder();
+    });
+
+    expect(handleRef.current?.status).toBe("placed");
+    expect(handleRef.current?.error).toBeNull();
+  });
+
+  it("treats a failed payment as an error, not success", async () => {
+    mockPlaceOrder.mockResolvedValueOnce({
+      success: true,
+      data: {
+        session: {
+          status: "open",
+          payment: { status: "failed" },
+          order: { id: "ord-1" },
+          totals: { total: 1000 },
+        },
+      },
+      paymentError: "Card declined",
+    });
+    const handleRef = { current: null as FormHandle | null };
+    render(
+      <EPCheckoutFormProvider>
+        <FormHarness
+          seed={{
+            firstName: "Jane",
+            lastName: "Doe",
+            email: "jane@example.com",
+          }}
+          handleRef={handleRef}
+        />
+      </EPCheckoutFormProvider>
+    );
+
+    await act(async () => {
+      await handleRef.current?.placeOrder();
+    });
+
+    expect(handleRef.current?.status).toBe("error");
+    expect(handleRef.current?.error).toBe("Card declined");
+  });
+
+  it("does not treat a leaked requires_action session as placed", async () => {
+    mockPlaceOrder.mockResolvedValueOnce({
+      success: true,
+      data: {
+        session: {
+          status: "open",
+          payment: { status: "requires_action", gateway: "stripe" },
+          totals: { total: 1000 },
+        },
+      },
+    });
+    const handleRef = { current: null as FormHandle | null };
+    render(
+      <EPCheckoutFormProvider>
+        <FormHarness
+          seed={{
+            firstName: "Jane",
+            lastName: "Doe",
+            email: "jane@example.com",
+          }}
+          handleRef={handleRef}
+        />
+      </EPCheckoutFormProvider>
+    );
+
+    await act(async () => {
+      await handleRef.current?.placeOrder();
+    });
+
+    expect(handleRef.current?.status).toBe("error");
+    expect(handleRef.current?.error).toMatch(/did not complete/i);
+  });
+
+  it("ignores a second placeOrder while the first is in flight", async () => {
+    let resolvePlace: (v: any) => void = () => {};
+    mockPlaceOrder.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolvePlace = resolve;
+      })
+    );
+    const handleRef = { current: null as FormHandle | null };
+    render(
+      <EPCheckoutFormProvider>
+        <FormHarness
+          seed={{
+            firstName: "Jane",
+            lastName: "Doe",
+            email: "jane@example.com",
+          }}
+          handleRef={handleRef}
+        />
+      </EPCheckoutFormProvider>
+    );
+
+    let first: Promise<void>;
+    await act(async () => {
+      first = handleRef.current!.placeOrder();
+    });
+    await act(async () => {
+      await handleRef.current!.placeOrder();
+    });
+    expect(mockPlaceOrder).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolvePlace({
+        success: true,
+        data: {
+          session: {
+            status: "complete",
+            order: { id: "ord-1" },
+            totals: { total: 1000 },
+          },
+        },
+      });
+      await first;
+    });
   });
 });

@@ -121,8 +121,8 @@ function createMockAdapter(
   }
 ): PaymentAdapter {
   return {
+    paymentSequence: "cart_payment_intent",
     initializePayment: jest.fn().mockResolvedValue(initResult),
-    confirmPayment: jest.fn().mockResolvedValue({ status: "succeeded" }),
   };
 }
 
@@ -439,6 +439,47 @@ describe("handlePay", () => {
         createMockCtx(makeSession(), adapter)
       );
       expect((res.body as any).paymentError).toBeUndefined();
+    });
+  });
+
+  describe("adapter result: 'requires_action'", () => {
+    it("returns 200 with payment.status requires_action and no order", async () => {
+      const adapter = createMockAdapter({
+        status: "requires_action",
+        clientToken: "pi_secret",
+        gatewayMetadata: { paymentIntentId: "pi_3ds" },
+        actionData: { type: "stripe_3ds", paymentIntentId: "pi_3ds" },
+      });
+      const res = await handlePay(
+        createMockReq({ gateway: "stripe" }),
+        createMockCtx(makeSession(), adapter)
+      );
+      expect(res.status).toBe(200);
+      const session = (res.body as any).data.session;
+      expect(session.status).toBe("open");
+      expect(session.payment.status).toBe("requires_action");
+      expect(session.payment.clientToken).toBe("pi_secret");
+      expect(session.payment.actionData).toEqual({
+        type: "stripe_3ds",
+        paymentIntentId: "pi_3ds",
+      });
+      expect(session.order).toBeNull();
+    });
+
+    it("does not call checkoutApi, confirmOrder, or cart cleanup", async () => {
+      const adapter = createMockAdapter({
+        status: "requires_action",
+        clientToken: "pi_secret",
+        gatewayMetadata: { paymentIntentId: "pi_3ds" },
+        actionData: { type: "stripe_3ds", paymentIntentId: "pi_3ds" },
+      });
+      await handlePay(
+        createMockReq({ gateway: "stripe" }),
+        createMockCtx(makeSession(), adapter)
+      );
+      expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+      expect(epSdk.confirmOrder).not.toHaveBeenCalled();
+      expect(epSdk.deleteACart).not.toHaveBeenCalled();
     });
   });
 

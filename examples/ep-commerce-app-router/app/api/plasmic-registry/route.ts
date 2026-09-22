@@ -1,5 +1,5 @@
 import { PLASMIC } from "@/plasmic-init";
-import { registerAllPackages } from "@/plasmic-register";
+import { registerEpCustomFunctions } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
 import {
   withRegistryCapture,
   getFullRegistry,
@@ -7,7 +7,7 @@ import {
 
 // Re-register with captured PLASMIC so host's registration functions
 // populate globalThis registries (the server loader's are noops).
-registerAllPackages(withRegistryCapture(PLASMIC));
+registerEpCustomFunctions(withRegistryCapture(PLASMIC));
 
 export function GET() {
   try {

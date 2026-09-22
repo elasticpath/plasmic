@@ -210,6 +210,7 @@ interface SessionBridge {
     status?: string;
     order?: { id?: string } | null;
     totals?: { total?: number } | null;
+    payment?: { status?: string; gateway?: string | null } | null;
   } | null;
   updateSession?: (data: Record<string, unknown>) => Promise<unknown>;
   calculateShipping?: () => Promise<unknown>;
@@ -217,7 +218,7 @@ interface SessionBridge {
     | {
         success?: boolean;
         data?: { session?: SessionBridge["session"] };
-        error?: { message?: string };
+        error?: { message?: string; code?: string };
         paymentError?: string;
       }
     | undefined
@@ -288,6 +289,7 @@ export const EPCheckoutFormProvider = React.forwardRef<
   const [error, setError] = useState<string | null>(null);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [isFree, setIsFree] = useState(false);
+  const placingRef = useRef(false);
 
   // Registry of mounted fields — drives generic required-validation. Held in
   // a ref so registration doesn't churn render; values/booleans live in state.
@@ -415,6 +417,7 @@ export const EPCheckoutFormProvider = React.forwardRef<
     setError(null);
     setOrderId(null);
     setIsFree(false);
+    placingRef.current = false;
   }, []);
 
   const placeOrder = useCallback(async () => {
@@ -427,6 +430,8 @@ export const EPCheckoutFormProvider = React.forwardRef<
       setError("Please complete the required fields.");
       return;
     }
+    if (placingRef.current) return;
+    placingRef.current = true;
     setStatus("placing");
     setError(null);
 
@@ -479,6 +484,9 @@ export const EPCheckoutFormProvider = React.forwardRef<
       }
       try {
         await sessionBridge.updateSession?.(sessionUpdate);
+        // Session provider.placeOrder awaits Stripe 3DS (handleNextAction +
+        // resumePayment) when /pay returns requires_action, so a successful
+        // return here is a completed session — not an intermediate open one.
         const resp = await sessionBridge.placeOrder?.();
         const s = resp?.data?.session;
         if (resp?.success && s?.status === "complete") {
@@ -503,6 +511,8 @@ export const EPCheckoutFormProvider = React.forwardRef<
         setStatus("error");
         onError?.({ message: msg });
         log.error("session placeOrder failed", { error: msg });
+      } finally {
+        placingRef.current = false;
       }
       return;
     }
@@ -546,6 +556,8 @@ export const EPCheckoutFormProvider = React.forwardRef<
       setStatus("error");
       onError?.({ message: msg });
       log.error("placeOrder failed", { error: msg });
+    } finally {
+      placingRef.current = false;
     }
   }, [
     inEditor,

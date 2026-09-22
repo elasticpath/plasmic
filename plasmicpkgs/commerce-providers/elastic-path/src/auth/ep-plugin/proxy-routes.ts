@@ -25,6 +25,7 @@ import {
   epGetCart,
   epGetProduct,
   epGetProductList,
+  epGetProductPage,
   epGetRelatedProducts,
   epRemoveCartItem,
   epUpdateCartItem,
@@ -72,9 +73,13 @@ interface SessionShape {
     clientId: string;
     expires: number;
     locale?: string;
+    account?: {
+      id: string;
+      name?: string;
+      token: string;
+    } | null;
   } | null;
   cart: { id: string } | null;
-  user?: { accountId?: string } | null;
 }
 
 const FN_DISPATCH: Record<
@@ -84,6 +89,7 @@ const FN_DISPATCH: Record<
   getProduct: (args) => epGetProduct(args as { id: string }),
   getCart: () => epGetCart(),
   getProductList: (args) => epGetProductList(args as never),
+  getProductPage: (args) => epGetProductPage(args as never),
   getRelatedProducts: (args) =>
     epGetRelatedProducts(
       args as { productId: string; relationshipSlug: string; limit?: number }
@@ -210,7 +216,8 @@ export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes {
         host: session.host,
         clientId: session.clientId,
         cartId: sessionResult.cart?.id ?? undefined,
-        accountId: sessionResult.user?.accountId ?? undefined,
+        accountId: session.account?.id,
+        accountToken: session.account?.token,
         locale: session.locale,
       };
 

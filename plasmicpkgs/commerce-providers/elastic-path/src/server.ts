@@ -15,6 +15,8 @@ export {
   handleCreateSession,
   handleGetSession,
   handlePay,
+  handleResumePayment,
+  handleAbandonPayment,
   handleUpdateSession,
 } from "./api/endpoints/checkout-session";
 
@@ -29,6 +31,16 @@ export { createCloverAdapter } from "./checkout/session/adapters/clover-adapter"
 export type { CloverAdapterConfig } from "./checkout/session/adapters/clover-adapter";
 export { createStripeAdapter } from "./checkout/session/adapters/stripe-adapter";
 export type { StripeAdapterConfig } from "./checkout/session/adapters/stripe-adapter";
+export { createManualAdapter } from "./checkout/session/adapters/manual-adapter";
+export type {
+  ManualAdapterConfig,
+  ManualPaymentMethod,
+} from "./checkout/session/adapters/manual-adapter";
+export {
+  isCartPaymentIntentAdapter,
+  isLegacyPaymentAdapter,
+  isOrderFirstAdapter,
+} from "./checkout/session/payment-sequence";
 
 // Client-credentials token resolver (request-scoped, memoized per request).
 export { createClientCredentialsTokenResolver } from "./auth/ep-plugin/client-credentials-resolver";
@@ -40,8 +52,13 @@ export type {
 // Types needed by consumer route files
 export type {
   AdapterRegistry,
+  CartPaymentIntentAdapter,
   EPCredentials,
+  LegacyPaymentAdapter,
+  OrderFirstAdapter,
   PaymentAdapter,
+  PaymentSequence,
+  PaymentSetupRequest,
   SessionHandlerContext,
   SessionRequest,
   SessionResponse,
@@ -53,6 +70,8 @@ export type {
 // the raw handler's /get-session returns the shopper's EP access token.
 export {
   DEFAULT_HOST_ALLOWLIST,
+  ENVELOPE_LIFETIME_SECONDS,
+  EP_ACCOUNT_TOKEN_HEADER,
   assertProductionSecret,
   createBetterEpAuth,
   createCartRoutes,
@@ -69,12 +88,15 @@ export {
   resolveAuthSecret,
 } from "./auth";
 export type {
+  EpAccountSlot,
   EpAuth,
   EpAuthConfig,
+  EpLapsedAccount,
   EpPluginOptions,
   EpProviderBundleConfig,
   EpProxyRoutes,
   EpSession,
+  EpSessionData,
   ExtractEpProviderConfigOptions,
 } from "./auth";
 
@@ -87,6 +109,7 @@ export {
   getCart,
   getProduct,
   getProductList,
+  getProductPage,
   getRelatedProducts,
   removeCartItem,
   updateCartItem,
@@ -102,6 +125,7 @@ export {
   epGetCart,
   epGetProduct,
   epGetProductList,
+  epGetProductPage,
   epGetRelatedProducts,
   epPlaceOrder,
   epRemoveCartItem,
@@ -112,6 +136,7 @@ export {
 } from "./ep-server-functions";
 export type {
   AddCustomCartItemInput,
+  BuildEpCtxAccountInput,
   BuildEpCtxSessionInput,
   CartAdjustmentKind,
   EpAddCartItemInput,
@@ -120,6 +145,8 @@ export type {
   EpGetCartInput,
   EpGetProductInput,
   EpGetProductListInput,
+  EpGetProductPageInput,
+  EpProductPage,
   EpGetRelatedProductsInput,
   EpPlaceOrderAddress,
   EpPlaceOrderInput,

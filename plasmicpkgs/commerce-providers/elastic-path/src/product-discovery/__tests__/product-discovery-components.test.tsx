@@ -17,6 +17,7 @@ import React from "react";
 
 /* ---------- mock variables (declared before jest.mock) ---------- */
 const mockGetByContextAllProducts = jest.fn();
+const mockGetByContextProductsForNode = jest.fn();
 const mockUseMutablePlasmicQueryData = jest.fn();
 const mockUseCommerce = jest.fn();
 const mockUsePlasmicCanvasContext = jest.fn();
@@ -32,6 +33,8 @@ const mockHandleAPIError = jest.fn().mockImplementation((err: unknown) => {
 jest.mock("@epcc-sdk/sdks-shopper", () => ({
   getByContextAllProducts: (...a: unknown[]) =>
     mockGetByContextAllProducts(...a),
+  getByContextProductsForNode: (...a: unknown[]) =>
+    mockGetByContextProductsForNode(...a),
 }));
 
 jest.mock("@plasmicapp/query", () => ({
@@ -164,7 +167,6 @@ describe("useProductList", () => {
       useProductList({
         categoryId: "cat-123",
         search: "jacket",
-        sort: "price-asc",
         page: 2,
         pageSize: 24,
         locale: "fr-FR",
@@ -172,10 +174,31 @@ describe("useProductList", () => {
     );
 
     expect(mockUseMutablePlasmicQueryData).toHaveBeenCalledWith(
-      ["ep-product-list", "cat-123", "jacket", "price-asc", 2, 24, "fr-FR"],
+      ["ep-product-list", "cat-123", "jacket", 2, 24, "fr-FR"],
       expect.any(Function),
       expect.objectContaining({ revalidateOnFocus: false })
     );
+  });
+
+  /** The browser-side hook must stay as sort-free as the server function. */
+  it("sends no sort to Elastic Path", async () => {
+    mockGetByContextAllProducts.mockResolvedValue({ data: { data: [] } });
+    mockUseMutablePlasmicQueryData.mockReturnValue({
+      data: null,
+      error: null,
+      isLoading: false,
+      mutate: jest.fn(),
+    });
+
+    renderHook(() =>
+      useProductList({ sort: "price-asc", page: 0, pageSize: 12 } as never)
+    );
+
+    const fetcher = mockUseMutablePlasmicQueryData.mock.calls[0][1];
+    await fetcher();
+
+    const query = mockGetByContextAllProducts.mock.calls[0][0].query;
+    expect(query).not.toHaveProperty("sort");
   });
 
   it("should report loading state", () => {
@@ -345,7 +368,7 @@ describe("useProductList", () => {
       }
     );
 
-    mockGetByContextAllProducts.mockResolvedValue({
+    mockGetByContextProductsForNode.mockResolvedValue({
       data: { data: [], included: {}, meta: { results: { total: BigInt(0) } } },
     });
 
@@ -355,8 +378,12 @@ describe("useProductList", () => {
 
     await capturedFetcher!();
 
-    const callArgs = mockGetByContextAllProducts.mock.calls[0][0];
-    expect(callArgs.query.filter).toContain("eq(category.id,cat-123)");
+    // Elastic Path has no filterable category key — a categoryId is a node ID
+    // and selects the node's products endpoint.
+    expect(mockGetByContextAllProducts).not.toHaveBeenCalled();
+    const callArgs = mockGetByContextProductsForNode.mock.calls[0][0];
+    expect(callArgs.path).toEqual({ node_id: "cat-123" });
+    expect(callArgs.query.filter).toBeUndefined();
   });
 
   it("should convert BigInt total count from API response", async () => {
@@ -606,13 +633,33 @@ describe("component registration", () => {
     expect(epProductGridMeta.importName).toBe("EPProductGrid");
   });
 
+  /**
+   * The catalog product endpoints cannot sort, so the listing's sort does
+   * nothing — but hostless publishing rejects a package that drops a
+   * published prop, so it stays registered and hidden rather than removed.
+   * EPCatalogSearchProvider + EPSearchSortBy sorts instead.
+   */
+  it("keeps initialSort registered but hidden and undocumented", () => {
+    const initialSort = (epProductListProviderMeta.props as any)?.initialSort;
+    expect(initialSort).toBeDefined();
+    expect(initialSort.type).toBe("choice");
+    expect(initialSort.hidden()).toBe(true);
+    expect(initialSort.displayName).toBeUndefined();
+    expect(initialSort.description).toMatch(/deprecated and ignored/i);
+  });
+
+  it("keeps setSort registered as a deprecated no-op", () => {
+    const setSort = epProductListProviderMeta.refActions!.setSort as any;
+    expect(setSort).toBeDefined();
+    expect(setSort.description).toMatch(/deprecated/i);
+  });
+
   it("EPProductListProvider meta should have correct name and refActions", () => {
     expect(epProductListProviderMeta.name).toBe(
       "plasmic-commerce-ep-product-list-provider"
     );
     expect(epProductListProviderMeta.providesData).toBe(true);
     expect(epProductListProviderMeta.refActions).toBeDefined();
-    expect(epProductListProviderMeta.refActions!.setSort).toBeDefined();
     expect(epProductListProviderMeta.refActions!.goToPage).toBeDefined();
     expect(epProductListProviderMeta.refActions!.nextPage).toBeDefined();
     expect(epProductListProviderMeta.refActions!.prevPage).toBeDefined();

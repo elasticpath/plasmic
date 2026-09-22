@@ -1464,6 +1464,14 @@ declare module "@/wab/shared/core/exprs" {
   }
   /** Serializes a Plasmic expression node back to raw JS source. */
   export function getRawCode(expr: any, ctx: ExprCtx): string;
+  /** Builds a CustomCode whose `code` is wrapped in parens, so that
+   *  `isRealCodeExpr` treats it as code to evaluate rather than a JSON literal. */
+  export function customCode(code: string, fallback?: any): any;
+}
+
+declare module "@/wab/shared/parser-utils" {
+  /** Parses JS source with acorn. Throws on a syntax error. */
+  export function parseJsCode(code: string): any;
 }
 
 declare module "@/wab/shared/devflags" {

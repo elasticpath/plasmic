@@ -2630,6 +2630,34 @@ describe("visibility and dataCond output", () => {
     expect(result?.dataCond).toBe("$ctx.showBanner");
   });
 
+  it("reads a paren-wrapped dataCond back without its wrapping parens", () => {
+    const component = {
+      tplTree: {
+        _type: "TplTag",
+        tag: "div",
+        uuid: "cond-wrapped",
+        name: "ConditionalBanner",
+        vsettings: [
+          {
+            rs: { values: {} },
+            attrs: {},
+            dataCond: {
+              _type: "CustomCode",
+              code: "($ctx.showBanner === true)",
+              fallback: null,
+            },
+          },
+        ],
+        children: [],
+      },
+    };
+
+    // Studio stores code exprs wrapped; reporting the parens back would make
+    // the read output disagree with the value the write tools accept.
+    const result = readComponentTree(component);
+    expect(result?.dataCond).toBe("$ctx.showBanner === true");
+  });
+
   it("returns dataCond for ObjectPath expressions", () => {
     const component = {
       tplTree: {

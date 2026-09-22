@@ -5,22 +5,27 @@
  *   1. Load session (→ 410 if missing)
  *   2. Guard: status open + gateway present + adapter registered + required fields
  *   3. Re-fetch cart, compare hash (→ 409 with refreshed session if mismatch)
- *   4. Adapter.initializePayment(session, { confirmation_token, ... })
- *      - The adapter calls EP's createCartPaymentIntent({ confirm: true, ... })
- *      - Returns "succeeded" or "failed" (slice 1)
- *   5. On succeeded:
+ *   4. Dispatch on adapter.paymentSequence (explicit; no default sequence):
+ *      - cart_payment_intent: initializePayment (Cart PaymentIntent)
+ *      - order_first: checkoutApi (or reuse session.order.id) →
+ *        buildPaymentSetup → paymentSetup. Retry never checkoutApi twice.
+ *      - LegacyPaymentAdapter (Clover): existing initializePayment path only
+ *   5. cart_payment_intent succeeded:
  *      a. checkoutApi (cart→order) using admin token
- *      b. confirmOrder (sync PI status to EP) using admin token
+ *      b. confirmOrder (sync paymentID from gatewayOrderId) using admin token
  *      c. Run cart cleanup (deletes the EP cart; failures swallowed)
  *      d. applyPaymentSucceeded → session.status = "complete"
  *   6. On failed: applyPaymentFailed → session stays open, payment.status=failed
- *   7. Persist session, return 200
+ *   7. On requires_action: applyPaymentRequiresAction → session stays open,
+ *      payment.status=requires_action. No order, no cart cleanup.
+ *   8. Persist session, return 200
  *
- * Slices 2+ add: requires_action (3DS), subscription gate (ACCOUNT_REQUIRED),
- * account checkout body, resume-payment route.
+ * Slices 2+ add: resume-payment route, subscription gate (ACCOUNT_REQUIRED),
+ * account checkout body.
  */
 import {
   getACart,
+  getAnOrder,
   checkoutApi,
   confirmOrder,
   paymentSetup,
@@ -33,10 +38,21 @@ import type {
   SessionHandlerContext,
   CheckoutSession,
   ClientCheckoutSession,
+  CartPaymentIntentAdapter,
+  LegacyPaymentAdapter,
+  OrderFirstAdapter,
+  PaymentAdapterResult,
 } from "../../../checkout/session/types";
+import {
+  isCartPaymentIntentAdapter,
+  isLegacyPaymentAdapter,
+  isOrderFirstAdapter,
+  mapTransactionResponse,
+} from "../../../checkout/session/payment-sequence";
 import { hashCart } from "../../../checkout/session/cart-hash";
 import { buildGuestCheckoutBody } from "../../../checkout/session/checkout-body-builder";
 import { runCartCleanup } from "../../../checkout/session/cart-cleanup";
+import { clearCartPaymentIntentId } from "../../../checkout/session/clear-cart-payment-intent";
 import { persistOrderCustomFields } from "../../../checkout/session/order-custom-fields";
 import { filterAllowedCustomAttributes } from "../../../checkout/session/custom-attributes-allowlist";
 import {
@@ -55,7 +71,9 @@ import {
 import {
   applyPaymentSucceeded,
   applyPaymentFailed,
+  applyPaymentRequiresAction,
 } from "../../../checkout/session/session-state-transition";
+import { finalizePaidSession } from "../../../checkout/session/finalize-paid-session";
 import { toCustomAttributes } from "../../../ep-server-functions/place-order";
 import { createLogger } from "../../../utils/logger";
 
@@ -65,6 +83,41 @@ const log = createLogger("Pay");
  * practice, since third-party gateways reject a 0 charge. */
 const FREE_ORDER_GATEWAY = "manual";
 const FREE_ORDER_METHOD = "purchase";
+
+/** OrderResponse.payment values that mean funds are already captured or held. */
+const SETTLED_ORDER_PAYMENTS = new Set(["paid", "authorized"]);
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function unwrapOrderResource(payload: unknown): Record<string, unknown> | null {
+  const root = asRecord(payload);
+  if (!root) return null;
+  const data = asRecord(root.data);
+  const inner = data ? asRecord(data.data) : null;
+  return inner ?? data ?? (typeof root.payment === "string" ? root : null);
+}
+
+/**
+ * Read documented OrderResponse.payment from getAnOrder.
+ * `paid` / `authorized` are order-level payment, not TransactionResponse.status.
+ */
+function settledOrderFromGetAnOrder(payload: unknown): {
+  settled: boolean;
+  payment?: string;
+} {
+  const order = unwrapOrderResource(payload);
+  if (!order) return { settled: false };
+  const payment =
+    typeof order.payment === "string" ? order.payment.toLowerCase() : undefined;
+  return {
+    settled: payment != null && SETTLED_ORDER_PAYMENTS.has(payment),
+    payment,
+  };
+}
 
 function toClientSession(s: CheckoutSession): ClientCheckoutSession {
   const { cartHash, ...rest } = s;
@@ -184,7 +237,24 @@ async function settleFreeOrder(
     };
   }
 
-  // 3. Cart cleanup — best-effort housekeeping.
+  // 3. Clear any leftover Cart PaymentIntent (e.g. earlier failed Stripe
+  //    attempt) before best-effort cart delete. Soft-fail: the free order is
+  //    already settled; do not turn cleanup into a retryable payment error.
+  const clearPi = await clearCartPaymentIntentId({
+    client: adminClient,
+    cartId: session.cartId,
+  });
+  if (!clearPi.ok) {
+    log.warn(
+      "Failed to clear cart payment_intent_id after free-order settlement (non-fatal)",
+      {
+        cartId: session.cartId,
+        error: clearPi.errorMessage,
+      } as Record<string, unknown>
+    );
+  }
+
+  // 4. Cart cleanup — best-effort housekeeping.
   if (ctx.getClientCredentialsToken) {
     await runCartCleanup({
       host: ctx.epCredentials.apiBaseUrl,
@@ -194,10 +264,10 @@ async function settleFreeOrder(
     });
   }
 
-  // 4. Mark complete and persist.
+  // 5. Mark complete and persist.
   const completeSession = applyPaymentSucceeded(
     { ...session, payment: { ...session.payment, gateway: FREE_ORDER_GATEWAY } },
-    { orderId, paymentIntentId: "", gatewayMetadata: { free: true } }
+    { orderId, gatewayMetadata: { free: true } }
   );
 
   let setResult: { headers: Record<string, string> };
@@ -229,6 +299,428 @@ async function settleFreeOrder(
     },
     headers: setResult.headers,
   };
+}
+
+type AdminClient = ReturnType<typeof createShopperClient>["client"];
+
+interface PayContinuation {
+  req: SessionRequest;
+  ctx: SessionHandlerContext;
+  session: CheckoutSession;
+  adminClient: AdminClient;
+  ttl: number;
+  gateway: string;
+  gatewayData: Record<string, unknown>;
+}
+
+async function persistRequiresAction(
+  params: PayContinuation,
+  adapterResult: PaymentAdapterResult
+): Promise<SessionResponse> {
+  const { req, ctx, session, ttl, gateway } = params;
+  const actionSession: CheckoutSession = applyPaymentRequiresAction(
+    {
+      ...session,
+      payment: { ...session.payment, gateway },
+    },
+    {
+      clientToken: adapterResult.clientToken ?? null,
+      actionData: adapterResult.actionData ?? null,
+      gatewayMetadata: adapterResult.gatewayMetadata,
+    }
+  );
+
+  try {
+    const setResult = await ctx.sessionStore.set(
+      "current",
+      actionSession,
+      ttl,
+      req
+    );
+    return {
+      status: 200,
+      body: {
+        success: true,
+        data: { session: toClientSession(actionSession) },
+      },
+      headers: setResult.headers,
+    };
+  } catch (err) {
+    log.error("Failed to persist requires_action session", {
+      error: err instanceof Error ? err.message : String(err),
+    } as Record<string, unknown>);
+    return {
+      status: 500,
+      body: {
+        success: false,
+        error: { message: "Failed to store session", code: "STORE_ERROR" },
+      },
+    };
+  }
+}
+
+async function persistFailedPayment(
+  params: PayContinuation,
+  adapterResult: PaymentAdapterResult
+): Promise<SessionResponse> {
+  const { req, ctx, session, ttl, gateway } = params;
+  const failedSession: CheckoutSession = applyPaymentFailed(
+    {
+      ...session,
+      payment: { ...session.payment, gateway },
+    },
+    {
+      errorMessage: adapterResult.errorMessage,
+      gatewayMetadata: adapterResult.gatewayMetadata,
+    }
+  );
+
+  try {
+    const setResult = await ctx.sessionStore.set(
+      "current",
+      failedSession,
+      ttl,
+      req
+    );
+    return {
+      status: 200,
+      body: {
+        success: true,
+        data: { session: toClientSession(failedSession) },
+        ...(adapterResult.errorMessage
+          ? { paymentError: adapterResult.errorMessage }
+          : {}),
+      },
+      headers: setResult.headers,
+    };
+  } catch (err) {
+    log.error("Failed to persist failed-payment session", {
+      error: err instanceof Error ? err.message : String(err),
+    } as Record<string, unknown>);
+    return {
+      status: 500,
+      body: {
+        success: false,
+        error: { message: "Failed to store session", code: "STORE_ERROR" },
+      },
+    };
+  }
+}
+
+/** Cart PaymentIntent sequence (Stripe) and Clover legacy initializePayment. */
+async function handleInitializePaymentPay(
+  params: PayContinuation,
+  adapter: CartPaymentIntentAdapter | LegacyPaymentAdapter
+): Promise<SessionResponse> {
+  const { req, ctx, session, adminClient, ttl, gateway, gatewayData } = params;
+
+  let adapterResult: PaymentAdapterResult;
+  try {
+    adapterResult = await adapter.initializePayment(session, gatewayData);
+  } catch (err) {
+    log.error("Payment adapter threw", {
+      gateway,
+      error: err instanceof Error ? err.message : String(err),
+    } as Record<string, unknown>);
+    return {
+      status: 502,
+      body: {
+        success: false,
+        error: { message: "Payment adapter error", code: "ADAPTER_ERROR" },
+      },
+    };
+  }
+
+  if (adapterResult.status === "requires_action") {
+    return persistRequiresAction(params, adapterResult);
+  }
+
+  if (adapterResult.status === "failed") {
+    return persistFailedPayment(params, adapterResult);
+  }
+
+  if (adapterResult.status !== "succeeded") {
+    log.warn("Adapter returned non-terminal status; treating as failed", {
+      status: adapterResult.status,
+    } as Record<string, unknown>);
+    return persistFailedPayment(params, {
+      status: "failed",
+      errorMessage: `Unsupported adapter status: ${adapterResult.status}`,
+    });
+  }
+
+  let orderId: string;
+  try {
+    const checkoutResponse = await checkoutApi({
+      client: adminClient,
+      path: { cartID: session.cartId },
+      body: buildGuestCheckoutBody(session) as any,
+    });
+    const oid = (checkoutResponse.data as any)?.data?.id;
+    if (!oid) throw new Error("checkoutApi response missing order id");
+    orderId = oid;
+  } catch (err) {
+    log.error("EP checkoutApi failed after payment success", {
+      cartId: session.cartId,
+      error: err instanceof Error ? err.message : String(err),
+    } as Record<string, unknown>);
+    return {
+      status: 502,
+      body: {
+        success: false,
+        error: {
+          message: "Payment succeeded but order creation failed",
+          code: "EP_ERROR",
+        },
+      },
+    };
+  }
+
+  await persistOrderCustomFields({
+    host: ctx.epCredentials.apiBaseUrl,
+    token: ctx.getClientCredentialsToken
+      ? await ctx.getClientCredentialsToken()
+      : "",
+    orderId,
+    input: session.customAttributes,
+  });
+
+  const paymentID = adapterResult.gatewayOrderId;
+  let reconciliationError: string | null = null;
+  if (!paymentID) {
+    reconciliationError = "missing gateway payment id";
+    log.error("Cannot reconcile order — no gateway payment id", {
+      orderId,
+    } as Record<string, unknown>);
+  } else {
+    try {
+      await confirmOrder({
+        client: adminClient,
+        path: { orderID: orderId, paymentID } as any,
+        body: { data: {} } as any,
+      });
+    } catch (err) {
+      reconciliationError = err instanceof Error ? err.message : String(err);
+      log.error("confirmOrder failed — order charged but unreconciled", {
+        orderId,
+        paymentID,
+        error: reconciliationError,
+      } as Record<string, unknown>);
+    }
+  }
+
+  log.info("Pay handler completed", {
+    sessionId: session.id,
+    orderId,
+    reconciliationPending: reconciliationError !== null,
+  } as Record<string, unknown>);
+
+  return finalizePaidSession({
+    ctx,
+    req,
+    ttl,
+    session,
+    gateway,
+    orderId,
+    paymentIntentId: paymentID,
+    gatewayMetadata: adapterResult.gatewayMetadata,
+    reconciliationError,
+  });
+}
+
+async function handleOrderFirstPay(
+  params: PayContinuation,
+  adapter: OrderFirstAdapter
+): Promise<SessionResponse> {
+  const { req, ctx, session, adminClient, ttl, gateway, gatewayData } = params;
+
+  const existingOrderId = session.order?.id;
+  const reuseOrder =
+    session.status === "open" &&
+    session.payment.status !== "succeeded" &&
+    typeof existingOrderId === "string" &&
+    existingOrderId.length > 0;
+
+  let orderId: string;
+  let sessionWithOrder: CheckoutSession;
+
+  if (reuseOrder) {
+    orderId = existingOrderId;
+    sessionWithOrder = {
+      ...session,
+      order: { ...session.order, id: orderId },
+      payment: { ...session.payment, gateway },
+    };
+
+    let orderPayload: unknown;
+    try {
+      orderPayload = await getAnOrder({
+        client: adminClient,
+        path: { orderID: orderId },
+      });
+    } catch (err) {
+      log.error("getAnOrder failed before retry paymentSetup", {
+        orderId,
+        error: err instanceof Error ? err.message : String(err),
+      } as Record<string, unknown>);
+      return {
+        status: 502,
+        body: {
+          success: false,
+          error: {
+            message: "Failed to load existing order",
+            code: "EP_ERROR",
+          },
+        },
+      };
+    }
+
+    const existing = settledOrderFromGetAnOrder(orderPayload);
+    const orderResource = unwrapOrderResource(orderPayload);
+    const epError = asRecord(orderPayload)?.error;
+    if (epError || !orderResource || typeof existing.payment !== "string") {
+      log.error("getAnOrder returned no usable order payment status", {
+        orderId,
+      } as Record<string, unknown>);
+      return {
+        status: 502,
+        body: {
+          success: false,
+          error: {
+            message: "Failed to load existing order",
+            code: "EP_ERROR",
+          },
+        },
+      };
+    }
+    if (existing.settled) {
+      log.info("Order-first retry found already-settled order", {
+        sessionId: session.id,
+        orderId,
+        payment: existing.payment,
+      } as Record<string, unknown>);
+      return finalizePaidSession({
+        ctx,
+        req,
+        ttl,
+        session: sessionWithOrder,
+        gateway,
+        orderId,
+        gatewayMetadata: {
+          ...(session.payment.gatewayMetadata ?? {}),
+          ...(existing.payment ? { orderPayment: existing.payment } : {}),
+        },
+      });
+    }
+  } else {
+    try {
+      const checkoutResponse = await checkoutApi({
+        client: adminClient,
+        path: { cartID: session.cartId },
+        body: buildGuestCheckoutBody(session) as any,
+      });
+      const oid = (checkoutResponse.data as any)?.data?.id;
+      if (!oid) throw new Error("checkoutApi response missing order id");
+      orderId = oid;
+    } catch (err) {
+      log.error("EP checkoutApi failed before paymentSetup", {
+        cartId: session.cartId,
+        error: err instanceof Error ? err.message : String(err),
+      } as Record<string, unknown>);
+      return {
+        status: 502,
+        body: {
+          success: false,
+          error: { message: "Order creation failed", code: "EP_ERROR" },
+        },
+      };
+    }
+
+    sessionWithOrder = {
+      ...session,
+      order: { id: orderId },
+      payment: { ...session.payment, gateway },
+    };
+
+    try {
+      await ctx.sessionStore.set("current", sessionWithOrder, ttl, req);
+    } catch (err) {
+      log.error("Failed to persist unpaid order session", {
+        error: err instanceof Error ? err.message : String(err),
+      } as Record<string, unknown>);
+      return {
+        status: 500,
+        body: {
+          success: false,
+          error: { message: "Failed to store session", code: "STORE_ERROR" },
+        },
+      };
+    }
+  }
+
+  await persistOrderCustomFields({
+    host: ctx.epCredentials.apiBaseUrl,
+    token: ctx.getClientCredentialsToken
+      ? await ctx.getClientCredentialsToken()
+      : "",
+    orderId,
+    input: session.customAttributes,
+  });
+
+  const withOrder: PayContinuation = { ...params, session: sessionWithOrder };
+
+  let setup;
+  try {
+    setup = await adapter.buildPaymentSetup(sessionWithOrder, gatewayData);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.error("buildPaymentSetup threw", {
+      gateway,
+      error: message,
+    } as Record<string, unknown>);
+    return persistFailedPayment(withOrder, {
+      status: "failed",
+      errorMessage: message,
+      gatewayMetadata: { lastError: message },
+    });
+  }
+
+  let payRes: unknown;
+  let payThrown: unknown;
+  try {
+    payRes = await paymentSetup({
+      client: adminClient,
+      path: { orderID: orderId },
+      body: { data: setup } as never,
+    });
+  } catch (err) {
+    payThrown = err;
+  }
+
+  const adapterResult = mapTransactionResponse(payRes, payThrown);
+
+  if (adapterResult.status === "requires_action") {
+    return persistRequiresAction(withOrder, adapterResult);
+  }
+  if (adapterResult.status !== "succeeded") {
+    return persistFailedPayment(withOrder, adapterResult);
+  }
+
+  log.info("Order-first pay completed", {
+    sessionId: session.id,
+    orderId,
+  } as Record<string, unknown>);
+
+  return finalizePaidSession({
+    ctx,
+    req,
+    ttl,
+    session: sessionWithOrder,
+    gateway,
+    orderId,
+    transactionId: adapterResult.gatewayOrderId,
+    gatewayMetadata: adapterResult.gatewayMetadata,
+  });
 }
 
 export async function handlePay(
@@ -341,7 +833,9 @@ export async function handlePay(
     );
     const metaAmount = (cartResponse.data as any)?.data?.meta?.display_price
       ?.with_tax?.amount;
-    if (typeof metaAmount === "number") cartMetaTotal = metaAmount;
+    if (typeof metaAmount === "number" && Number.isFinite(metaAmount)) {
+      cartMetaTotal = metaAmount;
+    }
   } catch (err) {
     log.error("Failed to re-fetch cart for hash check", {
       cartId: session.cartId,
@@ -455,7 +949,14 @@ export async function handlePay(
   //   authoritative — never re-write shipping just because a rate id exists.
   if (requiresShipping) {
     try {
-      await applyShippingSelection(ctx, session, { client: adminClient });
+      const pricedCart = await applyShippingSelection(ctx, session, {
+        client: adminClient,
+      });
+      const metaAmount = pricedCart.meta?.display_price?.with_tax?.amount;
+      cartMetaTotal =
+        typeof metaAmount === "number" && Number.isFinite(metaAmount)
+          ? metaAmount
+          : null;
     } catch (err) {
       if (err instanceof ShippingResolutionError) {
         log.warn("Selected shipping rate no longer resolvable at pay", {
@@ -487,24 +988,11 @@ export async function handlePay(
       };
     }
 
-    // Re-asserting shipping changes the cart total, so recompute the
-    // authoritative total from the re-priced cart before the free-vs-paid
-    // decision — else a stripped line that had zeroed the total would route a
-    // genuinely-paid (shipping-bearing) cart to free settlement. Fail closed:
-    // if we can't read the authoritative total back, refuse rather than risk a
-    // free settlement.
-    try {
-      const reread = await getACart({
-        client: shopperClient,
-        path: { cartID: session.cartId },
-      });
-      const metaAmount = (reread.data as any)?.data?.meta?.display_price
-        ?.with_tax?.amount;
-      cartMetaTotal = typeof metaAmount === "number" ? metaAmount : null;
-    } catch (err) {
-      log.error("Failed to re-read cart total after shipping re-assertion", {
+    // Fail closed: re-assertion mutates the cart; without an authoritative
+    // post-mutation total we must not free-settle or charge on a stale total.
+    if (cartMetaTotal === null) {
+      log.error("Shipping re-assertion returned cart without authoritative total", {
         cartId: session.cartId,
-        error: err instanceof Error ? err.message : String(err),
       } as Record<string, unknown>);
       return {
         status: 502,
@@ -515,8 +1003,12 @@ export async function handlePay(
       };
     }
   } else {
+    let deletedCount = 0;
     try {
-      await clearCartShippingLine(adminClient, { cartId: session.cartId });
+      const clearResult = await clearCartShippingLine(adminClient, {
+        cartId: session.cartId,
+      });
+      deletedCount = clearResult.deletedCount;
     } catch (err) {
       log.error("Failed to clear stale shipping line before pay", {
         cartId: session.cartId,
@@ -531,26 +1023,46 @@ export async function handlePay(
       };
     }
 
-    try {
-      const reread = await getACart({
-        client: shopperClient,
-        path: { cartID: session.cartId },
-      });
-      const metaAmount = (reread.data as any)?.data?.meta?.display_price
-        ?.with_tax?.amount;
-      cartMetaTotal = typeof metaAmount === "number" ? metaAmount : null;
-    } catch (err) {
-      log.error("Failed to re-read cart total after clearing shipping line", {
-        cartId: session.cartId,
-        error: err instanceof Error ? err.message : String(err),
-      } as Record<string, unknown>);
-      return {
-        status: 502,
-        body: {
-          success: false,
-          error: { message: "Failed to fetch cart", code: "EP_ERROR" },
-        },
-      };
+    // Only refresh meta when the cart actually changed. A no-op clear leaves
+    // the hash-step cartMetaTotal authoritative.
+    if (deletedCount > 0) {
+      try {
+        const reread = await getACart({
+          client: shopperClient,
+          path: { cartID: session.cartId },
+        });
+        const metaAmount = (reread.data as any)?.data?.meta?.display_price
+          ?.with_tax?.amount;
+        cartMetaTotal =
+          typeof metaAmount === "number" && Number.isFinite(metaAmount)
+            ? metaAmount
+            : null;
+      } catch (err) {
+        log.error("Failed to re-read cart total after clearing shipping line", {
+          cartId: session.cartId,
+          error: err instanceof Error ? err.message : String(err),
+        } as Record<string, unknown>);
+        return {
+          status: 502,
+          body: {
+            success: false,
+            error: { message: "Failed to fetch cart", code: "EP_ERROR" },
+          },
+        };
+      }
+
+      if (cartMetaTotal === null) {
+        log.error("Post-clear cart read missing authoritative total", {
+          cartId: session.cartId,
+        } as Record<string, unknown>);
+        return {
+          status: 502,
+          body: {
+            success: false,
+            error: { message: "Failed to fetch cart", code: "EP_ERROR" },
+          },
+        };
+      }
     }
   }
 
@@ -598,222 +1110,35 @@ export async function handlePay(
     };
   }
 
-  // 4a. Single-shot: delegate to adapter (creates+confirms PaymentIntent)
   const { gateway: _gw, ...gatewayData } = req.body as Record<string, unknown>;
+  const payParams: PayContinuation = {
+    req,
+    ctx,
+    session,
+    adminClient,
+    ttl,
+    gateway,
+    gatewayData,
+  };
 
-  let adapterResult: Awaited<ReturnType<typeof adapter.initializePayment>>;
-  try {
-    adapterResult = await adapter.initializePayment(session, gatewayData);
-  } catch (err) {
-    log.error("Payment adapter threw", {
-      gateway,
-      error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
-    return {
-      status: 502,
-      body: {
-        success: false,
-        error: { message: "Payment adapter error", code: "ADAPTER_ERROR" },
-      },
-    };
+  if (isCartPaymentIntentAdapter(adapter)) {
+    return handleInitializePaymentPay(payParams, adapter);
   }
-
-  // 6. Failed branch — leave session open for retry
-  if (adapterResult.status === "failed") {
-    const failedSession: CheckoutSession = applyPaymentFailed(
-      {
-        ...session,
-        payment: { ...session.payment, gateway },
-      },
-      {
-        errorMessage: adapterResult.errorMessage,
-        gatewayMetadata: adapterResult.gatewayMetadata,
-      }
-    );
-
-    let setResult: { headers: Record<string, string> };
-    try {
-      setResult = await ctx.sessionStore.set("current", failedSession, ttl, req);
-    } catch (err) {
-      log.error("Failed to persist failed-payment session", {
-        error: err instanceof Error ? err.message : String(err),
-      } as Record<string, unknown>);
-      return {
-        status: 500,
-        body: {
-          success: false,
-          error: { message: "Failed to store session", code: "STORE_ERROR" },
-        },
-      };
-    }
-
-    return {
-      status: 200,
-      body: {
-        success: true,
-        data: { session: toClientSession(failedSession) },
-        ...(adapterResult.errorMessage
-          ? { paymentError: adapterResult.errorMessage }
-          : {}),
-      },
-      headers: setResult.headers,
-    };
+  if (isOrderFirstAdapter(adapter)) {
+    return handleOrderFirstPay(payParams, adapter);
   }
-
-  // 5. Succeeded branch — create EP order, confirm, clean up cart
-  if (adapterResult.status !== "succeeded") {
-    // requires_action / ready ship in slice 2; treat as failed for slice 1.
-    log.warn("Adapter returned non-terminal status; treating as failed", {
-      status: adapterResult.status,
-    } as Record<string, unknown>);
-    const failedSession = applyPaymentFailed(
-      { ...session, payment: { ...session.payment, gateway } },
-      {
-        errorMessage: `Unsupported adapter status: ${adapterResult.status}`,
-      }
-    );
-    const setResult = await ctx.sessionStore.set(
-      "current",
-      failedSession,
-      ttl,
-      req
-    );
-    return {
-      status: 200,
-      body: { success: true, data: { session: toClientSession(failedSession) } },
-      headers: setResult.headers,
-    };
+  if (isLegacyPaymentAdapter(adapter)) {
+    return handleInitializePaymentPay(payParams, adapter);
   }
-
-  // 5a. checkoutApi (cart → order) using admin token
-  let orderId: string;
-  try {
-    const checkoutResponse = await checkoutApi({
-      client: adminClient,
-      path: { cartID: session.cartId },
-      body: buildGuestCheckoutBody(session) as any,
-    });
-    const oid = (checkoutResponse.data as any)?.data?.id;
-    if (!oid) throw new Error("checkoutApi response missing order id");
-    orderId = oid;
-  } catch (err) {
-    log.error("EP checkoutApi failed after payment success", {
-      cartId: session.cartId,
-      error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
-    return {
-      status: 502,
-      body: {
-        success: false,
-        error: {
-          message: "Payment succeeded but order creation failed",
-          code: "EP_ERROR",
-        },
-      },
-    };
-  }
-
-  // 5a-bis. Write the checkout extras/consents onto the order as flow fields
-  //         (best-effort — the order is already created and paid). Needs the
-  //         client_credentials grant via an explicit Bearer header.
-  await persistOrderCustomFields({
-    host: ctx.epCredentials.apiBaseUrl,
-    token: ctx.getClientCredentialsToken ? await ctx.getClientCredentialsToken() : "",
-    orderId,
-    input: session.customAttributes,
-  });
-
-  // 5b. confirmOrder — syncs the gateway payment status onto the EP order. The
-  //     customer is ALREADY charged at this point, so a failure here must not
-  //     roll back the order — but it must not be swallowed either: it leaves a
-  //     charged-but-unreconciled order that has to be flagged for follow-up
-  //     (durable marker on the session + a response flag), not silently
-  //     reported as a clean success. We also require a real paymentID — firing
-  //     confirmOrder with `undefined` can never reconcile anything.
-  const paymentIntentId =
-    (adapterResult.gatewayOrderId as string | undefined) ??
-    (adapterResult.gatewayMetadata?.paymentIntentId as string | undefined);
-  let reconciliationError: string | null = null;
-  if (!paymentIntentId) {
-    reconciliationError = "missing gateway payment intent id";
-    log.error("Cannot reconcile order — no gateway payment intent id", {
-      orderId,
-    } as Record<string, unknown>);
-  } else {
-    try {
-      await confirmOrder({
-        client: adminClient,
-        // The EP API requires the paymentID on this path. The PI id from the
-        // adapter result is what EP returned as the cart's payment intent.
-        path: { orderID: orderId, paymentID: paymentIntentId } as any,
-        body: { data: {} } as any,
-      });
-    } catch (err) {
-      reconciliationError = err instanceof Error ? err.message : String(err);
-      log.error("confirmOrder failed — order charged but unreconciled", {
-        orderId,
-        paymentIntentId,
-        error: reconciliationError,
-      } as Record<string, unknown>);
-    }
-  }
-
-  // 5c. Cart cleanup — best-effort housekeeping
-  if (ctx.getClientCredentialsToken) {
-    await runCartCleanup({
-      host: ctx.epCredentials.apiBaseUrl,
-      clientId: ctx.epCredentials.clientId,
-      getClientCredentialsToken: ctx.getClientCredentialsToken,
-      cartId: session.cartId,
-    });
-  }
-
-  // 5d. Mark complete and persist. When confirmOrder couldn't reconcile, carry
-  //     a durable `needsReconciliation` marker on the session so the
-  //     charged-but-unreconciled order is discoverable later.
-  const completeSession = applyPaymentSucceeded(
-    { ...session, payment: { ...session.payment, gateway } },
-    {
-      orderId,
-      paymentIntentId: paymentIntentId ?? "",
-      gatewayMetadata: {
-        ...(adapterResult.gatewayMetadata ?? {}),
-        ...(reconciliationError ? { needsReconciliation: true } : {}),
-      },
-    }
-  );
-
-  let setResult: { headers: Record<string, string> };
-  try {
-    setResult = await ctx.sessionStore.set("current", completeSession, ttl, req);
-  } catch (err) {
-    log.error("Failed to persist complete session", {
-      error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
-    return {
-      status: 500,
-      body: {
-        success: false,
-        error: { message: "Failed to store session", code: "STORE_ERROR" },
-      },
-    };
-  }
-
-  log.info("Pay handler completed", {
-    sessionId: completeSession.id,
-    orderId,
-    reconciliationPending: reconciliationError !== null,
-  } as Record<string, unknown>);
 
   return {
-    status: 200,
+    status: 400,
     body: {
-      success: true,
-      data: { session: toClientSession(completeSession) },
-      // Surface the charged-but-unreconciled state so the client / monitoring
-      // can act on it — the order is genuine and paid, but EP didn't confirm.
-      ...(reconciliationError ? { reconciliationPending: true } : {}),
+      success: false,
+      error: {
+        message: `Payment adapter for ${gateway} does not declare a payment sequence`,
+        code: "UNKNOWN_GATEWAY",
+      },
     },
-    headers: setResult.headers,
   };
 }

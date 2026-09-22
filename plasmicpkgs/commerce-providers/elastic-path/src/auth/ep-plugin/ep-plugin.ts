@@ -8,13 +8,38 @@
  * see memory/project_better_auth_stateless_findings.md).
  */
 import { createAuthEndpoint } from "better-auth/api";
-import { setSessionCookie, getCookieCache } from "better-auth/cookies";
+import {
+  setSessionCookie,
+  getCookieCache,
+  SECURE_COOKIE_PREFIX,
+} from "better-auth/cookies";
 import type { BetterAuthPlugin } from "better-auth";
 import {
   DEFAULT_HOST_ALLOWLIST,
   isAllowedEpHost,
   reportRejectedEpHost,
 } from "../host-allowlist";
+import {
+  EP_ACCOUNT_TOKEN_HEADER,
+  accountNeedsRoll,
+  applyAccountLapse,
+  clearAccount,
+  envelopeExpiresAt,
+  holdAnchorToken,
+  identifyMember,
+  parseEpExpires,
+  selectAccount,
+} from "./envelope";
+import type { EpAccountSlot, EpAnchorTokenSlot } from "./envelope";
+import {
+  EpAccountTokenError,
+  discoverPasswordProfileId,
+  findAccountToken,
+  mintAccountTokens,
+  toAccountRoster,
+} from "./account-tokens";
+import type { EpAccountTokenPage } from "./account-tokens";
+import { CHECKOUT_SESSION_COOKIE_NAME } from "../../checkout/session/cookie-name";
 
 export interface EpPluginOptions {
   /**
@@ -36,6 +61,12 @@ export interface EpPluginOptions {
     { clientId?: string; host?: string } | null | undefined
   >;
   hostAllowlist?: readonly string[];
+  /**
+   * The password profile account members sign in against. Discovered from the
+   * store when omitted; required when the store's realm carries more than one,
+   * because nothing in a profile record marks a default.
+   */
+  passwordProfileId?: string;
 }
 
 interface EpAnonymousTokenResponse {
@@ -121,7 +152,7 @@ function buildAnonymousSnapshot(
     // storefront, and deriving the cookie's session token from them would
     // publish it.
     token: generateAnonymousId(),
-    expiresAt: new Date((now + tokenData.expires_in) * 1000),
+    expiresAt: envelopeExpiresAt(now),
     ipAddress: null,
     userAgent: null,
     createdAt: new Date(),
@@ -145,6 +176,14 @@ function buildAnonymousSnapshot(
  * decryption path the framework uses for `auth.api.getSession`) so
  * `/ep/refresh` can preserve identity across rotations.
  */
+function usesSecureCookies(ctx: any): boolean {
+  const nameBetterAuthChose = ctx?.context?.authCookies?.sessionData?.name;
+  if (typeof nameBetterAuthChose === "string") {
+    return nameBetterAuthChose.startsWith(SECURE_COOKIE_PREFIX);
+  }
+  return Boolean(ctx?.context?.options?.advanced?.useSecureCookies);
+}
+
 async function readExistingSession(ctx: any): Promise<any | null> {
   try {
     // Better-auth's `getCookieCache` decrypts the JWE session_data cookie
@@ -157,7 +196,7 @@ async function readExistingSession(ctx: any): Promise<any | null> {
     const cache = await getCookieCache(headers, {
       secret: ctx.context?.secret,
       strategy: "jwe",
-      isSecure: ctx.context?.options?.useSecureCookies ?? false,
+      isSecure: usesSecureCookies(ctx),
     } as any);
     if (!cache || !(cache as any).session || !(cache as any).user) {
       return null;
@@ -183,29 +222,149 @@ async function verifyEpAccountToken(input: {
   shopperToken: string;
   accountId: string;
   accountToken: string;
-}): Promise<{ canonicalAccountId: string } | null> {
+}): Promise<{
+  canonicalAccountId: string;
+  canonicalAccountName?: string;
+} | null> {
   try {
     const url = `${input.host}/v2/accounts/${encodeURIComponent(input.accountId)}`;
     const res = await fetch(url, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${input.shopperToken}`,
-        "EP-Account-Management-Authentication-Token": input.accountToken,
+        [EP_ACCOUNT_TOKEN_HEADER]: input.accountToken,
       },
     });
     if (!res.ok) return null;
     const body = (await res.json().catch(() => null)) as
-      | { data?: { id?: string } }
+      | { data?: { id?: string; name?: string } }
       | null;
     const id = body?.data?.id;
     if (typeof id !== "string" || !id) return null;
-    return { canonicalAccountId: id };
+    const name = body?.data?.name;
+    return {
+      canonicalAccountId: id,
+      canonicalAccountName: typeof name === "string" ? name : undefined,
+    };
   } catch {
     return null;
   }
 }
 
+function jsonError(code: string, status: number, message: string): Response {
+  return new Response(JSON.stringify({ error: code, code, message }), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function noSessionError(): Response {
+  return jsonError(
+    "no_session",
+    401,
+    "No EP session — call /ep/anonymous first to bootstrap."
+  );
+}
+
+function noAccountMemberError(): Response {
+  return jsonError(
+    "no_account_member",
+    401,
+    "No account member is signed in."
+  );
+}
+
+/**
+ * The session as the account endpoints must read it: an expired credential is
+ * a lapse, not a credential. Without this the endpoints would send a dead
+ * token to Elastic Path and report its rejection as an outage, while every
+ * read path states the lapse as a fact.
+ */
+function sessionWithLapseApplied(session: any): any {
+  return applyAccountLapse(session, Math.floor(Date.now() / 1000));
+}
+
+/**
+ * The account credential the session may re-mint from: the selected account's
+ * token, or the anchor held while none is selected. A member who belongs to no
+ * account holds neither, and re-authenticating is the only way back.
+ */
+function heldAccountCredential(session: any): string | null {
+  const account = session?.epAccount as EpAccountSlot | undefined;
+  if (account?.token) return account.token;
+  const anchor = session?.epAnchorToken as EpAnchorTokenSlot | undefined;
+  return anchor?.token ?? null;
+}
+
+/**
+ * Writes the login's outcome onto the envelope. One account is a selection;
+ * several are an anchor and a choice left to the shopper; none is a member who
+ * is signed in and permanently unscoped.
+ */
+function applyLoginOutcome(session: any, minted: EpAccountTokenPage): any {
+  const { memberId, entries, total } = minted;
+  if (total === 1 && entries.length === 1) {
+    return selectAccount(session, { memberId, account: entries[0] });
+  }
+  if (entries.length > 0) {
+    return holdAnchorToken(session, {
+      memberId,
+      anchor: { token: entries[0].token, expires: entries[0].expires },
+    });
+  }
+  return identifyMember(session, memberId);
+}
+
+function accountLapsedError(): Response {
+  return jsonError(
+    "account_lapsed",
+    401,
+    "The account credential ran out and cannot be re-minted. Sign in again."
+  );
+}
+
+function accountTokenFailure(err: unknown): Response {
+  if (err instanceof EpAccountTokenError) {
+    return jsonError(err.code, err.status, err.message);
+  }
+  return jsonError(
+    "account_token_mint_failed",
+    502,
+    (err as Error)?.message ?? "Elastic Path rejected the account-token call."
+  );
+}
+
 export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
+  // One discovery per auth instance. The realm and its profiles are store
+  // configuration, so re-reading them on every sign-in buys nothing.
+  let discoveredProfile: Promise<string> | null = null;
+
+  function passwordProfileId(host: string, implicitToken: string) {
+    if (options.passwordProfileId) {
+      return Promise.resolve(options.passwordProfileId);
+    }
+    if (!discoveredProfile) {
+      discoveredProfile = discoverPasswordProfileId({ host, implicitToken });
+      discoveredProfile.catch(() => {
+        discoveredProfile = null;
+      });
+    }
+    return discoveredProfile;
+  }
+
+  /**
+   * An account switch invalidates any checkout in flight: it was priced and
+   * addressed for the account being left.
+   */
+  function tearDownCheckoutSession(ctx: any): void {
+    ctx.setCookie(CHECKOUT_SESSION_COOKIE_NAME, "", {
+      path: "/",
+      maxAge: 0,
+      httpOnly: true,
+      sameSite: "lax",
+    });
+  }
+
   return {
     id: "ep",
     endpoints: {
@@ -237,14 +396,19 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
           }
 
           // Preserve identity (id, userId, etc.); rotate EP fields only.
-          const session = {
-            ...existing.session,
-            updatedAt: new Date(),
-            epAccessToken: tokenData.access_token,
-            epClientId: clientId,
-            epHost: host,
-            epExpires: tokenData.expires,
-          };
+          const now = Math.floor(Date.now() / 1000);
+          const session = applyAccountLapse(
+            {
+              ...existing.session,
+              updatedAt: new Date(),
+              expiresAt: envelopeExpiresAt(now),
+              epAccessToken: tokenData.access_token,
+              epClientId: clientId,
+              epHost: host,
+              epExpires: tokenData.expires,
+            },
+            now
+          );
           const snap = { user: existing.user, session };
           await setSessionCookie(ctx, snap as any);
           return ctx.json(snap);
@@ -256,44 +420,74 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
         { method: "POST" },
         async (ctx) => {
           const existing = await readExistingSession(ctx);
-          if (!existing || !existing.user || !existing.session) {
-            return new Response(
-              JSON.stringify({
-                error: "no_session",
-                message:
-                  "No EP session — call /ep/anonymous first to bootstrap.",
-              }),
-              {
-                status: 401,
-                headers: { "Content-Type": "application/json" },
-              }
-            );
-          }
+          if (!existing?.user || !existing?.session) return noSessionError();
 
           const body = (ctx.body as any) ?? {};
-          const {
-            epAccountId,
-            epAccountToken,
-            epAccountExpires,
-            email,
-            name,
-          } = body;
+          const { username, password } = body;
+
+          // The credential shape: the package signs the member in itself, so
+          // no Elastic Path credential ever passes through the browser. The
+          // token shape below is the older contract, kept until the breaking
+          // release retires it.
+          if (typeof username === "string" && typeof password === "string") {
+            const host = existing.session.epHost;
+            const implicitToken = existing.session.epAccessToken;
+            let minted;
+            try {
+              minted = await mintAccountTokens({
+                host,
+                implicitToken,
+                credential: {
+                  passwordProfileId: await passwordProfileId(
+                    host,
+                    implicitToken
+                  ),
+                  username,
+                  password,
+                },
+              });
+            } catch (err) {
+              return accountTokenFailure(err);
+            }
+
+            const user = {
+              ...existing.user,
+              email: username,
+              name: typeof body.name === "string" ? body.name : username,
+              updatedAt: new Date(),
+            };
+            const session = applyLoginOutcome(
+              { ...existing.session, updatedAt: new Date() },
+              minted
+            );
+
+            await setSessionCookie(ctx, { session, user } as any);
+            return ctx.json({
+              user,
+              session,
+              accounts: toAccountRoster(minted.entries),
+              total: minted.total,
+            });
+          }
+
+          const { epMemberId, epAccountId, epAccountToken, epAccountExpires } =
+            body;
+          const accountExpires = parseEpExpires(epAccountExpires);
 
           if (
+            typeof epMemberId !== "string" ||
+            !epMemberId ||
             typeof epAccountId !== "string" ||
             typeof epAccountToken !== "string" ||
-            typeof epAccountExpires !== "number"
+            accountExpires === null
           ) {
-            return new Response(
-              JSON.stringify({
-                error: "invalid_input",
-                message:
-                  "Body must include { epAccountId, epAccountToken, epAccountExpires } from EP /v2/account-members/tokens.",
-              }),
-              {
-                status: 400,
-                headers: { "Content-Type": "application/json" },
-              }
+            return jsonError(
+              "invalid_input",
+              400,
+              "Body must include { username, password }, or the older " +
+                "{ epMemberId, epAccountId, epAccountToken, epAccountExpires } " +
+                "from EP /v2/account-members/tokens. epAccountExpires may be " +
+                "ISO-8601 or epoch seconds."
             );
           }
 
@@ -309,16 +503,10 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             accountToken: epAccountToken,
           });
           if (!verified) {
-            return new Response(
-              JSON.stringify({
-                error: "invalid_account_token",
-                message:
-                  "EP rejected the supplied account token. Re-mint via /v2/account-members/tokens.",
-              }),
-              {
-                status: 401,
-                headers: { "Content-Type": "application/json" },
-              }
+            return jsonError(
+              "invalid_account_token",
+              401,
+              "EP rejected the supplied account token. Re-mint via /v2/account-members/tokens."
             );
           }
 
@@ -328,24 +516,203 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
           // @anonymous.local sentinel.
           const user = {
             ...existing.user,
-            email: typeof email === "string" ? email : existing.user.email,
-            name: typeof name === "string" ? name : existing.user.name,
+            email:
+              typeof body.email === "string" ? body.email : existing.user.email,
+            name: typeof body.name === "string" ? body.name : existing.user.name,
             updatedAt: new Date(),
           };
 
-          const session = {
-            ...existing.session,
-            updatedAt: new Date(),
-            // Trust EP's canonical id from the verification response over
-            // whatever the caller claimed. Even if the body and EP agree,
-            // taking the canonical value keeps a single source of truth.
-            epAccountId: verified.canonicalAccountId,
-            epAccountToken,
-            epAccountExpires,
-          };
+          const session = selectAccount(
+            { ...existing.session, updatedAt: new Date() },
+            {
+              memberId: epMemberId,
+              account: {
+                id: verified.canonicalAccountId,
+                name: verified.canonicalAccountName,
+                token: epAccountToken,
+                expires: accountExpires,
+              },
+            }
+          );
 
           await setSessionCookie(ctx, { session, user } as any);
           return ctx.json({ user, session });
+        }
+      ),
+
+      epAccountRoster: createAuthEndpoint(
+        "/ep/account/roster",
+        { method: "POST" },
+        async (ctx) => {
+          const existing = await readExistingSession(ctx);
+          if (!existing?.user || !existing?.session) return noSessionError();
+
+          if (typeof existing.session.epMemberId !== "string") {
+            return noAccountMemberError();
+          }
+
+          const session = sessionWithLapseApplied(existing.session);
+          const accountToken = heldAccountCredential(session);
+          if (!accountToken) {
+            if (session.epLapsedAccount) return accountLapsedError();
+            // A member who belongs to no account holds no credential and has
+            // an empty roster. That is an answer, not a failure.
+            return ctx.json({ accounts: [], total: 0 });
+          }
+
+          const body = (ctx.body as any) ?? {};
+          try {
+            const page = await mintAccountTokens({
+              host: session.epHost,
+              implicitToken: session.epAccessToken,
+              credential: { accountToken },
+              limit: body.limit,
+              offset: body.offset,
+            });
+            return ctx.json({
+              accounts: toAccountRoster(page.entries),
+              total: page.total,
+            });
+          } catch (err) {
+            return accountTokenFailure(err);
+          }
+        }
+      ),
+
+      epAccountSelect: createAuthEndpoint(
+        "/ep/account/select",
+        { method: "POST" },
+        async (ctx) => {
+          const existing = await readExistingSession(ctx);
+          if (!existing?.user || !existing?.session) return noSessionError();
+
+          const lapsed = sessionWithLapseApplied(existing.session);
+          const current = lapsed.epAccount as EpAccountSlot | undefined;
+          const memberId = lapsed.epMemberId;
+          if (typeof memberId !== "string" || !memberId) {
+            return noAccountMemberError();
+          }
+
+          const accountId = (ctx.body as any)?.accountId ?? null;
+          if (accountId !== null && typeof accountId !== "string") {
+            return jsonError(
+              "invalid_input",
+              400,
+              "Body must include { accountId: string } to select, or { accountId: null } to deselect."
+            );
+          }
+
+          // Selecting what is already selected changes nothing, so it must not
+          // cost the shopper their checkout or their cart.
+          if (accountId !== null && current?.id === accountId) {
+            return ctx.json({ user: existing.user, session: existing.session });
+          }
+
+          const base: any = { ...lapsed, updatedAt: new Date() };
+          delete base.epCartId;
+
+          if (accountId === null) {
+            if (!current) {
+              return ctx.json({
+                user: existing.user,
+                session: existing.session,
+              });
+            }
+            // Deselecting has no fallible step; the credential is demoted
+            // rather than dropped, so the shopper can select again.
+            tearDownCheckoutSession(ctx);
+            const session = holdAnchorToken(base, {
+              memberId,
+              anchor: { token: current.token, expires: current.expires },
+            });
+            await setSessionCookie(ctx, {
+              session,
+              user: existing.user,
+            } as any);
+            return ctx.json({ user: existing.user, session });
+          }
+
+          const accountToken = heldAccountCredential(lapsed);
+          if (!accountToken) {
+            if (lapsed.epLapsedAccount) return accountLapsedError();
+            // A member of no account has nothing to re-mint from, so an
+            // account granted since they signed in costs them a re-login.
+            return jsonError(
+              "no_account_credential",
+              401,
+              "This member belonged to no account when they signed in, so there is no credential to select with. Sign in again."
+            );
+          }
+
+          // Re-mint first. It is the only step that can fail, so a failure
+          // leaves the shopper exactly where they were.
+          let found;
+          try {
+            found = await findAccountToken({
+              host: lapsed.epHost,
+              implicitToken: lapsed.epAccessToken,
+              accountToken,
+              accountId,
+            });
+          } catch (err) {
+            return accountTokenFailure(err);
+          }
+          if (!found.entry) {
+            return jsonError(
+              "account_not_found",
+              404,
+              `This member belongs to no account ${accountId}.`
+            );
+          }
+
+          tearDownCheckoutSession(ctx);
+          const session = selectAccount(base, {
+            memberId: found.memberId,
+            account: found.entry,
+          });
+          await setSessionCookie(ctx, { session, user: existing.user } as any);
+          return ctx.json({ user: existing.user, session });
+        }
+      ),
+
+      epAccountRoll: createAuthEndpoint(
+        "/ep/account/roll",
+        { method: "POST" },
+        async (ctx) => {
+          const existing = await readExistingSession(ctx);
+          if (!existing?.user || !existing?.session) return noSessionError();
+
+          const current = existing.session.epAccount as
+            | EpAccountSlot
+            | undefined;
+          const now = Math.floor(Date.now() / 1000);
+          if (!accountNeedsRoll(current ?? null, now)) {
+            return ctx.json({ user: existing.user, session: existing.session });
+          }
+
+          let found;
+          try {
+            found = await findAccountToken({
+              host: existing.session.epHost,
+              implicitToken: existing.session.epAccessToken,
+              accountToken: current!.token,
+              accountId: current!.id,
+            });
+          } catch {
+            // A failed roll is not a failed request. The token still has time
+            // on it, and if it runs out the lapse states that as a fact.
+            return ctx.json({ user: existing.user, session: existing.session });
+          }
+          if (!found.entry) {
+            return ctx.json({ user: existing.user, session: existing.session });
+          }
+
+          const session = selectAccount(
+            { ...existing.session, updatedAt: new Date() },
+            { memberId: found.memberId, account: found.entry }
+          );
+          await setSessionCookie(ctx, { session, user: existing.user } as any);
+          return ctx.json({ user: existing.user, session });
         }
       ),
 
@@ -354,17 +721,8 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
         { method: "POST" },
         async (ctx) => {
           const existing = await readExistingSession(ctx);
-          if (!existing || !existing.user || !existing.session) {
-            return new Response(
-              JSON.stringify({
-                error: "no_session",
-                message: "Nothing to log out.",
-              }),
-              {
-                status: 401,
-                headers: { "Content-Type": "application/json" },
-              }
-            );
+          if (!existing?.user || !existing?.session) {
+            return jsonError("no_session", 401, "Nothing to log out.");
           }
 
           // Strip account fields. Restore an anonymous-looking user
@@ -378,10 +736,10 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             name: "Anonymous Shopper",
             updatedAt: new Date(),
           };
-          const session = { ...existing.session, updatedAt: new Date() };
-          delete (session as any).epAccountId;
-          delete (session as any).epAccountToken;
-          delete (session as any).epAccountExpires;
+          const session = clearAccount({
+            ...existing.session,
+            updatedAt: new Date(),
+          });
 
           await setSessionCookie(ctx, { session, user } as any);
           return ctx.json({ user, session });
@@ -393,31 +751,14 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
         { method: "POST" },
         async (ctx) => {
           const existing = await readExistingSession(ctx);
-          if (!existing || !existing.user || !existing.session) {
-            return new Response(
-              JSON.stringify({
-                error: "no_session",
-                message:
-                  "No EP session — call /ep/anonymous first to bootstrap.",
-              }),
-              {
-                status: 401,
-                headers: { "Content-Type": "application/json" },
-              }
-            );
-          }
+          if (!existing?.user || !existing?.session) return noSessionError();
 
           const cartId = (ctx.body as any)?.cartId;
           if (!cartId || typeof cartId !== "string") {
-            return new Response(
-              JSON.stringify({
-                error: "invalid_input",
-                message: "Body must include { cartId: string }.",
-              }),
-              {
-                status: 400,
-                headers: { "Content-Type": "application/json" },
-              }
+            return jsonError(
+              "invalid_input",
+              400,
+              "Body must include { cartId: string }."
             );
           }
 
