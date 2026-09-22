@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.0
 
 ### Added
 
@@ -104,10 +104,6 @@ account clear and cart-id persist all read no session in any HTTPS deployment
 
 `epAccountExpires` accepts the ISO-8601 timestamp Elastic Path actually
 returns, as well as epoch seconds. It previously demanded a number.
-
-## 0.6.1
-
-### Fixed
 
 After a successful **cart PaymentIntent** checkout, the cart's
 `payment_intent_id` is cleared (Update Cart with an empty id) before the
