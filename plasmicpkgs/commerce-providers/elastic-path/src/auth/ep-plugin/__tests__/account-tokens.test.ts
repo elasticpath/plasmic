@@ -101,7 +101,7 @@ describe("discoverPasswordProfileId", () => {
   it("names every candidate rather than guessing between them", async () => {
     globalThis.fetch = profilesFetch([
       { id: "profile-1", name: "password" },
-      { id: "profile-2", name: "passTest" },
+      { id: "profile-2", name: "secondary" },
     ]) as any;
     await expect(
       discoverPasswordProfileId({ host: HOST, implicitToken: IMPLICIT })

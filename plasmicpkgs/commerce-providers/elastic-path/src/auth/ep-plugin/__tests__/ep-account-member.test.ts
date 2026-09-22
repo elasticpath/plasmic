@@ -309,7 +309,7 @@ describe("signing in as an account member", () => {
   it("asks to be told which profile when the realm carries several", async () => {
     store.profiles = [
       { id: PROFILE, name: "password" },
-      { id: "profile-2", name: "passTest" },
+      { id: "profile-2", name: "secondary" },
     ];
     const auth = buildAuth();
     const cookies = await anonymous(auth);
