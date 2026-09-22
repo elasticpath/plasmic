@@ -8,7 +8,11 @@
  * see memory/project_better_auth_stateless_findings.md).
  */
 import { createAuthEndpoint } from "better-auth/api";
-import { setSessionCookie, getCookieCache } from "better-auth/cookies";
+import {
+  setSessionCookie,
+  getCookieCache,
+  SECURE_COOKIE_PREFIX,
+} from "better-auth/cookies";
 import type { BetterAuthPlugin } from "better-auth";
 import {
   DEFAULT_HOST_ALLOWLIST,
@@ -137,6 +141,31 @@ function buildAnonymousSnapshot(
 }
 
 /**
+ * Whether better-auth issued this request's session cookies with the
+ * `__Secure-` prefix. better-auth decides that from
+ * `advanced.useSecureCookies` when set, otherwise from the baseURL scheme, and
+ * records the outcome in the cookie names on `ctx.context.authCookies` — so
+ * the name is the authoritative answer and the options are only a fallback for
+ * a context that lacks it (older better-auth, hand-built test contexts).
+ *
+ * Reading with the wrong answer asks `getCookieCache` for a cookie that was
+ * never set (`better-auth.session_data` while the browser holds
+ * `__Secure-better-auth.session_data`), which looks exactly like "no session".
+ * On every https deployment that made `/ep/refresh` drop identity and
+ * `/ep/cart` answer 401, so a cart created server-side was never persisted
+ * onto the session and each request started a new one.
+ */
+export function sessionCookiesAreSecure(ctx: any): boolean {
+  const name: unknown = ctx?.context?.authCookies?.sessionData?.name;
+  if (typeof name === "string") return name.startsWith(SECURE_COOKIE_PREFIX);
+  const explicit: unknown = ctx?.context?.options?.advanced?.useSecureCookies;
+  if (typeof explicit === "boolean") return explicit;
+  const baseURL: unknown =
+    ctx?.context?.baseURL ?? ctx?.context?.options?.baseURL;
+  return typeof baseURL === "string" && baseURL.startsWith("https://");
+}
+
+/**
  * Reads the current session from the request cookies via better-auth's
  * cookie helper. Returns the parsed session object (with our EP fields)
  * or null when no valid cookie is present.
@@ -157,7 +186,7 @@ async function readExistingSession(ctx: any): Promise<any | null> {
     const cache = await getCookieCache(headers, {
       secret: ctx.context?.secret,
       strategy: "jwe",
-      isSecure: ctx.context?.options?.useSecureCookies ?? false,
+      isSecure: sessionCookiesAreSecure(ctx),
     } as any);
     if (!cache || !(cache as any).session || !(cache as any).user) {
       return null;
