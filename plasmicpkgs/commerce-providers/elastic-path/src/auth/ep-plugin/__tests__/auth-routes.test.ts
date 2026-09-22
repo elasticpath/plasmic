@@ -13,6 +13,7 @@ import { createEpAuthRoutes } from "../auth-routes";
 
 const ACCESS_TOKEN = "e1978208e412a8cc33be0f2706e72409d00f6758";
 const ACCOUNT_TOKEN = "account-management-token";
+const ANCHOR_TOKEN = "anchor-management-token";
 const CART_ID = "63b53d4f-d88a-48b3-b416-8cb1470aad8d";
 
 const SESSION_BODY = {
@@ -24,8 +25,13 @@ const SESSION_BODY = {
     epAccessToken: ACCESS_TOKEN,
     epClientId: "public-client-id",
     epHost: "https://api.test.elasticpath.com",
-    epAccountToken: ACCOUNT_TOKEN,
-    epAccountId: "acct-1",
+    epMemberId: "member-1",
+    epAccount: {
+      id: "acct-1",
+      name: "Acme Industrial",
+      token: ACCOUNT_TOKEN,
+      expires: Math.floor(Date.now() / 1000) + 3600,
+    },
     epCartId: CART_ID,
     epExpires: 1786630149,
   },
@@ -70,7 +76,7 @@ describe("createEpAuthRoutes", () => {
 
       const session = JSON.parse(text).session;
       expect(session.epAccessToken).toBeUndefined();
-      expect(session.epAccountToken).toBeUndefined();
+      expect(session.epAccount?.token).toBeUndefined();
       expect(session.epClientId).toBeUndefined();
       expect(session.epHost).toBeUndefined();
     }
@@ -84,6 +90,136 @@ describe("createEpAuthRoutes", () => {
     const res = await routes().GET(req("/api/ep/get-session"));
 
     expect(await res.text()).not.toContain("secret");
+  });
+
+  it("withholds unknown fields inside an allowlisted group", async () => {
+    nextResponse = jsonResponse({
+      session: {
+        id: "sess-1",
+        epAccount: {
+          id: "acct-1",
+          name: "Acme Industrial",
+          epSomeFutureCredential: "secret",
+        },
+      },
+    });
+
+    const res = await routes().GET(req("/api/ep/get-session"));
+    const body = await res.json();
+
+    expect(body.session.epAccount).toEqual({
+      id: "acct-1",
+      name: "Acme Industrial",
+    });
+  });
+
+  it("releases the selected organisation's id and name to the page", async () => {
+    nextResponse = jsonResponse(SESSION_BODY);
+
+    const body = await (await routes().GET(req("/api/ep/get-session"))).json();
+
+    expect(body.session.epMemberId).toBe("member-1");
+    expect(body.session.epAccount).toEqual({
+      id: "acct-1",
+      name: "Acme Industrial",
+    });
+  });
+
+  it("withholds the account credential's expiry, which is a credential's timestamp", async () => {
+    nextResponse = jsonResponse(SESSION_BODY);
+
+    const body = await (await routes().GET(req("/api/ep/get-session"))).json();
+
+    expect(body.session.epAccount.expires).toBeUndefined();
+  });
+
+  it("states the lapse to the page, rather than the selection that ran out", async () => {
+    nextResponse = jsonResponse({
+      session: {
+        id: "sess-1",
+        epMemberId: "member-1",
+        epAccount: {
+          id: "acct-1",
+          name: "Acme Industrial",
+          token: ACCOUNT_TOKEN,
+          expires: Math.floor(Date.now() / 1000) - 1,
+        },
+      },
+    });
+
+    const body = await (await routes().GET(req("/api/ep/get-session"))).json();
+
+    expect(body.session.epAccount).toBeUndefined();
+    expect(body.session.epLapsedAccount).toEqual({
+      id: "acct-1",
+      name: "Acme Industrial",
+    });
+    expect(body.session.epMemberId).toBe("member-1");
+  });
+
+  it("leaves a live selection alone", async () => {
+    nextResponse = jsonResponse({
+      session: {
+        id: "sess-1",
+        epMemberId: "member-1",
+        epAccount: {
+          id: "acct-1",
+          name: "Acme Industrial",
+          token: ACCOUNT_TOKEN,
+          expires: Math.floor(Date.now() / 1000) + 3600,
+        },
+      },
+    });
+
+    const body = await (await routes().GET(req("/api/ep/get-session"))).json();
+
+    expect(body.session.epAccount).toEqual({
+      id: "acct-1",
+      name: "Acme Industrial",
+    });
+    expect(body.session.epLapsedAccount).toBeUndefined();
+  });
+
+  it("releases a lapsed organisation so the shopper can be told which one", async () => {
+    nextResponse = jsonResponse({
+      session: {
+        id: "sess-1",
+        epMemberId: "member-1",
+        epLapsedAccount: { id: "acct-1", name: "Acme Industrial" },
+      },
+    });
+
+    const body = await (await routes().GET(req("/api/ep/get-session"))).json();
+
+    expect(body.session.epLapsedAccount).toEqual({
+      id: "acct-1",
+      name: "Acme Industrial",
+    });
+  });
+
+  it("withholds the anchor token, which is a credential with no allowlisted path", async () => {
+    nextResponse = jsonResponse({
+      session: {
+        id: "sess-1",
+        epMemberId: "member-1",
+        epAnchorToken: { token: ANCHOR_TOKEN, expires: 1786630149 },
+      },
+    });
+
+    const res = await routes().GET(req("/api/ep/get-session"));
+    const text = await res.text();
+
+    expect(text).not.toContain(ANCHOR_TOKEN);
+    expect(JSON.parse(text).session.epAnchorToken).toBeUndefined();
+  });
+
+  it("omits an allowlisted group the session does not carry", async () => {
+    nextResponse = jsonResponse({ session: { id: "sess-1" } });
+
+    const body = await (await routes().GET(req("/api/ep/get-session"))).json();
+
+    expect("epAccount" in body.session).toBe(false);
+    expect("epLapsedAccount" in body.session).toBe(false);
   });
 
   it("keeps the fields the checkout components read", async () => {

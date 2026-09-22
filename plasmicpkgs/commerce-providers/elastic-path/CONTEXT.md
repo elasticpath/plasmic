@@ -145,11 +145,12 @@ paginated, never carrying tokens to the browser. Distinct from the token list
 precisely because it is what survives the server stripping credentials off it.
 _Avoid_: account list
 
-**Anchor token** *(not yet built)*:
+**Anchor token** *(slot built, nothing mints one yet)*:
 An account token held only to keep re-minting possible while no account is
 selected. Never sent; not evidence of a selection. Mutually exclusive with the
 selected account's token, so an unselected session cannot send an account
-header.
+header. The envelope carries the slot and `holdAnchorToken` writes it; the
+account switch that mints one is still to come.
 _Avoid_: default account token
 
 **Account switch**:

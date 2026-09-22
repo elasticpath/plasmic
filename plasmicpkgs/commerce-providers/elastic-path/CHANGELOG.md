@@ -1,5 +1,73 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+The session now carries business-account identity: `epMemberId` for the
+authenticated **account member**, and `epAccount { id, name, token, expires }`
+for the **selected account** — the organisation they are buying for. Every
+`ep.*` call carries `EP-Account-Management-Authentication-Token` while an
+account is selected, so account-scoped pricing reaches every server function
+without any function opting in. The checkout-session handlers are not covered
+yet; they take their own shopper token on `SessionHandlerContext`.
+
+`epAccount` and `epAnchorToken` are mutually exclusive slots, and the account
+header is attached only from `epAccount.token`, so a session with no account
+selected cannot send an account credential.
+
+`epLapsedAccount { id, name }` states that a selection's credential ran out,
+so the storefront can tell the shopper which organisation they lost instead of
+quietly showing list prices. Every session read reports the lapse — not only
+the reads where a token rotation happens to run — so an expired credential is
+never attached to a call. `/ep/refresh` writes the same transition to the
+cookie when it next runs.
+
+`createCartRoutes` carries the selected organisation's credential too. Those
+routes reach Elastic Path through their own client rather than through the
+`ep.*` client builder, so a signed-in member's cart reads and writes would
+otherwise have stayed list-priced while every other call was account-scoped.
+
+`get-session` releases `epMemberId`, `epAccount.{id,name}` and
+`epLapsedAccount.{id,name}`. The response filter now names paths rather than
+whole fields, so the account credential and its expiry stay out of the page
+while the organisation's id and name are readable.
+
+`ENVELOPE_LIFETIME_SECONDS` and `EP_ACCOUNT_TOKEN_HEADER`, plus the
+`EpAccountSlot`, `EpLapsedAccount`, `EpSessionData` and
+`BuildEpCtxAccountInput` types, are exported from `/server`.
+
+### Changed
+
+`isAuthenticated` now reports whether an account member is present, not
+whether an account is selected. A member who belongs to no organisation reads
+as signed in rather than signed out.
+
+`buildEpCtx` takes the selected account as `session.account` and no longer
+reads `session.accountId`. Catchall pages pass
+`account: session.session?.account ?? null` in place of
+`accountId: session.user?.accountId`, which was never populated.
+
+`POST /ep/account/login` requires `epMemberId` and writes the grouped account
+shape. The flat `epAccountId` / `epAccountToken` / `epAccountExpires` session
+fields are gone.
+
+### Fixed
+
+The session cookie no longer falls back to better-auth's 300-second
+`cookieCache` default. Both it and the session's own expiry run on the cart's
+seven-day clock and roll on `/ep/refresh`, so the envelope outlives the basket
+it holds the only handle to.
+
+An HTTPS deployment reads its own session cookie. `createEpAuth` left
+better-auth to write `__Secure-`-prefixed cookies while the plugin looked up
+the unprefixed name with no fallback, so `/ep/refresh`, account select,
+account clear and cart-id persist all read no session in any HTTPS deployment
+— and every one of them worked on `http://localhost`.
+
+`epAccountExpires` accepts the ISO-8601 timestamp Elastic Path actually
+returns, as well as epoch seconds. It previously demanded a number.
+
 ## 0.6.1
 
 ### Fixed

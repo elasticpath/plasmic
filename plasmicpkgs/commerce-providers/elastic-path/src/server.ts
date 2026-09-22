@@ -70,6 +70,8 @@ export type {
 // the raw handler's /get-session returns the shopper's EP access token.
 export {
   DEFAULT_HOST_ALLOWLIST,
+  ENVELOPE_LIFETIME_SECONDS,
+  EP_ACCOUNT_TOKEN_HEADER,
   assertProductionSecret,
   createBetterEpAuth,
   createCartRoutes,
@@ -86,12 +88,15 @@ export {
   resolveAuthSecret,
 } from "./auth";
 export type {
+  EpAccountSlot,
   EpAuth,
   EpAuthConfig,
+  EpLapsedAccount,
   EpPluginOptions,
   EpProviderBundleConfig,
   EpProxyRoutes,
   EpSession,
+  EpSessionData,
   ExtractEpProviderConfigOptions,
 } from "./auth";
 
@@ -131,6 +136,7 @@ export {
 } from "./ep-server-functions";
 export type {
   AddCustomCartItemInput,
+  BuildEpCtxAccountInput,
   BuildEpCtxSessionInput,
   CartAdjustmentKind,
   EpAddCartItemInput,

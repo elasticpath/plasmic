@@ -73,9 +73,13 @@ interface SessionShape {
     clientId: string;
     expires: number;
     locale?: string;
+    account?: {
+      id: string;
+      name?: string;
+      token: string;
+    } | null;
   } | null;
   cart: { id: string } | null;
-  user?: { accountId?: string } | null;
 }
 
 const FN_DISPATCH: Record<
@@ -212,7 +216,8 @@ export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes {
         host: session.host,
         clientId: session.clientId,
         cartId: sessionResult.cart?.id ?? undefined,
-        accountId: sessionResult.user?.accountId ?? undefined,
+        accountId: session.account?.id,
+        accountToken: session.account?.token,
         locale: session.locale,
       };
 

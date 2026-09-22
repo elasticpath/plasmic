@@ -30,6 +30,12 @@ import {
   assertNonSentinelSecret,
   resolveAuthSecret,
 } from "./production-guard";
+import {
+  ENVELOPE_LIFETIME_SECONDS,
+  applyAccountLapse,
+  readEnvelopeAccount,
+} from "./envelope";
+import type { EpAccountSlot, EpLapsedAccount } from "./envelope";
 
 export interface CreateEpAuthBetterInput {
   clientId: string;
@@ -100,6 +106,9 @@ export interface EpSessionData {
   expires: number;
   clientId: string;
   host: string;
+  memberId?: string;
+  account: EpAccountSlot | null;
+  lapsedAccount: EpLapsedAccount | null;
 }
 
 export interface EpSession {
@@ -228,10 +237,12 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
       nextCookies(),
     ],
     session: {
+      expiresIn: ENVELOPE_LIFETIME_SECONDS,
       cookieCache: {
         enabled: true,
         strategy: "jwe" as any,
         refreshCache: true,
+        maxAge: ENVELOPE_LIFETIME_SECONDS,
       },
     } as any,
   });
@@ -323,12 +334,21 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
         const epSession = session?.session ?? null;
         const epUser = session?.user ?? null;
 
+        const envelopeAccount = readEnvelopeAccount(
+          epSession
+            ? applyAccountLapse(epSession, Math.floor(Date.now() / 1000))
+            : epSession
+        );
+
         const sessionData: EpSessionData | null = epSession?.epAccessToken
           ? {
               accessToken: epSession.epAccessToken,
               expires: epSession.epExpires,
               clientId: epSession.epClientId,
               host: epSession.epHost,
+              memberId: envelopeAccount.memberId,
+              account: envelopeAccount.account,
+              lapsedAccount: envelopeAccount.lapsedAccount,
             }
           : null;
 
@@ -336,9 +356,7 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
           session: sessionData,
           user: epUser?.email?.endsWith("@anonymous.local") ? null : epUser,
           cart: epSession?.epCartId ? { id: epSession.epCartId } : null,
-          isAuthenticated: Boolean(
-            epUser && !epUser.email?.endsWith("@anonymous.local")
-          ),
+          isAuthenticated: envelopeAccount.memberId != null,
           headers() {
             const h: Record<string, string> = {};
             if (sessionData) {

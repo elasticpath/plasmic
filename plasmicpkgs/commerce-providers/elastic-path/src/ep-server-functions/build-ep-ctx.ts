@@ -2,7 +2,7 @@
  * Composes the EP session payload that drives every `ep.*` server function
  * (per PRD #262 / #272). Takes the Plasmic loader's prefetchedData (source
  * of connection/config — clientId, host) and the resolved EP session
- * (source of per-shopper auth — accessToken, cartId, accountId).
+ * (source of per-shopper auth — accessToken, cartId, selected account).
  *
  * Consumers call this in their RSC catchall page, then run Server Queries
  * inside a `withEpSession` scope so each function reads the session via
@@ -15,10 +15,17 @@
 
 import { extractEpProviderConfig } from "../auth/extract-ep-provider-config";
 
+export interface BuildEpCtxAccountInput {
+  id: string;
+  name?: string;
+  token: string;
+  expires?: number;
+}
+
 export interface BuildEpCtxSessionInput {
   accessToken?: string;
   cartId?: string;
-  accountId?: string;
+  account?: BuildEpCtxAccountInput | null;
   locale?: string;
   currency?: string;
 }
@@ -29,6 +36,7 @@ export interface EpCtx {
   clientId: string;
   cartId?: string;
   accountId?: string;
+  accountToken?: string;
   locale?: string;
   currency?: string;
 }
@@ -54,7 +62,8 @@ export function buildEpCtx(
     host: config.host,
     clientId: config.clientId,
     cartId: opts.session.cartId,
-    accountId: opts.session.accountId,
+    accountId: opts.session.account?.id,
+    accountToken: opts.session.account?.token,
     locale: opts.session.locale,
     currency: opts.session.currency,
   };

@@ -19,6 +19,11 @@ export type {
   EpSessionData,
   CreateEpAuthBetterInput as EpAuthConfig,
 } from "./ep-plugin/create-ep-auth-better";
+export {
+  ENVELOPE_LIFETIME_SECONDS,
+  EP_ACCOUNT_TOKEN_HEADER,
+} from "./ep-plugin/envelope";
+export type { EpAccountSlot, EpLapsedAccount } from "./ep-plugin/envelope";
 export { epAuthMiddleware } from "./ep-plugin/middleware";
 export { createEpAuthRoutes } from "./ep-plugin/auth-routes";
 export { createCartRoutes } from "../cart/server-routes";

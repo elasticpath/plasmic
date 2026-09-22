@@ -22,10 +22,9 @@
  */
 import { toNextJsHandler } from "better-auth/next-js";
 import type { EpAuth } from "./create-ep-auth-better";
+import { applyAccountLapse } from "./envelope";
 
-// `token` is deliberately absent: it is the better-auth session id, which
-// lives in an HttpOnly cookie precisely so scripts cannot read it.
-const SESSION_ALLOWLIST = [
+const RELEASED_SESSION_PATHS = [
   "id",
   "userId",
   "expiresAt",
@@ -33,18 +32,53 @@ const SESSION_ALLOWLIST = [
   "updatedAt",
   "epCartId",
   "epExpires",
+  "epMemberId",
+  "epAccount.id",
+  "epAccount.name",
+  "epLapsedAccount.id",
+  "epLapsedAccount.name",
 ];
+
+function readPath(source: any, path: string[]): { found: boolean; value?: unknown } {
+  let cursor = source;
+  for (const segment of path) {
+    if (!cursor || typeof cursor !== "object" || !(segment in cursor)) {
+      return { found: false };
+    }
+    cursor = cursor[segment];
+  }
+  return { found: true, value: cursor };
+}
+
+function writePath(
+  target: Record<string, any>,
+  path: string[],
+  value: unknown
+): void {
+  let cursor = target;
+  for (const segment of path.slice(0, -1)) {
+    if (!cursor[segment] || typeof cursor[segment] !== "object") {
+      cursor[segment] = {};
+    }
+    cursor = cursor[segment];
+  }
+  cursor[path[path.length - 1]] = value;
+}
 
 function redactSessionPayload(payload: any): any {
   if (!payload || typeof payload !== "object") return payload;
-  const session = payload.session;
-  if (!session || typeof session !== "object") return payload;
+  const stored = payload.session;
+  if (!stored || typeof stored !== "object") return payload;
 
-  const kept: Record<string, unknown> = {};
-  for (const key of SESSION_ALLOWLIST) {
-    if (key in session) kept[key] = session[key];
+  const session = applyAccountLapse(stored, Math.floor(Date.now() / 1000));
+
+  const released: Record<string, unknown> = {};
+  for (const entry of RELEASED_SESSION_PATHS) {
+    const path = entry.split(".");
+    const read = readPath(session, path);
+    if (read.found) writePath(released, path, read.value);
   }
-  return { ...payload, session: kept };
+  return { ...payload, session: released };
 }
 
 function withRedaction(

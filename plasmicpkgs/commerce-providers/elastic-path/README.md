@@ -316,8 +316,32 @@ run one on a shared host or against production Elastic Path credentials.
 | POST | `{basePath}/ep/anonymous` | Mint an anonymous session |
 | POST | `{basePath}/ep/refresh` | Rotate the EP token |
 | POST | `{basePath}/ep/cart` | Persist `epCartId` on the session |
-| POST | `{basePath}/ep/account/login` | Persist account fields |
+| POST | `{basePath}/ep/account/login` | Select an account for an account member |
+| POST | `{basePath}/ep/account/logout` | Sign the account member out |
 | GET | `{basePath}/get-session` | Read the session, minus EP credentials |
+
+### Account identity
+
+The session holds the authenticated **account member** and the **selected
+account** — the organisation they are buying for — as two separate facts.
+`isAuthenticated` reports the member, so a member who belongs to no
+organisation reads as signed in. While an account is selected, every `ep.*`
+server function and every cart route carries
+`EP-Account-Management-Authentication-Token`. The checkout-session handlers
+do not yet — they take their own shopper token on `SessionHandlerContext`.
+
+`POST /ep/account/login` takes `{ epMemberId, epAccountId, epAccountToken,
+epAccountExpires }` from Elastic Path's `/v2/account-members/tokens`.
+`epAccountExpires` may be ISO-8601 (what Elastic Path returns) or epoch
+seconds. The account's name comes from Elastic Path's own record, not the
+request.
+
+`get-session` releases `epMemberId`, `epAccount.{id,name}` and
+`epLapsedAccount.{id,name}`. The account credential and its expiry are
+withheld: the response is filtered to an allowlist of **paths**, so a field
+added inside `epAccount` later is withheld by default. `epLapsedAccount`
+states that a selection's credential ran out, rather than reverting the
+shopper to list prices with no signal.
 
 `createCartRoutes(epAuth)` mounts the cart routes:
 
@@ -438,7 +462,7 @@ export default async function PlasmicLoaderPage({ params, searchParams }) {
     session: {
       accessToken: session.session?.accessToken,
       cartId: session.cart?.id ?? undefined,
-      accountId: session.user?.accountId ?? undefined,
+      account: session.session?.account ?? null,
     },
   });
 

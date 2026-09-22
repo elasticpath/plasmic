@@ -32,6 +32,8 @@
  * headers that better-auth's nextCookies() plugin emits.
  */
 import type { EpAuth } from "../auth/ep-plugin/create-ep-auth-better";
+import { accountTokenHeaders } from "../auth/ep-plugin/envelope";
+import type { EpAccountSlot } from "../auth/ep-plugin/envelope";
 import { enforceOriginGate } from "../auth/ep-plugin/origin-gate";
 import { persistCartId } from "../auth/ep-plugin/persist-cart-id";
 import { parseCookieHeader } from "../utils/cookie-header";
@@ -48,6 +50,7 @@ interface SessionShape {
     host: string;
     clientId: string;
     expires: number;
+    account?: EpAccountSlot | null;
   } | null;
   cart: { id: string } | null;
 }
@@ -64,6 +67,7 @@ async function callEp(
       "EP-Inventories-Multi-Location": "true",
       Authorization: `Bearer ${session.accessToken}`,
       ...((init?.headers as Record<string, string>) ?? {}),
+      ...accountTokenHeaders({ accountToken: session.account?.token }),
     },
   });
 }

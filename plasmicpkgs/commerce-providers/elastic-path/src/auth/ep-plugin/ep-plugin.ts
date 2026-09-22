@@ -8,13 +8,25 @@
  * see memory/project_better_auth_stateless_findings.md).
  */
 import { createAuthEndpoint } from "better-auth/api";
-import { setSessionCookie, getCookieCache } from "better-auth/cookies";
+import {
+  setSessionCookie,
+  getCookieCache,
+  SECURE_COOKIE_PREFIX,
+} from "better-auth/cookies";
 import type { BetterAuthPlugin } from "better-auth";
 import {
   DEFAULT_HOST_ALLOWLIST,
   isAllowedEpHost,
   reportRejectedEpHost,
 } from "../host-allowlist";
+import {
+  EP_ACCOUNT_TOKEN_HEADER,
+  applyAccountLapse,
+  clearAccount,
+  envelopeExpiresAt,
+  parseEpExpires,
+  selectAccount,
+} from "./envelope";
 
 export interface EpPluginOptions {
   /**
@@ -121,7 +133,7 @@ function buildAnonymousSnapshot(
     // storefront, and deriving the cookie's session token from them would
     // publish it.
     token: generateAnonymousId(),
-    expiresAt: new Date((now + tokenData.expires_in) * 1000),
+    expiresAt: envelopeExpiresAt(now),
     ipAddress: null,
     userAgent: null,
     createdAt: new Date(),
@@ -145,6 +157,14 @@ function buildAnonymousSnapshot(
  * decryption path the framework uses for `auth.api.getSession`) so
  * `/ep/refresh` can preserve identity across rotations.
  */
+function usesSecureCookies(ctx: any): boolean {
+  const nameBetterAuthChose = ctx?.context?.authCookies?.sessionData?.name;
+  if (typeof nameBetterAuthChose === "string") {
+    return nameBetterAuthChose.startsWith(SECURE_COOKIE_PREFIX);
+  }
+  return Boolean(ctx?.context?.options?.advanced?.useSecureCookies);
+}
+
 async function readExistingSession(ctx: any): Promise<any | null> {
   try {
     // Better-auth's `getCookieCache` decrypts the JWE session_data cookie
@@ -157,7 +177,7 @@ async function readExistingSession(ctx: any): Promise<any | null> {
     const cache = await getCookieCache(headers, {
       secret: ctx.context?.secret,
       strategy: "jwe",
-      isSecure: ctx.context?.options?.useSecureCookies ?? false,
+      isSecure: usesSecureCookies(ctx),
     } as any);
     if (!cache || !(cache as any).session || !(cache as any).user) {
       return null;
@@ -183,23 +203,30 @@ async function verifyEpAccountToken(input: {
   shopperToken: string;
   accountId: string;
   accountToken: string;
-}): Promise<{ canonicalAccountId: string } | null> {
+}): Promise<{
+  canonicalAccountId: string;
+  canonicalAccountName?: string;
+} | null> {
   try {
     const url = `${input.host}/v2/accounts/${encodeURIComponent(input.accountId)}`;
     const res = await fetch(url, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${input.shopperToken}`,
-        "EP-Account-Management-Authentication-Token": input.accountToken,
+        [EP_ACCOUNT_TOKEN_HEADER]: input.accountToken,
       },
     });
     if (!res.ok) return null;
     const body = (await res.json().catch(() => null)) as
-      | { data?: { id?: string } }
+      | { data?: { id?: string; name?: string } }
       | null;
     const id = body?.data?.id;
     if (typeof id !== "string" || !id) return null;
-    return { canonicalAccountId: id };
+    const name = body?.data?.name;
+    return {
+      canonicalAccountId: id,
+      canonicalAccountName: typeof name === "string" ? name : undefined,
+    };
   } catch {
     return null;
   }
@@ -237,14 +264,19 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
           }
 
           // Preserve identity (id, userId, etc.); rotate EP fields only.
-          const session = {
-            ...existing.session,
-            updatedAt: new Date(),
-            epAccessToken: tokenData.access_token,
-            epClientId: clientId,
-            epHost: host,
-            epExpires: tokenData.expires,
-          };
+          const now = Math.floor(Date.now() / 1000);
+          const session = applyAccountLapse(
+            {
+              ...existing.session,
+              updatedAt: new Date(),
+              expiresAt: envelopeExpiresAt(now),
+              epAccessToken: tokenData.access_token,
+              epClientId: clientId,
+              epHost: host,
+              epExpires: tokenData.expires,
+            },
+            now
+          );
           const snap = { user: existing.user, session };
           await setSessionCookie(ctx, snap as any);
           return ctx.json(snap);
@@ -272,6 +304,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
 
           const body = (ctx.body as any) ?? {};
           const {
+            epMemberId,
             epAccountId,
             epAccountToken,
             epAccountExpires,
@@ -279,16 +312,20 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             name,
           } = body;
 
+          const accountExpires = parseEpExpires(epAccountExpires);
+
           if (
+            typeof epMemberId !== "string" ||
+            !epMemberId ||
             typeof epAccountId !== "string" ||
             typeof epAccountToken !== "string" ||
-            typeof epAccountExpires !== "number"
+            accountExpires === null
           ) {
             return new Response(
               JSON.stringify({
                 error: "invalid_input",
                 message:
-                  "Body must include { epAccountId, epAccountToken, epAccountExpires } from EP /v2/account-members/tokens.",
+                  "Body must include { epMemberId, epAccountId, epAccountToken, epAccountExpires } from EP /v2/account-members/tokens. epAccountExpires may be ISO-8601 or epoch seconds.",
               }),
               {
                 status: 400,
@@ -333,16 +370,18 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             updatedAt: new Date(),
           };
 
-          const session = {
-            ...existing.session,
-            updatedAt: new Date(),
-            // Trust EP's canonical id from the verification response over
-            // whatever the caller claimed. Even if the body and EP agree,
-            // taking the canonical value keeps a single source of truth.
-            epAccountId: verified.canonicalAccountId,
-            epAccountToken,
-            epAccountExpires,
-          };
+          const session = selectAccount(
+            { ...existing.session, updatedAt: new Date() },
+            {
+              memberId: epMemberId,
+              account: {
+                id: verified.canonicalAccountId,
+                name: verified.canonicalAccountName,
+                token: epAccountToken,
+                expires: accountExpires,
+              },
+            }
+          );
 
           await setSessionCookie(ctx, { session, user } as any);
           return ctx.json({ user, session });
@@ -378,10 +417,10 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             name: "Anonymous Shopper",
             updatedAt: new Date(),
           };
-          const session = { ...existing.session, updatedAt: new Date() };
-          delete (session as any).epAccountId;
-          delete (session as any).epAccountToken;
-          delete (session as any).epAccountExpires;
+          const session = clearAccount({
+            ...existing.session,
+            updatedAt: new Date(),
+          });
 
           await setSessionCookie(ctx, { session, user } as any);
           return ctx.json({ user, session });
