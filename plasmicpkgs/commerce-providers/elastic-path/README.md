@@ -316,7 +316,9 @@ run one on a shared host or against production Elastic Path credentials.
 | POST | `{basePath}/ep/anonymous` | Mint an anonymous session |
 | POST | `{basePath}/ep/refresh` | Rotate the EP token |
 | POST | `{basePath}/ep/cart` | Persist `epCartId` on the session |
-| POST | `{basePath}/ep/account/login` | Select an account for an account member |
+| POST | `{basePath}/ep/account/login` | Sign an account member in |
+| POST | `{basePath}/ep/account/roster` | Read the accounts the member belongs to |
+| POST | `{basePath}/ep/account/select` | Select or deselect the account being bought for |
 | POST | `{basePath}/ep/account/logout` | Sign the account member out |
 | GET | `{basePath}/get-session` | Read the session, minus EP credentials |
 
@@ -330,11 +332,41 @@ server function and every cart route carries
 `EP-Account-Management-Authentication-Token`. The checkout-session handlers
 do not yet — they take their own shopper token on `SessionHandlerContext`.
 
-`POST /ep/account/login` takes `{ epMemberId, epAccountId, epAccountToken,
-epAccountExpires }` from Elastic Path's `/v2/account-members/tokens`.
-`epAccountExpires` may be ISO-8601 (what Elastic Path returns) or epoch
-seconds. The account's name comes from Elastic Path's own record, not the
-request.
+`POST /ep/account/login` takes `{ username, password }`. The server calls
+Elastic Path's `/v2/account-members/tokens` itself, so no Elastic Path
+credential is ever in the browser. It answers with the roster —
+`{ accounts: [{ id, name }], total }` — alongside the session, so a chooser
+renders with no second call.
+
+Selection follows from the count. Exactly one account and the member is placed
+in it; several and **none** is chosen for them; none at all and the member is
+signed in anyway, authenticated but permanently unscoped.
+
+`POST /ep/account/roster` reads the same list later in the session, taking
+`{ limit?, offset? }`. Elastic Path caps a page at 100 and this forwards that
+cap rather than imposing a smaller one, so a member in more accounts than one
+page holds can still reach any of them. `total` is Elastic Path's own count.
+
+`POST /ep/account/select` takes `{ accountId }`, or `{ accountId: null }` to
+deselect. It re-mints the account credential first, then tears down any
+checkout session and clears the cart pointer, and writes the new account last —
+so a switch that fails leaves the previous selection exactly as it was.
+Selecting the account already selected does nothing at all. No password is
+needed: re-minting runs off the credential the session already holds.
+
+The account credential is re-minted while it has less than an hour left,
+without the shopper noticing. A shopper idle long enough for it to run out is
+reported as lapsed rather than quietly returned to list prices.
+
+The older `{ epMemberId, epAccountId, epAccountToken, epAccountExpires }` body
+still works and still verifies the supplied token against Elastic Path. It is
+removed in the breaking release.
+
+**A store whose authentication realm carries more than one password profile
+must pass `passwordProfileId` to `createEpAuth`.** Nothing in a profile record
+marks a default, and signing in against the wrong one fails with Elastic Path's
+own `authentication failed`, which says nothing about profiles. With one
+profile the package finds it.
 
 `get-session` releases `epMemberId`, `epAccount.{id,name}` and
 `epLapsedAccount.{id,name}`. The account credential and its expiry are

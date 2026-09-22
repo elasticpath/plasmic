@@ -32,6 +32,7 @@ import {
 } from "./production-guard";
 import {
   ENVELOPE_LIFETIME_SECONDS,
+  accountNeedsRoll,
   applyAccountLapse,
   readEnvelopeAccount,
 } from "./envelope";
@@ -65,6 +66,12 @@ export interface CreateEpAuthBetterInput {
   resolveConfig?: () => Promise<
     { clientId?: string; host?: string } | null | undefined
   >;
+  /**
+   * The password profile account members sign in against. Discovered from the
+   * store when omitted; required when the store's authentication realm carries
+   * more than one, because nothing marks one of them as the default.
+   */
+  passwordProfileId?: string;
 }
 
 function defaultTrustedOrigins(baseURL: string): string[] {
@@ -228,6 +235,7 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
         host: input.host,
         hostAllowlist: input.hostAllowlist,
         resolveConfig: input.resolveConfig,
+        passwordProfileId: input.passwordProfileId,
       }),
       // `nextCookies()` MUST be the last plugin in the array per
       // better-auth's docs. It auto-forwards Set-Cookie headers from
@@ -329,6 +337,31 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
           }
           // If refresh fails (e.g. EP outage), fall through with the
           // near-expiry session — better than failing the page render.
+        }
+
+        // Roll the account token while the shopper is active. Rolling
+        // reaches only sessions making calls, so an idle shopper still lapses
+        // — which the lapse states rather than hides.
+        if (
+          accountNeedsRoll(
+            session?.session?.epAccount ?? null,
+            Math.floor(Date.now() / 1000)
+          )
+        ) {
+          const carriedCookies = pendingSetCookies.length
+            ? cookieHeaderFromSetCookies(pendingSetCookies)
+            : cookiesToHeader(req.cookies);
+          const rollResponse = await (auth.api as any).epAccountRoll({
+            body: {},
+            headers: new Headers({ cookie: carriedCookies }),
+            asResponse: true,
+          });
+          if (rollResponse.ok) {
+            for (const c of extractSetCookies(rollResponse)) {
+              pendingSetCookies.push(c);
+            }
+            session = await rollResponse.json();
+          }
         }
 
         const epSession = session?.session ?? null;

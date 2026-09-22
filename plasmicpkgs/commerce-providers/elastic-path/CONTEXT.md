@@ -139,18 +139,19 @@ The organisation the account member is currently acting for, chosen from the
 accounts their membership grants. Determines account scope on every Elastic
 Path call. Auto-selected only when the member belongs to exactly one.
 
-**Account roster** *(not yet built)*:
+**Account roster**:
 The member's accounts as `{id, name}`, derived from the token response,
 paginated, never carrying tokens to the browser. Distinct from the token list
 precisely because it is what survives the server stripping credentials off it.
+Sign-in returns it, and `epAccountRoster` reads it again later.
 _Avoid_: account list
 
-**Anchor token** *(slot built, nothing mints one yet)*:
+**Anchor token**:
 An account token held only to keep re-minting possible while no account is
 selected. Never sent; not evidence of a selection. Mutually exclusive with the
 selected account's token, so an unselected session cannot send an account
-header. The envelope carries the slot and `holdAnchorToken` writes it; the
-account switch that mints one is still to come.
+header. Signing in as a member of several accounts mints one, and deselecting
+demotes the selected account's token into it.
 _Avoid_: default account token
 
 **Account switch**:

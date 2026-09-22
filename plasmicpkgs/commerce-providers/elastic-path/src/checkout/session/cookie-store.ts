@@ -12,8 +12,9 @@ import type {
   SessionRequest,
   SessionSetResult,
 } from "./types";
+import { CHECKOUT_SESSION_COOKIE_NAME } from "./cookie-name";
 
-const COOKIE_NAME = "ep_checkout_session";
+const COOKIE_NAME = CHECKOUT_SESSION_COOKIE_NAME;
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12; // 96-bit IV recommended for GCM
 const AUTH_TAG_LENGTH = 16;
