@@ -3,6 +3,13 @@ export const ENVELOPE_LIFETIME_SECONDS = 60 * 60 * 24 * 7;
 export const EP_ACCOUNT_TOKEN_HEADER =
   "EP-Account-Management-Authentication-Token";
 
+/**
+ * Re-mint the account token once it has less than this left. It is the
+ * implicit token's own fixed lifetime — the one interval the platform already
+ * forces on this package — rather than a number chosen here.
+ */
+export const ACCOUNT_ROLL_THRESHOLD_SECONDS = 3600;
+
 export function envelopeExpiresAt(nowSeconds: number): Date {
   return new Date((nowSeconds + ENVELOPE_LIFETIME_SECONDS) * 1000);
 }
@@ -64,6 +71,15 @@ export function selectAccount<T extends object>(
   return next;
 }
 
+export function identifyMember<T extends object>(
+  session: T,
+  memberId: string
+): WithAccountFields<T> {
+  const next = withoutAccountSlots(session);
+  next.epMemberId = memberId;
+  return next;
+}
+
 export function holdAnchorToken<T extends object>(
   session: T,
   input: { memberId: string; anchor: EpAnchorTokenSlot }
@@ -98,6 +114,15 @@ export function applyAccountLapse<T extends object>(
     return withoutAccountSlots(session);
   }
   return current;
+}
+
+export function accountNeedsRoll(
+  account: EpAccountSlot | null | undefined,
+  nowSeconds: number
+): boolean {
+  if (!account) return false;
+  const remaining = account.expires - nowSeconds;
+  return remaining > 0 && remaining < ACCOUNT_ROLL_THRESHOLD_SECONDS;
 }
 
 export function readEnvelopeAccount(session: object | null | undefined): {

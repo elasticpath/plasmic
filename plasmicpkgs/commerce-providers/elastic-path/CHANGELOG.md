@@ -33,6 +33,41 @@ otherwise have stayed list-priced while every other call was account-scoped.
 whole fields, so the account credential and its expiry stay out of the page
 while the organisation's id and name are readable.
 
+`POST /ep/account/login` takes `{ username, password }` and mints the account
+credential on the server, so no Elastic Path credential passes through the
+browser at any point in the flow. It answers with the roster —
+`{ accounts: [{ id, name }], total }` — so a chooser renders with no second
+call. A member of exactly one organisation is placed in it; a member of
+several has none chosen for them; a member of none signs in successfully,
+authenticated but unscoped.
+
+`POST /ep/account/roster` reads the same list later in the session, forwarding
+Elastic Path's own `limit`, `offset` and total rather than imposing a ceiling
+of its own, so a member in more organisations than one page holds can still
+reach any of them.
+
+`POST /ep/account/select` switches organisation without a password.
+It re-mints first, then tears down any checkout session and clears the cart
+pointer, and writes the new selection last — a switch that fails changes
+nothing. Selecting the organisation already selected is a no-op, and
+`{ accountId: null }` deselects by demoting the credential to the anchor.
+
+The account credential is re-minted while it has under an hour left, with
+nothing visible to the shopper. Rolling reaches only sessions making calls, so
+an idle shopper still lapses — which `epLapsedAccount` states as a fact, and
+which roster and select report as `account_lapsed` rather than presenting a
+dead credential to Elastic Path.
+
+The checkout session torn down on a switch is `CookieSessionStore`'s. A
+consumer-supplied `SessionStore` is out of the auth handler's reach and must be
+cleared by the consumer.
+
+`passwordProfileId` on `createEpAuth` names the password profile members sign
+in against. The package discovers it when the store's authentication realm
+carries exactly one; a realm with several is reported rather than guessed at,
+because signing in against the wrong profile fails with Elastic Path's own
+`authentication failed`.
+
 `ENVELOPE_LIFETIME_SECONDS` and `EP_ACCOUNT_TOKEN_HEADER`, plus the
 `EpAccountSlot`, `EpLapsedAccount`, `EpSessionData` and
 `BuildEpCtxAccountInput` types, are exported from `/server`.
@@ -48,9 +83,11 @@ reads `session.accountId`. Catchall pages pass
 `account: session.session?.account ?? null` in place of
 `accountId: session.user?.accountId`, which was never populated.
 
-`POST /ep/account/login` requires `epMemberId` and writes the grouped account
-shape. The flat `epAccountId` / `epAccountToken` / `epAccountExpires` session
-fields are gone.
+`POST /ep/account/login` writes the grouped account shape. The flat
+`epAccountId` / `epAccountToken` / `epAccountExpires` session fields are gone.
+The older client-supplied-token body still works, still requires `epMemberId`
+and still verifies the token against Elastic Path; it is removed in the
+breaking release.
 
 ### Fixed
 

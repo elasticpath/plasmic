@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  ACCOUNT_ROLL_THRESHOLD_SECONDS,
   EP_ACCOUNT_TOKEN_HEADER,
   ENVELOPE_LIFETIME_SECONDS,
+  accountNeedsRoll,
   accountTokenHeaders,
   applyAccountLapse,
   clearAccount,
   holdAnchorToken,
+  identifyMember,
   parseEpExpires,
   readEnvelopeAccount,
   selectAccount,
@@ -271,5 +274,50 @@ describe("accountTokenHeaders", () => {
 describe("ENVELOPE_LIFETIME_SECONDS", () => {
   it("matches the cart's seven-day clock, not better-auth's five minutes", () => {
     expect(ENVELOPE_LIFETIME_SECONDS).toBe(60 * 60 * 24 * 7);
+  });
+});
+
+describe("identifyMember", () => {
+  it("signs the member in with no account and no credential", () => {
+    const next = identifyMember(BASE, "member-1");
+    expect(next.epMemberId).toBe("member-1");
+    expect(next.epAccount).toBeUndefined();
+    expect(next.epAnchorToken).toBeUndefined();
+  });
+
+  it("drops a prior selection, so re-authenticating cannot inherit one", () => {
+    const selected = selectAccount(BASE, {
+      memberId: "member-1",
+      account: ACCOUNT,
+    });
+    const next = identifyMember(selected, "member-2");
+    expect(next.epMemberId).toBe("member-2");
+    expect(next.epAccount).toBeUndefined();
+    expect(JSON.stringify(next)).not.toContain(ACCOUNT.token);
+  });
+});
+
+describe("accountNeedsRoll", () => {
+  it("rolls inside the implicit token's own lifetime", () => {
+    expect(
+      accountNeedsRoll({ ...ACCOUNT, expires: NOW + 3599 }, NOW)
+    ).toBe(true);
+  });
+
+  it("leaves a token with more than that remaining alone", () => {
+    expect(
+      accountNeedsRoll(
+        { ...ACCOUNT, expires: NOW + ACCOUNT_ROLL_THRESHOLD_SECONDS + 1 },
+        NOW
+      )
+    ).toBe(false);
+  });
+
+  it("does not roll an expired token, which no longer mints anything", () => {
+    expect(accountNeedsRoll({ ...ACCOUNT, expires: NOW }, NOW)).toBe(false);
+  });
+
+  it("has nothing to roll with no account selected", () => {
+    expect(accountNeedsRoll(null, NOW)).toBe(false);
   });
 });

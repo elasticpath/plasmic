@@ -58,6 +58,8 @@ const SESSION_RETURNING_ROUTES = [
   ["POST", "/api/ep/ep/refresh"],
   ["POST", "/api/ep/ep/account/login"],
   ["POST", "/api/ep/ep/account/logout"],
+  ["POST", "/api/ep/ep/account/select"],
+  ["POST", "/api/ep/ep/account/roll"],
   ["POST", "/api/ep/ep/cart"],
 ] as const;
 
@@ -81,6 +83,41 @@ describe("createEpAuthRoutes", () => {
       expect(session.epHost).toBeUndefined();
     }
   );
+
+  it("withholds the anchor token, which is a credential and not a selection", async () => {
+    nextResponse = jsonResponse({
+      session: {
+        ...SESSION_BODY.session,
+        epAccount: undefined,
+        epAnchorToken: { token: ANCHOR_TOKEN, expires: 1786630149 },
+      },
+      user: SESSION_BODY.user,
+    });
+
+    const res = await routes().POST(
+      req("/api/ep/ep/account/login", "POST")
+    );
+    const text = await res.text();
+
+    expect(text).not.toContain(ANCHOR_TOKEN);
+    expect(JSON.parse(text).session.epMemberId).toBe("member-1");
+  });
+
+  it("passes the account roster through, which carries no credential", async () => {
+    nextResponse = jsonResponse({
+      ...SESSION_BODY,
+      accounts: [{ id: "acct-1", name: "Acme Industrial" }],
+      total: 1,
+    });
+
+    const res = await routes().POST(
+      req("/api/ep/ep/account/login", "POST")
+    );
+    const body = JSON.parse(await res.text());
+
+    expect(body.accounts).toEqual([{ id: "acct-1", name: "Acme Industrial" }]);
+    expect(body.total).toBe(1);
+  });
 
   it("withholds unknown session fields by default", async () => {
     nextResponse = jsonResponse({
