@@ -4,13 +4,16 @@
  * Powered by better-auth via `epAuth.handler` (the underlying betterAuth
  * instance from `createBetterEpAuth`). Exposes:
  *
- *   POST /api/ep/ep/anonymous       → mint anonymous session
- *   POST /api/ep/ep/refresh         → rotate EP token
- *   POST /api/ep/ep/cart            → set epCartId on session
- *   POST /api/ep/ep/account/login   → persist account fields
- *   POST /api/ep/ep/account/logout  → strip account fields
- *   GET  /api/ep/get-session        → read current session, minus the
- *                                     shopper's EP credentials
+ *   POST /api/ep/ep/anonymous        → mint anonymous session
+ *   POST /api/ep/ep/refresh          → rotate EP token
+ *   POST /api/ep/ep/cart             → set epCartId on session
+ *   POST /api/ep/ep/account/login    → sign an account member in
+ *   POST /api/ep/ep/account/roster   → read the accounts they belong to
+ *   POST /api/ep/ep/account/select   → select or deselect an account
+ *   POST /api/ep/ep/account/roll     → re-mint the account credential
+ *   POST /api/ep/ep/account/logout   → sign the account member out
+ *   GET  /api/ep/get-session         → read current session, minus the
+ *                                      shopper's EP credentials
  *
  * The legacy `withEpProviderHeaders` wrapper is no longer needed — the
  * `resolveConfig` callback inside `lib/ep-auth.ts` pulls clientId/host
