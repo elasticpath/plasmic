@@ -323,6 +323,95 @@ run one on a shared host or against production Elastic Path credentials.
 | POST | `{basePath}/ep/account/logout` | Sign the account member out |
 | GET | `{basePath}/get-session` | Read the session, minus EP credentials |
 
+Call these through the identity client rather than by hand. The table is the
+contract the client is built from, not an instruction to write `fetch`.
+
+### The identity client
+
+`useEpIdentity()` gives a component the identity operations as methods. It
+passes no URL and no base path, so a component cannot get identity wrong by
+configuring it wrong:
+
+```tsx
+import { useEpIdentity } from "@elasticpath/plasmic-ep-commerce-elastic-path";
+
+function SignIn() {
+  const identity = useEpIdentity();
+
+  async function signIn(username: string, password: string) {
+    const { session, accounts } = await identity.login({ username, password });
+    // A member of exactly one account is already placed in it. A member of
+    // several has nothing selected, and chooses.
+    if (session.epAccount) return null;
+    return accounts;
+  }
+
+  async function chooseAccount(accountId: string) {
+    await identity.selectAccount({ accountId });
+  }
+  ...
+}
+```
+
+| Method | Argument | Resolves to |
+|--------|----------|-------------|
+| `getSession()` | — | the session, or `null` |
+| `signInAnonymously()` | — | the session |
+| `refresh()` | — | the session |
+| `setCart({ cartId })` | cart id | the session |
+| `login({ username, password, name? })` | credentials | the session, plus the member's organisations |
+| `roster({ limit?, offset? })` | paging | one page of organisations |
+| `selectAccount({ accountId })` | organisation id, or `null` to deselect | the session |
+| `rollAccount()` | — | the session |
+| `logout()` | — | the session |
+
+Arguments and results are one declaration, which the endpoints are typed
+against: renaming a field a method reads is a compile error in the handler,
+and calling a method wrongly is a compile error at the call site. The session
+each method resolves to is checked against the allowlist the handler filters
+every response through, so no method can be typed as returning an Elastic
+Path credential.
+
+A refused operation throws, carrying the server's own reason:
+
+```ts
+import { epIdentityErrorCode } from "@elasticpath/plasmic-ep-commerce-elastic-path";
+
+try {
+  await identity.roster();
+} catch (err) {
+  if (epIdentityErrorCode(err) === "account_lapsed") {
+    // Tell the shopper their account access ran out, rather than
+    // showing them list prices with no signal.
+  }
+}
+```
+
+**Outside React**, `createEpIdentityClient({ basePath })` builds the same
+client.
+
+**If you mounted the handler somewhere other than `/api/ep`**, hand the page
+the mount path once and the client finds it — `providerProps()` carries it,
+and the shopper context is where the client reads it from:
+
+```tsx
+<PlasmicRootProvider
+  loader={PLASMIC}
+  prefetchedData={plasmicData}
+  globalContextsProps={{ shopperContextProps: session.providerProps() }}
+>
+```
+
+`providerProps()` is serialized into the page HTML, so it carries the mount
+path and nothing else.
+
+**In the Studio canvas** the client stays relative, which resolves against the
+document serving the artboard — the consumer's own app, holding the shopper's
+cookies, with no CORS involved. It honours `window.__epProxyOrigin` so it
+agrees with the server-function client about where the consumer's app is, but
+reaching the auth handler across origins would also need that handler to
+reflect CORS with credentials, and it does not.
+
 ### Account identity
 
 The session holds the authenticated **account member** and the **selected

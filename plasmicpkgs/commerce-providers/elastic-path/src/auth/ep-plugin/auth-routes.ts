@@ -23,21 +23,30 @@
 import { toNextJsHandler } from "better-auth/next-js";
 import type { EpAuth } from "./create-ep-auth-better";
 import { applyAccountLapse } from "./envelope";
+import type { EpEnvelopeAccountFields } from "./envelope";
+import { RELEASED_SESSION_PATHS } from "../../identity/session-shape";
+import type { ReleasedSessionPath } from "../../identity/session-shape";
 
-const RELEASED_SESSION_PATHS = [
-  "id",
-  "userId",
-  "expiresAt",
-  "createdAt",
-  "updatedAt",
-  "epCartId",
-  "epExpires",
-  "epMemberId",
-  "epAccount.id",
-  "epAccount.name",
-  "epLapsedAccount.id",
-  "epLapsedAccount.name",
-];
+// The account slots carry the credential beside the id and name, so a
+// released path that no longer names a stored field would rot silently.
+type AccountGroupPath = Extract<
+  ReleasedSessionPath,
+  `epAccount.${string}` | `epLapsedAccount.${string}` | "epMemberId"
+>;
+
+type StoredAccountPath = {
+  [K in keyof EpEnvelopeAccountFields & string]-?: NonNullable<
+    EpEnvelopeAccountFields[K]
+  > extends object
+    ? `${K}.${keyof NonNullable<EpEnvelopeAccountFields[K]> & string}`
+    : K;
+}[keyof EpEnvelopeAccountFields & string];
+
+type AssertEmpty<T extends never> = T;
+
+export type AssertEveryReleasedAccountPathIsStored = AssertEmpty<
+  Exclude<AccountGroupPath, StoredAccountPath>
+>;
 
 function readPath(source: any, path: string[]): { found: boolean; value?: unknown } {
   let cursor = source;

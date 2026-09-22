@@ -14,6 +14,7 @@ import { Registerable } from "../../registerable";
 import { useEpCommerce } from "../../shopper-context/EpCommerceContext";
 import { getCartIdFromSession } from "../../cart/cart-session";
 import { useShopperFetch } from "../../shopper-context/useShopperFetch";
+import { useShopperContext } from "../../shopper-context/useShopperContext";
 import { useEpCart } from "../../cart-provider/use-ep-cart";
 import { createLogger } from "../../utils/logger";
 
@@ -287,6 +288,7 @@ function EPPromoCodeInputClient(props: EPPromoCodeInputProps) {
 
   const commerce = useEpCommerce();
   const client = commerce?.client;
+  const { basePath } = useShopperContext();
 
   const [code, setCode] = useState("");
   const [state, setState] = useState<PromoState>("idle");
@@ -302,7 +304,7 @@ function EPPromoCodeInputClient(props: EPPromoCodeInputProps) {
     setErrorMessage(null);
 
     try {
-      const cartId = await getCartIdFromSession();
+      const cartId = await getCartIdFromSession(basePath);
       if (!cartId) {
         throw new Error("No cart found");
       }
@@ -334,7 +336,7 @@ function EPPromoCodeInputClient(props: EPPromoCodeInputProps) {
       log.warn("Promo code failed", { code: trimmed, error: msg } as Record<string, unknown>);
       onError?.(msg);
     }
-  }, [code, client, onApply, onError]);
+  }, [code, client, basePath, onApply, onError]);
 
   const handleRemove = useCallback(async () => {
     if (!appliedCode) return;
@@ -342,7 +344,7 @@ function EPPromoCodeInputClient(props: EPPromoCodeInputProps) {
     setState("loading");
 
     try {
-      const cartId = await getCartIdFromSession();
+      const cartId = await getCartIdFromSession(basePath);
       if (!cartId) {
         throw new Error("No cart found");
       }
@@ -364,7 +366,7 @@ function EPPromoCodeInputClient(props: EPPromoCodeInputProps) {
       setErrorMessage(msg);
       log.warn("Promo code remove failed", { error: msg } as Record<string, unknown>);
     }
-  }, [appliedCode, client, onRemove]);
+  }, [appliedCode, client, basePath, onRemove]);
 
   return (
     <EPPromoCodeInputUI
