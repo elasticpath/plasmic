@@ -133,10 +133,6 @@ function buildAnonymousSnapshot(
     // storefront, and deriving the cookie's session token from them would
     // publish it.
     token: generateAnonymousId(),
-    // The envelope runs on the cart clock, not the EP token's fixed
-    // hour. `epExpires` below carries the token's own lifetime, and
-    // `isNearExpiry` rotates it through /ep/refresh while the envelope
-    // — and the cart it points at — stays alive.
     expiresAt: envelopeExpiresAt(now),
     ipAddress: null,
     userAgent: null,
@@ -161,20 +157,10 @@ function buildAnonymousSnapshot(
  * decryption path the framework uses for `auth.api.getSession`) so
  * `/ep/refresh` can preserve identity across rotations.
  */
-/**
- * Whether better-auth is writing `__Secure-`-prefixed cookies for this
- * instance. It decides that from `advanced.useSecureCookies`, the
- * baseURL's protocol and NODE_ENV, then bakes the answer into the cookie
- * name — so the name it chose is the only reliable source. Reading
- * `options.useSecureCookies` (it lives under `options.advanced`) yields
- * `undefined` every time, and `getCookieCache` composes exactly one name
- * with no unprefixed fallback, so guessing wrong returns no session at
- * all on every HTTPS deployment.
- */
 function usesSecureCookies(ctx: any): boolean {
-  const name = ctx?.context?.authCookies?.sessionData?.name;
-  if (typeof name === "string") {
-    return name.startsWith(SECURE_COOKIE_PREFIX);
+  const nameBetterAuthChose = ctx?.context?.authCookies?.sessionData?.name;
+  if (typeof nameBetterAuthChose === "string") {
+    return nameBetterAuthChose.startsWith(SECURE_COOKIE_PREFIX);
   }
   return Boolean(ctx?.context?.options?.advanced?.useSecureCookies);
 }
@@ -283,9 +269,6 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             {
               ...existing.session,
               updatedAt: new Date(),
-              // Rolling on use, on the cart's clock — carts expire seven
-              // days after their last update, and a shopper still making
-              // calls has not abandoned their basket.
               expiresAt: envelopeExpiresAt(now),
               epAccessToken: tokenData.access_token,
               epClientId: clientId,
@@ -329,9 +312,6 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             name,
           } = body;
 
-          // Elastic Path returns the expiry as ISO-8601; the envelope
-          // stores epoch seconds so a lapse is a comparison rather than
-          // a date parse at every read.
           const accountExpires = parseEpExpires(epAccountExpires);
 
           if (
@@ -390,10 +370,6 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             updatedAt: new Date(),
           };
 
-          // Trust EP's canonical id and name from the verification
-          // response over whatever the caller claimed. Even if the body
-          // and EP agree, taking the canonical value keeps a single
-          // source of truth.
           const session = selectAccount(
             { ...existing.session, updatedAt: new Date() },
             {

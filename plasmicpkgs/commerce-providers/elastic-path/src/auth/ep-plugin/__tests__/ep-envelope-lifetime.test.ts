@@ -1,17 +1,3 @@
-/**
- * The envelope's lifetime and its own cookie name.
- *
- * Two defects meet here. The envelope fell back to better-auth's
- * 300-second `cookieCache` default while the cart it points at lives
- * seven days, and every HTTPS deployment wrote `__Secure-`-prefixed
- * cookies it then looked up unprefixed — so `/ep/refresh`, account set,
- * account clear and cart-id persist all read nothing in production and
- * everything on `http://localhost`.
- *
- * These run against a real better-auth instance with a real cookie
- * round-trip, because both defects live in the gap between what
- * better-auth writes and what the plugin reads.
- */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { betterAuth } from "better-auth";
 import { epPlugin } from "../ep-plugin";
@@ -47,11 +33,6 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-/**
- * `createEpAuth` is the thing consumers call, and the session options it
- * passes are exactly what this file is asserting — so build the same
- * better-auth instance it does rather than a hand-written one.
- */
 function buildAuth(baseURL: string) {
   return betterAuth({
     secret: SECRET,
@@ -185,9 +166,6 @@ describe("an HTTPS deployment reads its own session cookie", () => {
       })
     );
 
-    // Before the fix the prefixed cookie was invisible, so refresh fell
-    // through to "no prior session" and minted a brand new identity —
-    // silently dropping the cart pointer with it.
     expect((await refreshed.json()).user.id).toBe(mintedUserId);
   });
 

@@ -33,7 +33,6 @@ vi.mock("../../../ep-server-functions/getCart", () => ({
 const { createEpProxyRoutes } = await import("../proxy-routes");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const cartMutations = await import("../../../ep-server-functions/cart-mutations");
-// `vi.mock` is hoisted above these, so the static imports see the mock.
 import { epGetCart } from "../../../ep-server-functions/getCart";
 import { getCurrentEpSession } from "../../../ep-server-functions/session-context";
 
@@ -346,7 +345,6 @@ describe("createEpProxyRoutes account scope", () => {
     );
   }
 
-  /** The session the dispatched function actually reads. */
   async function sessionSeenBy(sessionAccount: unknown) {
     const seen: any[] = [];
     (epGetCart as any).mockImplementation(async () => {

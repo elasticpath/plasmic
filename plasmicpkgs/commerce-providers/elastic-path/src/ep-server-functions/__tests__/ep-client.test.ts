@@ -1,8 +1,3 @@
-/**
- * The account-management header is attached in one place — the server
- * client builder — so every `ep.*` function carries the selected
- * organisation's credential without any function opting in.
- */
 const interceptors: Array<
   (request: Request, options: unknown) => Promise<Request>
 > = [];

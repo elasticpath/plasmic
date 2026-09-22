@@ -30,7 +30,6 @@ const SESSION_BODY = {
       id: "acct-1",
       name: "Acme Industrial",
       token: ACCOUNT_TOKEN,
-      // Live: an expiry in the past would lapse, which other cases cover.
       expires: Math.floor(Date.now() / 1000) + 3600,
     },
     epCartId: CART_ID,
@@ -135,10 +134,6 @@ describe("createEpAuthRoutes", () => {
   });
 
   it("states the lapse to the page, rather than the selection that ran out", async () => {
-    // The page reads this route, not `api.getSession`. Reporting the
-    // stored selection here would show the shopper an organisation whose
-    // credential is dead — and since `epAccount.expires` is withheld, the
-    // page has no way to work that out for itself.
     nextResponse = jsonResponse({
       session: {
         id: "sess-1",

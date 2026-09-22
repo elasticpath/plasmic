@@ -24,16 +24,7 @@ import { toNextJsHandler } from "better-auth/next-js";
 import type { EpAuth } from "./create-ep-auth-better";
 import { applyAccountLapse } from "./envelope";
 
-// Entries are dot-delimited PATHS, not field names. The account
-// credential lives inside `epAccount` alongside the organisation's id
-// and name, so allowlisting the field would release the credential with
-// it; naming paths releases the two readable values and nothing else.
-//
-// `token` is deliberately absent: it is the better-auth session id, which
-// lives in an HttpOnly cookie precisely so scripts cannot read it.
-// `epAccount.expires` is withheld too — it is a credential's timestamp,
-// and rolling on use makes it close to meaningless anyway.
-const SESSION_ALLOWLIST = [
+const RELEASED_SESSION_PATHS = [
   "id",
   "userId",
   "expiresAt",
@@ -76,22 +67,18 @@ function writePath(
 
 function redactSessionPayload(payload: any): any {
   if (!payload || typeof payload !== "object") return payload;
-  const raw = payload.session;
-  if (!raw || typeof raw !== "object") return payload;
+  const stored = payload.session;
+  if (!stored || typeof stored !== "object") return payload;
 
-  // Lapse before filtering, not after: the page reads this route rather
-  // than `api.getSession`, and `epAccount.expires` is withheld — so a
-  // stale selection reported here is one the page cannot possibly work
-  // out is dead.
-  const session = applyAccountLapse(raw, Math.floor(Date.now() / 1000));
+  const session = applyAccountLapse(stored, Math.floor(Date.now() / 1000));
 
-  const kept: Record<string, unknown> = {};
-  for (const entry of SESSION_ALLOWLIST) {
+  const released: Record<string, unknown> = {};
+  for (const entry of RELEASED_SESSION_PATHS) {
     const path = entry.split(".");
     const read = readPath(session, path);
-    if (read.found) writePath(kept, path, read.value);
+    if (read.found) writePath(released, path, read.value);
   }
-  return { ...payload, session: kept };
+  return { ...payload, session: released };
 }
 
 function withRedaction(

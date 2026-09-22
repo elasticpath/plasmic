@@ -67,9 +67,6 @@ async function callEp(
       "EP-Inventories-Multi-Location": "true",
       Authorization: `Bearer ${session.accessToken}`,
       ...((init?.headers as Record<string, string>) ?? {}),
-      // These routes reach Elastic Path directly rather than through
-      // `buildEpClient`, so account scope has to be attached here too.
-      // Last, so a caller's own headers cannot displace it.
       ...accountTokenHeaders({ accountToken: session.account?.token }),
     },
   });

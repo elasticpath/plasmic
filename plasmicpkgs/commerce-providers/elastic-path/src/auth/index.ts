@@ -23,9 +23,6 @@ export {
   ENVELOPE_LIFETIME_SECONDS,
   EP_ACCOUNT_TOKEN_HEADER,
 } from "./ep-plugin/envelope";
-// `EpAnchorTokenSlot` is deliberately not published: no exported type
-// references it, and the anchor is a credential the storefront never
-// handles. It can be added when something needs it.
 export type { EpAccountSlot, EpLapsedAccount } from "./ep-plugin/envelope";
 export { epAuthMiddleware } from "./ep-plugin/middleware";
 export { createEpAuthRoutes } from "./ep-plugin/auth-routes";

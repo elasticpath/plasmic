@@ -106,15 +106,8 @@ export interface EpSessionData {
   expires: number;
   clientId: string;
   host: string;
-  /** The authenticated account member, when one has signed in. */
   memberId?: string;
-  /**
-   * The organisation the member is acting for, with the credential that
-   * acts for it. Null when no organisation is selected — including when
-   * the member holds an anchor token, which is never surfaced here.
-   */
   account: EpAccountSlot | null;
-  /** A selection whose credential ran out, stated rather than inferred. */
   lapsedAccount: EpLapsedAccount | null;
 }
 
@@ -244,9 +237,6 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
       nextCookies(),
     ],
     session: {
-      // Both clocks, explicitly. `cookieCache.maxAge` left unset falls
-      // back to better-auth's 300 seconds — an envelope 2,000× shorter
-      // than the seven-day cart it holds the only handle to.
       expiresIn: ENVELOPE_LIFETIME_SECONDS,
       cookieCache: {
         enabled: true,
@@ -344,12 +334,6 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
         const epSession = session?.session ?? null;
         const epUser = session?.user ?? null;
 
-        // Lapse on read, not only when a rotation happens to run. The
-        // envelope now lives seven days and only a near-expiry shopper
-        // token triggers a refresh, so reporting the stored selection
-        // would keep attaching a dead credential to every call and
-        // leave the lapse unsaid until the next rotation. /ep/refresh
-        // writes the same transition to the cookie when it next runs.
         const envelopeAccount = readEnvelopeAccount(
           epSession
             ? applyAccountLapse(epSession, Math.floor(Date.now() / 1000))
@@ -372,10 +356,6 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
           session: sessionData,
           user: epUser?.email?.endsWith("@anonymous.local") ? null : epUser,
           cart: epSession?.epCartId ? { id: epSession.epCartId } : null,
-          // Authentication is the member, not the selection. A member
-          // belonging to no organisation — or one whose organisation
-          // lapsed — is signed in, and reading "an account is selected"
-          // as "signed in" made them look signed out.
           isAuthenticated: envelopeAccount.memberId != null,
           headers() {
             const h: Record<string, string> = {};

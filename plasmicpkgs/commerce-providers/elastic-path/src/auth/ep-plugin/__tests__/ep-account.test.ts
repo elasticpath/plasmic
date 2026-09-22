@@ -79,12 +79,6 @@ function cookiesFromResponse(res: Response): string {
   return mergeCookies("", res);
 }
 
-/**
- * A `Cookie:` header value as `createEpAuth().api.getSession` wants it.
- * Next's `cookies().getAll()` hands back DECODED values and the adapter
- * re-encodes them, so a raw Set-Cookie value — still encoded — would be
- * double-encoded and read as no session at all.
- */
 function nextStyleCookies(cookieHeader: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const part of cookieHeader.split(";")) {
@@ -104,8 +98,6 @@ const ACCOUNT_INPUT = {
   epMemberId: "member-123",
   epAccountId: "acct-123",
   epAccountToken: "acct-tok-xyz",
-  // Elastic Path's /v2/account-members/tokens returns ISO-8601, not
-  // epoch seconds.
   epAccountExpires: ACCOUNT_EXPIRES_ISO,
   email: "shopper@example.com",
   name: "Test Shopper",
@@ -300,10 +292,6 @@ describe("/ep/account/login + /ep/account/logout (PRD #273)", () => {
   });
 
   it("states a lapse on every read, not only when a refresh happens to run", async () => {
-    // The envelope outlives the account credential by days, and only a
-    // near-expiry shopper token triggers a refresh. A read that reported
-    // the stale selection would keep sending the dead credential and
-    // leave the lapse unsaid until the next rotation.
     const epAuth = createEpAuth({
       clientId: EP_CLIENT_ID,
       host: EP_HOST,
@@ -370,8 +358,6 @@ describe("/ep/account/login + /ep/account/logout (PRD #273)", () => {
       name: "Test Account",
     });
     expect(body.session.epAccount).toBeUndefined();
-    // Still signed in — the member is the authentication, the account is
-    // the selection.
     expect(body.session.epMemberId).toBe(ACCOUNT_INPUT.epMemberId);
   });
 

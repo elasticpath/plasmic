@@ -213,8 +213,6 @@ describe("createEpAuth adapter (PRD #273)", () => {
   });
 
   it("reads an existing envelope back rather than minting a fresh one", async () => {
-    // A seven-day cookie proves nothing if every page load re-mints: the
-    // cart pointer would go with the old session each time.
     const epAuth = createEpAuth({
       clientId: EP_CLIENT_ID,
       host: EP_HOST,
@@ -228,9 +226,6 @@ describe("createEpAuth adapter (PRD #273)", () => {
         flushed.push(value);
       },
     });
-    // Next's `cookies().getAll()` hands back decoded values, which is
-    // what the adapter re-encodes; a raw Set-Cookie value is still
-    // encoded, so decode to match what a consumer actually passes.
     const cookies: Record<string, string> = {};
     for (const raw of flushed) {
       const head = raw.split(";")[0];

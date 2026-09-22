@@ -1,9 +1,3 @@
-/**
- * The cart routes reach Elastic Path through their own `callEp`, not
- * through `buildEpClient`, so the account-management header has to be
- * attached here too — otherwise a signed-in account member's cart reads
- * and writes stay list-priced while every `ep.*` call is account-scoped.
- */
 import { createCartRoutes } from "../server-routes";
 import { EP_ACCOUNT_TOKEN_HEADER } from "../../auth/ep-plugin/envelope";
 
@@ -29,8 +23,7 @@ function buildRoutes(account: unknown) {
   return createCartRoutes(epAuth);
 }
 
-/** Headers of the first Elastic Path request the routes made. */
-async function epRequestHeaders(account: unknown) {
+async function firstEpRequestHeaders(account: unknown) {
   const seen: Array<Record<string, string>> = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = jest.fn(async (_url: any, init: any) => {
@@ -53,15 +46,13 @@ async function epRequestHeaders(account: unknown) {
     globalThis.fetch = originalFetch;
   }
 
-  // Assert a request was actually made — otherwise the no-account case
-  // would pass on a route that never reached Elastic Path at all.
   expect(seen).toHaveLength(1);
   return seen[0];
 }
 
 describe("createCartRoutes account scope", () => {
   it("carries the selected organisation's credential on the cart read", async () => {
-    const headers = await epRequestHeaders({
+    const headers = await firstEpRequestHeaders({
       id: "acct-1",
       name: "Acme Industrial",
       token: "account-management-token",
@@ -72,7 +63,7 @@ describe("createCartRoutes account scope", () => {
   });
 
   it("sends no account header when no organisation is selected", async () => {
-    const headers = await epRequestHeaders(null);
+    const headers = await firstEpRequestHeaders(null);
 
     expect(EP_ACCOUNT_TOKEN_HEADER in headers).toBe(false);
   });

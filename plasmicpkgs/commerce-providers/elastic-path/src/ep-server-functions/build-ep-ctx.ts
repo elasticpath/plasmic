@@ -15,10 +15,6 @@
 
 import { extractEpProviderConfig } from "../auth/extract-ep-provider-config";
 
-/**
- * The organisation an account member is acting for, as `getSession()`
- * returns it on `session.account`. Null when none is selected.
- */
 export interface BuildEpCtxAccountInput {
   id: string;
   name?: string;

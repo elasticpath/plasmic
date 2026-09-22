@@ -17,13 +17,7 @@ export interface EpServerAuth {
   clientId: string;
   /** Current shopper cart ID, when present. */
   cartId?: string;
-  /** The selected organisation's ID, when one is selected. */
   accountId?: string;
-  /**
-   * The credential that acts for the selected organisation. Populated
-   * only from the envelope's `epAccount` slot, so a session holding an
-   * anchor token — or nothing — cannot send an account header.
-   */
   accountToken?: string;
   /** Locale for price formatting / content negotiation. Defaults to "en-US". */
   locale?: string;
