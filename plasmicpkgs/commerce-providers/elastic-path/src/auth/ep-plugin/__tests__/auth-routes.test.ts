@@ -30,7 +30,8 @@ const SESSION_BODY = {
       id: "acct-1",
       name: "Acme Industrial",
       token: ACCOUNT_TOKEN,
-      expires: 1786630149,
+      // Live: an expiry in the past would lapse, which other cases cover.
+      expires: Math.floor(Date.now() / 1000) + 3600,
     },
     epCartId: CART_ID,
     epExpires: 1786630149,
@@ -131,6 +132,57 @@ describe("createEpAuthRoutes", () => {
     const body = await (await routes().GET(req("/api/ep/get-session"))).json();
 
     expect(body.session.epAccount.expires).toBeUndefined();
+  });
+
+  it("states the lapse to the page, rather than the selection that ran out", async () => {
+    // The page reads this route, not `api.getSession`. Reporting the
+    // stored selection here would show the shopper an organisation whose
+    // credential is dead — and since `epAccount.expires` is withheld, the
+    // page has no way to work that out for itself.
+    nextResponse = jsonResponse({
+      session: {
+        id: "sess-1",
+        epMemberId: "member-1",
+        epAccount: {
+          id: "acct-1",
+          name: "Acme Industrial",
+          token: ACCOUNT_TOKEN,
+          expires: Math.floor(Date.now() / 1000) - 1,
+        },
+      },
+    });
+
+    const body = await (await routes().GET(req("/api/ep/get-session"))).json();
+
+    expect(body.session.epAccount).toBeUndefined();
+    expect(body.session.epLapsedAccount).toEqual({
+      id: "acct-1",
+      name: "Acme Industrial",
+    });
+    expect(body.session.epMemberId).toBe("member-1");
+  });
+
+  it("leaves a live selection alone", async () => {
+    nextResponse = jsonResponse({
+      session: {
+        id: "sess-1",
+        epMemberId: "member-1",
+        epAccount: {
+          id: "acct-1",
+          name: "Acme Industrial",
+          token: ACCOUNT_TOKEN,
+          expires: Math.floor(Date.now() / 1000) + 3600,
+        },
+      },
+    });
+
+    const body = await (await routes().GET(req("/api/ep/get-session"))).json();
+
+    expect(body.session.epAccount).toEqual({
+      id: "acct-1",
+      name: "Acme Industrial",
+    });
+    expect(body.session.epLapsedAccount).toBeUndefined();
   });
 
   it("releases a lapsed organisation so the shopper can be told which one", async () => {

@@ -22,6 +22,7 @@
  */
 import { toNextJsHandler } from "better-auth/next-js";
 import type { EpAuth } from "./create-ep-auth-better";
+import { applyAccountLapse } from "./envelope";
 
 // Entries are dot-delimited PATHS, not field names. The account
 // credential lives inside `epAccount` alongside the organisation's id
@@ -75,8 +76,14 @@ function writePath(
 
 function redactSessionPayload(payload: any): any {
   if (!payload || typeof payload !== "object") return payload;
-  const session = payload.session;
-  if (!session || typeof session !== "object") return payload;
+  const raw = payload.session;
+  if (!raw || typeof raw !== "object") return payload;
+
+  // Lapse before filtering, not after: the page reads this route rather
+  // than `api.getSession`, and `epAccount.expires` is withheld — so a
+  // stale selection reported here is one the page cannot possibly work
+  // out is dead.
+  const session = applyAccountLapse(raw, Math.floor(Date.now() / 1000));
 
   const kept: Record<string, unknown> = {};
   for (const entry of SESSION_ALLOWLIST) {

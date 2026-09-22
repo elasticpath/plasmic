@@ -11,7 +11,12 @@ const { join } = require("path");
 
 const ROOT = join(__dirname, "..", "..");
 
-/** Every name in an `export { ... } from "..."` / `export type { ... }`. */
+/**
+ * Every name in an `export { ... } from "..."` / `export type { ... }`.
+ * Deduped with `indexOf` rather than a `Set`, because this package's
+ * tsconfig targets es5 without `downlevelIteration`, so spreading one
+ * does not compile.
+ */
 function exportedNames(source: string): string[] {
   const names: string[] = [];
   const blocks = source.match(/export\s+(?:type\s+)?\{[^}]*\}\s*from\s*["'][^"']+["']/g);

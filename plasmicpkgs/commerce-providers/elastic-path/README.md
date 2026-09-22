@@ -325,8 +325,10 @@ run one on a shared host or against production Elastic Path credentials.
 The session holds the authenticated **account member** and the **selected
 account** — the organisation they are buying for — as two separate facts.
 `isAuthenticated` reports the member, so a member who belongs to no
-organisation reads as signed in. While an account is selected, every Elastic
-Path call carries `EP-Account-Management-Authentication-Token`.
+organisation reads as signed in. While an account is selected, every `ep.*`
+server function and every cart route carries
+`EP-Account-Management-Authentication-Token`. The checkout-session handlers
+do not yet — they take their own shopper token on `SessionHandlerContext`.
 
 `POST /ep/account/login` takes `{ epMemberId, epAccountId, epAccountToken,
 epAccountExpires }` from Elastic Path's `/v2/account-members/tokens`.

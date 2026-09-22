@@ -53,7 +53,10 @@ async function epRequestHeaders(account: unknown) {
     globalThis.fetch = originalFetch;
   }
 
-  return seen[0] ?? {};
+  // Assert a request was actually made — otherwise the no-account case
+  // would pass on a route that never reached Elastic Path at all.
+  expect(seen).toHaveLength(1);
+  return seen[0];
 }
 
 describe("createCartRoutes account scope", () => {

@@ -9,7 +9,8 @@ authenticated **account member**, and `epAccount { id, name, token, expires }`
 for the **selected account** — the organisation they are buying for. Every
 `ep.*` call carries `EP-Account-Management-Authentication-Token` while an
 account is selected, so account-scoped pricing reaches every server function
-without any function opting in.
+without any function opting in. The checkout-session handlers are not covered
+yet; they take their own shopper token on `SessionHandlerContext`.
 
 `epAccount` and `epAnchorToken` are mutually exclusive slots, and the account
 header is attached only from `epAccount.token`, so a session with no account
