@@ -319,6 +319,7 @@ run one on a shared host or against production Elastic Path credentials.
 | POST | `{basePath}/ep/account/login` | Sign an account member in |
 | POST | `{basePath}/ep/account/roster` | Read the accounts the member belongs to |
 | POST | `{basePath}/ep/account/select` | Select or deselect the account being bought for |
+| POST | `{basePath}/ep/account/roll` | Re-mint the account credential before it runs out |
 | POST | `{basePath}/ep/account/logout` | Sign the account member out |
 | GET | `{basePath}/get-session` | Read the session, minus EP credentials |
 
@@ -354,9 +355,15 @@ so a switch that fails leaves the previous selection exactly as it was.
 Selecting the account already selected does nothing at all. No password is
 needed: re-minting runs off the credential the session already holds.
 
+The checkout session it tears down is the one `CookieSessionStore` holds. A
+consumer who supplies their own `SessionStore` must clear it themselves on a
+switch — the auth handler has no handle on it.
+
 The account credential is re-minted while it has less than an hour left,
 without the shopper noticing. A shopper idle long enough for it to run out is
-reported as lapsed rather than quietly returned to list prices.
+reported as lapsed rather than quietly returned to list prices, and roster and
+select answer `account_lapsed` rather than presenting a dead credential to
+Elastic Path.
 
 The older `{ epMemberId, epAccountId, epAccountToken, epAccountExpires }` body
 still works and still verifies the supplied token against Elastic Path. It is

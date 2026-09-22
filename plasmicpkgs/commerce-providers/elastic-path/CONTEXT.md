@@ -159,6 +159,13 @@ Changing the selected account without re-authenticating. Re-mints, tears down
 any checkout session, clears the cart id, writes the new account last — the
 fallible step first.
 
+**Roll on use**:
+Re-minting the selected account's credential on a request that finds it with
+under an hour left — the implicit token's own lifetime, not a number chosen
+here. Needs no password, because re-minting runs off the credential the
+envelope already holds. Anchor tokens are not rolled: an unselected session
+makes no account-scoped call to hang a roll on.
+
 **Lapsed account**:
 The envelope is alive and still holds the cart, but the account token has
 expired and cannot be rolled; scope falls back to anonymous until the shopper

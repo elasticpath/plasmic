@@ -38,7 +38,7 @@ import {
   mintAccountTokens,
   toAccountRoster,
 } from "./account-tokens";
-import type { EpAccountTokenEntry } from "./account-tokens";
+import type { EpAccountTokenPage } from "./account-tokens";
 import { CHECKOUT_SESSION_COOKIE_NAME } from "../../checkout/session/cookie-name";
 
 export interface EpPluginOptions {
@@ -67,8 +67,6 @@ export interface EpPluginOptions {
    * because nothing in a profile record marks a default.
    */
   passwordProfileId?: string;
-  /** The checkout session's cookie, torn down on an account switch. */
-  checkoutSessionCookieName?: string;
 }
 
 interface EpAnonymousTokenResponse {
@@ -260,12 +258,31 @@ function jsonError(code: string, status: number, message: string): Response {
   });
 }
 
-const NO_SESSION = () =>
-  jsonError(
+function noSessionError(): Response {
+  return jsonError(
     "no_session",
     401,
     "No EP session — call /ep/anonymous first to bootstrap."
   );
+}
+
+function noAccountMemberError(): Response {
+  return jsonError(
+    "no_account_member",
+    401,
+    "No account member is signed in."
+  );
+}
+
+/**
+ * The session as the account endpoints must read it: an expired credential is
+ * a lapse, not a credential. Without this the endpoints would send a dead
+ * token to Elastic Path and report its rejection as an outage, while every
+ * read path states the lapse as a fact.
+ */
+function sessionWithLapseApplied(session: any): any {
+  return applyAccountLapse(session, Math.floor(Date.now() / 1000));
+}
 
 /**
  * The account credential the session may re-mint from: the selected account's
@@ -284,12 +301,8 @@ function heldAccountCredential(session: any): string | null {
  * several are an anchor and a choice left to the shopper; none is a member who
  * is signed in and permanently unscoped.
  */
-function applyLoginOutcome(
-  session: any,
-  memberId: string,
-  entries: readonly EpAccountTokenEntry[],
-  total: number
-): any {
+function applyLoginOutcome(session: any, minted: EpAccountTokenPage): any {
+  const { memberId, entries, total } = minted;
   if (total === 1 && entries.length === 1) {
     return selectAccount(session, { memberId, account: entries[0] });
   }
@@ -300,6 +313,14 @@ function applyLoginOutcome(
     });
   }
   return identifyMember(session, memberId);
+}
+
+function accountLapsedError(): Response {
+  return jsonError(
+    "account_lapsed",
+    401,
+    "The account credential ran out and cannot be re-minted. Sign in again."
+  );
 }
 
 function accountTokenFailure(err: unknown): Response {
@@ -314,8 +335,6 @@ function accountTokenFailure(err: unknown): Response {
 }
 
 export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
-  const checkoutCookie =
-    options.checkoutSessionCookieName ?? CHECKOUT_SESSION_COOKIE_NAME;
   // One discovery per auth instance. The realm and its profiles are store
   // configuration, so re-reading them on every sign-in buys nothing.
   let discoveredProfile: Promise<string> | null = null;
@@ -338,7 +357,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
    * addressed for the account being left.
    */
   function tearDownCheckoutSession(ctx: any): void {
-    ctx.setCookie(checkoutCookie, "", {
+    ctx.setCookie(CHECKOUT_SESSION_COOKIE_NAME, "", {
       path: "/",
       maxAge: 0,
       httpOnly: true,
@@ -401,7 +420,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
         { method: "POST" },
         async (ctx) => {
           const existing = await readExistingSession(ctx);
-          if (!existing?.user || !existing?.session) return NO_SESSION();
+          if (!existing?.user || !existing?.session) return noSessionError();
 
           const body = (ctx.body as any) ?? {};
           const { username, password } = body;
@@ -439,9 +458,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             };
             const session = applyLoginOutcome(
               { ...existing.session, updatedAt: new Date() },
-              minted.memberId,
-              minted.entries,
-              minted.total
+              minted
             );
 
             await setSessionCookie(ctx, { session, user } as any);
@@ -528,19 +545,16 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
         { method: "POST" },
         async (ctx) => {
           const existing = await readExistingSession(ctx);
-          if (!existing?.user || !existing?.session) return NO_SESSION();
+          if (!existing?.user || !existing?.session) return noSessionError();
 
-          const memberId = existing.session.epMemberId;
-          if (typeof memberId !== "string" || !memberId) {
-            return jsonError(
-              "no_account_member",
-              401,
-              "No account member is signed in, so there is no roster to read."
-            );
+          if (typeof existing.session.epMemberId !== "string") {
+            return noAccountMemberError();
           }
 
-          const accountToken = heldAccountCredential(existing.session);
+          const session = sessionWithLapseApplied(existing.session);
+          const accountToken = heldAccountCredential(session);
           if (!accountToken) {
+            if (session.epLapsedAccount) return accountLapsedError();
             // A member who belongs to no account holds no credential and has
             // an empty roster. That is an answer, not a failure.
             return ctx.json({ accounts: [], total: 0 });
@@ -549,8 +563,8 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
           const body = (ctx.body as any) ?? {};
           try {
             const page = await mintAccountTokens({
-              host: existing.session.epHost,
-              implicitToken: existing.session.epAccessToken,
+              host: session.epHost,
+              implicitToken: session.epAccessToken,
               credential: { accountToken },
               limit: body.limit,
               offset: body.offset,
@@ -570,18 +584,13 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
         { method: "POST" },
         async (ctx) => {
           const existing = await readExistingSession(ctx);
-          if (!existing?.user || !existing?.session) return NO_SESSION();
+          if (!existing?.user || !existing?.session) return noSessionError();
 
-          const current = existing.session.epAccount as
-            | EpAccountSlot
-            | undefined;
-          const memberId = existing.session.epMemberId;
+          const lapsed = sessionWithLapseApplied(existing.session);
+          const current = lapsed.epAccount as EpAccountSlot | undefined;
+          const memberId = lapsed.epMemberId;
           if (typeof memberId !== "string" || !memberId) {
-            return jsonError(
-              "no_account_member",
-              401,
-              "No account member is signed in, so no account can be selected."
-            );
+            return noAccountMemberError();
           }
 
           const accountId = (ctx.body as any)?.accountId ?? null;
@@ -599,7 +608,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             return ctx.json({ user: existing.user, session: existing.session });
           }
 
-          const base: any = { ...existing.session, updatedAt: new Date() };
+          const base: any = { ...lapsed, updatedAt: new Date() };
           delete base.epCartId;
 
           if (accountId === null) {
@@ -623,8 +632,9 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             return ctx.json({ user: existing.user, session });
           }
 
-          const accountToken = heldAccountCredential(existing.session);
+          const accountToken = heldAccountCredential(lapsed);
           if (!accountToken) {
+            if (lapsed.epLapsedAccount) return accountLapsedError();
             // A member of no account has nothing to re-mint from, so an
             // account granted since they signed in costs them a re-login.
             return jsonError(
@@ -639,8 +649,8 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
           let found;
           try {
             found = await findAccountToken({
-              host: existing.session.epHost,
-              implicitToken: existing.session.epAccessToken,
+              host: lapsed.epHost,
+              implicitToken: lapsed.epAccessToken,
               accountToken,
               accountId,
             });
@@ -670,7 +680,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
         { method: "POST" },
         async (ctx) => {
           const existing = await readExistingSession(ctx);
-          if (!existing?.user || !existing?.session) return NO_SESSION();
+          if (!existing?.user || !existing?.session) return noSessionError();
 
           const current = existing.session.epAccount as
             | EpAccountSlot
@@ -711,17 +721,8 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
         { method: "POST" },
         async (ctx) => {
           const existing = await readExistingSession(ctx);
-          if (!existing || !existing.user || !existing.session) {
-            return new Response(
-              JSON.stringify({
-                error: "no_session",
-                message: "Nothing to log out.",
-              }),
-              {
-                status: 401,
-                headers: { "Content-Type": "application/json" },
-              }
-            );
+          if (!existing?.user || !existing?.session) {
+            return jsonError("no_session", 401, "Nothing to log out.");
           }
 
           // Strip account fields. Restore an anonymous-looking user
@@ -750,31 +751,14 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
         { method: "POST" },
         async (ctx) => {
           const existing = await readExistingSession(ctx);
-          if (!existing || !existing.user || !existing.session) {
-            return new Response(
-              JSON.stringify({
-                error: "no_session",
-                message:
-                  "No EP session — call /ep/anonymous first to bootstrap.",
-              }),
-              {
-                status: 401,
-                headers: { "Content-Type": "application/json" },
-              }
-            );
-          }
+          if (!existing?.user || !existing?.session) return noSessionError();
 
           const cartId = (ctx.body as any)?.cartId;
           if (!cartId || typeof cartId !== "string") {
-            return new Response(
-              JSON.stringify({
-                error: "invalid_input",
-                message: "Body must include { cartId: string }.",
-              }),
-              {
-                status: 400,
-                headers: { "Content-Type": "application/json" },
-              }
+            return jsonError(
+              "invalid_input",
+              400,
+              "Body must include { cartId: string }."
             );
           }
 

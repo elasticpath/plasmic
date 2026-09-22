@@ -560,6 +560,53 @@ describe("selecting and switching account", () => {
   });
 });
 
+describe("a lapsed account credential", () => {
+    async function signedInAndLapsed(auth: any) {
+    store.accounts = [ACCOUNTS[0]];
+    store.ttlSeconds = 1;
+    let cookies = await anonymous(auth);
+    ({ cookies } = await signIn(auth, cookies));
+    // Walk past the credential's expiry without making a call, which is the
+    // idle shopper rolling cannot reach.
+    vi.setSystemTime(Date.now() + 5_000);
+    return cookies;
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("states the lapse rather than sending a dead token to Elastic Path", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const auth = buildAuth({ passwordProfileId: PROFILE });
+    const cookies = await signedInAndLapsed(auth);
+
+    const res = await (auth.api as any).epAccountSelect({
+      body: { accountId: "acct-south" },
+      headers: new Headers({ cookie: cookies }),
+      asResponse: true,
+    });
+
+    expect(res.status).toBe(401);
+    expect((await res.json()).code).toBe("account_lapsed");
+  });
+
+  it("does not report a lapsed roster as an empty one", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const auth = buildAuth({ passwordProfileId: PROFILE });
+    const cookies = await signedInAndLapsed(auth);
+
+    const res = await (auth.api as any).epAccountRoster({
+      body: {},
+      headers: new Headers({ cookie: cookies }),
+      asResponse: true,
+    });
+
+    expect(res.status).toBe(401);
+    expect((await res.json()).code).toBe("account_lapsed");
+  });
+});
+
 describe("rolling the account credential", () => {
   it("refreshes a token near expiry with nothing visible to the shopper", async () => {
     store.accounts = [ACCOUNTS[0]];

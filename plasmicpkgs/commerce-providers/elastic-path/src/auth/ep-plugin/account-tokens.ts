@@ -11,7 +11,11 @@
  */
 import { EP_ACCOUNT_TOKEN_HEADER, parseEpExpires } from "./envelope";
 
-/** The platform rejects `page[limit]` above this, and defaults to 25. */
+/**
+ * The platform rejects `page[limit]` above this. Its own default is 25; this
+ * package asks for the maximum instead, so one call usually answers the whole
+ * roster.
+ */
 export const ACCOUNT_PAGE_LIMIT_MAX = 100;
 
 export interface EpAccountTokenEntry {
@@ -51,13 +55,13 @@ async function readError(response: Response): Promise<string> {
   return first?.detail ?? first?.title ?? `HTTP ${response.status}`;
 }
 
-export function clampAccountPageLimit(limit: unknown): number {
+export function resolveAccountPageLimit(limit: unknown): number {
   const asNumber = typeof limit === "number" ? limit : Number(limit);
   if (!Number.isFinite(asNumber) || asNumber < 1) return ACCOUNT_PAGE_LIMIT_MAX;
   return Math.min(Math.floor(asNumber), ACCOUNT_PAGE_LIMIT_MAX);
 }
 
-export function clampAccountPageOffset(offset: unknown): number {
+export function resolveAccountPageOffset(offset: unknown): number {
   const asNumber = typeof offset === "number" ? offset : Number(offset);
   if (!Number.isFinite(asNumber) || asNumber < 0) return 0;
   return Math.floor(asNumber);
@@ -154,8 +158,8 @@ export async function mintAccountTokens(input: {
   limit?: number;
   offset?: number;
 }): Promise<EpAccountTokenPage> {
-  const limit = clampAccountPageLimit(input.limit);
-  const offset = clampAccountPageOffset(input.offset);
+  const limit = resolveAccountPageLimit(input.limit);
+  const offset = resolveAccountPageOffset(input.offset);
   const query = `page[limit]=${limit}&page[offset]=${offset}`;
 
   const credential = input.credential;
@@ -288,10 +292,12 @@ export async function findAccountToken(input: {
     memberId = page.memberId;
     const match = page.entries.find((entry) => entry.id === input.accountId);
     if (match) return { memberId, entry: match };
-    offset += page.entries.length;
-    if (page.entries.length === 0 || offset >= page.total) {
-      return { memberId, entry: null };
-    }
+    if (page.entries.length === 0) return { memberId, entry: null };
+    // Advance by what was asked for, not by what came back: a record this
+    // dropped for a missing field would otherwise make the next page overlap
+    // the last and the walk never reach the end.
+    offset += ACCOUNT_PAGE_LIMIT_MAX;
+    if (offset >= page.total) return { memberId, entry: null };
   }
 }
 

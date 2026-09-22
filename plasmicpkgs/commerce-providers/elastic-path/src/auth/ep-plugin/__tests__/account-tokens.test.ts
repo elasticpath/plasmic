@@ -8,8 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ACCOUNT_PAGE_LIMIT_MAX,
   EpAccountTokenError,
-  clampAccountPageLimit,
-  clampAccountPageOffset,
+  resolveAccountPageLimit,
+  resolveAccountPageOffset,
   discoverPasswordProfileId,
   findAccountToken,
   mintAccountTokens,
@@ -303,6 +303,47 @@ describe("findAccountToken", () => {
     expect(call).toBe(2);
   });
 
+  it("keeps its place when Elastic Path returns a record it cannot use", async () => {
+    // The first page carries one entry this drops, so it returns 99 of 100.
+    // Advancing by what came back would re-read one record and walk off the
+    // end of the roster without ever reaching the target.
+    const first = JSON.parse(
+      await tokenResponse(
+        Array.from({ length: 100 }, (_, i) => ({ id: `acct-${i}` })),
+        150
+      ).text()
+    );
+    delete first.data[0].token;
+    const pages = [
+      new Response(JSON.stringify(first), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      }),
+      tokenResponse(
+        Array.from({ length: 50 }, (_, i) => ({ id: `acct-${i + 100}` })),
+        150
+      ),
+    ];
+    const offsets: number[] = [];
+    let call = 0;
+    globalThis.fetch = vi.fn(async (url: any) => {
+      offsets.push(
+        Number(new URL(String(url)).searchParams.get("page[offset]"))
+      );
+      return pages[call++];
+    }) as any;
+
+    const found = await findAccountToken({
+      host: HOST,
+      implicitToken: IMPLICIT,
+      accountToken: "held-token",
+      accountId: "acct-149",
+    });
+
+    expect(offsets).toEqual([0, 100]);
+    expect(found.entry?.token).toBe("token-for-acct-149");
+  });
+
   it("stops at the reported total rather than paging forever", async () => {
     const fetchMock = vi.fn(async () =>
       tokenResponse([{ id: "acct-a" }, { id: "acct-b" }])
@@ -333,15 +374,15 @@ describe("toAccountRoster", () => {
 
 describe("page bounds", () => {
   it("defaults and caps the limit at the platform's own maximum", () => {
-    expect(clampAccountPageLimit(undefined)).toBe(ACCOUNT_PAGE_LIMIT_MAX);
-    expect(clampAccountPageLimit(101)).toBe(ACCOUNT_PAGE_LIMIT_MAX);
-    expect(clampAccountPageLimit(25)).toBe(25);
-    expect(clampAccountPageLimit(0)).toBe(ACCOUNT_PAGE_LIMIT_MAX);
+    expect(resolveAccountPageLimit(undefined)).toBe(ACCOUNT_PAGE_LIMIT_MAX);
+    expect(resolveAccountPageLimit(101)).toBe(ACCOUNT_PAGE_LIMIT_MAX);
+    expect(resolveAccountPageLimit(25)).toBe(25);
+    expect(resolveAccountPageLimit(0)).toBe(ACCOUNT_PAGE_LIMIT_MAX);
   });
 
   it("floors the offset at the first page", () => {
-    expect(clampAccountPageOffset(undefined)).toBe(0);
-    expect(clampAccountPageOffset(-5)).toBe(0);
-    expect(clampAccountPageOffset(30)).toBe(30);
+    expect(resolveAccountPageOffset(undefined)).toBe(0);
+    expect(resolveAccountPageOffset(-5)).toBe(0);
+    expect(resolveAccountPageOffset(30)).toBe(30);
   });
 });

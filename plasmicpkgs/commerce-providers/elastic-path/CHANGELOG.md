@@ -54,7 +54,13 @@ nothing. Selecting the organisation already selected is a no-op, and
 
 The account credential is re-minted while it has under an hour left, with
 nothing visible to the shopper. Rolling reaches only sessions making calls, so
-an idle shopper still lapses — which `epLapsedAccount` states as a fact.
+an idle shopper still lapses — which `epLapsedAccount` states as a fact, and
+which roster and select report as `account_lapsed` rather than presenting a
+dead credential to Elastic Path.
+
+The checkout session torn down on a switch is `CookieSessionStore`'s. A
+consumer-supplied `SessionStore` is out of the auth handler's reach and must be
+cleared by the consumer.
 
 `passwordProfileId` on `createEpAuth` names the password profile members sign
 in against. The package discovers it when the store's authentication realm
