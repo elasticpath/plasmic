@@ -29,8 +29,13 @@ export const epAuth = createEpAuth({
   // Optional: custom API route prefix (default: /api/ep)
   // basePath: "/api/store",
 
-  // Optional: cart merge strategy on login (default: "merge")
+  // Dead config, read by no code. `sessionCartResolver` replaces it, and it
+  // is removed in the breaking release.
   // cartMergeStrategy: "replace",
+
+  // Optional: choose the shopper's cart when they sign in or switch
+  // organisation. See "Which cart wins at sign-in" below.
+  // sessionCartResolver: ({ guestCartId, accountCarts }) => ...,
 });
 ```
 
@@ -483,6 +488,77 @@ shopper to list prices with no signal.
 Mount the auth handler through `createEpAuthRoutes`, never better-auth's
 `toNextJsHandler` directly: better-auth's `/get-session` returns the whole
 session record, and this package keeps the shopper's EP access token on it.
+
+### Which cart wins at sign-in
+
+A shopper can arrive at the sign-in form with a cart, and already have one
+saved on the account they sign in to. Elastic Path merges nothing on its own,
+and its copy operation **adds** quantities, so ten saved plus two added becomes
+twelve. Which cart wins is merchant policy, so the package asks rather than
+decides.
+
+With no `sessionCartResolver` configured:
+
+- the guest cart wins — the one the shopper is looking at when they click
+  log in, and the only choice that cannot silently destroy or inflate what they
+  just built;
+- with no guest cart, the account's most recently updated cart is adopted;
+- the losing cart is never deleted;
+- switching organisation never carries the previous organisation's cart
+  across, because its lines carry that organisation's prices.
+
+To decide it yourself, configure the hook once on `createEpAuth`:
+
+```ts
+export const epAuth = createEpAuth({
+  clientId: "your-ep-client-id",
+  host: "https://useast.api.elasticpath.com",
+  secret: process.env.CHECKOUT_SESSION_SECRET,
+
+  async sessionCartResolver({ trigger, guestCartId, accountCarts, accountId }) {
+    // `trigger` is "login" or "accountSwitch". `guestCartId` is null at a
+    // switch. `accountCarts` carries { id, name, createdAt, updatedAt } —
+    // no line items; read them yourself if your rule needs them.
+    if (!guestCartId) {
+      return { keep: accountCarts[0].id };
+    }
+    return { keep: guestCartId };
+  },
+});
+```
+
+The hook runs after the account swap, under the shopper's new identity, so
+`ep.*` server functions and raw `fetch` calls both act as the signed-in member
+of that organisation. That is how a rule like take-the-higher-quantity is
+written: read both carts, write the lines you want, then return the id of the
+cart you wrote to.
+
+`trigger` is `"login"` whenever the shopper is arriving — including a member of
+several organisations choosing their first one, which reaches the package
+through the switch endpoint but is still an arrival. It is `"accountSwitch"`
+only when an organisation was already selected, so `guestCartId` is null
+whenever the trigger is `"accountSwitch"`.
+
+`accountCarts` is one page, ordered here by `updatedAt`. Elastic Path ignores
+`sort` on its cart list, so an organisation holding more carts than one page
+inside the store's expiry window can have a more recent one the hook never
+sees.
+
+`keep` must name a cart the hook was offered — `guestCartId` or one of
+`accountCarts`. A hook that throws, or names anything else, never blocks the
+sign-in: the default applies and the failure is logged. There is no package
+timeout; your platform's request timeout is the bound. A partial write is
+yours to avoid — decide first and write last, or make the writes safe to
+repeat.
+
+Signing out clears the cart pointer, so the next person on that browser does
+not inherit the previous shopper's cart. Signing in, like switching
+organisation, tears down any checkout session in flight: it was priced and
+addressed for the shopper who is no longer the one here.
+
+The hook is handed no cart id on the session scope, only in its input. Which
+cart is the session cart is the question it is answering, so `ep.*` calls
+inside it name the cart they mean rather than defaulting to one.
 
 ### Cookie Architecture
 
