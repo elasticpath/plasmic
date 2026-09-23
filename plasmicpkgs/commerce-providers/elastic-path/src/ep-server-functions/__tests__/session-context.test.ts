@@ -90,6 +90,25 @@ describe("runtimes with no window and no process", () => {
     expect(inert).toBe(true);
   });
 
+  it("imports without throwing when process itself is hostile", () => {
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const hostile = {
+        get versions(): never {
+          throw new Error("no");
+        },
+        get getBuiltinModule(): never {
+          throw new Error("no");
+        },
+      };
+      const { threw, inert } = loadIn({ process: hostile, console });
+      expect(threw).toBeNull();
+      expect(inert).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("imports without throwing when process exists but is not Node", () => {
     const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
     try {

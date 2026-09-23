@@ -16,10 +16,15 @@ interface SessionStorage {
 // `[]` outside an active session.
 /** Node, as opposed to a browser, a web worker or an edge runtime. */
 function isNodeRuntime(): boolean {
-  return (
-    typeof process !== "undefined" &&
-    Boolean((process as { versions?: { node?: string } }).versions?.node)
-  );
+  try {
+    return (
+      typeof process !== "undefined" &&
+      Boolean((process as { versions?: { node?: string } }).versions?.node)
+    );
+  } catch {
+    // A `process` shim whose accessors throw is still not Node.
+    return false;
+  }
 }
 
 /**
@@ -80,12 +85,17 @@ function makeStorage(): SessionStorage {
     }
     // Only Node is expected to have this. Saying so anywhere else would be
     // noise in every edge and worker runtime, which never had it to lose.
-    if (isNodeRuntime()) {
-      console.warn(
-        "[ep-commerce] Could not load `async_hooks`, so the EP session scope " +
-          "is inert and every `ep.*` call will return null or []. Native ES " +
-          "modules need Node 20.16+ / 22.3+ for `process.getBuiltinModule`."
-      );
+    try {
+      if (isNodeRuntime()) {
+        console.warn(
+          "[ep-commerce] Could not load `async_hooks`, so the EP session " +
+            "scope is inert and every `ep.*` call will return null or []. " +
+            "Native ES " +
+            "modules need Node 20.16+ / 22.3+ for `process.getBuiltinModule`."
+        );
+      }
+    } catch {
+      // Reporting the problem must not become a second problem.
     }
   }
   return {
