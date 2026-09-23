@@ -794,7 +794,7 @@ PlasmicClientRootProvider <-------- prefetchedQueryData
 | `ep.getBundleOptionProducts` | `{ productIds }` | `Record<productId, Product>` — the products a bundle offers as options, each the package's product shape |
 | `ep.getBaseProducts` | `{ productIds }` | `Record<productId, Product>` — the given products with their `variations` and `childProducts`. A product that is not a base product comes back with an empty `childProducts`; one the catalog does not return is omitted |
 | `ep.configureBundle` | `{ bundleId, selectedOptions }` | Elastic Path's configured-bundle payload — re-prices a bundle for a set of selections. Throws on failure, because a stale price is worse than none |
-| `ep.multiSearch` | `{ searches }` | Elastic Path's multi-search response as-is, including the `included` block each hit's image resolves against |
+| `ep.multiSearch` | `{ searches, include? }` | Elastic Path's multi-search response as-is. Pass `include: ["main_image"]` for hit images — Elastic Path omits the `included` block unless it is asked for |
 
 Every count `ep.getStock` returns is a `number`, not the SDK's `BigInt` — the value crosses `JSON.stringify` into prefetched query data and through the proxy route, and a BigInt cannot.
 

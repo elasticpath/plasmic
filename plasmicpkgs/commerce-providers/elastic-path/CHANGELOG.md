@@ -15,7 +15,9 @@ and every component that uses it behave exactly as before.
 package-owned type that keeps the top-level `included` block. That block is
 where the search adapter resolves each hit's `main_image`, and the SDK's own
 `MultiSearchResponse` does not declare it — typing the result with the SDK
-shape would drop every search hit's picture with nothing failing.
+shape would drop every search hit's picture with nothing failing. Ask for the
+block with `include: ["main_image"]`: Elastic Path omits it entirely unless the
+call requests it, verified against a live store.
 
 `ep.getStock` reports its counts as numbers. The browser hook builds them as
 `BigInt`, which cannot cross `JSON.stringify` — and this value crosses it twice,

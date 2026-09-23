@@ -15,6 +15,15 @@ export type EpMultiSearchQuery = Record<string, unknown>;
 
 export interface EpMultiSearchInput {
   searches: EpMultiSearchQuery[];
+  /**
+   * Related resources to side-load, e.g. `["main_image"]`.
+   *
+   * Elastic Path returns the `included` block only when this is asked for.
+   * Without it a hit carries `relationships.main_image` pointing at nothing
+   * the response contains, and every search result renders imageless with no
+   * error anywhere.
+   */
+  include?: string[];
   /** SSR-only explicit auth. Never advertised; never bind in Studio. */
   auth?: EpServerAuth;
 }
@@ -42,6 +51,7 @@ export interface EpMultiSearchResponse extends Record<string, unknown> {
  */
 export async function epMultiSearch({
   searches,
+  include,
   auth: inputAuth,
 }: EpMultiSearchInput): Promise<EpMultiSearchResponse> {
   const body = { searches: searches ?? [] };
@@ -51,6 +61,7 @@ export async function epMultiSearch({
     return (
       (await callEpProxy<EpMultiSearchResponse | null>("multiSearch", {
         searches: body.searches,
+        ...(include && include.length > 0 ? { include } : {}),
       })) ?? {}
     );
   }
@@ -58,7 +69,11 @@ export async function epMultiSearch({
   if (!isUsableAuth(auth)) return {};
   const client = buildEpClient(auth);
 
-  const response = await postMultiSearch({ client, body: body as any });
+  const response = await postMultiSearch({
+    client,
+    body: body as any,
+    ...(include && include.length > 0 ? { query: { include } } : {}),
+  } as any);
   if (response.error) {
     throw new Error(
       `epMultiSearch: ${

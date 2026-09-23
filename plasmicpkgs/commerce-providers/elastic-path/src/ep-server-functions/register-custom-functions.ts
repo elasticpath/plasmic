@@ -221,6 +221,12 @@ const EP_FUNCTIONS: EpFunctionSpec[] = [
         type: "array",
         description: "Multi-search query objects, passed through as written.",
       },
+      {
+        name: "include",
+        type: "array",
+        description:
+          'Related resources to side-load, e.g. ["main_image"]. Elastic Path returns the `included` block only when this is asked for, and hit images resolve against it.',
+      },
     ],
   },
   {

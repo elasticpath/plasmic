@@ -54,6 +54,28 @@ describe("epMultiSearch", () => {
     );
   });
 
+  it("asks Elastic Path for the included block when a caller wants images", async () => {
+    mockPostMultiSearch.mockResolvedValue({ data: {} });
+
+    await withEpSession(SESSION, () =>
+      epMultiSearch({ searches: [{ q: "a" }], include: ["main_image"] })
+    );
+
+    // Elastic Path omits `included` entirely unless `include` is sent, so a
+    // function that cannot send it can never carry a hit's image.
+    expect(mockPostMultiSearch).toHaveBeenCalledWith(
+      expect.objectContaining({ query: { include: ["main_image"] } })
+    );
+  });
+
+  it("sends no include query when the caller asks for none", async () => {
+    mockPostMultiSearch.mockResolvedValue({ data: {} });
+
+    await withEpSession(SESSION, () => epMultiSearch({ searches: [{ q: "a" }] }));
+
+    expect(mockPostMultiSearch.mock.calls[0][0]).not.toHaveProperty("query");
+  });
+
   it("passes the searches through as written", async () => {
     mockPostMultiSearch.mockResolvedValue({ data: {} });
     const searches = [
