@@ -17,6 +17,12 @@ import type {
   StockLocationData,
   ProductStockSummary,
 } from "../stock/StockContext";
+import type {
+  AccountContext,
+  AccountMember,
+  AccountRef,
+  AccountState,
+} from "../account/types";
 
 // ---------------------------------------------------------------------------
 // Variation mock data
@@ -789,3 +795,69 @@ export const MOCK_SHIPPING_RATES = [
     isSelected: false,
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Account identity mock data ($ctx.account)
+// ---------------------------------------------------------------------------
+
+const SAMPLE_ACCOUNT_MEMBER: AccountMember = {
+  id: "sample-member",
+};
+
+const SAMPLE_COMPANY_A: AccountRef = {
+  id: "sample-account-a",
+  name: "Sample Company A",
+};
+
+const SAMPLE_COMPANY_B: AccountRef = {
+  id: "sample-account-b",
+  name: "Sample Company B",
+};
+
+const SAMPLE_ACCOUNT_ROSTER: AccountRef[] = [
+  SAMPLE_COMPANY_A,
+  SAMPLE_COMPANY_B,
+];
+
+/** Runtime default and anonymous preview. No member, no organisation. */
+export const MOCK_ACCOUNT_ANONYMOUS: AccountContext = {
+  state: "anonymous",
+  accountMember: null,
+  selectedAccount: null,
+  accountRoster: [],
+  lapsedAccount: null,
+};
+
+/** Signed-in member with several organisations and none selected. */
+export const MOCK_ACCOUNT_AUTHENTICATED: AccountContext = {
+  state: "authenticated",
+  accountMember: SAMPLE_ACCOUNT_MEMBER,
+  selectedAccount: null,
+  accountRoster: SAMPLE_ACCOUNT_ROSTER,
+  lapsedAccount: null,
+};
+
+/** Signed-in member acting for an organisation. Canvas `auto` mock floor. */
+export const MOCK_ACCOUNT_SELECTED: AccountContext = {
+  state: "selected",
+  accountMember: SAMPLE_ACCOUNT_MEMBER,
+  selectedAccount: SAMPLE_COMPANY_A,
+  accountRoster: SAMPLE_ACCOUNT_ROSTER,
+  lapsedAccount: null,
+};
+
+/** Signed-in member whose organisation credential has lapsed. */
+export const MOCK_ACCOUNT_LAPSED: AccountContext = {
+  state: "lapsed",
+  accountMember: SAMPLE_ACCOUNT_MEMBER,
+  selectedAccount: null,
+  accountRoster: SAMPLE_ACCOUNT_ROSTER,
+  lapsedAccount: SAMPLE_COMPANY_A,
+};
+
+export const MOCK_ACCOUNT_BY_PREVIEW_STATE: Record<AccountState, AccountContext> = {
+  anonymous: MOCK_ACCOUNT_ANONYMOUS,
+  authenticated: MOCK_ACCOUNT_AUTHENTICATED,
+  selected: MOCK_ACCOUNT_SELECTED,
+  lapsed: MOCK_ACCOUNT_LAPSED,
+};

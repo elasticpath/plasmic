@@ -71,6 +71,9 @@ import { registerEPSearchAutocompleteInput } from "./catalog-search/EPSearchAuto
 import { registerEPSearchAutocompletePanel } from "./catalog-search/EPSearchAutocompletePanel";
 import { registerEPSearchAutocompleteList } from "./catalog-search/EPSearchAutocompleteList";
 import { registerEPCatalogSearchProvider } from "./catalog-search/EPCatalogSearchProvider";
+import { registerEPAccountField } from "./account/EPAccountField";
+import { registerEPAccountGate } from "./account/EPAccountGate";
+import { registerEPAccountProvider } from "./account/EPAccountProvider";
 import { Registerable } from "./registerable";
 
 export * from "./registerCommerceProvider";
@@ -117,6 +120,7 @@ export * from "./catalog-search";
 export * from "./shopper-context";
 export * from "./shopper-context/server";
 export * from "./product-extensions";
+export * from "./account";
 
 export function registerAll(loader?: Registerable) {
   // Global context
@@ -229,6 +233,11 @@ export function registerAll(loader?: Registerable) {
   // Deprecated — kept for backwards compatibility
   registerEPProductVariantPicker(loader);
   registerEPMultiLocationStock(loader);
+
+  // Account identity — register field/gate first so they're available as default slot content
+  registerEPAccountField(loader);
+  registerEPAccountGate(loader);
+  registerEPAccountProvider(loader);
 
   // Checkout
   registerEPCheckout(loader);
