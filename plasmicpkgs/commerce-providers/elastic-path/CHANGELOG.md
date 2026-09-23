@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+`withEpSession` keeps working when the package is loaded as ES modules. It
+reached `async_hooks` through `eval("require")`, which native ESM has no
+`require` for, so the session scope fell through to its no-op and every `ep.*`
+call fail-softed to `null` or `[]`. `process.getBuiltinModule` works in both
+module formats; `require` remains the fallback for Node below 20.16 / 22.3,
+which can still only reach it as CommonJS.
+
+A session scope that cannot load now says so on the console instead of leaving
+every `ep.*` call to return nothing for no visible reason.
+
 ## 0.7.0
 
 ### Added
