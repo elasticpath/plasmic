@@ -609,6 +609,75 @@ describe("a checkout in flight", () => {
   });
 });
 
+describe("a second shopper signing in on the same browser", () => {
+  // The cart pointer belongs to whoever was acting for an account. Leaving it
+  // behind is the same defect the logout fix closes, reached another way.
+  it("does not inherit the previous member's cart when they belong to several accounts", async () => {
+    store.accounts = [NORTH];
+    store.carts = [cart("cart-first-member", { accountIds: [NORTH.id] })];
+    const auth = buildAuth();
+    let cookies = await anonymous(auth);
+    cookies = await setCart(auth, cookies, "cart-first-member");
+    const first = await signIn(auth, cookies);
+    expect((await first.res.json()).session.epCartId).toBe("cart-first-member");
+
+    // A second member signs in without the first signing out, and belongs to
+    // several accounts, so nothing is selected.
+    store.accounts = [NORTH, SOUTH];
+    const second = await signIn(auth, first.cookies);
+    const body = await second.res.json();
+
+    expect(body.session.epAccount).toBeUndefined();
+    expect(body.session.epCartId).toBeUndefined();
+  });
+
+  it("does not then offer the previous account's cart at the next selection", async () => {
+    store.accounts = [NORTH];
+    store.carts = [
+      cart("cart-north-owned", { accountIds: [NORTH.id] }),
+      cart("cart-south-owned", { accountIds: [SOUTH.id] }),
+    ];
+    const offered: (string | null)[] = [];
+    const auth = buildAuth({
+      sessionCartResolver: (input) => {
+        offered.push(input.guestCartId);
+        return { keep: input.accountCarts[0]?.id ?? input.guestCartId! };
+      },
+    });
+    let cookies = await anonymous(auth);
+    cookies = await setCart(auth, cookies, "cart-north-owned");
+    const first = await signIn(auth, cookies);
+
+    store.accounts = [NORTH, SOUTH];
+    const second = await signIn(auth, first.cookies);
+    const chosen = await select(auth, second.cookies, SOUTH.id);
+    const body = await chosen.res.json();
+
+    expect(offered[offered.length - 1]).toBeNull();
+    expect(body.session.epCartId).toBe("cart-south-owned");
+    expect(
+      store.carts.find((c) => c.id === "cart-north-owned")?.accountIds
+    ).toEqual([NORTH.id]);
+  });
+
+  it("calls re-authenticating a login, not a switch", async () => {
+    store.accounts = [NORTH];
+    store.carts = [cart("cart-saved", { accountIds: [NORTH.id] })];
+    const triggers: string[] = [];
+    const auth = buildAuth({
+      sessionCartResolver: (input) => {
+        triggers.push(input.trigger);
+        return { keep: input.accountCarts[0]?.id ?? input.guestCartId! };
+      },
+    });
+    const cookies = await anonymous(auth);
+    const first = await signIn(auth, cookies);
+    await signIn(auth, first.cookies);
+
+    expect(triggers).toEqual(["login", "login"]);
+  });
+});
+
 describe("signing out", () => {
   it("clears the cart pointer so the next shopper does not inherit it", async () => {
     store.carts = [cart("cart-guest")];

@@ -347,12 +347,18 @@ function heldAnAccountBefore(priorSession: any): boolean {
 
 /**
  * Which transition this is, in the vocabulary CONTEXT.md sets: an account
- * switch changes the selected account *without re-authenticating*. A member of
- * several organisations choosing their first one has just authenticated and is
- * leaving no organisation behind, so that is the tail of a login however it
- * reaches us.
+ * switch changes the selected account *without re-authenticating*.
+ *
+ * So authenticating is always a login, however many accounts come back; and
+ * choosing an account while acting for none — the tail of a sign-in, or a
+ * shopper picking one up again after deselecting — is an arrival rather than a
+ * switch, because there is no account being left.
  */
-function triggerFor(priorSession: any): EpSessionCartTrigger {
+function triggerFor(
+  priorSession: any,
+  reauthenticated: boolean
+): EpSessionCartTrigger {
+  if (reauthenticated) return "login";
   return heldAnAccountBefore(priorSession) ? "accountSwitch" : "login";
 }
 
@@ -435,7 +441,11 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
    */
   async function applySessionCart(
     session: any,
-    input: { priorSession: any; account: EpAccountSlot }
+    input: {
+      priorSession: any;
+      account: EpAccountSlot;
+      reauthenticated: boolean;
+    }
   ): Promise<any> {
     const ctx: EpTransitionCtx = {
       accessToken: session.epAccessToken,
@@ -446,7 +456,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
     };
     const cartId = await resolveSessionCart({
       resolver: options.sessionCartResolver,
-      trigger: triggerFor(input.priorSession),
+      trigger: triggerFor(input.priorSession, input.reauthenticated),
       guestCartId: guestCartBefore(input.priorSession),
       ctx,
     });
@@ -557,12 +567,19 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             );
             // Only a selection reaches the resolver: with no account there is
             // no credential to list account carts with and no `accountId` to
-            // hand it, so the cart the shopper holds simply stays theirs.
+            // hand it.
             if (session.epAccount) {
               session = await applySessionCart(session, {
                 priorSession: existing.session,
                 account: session.epAccount,
+                reauthenticated: true,
               });
+            } else if (heldAnAccountBefore(existing.session)) {
+              // Nothing to resolve, but the cart in hand belongs to the
+              // account just left. Leaving it would hand the next member to
+              // sign in on this browser the previous one's cart, and would
+              // then offer it as theirs at their first selection.
+              session = clearSessionCart(session);
             }
 
             await setSessionCookie(ctx, { session, user } as any);
@@ -645,6 +662,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
           const session = await applySessionCart(selected, {
             priorSession: existing.session,
             account: selected.epAccount!,
+            reauthenticated: true,
           });
 
           await setSessionCookie(ctx, { session, user } as any);
@@ -793,7 +811,11 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
               memberId: found.memberId,
               account: found.entry,
             }),
-            { priorSession: existing.session, account: found.entry }
+            {
+              priorSession: existing.session,
+              account: found.entry,
+              reauthenticated: false,
+            }
           );
           await setSessionCookie(ctx, { session, user: existing.user } as any);
           return ctx.json(epIdentityPayload("selectAccount", { user: existing.user, session }));

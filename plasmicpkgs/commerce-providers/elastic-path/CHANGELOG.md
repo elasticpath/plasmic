@@ -21,12 +21,13 @@ two added becoming twelve is not a merge anyone asked for. `cartMergeStrategy`
 was read by no code, so nothing that worked stops working; it is removed in the
 breaking release.
 
-`trigger` distinguishes a shopper arriving from one moving between
-organisations, not which endpoint the call came through: a member of several
-organisations choosing their first one reports `"login"`, though it reaches the
-package through the account-switch endpoint. `"accountSwitch"` means an
-organisation was already selected, so `guestCartId` is null whenever it is the
-trigger.
+`trigger` is `"accountSwitch"` only where CONTEXT.md says an account switch is:
+the selected organisation changed without re-authenticating. Everything else is
+`"login"`, including a member of several organisations choosing their first
+one. `guestCartId` is null whenever the trigger is `"accountSwitch"`.
+
+The carts handed to a resolver arrive most recently updated first. Elastic Path
+ignores `sort` on its cart list, so the order is the package's own.
 
 A resolver that throws, or names a cart it was not offered, never blocks the
 sign-in: the default applies and the failure is logged. The losing cart is

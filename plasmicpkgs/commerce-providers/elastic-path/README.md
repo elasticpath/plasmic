@@ -519,6 +519,7 @@ export const epAuth = createEpAuth({
     // `trigger` is "login" or "accountSwitch". `guestCartId` is null at a
     // switch. `accountCarts` carries { id, name, createdAt, updatedAt } —
     // no line items; read them yourself if your rule needs them.
+    // `accountCarts` is newest-first, and may be empty.
     if (!guestCartId) {
       return { keep: accountCarts[0].id };
     }
@@ -533,16 +534,16 @@ of that organisation. That is how a rule like take-the-higher-quantity is
 written: read both carts, write the lines you want, then return the id of the
 cart you wrote to.
 
-`trigger` is `"login"` whenever the shopper is arriving — including a member of
-several organisations choosing their first one, which reaches the package
-through the switch endpoint but is still an arrival. It is `"accountSwitch"`
-only when an organisation was already selected, so `guestCartId` is null
-whenever the trigger is `"accountSwitch"`.
+`trigger` is `"accountSwitch"` only when the shopper changed organisation
+without signing in again — so `guestCartId` is always null when it is. Every
+other case is `"login"`: signing in, and choosing an organisation while acting
+for none, including a member of several picking their first.
 
-`accountCarts` is one page, ordered here by `updatedAt`. Elastic Path ignores
-`sort` on its cart list, so an organisation holding more carts than one page
-inside the store's expiry window can have a more recent one the hook never
-sees.
+`accountCarts` is one page, **most recently updated first**, so
+`accountCarts[0]` is the organisation's newest cart. It can be empty. Elastic
+Path ignores `sort` on its cart list, so the order is applied here, and an
+organisation holding more carts than one page inside the store's expiry window
+can have a more recent one the hook never sees.
 
 `keep` must name a cart the hook was offered — `guestCartId` or one of
 `accountCarts`. A hook that throws, or names anything else, never blocks the

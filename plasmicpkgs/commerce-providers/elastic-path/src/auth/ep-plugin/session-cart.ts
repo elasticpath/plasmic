@@ -9,13 +9,10 @@
  * Consumers cannot build this themselves: the package never hands a cart id to
  * the browser, and `GET /v2/carts` returns ids ADR-0003 refuses to release.
  */
-import { EP_ACCOUNT_TOKEN_HEADER } from "./envelope";
-import { readError } from "./account-tokens";
+import { accountTokenHeaders } from "./envelope";
+import { ACCOUNT_PAGE_LIMIT_MAX, readError } from "./account-tokens";
 import { withEpSession } from "../../ep-server-functions/session-context";
 import type { EpCtx } from "../../ep-server-functions/build-ep-ctx";
-
-/** Elastic Path rejects `page[limit]` above this. */
-const ACCOUNT_CART_PAGE_LIMIT = 100;
 
 /** One of the account's own carts, as Elastic Path lists them. */
 export interface EpAccountCart {
@@ -30,14 +27,13 @@ export interface EpAccountCart {
 /**
  * Whether the shopper is arriving, or moving between organisations.
  *
- * `"login"` covers every arrival, including a member of several organisations
- * choosing their first one — they have just authenticated and are leaving no
- * organisation behind, which is a login and not a switch (CONTEXT.md). Which
- * endpoint the call came through does not decide this; what the shopper was
- * acting as beforehand does.
+ * `"accountSwitch"` is the narrow one, and means exactly what CONTEXT.md says:
+ * the selected organisation changed *without re-authenticating*. So it implies
+ * one was already selected, and therefore that `guestCartId` is null.
  *
- * `"accountSwitch"` therefore means an organisation was already selected, so
- * `guestCartId` is null whenever this is the trigger.
+ * `"login"` is everything else — authenticating, however many organisations
+ * come back, and choosing one while acting for none, whether that is the tail
+ * of a sign-in or picking one up again after deselecting.
  */
 export type EpSessionCartTrigger = "login" | "accountSwitch";
 
@@ -49,7 +45,7 @@ export interface EpSessionCartResolverInput {
    * account to it and take the old account's prices into checkout.
    */
   guestCartId: string | null;
-  /** The carts already on the account being entered. */
+  /** The carts already on the account being entered, most recent first. */
   accountCarts: readonly EpAccountCart[];
   /** The account the shopper now acts for. */
   accountId: string;
@@ -114,36 +110,28 @@ function pickDefaultSessionCart(
   input: EpSessionCartResolverInput
 ): string | null {
   if (input.guestCartId) return input.guestCartId;
-  let best: EpAccountCart | null = null;
-  for (const candidate of input.accountCarts) {
-    if (
-      best === null ||
-      parseTimestamp(candidate.updatedAt) > parseTimestamp(best.updatedAt)
-    ) {
-      best = candidate;
-    }
-  }
-  return best?.id ?? null;
+  return input.accountCarts[0]?.id ?? null;
 }
 
 /**
- * One page of the account's carts. Line items are not fetched: that is one
- * request per cart on every login, and most resolvers read none.
+ * One page of the account's carts, most recently updated first. Line items are
+ * not fetched: that is one request per cart on every login, and most resolvers
+ * read none.
  *
  * One page, not all of them. Elastic Path ignores `sort` on this endpoint —
  * measured: `sort=updated_at` and `sort=-updated_at` return the same order —
  * so recency is decided here, over what the page holds. An account holding
- * more than `ACCOUNT_CART_PAGE_LIMIT` carts inside the store's expiry window
+ * more than `ACCOUNT_PAGE_LIMIT_MAX` carts inside the store's expiry window
  * can therefore have a more recent cart this never sees. Paging every login
  * to close that costs a request per page for every shopper.
  */
 async function listAccountCarts(ctx: EpTransitionCtx): Promise<EpAccountCart[]> {
   const response = await fetch(
-    `${ctx.host}/v2/carts?page[limit]=${ACCOUNT_CART_PAGE_LIMIT}`,
+    `${ctx.host}/v2/carts?page[limit]=${ACCOUNT_PAGE_LIMIT_MAX}`,
     {
       headers: {
         Authorization: `Bearer ${ctx.accessToken}`,
-        [EP_ACCOUNT_TOKEN_HEADER]: ctx.accountToken,
+        ...accountTokenHeaders(ctx),
       },
     }
   );
@@ -173,7 +161,13 @@ async function listAccountCarts(ctx: EpTransitionCtx): Promise<EpAccountCart[]> 
       updatedAt: timestamps?.updated_at,
     });
   }
-  return carts;
+  // Elastic Path ignores `sort` on this endpoint — measured: `sort=updated_at`
+  // and `sort=-updated_at` come back in the same order — so the order the
+  // resolver sees is decided here, and `accountCarts[0]` is the most recently
+  // updated one.
+  return carts.sort(
+    (a, b) => parseTimestamp(b.updatedAt) - parseTimestamp(a.updatedAt)
+  );
 }
 
 /**
@@ -192,7 +186,7 @@ async function associateCartWithAccount(
       headers: {
         Authorization: `Bearer ${ctx.accessToken}`,
         "Content-Type": "application/json",
-        [EP_ACCOUNT_TOKEN_HEADER]: ctx.accountToken,
+        ...accountTokenHeaders(ctx),
       },
       body: JSON.stringify({
         data: [{ type: "account", id: ctx.accountId }],
