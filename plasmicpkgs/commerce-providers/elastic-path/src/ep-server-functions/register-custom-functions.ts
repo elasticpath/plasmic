@@ -18,10 +18,10 @@ import {
   epUpdateCartItem,
 } from "./cart-mutations";
 import { epConfigureBundle } from "./configureBundle";
+import { epGetBaseProducts } from "./getBaseProducts";
 import { epGetBundleOptionProducts } from "./getBundleOptionProducts";
 import { epGetCart } from "./getCart";
 import { epGetLocations } from "./getLocations";
-import { epGetParentProducts } from "./getParentProducts";
 import { epGetProduct } from "./getProduct";
 import { epGetProductList } from "./getProductList";
 import { epGetProductPage } from "./getProductPage";
@@ -173,7 +173,7 @@ const EP_FUNCTIONS: EpFunctionSpec[] = [
     fn: epGetBundleOptionProducts,
     name: "getBundleOptionProducts",
     description:
-      "Fetch name, image, price and SKU for a bundle's option products, server-side. Returns a map keyed by product ID.",
+      "Fetch the products a bundle offers as options, server-side. Returns a map keyed by product ID, each the package's product shape with images and prices.",
     params: [
       {
         name: "productIds",
@@ -183,10 +183,10 @@ const EP_FUNCTIONS: EpFunctionSpec[] = [
     ],
   },
   {
-    fn: epGetParentProducts,
-    name: "getParentProducts",
+    fn: epGetBaseProducts,
+    name: "getBaseProducts",
     description:
-      "Fetch which of the given products are parents, with their variations and child products, server-side. Returns a map keyed by product ID.",
+      "Fetch the given products with their variations and child products, server-side. A product that is not a base product comes back with an empty childProducts. Returns a map keyed by product ID.",
     params: [
       {
         name: "productIds",
@@ -336,7 +336,7 @@ export const getRelatedProducts = ADAPTED.getRelatedProducts;
 export const getStock = ADAPTED.getStock;
 export const getLocations = ADAPTED.getLocations;
 export const getBundleOptionProducts = ADAPTED.getBundleOptionProducts;
-export const getParentProducts = ADAPTED.getParentProducts;
+export const getBaseProducts = ADAPTED.getBaseProducts;
 export const configureBundle = ADAPTED.configureBundle;
 export const multiSearch = ADAPTED.multiSearch;
 export const addCartItem = ADAPTED.addCartItem;

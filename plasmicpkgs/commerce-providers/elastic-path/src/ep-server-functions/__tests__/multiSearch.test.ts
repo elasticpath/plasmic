@@ -72,13 +72,33 @@ describe("epMultiSearch", () => {
     );
   });
 
-  it("returns an empty response when the search fails", async () => {
+  it("throws when the search fails, rather than reading as no hits", async () => {
     mockPostMultiSearch.mockRejectedValue(new Error("boom"));
 
+    await expect(
+      withEpSession(SESSION, () => epMultiSearch({ searches: [{ q: "x" }] }))
+    ).rejects.toThrow("boom");
+  });
+
+  it("throws when Elastic Path soft-fails with { error }", async () => {
+    mockPostMultiSearch.mockResolvedValue({
+      error: { errors: [{ detail: "index unavailable" }] },
+    });
+
+    await expect(
+      withEpSession(SESSION, () => epMultiSearch({ searches: [{ q: "x" }] }))
+    ).rejects.toThrow(/index unavailable/);
+  });
+
+  it("returns an empty result set as an empty result set", async () => {
+    mockPostMultiSearch.mockResolvedValue({
+      data: { results: [{ hits: [], found: 0 }] },
+    });
+
     const result = await withEpSession(SESSION, () =>
-      epMultiSearch({ searches: [{ q: "x" }] })
+      epMultiSearch({ searches: [{ q: "nomatch" }] })
     );
-    expect(result).toEqual({});
+    expect(result.results[0].hits).toEqual([]);
   });
 
   it("returns an empty response when called outside withEpSession", async () => {

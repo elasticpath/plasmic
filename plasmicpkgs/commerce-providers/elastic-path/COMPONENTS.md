@@ -791,8 +791,8 @@ PlasmicClientRootProvider <-------- prefetchedQueryData
 | `ep.getRelatedProducts` | `{ productId, relationshipSlug, limit? }` | `Product[]` — products linked by EP custom relationship |
 | `ep.getStock` | `{ productIds, locationIds? }` | `Record<productId, ProductStock>` — multi-location stock; a product whose stock is unreadable comes back with zero counts |
 | `ep.getLocations` | `{ type? }` | `Location[]` — the inventory locations |
-| `ep.getBundleOptionProducts` | `{ productIds }` | `Record<productId, { id, name?, description?, image?, price?, sku? }>` — display metadata for a bundle's options |
-| `ep.getParentProducts` | `{ productIds }` | `Record<productId, { id, isParent, children, variations, variationMatrix?, error? }>` — which products are parents, with their child variations |
+| `ep.getBundleOptionProducts` | `{ productIds }` | `Record<productId, Product>` — the products a bundle offers as options, each the package's product shape |
+| `ep.getBaseProducts` | `{ productIds }` | `Record<productId, Product>` — the given products with their `variations` and `childProducts`. A product that is not a base product comes back with an empty `childProducts`; one the catalog does not return is omitted |
 | `ep.configureBundle` | `{ bundleId, selectedOptions }` | Elastic Path's configured-bundle payload — re-prices a bundle for a set of selections. Throws on failure, because a stale price is worse than none |
 | `ep.multiSearch` | `{ searches }` | Elastic Path's multi-search response as-is, including the `included` block each hit's image resolves against |
 

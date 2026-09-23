@@ -1,4 +1,8 @@
 import { getStock } from "@epcc-sdk/sdks-shopper";
+import {
+  calculateTotalStock,
+  filterStockByLocation,
+} from "../inventory/utils/stockCalculations";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
@@ -7,7 +11,8 @@ import type { EpServerAuth } from "./types";
 /**
  * One inventory location's counts for one product.
  *
- * The counts are `number`, not the SDK's `BigInt`: this value crosses
+ * Structurally the browser client's `LocationStock`, with one departure: the
+ * counts are `number`, not the SDK's `BigInt`. This value crosses
  * `JSON.stringify` on the way through `/api/ep/proxy` and into the loader's
  * prefetched query data, and a BigInt cannot cross it.
  */
@@ -17,9 +22,12 @@ export interface EpLocationStock {
     type: string;
     attributes: { name: string; slug: string };
   };
-  available: number;
-  allocated: number;
-  total: number;
+  stock: {
+    productId: string;
+    available: number;
+    allocated: number;
+    total: number;
+  };
 }
 
 export interface EpProductStock {
@@ -53,7 +61,15 @@ function toCount(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function readLocations(stockData: unknown): EpLocationStock[] {
+/**
+ * Elastic Path reports multi-location stock as a slug-keyed map with no
+ * location metadata on it, so the location is reconstructed from the slug —
+ * same synthetic shape the browser client builds, names included later.
+ */
+function readLocations(
+  productId: string,
+  stockData: unknown
+): EpLocationStock[] {
   const locations = (stockData as { attributes?: { locations?: unknown } })
     ?.attributes?.locations;
   if (!locations || typeof locations !== "object") return [];
@@ -66,39 +82,28 @@ function readLocations(stockData: unknown): EpLocationStock[] {
           type: "inventory_location",
           attributes: { name: slug, slug },
         },
-        available: toCount(c.available),
-        allocated: toCount(c.allocated),
-        total: toCount(c.total),
+        stock: {
+          productId,
+          available: toCount(c.available),
+          allocated: toCount(c.allocated),
+          total: toCount(c.total),
+        },
       };
     }
   );
 }
 
-function narrow(
-  locations: EpLocationStock[],
-  locationIds?: string[]
-): EpLocationStock[] {
-  if (!locationIds || locationIds.length === 0) return locations;
-  return locations.filter(
-    (ls) =>
-      locationIds.includes(ls.location.id) ||
-      locationIds.includes(ls.location.attributes.slug)
-  );
-}
-
 function aggregate(
   productId: string,
-  locations: EpLocationStock[]
+  locations: EpLocationStock[],
+  locationIds?: string[]
 ): EpProductStock {
-  const totals = locations.reduce(
-    (acc, ls) => ({
-      totalAvailable: acc.totalAvailable + ls.available,
-      totalAllocated: acc.totalAllocated + ls.allocated,
-      totalStock: acc.totalStock + ls.total,
-    }),
-    { totalAvailable: 0, totalAllocated: 0, totalStock: 0 }
-  );
-  return { productId, locations, ...totals };
+  const all: EpProductStock = {
+    productId,
+    locations,
+    ...calculateTotalStock(locations as never),
+  };
+  return filterStockByLocation(all as never, locationIds ?? []) as never;
 }
 
 /**
@@ -144,7 +149,8 @@ export async function epGetStock({
         });
         return aggregate(
           productId,
-          narrow(readLocations(response.data?.data), locationIds)
+          readLocations(productId, response.data?.data),
+          locationIds
         );
       } catch {
         return emptyStock(productId);

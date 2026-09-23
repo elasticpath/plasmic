@@ -101,23 +101,11 @@ export interface EpApplyCartAdjustmentInput {
   quantity?: number;
 }
 
-/**
- * Flattens an input to the proxy body, dropping the keys the caller left
- * unset so the route's dispatch sees the same argument list SSR would.
- */
-function proxyArgs<T extends object>(input: T): Record<string, unknown> {
-  const args: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(input)) {
-    if (value !== undefined) args[key] = value;
-  }
-  return args;
-}
-
 export async function epAddCartItem(input: EpAddCartItemInput): Promise<Cart> {
   const auth = getCurrentEpSession();
 
   if (!isUsableAuth(auth) && shouldUseProxy()) {
-    return callEpProxy<Cart>("addCartItem", proxyArgs(input));
+    return callEpProxy<Cart>("addCartItem", input as unknown as Record<string, unknown>);
   }
 
   if (!isUsableAuth(auth)) {
@@ -197,7 +185,7 @@ export async function epUpdateCartItem(
   const auth = getCurrentEpSession();
 
   if (!isUsableAuth(auth) && shouldUseProxy()) {
-    return callEpProxy<Cart>("updateCartItem", proxyArgs(input));
+    return callEpProxy<Cart>("updateCartItem", input as unknown as Record<string, unknown>);
   }
 
   if (!isUsableAuth(auth)) {
@@ -317,7 +305,7 @@ export async function epRemoveCartItem(
   const auth = getCurrentEpSession();
 
   if (!isUsableAuth(auth) && shouldUseProxy()) {
-    return callEpProxy<Cart>("removeCartItem", proxyArgs(input));
+    return callEpProxy<Cart>("removeCartItem", input as unknown as Record<string, unknown>);
   }
 
   if (!isUsableAuth(auth)) {

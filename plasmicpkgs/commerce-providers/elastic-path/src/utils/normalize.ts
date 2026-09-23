@@ -128,6 +128,14 @@ const normalizeChildImages = (
   return dedupeByUrl(images);
 };
 
+/** An Elastic Path custom field, on either leaf depending on how it was set. */
+const readBundleExcluded = (child: unknown): boolean | undefined => {
+  const c = child as { meta?: any; attributes?: any } | undefined;
+  if (c?.meta?.bundle_excluded === true) return true;
+  if (c?.attributes?.bundle_excluded === true) return true;
+  return undefined;
+};
+
 const normalizeChildProducts = (
   product: ProductData,
   childProducts?: ProductListData
@@ -147,6 +155,7 @@ const normalizeChildProducts = (
         ? getOptionsFromSkuId(child.id, matrix)
         : undefined) ?? [],
     images: normalizeChildImages(child, childProducts?.included),
+    bundleExcluded: readBundleExcluded(child),
   }));
 };
 

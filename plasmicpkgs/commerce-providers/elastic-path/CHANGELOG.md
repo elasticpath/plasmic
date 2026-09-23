@@ -6,7 +6,7 @@
 
 Six server functions reach data that previously only the browser client could:
 `ep.getStock`, `ep.getLocations`, `ep.getBundleOptionProducts`,
-`ep.getParentProducts`, `ep.configureBundle` and `ep.multiSearch`. Each is
+`ep.getBaseProducts`, `ep.configureBundle` and `ep.multiSearch`. Each is
 registered for Studio Server Queries and dispatchable from the browser through
 the proxy route. Nothing is removed and no call site moves — the browser client
 and every component that uses it behave exactly as before.
@@ -19,7 +19,15 @@ shape would drop every search hit's picture with nothing failing.
 
 `ep.getStock` reports its counts as numbers. The browser hook builds them as
 `BigInt`, which cannot cross `JSON.stringify` — and this value crosses it twice,
-into prefetched query data and through the proxy route.
+into prefetched query data and through the proxy route. Its per-location shape
+is otherwise the browser client's, counts under `stock`, so a call site can
+move without rereading them.
+
+The two bundle product reads return the package's own product shape, so a
+bundle option carries joined images and a price with all four members rather
+than a bare formatted string. `ChildProduct` gains `bundleExcluded`, the
+Elastic Path custom field marking a variation the merchandiser kept out of
+bundle selection.
 
 `sessionCartResolver` on `createEpAuth` chooses the session cart at a login or
 an account switch, configured once rather than per call site. It is handed the

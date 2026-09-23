@@ -35,6 +35,11 @@ export type ChildProduct = {
   /** The variation options that select this child, from `meta.variation_matrix`. */
   optionIds: string[];
   images: ProductImage[];
+  /**
+   * The merchandiser excluded this child from bundle selection. An Elastic
+   * Path custom field, so it is absent unless the store sets one.
+   */
+  bundleExcluded?: boolean;
 };
 
 type CompletedDisplayPrice = {

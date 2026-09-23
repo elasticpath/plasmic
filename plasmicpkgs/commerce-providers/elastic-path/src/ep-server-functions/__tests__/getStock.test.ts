@@ -51,6 +51,14 @@ describe("epGetStock", () => {
       "warehouse-a",
       "store-b",
     ]);
+    // The browser client's consumers read counts off `stock`, so the named
+    // operation has to put them there too.
+    expect(result.p1.locations[0].stock).toEqual({
+      productId: "p1",
+      available: 4,
+      allocated: 1,
+      total: 5,
+    });
   });
 
   it("keeps the payload JSON-serializable", async () => {

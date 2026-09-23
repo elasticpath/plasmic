@@ -84,7 +84,7 @@ describe("callEpProxy / FN_DISPATCH parity", () => {
         "getStock",
         "getLocations",
         "getBundleOptionProducts",
-        "getParentProducts",
+        "getBaseProducts",
         "configureBundle",
         "multiSearch",
         "getProductList",

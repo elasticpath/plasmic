@@ -633,10 +633,10 @@ This registers the read functions in the `ep` namespace, callable from Studio's 
 - `ep.getRelatedProducts({ productId, relationshipSlug, limit? })` — products linked by an EP custom relationship.
 - `ep.getStock({ productIds, locationIds? })` — multi-location stock, keyed by product ID. Counts are plain numbers, because the value crosses `JSON.stringify` twice. A product whose stock is unreadable comes back with zero counts rather than failing the batch.
 - `ep.getLocations({ type? })` — the inventory locations.
-- `ep.getBundleOptionProducts({ productIds })` — name, image, price and SKU for a bundle's option products, keyed by product ID.
-- `ep.getParentProducts({ productIds })` — which of the given products are parents, with their variations and child products.
+- `ep.getBundleOptionProducts({ productIds })` — the products a bundle offers as options, keyed by product ID, each the package's own product shape with images joined and prices carrying all four members.
+- `ep.getBaseProducts({ productIds })` — the given products with their `variations` and `childProducts`. A product that is not a base product comes back with an empty `childProducts`; one the catalog does not return is omitted, because absent and purchasable-on-its-own are different answers.
 - `ep.configureBundle({ bundleId, selectedOptions })` — re-prices a bundle for a set of option selections and returns Elastic Path's configured-bundle payload. Throws on failure: a configurator showing a stale total is worse than one showing an error.
-- `ep.multiSearch({ searches })` — a catalog multi-search, returned as-is. The `included` block is what each hit's image resolves against, so the response is passed through rather than reshaped.
+- `ep.multiSearch({ searches })` — a catalog multi-search, returned as-is. The `included` block is what each hit's image resolves against, so the response is passed through rather than reshaped. It throws when the search fails: an empty result is a plausible correct answer here, so failing soft would render an outage as a no-results page.
 
 Auth is **not** an argument. The session (`accessToken`, `clientId`, `host`, `cartId`, …) is propagated through `AsyncLocalStorage` — see step 3.
 

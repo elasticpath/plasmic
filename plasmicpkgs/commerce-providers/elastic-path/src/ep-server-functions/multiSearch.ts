@@ -32,7 +32,14 @@ export interface EpMultiSearchResponse extends Record<string, unknown> {
   included?: Record<string, unknown>;
 }
 
-/** Runs a catalog multi-search and returns Elastic Path's response as-is. */
+/**
+ * Runs a catalog multi-search and returns Elastic Path's response as-is.
+ *
+ * Throws when the search fails. An empty result is a plausible correct answer
+ * here — "nothing matched" — so failing soft to one would render a search
+ * outage as a no-results page. The autocomplete source already turns a
+ * rejection into an empty suggestion list, so no UI crashes on this.
+ */
 export async function epMultiSearch({
   searches,
   auth: inputAuth,
@@ -42,21 +49,24 @@ export async function epMultiSearch({
 
   if (!isUsableAuth(auth) && shouldUseProxy()) {
     return (
-      (await callEpProxy<EpMultiSearchResponse | null>(
-        "multiSearch",
-        { searches: body.searches },
-        null
-      )) ?? {}
+      (await callEpProxy<EpMultiSearchResponse | null>("multiSearch", {
+        searches: body.searches,
+      })) ?? {}
     );
   }
 
   if (!isUsableAuth(auth)) return {};
   const client = buildEpClient(auth);
 
-  try {
-    const response = await postMultiSearch({ client, body: body as any });
-    return (response.data as EpMultiSearchResponse) ?? {};
-  } catch {
-    return {};
+  const response = await postMultiSearch({ client, body: body as any });
+  if (response.error) {
+    throw new Error(
+      `epMultiSearch: ${
+        response.error instanceof Error
+          ? response.error.message
+          : JSON.stringify(response.error)
+      }`
+    );
   }
+  return (response.data as EpMultiSearchResponse) ?? {};
 }

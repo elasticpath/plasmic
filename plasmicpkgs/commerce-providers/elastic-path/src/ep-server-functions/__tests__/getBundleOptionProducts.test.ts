@@ -23,37 +23,75 @@ const SESSION = {
 
 const mkProduct = (id: string) => ({
   id,
-  attributes: { name: `Name ${id}`, description: `Desc ${id}`, sku: `SKU-${id}` },
-  relationships: { main_image: { data: { id: `img-${id}` } } },
-  meta: { display_price: { without_tax: { formatted: "$10.00" } } },
+  type: "product",
+  attributes: { name: `Name ${id}`, sku: `SKU-${id}` },
+  relationships: { main_image: { data: { id: `img-${id}`, type: "main_image" } } },
+  meta: {
+    display_price: {
+      without_tax: { amount: 1000, currency: "USD", formatted: "$10.00" },
+    },
+    product_types: [],
+  },
 });
+
+const INCLUDED = {
+  main_images: [
+    { id: "img-p1", link: { href: "https://cdn.example/p1.jpg" } },
+    { id: "img-p2", link: { href: "https://cdn.example/p2.jpg" } },
+  ],
+};
 
 beforeEach(() => {
   mockGetByContextAllProducts.mockReset();
 });
 
 describe("epGetBundleOptionProducts", () => {
-  it("returns display metadata keyed by product id", async () => {
+  it("returns the package's product shape, keyed by product id", async () => {
     mockGetByContextAllProducts.mockResolvedValue({
-      data: { data: [mkProduct("p1"), mkProduct("p2")] },
+      data: { data: [mkProduct("p1"), mkProduct("p2")], included: INCLUDED },
     });
 
     const result = await withEpSession(SESSION, () =>
       epGetBundleOptionProducts({ productIds: ["p1", "p2"] })
     );
 
-    expect(result.p1).toEqual({
-      id: "p1",
-      name: "Name p1",
-      description: "Desc p1",
-      image: "img-p1",
-      price: "$10.00",
-      sku: "SKU-p1",
-    });
     expect(Object.keys(result)).toEqual(["p1", "p2"]);
+    expect(result.p1.attributes.name).toBe("Name p1");
+    expect(result.p1.attributes.sku).toBe("SKU-p1");
   });
 
-  it("asks for the main image and a page large enough for the batch", async () => {
+  it("joins each option's image from the response's included block", async () => {
+    mockGetByContextAllProducts.mockResolvedValue({
+      data: { data: [mkProduct("p1")], included: INCLUDED },
+    });
+
+    const result = await withEpSession(SESSION, () =>
+      epGetBundleOptionProducts({ productIds: ["p1"] })
+    );
+
+    expect(result.p1.images).toEqual([
+      { url: "https://cdn.example/p1.jpg", alt: "Name p1" },
+    ]);
+  });
+
+  it("publishes a price carrying all four members, not a bare string", async () => {
+    mockGetByContextAllProducts.mockResolvedValue({
+      data: { data: [mkProduct("p1")], included: INCLUDED },
+    });
+
+    const result = await withEpSession(SESSION, () =>
+      epGetBundleOptionProducts({ productIds: ["p1"] })
+    );
+
+    expect(result.p1.meta.display_price.without_tax).toEqual({
+      amount: 1000,
+      currency: "USD",
+      formatted: "$10.00",
+      float_price: 10,
+    });
+  });
+
+  it("asks for the images and a page large enough for the batch", async () => {
     mockGetByContextAllProducts.mockResolvedValue({ data: { data: [] } });
 
     await withEpSession(SESSION, () =>
@@ -64,7 +102,7 @@ describe("epGetBundleOptionProducts", () => {
       expect.objectContaining({
         query: expect.objectContaining({
           filter: "in(id,p1,p2)",
-          include: ["main_image"],
+          include: ["main_image", "files"],
           "page[limit]": 2,
         }),
       })
@@ -73,7 +111,7 @@ describe("epGetBundleOptionProducts", () => {
 
   it("keeps the payload JSON-serializable", async () => {
     mockGetByContextAllProducts.mockResolvedValue({
-      data: { data: [mkProduct("p1")] },
+      data: { data: [mkProduct("p1")], included: INCLUDED },
     });
 
     const result = await withEpSession(SESSION, () =>

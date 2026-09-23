@@ -20,22 +20,14 @@ export type {
   AddCustomCartItemInput,
   CartAdjustmentKind,
 } from "./custom-cart-item";
+export { epGetBaseProducts } from "./getBaseProducts";
+export type { EpGetBaseProductsInput } from "./getBaseProducts";
 export { epGetBundleOptionProducts } from "./getBundleOptionProducts";
-export type {
-  EpBundleOptionProduct,
-  EpGetBundleOptionProductsInput,
-} from "./getBundleOptionProducts";
+export type { EpGetBundleOptionProductsInput } from "./getBundleOptionProducts";
 export { epGetCart } from "./getCart";
 export type { EpGetCartInput } from "./getCart";
 export { epGetLocations } from "./getLocations";
 export type { EpGetLocationsInput, EpLocation } from "./getLocations";
-export { epGetParentProducts } from "./getParentProducts";
-export type {
-  EpChildProduct,
-  EpGetParentProductsInput,
-  EpParentProduct,
-  EpProductVariation,
-} from "./getParentProducts";
 export { epGetProduct } from "./getProduct";
 export type { EpGetProductInput } from "./getProduct";
 export { epGetProductList } from "./getProductList";
@@ -82,7 +74,7 @@ export {
   getBundleOptionProducts,
   getCart,
   getLocations,
-  getParentProducts,
+  getBaseProducts,
   getProduct,
   getProductList,
   getProductPage,

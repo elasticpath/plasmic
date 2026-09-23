@@ -27,7 +27,7 @@ import {
   epGetBundleOptionProducts,
   epGetCart,
   epGetLocations,
-  epGetParentProducts,
+  epGetBaseProducts,
   epGetProduct,
   epGetProductList,
   epGetProductPage,
@@ -43,7 +43,7 @@ import type {
   EpConfigureBundleInput,
   EpGetBundleOptionProductsInput,
   EpGetLocationsInput,
-  EpGetParentProductsInput,
+  EpGetBaseProductsInput,
   EpGetStockInput,
   EpMultiSearchInput,
   EpRemoveCartItemInput,
@@ -138,8 +138,8 @@ const FN_DISPATCH: Record<
     epGetBundleOptionProducts(
       args as unknown as EpGetBundleOptionProductsInput
     ),
-  getParentProducts: (args) =>
-    epGetParentProducts(args as unknown as EpGetParentProductsInput),
+  getBaseProducts: (args) =>
+    epGetBaseProducts(args as unknown as EpGetBaseProductsInput),
   configureBundle: (args) =>
     epConfigureBundle(args as unknown as EpConfigureBundleInput),
   multiSearch: (args) => epMultiSearch(args as unknown as EpMultiSearchInput),

@@ -1,20 +1,10 @@
-import { getByContextAllProducts } from "@epcc-sdk/sdks-shopper";
+import { normalizeProductFromList } from "../utils/normalize";
+import type { Product } from "../types/product";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
-import { batchProductIds } from "./product-batches";
+import { readProductsByIds } from "./product-batches";
 import type { EpServerAuth } from "./types";
-
-/** The display metadata a bundle option needs to render its choice. */
-export interface EpBundleOptionProduct {
-  id: string;
-  name?: string;
-  description?: string;
-  /** The `main_image` file id, as the product's relationships carry it. */
-  image?: string;
-  price?: string;
-  sku?: string;
-}
 
 export interface EpGetBundleOptionProductsInput {
   productIds: string[];
@@ -23,24 +13,23 @@ export interface EpGetBundleOptionProductsInput {
 }
 
 /**
- * Display metadata for a bundle's option products, keyed by product id.
+ * The products a bundle offers as options, keyed by product id.
  *
- * A batch that fails contributes nothing rather than failing the whole read —
- * a bundle with one unreachable option still renders its other options.
+ * Each is the package's own product shape, so an option renders from the same
+ * fields as any other product — images joined from `included`, prices carrying
+ * all four members.
  */
 export async function epGetBundleOptionProducts({
   productIds,
   auth: inputAuth,
-}: EpGetBundleOptionProductsInput): Promise<
-  Record<string, EpBundleOptionProduct>
-> {
+}: EpGetBundleOptionProductsInput): Promise<Record<string, Product>> {
   const ids = (productIds ?? []).filter(Boolean);
   if (ids.length === 0) return {};
   const auth = getCurrentEpSession() ?? inputAuth;
 
   if (!isUsableAuth(auth) && shouldUseProxy()) {
     return (
-      (await callEpProxy<Record<string, EpBundleOptionProduct> | null>(
+      (await callEpProxy<Record<string, Product> | null>(
         "getBundleOptionProducts",
         { productIds: ids },
         null
@@ -50,36 +39,14 @@ export async function epGetBundleOptionProducts({
 
   if (!isUsableAuth(auth)) return {};
   const client = buildEpClient(auth);
+  const locale = auth.locale ?? "en-US";
 
-  const batches = await Promise.all(
-    batchProductIds(ids).map(async (batchIds) => {
-      try {
-        const response = await getByContextAllProducts({
-          client,
-          query: {
-            filter: `in(id,${batchIds.join(",")})`,
-            include: ["main_image"],
-            "page[limit]": batchIds.length,
-          } as any,
-        });
-        return response.data?.data ?? [];
-      } catch {
-        return [];
-      }
-    })
-  );
-
-  const products: Record<string, EpBundleOptionProduct> = {};
-  for (const product of batches.flat() as any[]) {
-    if (!product?.id) continue;
-    products[product.id] = {
-      id: product.id,
-      name: product.attributes?.name,
-      description: product.attributes?.description,
-      image: product.relationships?.main_image?.data?.id,
-      price: product.meta?.display_price?.without_tax?.formatted,
-      sku: product.attributes?.sku,
-    };
+  const products: Record<string, Product> = {};
+  for (const batch of await readProductsByIds(client, ids)) {
+    for (const row of batch.rows) {
+      if (!row?.id) continue;
+      products[row.id] = normalizeProductFromList(row, locale, batch.included);
+    }
   }
   return products;
 }
