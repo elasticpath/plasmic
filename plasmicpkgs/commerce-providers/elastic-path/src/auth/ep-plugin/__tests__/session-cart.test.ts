@@ -717,6 +717,87 @@ describe("a second shopper signing in on the same browser", () => {
   });
 });
 
+describe("paths this change touched but the cases above do not reach", () => {
+  it("resolves the cart for the older client-supplied-token login too", async () => {
+    store.accounts = [NORTH];
+    store.carts = [
+      cart("cart-guest-legacy"),
+      cart("cart-saved-legacy", { accountIds: [NORTH.id] }),
+    ];
+    const auth = buildAuth();
+    let cookies = await anonymous(auth);
+    cookies = await setCart(auth, cookies, "cart-guest-legacy");
+
+    const res = await (auth.api as any).epAccountLogin({
+      body: {
+        epMemberId: "member-1",
+        epAccountId: NORTH.id,
+        epAccountToken: accountTokenFor(NORTH.id),
+        epAccountExpires: isoIn(86400),
+      },
+      headers: new Headers({ cookie: cookies }),
+      asResponse: true,
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.session.epCartId).toBe("cart-guest-legacy");
+    expect(
+      setCookieHeaders(res).filter((c) => c.startsWith("ep_checkout_session="))
+    ).toHaveLength(1);
+  });
+
+  it("leaves the cart alone when the account credential merely rolls", async () => {
+    store.accounts = [NORTH];
+    store.carts = [cart("cart-rolling")];
+    let asked = 0;
+    const auth = buildAuth({
+      sessionCartResolver: (input) => {
+        asked += 1;
+        return { keep: input.guestCartId ?? input.accountCarts[0].id };
+      },
+    });
+    let cookies = await anonymous(auth);
+    cookies = await setCart(auth, cookies, "cart-rolling");
+    const signedIn = await signIn(auth, cookies);
+    const askedAfterLogin = asked;
+
+    const res = await (auth.api as any).epAccountRoll({
+      body: {},
+      headers: new Headers({ cookie: signedIn.cookies }),
+      asResponse: true,
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.session.epCartId).toBe("cart-rolling");
+    expect(asked).toBe(askedAfterLogin);
+  });
+
+  it("offers the cart again when a shopper deselects and picks an account back up", async () => {
+    store.accounts = [NORTH];
+    store.carts = [cart("cart-through-deselect")];
+    const triggers: string[] = [];
+    const auth = buildAuth({
+      sessionCartResolver: (input) => {
+        triggers.push(input.trigger);
+        return { keep: input.guestCartId ?? input.accountCarts[0].id };
+      },
+    });
+    let cookies = await anonymous(auth);
+    cookies = await setCart(auth, cookies, "cart-through-deselect");
+    const signedIn = await signIn(auth, cookies);
+    const off = await select(auth, signedIn.cookies, null);
+    expect((await off.res.json()).session.epCartId).toBeUndefined();
+
+    const back = await select(auth, off.cookies, NORTH.id);
+    const body = await back.res.json();
+
+    expect(body.session.epCartId).toBe("cart-through-deselect");
+    expect(triggers[triggers.length - 1]).toBe("login");
+  });
+});
+
 describe("signing out", () => {
   it("clears the cart pointer so the next shopper does not inherit it", async () => {
     store.carts = [cart("cart-guest")];
