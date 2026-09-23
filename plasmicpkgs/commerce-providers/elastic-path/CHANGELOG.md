@@ -4,6 +4,23 @@
 
 ### Added
 
+Six server functions reach data that previously only the browser client could:
+`ep.getStock`, `ep.getLocations`, `ep.getBundleOptionProducts`,
+`ep.getParentProducts`, `ep.configureBundle` and `ep.multiSearch`. Each is
+registered for Studio Server Queries and dispatchable from the browser through
+the proxy route. Nothing is removed and no call site moves — the browser client
+and every component that uses it behave exactly as before.
+
+`ep.multiSearch` returns Elastic Path's response as written, under a
+package-owned type that keeps the top-level `included` block. That block is
+where the search adapter resolves each hit's `main_image`, and the SDK's own
+`MultiSearchResponse` does not declare it — typing the result with the SDK
+shape would drop every search hit's picture with nothing failing.
+
+`ep.getStock` reports its counts as numbers. The browser hook builds them as
+`BigInt`, which cannot cross `JSON.stringify` — and this value crosses it twice,
+into prefetched query data and through the proxy route.
+
 `sessionCartResolver` on `createEpAuth` chooses the session cart at a login or
 an account switch, configured once rather than per call site. It is handed the
 guest cart, the carts already on the account, and which transition this is; it
@@ -43,6 +60,17 @@ The `EpAccountCart`, `EpSessionCartResolver`, `EpSessionCartResolverInput`,
 `/server`.
 
 ### Fixed
+
+`ep.applyCartAdjustment` is dispatchable from the browser. It has been
+registered as a Studio mutation since it landed, but had no entry in the proxy
+route's dispatch table, so an adjustment a designer wired to an onClick — a
+promo code, a handling fee — could not reach the server at all and failed with
+`unknown_fn`.
+
+`epAddCartItem`, `epUpdateCartItem`, `epRemoveCartItem` and `epGetProductList`
+have a browser transport. Called outside a request scope they threw "no EP
+session" (or, for the list, fetched under another function's name) instead of
+routing through the proxy the way the other server functions do.
 
 Signing out clears the cart pointer. It stripped the account fields and left
 `epCartId`, handing the next shopper on that browser the previous one's cart.

@@ -28,12 +28,22 @@ vi.mock("../../../ep-server-functions/getCart", () => ({
   epGetCart: vi.fn(),
 }));
 
+vi.mock("../../../ep-server-functions/configureBundle", () => ({
+  epConfigureBundle: vi.fn(),
+}));
+
+vi.mock("../../../ep-server-functions/getStock", () => ({
+  epGetStock: vi.fn(),
+}));
+
 // Imported AFTER vi.mock so the proxy picks up the mocked module.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { createEpProxyRoutes } = await import("../proxy-routes");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const cartMutations = await import("../../../ep-server-functions/cart-mutations");
 import { epGetCart } from "../../../ep-server-functions/getCart";
+import { epConfigureBundle } from "../../../ep-server-functions/configureBundle";
+import { epGetStock } from "../../../ep-server-functions/getStock";
 import { getCurrentEpSession } from "../../../ep-server-functions/session-context";
 
 let originalFetch: typeof fetch;
@@ -57,6 +67,9 @@ beforeEach(() => {
   (cartMutations.epAddCartItem as any).mockReset();
   (cartMutations.epUpdateCartItem as any).mockReset();
   (cartMutations.epRemoveCartItem as any).mockReset();
+  (cartMutations.epApplyCartAdjustment as any).mockReset();
+  (epConfigureBundle as any).mockReset();
+  (epGetStock as any).mockReset();
 });
 
 afterEach(() => {
@@ -403,15 +416,18 @@ describe("createEpProxyRoutes no-session handling", () => {
     );
   }
 
-  it.each(["addCartItem", "updateCartItem", "removeCartItem"])(
-    "rejects %s with 401 rather than a soft 200",
-    async (fn) => {
-      const res = await unauthenticatedRequest(fn, { itemId: "i1", quantity: 2 });
+  it.each([
+    "addCartItem",
+    "updateCartItem",
+    "removeCartItem",
+    "applyCartAdjustment",
+    "configureBundle",
+  ])("rejects %s with 401 rather than a soft 200", async (fn) => {
+    const res = await unauthenticatedRequest(fn, { itemId: "i1", quantity: 2 });
 
-      expect(res.status).toBe(401);
-      expect(await res.json()).toMatchObject({ code: "no_session" });
-    }
-  );
+    expect(res.status).toBe(401);
+    expect(await res.json()).toMatchObject({ code: "no_session" });
+  });
 
   it("does not dispatch the mutation when there is no session", async () => {
     await unauthenticatedRequest("addCartItem", { productId: "p", quantity: 1 });
@@ -419,11 +435,102 @@ describe("createEpProxyRoutes no-session handling", () => {
     expect(cartMutations.epAddCartItem).not.toHaveBeenCalled();
   });
 
-  it("still soft-fails reads with a 200 null body", async () => {
-    const res = await unauthenticatedRequest("getCart", {});
+  it.each(["getCart", "getStock"])(
+    "still soft-fails %s with a 200 null body",
+    async (fn) => {
+      const res = await unauthenticatedRequest(fn, {});
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toBeNull();
+    }
+  );
+});
+
+describe("createEpProxyRoutes cart adjustments", () => {
+  it("dispatches an adjustment the browser sends, so a promo code reaches the server", async () => {
+    const auth = buildAuth();
+    const anonResp = await (auth.handler.api as any).epAnonymous({
+      body: {},
+      headers: new Headers(),
+      asResponse: true,
+    });
+
+    const adjustedCart = { id: "fresh-cart-uuid", totalPrice: 45 };
+    (cartMutations.epApplyCartAdjustment as any).mockResolvedValue(
+      adjustedCart
+    );
+
+    const proxy = createEpProxyRoutes(auth as any);
+    const res = await proxy.handle(
+      new Request("http://localhost:3000/api/ep/proxy/applyCartAdjustment", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "http://localhost:3000",
+          cookie: cookiesFromResponse(anonResp),
+        },
+        body: JSON.stringify({
+          label: "SUMMER10",
+          amountMinor: 500,
+          kind: "fee",
+        }),
+      }),
+      { params: Promise.resolve({ fn: "applyCartAdjustment" }) }
+    );
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toBeNull();
+    expect(await res.json()).toEqual(adjustedCart);
+    expect(cartMutations.epApplyCartAdjustment).toHaveBeenCalledWith({
+      label: "SUMMER10",
+      amountMinor: 500,
+      kind: "fee",
+    });
+
+    // It writes the cart, so a cart it auto-created has to reach the envelope.
+    const session = await auth.handler.api.getSession({
+      headers: new Headers({
+        cookie: mergeCookies(cookiesFromResponse(anonResp), res),
+      }),
+    } as any);
+    expect((session as any).session.epCartId).toBe("fresh-cart-uuid");
+  });
+
+  it("does not take a non-cart result's id for a cart id", async () => {
+    const auth = buildAuth();
+    const anonResp = await (auth.handler.api as any).epAnonymous({
+      body: {},
+      headers: new Headers(),
+      asResponse: true,
+    });
+
+    // `configureBundle` needs a session like a cart write does, but what it
+    // returns is a priced product — its id must never land on the envelope.
+    (epConfigureBundle as any).mockResolvedValue({
+      id: "configured-bundle-1",
+      data: { id: "configured-bundle-1" },
+    });
+
+    const proxy = createEpProxyRoutes(auth as any);
+    const res = await proxy.handle(
+      new Request("http://localhost:3000/api/ep/proxy/configureBundle", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "http://localhost:3000",
+          cookie: cookiesFromResponse(anonResp),
+        },
+        body: JSON.stringify({ bundleId: "b1", selectedOptions: {} }),
+      }),
+      { params: Promise.resolve({ fn: "configureBundle" }) }
+    );
+
+    expect(res.status).toBe(200);
+    const session = await auth.handler.api.getSession({
+      headers: new Headers({
+        cookie: mergeCookies(cookiesFromResponse(anonResp), res),
+      }),
+    } as any);
+    expect((session as any).session.epCartId).toBeUndefined();
   });
 });
 

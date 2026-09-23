@@ -14,11 +14,11 @@ const SRC_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 
 /**
  * Names reachable through `callEpProxy` that the route deliberately does not
- * dispatch yet. Whether a public proxy route may move money is the open
- * question in #371; until that is settled these throw a legible `unknown_fn`
- * rather than silently working. Both still work under SSR.
+ * dispatch. Placing an order from a public proxy route is still open; until
+ * that is settled it throws a legible `unknown_fn` rather than silently
+ * working. It still works under SSR.
  */
-const KNOWN_UNWIRED = ["applyCartAdjustment", "placeOrder"];
+const KNOWN_UNWIRED = ["placeOrder"];
 
 // Matches every real call form in the tree: bare, generic
 // (`callEpProxy<Cart>("getCart"`), and the prettier-wrapped variant where the
@@ -70,7 +70,28 @@ describe("callEpProxy / FN_DISPATCH parity", () => {
         "getProductPage",
         "addCartItem",
         "removeCartItem",
+        "applyCartAdjustment",
         ...KNOWN_UNWIRED,
+      ])
+    );
+  });
+
+  it("dispatches every operation a component fetches today", () => {
+    // These are the names the browser client still serves directly. Each has
+    // to exist on the server before its call site can be moved.
+    expect(EP_PROXY_FN_NAMES).toEqual(
+      expect.arrayContaining([
+        "getStock",
+        "getLocations",
+        "getBundleOptionProducts",
+        "getParentProducts",
+        "configureBundle",
+        "multiSearch",
+        "getProductList",
+        "addCartItem",
+        "updateCartItem",
+        "removeCartItem",
+        "applyCartAdjustment",
       ])
     );
   });

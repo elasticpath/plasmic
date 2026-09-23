@@ -624,13 +624,19 @@ import { registerEpCustomFunctions } from "@elasticpath/plasmic-ep-commerce-elas
 registerEpCustomFunctions(PLASMIC);
 ```
 
-This registers five read functions in the `ep` namespace, callable from Studio's Server Query builder:
+This registers the read functions in the `ep` namespace, callable from Studio's Server Query builder:
 
 - `ep.getProduct({ id })` — single product by EP product UUID.
 - `ep.getCart()` — current cart contents.
 - `ep.getProductList({ limit?, search?, categoryId?, sort? })` — a flat array of products. `categoryId` is a hierarchy **node** ID; it reads that node's products rather than filtering the whole catalog.
 - `ep.getProductPage({ limit?, offset?, search?, categoryId?, sort? })` — one page of products **with the total count**, in Elastic Path's envelope: `data`, plus `meta.results.total` and `meta.page`. Bind it to EP Product List Provider's **Products (pre-fetched)** prop to server-render a listing. Prefer this over `getProductList` whenever the page has pagination controls — the flat array carries no total, so ranges and next/previous cannot be computed.
 - `ep.getRelatedProducts({ productId, relationshipSlug, limit? })` — products linked by an EP custom relationship.
+- `ep.getStock({ productIds, locationIds? })` — multi-location stock, keyed by product ID. Counts are plain numbers, because the value crosses `JSON.stringify` twice. A product whose stock is unreadable comes back with zero counts rather than failing the batch.
+- `ep.getLocations({ type? })` — the inventory locations.
+- `ep.getBundleOptionProducts({ productIds })` — name, image, price and SKU for a bundle's option products, keyed by product ID.
+- `ep.getParentProducts({ productIds })` — which of the given products are parents, with their variations and child products.
+- `ep.configureBundle({ bundleId, selectedOptions })` — re-prices a bundle for a set of option selections and returns Elastic Path's configured-bundle payload. Throws on failure: a configurator showing a stale total is worse than one showing an error.
+- `ep.multiSearch({ searches })` — a catalog multi-search, returned as-is. The `included` block is what each hit's image resolves against, so the response is passed through rather than reshaped.
 
 Auth is **not** an argument. The session (`accessToken`, `clientId`, `host`, `cartId`, …) is propagated through `AsyncLocalStorage` — see step 3.
 

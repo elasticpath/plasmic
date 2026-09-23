@@ -22,16 +22,30 @@
  */
 import {
   epAddCartItem,
+  epApplyCartAdjustment,
+  epConfigureBundle,
+  epGetBundleOptionProducts,
   epGetCart,
+  epGetLocations,
+  epGetParentProducts,
   epGetProduct,
   epGetProductList,
   epGetProductPage,
   epGetRelatedProducts,
+  epGetStock,
+  epMultiSearch,
   epRemoveCartItem,
   epUpdateCartItem,
 } from "../../ep-server-functions";
 import type {
   EpAddCartItemInput,
+  EpApplyCartAdjustmentInput,
+  EpConfigureBundleInput,
+  EpGetBundleOptionProductsInput,
+  EpGetLocationsInput,
+  EpGetParentProductsInput,
+  EpGetStockInput,
+  EpMultiSearchInput,
   EpRemoveCartItemInput,
   EpUpdateCartItemInput,
 } from "../../ep-server-functions";
@@ -43,7 +57,31 @@ import { enforceOriginGate, isTrustedOrigin } from "./origin-gate";
 import { persistCartId } from "./persist-cart-id";
 import { isTrustedDevEnvironment } from "./production-guard";
 
-const MUTATION_FNS = new Set(["addCartItem", "updateCartItem", "removeCartItem"]);
+/**
+ * Names that must not soft-fail to a 200 when the request carries no session.
+ * A write needs one to happen at all, and a 200 body is indistinguishable
+ * from a successful write; `configureBundle` prices a bundle the shopper is
+ * about to buy, so a null total is worse than an error.
+ */
+const SESSION_REQUIRED_FNS = new Set([
+  "addCartItem",
+  "updateCartItem",
+  "removeCartItem",
+  "applyCartAdjustment",
+  "configureBundle",
+]);
+
+/**
+ * Names whose result is the shopper's cart, so an id the function auto-created
+ * has to be written back to the envelope. Never widen this to a function that
+ * returns something else with an `id` — the id is taken as a cart id.
+ */
+const CART_WRITE_FNS = new Set([
+  "addCartItem",
+  "updateCartItem",
+  "removeCartItem",
+  "applyCartAdjustment",
+]);
 
 /**
  * Maps a dispatch failure to a stable code. `message` is withheld in
@@ -94,7 +132,20 @@ const FN_DISPATCH: Record<
     epGetRelatedProducts(
       args as { productId: string; relationshipSlug: string; limit?: number }
     ),
+  getStock: (args) => epGetStock(args as unknown as EpGetStockInput),
+  getLocations: (args) => epGetLocations(args as EpGetLocationsInput),
+  getBundleOptionProducts: (args) =>
+    epGetBundleOptionProducts(
+      args as unknown as EpGetBundleOptionProductsInput
+    ),
+  getParentProducts: (args) =>
+    epGetParentProducts(args as unknown as EpGetParentProductsInput),
+  configureBundle: (args) =>
+    epConfigureBundle(args as unknown as EpConfigureBundleInput),
+  multiSearch: (args) => epMultiSearch(args as unknown as EpMultiSearchInput),
   addCartItem: (args) => epAddCartItem(args as unknown as EpAddCartItemInput),
+  applyCartAdjustment: (args) =>
+    epApplyCartAdjustment(args as unknown as EpApplyCartAdjustmentInput),
   updateCartItem: (args) =>
     epUpdateCartItem(args as unknown as EpUpdateCartItemInput),
   removeCartItem: (args) =>
@@ -189,9 +240,8 @@ export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes {
       const session = sessionResult.session;
       if (!session?.accessToken) {
         // Reads soft-fail to the function's empty shape, matching SSR's
-        // "no session" case. Mutations must not: a 200 body is
-        // indistinguishable from a successful write.
-        if (MUTATION_FNS.has(fnName)) {
+        // "no session" case.
+        if (SESSION_REQUIRED_FNS.has(fnName)) {
           return new Response(
             JSON.stringify({ error: "no_session", code: "no_session" }),
             {
@@ -249,12 +299,12 @@ export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes {
         );
       }
 
-      // For mutation dispatches, the function may have auto-created a
-      // cart. Detect a cartId mismatch between the input session and the
-      // returned cart, and forward the better-auth Set-Cookie headers
-      // that /ep/cart emits so the browser session catches up.
+      // For cart writes, the function may have auto-created a cart. Detect a
+      // cartId mismatch between the input session and the returned cart, and
+      // forward the better-auth Set-Cookie headers that /ep/cart emits so the
+      // browser session catches up.
       const setCookies: string[] = [];
-      if (MUTATION_FNS.has(fnName)) {
+      if (CART_WRITE_FNS.has(fnName)) {
         const resultCartId = (result as { id?: string } | null)?.id;
         if (resultCartId && resultCartId !== epCtx.cartId) {
           setCookies.push(

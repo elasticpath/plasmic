@@ -17,11 +17,17 @@ import {
   epRemoveCartItem,
   epUpdateCartItem,
 } from "./cart-mutations";
+import { epConfigureBundle } from "./configureBundle";
+import { epGetBundleOptionProducts } from "./getBundleOptionProducts";
 import { epGetCart } from "./getCart";
+import { epGetLocations } from "./getLocations";
+import { epGetParentProducts } from "./getParentProducts";
 import { epGetProduct } from "./getProduct";
 import { epGetProductList } from "./getProductList";
 import { epGetProductPage } from "./getProductPage";
 import { epGetRelatedProducts } from "./getRelatedProducts";
+import { epGetStock } from "./getStock";
+import { epMultiSearch } from "./multiSearch";
 
 // `meta` stays `any`: CustomFunctionMeta is re-declared in both
 // @plasmicapp/host and loader-react, so any stricter shape rejects a loader.
@@ -129,6 +135,92 @@ const EP_FUNCTIONS: EpFunctionSpec[] = [
         description: "EP custom-relationship slug, e.g. CRP_related_products.",
       },
       { name: "limit", type: "number", description: "Page size." },
+    ],
+  },
+  {
+    fn: epGetStock,
+    name: "getStock",
+    description:
+      "Fetch multi-location stock for a set of products, server-side. Returns a map keyed by product ID; a product whose stock is unreadable comes back with zero counts.",
+    params: [
+      {
+        name: "productIds",
+        type: "array",
+        description: "EP product UUIDs to read stock for.",
+      },
+      {
+        name: "locationIds",
+        type: "array",
+        description:
+          "Inventory location IDs or slugs to narrow to (optional, default all).",
+      },
+    ],
+  },
+  {
+    fn: epGetLocations,
+    name: "getLocations",
+    description:
+      "Fetch the inventory locations, server-side. Returns an empty array on error.",
+    params: [
+      {
+        name: "type",
+        type: "string",
+        description: 'Location type to filter on, e.g. "warehouse".',
+      },
+    ],
+  },
+  {
+    fn: epGetBundleOptionProducts,
+    name: "getBundleOptionProducts",
+    description:
+      "Fetch name, image, price and SKU for a bundle's option products, server-side. Returns a map keyed by product ID.",
+    params: [
+      {
+        name: "productIds",
+        type: "array",
+        description: "EP product UUIDs of the bundle's options.",
+      },
+    ],
+  },
+  {
+    fn: epGetParentProducts,
+    name: "getParentProducts",
+    description:
+      "Fetch which of the given products are parents, with their variations and child products, server-side. Returns a map keyed by product ID.",
+    params: [
+      {
+        name: "productIds",
+        type: "array",
+        description: "EP product UUIDs to inspect.",
+      },
+    ],
+  },
+  {
+    fn: epConfigureBundle,
+    name: "configureBundle",
+    description:
+      "Re-price a bundle for a set of option selections, server-side. Returns Elastic Path's configured-bundle payload. Throws on backend error, because a stale price is worse than none.",
+    params: [
+      { name: "bundleId", type: "string", description: "EP bundle product UUID." },
+      {
+        name: "selectedOptions",
+        type: "object",
+        description:
+          "Option ID -> component product ID -> quantity, as EP's configure endpoint expects.",
+      },
+    ],
+  },
+  {
+    fn: epMultiSearch,
+    name: "multiSearch",
+    description:
+      "Run a catalog multi-search, server-side. Returns Elastic Path's response as-is, including the `included` block that carries each hit's image.",
+    params: [
+      {
+        name: "searches",
+        type: "array",
+        description: "Multi-search query objects, passed through as written.",
+      },
     ],
   },
   {
@@ -241,6 +333,12 @@ export const getCart = ADAPTED.getCart;
 export const getProductList = ADAPTED.getProductList;
 export const getProductPage = ADAPTED.getProductPage;
 export const getRelatedProducts = ADAPTED.getRelatedProducts;
+export const getStock = ADAPTED.getStock;
+export const getLocations = ADAPTED.getLocations;
+export const getBundleOptionProducts = ADAPTED.getBundleOptionProducts;
+export const getParentProducts = ADAPTED.getParentProducts;
+export const configureBundle = ADAPTED.configureBundle;
+export const multiSearch = ADAPTED.multiSearch;
 export const addCartItem = ADAPTED.addCartItem;
 export const applyCartAdjustment = ADAPTED.applyCartAdjustment;
 export const updateCartItem = ADAPTED.updateCartItem;
