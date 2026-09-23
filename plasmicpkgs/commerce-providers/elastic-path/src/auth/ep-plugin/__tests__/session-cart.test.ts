@@ -33,6 +33,7 @@ interface CartRecord {
 
 interface StoreShape {
   accounts: { id: string; name: string }[];
+  memberId: string;
   carts: CartRecord[];
   /** When set, `GET /v2/carts` answers with this status instead of a list. */
   cartListStatus: number | null;
@@ -108,7 +109,7 @@ function installFetch() {
       return json(
         {
           meta: {
-            account_member_id: "member-1",
+            account_member_id: store.memberId,
             results: { total: store.accounts.length },
           },
           data: store.accounts.map((account) => ({
@@ -168,7 +169,7 @@ function installFetch() {
 
 beforeEach(() => {
   originalFetch = globalThis.fetch;
-  store = { accounts: [NORTH], carts: [], cartListStatus: null };
+  store = { accounts: [NORTH], memberId: "member-1", carts: [], cartListStatus: null };
   installFetch();
 });
 
@@ -658,6 +659,44 @@ describe("a second shopper signing in on the same browser", () => {
     expect(
       store.carts.find((c) => c.id === "cart-north-owned")?.accountIds
     ).toEqual([NORTH.id]);
+  });
+
+  it("does not inherit the cart of a member who belonged to no account", async () => {
+    // The narrow case: nothing in the envelope says "an account was held",
+    // because there never was one — only the member id distinguishes them.
+    store.accounts = [];
+    store.carts = [cart("cart-unscoped-member")];
+    const auth = buildAuth();
+    let cookies = await anonymous(auth);
+    cookies = await setCart(auth, cookies, "cart-unscoped-member");
+    const first = await signIn(auth, cookies);
+    expect((await first.res.json()).session.epCartId).toBe(
+      "cart-unscoped-member"
+    );
+
+    store.accounts = [NORTH];
+    store.memberId = "member-2";
+    const second = await signIn(auth, first.cookies);
+    const body = await second.res.json();
+
+    expect(body.session.epMemberId).toBe("member-2");
+    expect(body.session.epCartId).not.toBe("cart-unscoped-member");
+    expect(
+      store.carts.find((c) => c.id === "cart-unscoped-member")?.accountIds
+    ).toEqual([]);
+  });
+
+  it("keeps the cart when the same member signs in again", async () => {
+    store.accounts = [];
+    store.carts = [cart("cart-same-member")];
+    const auth = buildAuth();
+    let cookies = await anonymous(auth);
+    cookies = await setCart(auth, cookies, "cart-same-member");
+    const first = await signIn(auth, cookies);
+    const second = await signIn(auth, first.cookies);
+    const body = await second.res.json();
+
+    expect(body.session.epCartId).toBe("cart-same-member");
   });
 
   it("calls re-authenticating a login, not a switch", async () => {

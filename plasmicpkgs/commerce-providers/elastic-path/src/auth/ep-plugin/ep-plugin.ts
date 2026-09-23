@@ -338,11 +338,27 @@ function applyLoginOutcome(session: any, minted: EpAccountTokenPage): any {
 
 /**
  * Whether the shopper was already acting for an organisation when the
- * transition began. Everything the resolver is told about the transition
- * follows from this one question.
+ * transition began. What the resolver is told about the transition follows
+ * from this one question.
  */
 function heldAnAccountBefore(priorSession: any): boolean {
   return Boolean(priorSession?.epAccount || priorSession?.epLapsedAccount);
+}
+
+/**
+ * Whether the cart in hand belongs to an identity that is not the one now
+ * signing in. A cart built before anyone signed in belongs to whoever is
+ * signing in; a cart held under any account, or by a different member, does
+ * not — including a member of no organisation at all, who still holds a cart
+ * nobody else may inherit.
+ */
+function cartBelongsToSomeoneElse(
+  priorSession: any,
+  memberId: string
+): boolean {
+  if (heldAnAccountBefore(priorSession)) return true;
+  const priorMember = priorSession?.epMemberId;
+  return typeof priorMember === "string" && priorMember !== memberId;
 }
 
 /**
@@ -363,12 +379,15 @@ function triggerFor(
 }
 
 /**
- * The cart the transition may offer as the guest cart. A cart held while an
- * account was selected belongs to that account, so entering a different one
- * never offers it; choosing a first account after signing in does.
+ * The cart the transition may offer as the guest cart: the one in hand, and
+ * only when it is this shopper's own. A cart held under an account belongs to
+ * that account, and a cart held by another member belongs to them.
  */
-function guestCartBefore(priorSession: any): string | null {
-  if (heldAnAccountBefore(priorSession)) return null;
+function guestCartBefore(
+  priorSession: any,
+  memberId: string
+): string | null {
+  if (cartBelongsToSomeoneElse(priorSession, memberId)) return null;
   const cartId = priorSession?.epCartId;
   return typeof cartId === "string" && cartId ? cartId : null;
 }
@@ -444,6 +463,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
     input: {
       priorSession: any;
       account: EpAccountSlot;
+      memberId: string;
       reauthenticated: boolean;
     }
   ): Promise<any> {
@@ -457,7 +477,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
     const cartId = await resolveSessionCart({
       resolver: options.sessionCartResolver,
       trigger: triggerFor(input.priorSession, input.reauthenticated),
-      guestCartId: guestCartBefore(input.priorSession),
+      guestCartId: guestCartBefore(input.priorSession, input.memberId),
       ctx,
     });
     const cleared = clearSessionCart(session);
@@ -572,13 +592,16 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
               session = await applySessionCart(session, {
                 priorSession: existing.session,
                 account: session.epAccount,
+                memberId: minted.memberId,
                 reauthenticated: true,
               });
-            } else if (heldAnAccountBefore(existing.session)) {
-              // Nothing to resolve, but the cart in hand belongs to the
-              // account just left. Leaving it would hand the next member to
-              // sign in on this browser the previous one's cart, and would
-              // then offer it as theirs at their first selection.
+            } else if (
+              cartBelongsToSomeoneElse(existing.session, minted.memberId)
+            ) {
+              // Nothing to resolve, but the cart in hand is not this
+              // shopper's. Leaving it would hand the next member to sign in
+              // on this browser the previous one's cart, and would then offer
+              // it as theirs at their first selection.
               session = clearSessionCart(session);
             }
 
@@ -662,6 +685,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
           const session = await applySessionCart(selected, {
             priorSession: existing.session,
             account: selected.epAccount!,
+            memberId: epMemberId,
             reauthenticated: true,
           });
 
@@ -814,6 +838,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             {
               priorSession: existing.session,
               account: found.entry,
+              memberId: found.memberId,
               reauthenticated: false,
             }
           );
