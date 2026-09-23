@@ -38,6 +38,33 @@ describe("browser-bundle safety — module loads without async_hooks", () => {
   });
 });
 
+// Native ESM has no `require`, so reaching async_hooks through it left the
+// scope as the no-op storage and every `ep.*` call fail-softed to null with
+// nothing logged. `process.getBuiltinModule` resolves in both module formats.
+describe("server scope survives a module format with no `require`", () => {
+  it("still carries the session when require('async_hooks') is unavailable", async () => {
+    await jest.isolateModulesAsync(async () => {
+      jest.doMock("async_hooks", () => {
+        throw new Error("Dynamic require of 'async_hooks' is not supported");
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const mod = require("../session-context");
+      const session = {
+        accessToken: "tok-esm",
+        host: "https://api.ep.com",
+        clientId: "cid-esm",
+      };
+
+      const observed = await mod.withEpSession(session, async () =>
+        mod.getCurrentEpSession()
+      );
+
+      expect(observed).toEqual(session);
+    });
+  });
+});
+
 describe("withEpSession / getCurrentEpSession", () => {
   it("exposes the session to code running inside the callback", async () => {
     const session = {

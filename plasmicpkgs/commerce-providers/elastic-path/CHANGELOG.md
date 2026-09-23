@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+`withEpSession` keeps working when the package is loaded as ES modules. It
+reached `async_hooks` through `eval("require")`, which native ESM has no
+`require` for, so the storage fell through to its no-op and every `ep.*` call
+fail-softed to `null` or `[]` with nothing logged.
+
 ## 0.7.0
 
 ### Added

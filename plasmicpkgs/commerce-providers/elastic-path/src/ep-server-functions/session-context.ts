@@ -17,13 +17,22 @@ interface SessionStorage {
 function makeStorage(): SessionStorage {
   if (typeof window === "undefined") {
     try {
-      // Hide the require from bundlers via eval — webpack would otherwise
-      // try to resolve `async_hooks` for the client bundle and fail.
-      // eslint-disable-next-line no-eval
-      const req = eval("require") as NodeRequire;
-      const { AsyncLocalStorage } = req(
-        "async_hooks"
-      ) as typeof import("async_hooks");
+      // Neither form is a bare import, so no bundler resolves `async_hooks`
+      // for the client bundle. `getBuiltinModule` works in both module
+      // formats; the `eval` is the fallback for Node below 20.16 / 22.3,
+      // where native ESM has no `require` and the storage would silently
+      // degrade to the no-op below.
+      const builtin = (
+        process as unknown as {
+          getBuiltinModule?: (id: string) => typeof import("async_hooks");
+        }
+      ).getBuiltinModule?.("async_hooks");
+      const { AsyncLocalStorage } =
+        builtin ??
+        // eslint-disable-next-line no-eval
+        ((eval("require") as NodeRequire)(
+          "async_hooks"
+        ) as typeof import("async_hooks"));
       return new AsyncLocalStorage<EpSessionContext>();
     } catch {
       // fall through to no-op
