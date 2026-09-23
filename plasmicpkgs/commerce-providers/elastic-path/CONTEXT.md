@@ -183,11 +183,27 @@ The one Elastic Path cart the shopper envelope points at, held as `epCartId`.
 A shopper has exactly one at a time.
 _Avoid_: active cart, current cart, basket
 
-**Session cart resolver** *(not yet built)*:
+**Guest cart**:
+A cart owned by no account — the one an unidentified shopper builds. It is a
+candidate at an identity transition only when no account was selected before
+it, because a cart held under a selected account belongs to that account.
+_Avoid_: anonymous cart, visitor cart
+
+**Account cart**:
+A cart the selected account owns, as `GET /v2/carts` enumerates it under the
+account token. Handed to the **session cart resolver** without line items: one
+request per cart on every login, and most resolvers read none.
+_Avoid_: saved cart, account basket
+
+**Session cart resolver**:
 The config-time `sessionCartResolver` hook on `createEpAuth` that chooses the
-session cart at an identity transition. Absent, the package keeps the guest
-cart, or adopts the account cart with the most recent update when there is no
-guest cart.
+session cart at an identity transition. It runs inside the **EP session scope**
+under the new identity, so it can act rather than only choose. Absent, the
+package keeps the guest cart, or adopts the account cart with the most recent
+update when there is no guest cart. The cart that loses is never deleted. It is
+told which transition this is in these same terms, so a member of several
+accounts choosing their first one is a **login** and not an **account switch**,
+however it reaches the package.
 
 **Forwarded call**:
 A browser-originated request whose path and parameters come from the browser

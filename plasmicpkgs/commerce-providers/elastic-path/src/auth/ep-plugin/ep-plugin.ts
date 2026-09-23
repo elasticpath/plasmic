@@ -31,11 +31,13 @@ import {
   accountNeedsRoll,
   applyAccountLapse,
   clearAccount,
+  clearSessionCart,
   envelopeExpiresAt,
   holdAnchorToken,
   identifyMember,
   parseEpExpires,
   selectAccount,
+  setSessionCart,
 } from "./envelope";
 import type { EpAccountSlot, EpAnchorTokenSlot } from "./envelope";
 import {
@@ -47,6 +49,12 @@ import {
 } from "./account-tokens";
 import type { EpAccountTokenPage } from "./account-tokens";
 import { CHECKOUT_SESSION_COOKIE_NAME } from "../../checkout/session/cookie-name";
+import { resolveSessionCart } from "./session-cart";
+import type {
+  EpSessionCartResolver,
+  EpSessionCartTrigger,
+  EpTransitionCtx,
+} from "./session-cart";
 
 export interface EpPluginOptions {
   /**
@@ -74,6 +82,12 @@ export interface EpPluginOptions {
    * because nothing in a profile record marks a default.
    */
   passwordProfileId?: string;
+  /**
+   * Chooses the session cart at a login or an account switch. Omitted, the
+   * guest cart wins, and with no guest cart the account's most recently
+   * updated one is adopted.
+   */
+  sessionCartResolver?: EpSessionCartResolver;
 }
 
 interface EpAnonymousTokenResponse {
@@ -322,6 +336,62 @@ function applyLoginOutcome(session: any, minted: EpAccountTokenPage): any {
   return identifyMember(session, memberId);
 }
 
+/**
+ * Whether the shopper was already acting for an organisation when the
+ * transition began. What the resolver is told about the transition follows
+ * from this one question.
+ */
+function heldAnAccountBefore(priorSession: any): boolean {
+  return Boolean(priorSession?.epAccount || priorSession?.epLapsedAccount);
+}
+
+/**
+ * Whether the cart in hand belongs to an identity that is not the one now
+ * signing in. A cart built before anyone signed in belongs to whoever is
+ * signing in; a cart held under any account, or by a different member, does
+ * not — including a member of no organisation at all, who still holds a cart
+ * nobody else may inherit.
+ */
+function cartBelongsToSomeoneElse(
+  priorSession: any,
+  memberId: string
+): boolean {
+  if (heldAnAccountBefore(priorSession)) return true;
+  const priorMember = priorSession?.epMemberId;
+  return typeof priorMember === "string" && priorMember !== memberId;
+}
+
+/**
+ * Which transition this is, in the vocabulary CONTEXT.md sets: an account
+ * switch changes the selected account *without re-authenticating*.
+ *
+ * So authenticating is always a login, however many accounts come back; and
+ * choosing an account while acting for none — the tail of a sign-in, or a
+ * shopper picking one up again after deselecting — is an arrival rather than a
+ * switch, because there is no account being left.
+ */
+function triggerFor(
+  priorSession: any,
+  reauthenticated: boolean
+): EpSessionCartTrigger {
+  if (reauthenticated) return "login";
+  return heldAnAccountBefore(priorSession) ? "accountSwitch" : "login";
+}
+
+/**
+ * The cart the transition may offer as the guest cart: the one in hand, and
+ * only when it is this shopper's own. A cart held under an account belongs to
+ * that account, and a cart held by another member belongs to them.
+ */
+function guestCartBefore(
+  priorSession: any,
+  memberId: string
+): string | null {
+  if (cartBelongsToSomeoneElse(priorSession, memberId)) return null;
+  const cartId = priorSession?.epCartId;
+  return typeof cartId === "string" && cartId ? cartId : null;
+}
+
 function accountLapsedError(): Response {
   return jsonError(
     "account_lapsed",
@@ -380,6 +450,38 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
       httpOnly: true,
       sameSite: "lax",
     });
+  }
+
+  /**
+   * Chooses the session cart for a transition that ended with an account
+   * selected, and returns the envelope carrying the outcome. The pointer is
+   * always rewritten — cleared, then set — so a cart the previous identity
+   * held cannot survive the swap.
+   */
+  async function applySessionCart(
+    session: any,
+    input: {
+      priorSession: any;
+      account: EpAccountSlot;
+      memberId: string;
+      reauthenticated: boolean;
+    }
+  ): Promise<any> {
+    const ctx: EpTransitionCtx = {
+      accessToken: session.epAccessToken,
+      host: session.epHost,
+      clientId: session.epClientId,
+      accountId: input.account.id,
+      accountToken: input.account.token,
+    };
+    const cartId = await resolveSessionCart({
+      resolver: options.sessionCartResolver,
+      trigger: triggerFor(input.priorSession, input.reauthenticated),
+      guestCartId: guestCartBefore(input.priorSession, input.memberId),
+      ctx,
+    });
+    const cleared = clearSessionCart(session);
+    return cartId ? setSessionCart(cleared, cartId) : cleared;
   }
 
   return {
@@ -475,10 +577,33 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
               name: typeof body.name === "string" ? body.name : username,
               updatedAt: new Date(),
             };
-            const session = applyLoginOutcome(
+            // The identity changed, so any checkout in flight was priced and
+            // addressed for the shopper who is no longer the one here.
+            tearDownCheckoutSession(ctx);
+
+            let session: any = applyLoginOutcome(
               { ...existing.session, updatedAt: new Date() },
               minted
             );
+            // Only a selection reaches the resolver: with no account there is
+            // no credential to list account carts with and no `accountId` to
+            // hand it.
+            if (session.epAccount) {
+              session = await applySessionCart(session, {
+                priorSession: existing.session,
+                account: session.epAccount,
+                memberId: minted.memberId,
+                reauthenticated: true,
+              });
+            } else if (
+              cartBelongsToSomeoneElse(existing.session, minted.memberId)
+            ) {
+              // Nothing to resolve, but the cart in hand is not this
+              // shopper's. Leaving it would hand the next member to sign in
+              // on this browser the previous one's cart, and would then offer
+              // it as theirs at their first selection.
+              session = clearSessionCart(session);
+            }
 
             await setSessionCookie(ctx, { session, user } as any);
             return ctx.json(
@@ -543,7 +668,9 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             updatedAt: new Date(),
           };
 
-          const session = selectAccount(
+          tearDownCheckoutSession(ctx);
+
+          const selected = selectAccount(
             { ...existing.session, updatedAt: new Date() },
             {
               memberId: epMemberId,
@@ -555,6 +682,12 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
               },
             }
           );
+          const session = await applySessionCart(selected, {
+            priorSession: existing.session,
+            account: selected.epAccount!,
+            memberId: epMemberId,
+            reauthenticated: true,
+          });
 
           await setSessionCookie(ctx, { session, user } as any);
           // The legacy shape, which no client method can reach.
@@ -635,8 +768,10 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             return ctx.json(epIdentityPayload("selectAccount", { user: existing.user, session: existing.session }));
           }
 
-          const base: any = { ...lapsed, updatedAt: new Date() };
-          delete base.epCartId;
+          const base: any = clearSessionCart({
+            ...lapsed,
+            updatedAt: new Date(),
+          });
 
           if (accountId === null) {
             if (!current) {
@@ -695,10 +830,18 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
           }
 
           tearDownCheckoutSession(ctx);
-          const session = selectAccount(base, {
-            memberId: found.memberId,
-            account: found.entry,
-          });
+          const session = await applySessionCart(
+            selectAccount(base, {
+              memberId: found.memberId,
+              account: found.entry,
+            }),
+            {
+              priorSession: existing.session,
+              account: found.entry,
+              memberId: found.memberId,
+              reauthenticated: false,
+            }
+          );
           await setSessionCookie(ctx, { session, user: existing.user } as any);
           return ctx.json(epIdentityPayload("selectAccount", { user: existing.user, session }));
         }
@@ -765,10 +908,11 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             name: "Anonymous Shopper",
             updatedAt: new Date(),
           };
-          const session = clearAccount({
-            ...existing.session,
-            updatedAt: new Date(),
-          });
+          // The cart pointer goes with the shopper. Left behind, the next
+          // person on this browser inherits the previous one's cart.
+          const session = clearSessionCart(
+            clearAccount({ ...existing.session, updatedAt: new Date() })
+          );
 
           await setSessionCookie(ctx, { session, user } as any);
           return ctx.json(epIdentityPayload("logout", { user, session }));
@@ -792,11 +936,10 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             );
           }
 
-          const session = {
-            ...existing.session,
-            updatedAt: new Date(),
-            epCartId: cartId,
-          };
+          const session = setSessionCart(
+            { ...existing.session, updatedAt: new Date() },
+            cartId
+          );
           const snap = { user: existing.user, session };
           await setSessionCookie(ctx, snap as any);
           return ctx.json(epIdentityPayload("setCart", snap));

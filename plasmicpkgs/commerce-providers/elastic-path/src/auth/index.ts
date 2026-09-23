@@ -24,6 +24,13 @@ export {
   EP_ACCOUNT_TOKEN_HEADER,
 } from "./ep-plugin/envelope";
 export type { EpAccountSlot, EpLapsedAccount } from "./ep-plugin/envelope";
+export type {
+  EpAccountCart,
+  EpSessionCartResolver,
+  EpSessionCartResolverInput,
+  EpSessionCartTrigger,
+  EpSessionCartVerdict,
+} from "./ep-plugin/session-cart";
 export { epAuthMiddleware } from "./ep-plugin/middleware";
 export { createEpAuthRoutes } from "./ep-plugin/auth-routes";
 export { createCartRoutes } from "../cart/server-routes";

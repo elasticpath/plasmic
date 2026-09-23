@@ -88,6 +88,7 @@ export {
   resolveAuthSecret,
 } from "./auth";
 export type {
+  EpAccountCart,
   EpAccountSlot,
   EpAuth,
   EpAuthConfig,
@@ -96,6 +97,10 @@ export type {
   EpProviderBundleConfig,
   EpProxyRoutes,
   EpSession,
+  EpSessionCartResolver,
+  EpSessionCartResolverInput,
+  EpSessionCartTrigger,
+  EpSessionCartVerdict,
   EpSessionData,
   ExtractEpProviderConfigOptions,
 } from "./auth";

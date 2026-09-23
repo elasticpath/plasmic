@@ -98,6 +98,25 @@ export function clearAccount<T extends object>(
   return next;
 }
 
+interface EpSessionCartField {
+  epCartId?: string;
+}
+
+export function setSessionCart<T extends object>(
+  session: T,
+  cartId: string
+): T & EpSessionCartField {
+  return { ...session, epCartId: cartId };
+}
+
+export function clearSessionCart<T extends object>(
+  session: T
+): T & EpSessionCartField {
+  const next = { ...session } as T & EpSessionCartField;
+  delete next.epCartId;
+  return next;
+}
+
 export function applyAccountLapse<T extends object>(
   session: T,
   nowSeconds: number

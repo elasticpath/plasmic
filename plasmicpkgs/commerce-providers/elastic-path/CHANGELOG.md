@@ -2,7 +2,50 @@
 
 ## Unreleased
 
+### Added
+
+`sessionCartResolver` on `createEpAuth` chooses the session cart at a login or
+an account switch, configured once rather than per call site. It is handed the
+guest cart, the carts already on the account, and which transition this is; it
+returns `{ keep }` naming one of them. It runs after the account swap, inside
+the session context under the shopper's new identity, so it can read and write
+carts rather than only choose between them — a rule like
+take-the-higher-quantity needs per-line arithmetic, and no verdict value
+carries that.
+
+With no resolver the guest cart wins, and with no guest cart the account's most
+recently updated cart is adopted. This is a change of behaviour from the
+documented `cartMergeStrategy: "merge"` default: nothing merges, because
+Elastic Path's own copy operation adds quantities together and ten saved plus
+two added becoming twelve is not a merge anyone asked for. `cartMergeStrategy`
+was read by no code, so nothing that worked stops working; it is removed in the
+breaking release.
+
+`trigger` is `"accountSwitch"` only where CONTEXT.md says an account switch is:
+the selected organisation changed without re-authenticating. Everything else is
+`"login"`, including a member of several organisations choosing their first
+one. `guestCartId` is null whenever the trigger is `"accountSwitch"`.
+
+The carts handed to a resolver arrive most recently updated first. Elastic Path
+ignores `sort` on its cart list, so the order is the package's own.
+
+A resolver that throws, or names a cart it was not offered, never blocks the
+sign-in: the default applies and the failure is logged. The losing cart is
+never deleted, and switching organisation never carries the previous
+organisation's cart across.
+
+`POST /ep/account/login` now tears down any checkout session in flight, as an
+account switch already did. The identity changed, so the checkout was priced
+and addressed for a shopper who is no longer the one here.
+
+The `EpAccountCart`, `EpSessionCartResolver`, `EpSessionCartResolverInput`,
+`EpSessionCartTrigger` and `EpSessionCartVerdict` types are exported from
+`/server`.
+
 ### Fixed
+
+Signing out clears the cart pointer. It stripped the account fields and left
+`epCartId`, handing the next shopper on that browser the previous one's cart.
 
 `withEpSession` keeps working when the package is loaded as ES modules. It
 reached `async_hooks` through `eval("require")`, which native ESM has no
