@@ -14,6 +14,14 @@ interface SessionStorage {
 // run, but every read returns `undefined`. That matches the contract
 // every `ep.*` function already enforces — they fail-soft to `null` /
 // `[]` outside an active session.
+/** Node, as opposed to a browser, a web worker or an edge runtime. */
+function isNodeRuntime(): boolean {
+  return (
+    typeof process !== "undefined" &&
+    Boolean((process as { versions?: { node?: string } }).versions?.node)
+  );
+}
+
 /**
  * Reaches `async_hooks` without a bare import, so no bundler tries to resolve
  * it for the client bundle. Two ways in, tried in order, because neither
@@ -24,25 +32,32 @@ interface SessionStorage {
  *   - `eval("require")` covers older Node, but only under CommonJS: native ESM
  *     has no `require` at all, so Node below 20.16 running as ES modules has
  *     no route in and the scope degrades to the no-op below.
+ *
+ * Returns null rather than throwing, whatever the runtime turns out to be.
+ * This module is reachable from the browser bundle, so a throw here would
+ * crash the import rather than degrade.
  */
 function loadAsyncHooks(): typeof import("async_hooks") | null {
-  const fromBuiltin = (
-    process as unknown as {
-      getBuiltinModule?: (id: string) => typeof import("async_hooks");
-    }
-  ).getBuiltinModule;
-  if (typeof fromBuiltin === "function") {
-    try {
-      const mod = fromBuiltin.call(process, "async_hooks");
-      if (mod?.AsyncLocalStorage) return mod;
-    } catch {
-      // Fall through and try `require` rather than giving up here.
+  if (typeof process !== "undefined") {
+    const fromBuiltin = (
+      process as unknown as {
+        getBuiltinModule?: (id: string) => typeof import("async_hooks");
+      }
+    ).getBuiltinModule;
+    if (typeof fromBuiltin === "function") {
+      try {
+        const mod = fromBuiltin.call(process, "async_hooks");
+        if (mod?.AsyncLocalStorage) return mod;
+      } catch {
+        // Fall through and try `require` rather than giving up here.
+      }
     }
   }
   try {
     // eslint-disable-next-line no-eval
     const req = eval("require") as NodeRequire;
-    return req("async_hooks") as typeof import("async_hooks");
+    const mod = req("async_hooks") as typeof import("async_hooks");
+    return mod?.AsyncLocalStorage ? mod : null;
   } catch {
     return null;
   }
@@ -50,17 +65,28 @@ function loadAsyncHooks(): typeof import("async_hooks") | null {
 
 function makeStorage(): SessionStorage {
   if (typeof window === "undefined") {
-    const asyncHooks = loadAsyncHooks();
-    if (asyncHooks) {
-      return new asyncHooks.AsyncLocalStorage<EpSessionContext>();
+    let asyncHooks: typeof import("async_hooks") | null = null;
+    try {
+      asyncHooks = loadAsyncHooks();
+    } catch {
+      asyncHooks = null;
     }
-    // Saying so is the point: the silent version of this made every `ep.*`
-    // call return null with nothing to go on.
-    console.warn(
-      "[ep-commerce] Could not load `async_hooks`, so the EP session scope " +
-        "is inert and every `ep.*` call will return null or []. Native ES " +
-        "modules need Node 20.16+ / 22.3+ for `process.getBuiltinModule`."
-    );
+    if (asyncHooks) {
+      try {
+        return new asyncHooks.AsyncLocalStorage<EpSessionContext>();
+      } catch {
+        // A stub that answered the shape check but cannot construct.
+      }
+    }
+    // Only Node is expected to have this. Saying so anywhere else would be
+    // noise in every edge and worker runtime, which never had it to lose.
+    if (isNodeRuntime()) {
+      console.warn(
+        "[ep-commerce] Could not load `async_hooks`, so the EP session scope " +
+          "is inert and every `ep.*` call will return null or []. Native ES " +
+          "modules need Node 20.16+ / 22.3+ for `process.getBuiltinModule`."
+      );
+    }
   }
   return {
     run<T>(_session: EpSessionContext, callback: () => T): T {
