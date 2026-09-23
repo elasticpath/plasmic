@@ -14,29 +14,53 @@ interface SessionStorage {
 // run, but every read returns `undefined`. That matches the contract
 // every `ep.*` function already enforces — they fail-soft to `null` /
 // `[]` outside an active session.
+/**
+ * Reaches `async_hooks` without a bare import, so no bundler tries to resolve
+ * it for the client bundle. Two ways in, tried in order, because neither
+ * covers every environment on its own:
+ *
+ *   - `process.getBuiltinModule` works in both module formats, and is the only
+ *     one that works under native ESM. Node 20.16+ / 22.3+.
+ *   - `eval("require")` covers older Node, but only under CommonJS: native ESM
+ *     has no `require` at all, so Node below 20.16 running as ES modules has
+ *     no route in and the scope degrades to the no-op below.
+ */
+function loadAsyncHooks(): typeof import("async_hooks") | null {
+  const fromBuiltin = (
+    process as unknown as {
+      getBuiltinModule?: (id: string) => typeof import("async_hooks");
+    }
+  ).getBuiltinModule;
+  if (typeof fromBuiltin === "function") {
+    try {
+      const mod = fromBuiltin.call(process, "async_hooks");
+      if (mod?.AsyncLocalStorage) return mod;
+    } catch {
+      // Fall through and try `require` rather than giving up here.
+    }
+  }
+  try {
+    // eslint-disable-next-line no-eval
+    const req = eval("require") as NodeRequire;
+    return req("async_hooks") as typeof import("async_hooks");
+  } catch {
+    return null;
+  }
+}
+
 function makeStorage(): SessionStorage {
   if (typeof window === "undefined") {
-    try {
-      // Neither form is a bare import, so no bundler resolves `async_hooks`
-      // for the client bundle. `getBuiltinModule` works in both module
-      // formats; the `eval` is the fallback for Node below 20.16 / 22.3,
-      // where native ESM has no `require` and the storage would silently
-      // degrade to the no-op below.
-      const builtin = (
-        process as unknown as {
-          getBuiltinModule?: (id: string) => typeof import("async_hooks");
-        }
-      ).getBuiltinModule?.("async_hooks");
-      const { AsyncLocalStorage } =
-        builtin ??
-        // eslint-disable-next-line no-eval
-        ((eval("require") as NodeRequire)(
-          "async_hooks"
-        ) as typeof import("async_hooks"));
-      return new AsyncLocalStorage<EpSessionContext>();
-    } catch {
-      // fall through to no-op
+    const asyncHooks = loadAsyncHooks();
+    if (asyncHooks) {
+      return new asyncHooks.AsyncLocalStorage<EpSessionContext>();
     }
+    // Saying so is the point: the silent version of this made every `ep.*`
+    // call return null with nothing to go on.
+    console.warn(
+      "[ep-commerce] Could not load `async_hooks`, so the EP session scope " +
+        "is inert and every `ep.*` call will return null or []. Native ES " +
+        "modules need Node 20.16+ / 22.3+ for `process.getBuiltinModule`."
+    );
   }
   return {
     run<T>(_session: EpSessionContext, callback: () => T): T {

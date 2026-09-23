@@ -3,14 +3,17 @@ import {
   getCurrentEpSession,
 } from "../session-context";
 
-// The module is reachable from the CLIENT bundle through
-// plasmic-register.ts → registerEpCustomFunctions → epGetProduct →
-// session-context. Browsers have no `async_hooks`, so the module must
-// load cleanly when the import throws. Without this guard, Next.js dev
-// mode crashes with "Module not found: Can't resolve 'async_hooks'"
-// before any user code runs.
-describe("browser-bundle safety — module loads without async_hooks", () => {
-  it("does not crash when async_hooks is unresolvable; getCurrentEpSession returns undefined", () => {
+// The module is reachable from the CLIENT bundle (plasmic-register.ts →
+// registerEpCustomFunctions → epGetProduct → session-context). Browsers have
+// no `async_hooks`, so the module must IMPORT cleanly when it is unresolvable.
+// Without this guard, Next.js dev mode crashes with "Module not found: Can't
+// resolve 'async_hooks'" before any user code runs.
+//
+// It asserts loading only. Which storage you end up with is the next
+// describe's job — asserting that here passed for the wrong reason once the
+// module gained a second route to async_hooks.
+describe("browser-bundle safety", () => {
+  it("imports without throwing when async_hooks is unresolvable", () => {
     jest.isolateModules(() => {
       jest.doMock("async_hooks", () => {
         throw new Error(
@@ -21,46 +24,80 @@ describe("browser-bundle safety — module loads without async_hooks", () => {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const mod = require("../session-context");
 
-      // Module must load without throwing.
       expect(typeof mod.withEpSession).toBe("function");
       expect(typeof mod.getCurrentEpSession).toBe("function");
-
-      // With no ALS available, getCurrentEpSession returns undefined and
-      // withEpSession still invokes the callback (so consumer code keeps
-      // running; ep.* functions just fail-soft because they read undefined).
-      expect(mod.getCurrentEpSession()).toBeUndefined();
-      const result = mod.withEpSession(
-        { accessToken: "tok", host: "h", clientId: "c" },
-        () => "ran"
-      );
-      expect(result).toBe("ran");
+      // Callbacks still run whichever storage was chosen, so consumer code
+      // keeps working either way.
+      expect(
+        mod.withEpSession({ accessToken: "t", host: "h", clientId: "c" }, () => "ran")
+      ).toBe("ran");
     });
+    jest.dontMock("async_hooks");
+    jest.resetModules();
   });
 });
 
-// Native ESM has no `require`, so reaching async_hooks through it left the
-// scope as the no-op storage and every `ep.*` call fail-softed to null with
-// nothing logged. `process.getBuiltinModule` resolves in both module formats.
-describe("server scope survives a module format with no `require`", () => {
-  it("still carries the session when require('async_hooks') is unavailable", async () => {
-    await jest.isolateModulesAsync(async () => {
+// `async_hooks` is reached two ways, and each must be exercised on its own:
+// mocking the module does NOT affect `process.getBuiltinModule`, so a test
+// that only mocks it proves nothing about which route was taken.
+describe("reaching async_hooks", () => {
+  const original = (process as any).getBuiltinModule;
+  afterEach(() => {
+    if (original) (process as any).getBuiltinModule = original;
+    else delete (process as any).getBuiltinModule;
+    // `doMock` outlives the test that called it, so without this the mock
+    // that breaks one route silently breaks the next test's other route.
+    jest.dontMock("async_hooks");
+    jest.resetModules();
+  });
+
+  function storageIsReal(): boolean {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require("../session-context");
+    return (
+      mod.withEpSession({ accessToken: "t", host: "h", clientId: "c" }, () =>
+        mod.getCurrentEpSession()
+      )?.accessToken === "t"
+    );
+  }
+
+  it("uses getBuiltinModule — the only route native ESM has", () => {
+    jest.isolateModules(() => {
+      // No `require` route at all, so a pass can only come from the builtin.
       jest.doMock("async_hooks", () => {
         throw new Error("Dynamic require of 'async_hooks' is not supported");
       });
+      expect(storageIsReal()).toBe(true);
+    });
+  });
 
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const mod = require("../session-context");
-      const session = {
-        accessToken: "tok-esm",
-        host: "https://api.ep.com",
-        clientId: "cid-esm",
+  it("falls back to require when getBuiltinModule is absent (older Node, CJS)", () => {
+    jest.isolateModules(() => {
+      delete (process as any).getBuiltinModule;
+      expect(storageIsReal()).toBe(true);
+    });
+  });
+
+  it("falls back to require when getBuiltinModule throws", () => {
+    jest.isolateModules(() => {
+      (process as any).getBuiltinModule = () => {
+        throw new Error("blocked by policy");
       };
+      expect(storageIsReal()).toBe(true);
+    });
+  });
 
-      const observed = await mod.withEpSession(session, async () =>
-        mod.getCurrentEpSession()
-      );
+  it("says so, loudly, when neither route works", () => {
+    jest.isolateModules(() => {
+      delete (process as any).getBuiltinModule;
+      jest.doMock("async_hooks", () => {
+        throw new Error("Cannot find module 'async_hooks'");
+      });
+      const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
 
-      expect(observed).toEqual(session);
+      expect(storageIsReal()).toBe(false);
+      expect(warn.mock.calls.join(" ")).toContain("EP session scope");
+      warn.mockRestore();
     });
   });
 });
