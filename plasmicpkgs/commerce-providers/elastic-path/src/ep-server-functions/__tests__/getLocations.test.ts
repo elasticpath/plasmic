@@ -1,9 +1,10 @@
 const mockListLocations = jest.fn();
+const mockUse = jest.fn();
 
 jest.mock("@epcc-sdk/sdks-shopper", () => ({
   createShopperClient: jest.fn(() => ({
     client: {
-      interceptors: { request: { use: jest.fn() } },
+      interceptors: { request: { use: (...args: unknown[]) => mockUse(...args) } },
     },
   })),
   listLocations: (...args: unknown[]) => mockListLocations(...args),
@@ -22,6 +23,7 @@ const SESSION = {
 
 beforeEach(() => {
   mockListLocations.mockReset();
+  mockUse.mockReset();
 });
 
 describe("epGetLocations", () => {
@@ -51,6 +53,18 @@ describe("epGetLocations", () => {
     expect(mockListLocations).toHaveBeenCalledWith(
       expect.objectContaining({ query: { filter: "eq(type,warehouse)" } })
     );
+  });
+
+  it("asks for multi-location inventory, which the endpoint 404s without", async () => {
+    mockListLocations.mockResolvedValue({ data: { data: [] } });
+
+    await withEpSession(SESSION, () => epGetLocations());
+
+    const headers = new Headers();
+    for (const [interceptor] of mockUse.mock.calls) {
+      await interceptor({ headers } as unknown as Request);
+    }
+    expect(headers.get("EP-Inventories-Multi-Location")).toBe("true");
   });
 
   it("returns an empty array when the read fails", async () => {
