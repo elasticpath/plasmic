@@ -62,6 +62,17 @@ The checkout session torn down on a switch is `CookieSessionStore`'s. A
 consumer-supplied `SessionStore` is out of the auth handler's reach and must be
 cleared by the consumer.
 
+`createEpIdentityClient` and the `useEpIdentity` hook call the identity
+operations by name — sign in, read the account roster, select or deselect an
+account, sign out, set the cart — so a call site never writes a route or a base
+path. The client takes the `basePath` the auth handler was mounted at and
+nothing else; `epIdentityErrorCode` reads the server's reason for refusing, so
+a storefront can branch on `account_lapsed` rather than on a status code.
+
+`RELEASED_SESSION_PATHS` and the `ReleasedEpSession` types state what
+`get-session` releases, so a consumer reading the session gets the same shape
+the server filters to rather than guessing at it.
+
 `passwordProfileId` on `createEpAuth` names the password profile members sign
 in against. The package discovers it when the store's authentication realm
 carries exactly one; a realm with several is reported rather than guessed at,
@@ -376,17 +387,6 @@ needs repointing.
 | `currentVariationOption.label`                         | `currentVariationOption.name`                               |
 | `currentCartItem.imageUrl`                             | `currentCartItem.image.href`                                |
 | search hit `currentProduct.path` / `._highlightedName` | `$ctx.currentHit.path` / `.highlightedName`                 |
-
-Instances of the generic `@plasmicpkgs/commerce` components — any
-`plasmic-commerce-*` name without the `ep-` segment — stop rendering entirely,
-with `TypeError: Cannot read properties of undefined (reading 'current')`. The
-framework context they read is no longer supplied, so no amount of repointing
-fixes them; they have to be replaced with their `plasmic-commerce-ep-*`
-equivalents. `product-collection` becomes an `ep-product-list-provider`
-wrapping an `ep-product-grid`; `product-box` becomes `ep-product-provider`,
-whose `id` prop is now `productId`; `product-text-field` and `product-price`
-become `ep-product-field`; `product-media` becomes a plain image bound to
-`currentProduct.images[0].url`; `cart-provider` becomes `ep-cart-provider`.
 
 Instances of the generic `@plasmicpkgs/commerce` components — any
 `plasmic-commerce-*` name without the `ep-` segment — stop rendering entirely,
