@@ -43,6 +43,7 @@ import type {
   ShippingRate,
 } from "../types";
 import { useMoneyFormat } from "../../shopper-context/use-money-format";
+import { useShopperContext } from "../../shopper-context/useShopperContext";
 import { useEpCart } from "../../cart-provider/use-ep-cart";
 
 const log = createLogger("EPCheckoutProvider");
@@ -226,6 +227,7 @@ const EPCheckoutProviderRuntime = React.forwardRef<
   // session via /api/ep/get-session on mount. Async — there's a brief
   // window where resolvedCartId is undefined while the fetch settles;
   // useCheckout handles undefined cartId gracefully.
+  const { basePath } = useShopperContext();
   const [resolvedCartId, setResolvedCartId] = useState<string | undefined>(
     cartIdProp || undefined
   );
@@ -235,13 +237,13 @@ const EPCheckoutProviderRuntime = React.forwardRef<
       return;
     }
     let cancelled = false;
-    getCartIdFromSession().then((id) => {
+    getCartIdFromSession(basePath).then((id) => {
       if (!cancelled) setResolvedCartId(id || undefined);
     });
     return () => {
       cancelled = true;
     };
-  }, [cartIdProp]);
+  }, [cartIdProp, basePath]);
 
   const checkout = useCheckout({
     cartId: resolvedCartId,

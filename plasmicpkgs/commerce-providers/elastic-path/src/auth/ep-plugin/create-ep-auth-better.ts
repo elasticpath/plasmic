@@ -397,9 +397,10 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
             }
             return h;
           },
-          // Serialized into page HTML via globalContextsProps.
+          // Serialized into page HTML via globalContextsProps, so this
+          // carries the mount path and never a credential.
           providerProps() {
-            return {};
+            return { basePath: config.basePath };
           },
           commitCookies(res) {
             for (const cookie of pendingSetCookies) {
@@ -415,14 +416,13 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
 }
 
 function makeEmptyEpSession(config: any): EpSession {
-  void config;
   return {
     session: null,
     user: null,
     cart: null,
     isAuthenticated: false,
     headers: () => ({}),
-    providerProps: () => ({}),
+    providerProps: () => ({ basePath: config.basePath }),
     commitCookies: () => {},
   };
 }

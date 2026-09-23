@@ -208,6 +208,24 @@ credential-scoped.
 _Avoid_: unauthenticated (the call is authenticated; the resource is just not
 scoped by that authentication)
 
+**Identity operation**:
+One of the nine things a call site does to the shopper envelope — read it,
+mint it, rotate it, point it at a cart, sign a member in or out, read the
+roster, select an account, roll its credential. Reached as a method on the
+**identity client**, never as a route. Distinct from a *named operation*:
+these are authentication-plugin endpoints, so the client is derived from the
+endpoints rather than dispatched through the proxy.
+
+**Identity client**:
+The typed methods the identity operations are called through —
+`useEpIdentity()` in a component, `createEpIdentityClient()` outside React.
+It is the only thing in the package that knows where the auth handler is
+mounted. Arguments and results are typed against the endpoints, and its
+session type is checked against the release allowlist at compile time, so no
+method can be typed as returning a credential the handler withholds.
+_Avoid_: auth client (better-auth's own client is a different thing and is
+deliberately not used)
+
 ### Design time & registration (ADR-0003, ADR-0004)
 
 **Design-time catalog route** *(not yet built)*:

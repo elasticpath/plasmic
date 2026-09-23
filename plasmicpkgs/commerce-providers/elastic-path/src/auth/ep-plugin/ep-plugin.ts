@@ -14,6 +14,13 @@ import {
   SECURE_COOKIE_PREFIX,
 } from "better-auth/cookies";
 import type { BetterAuthPlugin } from "better-auth";
+import { epIdentityPayload } from "../../identity/operations";
+import type {
+  EpAccountLoginRequest,
+  EpAccountRosterRequest,
+  EpSelectAccountRequest,
+  EpSetCartRequest,
+} from "../../identity/operations";
 import {
   DEFAULT_HOST_ALLOWLIST,
   isAllowedEpHost,
@@ -334,6 +341,16 @@ function accountTokenFailure(err: unknown): Response {
   );
 }
 
+/** The older shape, where the caller supplied a credential it minted itself. */
+interface LegacyAccountLoginRequest {
+  epMemberId: string;
+  epAccountId: string;
+  epAccountToken: string;
+  epAccountExpires: string | number;
+  email?: string;
+  name?: string;
+}
+
 export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
   // One discovery per auth instance. The realm and its profiles are store
   // configuration, so re-reading them on every sign-in buys nothing.
@@ -376,7 +393,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
           const tokenData = await mintAnonymousEpToken(clientId, host);
           const snap = buildAnonymousSnapshot(tokenData, clientId, host);
           await setSessionCookie(ctx, snap as any);
-          return ctx.json(snap);
+          return ctx.json(epIdentityPayload("signInAnonymously", snap));
         }
       ),
 
@@ -392,7 +409,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             // No valid prior session — behave like /ep/anonymous.
             const snap = buildAnonymousSnapshot(tokenData, clientId, host);
             await setSessionCookie(ctx, snap as any);
-            return ctx.json(snap);
+            return ctx.json(epIdentityPayload("refresh", snap));
           }
 
           // Preserve identity (id, userId, etc.); rotate EP fields only.
@@ -411,7 +428,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
           );
           const snap = { user: existing.user, session };
           await setSessionCookie(ctx, snap as any);
-          return ctx.json(snap);
+          return ctx.json(epIdentityPayload("refresh", snap));
         }
       ),
 
@@ -422,7 +439,9 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
           const existing = await readExistingSession(ctx);
           if (!existing?.user || !existing?.session) return noSessionError();
 
-          const body = (ctx.body as any) ?? {};
+          const body = ((ctx.body as any) ?? {}) as Partial<
+            EpAccountLoginRequest & LegacyAccountLoginRequest
+          >;
           const { username, password } = body;
 
           // The credential shape: the package signs the member in itself, so
@@ -462,12 +481,14 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             );
 
             await setSessionCookie(ctx, { session, user } as any);
-            return ctx.json({
-              user,
-              session,
-              accounts: toAccountRoster(minted.entries),
-              total: minted.total,
-            });
+            return ctx.json(
+              epIdentityPayload("login", {
+                user,
+                session,
+                accounts: toAccountRoster(minted.entries),
+                total: minted.total,
+              })
+            );
           }
 
           const { epMemberId, epAccountId, epAccountToken, epAccountExpires } =
@@ -536,6 +557,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
           );
 
           await setSessionCookie(ctx, { session, user } as any);
+          // The legacy shape, which no client method can reach.
           return ctx.json({ user, session });
         }
       ),
@@ -557,10 +579,12 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             if (session.epLapsedAccount) return accountLapsedError();
             // A member who belongs to no account holds no credential and has
             // an empty roster. That is an answer, not a failure.
-            return ctx.json({ accounts: [], total: 0 });
+            return ctx.json(
+              epIdentityPayload("roster", { accounts: [], total: 0 })
+            );
           }
 
-          const body = (ctx.body as any) ?? {};
+          const body = ((ctx.body as any) ?? {}) as EpAccountRosterRequest;
           try {
             const page = await mintAccountTokens({
               host: session.epHost,
@@ -569,10 +593,12 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
               limit: body.limit,
               offset: body.offset,
             });
-            return ctx.json({
-              accounts: toAccountRoster(page.entries),
-              total: page.total,
-            });
+            return ctx.json(
+              epIdentityPayload("roster", {
+                accounts: toAccountRoster(page.entries),
+                total: page.total,
+              })
+            );
           } catch (err) {
             return accountTokenFailure(err);
           }
@@ -593,7 +619,8 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             return noAccountMemberError();
           }
 
-          const accountId = (ctx.body as any)?.accountId ?? null;
+          const { accountId = null } = ((ctx.body as any) ??
+            {}) as Partial<EpSelectAccountRequest>;
           if (accountId !== null && typeof accountId !== "string") {
             return jsonError(
               "invalid_input",
@@ -605,7 +632,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
           // Selecting what is already selected changes nothing, so it must not
           // cost the shopper their checkout or their cart.
           if (accountId !== null && current?.id === accountId) {
-            return ctx.json({ user: existing.user, session: existing.session });
+            return ctx.json(epIdentityPayload("selectAccount", { user: existing.user, session: existing.session }));
           }
 
           const base: any = { ...lapsed, updatedAt: new Date() };
@@ -613,10 +640,12 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
 
           if (accountId === null) {
             if (!current) {
-              return ctx.json({
-                user: existing.user,
-                session: existing.session,
-              });
+              return ctx.json(
+                epIdentityPayload("selectAccount", {
+                  user: existing.user,
+                  session: existing.session,
+                })
+              );
             }
             // Deselecting has no fallible step; the credential is demoted
             // rather than dropped, so the shopper can select again.
@@ -629,7 +658,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
               session,
               user: existing.user,
             } as any);
-            return ctx.json({ user: existing.user, session });
+            return ctx.json(epIdentityPayload("selectAccount", { user: existing.user, session }));
           }
 
           const accountToken = heldAccountCredential(lapsed);
@@ -671,7 +700,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             account: found.entry,
           });
           await setSessionCookie(ctx, { session, user: existing.user } as any);
-          return ctx.json({ user: existing.user, session });
+          return ctx.json(epIdentityPayload("selectAccount", { user: existing.user, session }));
         }
       ),
 
@@ -687,7 +716,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             | undefined;
           const now = Math.floor(Date.now() / 1000);
           if (!accountNeedsRoll(current ?? null, now)) {
-            return ctx.json({ user: existing.user, session: existing.session });
+            return ctx.json(epIdentityPayload("rollAccount", { user: existing.user, session: existing.session }));
           }
 
           let found;
@@ -701,10 +730,10 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
           } catch {
             // A failed roll is not a failed request. The token still has time
             // on it, and if it runs out the lapse states that as a fact.
-            return ctx.json({ user: existing.user, session: existing.session });
+            return ctx.json(epIdentityPayload("rollAccount", { user: existing.user, session: existing.session }));
           }
           if (!found.entry) {
-            return ctx.json({ user: existing.user, session: existing.session });
+            return ctx.json(epIdentityPayload("rollAccount", { user: existing.user, session: existing.session }));
           }
 
           const session = selectAccount(
@@ -712,7 +741,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             { memberId: found.memberId, account: found.entry }
           );
           await setSessionCookie(ctx, { session, user: existing.user } as any);
-          return ctx.json({ user: existing.user, session });
+          return ctx.json(epIdentityPayload("rollAccount", { user: existing.user, session }));
         }
       ),
 
@@ -742,7 +771,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
           });
 
           await setSessionCookie(ctx, { session, user } as any);
-          return ctx.json({ user, session });
+          return ctx.json(epIdentityPayload("logout", { user, session }));
         }
       ),
 
@@ -753,7 +782,8 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
           const existing = await readExistingSession(ctx);
           if (!existing?.user || !existing?.session) return noSessionError();
 
-          const cartId = (ctx.body as any)?.cartId;
+          const { cartId } = ((ctx.body as any) ??
+            {}) as Partial<EpSetCartRequest>;
           if (!cartId || typeof cartId !== "string") {
             return jsonError(
               "invalid_input",
@@ -769,7 +799,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
           };
           const snap = { user: existing.user, session };
           await setSessionCookie(ctx, snap as any);
-          return ctx.json(snap);
+          return ctx.json(epIdentityPayload("setCart", snap));
         }
       ),
     },

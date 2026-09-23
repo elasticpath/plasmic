@@ -23,18 +23,7 @@
  * before the call — the proxy route's CORS headers must allow that
  * origin and `credentials`.
  */
-
-declare global {
-  interface Window {
-    /**
-     * Optional absolute origin to fetch the EP proxy against. Used by
-     * Studio data-query preview where Studio runs at a different
-     * origin than the consumer Next app. Leave unset to use a relative
-     * URL (same-origin canvas-iframe case).
-     */
-    __epProxyOrigin?: string;
-  }
-}
+import { readEpErrorCode, resolveConsumerOrigin } from "../browser-call";
 
 const PROXY_PATH = "/api/ep/proxy";
 
@@ -43,23 +32,7 @@ export function shouldUseProxy(): boolean {
 }
 
 function resolveProxyUrl(fnName: string): string {
-  if (typeof window === "undefined") {
-    return `${PROXY_PATH}/${fnName}`;
-  }
-  // 1. explicit pin (consumer can set if needed): `window.__epProxyOrigin`
-  // 2. ELSE detect: when the page is hosted at the consumer's origin,
-  //    `location.origin` already points at the right server. When the
-  //    code is running inside Studio at a different origin (e.g.
-  //    localhost:3003) and the consumer dev host is on another port
-  //    (localhost:3456), the consumer must publish that origin via
-  //    `window.__epProxyOrigin` (the `EPCommerceProvider` doesn't know
-  //    it because its props don't include the dev host). Without a
-  //    pin, the relative URL resolves against the current document
-  //    origin which won't carry the consumer's session cookies.
-  const origin = window.__epProxyOrigin;
-  return origin
-    ? `${origin.replace(/\/$/, "")}${PROXY_PATH}/${fnName}`
-    : `${PROXY_PATH}/${fnName}`;
+  return `${resolveConsumerOrigin()}${PROXY_PATH}/${fnName}`;
 }
 
 interface ProxyErrorInfo {
@@ -74,9 +47,7 @@ interface ProxyErrorInfo {
  * text — the proxy route withholds `message` in production.
  */
 export function epProxyErrorCode(err: unknown): string | undefined {
-  if (!err || typeof err !== "object") return undefined;
-  const code = (err as { code?: unknown }).code;
-  return typeof code === "string" && code ? code : undefined;
+  return readEpErrorCode(err);
 }
 
 function proxyError(info: ProxyErrorInfo): Error {

@@ -93,8 +93,36 @@ describe("createEpAuth adapter (PRD #273)", () => {
     });
 
     expect(session.session?.accessToken).toBe(FAKE_TOKEN);
-    expect(session.providerProps()).toEqual({});
     expect(JSON.stringify(session.providerProps())).not.toContain(FAKE_TOKEN);
+  });
+
+  it("tells the page where the auth handler is mounted (#569)", async () => {
+    const epAuth = createEpAuth({
+      clientId: EP_CLIENT_ID,
+      host: EP_HOST,
+      secret: "x".repeat(48),
+      basePath: "/api/store",
+      checkout: { sessionSecret: "dev-secret-min-16-chars" },
+    });
+
+    const session = await epAuth.api.getSession({ cookies: {}, headers: {} });
+
+    // The identity client reads this off the shopper context, so a consumer
+    // who moved the handler says so once, on createEpAuth, and nowhere else.
+    expect(session.providerProps()).toEqual({ basePath: "/api/store" });
+  });
+
+  it("names the default mount when the consumer took it", async () => {
+    const epAuth = createEpAuth({
+      clientId: EP_CLIENT_ID,
+      host: EP_HOST,
+      secret: "x".repeat(48),
+      checkout: { sessionSecret: "dev-secret-min-16-chars" },
+    });
+
+    const session = await epAuth.api.getSession({ cookies: {}, headers: {} });
+
+    expect(session.providerProps()).toEqual({ basePath: "/api/ep" });
   });
 
   it("commitCookies() emits the better-auth Set-Cookie headers", async () => {
