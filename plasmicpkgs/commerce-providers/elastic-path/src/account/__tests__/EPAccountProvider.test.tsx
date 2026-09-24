@@ -64,6 +64,19 @@ describe("resolveAccountContext", () => {
     expect(resolveAccountContext("auto", true)).toEqual(MOCK_ACCOUNT_SELECTED);
   });
 
+  it("uses the selected-account mock floor for an unrecognized previewState in the editor", () => {
+    expect(resolveAccountContext("accountSelected", true)).toEqual(
+      MOCK_ACCOUNT_SELECTED
+    );
+    expect(resolveAccountContext("bogus", true)).toEqual(MOCK_ACCOUNT_SELECTED);
+  });
+
+  it("stays anonymous for an unrecognized previewState outside the editor", () => {
+    expect(resolveAccountContext("accountSelected", false)).toEqual(
+      MOCK_ACCOUNT_ANONYMOUS
+    );
+  });
+
   it.each([
     ["anonymous", MOCK_ACCOUNT_ANONYMOUS],
     ["authenticated", MOCK_ACCOUNT_AUTHENTICATED],
@@ -160,6 +173,16 @@ describe("EPAccountProvider", () => {
     it("publishes the selected-account fixture for auto in the editor", () => {
       render(
         <EPAccountProvider previewState="auto">
+          <span>child</span>
+        </EPAccountProvider>
+      );
+
+      expect(publishedAccount()).toEqual(MOCK_ACCOUNT_SELECTED);
+    });
+
+    it("publishes the selected-account fixture for an unrecognized previewState", () => {
+      render(
+        <EPAccountProvider previewState={"accountSelected" as never}>
           <span>child</span>
         </EPAccountProvider>
       );

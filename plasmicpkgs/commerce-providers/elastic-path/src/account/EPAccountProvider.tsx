@@ -49,7 +49,10 @@ export function resolveAccountContext(
   if (previewState === "auto") {
     return MOCK_ACCOUNT_BY_PREVIEW_STATE.selected;
   }
-  return MOCK_ACCOUNT_BY_PREVIEW_STATE[previewState] ?? MOCK_ACCOUNT_ANONYMOUS;
+  return (
+    MOCK_ACCOUNT_BY_PREVIEW_STATE[previewState] ??
+    MOCK_ACCOUNT_BY_PREVIEW_STATE.selected
+  );
 }
 
 export const epAccountProviderMeta: CodeComponentMeta<EPAccountProviderProps> =
