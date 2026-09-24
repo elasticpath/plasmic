@@ -55,8 +55,16 @@ describe("EPAccountGate", () => {
   });
 
   it("renders nothing when no account context is published", () => {
-    const { container } = renderGate("anonymous");
-    expect(container.querySelector("[data-ep-account-gate]")).toBeNull();
+    const { queryByTestId } = renderGate("anonymous");
+    expect(queryByTestId("gated")).toBeNull();
+  });
+
+  it("renders matching children without a wrapper element", () => {
+    mockUseSelector.mockReturnValue(MOCK_ACCOUNT_SELECTED);
+    const { container, getByTestId } = renderGate("authenticated");
+    const child = getByTestId("gated");
+    expect(child.textContent).toBe("visible");
+    expect(container.firstChild).toBe(child);
   });
 
   describe("when=authenticated", () => {
@@ -67,10 +75,8 @@ describe("EPAccountGate", () => {
       ["anonymous", MOCK_ACCOUNT_ANONYMOUS, false],
     ] as const)("%s → %s", (_label, account, visible) => {
       mockUseSelector.mockReturnValue(account);
-      const { container } = renderGate("authenticated");
-      expect(Boolean(container.querySelector("[data-ep-account-gate]"))).toBe(
-        visible
-      );
+      const { queryByTestId } = renderGate("authenticated");
+      expect(Boolean(queryByTestId("gated"))).toBe(visible);
     });
   });
 
@@ -83,8 +89,8 @@ describe("EPAccountGate", () => {
 
     it("hides when a member is present", () => {
       mockUseSelector.mockReturnValue(MOCK_ACCOUNT_SELECTED);
-      const { container } = renderGate("anonymous");
-      expect(container.querySelector("[data-ep-account-gate]")).toBeNull();
+      const { queryByTestId } = renderGate("anonymous");
+      expect(queryByTestId("gated")).toBeNull();
     });
   });
 
@@ -97,18 +103,10 @@ describe("EPAccountGate", () => {
 
     it("hides for authenticated-without-selection and lapsed", () => {
       mockUseSelector.mockReturnValue(MOCK_ACCOUNT_AUTHENTICATED);
-      expect(
-        renderGate("selected").container.querySelector(
-          "[data-ep-account-gate]"
-        )
-      ).toBeNull();
+      expect(renderGate("selected").queryByTestId("gated")).toBeNull();
 
       mockUseSelector.mockReturnValue(MOCK_ACCOUNT_LAPSED);
-      expect(
-        renderGate("selected").container.querySelector(
-          "[data-ep-account-gate]"
-        )
-      ).toBeNull();
+      expect(renderGate("selected").queryByTestId("gated")).toBeNull();
     });
   });
 
@@ -121,21 +119,9 @@ describe("EPAccountGate", () => {
 
     it("hides when the organisation is still selected", () => {
       mockUseSelector.mockReturnValue(MOCK_ACCOUNT_SELECTED);
-      const { container } = renderGate("lapsed");
-      expect(container.querySelector("[data-ep-account-gate]")).toBeNull();
+      const { queryByTestId } = renderGate("lapsed");
+      expect(queryByTestId("gated")).toBeNull();
     });
-  });
-
-  it("applies className on the wrapper", () => {
-    mockUseSelector.mockReturnValue(MOCK_ACCOUNT_SELECTED);
-    const { container } = render(
-      <EPAccountGate when="authenticated" className="my-gate">
-        <span>child</span>
-      </EPAccountGate>
-    );
-    expect(
-      container.querySelector("[data-ep-account-gate]")?.className
-    ).toContain("my-gate");
   });
 
   describe("registration", () => {
@@ -145,6 +131,7 @@ describe("EPAccountGate", () => {
         "plasmic-commerce-ep-account-provider"
       );
       expect(epAccountGateMeta.importName).toBe("EPAccountGate");
+      expect(epAccountGateMeta.styleSections).toBe(false);
       const when = (epAccountGateMeta.props as any).when;
       expect(
         when.options.map((o: { label: string; value: string }) => o)

@@ -3,6 +3,8 @@
  *
  * Consumes the Provider's published account context. It does not know
  * whether that context came from a fixture or (later) live identity.
+ * Matching children render with no wrapper so the Gate stays valid
+ * inside phrasing content and does not become a layout box.
  */
 
 import { useSelector } from "@plasmicapp/host";
@@ -51,6 +53,7 @@ export const epAccountGateMeta: CodeComponentMeta<EPAccountGateProps> = {
   importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
   importName: "EPAccountGate",
   parentComponentName: "plasmic-commerce-ep-account-provider",
+  styleSections: false,
 };
 
 /**
@@ -76,18 +79,14 @@ function accountGateMatches(
 }
 
 export function EPAccountGate(props: EPAccountGateProps) {
-  const { children, when = "authenticated", className } = props;
+  const { children, when = "authenticated" } = props;
   const account = useSelector("account") as AccountContext | undefined;
 
   if (!accountGateMatches(account, when)) {
     return null;
   }
 
-  return (
-    <div className={className} data-ep-account-gate="">
-      {children}
-    </div>
-  );
+  return children ?? null;
 }
 
 export function registerEPAccountGate(
