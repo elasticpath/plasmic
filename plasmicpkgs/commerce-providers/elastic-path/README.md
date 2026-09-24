@@ -591,9 +591,9 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 - **EPStripePayment** / **EPCloverPayment** — Payment adapters
 
 ### Accounts (Composable)
-- **EPAccountProvider** — Publishes `$ctx.account` (`accountMember`, `selectedAccount`, `accountRoster`, `lapsedAccount`, `state`). Preview State (Studio only) selects one of the four fixtures so Gates and Fields can be composed; the published page always reads anonymous — account/session integration is not wired up yet
-- **EPAccountGate** — Renders children when `$ctx.account` matches a condition (`authenticated`, `anonymous`, `selected`, `lapsed`)
-- **EPAccountField** — Displays one `$ctx.account` value (member id, selected/lapsed account name or id, state)
+- **EPAccountProvider** — Publishes `$ctx.account` from the shopper session: `accountMember`, `selectedAccount`, `accountRoster` (`{ accounts, total }`), `lapsedAccount`, and derived `state` (`anonymous | memberOnly | selected | lapsed`). Tokens stay server-side; the Provider maps browser-readable identity only. Preview State is Studio only: explicit values force fixtures so Gates and Fields can be composed; `auto` uses live session identity when a member is present (otherwise the selected-account fixture). The published page always reads the live session and ignores Preview State
+- **EPAccountGate** — Renders children when `$ctx.account` matches a condition (`authenticated`, `anonymous`, `selected`, `lapsed`). Consumes the Provider boundary; does not fetch
+- **EPAccountField** — Displays one `$ctx.account` value (member id, selected/lapsed account name or id). Consumes the Provider boundary
 
 ### Variations
 - **EPVariationPicker** / **EPVariationOptionList** / **EPVariationOptionTrigger** — Product variant selection

@@ -2,30 +2,37 @@
  * EPAccountGate — renders children when `$ctx.account` matches `when`.
  *
  * Consumes the Provider's published account context. It does not know
- * whether that context came from a fixture or (later) live identity.
+ * whether that context came from a fixture or live identity.
  * Matching children render with no wrapper so the Gate stays valid
  * inside phrasing content and does not become a layout box.
+ *
+ * In Studio, a missing `$ctx.account` uses the selected-account mock
+ * floor so slot content can be edited without a Provider. Wrap with
+ * EP Account Provider previewState=anonymous to edit signed-out content.
  */
 
-import { useSelector } from "@plasmicapp/host";
+import {
+  usePlasmicCanvasContext,
+  useSelector,
+} from "@plasmicapp/host";
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../registerable";
+import { MOCK_ACCOUNT_SELECTED } from "../utils/design-time-data";
 import type { AccountContext, AccountGateWhen } from "./types";
 
 interface EPAccountGateProps {
   children?: React.ReactNode;
   when?: AccountGateWhen;
-  className?: string;
 }
 
 export const epAccountGateMeta: CodeComponentMeta<EPAccountGateProps> = {
   name: "plasmic-commerce-ep-account-gate",
   displayName: "EP Account Gate",
   description:
-    "Renders children when the current `$ctx.account` matches the chosen condition. Drop separate gates for authenticated vs anonymous content. Must be inside an EP Account Provider.",
+    "Renders children when the current `$ctx.account` matches the chosen condition. Drop separate gates for authenticated vs anonymous content. Place inside an EP Account Provider; Studio uses a sample identity when none is published.",
   props: {
     when: {
       type: "choice",
@@ -80,7 +87,9 @@ function accountGateMatches(
 
 export function EPAccountGate(props: EPAccountGateProps) {
   const { children, when = "authenticated" } = props;
-  const account = useSelector("account") as AccountContext | undefined;
+  const published = useSelector("account") as AccountContext | undefined;
+  const inEditor = !!usePlasmicCanvasContext();
+  const account = published ?? (inEditor ? MOCK_ACCOUNT_SELECTED : undefined);
 
   if (!accountGateMatches(account, when)) {
     return null;

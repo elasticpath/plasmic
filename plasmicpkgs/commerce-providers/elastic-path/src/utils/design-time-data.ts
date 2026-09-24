@@ -21,6 +21,7 @@ import type {
   AccountContext,
   AccountMember,
   AccountRef,
+  AccountRoster,
   AccountState,
 } from "../account/types";
 
@@ -814,23 +815,28 @@ const SAMPLE_COMPANY_B: AccountRef = {
   name: "Sample Company B",
 };
 
-const SAMPLE_ACCOUNT_ROSTER: AccountRef[] = [
-  SAMPLE_COMPANY_A,
-  SAMPLE_COMPANY_B,
-];
+const SAMPLE_ACCOUNT_ROSTER: AccountRoster = {
+  accounts: [SAMPLE_COMPANY_A, SAMPLE_COMPANY_B],
+  total: 5,
+};
+
+const EMPTY_ACCOUNT_ROSTER: AccountRoster = {
+  accounts: [],
+  total: 0,
+};
 
 /** Runtime default and anonymous preview. No member, no organisation. */
 export const MOCK_ACCOUNT_ANONYMOUS: AccountContext = {
   state: "anonymous",
   accountMember: null,
   selectedAccount: null,
-  accountRoster: [],
+  accountRoster: EMPTY_ACCOUNT_ROSTER,
   lapsedAccount: null,
 };
 
 /** Signed-in member with several organisations and none selected. */
-export const MOCK_ACCOUNT_AUTHENTICATED: AccountContext = {
-  state: "authenticated",
+export const MOCK_ACCOUNT_MEMBER_ONLY: AccountContext = {
+  state: "memberOnly",
   accountMember: SAMPLE_ACCOUNT_MEMBER,
   selectedAccount: null,
   accountRoster: SAMPLE_ACCOUNT_ROSTER,
@@ -857,7 +863,7 @@ export const MOCK_ACCOUNT_LAPSED: AccountContext = {
 
 export const MOCK_ACCOUNT_BY_PREVIEW_STATE: Record<AccountState, AccountContext> = {
   anonymous: MOCK_ACCOUNT_ANONYMOUS,
-  authenticated: MOCK_ACCOUNT_AUTHENTICATED,
+  memberOnly: MOCK_ACCOUNT_MEMBER_ONLY,
   selected: MOCK_ACCOUNT_SELECTED,
   lapsed: MOCK_ACCOUNT_LAPSED,
 };

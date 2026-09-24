@@ -6,10 +6,12 @@
  */
 
 const mockUseSelector = jest.fn().mockReturnValue(undefined);
+const mockUsePlasmicCanvasContext = jest.fn().mockReturnValue(false);
 
 jest.mock("@plasmicapp/host", () => ({
   useSelector: (...args: any[]) => mockUseSelector(...args),
-  usePlasmicCanvasContext: jest.fn().mockReturnValue(false),
+  usePlasmicCanvasContext: (...args: any[]) =>
+    mockUsePlasmicCanvasContext(...args),
 }));
 
 jest.mock("@plasmicapp/host/registerComponent", () => {
@@ -22,8 +24,8 @@ import React from "react";
 import { render } from "@testing-library/react";
 import {
   MOCK_ACCOUNT_ANONYMOUS,
-  MOCK_ACCOUNT_AUTHENTICATED,
   MOCK_ACCOUNT_LAPSED,
+  MOCK_ACCOUNT_MEMBER_ONLY,
   MOCK_ACCOUNT_SELECTED,
 } from "../../utils/design-time-data";
 
@@ -46,6 +48,7 @@ describe("EPAccountGate", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockUseSelector.mockReturnValue(undefined);
+    mockUsePlasmicCanvasContext.mockReturnValue(false);
   });
 
   it("reads the account DataProvider key", () => {
@@ -54,9 +57,22 @@ describe("EPAccountGate", () => {
     expect(mockUseSelector).toHaveBeenCalledWith("account");
   });
 
-  it("renders nothing when no account context is published", () => {
+  it("renders nothing when no account context is published at runtime", () => {
     const { queryByTestId } = renderGate("anonymous");
     expect(queryByTestId("gated")).toBeNull();
+  });
+
+  it("uses the selected mock floor in Studio when no account is published", () => {
+    mockUsePlasmicCanvasContext.mockReturnValue(true);
+    const authenticated = renderGate("authenticated");
+    expect(authenticated.getByTestId("gated")).toBeTruthy();
+    authenticated.unmount();
+
+    const selected = renderGate("selected");
+    expect(selected.getByTestId("gated")).toBeTruthy();
+    selected.unmount();
+
+    expect(renderGate("anonymous").queryByTestId("gated")).toBeNull();
   });
 
   it("renders matching children without a wrapper element", () => {
@@ -69,7 +85,7 @@ describe("EPAccountGate", () => {
 
   describe("when=authenticated", () => {
     it.each([
-      ["authenticated unselected", MOCK_ACCOUNT_AUTHENTICATED, true],
+      ["memberOnly unselected", MOCK_ACCOUNT_MEMBER_ONLY, true],
       ["account selected", MOCK_ACCOUNT_SELECTED, true],
       ["lapsed", MOCK_ACCOUNT_LAPSED, true],
       ["anonymous", MOCK_ACCOUNT_ANONYMOUS, false],
@@ -102,7 +118,7 @@ describe("EPAccountGate", () => {
     });
 
     it("hides for authenticated-without-selection and lapsed", () => {
-      mockUseSelector.mockReturnValue(MOCK_ACCOUNT_AUTHENTICATED);
+      mockUseSelector.mockReturnValue(MOCK_ACCOUNT_MEMBER_ONLY);
       expect(renderGate("selected").queryByTestId("gated")).toBeNull();
 
       mockUseSelector.mockReturnValue(MOCK_ACCOUNT_LAPSED);

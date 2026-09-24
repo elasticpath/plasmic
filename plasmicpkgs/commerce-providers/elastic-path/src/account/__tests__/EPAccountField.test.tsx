@@ -7,10 +7,12 @@
  */
 
 const mockUseSelector = jest.fn().mockReturnValue(undefined);
+const mockUsePlasmicCanvasContext = jest.fn().mockReturnValue(false);
 
 jest.mock("@plasmicapp/host", () => ({
   useSelector: (...args: any[]) => mockUseSelector(...args),
-  usePlasmicCanvasContext: jest.fn().mockReturnValue(false),
+  usePlasmicCanvasContext: (...args: any[]) =>
+    mockUsePlasmicCanvasContext(...args),
 }));
 
 jest.mock("@plasmicapp/host/registerComponent", () => {
@@ -38,6 +40,7 @@ describe("EPAccountField", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockUseSelector.mockReturnValue(undefined);
+    mockUsePlasmicCanvasContext.mockReturnValue(false);
   });
 
   it("reads the account DataProvider key", () => {
@@ -46,11 +49,19 @@ describe("EPAccountField", () => {
     expect(mockUseSelector).toHaveBeenCalledWith("account");
   });
 
-  it("renders nothing outside an account provider", () => {
+  it("renders nothing outside an account provider at runtime", () => {
     const { container } = render(
       <EPAccountField field="selectedAccount.name" />
     );
     expect(container.firstChild).toBeNull();
+  });
+
+  it("uses the selected mock floor in Studio when no account is published", () => {
+    mockUsePlasmicCanvasContext.mockReturnValue(true);
+    const { container } = render(
+      <EPAccountField field="selectedAccount.name" />
+    );
+    expect(container.textContent).toBe("Sample Company A");
   });
 
   it.each([
@@ -59,7 +70,6 @@ describe("EPAccountField", () => {
     ["selectedAccount.id", "sample-account-a"],
     ["lapsedAccount.name", ""],
     ["lapsedAccount.id", ""],
-    ["state", "selected"],
   ] as const)("resolves %s against the selected-account context", (field, expected) => {
     mockUseSelector.mockReturnValue(MOCK_ACCOUNT_SELECTED);
     const { container } = render(<EPAccountField field={field} />);
@@ -77,6 +87,17 @@ describe("EPAccountField", () => {
       <EPAccountField field="lapsedAccount.id" />
     );
     expect(idContainer.textContent).toBe("sample-account-a");
+  });
+
+  it("renders an empty string when selectedAccount has no name", () => {
+    mockUseSelector.mockReturnValue({
+      ...MOCK_ACCOUNT_SELECTED,
+      selectedAccount: { id: "acct-1" },
+    });
+    const { container } = render(
+      <EPAccountField field="selectedAccount.name" />
+    );
+    expect(container.textContent).toBe("");
   });
 
   it("renders an empty string for selected account fields when none is selected", () => {
@@ -112,7 +133,6 @@ describe("EPAccountField", () => {
         "selectedAccount.id",
         "lapsedAccount.name",
         "lapsedAccount.id",
-        "state",
       ]);
       expect(field.defaultValue).toBe("selectedAccount.name");
     });
@@ -131,8 +151,12 @@ describe("EPAccountField", () => {
       );
     });
 
-    it("does not register a Field-owned previewState", () => {
+    it("does not register a Field-owned previewState or raw state choice", () => {
       expect((epAccountFieldMeta.props as any).previewState).toBeUndefined();
+      const values = (epAccountFieldMeta.props as any).field.options.map(
+        (o: { value: string }) => o.value
+      );
+      expect(values).not.toContain("state");
     });
 
     it("registers the component with its meta", () => {

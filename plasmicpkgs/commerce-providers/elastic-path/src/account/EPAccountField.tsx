@@ -1,13 +1,20 @@
 /**
  * EPAccountField — displays one shallow `$ctx.account` value.
+ *
+ * In Studio, a missing `$ctx.account` uses the selected-account mock
+ * floor so the field can be styled without a Provider.
  */
 
-import { useSelector } from "@plasmicapp/host";
+import {
+  usePlasmicCanvasContext,
+  useSelector,
+} from "@plasmicapp/host";
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../registerable";
+import { MOCK_ACCOUNT_SELECTED } from "../utils/design-time-data";
 import type { AccountContext, AccountFieldName } from "./types";
 
 interface EPAccountFieldProps {
@@ -19,7 +26,7 @@ export const epAccountFieldMeta: CodeComponentMeta<EPAccountFieldProps> = {
   name: "plasmic-commerce-ep-account-field",
   displayName: "EP Account Field",
   description:
-    "Displays one account identity field (member id, selected organisation, lapsed organisation, state). Must be inside an EP Account Provider.",
+    "Displays one account identity field (member id, selected organisation, lapsed organisation). Place inside an EP Account Provider; Studio uses a sample identity when none is published.",
   props: {
     field: {
       type: "choice",
@@ -29,7 +36,6 @@ export const epAccountFieldMeta: CodeComponentMeta<EPAccountFieldProps> = {
         { label: "Selected account id", value: "selectedAccount.id" },
         { label: "Lapsed account name", value: "lapsedAccount.name" },
         { label: "Lapsed account id", value: "lapsedAccount.id" },
-        { label: "Account state", value: "state" },
       ],
       defaultValue: "selectedAccount.name",
       displayName: "Field",
@@ -55,14 +61,14 @@ function accountFieldValue(
       return account.lapsedAccount?.name ?? "";
     case "lapsedAccount.id":
       return account.lapsedAccount?.id ?? "";
-    case "state":
-      return account.state;
   }
 }
 
 export function EPAccountField(props: EPAccountFieldProps) {
   const { field = "selectedAccount.name", className } = props;
-  const account = useSelector("account") as AccountContext | undefined;
+  const published = useSelector("account") as AccountContext | undefined;
+  const inEditor = !!usePlasmicCanvasContext();
+  const account = published ?? (inEditor ? MOCK_ACCOUNT_SELECTED : undefined);
 
   if (!account) return null;
 

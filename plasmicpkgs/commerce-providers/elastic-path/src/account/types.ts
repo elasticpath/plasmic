@@ -3,12 +3,13 @@
  *
  * This is the Provider boundary. Tokens, expiry, and session internals never
  * appear here. Member profile fields (name, email) are not part of this
- * contract.
+ * contract. `state` is a derived discriminator — Gate matches slots, not
+ * `state` alone.
  */
 
 export type AccountState =
   | "anonymous"
-  | "authenticated"
+  | "memberOnly"
   | "selected"
   | "lapsed";
 
@@ -16,18 +17,23 @@ export type AccountPreviewState = "auto" | AccountState;
 
 export type AccountRef = {
   id: string;
-  name: string;
+  name?: string;
 };
 
 export type AccountMember = {
   id: string;
 };
 
+export type AccountRoster = {
+  accounts: AccountRef[];
+  total: number;
+};
+
 export type AccountContext = {
   state: AccountState;
   accountMember: AccountMember | null;
   selectedAccount: AccountRef | null;
-  accountRoster: AccountRef[];
+  accountRoster: AccountRoster;
   lapsedAccount: AccountRef | null;
 };
 
@@ -42,5 +48,4 @@ export type AccountFieldName =
   | "selectedAccount.name"
   | "selectedAccount.id"
   | "lapsedAccount.name"
-  | "lapsedAccount.id"
-  | "state";
+  | "lapsedAccount.id";

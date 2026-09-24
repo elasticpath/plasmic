@@ -47,7 +47,7 @@ const { EPAccountGate } = require("../EPAccountGate");
 const { EPAccountField } = require("../EPAccountField");
 
 function renderTree(
-  previewState: "anonymous" | "authenticated" | "selected" | "lapsed"
+  previewState: "anonymous" | "memberOnly" | "selected" | "lapsed"
 ) {
   return render(
     <EPAccountProvider previewState={previewState}>
@@ -80,7 +80,7 @@ describe("account component composition", () => {
   });
 
   it("shows authenticated content without an organisation when none is selected", () => {
-    const { queryByText, getByText } = renderTree("authenticated");
+    const { queryByText, getByText } = renderTree("memberOnly");
 
     expect(queryByText("Login CTA")).toBeNull();
     expect(getByText(/Member/)).toBeTruthy();

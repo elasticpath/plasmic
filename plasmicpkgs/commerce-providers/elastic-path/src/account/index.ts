@@ -19,6 +19,7 @@ export type {
   AccountPreviewState,
   AccountMember,
   AccountRef,
+  AccountRoster,
   AccountGateWhen,
   AccountFieldName,
 } from "./types";
