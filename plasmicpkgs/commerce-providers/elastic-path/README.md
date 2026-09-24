@@ -590,6 +590,11 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 - **EPCheckoutSessionProvider** — Server-authoritative session
 - **EPStripePayment** / **EPCloverPayment** — Payment adapters
 
+### Accounts (Composable)
+- **EPAccountProvider** — Publishes `$ctx.account` (`accountMember`, `selectedAccount`, `accountRoster`, `lapsedAccount`, `state`). Preview State (Studio only) selects one of the four fixtures so Gates and Fields can be composed; the published page always reads anonymous — account/session integration is not wired up yet
+- **EPAccountGate** — Renders children when `$ctx.account` matches a condition (`authenticated`, `anonymous`, `selected`, `lapsed`)
+- **EPAccountField** — Displays one `$ctx.account` value (member id, selected/lapsed account name or id, state)
+
 ### Variations
 - **EPVariationPicker** / **EPVariationOptionList** / **EPVariationOptionTrigger** — Product variant selection
 - **EPVariationField** / **EPVariationOptionField** — Variant display

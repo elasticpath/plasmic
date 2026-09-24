@@ -72,6 +72,19 @@ because signing in against the wrong profile fails with Elastic Path's own
 `EpAccountSlot`, `EpLapsedAccount`, `EpSessionData` and
 `BuildEpCtxAccountInput` types, are exported from `/server`.
 
+`EPAccountProvider`, `EPAccountGate` and `EPAccountField` publish `$ctx.account`
+— `accountMember`, `selectedAccount`, `accountRoster`, `lapsedAccount`, `state`
+— as the first Studio-facing surface over the account identity work above.
+Gate renders children on `anonymous | authenticated | selected | lapsed`;
+Field reads one shallow value off the published context. The Provider's
+Preview State is Studio only, the same pattern as `EPCheckoutProvider`: it
+forces one of the four fixtures so Gates and Fields can be composed before a
+page has a live session, `auto` resolves to the selected-account fixture, and
+the published page always reads anonymous regardless of the chosen state. No
+login, logout or account-switching action exists yet — the Provider only
+reads — and `accountMember` carries an id and nothing else, so no member
+profile field (name, email) is in the contract.
+
 ### Changed
 
 `isAuthenticated` now reports whether an account member is present, not
