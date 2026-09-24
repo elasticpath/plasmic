@@ -19,10 +19,13 @@ shape would drop every search hit's picture with nothing failing. Ask for the
 block with `include: ["main_image"]`: Elastic Path omits it entirely unless the
 call requests it, verified against a live store.
 
-`ep.getStock` and `ep.getLocations` send `EP-Inventories-Multi-Location`. The
-locations registry 404s outright without it, and stock comes back with no
-per-location breakdown; the browser client sets the header on every request,
-which is why neither hook ever had to ask.
+Every server call sends `EP-Inventories-Multi-Location`, as the browser client
+already did. The locations registry 404s outright without it, and stock comes
+back with no per-location breakdown — both of which read as "this store has
+none" rather than as an error. It lives on the shared client builder rather
+than on the two inventory functions, because leaving it to each function to
+remember is how `ep.getLocations` first shipped reporting an empty store.
+Confirmed inert on catalog and cart calls, reads and writes alike.
 
 `ep.getStock` reports its counts as numbers. The browser hook builds them as
 `BigInt`, which cannot cross `JSON.stringify` — and this value crosses it twice,

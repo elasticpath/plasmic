@@ -39,13 +39,6 @@ export async function epGetLocations({
 
   if (!isUsableAuth(auth)) return [];
   const client = buildEpClient(auth);
-  // The locations registry is a multi-location-inventory resource: without
-  // this header Elastic Path 404s the endpoint outright. The browser client
-  // sets it on every request, which is why the hook never had to.
-  client.interceptors.request.use(async (request: Request) => {
-    request.headers.set("EP-Inventories-Multi-Location", "true");
-    return request;
-  });
 
   try {
     const response = await listLocations({

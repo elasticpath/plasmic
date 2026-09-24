@@ -133,12 +133,6 @@ export async function epGetStock({
 
   if (!isUsableAuth(auth)) return {};
   const client = buildEpClient(auth);
-  // Without this header Elastic Path answers with single-location stock,
-  // which carries no `attributes.locations` map at all.
-  client.interceptors.request.use(async (request: Request) => {
-    request.headers.set("EP-Inventories-Multi-Location", "true");
-    return request;
-  });
 
   const entries = await Promise.all(
     ids.map(async (productId) => {
