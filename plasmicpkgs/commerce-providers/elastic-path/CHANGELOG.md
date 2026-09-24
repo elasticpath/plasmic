@@ -4,6 +4,41 @@
 
 ### Added
 
+Six server functions reach data that previously only the browser client could:
+`ep.getStock`, `ep.getLocations`, `ep.getBundleOptionProducts`,
+`ep.getBaseProducts`, `ep.configureBundle` and `ep.multiSearch`. Each is
+registered for Studio Server Queries and dispatchable from the browser through
+the proxy route. Nothing is removed and no call site moves — the browser client
+and every component that uses it behave exactly as before.
+
+`ep.multiSearch` returns Elastic Path's response as written, under a
+package-owned type that keeps the top-level `included` block. That block is
+where the search adapter resolves each hit's `main_image`, and the SDK's own
+`MultiSearchResponse` does not declare it — typing the result with the SDK
+shape would drop every search hit's picture with nothing failing. Ask for the
+block with `include: ["main_image"]`: Elastic Path omits it entirely unless the
+call requests it, verified against a live store.
+
+Every server call sends `EP-Inventories-Multi-Location`, as the browser client
+already did. The locations registry 404s outright without it, and stock comes
+back with no per-location breakdown — both of which read as "this store has
+none" rather than as an error. It lives on the shared client builder rather
+than on the two inventory functions, because leaving it to each function to
+remember is how `ep.getLocations` first shipped reporting an empty store.
+Confirmed inert on catalog and cart calls, reads and writes alike.
+
+`ep.getStock` reports its counts as numbers. The browser hook builds them as
+`BigInt`, which cannot cross `JSON.stringify` — and this value crosses it twice,
+into prefetched query data and through the proxy route. Its per-location shape
+is otherwise the browser client's, counts under `stock`, so a call site can
+move without rereading them.
+
+The two bundle product reads return the package's own product shape, so a
+bundle option carries joined images and a price with all four members rather
+than a bare formatted string. `ChildProduct` gains `bundleExcluded`, the
+Elastic Path custom field marking a variation the merchandiser kept out of
+bundle selection.
+
 `sessionCartResolver` on `createEpAuth` chooses the session cart at a login or
 an account switch, configured once rather than per call site. It is handed the
 guest cart, the carts already on the account, and which transition this is; it
@@ -43,6 +78,17 @@ The `EpAccountCart`, `EpSessionCartResolver`, `EpSessionCartResolverInput`,
 `/server`.
 
 ### Fixed
+
+`ep.applyCartAdjustment` is dispatchable from the browser. It has been
+registered as a Studio mutation since it landed, but had no entry in the proxy
+route's dispatch table, so an adjustment a designer wired to an onClick — a
+promo code, a handling fee — could not reach the server at all and failed with
+`unknown_fn`.
+
+`epAddCartItem`, `epUpdateCartItem`, `epRemoveCartItem` and `epGetProductList`
+have a browser transport. Called outside a request scope they threw "no EP
+session" (or, for the list, fetched under another function's name) instead of
+routing through the proxy the way the other server functions do.
 
 Signing out clears the cart pointer. It stripped the account fields and left
 `epCartId`, handing the next shopper on that browser the previous one's cart.

@@ -572,3 +572,86 @@ describe("epRemoveCartItem", () => {
     expect(mockGetACart).not.toHaveBeenCalled();
   });
 });
+
+describe("browser transport", () => {
+  beforeEach(() => {
+    mockShouldUseProxy.mockReturnValue(true);
+  });
+
+  it("adds through the proxy, carrying every field the write needs", async () => {
+    const proxiedCart = { id: "cart-id", items: [] };
+    mockCallEpProxy.mockResolvedValue(proxiedCart);
+
+    const result = await epAddCartItem({
+      productId: "p1",
+      quantity: 2,
+      sku: "SKU-1",
+      customInputs: { gift: "yes" },
+      bundleConfiguration: { selected_options: {} },
+      location: "warehouse-a",
+    });
+
+    expect(mockCallEpProxy).toHaveBeenCalledWith("addCartItem", {
+      productId: "p1",
+      quantity: 2,
+      sku: "SKU-1",
+      customInputs: { gift: "yes" },
+      bundleConfiguration: { selected_options: {} },
+      location: "warehouse-a",
+    });
+    expect(mockManageCarts).not.toHaveBeenCalled();
+    expect(mockCreateACart).not.toHaveBeenCalled();
+    expect(result).toBe(proxiedCart);
+  });
+
+  it("updates through the proxy", async () => {
+    const proxiedCart = { id: "cart-id", items: [] };
+    mockCallEpProxy.mockResolvedValue(proxiedCart);
+
+    const result = await epUpdateCartItem({
+      itemId: "item-1",
+      quantity: 3,
+      location: "warehouse-a",
+    });
+
+    expect(mockCallEpProxy).toHaveBeenCalledWith("updateCartItem", {
+      itemId: "item-1",
+      quantity: 3,
+      location: "warehouse-a",
+    });
+    expect(mockUpdateACartItem).not.toHaveBeenCalled();
+    expect(result).toBe(proxiedCart);
+  });
+
+  it("removes through the proxy", async () => {
+    const proxiedCart = { id: "cart-id", items: [] };
+    mockCallEpProxy.mockResolvedValue(proxiedCart);
+
+    const result = await epRemoveCartItem({ itemId: "item-1" });
+
+    expect(mockCallEpProxy).toHaveBeenCalledWith("removeCartItem", {
+      itemId: "item-1",
+    });
+    expect(mockDeleteACartItem).not.toHaveBeenCalled();
+    expect(result).toBe(proxiedCart);
+  });
+
+  it("surfaces a proxy failure rather than reporting a write that never happened", async () => {
+    mockCallEpProxy.mockRejectedValue(new Error("not enough stock"));
+
+    await expect(
+      epAddCartItem({ productId: "p1", quantity: 1 })
+    ).rejects.toThrow("not enough stock");
+  });
+
+  it("writes directly when an ALS session is present", async () => {
+    mockSuccessfulAdd();
+
+    await withEpSession({ ...SESSION_BASE, cartId: "cart-id" }, () =>
+      epAddCartItem({ productId: "p1", quantity: 1 })
+    );
+
+    expect(mockCallEpProxy).not.toHaveBeenCalled();
+    expect(mockManageCarts).toHaveBeenCalled();
+  });
+});

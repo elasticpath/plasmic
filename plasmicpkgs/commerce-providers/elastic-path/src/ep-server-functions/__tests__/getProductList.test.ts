@@ -13,6 +13,13 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
     mockGetByContextProductsForNode(...args),
 }));
 
+const mockShouldUseProxy = jest.fn(() => false);
+const mockCallEpProxy = jest.fn();
+jest.mock("../proxy-fetch", () => ({
+  shouldUseProxy: () => mockShouldUseProxy(),
+  callEpProxy: (...args: unknown[]) => mockCallEpProxy(...args),
+}));
+
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { epGetProductList } = require("../getProductList");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -27,6 +34,9 @@ const SESSION = {
 beforeEach(() => {
   mockGetByContextAllProducts.mockReset();
   mockGetByContextProductsForNode.mockReset();
+  mockShouldUseProxy.mockReset();
+  mockShouldUseProxy.mockReturnValue(false);
+  mockCallEpProxy.mockReset();
 });
 
 const makeProduct = (id: string, name: string) => ({
@@ -143,5 +153,45 @@ describe("epGetProductList", () => {
     expect(result[0].images).toEqual([
       { url: "https://cdn.example/p1.jpg", alt: "Product One" },
     ]);
+  });
+
+  describe("browser transport", () => {
+    beforeEach(() => {
+      mockShouldUseProxy.mockReturnValue(true);
+    });
+
+    it("fetches under its own name so the route can serve it", async () => {
+      const products = [makeProduct("p1", "Product One")];
+      mockCallEpProxy.mockResolvedValue(products);
+
+      const result = await epGetProductList({
+        limit: 10,
+        search: "chair",
+        categoryId: "node-1",
+      });
+
+      expect(mockCallEpProxy).toHaveBeenCalledWith(
+        "getProductList",
+        { limit: 10, search: "chair", categoryId: "node-1" },
+        null
+      );
+      expect(result).toBe(products);
+      expect(mockGetByContextAllProducts).not.toHaveBeenCalled();
+    });
+
+    it("returns an empty list when the proxy has no session to answer with", async () => {
+      mockCallEpProxy.mockResolvedValue(null);
+
+      await expect(epGetProductList()).resolves.toEqual([]);
+    });
+
+    it("reads directly when an ALS session is present", async () => {
+      mockGetByContextAllProducts.mockResolvedValue({ data: { data: [] } });
+
+      await withEpSession(SESSION, () => epGetProductList());
+
+      expect(mockCallEpProxy).not.toHaveBeenCalled();
+      expect(mockGetByContextAllProducts).toHaveBeenCalled();
+    });
   });
 });

@@ -624,13 +624,19 @@ import { registerEpCustomFunctions } from "@elasticpath/plasmic-ep-commerce-elas
 registerEpCustomFunctions(PLASMIC);
 ```
 
-This registers five read functions in the `ep` namespace, callable from Studio's Server Query builder:
+This registers the read functions in the `ep` namespace, callable from Studio's Server Query builder:
 
 - `ep.getProduct({ id })` — single product by EP product UUID.
 - `ep.getCart()` — current cart contents.
 - `ep.getProductList({ limit?, search?, categoryId?, sort? })` — a flat array of products. `categoryId` is a hierarchy **node** ID; it reads that node's products rather than filtering the whole catalog.
 - `ep.getProductPage({ limit?, offset?, search?, categoryId?, sort? })` — one page of products **with the total count**, in Elastic Path's envelope: `data`, plus `meta.results.total` and `meta.page`. Bind it to EP Product List Provider's **Products (pre-fetched)** prop to server-render a listing. Prefer this over `getProductList` whenever the page has pagination controls — the flat array carries no total, so ranges and next/previous cannot be computed.
 - `ep.getRelatedProducts({ productId, relationshipSlug, limit? })` — products linked by an EP custom relationship.
+- `ep.getStock({ productIds, locationIds? })` — multi-location stock, keyed by product ID. Counts are plain numbers, because the value crosses `JSON.stringify` twice. A product whose stock is unreadable comes back with zero counts rather than failing the batch.
+- `ep.getLocations({ type? })` — the inventory locations.
+- `ep.getBundleOptionProducts({ productIds })` — the products a bundle offers as options, keyed by product ID, each the package's own product shape with images joined and prices carrying all four members.
+- `ep.getBaseProducts({ productIds })` — the given products with their `variations` and `childProducts`. A product that is not a base product comes back with an empty `childProducts`; one the catalog does not return is omitted, because absent and purchasable-on-its-own are different answers.
+- `ep.configureBundle({ bundleId, selectedOptions })` — re-prices a bundle for a set of option selections and returns Elastic Path's configured-bundle payload. Throws on failure: a configurator showing a stale total is worse than one showing an error.
+- `ep.multiSearch({ searches, include? })` — a catalog multi-search, returned as-is. Pass `include: ["main_image"]` to get hit images: Elastic Path omits the top-level `included` block entirely unless it is asked for, and that block is what each hit's `relationships.main_image` resolves against. The response is passed through rather than reshaped so the block survives. It throws when the search fails: an empty result is a plausible correct answer here, so failing soft would render an outage as a no-results page.
 
 Auth is **not** an argument. The session (`accessToken`, `clientId`, `host`, `cartId`, …) is propagated through `AsyncLocalStorage` — see step 3.
 

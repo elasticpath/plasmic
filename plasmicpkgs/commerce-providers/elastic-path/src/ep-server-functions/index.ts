@@ -10,13 +10,24 @@ export type {
   EpRemoveCartItemInput,
   EpUpdateCartItemInput,
 } from "./cart-mutations";
+export { epConfigureBundle } from "./configureBundle";
+export type {
+  EpConfigureBundleInput,
+  EpConfiguredBundle,
+} from "./configureBundle";
 export { CART_ADJUSTMENT_KINDS, addCustomCartItem } from "./custom-cart-item";
 export type {
   AddCustomCartItemInput,
   CartAdjustmentKind,
 } from "./custom-cart-item";
+export { epGetBaseProducts } from "./getBaseProducts";
+export type { EpGetBaseProductsInput } from "./getBaseProducts";
+export { epGetBundleOptionProducts } from "./getBundleOptionProducts";
+export type { EpGetBundleOptionProductsInput } from "./getBundleOptionProducts";
 export { epGetCart } from "./getCart";
 export type { EpGetCartInput } from "./getCart";
+export { epGetLocations } from "./getLocations";
+export type { EpGetLocationsInput, EpLocation } from "./getLocations";
 export { epGetProduct } from "./getProduct";
 export type { EpGetProductInput } from "./getProduct";
 export { epGetProductList } from "./getProductList";
@@ -25,6 +36,18 @@ export { epGetProductPage } from "./getProductPage";
 export type { EpGetProductPageInput, EpProductPage } from "./getProductPage";
 export { epGetRelatedProducts } from "./getRelatedProducts";
 export type { EpGetRelatedProductsInput } from "./getRelatedProducts";
+export { epGetStock } from "./getStock";
+export type {
+  EpGetStockInput,
+  EpLocationStock,
+  EpProductStock,
+} from "./getStock";
+export { epMultiSearch } from "./multiSearch";
+export type {
+  EpMultiSearchInput,
+  EpMultiSearchQuery,
+  EpMultiSearchResponse,
+} from "./multiSearch";
 export {
   epPlaceOrder,
   normalizeAddress,
@@ -47,11 +70,17 @@ export {
   EP_FUNCTION_NAMES,
   addCartItem,
   applyCartAdjustment,
+  configureBundle,
+  getBundleOptionProducts,
   getCart,
+  getLocations,
+  getBaseProducts,
   getProduct,
   getProductList,
   getProductPage,
   getRelatedProducts,
+  getStock,
+  multiSearch,
   registerEpCustomFunctions,
   removeCartItem,
   updateCartItem,
