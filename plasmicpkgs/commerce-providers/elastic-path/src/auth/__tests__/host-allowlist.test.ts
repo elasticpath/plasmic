@@ -19,6 +19,12 @@ describe("isAllowedEpHost", () => {
     ).toBe(true);
   });
 
+  it("accepts Elastic Path cloud ops hosts", () => {
+    expect(isAllowedEpHost("https://api.epcloudops.com")).toBe(true);
+    expect(isAllowedEpHost("https://useast.api.epcloudops.com")).toBe(true);
+    expect(isAllowedEpHost("https://epcloudops.com.evil.test")).toBe(false);
+  });
+
   it("rejects lookalike domains", () => {
     expect(isAllowedEpHost("https://elasticpath.com.evil.test")).toBe(false);
     expect(isAllowedEpHost("https://notelasticpath.com")).toBe(false);
