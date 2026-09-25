@@ -1,5 +1,5 @@
 /**
- * POST /api/checkout/sessions/current/shipping — fetch shipping rates.
+ * POST /api/checkout/sessions/current/shipping — requote shipping rates on demand.
  */
 import type { NextRequest } from "next/server";
 import { handleCalculateShipping } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";

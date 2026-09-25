@@ -391,12 +391,12 @@ export const epCheckoutSessionProviderMeta: CodeComponentMeta<EPCheckoutSessionP
       },
       updateSession: {
         description:
-          "Update session fields (customerInfo, shippingAddress, billingAddress, selectedShippingRateId)",
+          "Update session fields (customerInfo, shippingAddress, billingAddress, selectedShippingRateId). A changed shippingAddress requotes shipping rates.",
         argTypes: [{ name: "data", type: "object" }],
       },
       calculateShipping: {
         description:
-          "Fetch shipping rates for the current shipping address",
+          "Requote shipping rates on demand, for example after the cart changes. Saving a shipping address already requotes.",
         argTypes: [],
       },
       placeOrder: {

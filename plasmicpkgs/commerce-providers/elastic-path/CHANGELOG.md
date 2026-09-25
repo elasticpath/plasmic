@@ -129,6 +129,22 @@ header. The cart routes apply it after the caller's own headers, so neither the
 header nor the account credential can be overridden per call. No caller passed
 either, so nothing changes today.
 
+A saved shipping address is a quoted address. When the checkout-session update
+changes the shipping address it runs the `shippingRateResolver` and persists
+the address and the new rates in one write, so the response and the next read
+both carry rates. It used to clear the rates and leave fetching new ones to a
+second request, and a checkout that lacked one could not select a rate and
+failed at `/pay`. A host that called the requote handler from its update route
+can remove that call, along with the code that read the session cookie between
+the two. A resolver failure does not fail the update: the address is saved,
+the rate list is empty, and the failure is logged. The `/shipping` route and
+the `calculateShipping` ref action are unchanged and are now the on-demand
+requote, for example after the cart changes.
+
+The managed-form checkout no longer sends a second request after an address
+change. It called the update and then the requote, so a tenant's resolver ran
+twice for every address the shopper typed.
+
 ### Removed
 
 The undocumented `auth` field on the inputs of `getProduct`, `getProductList`,

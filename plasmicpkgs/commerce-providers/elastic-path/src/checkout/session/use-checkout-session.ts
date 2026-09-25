@@ -45,7 +45,7 @@ export interface UseCheckoutSessionReturn {
   createSession: (cartId?: string) => Promise<SessionApiResponse>;
   /** Merge partial updates into the session. */
   updateSession: (data: UpdateSessionRequest) => Promise<SessionApiResponse>;
-  /** Fetch shipping rates for the session's shipping address. */
+  /** Requote shipping rates on demand, for example after the cart changes. A shipping-address update already requotes. */
   calculateShipping: () => Promise<SessionApiResponse>;
   /** Initiate payment with the registered gateway. */
   placeOrder: (gatewayData: Record<string, unknown>) => Promise<SessionApiResponse>;
