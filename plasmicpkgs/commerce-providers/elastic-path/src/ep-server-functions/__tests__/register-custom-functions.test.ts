@@ -231,18 +231,9 @@ describe("registerEpCustomFunctions", () => {
     );
     const adapted = call![0] as (...args: unknown[]) => unknown;
 
-    // Mock the underlying function so we can inspect what it gets.
-    // The adapted function calls the real epGetProduct, which returns
-    // null for an unusable session — no EP fetch fires. Verify the
-    // adapter's reassembly via the input it would have built; we test
-    // by passing a mock session via the optional input.auth fallback.
-    const realFn = jest.requireActual("../getProduct").epGetProduct as (input: {
-      id: string;
-      auth?: any;
-    }) => Promise<unknown>;
-    void realFn; // adapter calls spec.fn directly; the fact that
-    // adapted("test-id") returns the same Promise as
-    // epGetProduct({id: "test-id"}) is the regression net.
+    // The adapted function calls the real epGetProduct, which returns null
+    // for an unusable session — no EP fetch fires. That adapted("test-id")
+    // and epGetProduct({id: "test-id"}) behave alike is the regression net.
     const result1 = adapted("test-id");
     const result2 = epGetProduct({ id: "test-id" });
     expect(result1).toBeInstanceOf(Promise);

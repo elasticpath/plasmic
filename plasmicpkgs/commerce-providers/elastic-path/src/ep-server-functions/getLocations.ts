@@ -2,7 +2,6 @@ import { listLocations } from "@epcc-sdk/sdks-shopper";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
-import type { EpServerAuth } from "./types";
 
 /** An Elastic Path inventory location, as the locations list returns it. */
 export interface EpLocation {
@@ -19,16 +18,13 @@ export interface EpLocation {
 export interface EpGetLocationsInput {
   /** Location type to filter on, e.g. "warehouse" or "store". */
   type?: string;
-  /** SSR-only explicit auth. Never advertised; never bind in Studio. */
-  auth?: EpServerAuth;
 }
 
 /** Every inventory location the shopper's catalog context can see. */
 export async function epGetLocations({
   type,
-  auth: inputAuth,
 }: EpGetLocationsInput = {}): Promise<EpLocation[]> {
-  const auth = getCurrentEpSession() ?? inputAuth;
+  const auth = getCurrentEpSession();
 
   if (!isUsableAuth(auth) && shouldUseProxy()) {
     return (

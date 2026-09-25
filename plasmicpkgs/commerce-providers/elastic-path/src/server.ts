@@ -162,7 +162,6 @@ export type {
   EpConfiguredBundle,
   EpCtx,
   EpGetBundleOptionProductsInput,
-  EpGetCartInput,
   EpGetLocationsInput,
   EpGetBaseProductsInput,
   EpGetProductInput,

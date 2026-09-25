@@ -122,6 +122,24 @@ which can still only reach it as CommonJS.
 A session scope that cannot load now says so on the console instead of leaving
 every `ep.*` call to return nothing for no visible reason.
 
+The headers a shopper-facing Elastic Path call must carry now come from one
+function, `epShopperHeaders`, rather than being spelled out at each of the
+three call sites. That is how one site came to be missing the multi-location
+header. The cart routes apply it after the caller's own headers, so neither the
+header nor the account credential can be overridden per call. No caller passed
+either, so nothing changes today.
+
+### Removed
+
+The undocumented `auth` field on the inputs of `getProduct`, `getProductList`,
+`getProductPage`, `getRelatedProducts`, `getCart`, `getStock`, `getLocations`,
+`getBaseProducts`, `getBundleOptionProducts`, `configureBundle` and
+`multiSearch`. Nothing set it, and the proxy route forwards the browser's
+request body verbatim, so it was a way to name your own credentials that only
+the order of two lines kept shut. The shopper envelope is now the sole identity
+input. `EpGetCartInput` goes with it in the breaking release: `epGetCart` takes
+no argument, so the type had nothing left to name.
+
 ## 0.7.0
 
 ### Added

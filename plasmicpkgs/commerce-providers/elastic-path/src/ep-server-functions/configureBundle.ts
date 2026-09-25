@@ -2,7 +2,6 @@ import { configureByContextProduct } from "@epcc-sdk/sdks-shopper";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
-import type { EpServerAuth } from "./types";
 
 /**
  * Elastic Path's configured-bundle payload, returned verbatim.
@@ -20,8 +19,6 @@ export interface EpConfigureBundleInput {
   bundleId: string;
   /** Option id -> selected component product id -> quantity. */
   selectedOptions: Record<string, Record<string, number>>;
-  /** SSR-only explicit auth. Never advertised; never bind in Studio. */
-  auth?: EpServerAuth;
 }
 
 /**
@@ -34,10 +31,9 @@ export interface EpConfigureBundleInput {
 export async function epConfigureBundle({
   bundleId,
   selectedOptions,
-  auth: inputAuth,
 }: EpConfigureBundleInput): Promise<EpConfiguredBundle | null> {
   if (!bundleId) return null;
-  const auth = getCurrentEpSession() ?? inputAuth;
+  const auth = getCurrentEpSession();
 
   if (!isUsableAuth(auth) && shouldUseProxy()) {
     return callEpProxy<EpConfiguredBundle | null>("configureBundle", {
