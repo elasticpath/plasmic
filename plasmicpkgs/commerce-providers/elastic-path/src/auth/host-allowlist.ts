@@ -46,10 +46,10 @@ export function reportRejectedEpHost(
   allowlist: readonly string[]
 ): void {
   console.error(
-    `[ep-commerce] ${source}: EP API host "${host}" is not in the host ` +
-      `allowlist (${allowlist.join(", ")}), so it was ignored. Elastic Path ` +
-      `Self Managed Commerce deployments must pass their host via the ` +
-      `\`hostAllowlist\` option on createEpAuth, extractEpProviderConfig, ` +
-      `and buildEpCtx.`
+    `[ep-commerce] ${source}: EP API host "${host}" is not on the EP host ` +
+      `allow-list (${allowlist.join(", ")}), so it was ignored. If this ` +
+      `store's Elastic Path API is served from a custom domain, add that ` +
+      `host with the \`hostAllowlist\` option on createEpAuth or the ` +
+      `EP_HOST_ALLOWLIST environment variable.`
   );
 }

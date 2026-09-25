@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+### Breaking
+
+There is one EP host allow-list, and `createEpAuth` resolves it: the Elastic
+Path-operated defaults, plus the `hostAllowlist` option, plus the
+comma-separated `EP_HOST_ALLOWLIST` environment variable (ADR-0005). Your
+entries extend the defaults rather than replacing them. The list was applied
+separately by three functions, each falling back to the defaults, so a list
+passed to only some of them failed in a different silent way at each miss.
+Pass it once, to `createEpAuth`, and delete your own `EP_HOST_ALLOWLIST`
+parsing.
+
+| Was | Now |
+| --- | --- |
+| `buildEpCtx(prefetchedData, { session: { accessToken, cartId, account }, hostAllowlist })` | `buildEpCtx(session)`, where `session` is what `epAuth.api.getSession()` returned |
+| `extractEpProviderConfig(prefetchedData)` | `extractEpProviderConfig(prefetchedData, { hostAllowlist })` — the list is required |
+| `resolveConfig: async () => …` | `resolveConfig: async ({ hostAllowlist }) => …` — pass it to `extractEpProviderConfig` |
+| `epPlugin({ clientId, host })` | `epPlugin({ clientId, host, hostAllowlist })` — the list is required |
+
+`buildEpCtx` reads the host and client id from the session, which carries the
+ones admitted when it was minted, so the page and the auth routes use the same
+Elastic Path host by construction. An empty session yields an empty context,
+which the server functions refuse to run with, as before. Code outside
+`resolveConfig` that calls `extractEpProviderConfig` passes
+`epAuth.config.hostAllowlist`. `locale` and `currency` move to an optional
+second argument, and the `BuildEpCtxSessionInput` and `BuildEpCtxAccountInput`
+types are removed.
+
+A rejected host now names the `hostAllowlist` option and `EP_HOST_ALLOWLIST`
+as the fix for a store whose Elastic Path API is served from a custom domain.
+It no longer points at Elastic Path Self Managed Commerce, which never reaches
+this package.
+
 ### Added
 
 Six server functions reach data that previously only the browser client could:

@@ -8,7 +8,7 @@
  * `better-auth/next-js`.
  */
 export { epPlugin } from "./ep-plugin/ep-plugin";
-export type { EpPluginOptions } from "./ep-plugin/ep-plugin";
+export type { EpPluginOptions, EpResolveConfig } from "./ep-plugin/ep-plugin";
 export {
   createEpAuth,
   createEpAuth as createBetterEpAuth,

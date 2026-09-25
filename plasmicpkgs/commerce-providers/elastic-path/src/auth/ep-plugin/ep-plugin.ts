@@ -21,11 +21,7 @@ import type {
   EpSelectAccountRequest,
   EpSetCartRequest,
 } from "../../identity/operations";
-import {
-  DEFAULT_HOST_ALLOWLIST,
-  isAllowedEpHost,
-  reportRejectedEpHost,
-} from "../host-allowlist";
+import { isAllowedEpHost, reportRejectedEpHost } from "../host-allowlist";
 import {
   EP_ACCOUNT_TOKEN_HEADER,
   accountNeedsRoll,
@@ -65,17 +61,15 @@ export interface EpPluginOptions {
   /** Default host. Same fallback rules as `clientId`. */
   host: string;
   /**
-   * Optional async resolver. Invoked on every endpoint call. Lets the
-   * consumer pull config from elsewhere — e.g. the Plasmic loader bundle
-   * via `extractEpProviderConfig(prefetchedData)` — instead of pinning
-   * static values at plugin construction. The legacy auth had this same
-   * shape via the `x-ep-client-id` / `x-ep-host` middleware-header
-   * escape hatch in createEpSession; here we just lift it to a function.
+   * Optional async resolver. Invoked on every mint. Lets the consumer pull
+   * config from elsewhere — e.g. the Plasmic loader bundle via
+   * `extractEpProviderConfig(prefetchedData, { hostAllowlist })` — instead
+   * of pinning static values at plugin construction. A host it returns is
+   * admitted only if it is on `hostAllowlist`.
    */
-  resolveConfig?: () => Promise<
-    { clientId?: string; host?: string } | null | undefined
-  >;
-  hostAllowlist?: readonly string[];
+  resolveConfig?: EpResolveConfig;
+  /** The resolved EP host allow-list; `createEpAuth` supplies it. */
+  hostAllowlist: readonly string[];
   /**
    * The password profile account members sign in against. Discovered from the
    * store when omitted; required when the store's realm carries more than one,
@@ -89,6 +83,10 @@ export interface EpPluginOptions {
    */
   sessionCartResolver?: EpSessionCartResolver;
 }
+
+export type EpResolveConfig = (input: {
+  hostAllowlist: readonly string[];
+}) => Promise<{ clientId?: string; host?: string } | null | undefined>;
 
 interface EpAnonymousTokenResponse {
   access_token: string;
@@ -133,12 +131,12 @@ function generateAnonymousId(): string {
 }
 
 async function resolveConfigFor(options: EpPluginOptions) {
+  const { hostAllowlist } = options;
   const resolved = options.resolveConfig
-    ? await options.resolveConfig().catch(() => null)
+    ? await options.resolveConfig({ hostAllowlist }).catch(() => null)
     : null;
-  const allowlist = options.hostAllowlist ?? DEFAULT_HOST_ALLOWLIST;
-  if (resolved?.host && !isAllowedEpHost(resolved.host, allowlist)) {
-    reportRejectedEpHost(resolved.host, "epPlugin.resolveConfig", allowlist);
+  if (resolved?.host && !isAllowedEpHost(resolved.host, hostAllowlist)) {
+    reportRejectedEpHost(resolved.host, "epPlugin.resolveConfig", hostAllowlist);
     // clientId is only valid against the host it was resolved with.
     return { clientId: options.clientId, host: options.host };
   }

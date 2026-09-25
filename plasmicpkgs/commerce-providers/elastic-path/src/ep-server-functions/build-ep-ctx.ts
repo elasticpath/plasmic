@@ -1,34 +1,21 @@
 /**
  * Composes the EP session payload that drives every `ep.*` server function
- * (per PRD #262 / #272). Takes the Plasmic loader's prefetchedData (source
- * of connection/config — clientId, host) and the resolved EP session
- * (source of per-shopper auth — accessToken, cartId, selected account).
+ * from the shopper session `epAuth.api.getSession()` returns. The envelope
+ * already carries the host and client id admitted when it was minted.
  *
  * Consumers call this in their RSC catchall page, then run Server Queries
  * inside a `withEpSession` scope so each function reads the session via
  * AsyncLocalStorage instead of a per-call `auth` argument:
- *     const epCtx = buildEpCtx(prefetchedData, { session });
+ *     const epCtx = buildEpCtx(session);
  *     const prefetchedQueryData = await withEpSession(epCtx, () =>
  *       PLASMIC.unstable__getServerQueriesData(prefetchedData, queryCtx)
  *     );
+ *
+ * An empty session, from a failed mint, yields an empty context, which the
+ * server functions refuse to run with.
  */
 
-import { extractEpProviderConfig } from "../auth/extract-ep-provider-config";
-
-export interface BuildEpCtxAccountInput {
-  id: string;
-  name?: string;
-  token: string;
-  expires?: number;
-}
-
-export interface BuildEpCtxSessionInput {
-  accessToken?: string;
-  cartId?: string;
-  account?: BuildEpCtxAccountInput | null;
-  locale?: string;
-  currency?: string;
-}
+import type { EpSession } from "../auth/ep-plugin/create-ep-auth-better";
 
 export interface EpCtx {
   accessToken: string;
@@ -42,29 +29,18 @@ export interface EpCtx {
 }
 
 export function buildEpCtx(
-  prefetchedData: unknown,
-  opts: {
-    session: BuildEpCtxSessionInput;
-    hostAllowlist?: readonly string[];
-  }
+  session: Pick<EpSession, "session" | "cart">,
+  opts: { locale?: string; currency?: string } = {}
 ): EpCtx {
-  const config = extractEpProviderConfig(prefetchedData as any, {
-    hostAllowlist: opts.hostAllowlist,
-  });
-  if (!config) {
-    throw new Error(
-      "buildEpCtx: EP Provider config not found in prefetchedData. " +
-        "Ensure the project has an EP Commerce Provider global context configured in Studio."
-    );
-  }
+  const data = session.session;
   return {
-    accessToken: opts.session.accessToken ?? "",
-    host: config.host,
-    clientId: config.clientId,
-    cartId: opts.session.cartId,
-    accountId: opts.session.account?.id,
-    accountToken: opts.session.account?.token,
-    locale: opts.session.locale,
-    currency: opts.session.currency,
+    accessToken: data?.accessToken ?? "",
+    host: data?.host ?? "",
+    clientId: data?.clientId ?? "",
+    cartId: session.cart?.id,
+    accountId: data?.account?.id,
+    accountToken: data?.account?.token,
+    locale: opts.locale,
+    currency: opts.currency,
   };
 }

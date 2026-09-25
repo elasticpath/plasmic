@@ -768,7 +768,8 @@ For SSR'd product/cart/list data — where the initial HTML payload contains rea
 Browser                          Server (Next.js)              Elastic Path
 -------                          ----------------              ------------
                                  catch-all page.tsx
-                                   buildEpCtx() ----- mints ---> /oauth/access_token
+                                   getSession() ----- mints ---> /oauth/access_token
+                                   buildEpCtx(session)
                                                                  /pcm/catalog/products
                                    withEpSession(epCtx, () =>
                                      PLASMIC.unstable__getServerQueriesData
@@ -838,7 +839,7 @@ Like Add to Cart, these values are shopper-facing copy derived from stable proxy
 
 1. **`platformOptions: { nextjs: { appDir: true } }`** in `plasmic-init.ts`. Without this the loader fetches the Pages Router bundle which omits `serverQueriesExecFuncFileName` per-page metadata.
 2. **Wrap `unstable__getServerQueriesData` in `withEpSession(epCtx, ...)`** in the catch-all page. Without it, the EP functions run outside any session scope and return `null` / `[]`.
-3. **Resolve a real page path for the API route's `epProviderHeaders()`** — use `PLASMIC.fetchPages()` rather than hardcoding `/`. Projects without a homepage route otherwise return `null` from `maybeFetchComponentData("/")` and the credentials-extraction path silently fails.
+3. **Resolve a real page path in `resolveConfig`** — use `PLASMIC.fetchPages()` rather than hardcoding `/`. Projects without a homepage route otherwise return `null` from `maybeFetchComponentData("/")` and the credentials-extraction path silently fails.
 
 ### Common gotchas
 
@@ -846,7 +847,7 @@ Like Add to Cart, these values are shopper-facing copy derived from stable proxy
 |---|---|
 | Queries return `null` / `[]` despite valid arguments | Missing `withEpSession(epCtx, …)` wrap around `unstable__getServerQueriesData` |
 | `prefetchedQueryData: "$undefined"` in the SSR HTML | `appDir: true` missing from loader config |
-| `EP OAuth failed (401)` in dev log | Override headers (`x-ep-client-id`/`x-ep-host`) returned empty — usually because `getEpProviderConfig` hardcoded `/` and the project has no homepage |
+| `EP OAuth failed (401)` in dev log | `resolveConfig` found no EP Provider config — usually because `getEpProviderConfig` hardcoded `/` and the project has no homepage |
 | Auth works on the page but `/api/ep/cart` returns 500 | Pre-fix: `toNextJsHandler` was passing the native Next `Request` directly; resolved by the Request adapter committed in `a363aaf23` |
 | Studio binding still references `auth: $ctx.ep` | Project predates PRD #272 — drop `auth` from each Server Query argument |
 | A sort control over **EP Product List Provider** changes nothing | Expected — the catalog product endpoints cannot sort. Build the listing on `EPCatalogSearchProvider` + `EPSearchSortBy` instead |

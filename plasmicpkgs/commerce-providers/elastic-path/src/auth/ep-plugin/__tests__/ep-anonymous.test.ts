@@ -16,6 +16,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { betterAuth } from "better-auth";
 import { epPlugin } from "../ep-plugin";
+import { DEFAULT_HOST_ALLOWLIST } from "../../host-allowlist";
 
 const SECRET = "x".repeat(48);
 const EP_HOST = "https://api.test.elasticpath.com";
@@ -83,6 +84,7 @@ describe("/ep/anonymous endpoint (PRD #273)", () => {
       baseURL: "http://localhost:3000",
       plugins: [
         epPlugin({
+          hostAllowlist: DEFAULT_HOST_ALLOWLIST,
           clientId: "static-fallback",
           host: "https://static.example.com",
           resolveConfig: async () => ({
@@ -124,6 +126,7 @@ describe("/ep/anonymous endpoint (PRD #273)", () => {
       baseURL: "http://localhost:3000",
       plugins: [
         epPlugin({
+          hostAllowlist: DEFAULT_HOST_ALLOWLIST,
           clientId: EP_CLIENT_ID,
           host: EP_HOST,
           resolveConfig: async () => null,
@@ -145,7 +148,8 @@ describe("/ep/anonymous endpoint (PRD #273)", () => {
     const auth = betterAuth({
       secret: SECRET,
       baseURL: "http://localhost:3000",
-      plugins: [epPlugin({ clientId: EP_CLIENT_ID, host: EP_HOST })],
+      plugins: [epPlugin({
+        hostAllowlist: DEFAULT_HOST_ALLOWLIST, clientId: EP_CLIENT_ID, host: EP_HOST })],
       session: {
         cookieCache: { enabled: true, strategy: "jwe", refreshCache: true },
       },
@@ -199,7 +203,8 @@ describe("/ep/anonymous endpoint (PRD #273)", () => {
       secret: SECRET,
       baseURL: "http://localhost",
       basePath: "/api/ep",
-      plugins: [epPlugin({ clientId: EP_CLIENT_ID, host: EP_HOST })],
+      plugins: [epPlugin({
+        hostAllowlist: DEFAULT_HOST_ALLOWLIST, clientId: EP_CLIENT_ID, host: EP_HOST })],
     });
 
     const result = await (auth.api as any).epAnonymous({
