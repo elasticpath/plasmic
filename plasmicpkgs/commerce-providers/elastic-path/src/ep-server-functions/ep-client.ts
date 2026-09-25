@@ -1,6 +1,6 @@
 import { createShopperClient } from "@epcc-sdk/sdks-shopper";
 import type { EpServerAuth } from "./types";
-import { accountTokenHeaders } from "../auth/ep-plugin/envelope";
+import { epShopperHeaders } from "../utils/ep-shopper-headers";
 
 /**
  * Shared client-builder for the EP server functions.
@@ -29,14 +29,9 @@ export function buildEpClient(auth: EpServerAuth) {
   );
 
   client.interceptors.request.use(async (request: Request) => {
-    for (const [name, value] of Object.entries(accountTokenHeaders(auth))) {
+    for (const [name, value] of Object.entries(epShopperHeaders(auth))) {
       request.headers.set(name, value);
     }
-    // Multi-location inventory, as the browser client sets it. Not optional:
-    // the locations endpoint 404s without it and stock comes back with no
-    // per-location breakdown, both of which read as "this store has none"
-    // rather than as an error. Inert on catalog and cart calls.
-    request.headers.set("EP-Inventories-Multi-Location", "true");
     return request;
   });
 

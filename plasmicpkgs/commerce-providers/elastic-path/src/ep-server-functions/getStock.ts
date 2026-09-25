@@ -6,7 +6,6 @@ import {
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
-import type { EpServerAuth } from "./types";
 
 /**
  * One inventory location's counts for one product.
@@ -42,8 +41,6 @@ export interface EpGetStockInput {
   productIds: string[];
   /** Location ids or slugs to narrow to. Omitted means every location. */
   locationIds?: string[];
-  /** SSR-only explicit auth. Never advertised; never bind in Studio. */
-  auth?: EpServerAuth;
 }
 
 function emptyStock(productId: string): EpProductStock {
@@ -115,11 +112,10 @@ function aggregate(
 export async function epGetStock({
   productIds,
   locationIds,
-  auth: inputAuth,
 }: EpGetStockInput): Promise<Record<string, EpProductStock>> {
   const ids = (productIds ?? []).filter(Boolean);
   if (ids.length === 0) return {};
-  const auth = getCurrentEpSession() ?? inputAuth;
+  const auth = getCurrentEpSession();
 
   if (!isUsableAuth(auth) && shouldUseProxy()) {
     return (

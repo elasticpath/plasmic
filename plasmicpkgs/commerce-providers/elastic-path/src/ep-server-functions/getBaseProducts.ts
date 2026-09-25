@@ -5,12 +5,9 @@ import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
 import { readProductsByIds } from "./product-batches";
-import type { EpServerAuth } from "./types";
 
 export interface EpGetBaseProductsInput {
   productIds: string[];
-  /** SSR-only explicit auth. Never advertised; never bind in Studio. */
-  auth?: EpServerAuth;
 }
 
 /** A base product is one a shopper cannot buy — it carries the variations. */
@@ -35,11 +32,10 @@ function isBaseProduct(row: any): boolean {
  */
 export async function epGetBaseProducts({
   productIds,
-  auth: inputAuth,
 }: EpGetBaseProductsInput): Promise<Record<string, Product>> {
   const ids = (productIds ?? []).filter(Boolean);
   if (ids.length === 0) return {};
-  const auth = getCurrentEpSession() ?? inputAuth;
+  const auth = getCurrentEpSession();
 
   if (!isUsableAuth(auth) && shouldUseProxy()) {
     return (

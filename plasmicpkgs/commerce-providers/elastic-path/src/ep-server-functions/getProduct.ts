@@ -7,16 +7,9 @@ import type { Product } from "../types/product";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
-import type { EpServerAuth } from "./types";
 
 export interface EpGetProductInput {
   id: string;
-  /**
-   * Optional explicit auth. SSR consumers normally rely on
-   * `withEpSession` (AsyncLocalStorage) and never pass this; it stays
-   * non-advertised so it never leaks into Studio bindings.
-   */
-  auth?: EpServerAuth;
 }
 
 interface ProductWithInitialVariant extends Product {
@@ -25,10 +18,9 @@ interface ProductWithInitialVariant extends Product {
 
 export async function epGetProduct({
   id,
-  auth: inputAuth,
 }: EpGetProductInput): Promise<Product | null> {
   if (!id) return null;
-  const auth = getCurrentEpSession() ?? inputAuth;
+  const auth = getCurrentEpSession();
 
   // Browser path with no ALS/explicit auth — Studio canvas and the
   // data-query preview panel land here. Fetch via the consumer's proxy

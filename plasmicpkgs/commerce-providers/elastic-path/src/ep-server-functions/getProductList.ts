@@ -3,7 +3,6 @@ import { isUsableAuth } from "./ep-client";
 import { epGetProductPage } from "./getProductPage";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
 import { getCurrentEpSession } from "./session-context";
-import type { EpServerAuth } from "./types";
 
 export interface EpGetProductListInput {
   /** Page size. Defaults to 25 (EP default). */
@@ -12,8 +11,6 @@ export interface EpGetProductListInput {
   search?: string;
   /** Filter by EP hierarchy (category) ID. */
   categoryId?: string | number;
-  /** SSR-only explicit auth. Never advertised; never bind in Studio. */
-  auth?: EpServerAuth;
 }
 
 /**
@@ -27,7 +24,7 @@ export interface EpGetProductListInput {
 export async function epGetProductList(
   input: EpGetProductListInput = {}
 ): Promise<Product[]> {
-  const auth = getCurrentEpSession() ?? input.auth;
+  const auth = getCurrentEpSession();
 
   if (!isUsableAuth(auth) && shouldUseProxy()) {
     const { limit, search, categoryId } = input;
