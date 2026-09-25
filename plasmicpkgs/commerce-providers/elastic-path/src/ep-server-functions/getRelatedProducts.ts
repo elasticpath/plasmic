@@ -4,7 +4,6 @@ import type { Product } from "../types/product";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
-import type { EpServerAuth } from "./types";
 
 export interface EpGetRelatedProductsInput {
   productId: string;
@@ -14,18 +13,15 @@ export interface EpGetRelatedProductsInput {
    */
   relationshipSlug: string;
   limit?: number;
-  /** SSR-only explicit auth. Never advertised; never bind in Studio. */
-  auth?: EpServerAuth;
 }
 
 export async function epGetRelatedProducts({
   productId,
   relationshipSlug,
   limit,
-  auth: inputAuth,
 }: EpGetRelatedProductsInput): Promise<Product[]> {
   if (!productId || !relationshipSlug) return [];
-  const auth = getCurrentEpSession() ?? inputAuth;
+  const auth = getCurrentEpSession();
 
   if (!isUsableAuth(auth) && shouldUseProxy()) {
     return callEpProxy<Product[]>(

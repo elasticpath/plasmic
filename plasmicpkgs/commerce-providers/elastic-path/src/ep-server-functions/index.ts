@@ -25,7 +25,6 @@ export type { EpGetBaseProductsInput } from "./getBaseProducts";
 export { epGetBundleOptionProducts } from "./getBundleOptionProducts";
 export type { EpGetBundleOptionProductsInput } from "./getBundleOptionProducts";
 export { epGetCart } from "./getCart";
-export type { EpGetCartInput } from "./getCart";
 export { epGetLocations } from "./getLocations";
 export type { EpGetLocationsInput, EpLocation } from "./getLocations";
 export { epGetProduct } from "./getProduct";

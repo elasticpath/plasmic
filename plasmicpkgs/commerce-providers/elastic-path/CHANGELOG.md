@@ -77,6 +77,25 @@ The `EpAccountCart`, `EpSessionCartResolver`, `EpSessionCartResolverInput`,
 `EpSessionCartTrigger` and `EpSessionCartVerdict` types are exported from
 `/server`.
 
+`EPAccountProvider`, `EPAccountGate` and `EPAccountField` are the first
+Studio-facing surface over the account identity work in 0.7.0. The Provider
+maps `get-session` identity (and the account roster when a member is
+present) into `$ctx.account` — `accountMember`, `selectedAccount`,
+`accountRoster` (`{ accounts, total }`), `lapsedAccount`, derived
+`state` (`anonymous | memberOnly | selected | lapsed`), and `isLoading`,
+which stays true until the session read settles so no Gate renders its
+children on the server or before the session arrives. Credentials stay server-side. Gate
+and Field only consume that published context: Gate renders children on
+`anonymous | authenticated | selected | lapsed`; Field reads one shallow
+value. Preview State is Studio only, the same
+pattern as `EPCheckoutProvider`: explicit values force one of the four
+fixtures so Gates and Fields can be composed; `auto` uses live session
+identity when a member is present, otherwise the selected-account
+fixture. The published page always reads the live session and ignores
+Preview State. No login, logout or account-switching action exists yet —
+the Provider only reads — and `accountMember` carries an id and nothing
+else, so no member profile field (name, email) is in the contract.
+
 ### Changed
 
 EP Product Provider tells a product that does not exist from a read that
@@ -130,6 +149,24 @@ which can still only reach it as CommonJS.
 
 A session scope that cannot load now says so on the console instead of leaving
 every `ep.*` call to return nothing for no visible reason.
+
+The headers a shopper-facing Elastic Path call must carry now come from one
+function, `epShopperHeaders`, rather than being spelled out at each of the
+three call sites. That is how one site came to be missing the multi-location
+header. The cart routes apply it after the caller's own headers, so neither the
+header nor the account credential can be overridden per call. No caller passed
+either, so nothing changes today.
+
+### Removed
+
+The undocumented `auth` field on the inputs of `getProduct`, `getProductList`,
+`getProductPage`, `getRelatedProducts`, `getCart`, `getStock`, `getLocations`,
+`getBaseProducts`, `getBundleOptionProducts`, `configureBundle` and
+`multiSearch`. Nothing set it, and the proxy route forwards the browser's
+request body verbatim, so it was a way to name your own credentials that only
+the order of two lines kept shut. The shopper envelope is now the sole identity
+input. `EpGetCartInput` goes with it in the breaking release: `epGetCart` takes
+no argument, so the type had nothing left to name.
 
 ## 0.7.0
 

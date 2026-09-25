@@ -7,7 +7,6 @@ import type { Product } from "../types/product";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
-import type { EpServerAuth } from "./types";
 
 const DEFAULT_LIMIT = 25;
 
@@ -36,8 +35,6 @@ export interface EpGetProductPageInput {
   search?: string;
   /** Products of one hierarchy node (a category), by node ID. */
   categoryId?: string | number;
-  /** SSR-only explicit auth. Never advertised; never bind in Studio. */
-  auth?: EpServerAuth;
 }
 
 function emptyPage(limit: number, offset: number): EpProductPage {
@@ -56,11 +53,10 @@ export async function epGetProductPage({
   offset,
   search,
   categoryId,
-  auth: inputAuth,
 }: EpGetProductPageInput = {}): Promise<EpProductPage> {
   const pageLimit = limit && limit > 0 ? limit : DEFAULT_LIMIT;
   const pageOffset = offset && offset > 0 ? offset : 0;
-  const auth = getCurrentEpSession() ?? inputAuth;
+  const auth = getCurrentEpSession();
 
   if (!isUsableAuth(auth) && shouldUseProxy()) {
     return callEpProxy<EpProductPage>(

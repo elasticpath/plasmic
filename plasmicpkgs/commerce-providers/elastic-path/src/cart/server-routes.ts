@@ -32,11 +32,11 @@
  * headers that better-auth's nextCookies() plugin emits.
  */
 import type { EpAuth } from "../auth/ep-plugin/create-ep-auth-better";
-import { accountTokenHeaders } from "../auth/ep-plugin/envelope";
 import type { EpAccountSlot } from "../auth/ep-plugin/envelope";
 import { enforceOriginGate } from "../auth/ep-plugin/origin-gate";
 import { persistCartId } from "../auth/ep-plugin/persist-cart-id";
 import { parseCookieHeader } from "../utils/cookie-header";
+import { epShopperHeaders } from "../utils/ep-shopper-headers";
 
 // Promise-only: a union fails Next 15's route validator. `await` still
 // accepts a plain object at runtime.
@@ -64,10 +64,9 @@ async function callEp(
     ...init,
     headers: {
       "Content-Type": "application/json",
-      "EP-Inventories-Multi-Location": "true",
       Authorization: `Bearer ${session.accessToken}`,
       ...((init?.headers as Record<string, string>) ?? {}),
-      ...accountTokenHeaders({ accountToken: session.account?.token }),
+      ...epShopperHeaders({ accountToken: session.account?.token }),
     },
   });
 }

@@ -4,12 +4,9 @@ import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
 import { readProductsByIds } from "./product-batches";
-import type { EpServerAuth } from "./types";
 
 export interface EpGetBundleOptionProductsInput {
   productIds: string[];
-  /** SSR-only explicit auth. Never advertised; never bind in Studio. */
-  auth?: EpServerAuth;
 }
 
 /**
@@ -21,11 +18,10 @@ export interface EpGetBundleOptionProductsInput {
  */
 export async function epGetBundleOptionProducts({
   productIds,
-  auth: inputAuth,
 }: EpGetBundleOptionProductsInput): Promise<Record<string, Product>> {
   const ids = (productIds ?? []).filter(Boolean);
   if (ids.length === 0) return {};
-  const auth = getCurrentEpSession() ?? inputAuth;
+  const auth = getCurrentEpSession();
 
   if (!isUsableAuth(auth) && shouldUseProxy()) {
     return (

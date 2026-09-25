@@ -144,41 +144,6 @@ describe("epGetProduct", () => {
     expect(mockGetByContextAllProducts).not.toHaveBeenCalled();
   });
 
-  // Studio canvas + the data-query "Execute" panel call the function
-  // outside any withEpSession scope. To keep designer-side testability,
-  // the function falls back to `input.auth` when ALS has no session.
-  // SSR consumers never set `auth` in Studio bindings, so this fallback
-  // doesn't affect the SSR cache key.
-  it("falls back to input.auth when no ALS session is active", async () => {
-    mockGetByContextProduct.mockResolvedValue(byId(productRow(PRODUCT_ID)));
-
-    // No withEpSession wrap — passes auth via input instead.
-    const result = await epGetProduct({
-      id: PRODUCT_ID,
-      auth: TEST_SESSION as any,
-    } as any);
-
-    expect(result).not.toBeNull();
-    expect(result?.id).toBe(PRODUCT_ID);
-  });
-
-  it("prefers ALS session over input.auth when both are present", async () => {
-    mockGetByContextProduct.mockResolvedValue(
-      byId(productRow(PRODUCT_ID, { attributes: { name: "From ALS" } }))
-    );
-
-    // Both ALS and input.auth set — ALS wins (so cache-key parity holds in SSR).
-    const result = await inSession(() =>
-      epGetProduct({
-        id: PRODUCT_ID,
-        auth: { ...TEST_SESSION, accessToken: "FROM_INPUT" } as any,
-      } as any)
-    );
-
-    expect(result).not.toBeNull();
-    expect(result?.attributes?.name).toBe("From ALS");
-  });
-
   it("fetches parent and attaches __initialVariantId when id points at a child variant", async () => {
     mockGetByContextProduct
       .mockResolvedValueOnce(

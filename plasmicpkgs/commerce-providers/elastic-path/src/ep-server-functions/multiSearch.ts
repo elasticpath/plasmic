@@ -2,7 +2,6 @@ import { postMultiSearch } from "@epcc-sdk/sdks-shopper";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
-import type { EpServerAuth } from "./types";
 
 /**
  * One search in a multi-search body, passed through as written.
@@ -24,8 +23,6 @@ export interface EpMultiSearchInput {
    * error anywhere.
    */
   include?: string[];
-  /** SSR-only explicit auth. Never advertised; never bind in Studio. */
-  auth?: EpServerAuth;
 }
 
 /**
@@ -52,10 +49,9 @@ export interface EpMultiSearchResponse extends Record<string, unknown> {
 export async function epMultiSearch({
   searches,
   include,
-  auth: inputAuth,
 }: EpMultiSearchInput): Promise<EpMultiSearchResponse> {
   const body = { searches: searches ?? [] };
-  const auth = getCurrentEpSession() ?? inputAuth;
+  const auth = getCurrentEpSession();
 
   if (!isUsableAuth(auth) && shouldUseProxy()) {
     return (
