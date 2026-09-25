@@ -77,6 +77,25 @@ The `EpAccountCart`, `EpSessionCartResolver`, `EpSessionCartResolverInput`,
 `EpSessionCartTrigger` and `EpSessionCartVerdict` types are exported from
 `/server`.
 
+`EPAccountProvider`, `EPAccountGate` and `EPAccountField` are the first
+Studio-facing surface over the account identity work in 0.7.0. The Provider
+maps `get-session` identity (and the account roster when a member is
+present) into `$ctx.account` — `accountMember`, `selectedAccount`,
+`accountRoster` (`{ accounts, total }`), `lapsedAccount`, derived
+`state` (`anonymous | memberOnly | selected | lapsed`), and `isLoading`,
+which stays true until the session read settles so no Gate renders its
+children on the server or before the session arrives. Credentials stay server-side. Gate
+and Field only consume that published context: Gate renders children on
+`anonymous | authenticated | selected | lapsed`; Field reads one shallow
+value. Preview State is Studio only, the same
+pattern as `EPCheckoutProvider`: explicit values force one of the four
+fixtures so Gates and Fields can be composed; `auto` uses live session
+identity when a member is present, otherwise the selected-account
+fixture. The published page always reads the live session and ignores
+Preview State. No login, logout or account-switching action exists yet —
+the Provider only reads — and `accountMember` carries an id and nothing
+else, so no member profile field (name, email) is in the contract.
+
 ### Fixed
 
 `ep.applyCartAdjustment` is dispatchable from the browser. It has been

@@ -762,6 +762,11 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 - **EPCheckoutSessionProvider** — Server-authoritative session
 - **EPStripePayment** / **EPCloverPayment** — Payment adapters
 
+### Accounts (Composable)
+- **EPAccountProvider** — Publishes `$ctx.account` from the shopper session: `accountMember`, `selectedAccount`, `accountRoster` (`{ accounts, total }`), `lapsedAccount`, derived `state` (`anonymous | memberOnly | selected | lapsed`), and `isLoading` (true until the session read settles; Gates render nothing while it is true). Tokens stay server-side; the Provider maps browser-readable identity only. Preview State is Studio only: explicit values force fixtures so Gates and Fields can be composed; `auto` uses live session identity when a member is present (otherwise the selected-account fixture). The published page always reads the live session and ignores Preview State
+- **EPAccountGate** — Renders children when `$ctx.account` matches a condition (`authenticated`, `anonymous`, `selected`, `lapsed`). Consumes the Provider boundary; does not fetch
+- **EPAccountField** — Displays one `$ctx.account` value (member id, selected/lapsed account name or id). Consumes the Provider boundary
+
 ### Variations
 - **EPVariationPicker** / **EPVariationOptionList** / **EPVariationOptionTrigger** — Product variant selection
 - **EPVariationField** / **EPVariationOptionField** — Variant display
