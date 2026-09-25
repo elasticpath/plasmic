@@ -80,6 +80,22 @@ function cookiesToHeaderValue(setCookies: string[]): string {
 }
 
 describe("/ep/refresh endpoint (PRD #273)", () => {
+  it("answers 502 with a code, rather than throwing, when Elastic Path refuses the mint", async () => {
+    (globalThis.fetch as any).mockImplementation(
+      async () => new Response("down", { status: 503 })
+    );
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = await (buildAuth().api as any).epRefresh({
+      body: {},
+      headers: new Headers(),
+      asResponse: true,
+    });
+
+    expect(result.status).toBe(502);
+    expect((await result.json()).code).toBe("shopper_token_mint_failed");
+  });
+
   it("rotates epAccessToken while preserving session identity", async () => {
     const auth = buildAuth();
 

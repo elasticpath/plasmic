@@ -53,6 +53,37 @@ afterEach(() => {
 });
 
 describe("/ep/anonymous endpoint (PRD #273)", () => {
+  it("answers 502 with a code, rather than throwing, when Elastic Path refuses the mint", async () => {
+    (globalThis.fetch as any).mockImplementation(
+      async () => new Response("down", { status: 503 })
+    );
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const auth = betterAuth({
+      secret: SECRET,
+      baseURL: "http://localhost:3000",
+      plugins: [
+        epPlugin({
+          hostAllowlist: DEFAULT_HOST_ALLOWLIST,
+          clientId: EP_CLIENT_ID,
+          host: EP_HOST,
+        }),
+      ],
+    });
+
+    const result = await (auth.api as any).epAnonymous({
+      body: {},
+      headers: new Headers(),
+      asResponse: true,
+    });
+
+    expect(result.status).toBe(502);
+    expect((await result.json()).code).toBe("shopper_token_mint_failed");
+    expect(result.headers.get("set-cookie")).toBeNull();
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("EP OAuth failed (503)")
+    );
+  });
+
   it("uses resolveConfig() over static options when provided", async () => {
     // The legacy auth's middleware-header escape hatch (`x-ep-client-id` /
     // `x-ep-host`) is preserved here as a per-request `resolveConfig`

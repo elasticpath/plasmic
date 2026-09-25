@@ -177,6 +177,19 @@ describe("EP host allow-list parity", () => {
     expect(String(errorSpy.mock.calls[0][0])).toContain("EP_HOST_ALLOWLIST");
   });
 
+  it("fails soft when the fallback mint is refused", async () => {
+    (globalThis.fetch as any).mockImplementation(
+      async () => new Response("unauthorized", { status: 401 })
+    );
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { auth } = authReadingBundle(bundleNaming(CUSTOM_HOST));
+
+    const session = await auth.api.getSession({ cookies: {} });
+
+    expect(session.session).toBeNull();
+    expect(isUsableAuth(buildEpCtx(session))).toBe(false);
+  });
+
   it("builds a context the server functions refuse from an empty session", () => {
     expect(isUsableAuth(buildEpCtx({ session: null, cart: null }))).toBe(false);
   });

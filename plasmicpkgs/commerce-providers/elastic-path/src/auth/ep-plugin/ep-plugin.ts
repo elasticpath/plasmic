@@ -398,6 +398,15 @@ function accountLapsedError(): Response {
   );
 }
 
+function shopperTokenFailure(err: unknown): Response {
+  console.error(`[ep-commerce] epPlugin: ${(err as Error)?.message ?? err}`);
+  return jsonError(
+    "shopper_token_mint_failed",
+    502,
+    "Elastic Path refused the shopper token request."
+  );
+}
+
 function accountTokenFailure(err: unknown): Response {
   if (err instanceof EpAccountTokenError) {
     return jsonError(err.code, err.status, err.message);
@@ -490,7 +499,12 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
         { method: "POST" },
         async (ctx) => {
           const { clientId, host } = await resolveConfigFor(options);
-          const tokenData = await mintAnonymousEpToken(clientId, host);
+          let tokenData: EpAnonymousTokenResponse;
+          try {
+            tokenData = await mintAnonymousEpToken(clientId, host);
+          } catch (err) {
+            return shopperTokenFailure(err);
+          }
           const snap = buildAnonymousSnapshot(tokenData, clientId, host);
           await setSessionCookie(ctx, snap as any);
           return ctx.json(epIdentityPayload("signInAnonymously", snap));
@@ -502,7 +516,12 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
         { method: "POST" },
         async (ctx) => {
           const { clientId, host } = await resolveConfigFor(options);
-          const tokenData = await mintAnonymousEpToken(clientId, host);
+          let tokenData: EpAnonymousTokenResponse;
+          try {
+            tokenData = await mintAnonymousEpToken(clientId, host);
+          } catch (err) {
+            return shopperTokenFailure(err);
+          }
 
           const existing = await readExistingSession(ctx);
           if (!existing || !existing.user || !existing.session) {

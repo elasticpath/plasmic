@@ -128,6 +128,14 @@ else, so no member profile field (name, email) is in the contract.
 
 ### Fixed
 
+A page whose shopper token could not be minted renders without commerce data
+instead of failing with a 500. `getSession` was meant to return an empty
+session when the anonymous mint failed, but the mint's error escaped the
+endpoint, so the empty session was never reached. `/ep/anonymous` and
+`/ep/refresh` now answer 502 with `shopper_token_mint_failed` and log the
+cause. An Elastic Path outage, or a Studio host that is not on the EP host
+allow-list with no working fallback, reaches this path.
+
 `ep.applyCartAdjustment` is dispatchable from the browser. It has been
 registered as a Studio mutation since it landed, but had no entry in the proxy
 route's dispatch table, so an adjustment a designer wired to an onClick — a
