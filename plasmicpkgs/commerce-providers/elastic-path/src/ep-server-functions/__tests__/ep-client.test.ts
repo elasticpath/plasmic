@@ -19,6 +19,10 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
 const { buildEpClient } = require("../ep-client");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { EP_ACCOUNT_TOKEN_HEADER } = require("../../auth/ep-plugin/envelope");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  EP_MULTI_LOCATION_INVENTORY_HEADER,
+} = require("../../utils/ep-shopper-headers");
 
 const BASE_AUTH = {
   accessToken: "shopper-token",
@@ -62,5 +66,14 @@ describe("buildEpClient", () => {
     const headers = await headersFor(BASE_AUTH);
 
     expect(headers.has(EP_ACCOUNT_TOKEN_HEADER)).toBe(false);
+  });
+
+  // Without this the server surface reads single-location stock while the
+  // browser path reads multi-location stock, so moving a component from one
+  // to the other changes the availability a shopper sees.
+  it("asks for multi-location inventory, as the browser client does", async () => {
+    const headers = await headersFor(BASE_AUTH);
+
+    expect(headers.get(EP_MULTI_LOCATION_INVENTORY_HEADER)).toBe("true");
   });
 });

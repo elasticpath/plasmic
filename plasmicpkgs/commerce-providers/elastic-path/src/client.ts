@@ -1,4 +1,5 @@
 import { createShopperClient, configureClient } from "@epcc-sdk/sdks-shopper";
+import { epShopperHeaders } from "./utils/ep-shopper-headers";
 
 export interface ElasticPathCredentials {
   clientId: string;
@@ -46,18 +47,12 @@ const initElasticPathClient = (creds: ElasticPathCredentials) => {
 
   const { client } = createShopperClient(config, authOpts);
 
-  /**
-   * Multi-Location Inventory Interceptor
-   *
-   * Enables Elastic Path's Multi-Location Inventory (MLI) feature by adding
-   * the required header to all requests. This allows tracking inventory
-   * across multiple warehouses, stores, or distribution centers.
-   *
-   * Educational note: MLI provides more granular inventory control compared
-   * to basic inventory, essential for B2B scenarios with multiple locations.
-   */
+  // The browser mints its own anonymous token and never holds an account
+  // credential, so this contributes multi-location inventory only.
   client.interceptors.request.use(async (request, options) => {
-    request.headers.set("EP-Inventories-Multi-Location", "true");
+    for (const [name, value] of Object.entries(epShopperHeaders({}))) {
+      request.headers.set(name, value);
+    }
     return request;
   });
 
