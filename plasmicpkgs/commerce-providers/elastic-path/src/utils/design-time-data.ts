@@ -825,13 +825,14 @@ const EMPTY_ACCOUNT_ROSTER: AccountRoster = {
   total: 0,
 };
 
-/** Runtime default and anonymous preview. No member, no organisation. */
+/** Anonymous preview. No member, no organisation. */
 export const MOCK_ACCOUNT_ANONYMOUS: AccountContext = {
   state: "anonymous",
   accountMember: null,
   selectedAccount: null,
   accountRoster: EMPTY_ACCOUNT_ROSTER,
   lapsedAccount: null,
+  isLoading: false,
 };
 
 /** Signed-in member with several organisations and none selected. */
@@ -841,6 +842,7 @@ export const MOCK_ACCOUNT_MEMBER_ONLY: AccountContext = {
   selectedAccount: null,
   accountRoster: SAMPLE_ACCOUNT_ROSTER,
   lapsedAccount: null,
+  isLoading: false,
 };
 
 /** Signed-in member acting for an organisation. Canvas `auto` mock floor. */
@@ -850,6 +852,7 @@ export const MOCK_ACCOUNT_SELECTED: AccountContext = {
   selectedAccount: SAMPLE_COMPANY_A,
   accountRoster: SAMPLE_ACCOUNT_ROSTER,
   lapsedAccount: null,
+  isLoading: false,
 };
 
 /** Signed-in member whose organisation credential has lapsed. */
@@ -859,6 +862,7 @@ export const MOCK_ACCOUNT_LAPSED: AccountContext = {
   selectedAccount: null,
   accountRoster: SAMPLE_ACCOUNT_ROSTER,
   lapsedAccount: SAMPLE_COMPANY_A,
+  isLoading: false,
 };
 
 export const MOCK_ACCOUNT_BY_PREVIEW_STATE: Record<AccountState, AccountContext> = {

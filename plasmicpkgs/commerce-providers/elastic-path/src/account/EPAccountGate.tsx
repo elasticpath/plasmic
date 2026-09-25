@@ -72,7 +72,7 @@ function accountGateMatches(
   account: AccountContext | undefined,
   when: AccountGateWhen
 ): boolean {
-  if (!account) return false;
+  if (!account || account.isLoading) return false;
   switch (when) {
     case "anonymous":
       return account.accountMember == null;

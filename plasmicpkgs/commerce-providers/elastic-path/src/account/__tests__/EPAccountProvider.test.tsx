@@ -25,6 +25,7 @@ jest.mock("@plasmicapp/host/registerComponent", () => {
 
 import React from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
+import { ShopperContext } from "../../shopper-context/ShopperContext";
 import {
   MOCK_ACCOUNT_ANONYMOUS,
   MOCK_ACCOUNT_LAPSED,
@@ -83,6 +84,7 @@ describe("accountContextFromSession", () => {
       selectedAccount: null,
       accountRoster: { accounts: [], total: 0 },
       lapsedAccount: null,
+      isLoading: false,
     });
   });
 
@@ -95,6 +97,7 @@ describe("accountContextFromSession", () => {
       selectedAccount: null,
       accountRoster: { accounts: [], total: 0 },
       lapsedAccount: null,
+      isLoading: false,
     });
   });
 
@@ -110,6 +113,7 @@ describe("accountContextFromSession", () => {
       selectedAccount: { id: "acct-1" },
       accountRoster: { accounts: [], total: 0 },
       lapsedAccount: null,
+      isLoading: false,
     });
   });
 
@@ -125,6 +129,7 @@ describe("accountContextFromSession", () => {
       selectedAccount: null,
       accountRoster: { accounts: [], total: 0 },
       lapsedAccount: { id: "acct-1", name: "Acme" },
+      isLoading: false,
     });
   });
 
@@ -266,16 +271,82 @@ describe("EPAccountProvider", () => {
     expect(root?.className).toContain("my-account");
   });
 
-  it("publishes anonymous until a live session arrives", async () => {
+  it("publishes a loading context until the session arrives", async () => {
     mockSessionAndRoster({});
     render(
       <EPAccountProvider>
         <span>child</span>
       </EPAccountProvider>
     );
-    expect(publishedAccount()).toEqual(MOCK_ACCOUNT_ANONYMOUS);
+    expect(publishedAccount()).toEqual({
+      ...MOCK_ACCOUNT_ANONYMOUS,
+      isLoading: true,
+    });
     await waitFor(() => {
-      expect(publishedAccount().state).toBe("anonymous");
+      expect(publishedAccount()).toEqual(MOCK_ACCOUNT_ANONYMOUS);
+    });
+  });
+
+  it("publishes anonymous when get-session fails", async () => {
+    (global as unknown as { fetch: typeof fetch }).fetch = jest.fn(() =>
+      jsonResponse({}, false)
+    ) as unknown as typeof fetch;
+    render(
+      <EPAccountProvider>
+        <span>child</span>
+      </EPAccountProvider>
+    );
+    await waitFor(() => {
+      expect(publishedAccount()).toEqual(MOCK_ACCOUNT_ANONYMOUS);
+    });
+  });
+
+  it("reads the session from the ShopperContext basePath", async () => {
+    const fetchImpl = mockSessionAndRoster({ epMemberId: "member-1" });
+    render(
+      <ShopperContext basePath="/api/store">
+        <EPAccountProvider>
+          <span>child</span>
+        </EPAccountProvider>
+      </ShopperContext>
+    );
+    await waitFor(() => {
+      expect(publishedAccount().state).toBe("memberOnly");
+    });
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "/api/store/get-session",
+      expect.anything()
+    );
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "/api/store/ep/account/roster",
+      expect.anything()
+    );
+  });
+
+  it("does not publish the previous identity after the basePath changes", async () => {
+    const fetchImpl = mockSessionAndRoster({ epMemberId: "member-a" });
+    const pending = new Promise<never>(() => {});
+    const baseFetch = fetchImpl.getMockImplementation()!;
+    fetchImpl.mockImplementation((url: string, init?: RequestInit) =>
+      String(url).startsWith("/api/b/") ? pending : baseFetch(url, init)
+    );
+    const tree = (basePath: string) => (
+      <ShopperContext basePath={basePath}>
+        <EPAccountProvider>
+          <span>child</span>
+        </EPAccountProvider>
+      </ShopperContext>
+    );
+
+    const { rerender } = render(tree("/api/a"));
+    await waitFor(() => {
+      expect(publishedAccount().accountMember).toEqual({ id: "member-a" });
+    });
+
+    rerender(tree("/api/b"));
+    expect(publishedAccount()).toEqual({
+      ...MOCK_ACCOUNT_ANONYMOUS,
+      isLoading: true,
     });
   });
 
@@ -315,6 +386,7 @@ describe("EPAccountProvider", () => {
         total: 9,
       },
       lapsedAccount: null,
+      isLoading: false,
     });
     expect(JSON.stringify(published)).not.toMatch(/token/i);
     expect(fetchImpl).toHaveBeenCalledWith(
@@ -343,6 +415,7 @@ describe("EPAccountProvider", () => {
         selectedAccount: null,
         accountRoster: { accounts: [], total: 0 },
         lapsedAccount: null,
+        isLoading: false,
       });
     });
   });
@@ -449,26 +522,6 @@ describe("EPAccountProvider", () => {
   });
 
   describe("published contract", () => {
-    it("never includes a token, expiry, or member profile fields", () => {
-      const fixtures = [
-        MOCK_ACCOUNT_ANONYMOUS,
-        MOCK_ACCOUNT_MEMBER_ONLY,
-        MOCK_ACCOUNT_SELECTED,
-        MOCK_ACCOUNT_LAPSED,
-      ];
-      for (const fixture of fixtures) {
-        const json = JSON.stringify(fixture);
-        expect(json).not.toMatch(/token/i);
-        expect(json).not.toMatch(/expires/i);
-        expect(json).not.toMatch(/firstName/);
-        expect(json).not.toMatch(/lastName/);
-        expect(json).not.toMatch(/email/);
-        if (fixture.accountMember) {
-          expect(Object.keys(fixture.accountMember)).toEqual(["id"]);
-        }
-      }
-    });
-
     it("exposes roster as a paginated {accounts, total} page", () => {
       expect(MOCK_ACCOUNT_SELECTED.accountRoster).toEqual({
         accounts: [

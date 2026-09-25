@@ -15,11 +15,10 @@ import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useEffect, useState } from "react";
+import { useEpIdentity } from "../identity/useEpIdentity";
+import type { EpIdentityClient } from "../identity/operations";
 import { Registerable } from "../registerable";
-import {
-  MOCK_ACCOUNT_ANONYMOUS,
-  MOCK_ACCOUNT_BY_PREVIEW_STATE,
-} from "../utils/design-time-data";
+import { MOCK_ACCOUNT_BY_PREVIEW_STATE } from "../utils/design-time-data";
 import { createLogger } from "../utils/logger";
 import type {
   AccountContext,
@@ -30,8 +29,6 @@ import type {
 } from "./types";
 
 const log = createLogger("EPAccountProvider");
-
-const AUTH_BASE_PATH = "/api/ep";
 
 const EMPTY_ROSTER: AccountRoster = { accounts: [], total: 0 };
 
@@ -106,8 +103,14 @@ export function accountContextFromSession(
     selectedAccount,
     accountRoster: roster ?? EMPTY_ROSTER,
     lapsedAccount,
+    isLoading: false,
   };
 }
+
+const LOADING_ACCOUNT: AccountContext = {
+  ...accountContextFromSession(null),
+  isLoading: true,
+};
 
 export function previewAccountContext(
   previewState: AccountPreviewState
@@ -121,38 +124,29 @@ export function previewAccountContext(
   );
 }
 
-async function loadAccountRoster(): Promise<AccountRoster> {
+async function loadAccountRoster(
+  identity: EpIdentityClient
+): Promise<AccountRoster> {
   try {
-    const res = await fetch(`${AUTH_BASE_PATH}/ep/account/roster`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-      credentials: "include",
-    });
-    if (!res.ok) return EMPTY_ROSTER;
-    return normalizeAccountRoster(await res.json());
+    return normalizeAccountRoster(await identity.roster());
   } catch {
     return EMPTY_ROSTER;
   }
 }
 
-export async function loadLiveAccountContext(): Promise<AccountContext | null> {
-  if (typeof window === "undefined") return null;
+export async function loadLiveAccountContext(
+  identity: EpIdentityClient
+): Promise<AccountContext> {
+  let mapped: AccountContext;
   try {
-    const res = await fetch(`${AUTH_BASE_PATH}/get-session`, {
-      credentials: "include",
-    });
-    if (!res.ok) return null;
-    const payload = (await res.json()) as {
-      session?: ShopperIdentitySession | null;
-    } | null;
-    const mapped = accountContextFromSession(payload?.session);
-    if (!mapped.accountMember) return mapped;
-    const accountRoster = await loadAccountRoster();
-    return { ...mapped, accountRoster };
+    const envelope = await identity.getSession();
+    mapped = accountContextFromSession(envelope?.session);
   } catch {
-    return null;
+    return accountContextFromSession(null);
   }
+  if (!mapped.accountMember) return mapped;
+  const accountRoster = await loadAccountRoster(identity);
+  return { ...mapped, accountRoster };
 }
 
 function hasMemberIdentity(account: AccountContext): boolean {
@@ -164,7 +158,7 @@ export const epAccountProviderMeta: CodeComponentMeta<EPAccountProviderProps> =
     name: "plasmic-commerce-ep-account-provider",
     displayName: "EP Account Provider",
     description:
-      "Exposes the current shopper's account identity as `$ctx.account` to descendants. Wrap account gates, fields, and later account experiences. Preview State selects sample identity in Studio; published pages use the shopper session.",
+      "Exposes the current shopper's account identity as `$ctx.account` to descendants. Wrap account gates, fields, and later account experiences. Preview State selects sample identity in Studio; published pages use the shopper session. `state` is not settled until `isLoading` is false.",
     props: {
       children: {
         type: "slot",
@@ -205,21 +199,26 @@ export function EPAccountProvider(props: EPAccountProviderProps) {
   const { children, previewState = "auto", className } = props;
   const inEditor = !!usePlasmicCanvasContext();
   const forcePreview = inEditor && previewState !== "auto";
-  const [live, setLive] = useState<AccountContext | null>(null);
+  const identity = useEpIdentity();
+  const [read, setRead] = useState<{
+    identity: EpIdentityClient;
+    account: AccountContext;
+  } | null>(null);
+  const live = read?.identity === identity ? read.account : null;
 
   useEffect(() => {
     if (forcePreview) {
-      setLive(null);
+      setRead(null);
       return;
     }
     let cancelled = false;
-    loadLiveAccountContext().then((ctx) => {
-      if (!cancelled) setLive(ctx);
+    loadLiveAccountContext(identity).then((account) => {
+      if (!cancelled) setRead({ identity, account });
     });
     return () => {
       cancelled = true;
     };
-  }, [forcePreview]);
+  }, [forcePreview, identity]);
 
   const account = forcePreview
     ? previewAccountContext(previewState)
@@ -227,7 +226,7 @@ export function EPAccountProvider(props: EPAccountProviderProps) {
     ? live && hasMemberIdentity(live)
       ? live
       : previewAccountContext("auto")
-    : live ?? MOCK_ACCOUNT_ANONYMOUS;
+    : live ?? LOADING_ACCOUNT;
 
   if (inEditor) {
     log.debug("Publishing account context", {

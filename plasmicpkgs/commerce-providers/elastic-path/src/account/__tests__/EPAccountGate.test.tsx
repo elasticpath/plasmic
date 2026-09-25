@@ -57,6 +57,19 @@ describe("EPAccountGate", () => {
     expect(mockUseSelector).toHaveBeenCalledWith("account");
   });
 
+  it.each([
+    ["anonymous", MOCK_ACCOUNT_ANONYMOUS],
+    ["authenticated", MOCK_ACCOUNT_MEMBER_ONLY],
+    ["selected", MOCK_ACCOUNT_SELECTED],
+    ["lapsed", MOCK_ACCOUNT_LAPSED],
+  ] as const)(
+    "renders nothing for %s while the account is loading",
+    (when, account) => {
+      mockUseSelector.mockReturnValue({ ...account, isLoading: true });
+      expect(renderGate(when).queryByTestId("gated")).toBeNull();
+    }
+  );
+
   it("renders nothing when no account context is published at runtime", () => {
     const { queryByTestId } = renderGate("anonymous");
     expect(queryByTestId("gated")).toBeNull();
