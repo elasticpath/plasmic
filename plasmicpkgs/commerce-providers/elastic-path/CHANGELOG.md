@@ -7,11 +7,8 @@
 There is one EP host allow-list, and `createEpAuth` resolves it: the Elastic
 Path-operated defaults, plus the `hostAllowlist` option, plus the
 comma-separated `EP_HOST_ALLOWLIST` environment variable (ADR-0005). Your
-entries extend the defaults rather than replacing them. The list was applied
-separately by three functions, each falling back to the defaults, so a list
-passed to only some of them failed in a different silent way at each miss.
-Pass it once, to `createEpAuth`, and delete your own `EP_HOST_ALLOWLIST`
-parsing.
+entries extend the defaults rather than replacing them. Pass it once, to
+`createEpAuth`, and delete your own `EP_HOST_ALLOWLIST` parsing.
 
 | Was | Now |
 | --- | --- |
@@ -23,7 +20,8 @@ parsing.
 `buildEpCtx` reads the host and client id from the session, which carries the
 ones admitted when it was minted, so the page and the auth routes use the same
 Elastic Path host by construction. An empty session yields an empty context,
-which the server functions refuse to run with, as before. Code outside
+which the server functions refuse to run with, as before. `buildEpCtx` no
+longer throws when the page's bundle has no EP Provider. Code outside
 `resolveConfig` that calls `extractEpProviderConfig` passes
 `epAuth.config.hostAllowlist`. `locale` and `currency` move to an optional
 second argument, and the `BuildEpCtxSessionInput` and `BuildEpCtxAccountInput`

@@ -32,14 +32,14 @@ export function buildEpCtx(
   session: Pick<EpSession, "session" | "cart">,
   opts: { locale?: string; currency?: string } = {}
 ): EpCtx {
-  const data = session.session;
+  const envelope = session.session;
   return {
-    accessToken: data?.accessToken ?? "",
-    host: data?.host ?? "",
-    clientId: data?.clientId ?? "",
+    accessToken: envelope?.accessToken ?? "",
+    host: envelope?.host ?? "",
+    clientId: envelope?.clientId ?? "",
     cartId: session.cart?.id,
-    accountId: data?.account?.id,
-    accountToken: data?.account?.token,
+    accountId: envelope?.account?.id,
+    accountToken: envelope?.account?.token,
     locale: opts.locale,
     currency: opts.currency,
   };

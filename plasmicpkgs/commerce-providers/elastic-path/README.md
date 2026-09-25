@@ -242,18 +242,13 @@ Two options tighten the deployment further:
 | `trustedOrigins` | the app's own origin | another origin must act as the shopper (e.g. Studio preview) |
 | `hostAllowlist` | Elastic Path Composable Commerce regions, `*.epcloudops.com`, the integration host, and loopback outside production | this store's Elastic Path API is served from a custom domain |
 
-The EP API host comes from the EP Provider in the Plasmic bundle, which
-designers edit, so it is checked against the **EP host allow-list**:
-the defaults, plus `hostAllowlist`, plus the comma-separated
-`EP_HOST_ALLOWLIST` environment variable. Your entries extend the defaults;
-they never replace them. `createEpAuth` resolves the list once and exposes it
-as `epAuth.config.hostAllowlist`. It hands the list to your `resolveConfig`
-callback, and the host is admitted when the session is minted, so
-`buildEpCtx` reads it from the session and needs no list. Code outside
-`resolveConfig` that calls `extractEpProviderConfig` passes
-`epAuth.config.hostAllowlist`. A host that is not on the list is logged and
-ignored, and the session uses the `host` passed to `createEpAuth`, which is
-your own configuration and is not checked.
+The EP API host named in the Plasmic bundle is checked against the **EP host
+allow-list**: the defaults, plus `hostAllowlist`, plus the comma-separated
+`EP_HOST_ALLOWLIST` environment variable. Your entries extend the defaults.
+`createEpAuth` resolves the list once, hands it to `resolveConfig`, and
+exposes it as `epAuth.config.hostAllowlist` for any other caller of
+`extractEpProviderConfig`. A host off the list is logged and ignored, and the
+session falls back to the `host` passed to `createEpAuth` (ADR-0005).
 
 ## Architecture
 
