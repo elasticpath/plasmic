@@ -784,7 +784,7 @@ PlasmicClientRootProvider <-------- prefetchedQueryData
 
 | Function | Args | Returns |
 |---|---|---|
-| `ep.getProduct` | `{ id }` | `Product \| null` — single product by EP UUID |
+| `ep.getProduct` | `{ id }` | `Product \| null` — single product by product reference (the slug, or the ID when it has none); `null` when no product matches |
 | `ep.getCart` | `{}` | `Cart \| null` — current cart contents |
 | `ep.getProductList` | `{ limit?, search?, categoryId? }` | `Product[]` — the first page only, as a flat array with no total count |
 | `ep.getProductPage` | `{ limit?, offset?, search?, categoryId? }` | `{ data: Product[], meta: { results: { total }, page: { limit, offset } } }` — one page in Elastic Path's envelope, with the total count. `limit` defaults to 25 |

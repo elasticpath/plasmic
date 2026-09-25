@@ -325,3 +325,12 @@ is the package's own value, named for what it is rather than synthesized into
 Elastic Path's price block. It is also the correct storefront semantics for a
 variation family — "From £49.99".
 _Avoid_: parent price, inherited price, starting price
+
+**Product reference**:
+The value a product URL carries and a single-product read accepts: the
+product's slug when it has one, otherwise its id. One value, because the link
+builder and the page param already carry either and nothing at the boundary
+can tell which. A reference that names no product is *not found*, distinct
+from a read that could not run.
+_Avoid_: slug (when the value may be an id), product ID (the registered prop
+name predates the term and now accepts a reference)

@@ -626,7 +626,7 @@ registerEpCustomFunctions(PLASMIC);
 
 This registers the read functions in the `ep` namespace, callable from Studio's Server Query builder:
 
-- `ep.getProduct({ id })` — single product by EP product UUID.
+- `ep.getProduct({ id })` — single product by **product reference**: the product's slug, or its ID when it has none. Bind `id` to `$ctx.params.slug`; the links EP Search Hits builds carry exactly that value. A reference that names no product returns `null`.
 - `ep.getCart()` — current cart contents.
 - `ep.getProductList({ limit?, search?, categoryId?, sort? })` — a flat array of products. `categoryId` is a hierarchy **node** ID; it reads that node's products rather than filtering the whole catalog.
 - `ep.getProductPage({ limit?, offset?, search?, categoryId?, sort? })` — one page of products **with the total count**, in Elastic Path's envelope: `data`, plus `meta.results.total` and `meta.page`. Bind it to EP Product List Provider's **Products (pre-fetched)** prop to server-render a listing. Prefer this over `getProductList` whenever the page has pagination controls — the flat array carries no total, so ranges and next/previous cannot be computed.
@@ -709,6 +709,8 @@ For each Server Query in the Plasmic UI, set the function and arguments. For a p
 - **Function:** `ep.getProduct`
 - **Arguments:** `{ id: $ctx.params.slug }`
 
+`id` takes a product reference — the product's slug, or its ID when it has none — so the same binding works on a store whose products carry slugs and one whose products do not. A UUID-shaped reference is read by ID first and by slug on a miss; anything else is read by slug. A reference with a character outside `A-Z a-z 0-9 - _ .` names no product and sends no request.
+
 Then bind the `EPProductProvider` component's advanced `product` prop to `$q.product.data`. Server Queries appear under `$q` (not `$queries`) in the binding panel.
 
 ### 5. Resolve EP credentials from Studio config
@@ -731,7 +733,7 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 - **Shopper Context** — Global context: `cartId`, `accountId`, `basePath` overrides
 
 ### Product Display
-- **EPProductProvider** — Single product data
+- **EPProductProvider** — Single product data. **Product ID or slug** (`productId`) takes a product reference — usually `$ctx.params.slug`. A reference that names no product renders **Empty Content**, at runtime and on the canvas; a read that fails renders **Error Content** at runtime and the sample product on the canvas
 - **EPProductListProvider** — Paginated product listing. **Products (pre-fetched)** (`initialPage`, advanced) seeds the first page from an `ep.getProductPage` Server Query result, and that query's `page[limit]` overrides **Page Size**; paging discards the seed and falls back to client fetching. Offers no sort — Elastic Path's catalog product endpoints take no `sort` parameter, so use `EPCatalogSearchProvider` with `EPSearchSortBy` for a sortable listing
 - **EPRelatedProductsProvider** — Related products
 - **EPProductGrid** — Repeater for product list items

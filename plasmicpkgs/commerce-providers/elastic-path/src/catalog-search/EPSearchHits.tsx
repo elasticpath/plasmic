@@ -86,7 +86,7 @@ export interface SearchHitMeta {
  * that flatten fields onto the hit root and joins the image the adapter
  * inlines — nothing else is reshaped.
  */
-function hitToProduct(
+export function hitToProduct(
   hit: Record<string, any>,
   currencyCode: string
 ): Product {
@@ -137,6 +137,21 @@ function hitToProduct(
 }
 
 /**
+ * A product's PDP route. The last segment is its product reference — the slug,
+ * or the id when it has none — which is exactly what `ep.getProduct` reads.
+ */
+export function productPath(
+  product: Product,
+  productPathPrefix: string = DEFAULT_PRODUCT_PATH_PREFIX
+): string {
+  const prefix = (productPathPrefix || DEFAULT_PRODUCT_PATH_PREFIX).replace(
+    /\/+$/,
+    ""
+  );
+  return `${prefix}/${product.attributes?.slug || product.id}`;
+}
+
+/**
  * The search-side facts about a hit: where it links, and what the backend
  * highlighted.
  *
@@ -153,13 +168,9 @@ function hitToSearchMeta(
   const highlighted = hit._highlightResult || hit._highlight || {};
   const snippeted = hit._snippetResult || {};
   const rawHighlight = hit._rawTypesenseHit?.highlight || {};
-  const prefix = (productPathPrefix || DEFAULT_PRODUCT_PATH_PREFIX).replace(
-    /\/+$/,
-    ""
-  );
 
   return {
-    path: `${prefix}/${product.attributes?.slug || product.id}`,
+    path: productPath(product, productPathPrefix),
     highlightedName:
       rawHighlight.name?.value ||
       rawHighlight.name?.snippet ||
@@ -188,14 +199,7 @@ function mockSearchMeta(
   product: Product,
   productPathPrefix: string = DEFAULT_PRODUCT_PATH_PREFIX
 ): SearchHitMeta {
-  const prefix = (productPathPrefix || DEFAULT_PRODUCT_PATH_PREFIX).replace(
-    /\/+$/,
-    ""
-  );
-  return {
-    path: `${prefix}/${product.attributes?.slug || product.id}`,
-    raw: {},
-  };
+  return { path: productPath(product, productPathPrefix), raw: {} };
 }
 
 export const epSearchHitsMeta: CodeComponentMeta<EPSearchHitsProps> = {
