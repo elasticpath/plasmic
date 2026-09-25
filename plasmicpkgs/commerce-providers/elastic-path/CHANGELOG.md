@@ -77,7 +77,35 @@ The `EpAccountCart`, `EpSessionCartResolver`, `EpSessionCartResolverInput`,
 `EpSessionCartTrigger` and `EpSessionCartVerdict` types are exported from
 `/server`.
 
+### Changed
+
+EP Product Provider tells a product that does not exist from a read that
+failed. A failed read used to be swallowed and shown as "not found"; it now
+renders **Error Content** at runtime, which was never reachable before. A
+reference that names no product still renders **Empty Content**.
+
+On the Studio canvas, a **Product ID or slug** that names no product renders
+**Empty Content** instead of the sample product, so a dead reference is visible
+while authoring. The sample product still appears when no reference is set and
+when the read fails. **Preview State** still overrides both.
+
+A pre-fetched product (the advanced **Product (pre-fetched)** prop) renders at
+runtime with no **Product ID or slug** bound. It rendered **Empty Content**.
+
 ### Fixed
+
+A product page loads on a store whose products carry slugs. EP Search Hits
+links to the product's slug, but `ep.getProduct` and EP Product Provider read
+by id only, so every product with a slug showed "Product not found". Both now
+take a *product reference* — the slug, or the id when there is none — so a
+project that binds the product input to `$ctx.params.slug` works on upgrade
+with no rebinding, and a consumer no longer needs its own slug lookup. A slug
+naming a child product opens the family with that child preselected, as an id
+does. See ADR-0005.
+
+`ep.getProduct` accepts a product reference in its existing `id` argument, and
+EP Product Provider's product input is now displayed as **Product ID or slug**.
+No component, prop or function is added.
 
 `ep.applyCartAdjustment` is dispatchable from the browser. It has been
 registered as a Studio mutation since it landed, but had no entry in the proxy

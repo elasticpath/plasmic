@@ -3,12 +3,16 @@ import {
   getByContextChildProducts,
   getByContextProduct,
 } from "@epcc-sdk/sdks-shopper";
-import type { Client } from "@epcc-sdk/sdks-shopper";
+import type { Client, ProductData } from "@epcc-sdk/sdks-shopper";
 import { useEpCommerce } from "../shopper-context/EpCommerceContext";
 import { normalizeProduct } from "../utils";
 import { handleAPIError } from "../utils/errorHandling";
 import { createLogger } from "../utils/logger";
 import type { Product } from "../types/product";
+import {
+  PRODUCT_INCLUDES,
+  readProductByReference,
+} from "./product-reference";
 
 /**
  * Extends the normalized Product type with the initial variant ID.
@@ -25,23 +29,20 @@ export type GetProductInput = {
   id?: string;
 };
 
+/** Rejects when the read fails, so SWR reports it as an error, not as `null`. */
 export async function fetchProduct(
   client: Client,
   locale: string,
-  id: string
+  reference: string
 ): Promise<Product | null> {
   try {
-    const response = await getByContextProduct({
-      client,
-      path: { product_id: id },
-      query: { include: ["main_image", "files", "component_products"] },
-    });
-
-    if (!response.data) {
+    const found = await readProductByReference(client, reference);
+    if (!found) {
       return null;
     }
 
-    let productData = response.data;
+    let productData: ProductData = found;
+    const id = found.data.id;
     let childProducts = null;
     let initialVariantId: string | undefined;
 
@@ -67,7 +68,7 @@ export async function fetchProduct(
       const parentResponse = await getByContextProduct({
         client,
         path: { product_id: parentId },
-        query: { include: ["main_image", "files", "component_products"] },
+        query: { include: PRODUCT_INCLUDES },
       });
 
       if (parentResponse.data?.data) {
@@ -114,7 +115,7 @@ export async function fetchProduct(
     log.error("Error fetching product", {
       error: standardError.message,
     } as Record<string, unknown>);
-    return null;
+    throw error;
   }
 }
 
@@ -124,9 +125,12 @@ export default function useProduct(input: GetProductInput = {}) {
   const locale = commerce?.locale ?? "en-US";
   const { id } = input;
 
-  return useMutablePlasmicQueryData<Product | null, Error>(
-    client && id ? ["ep-product", id] : null,
+  const key = client && id ? ["ep-product", id] : null;
+  const query = useMutablePlasmicQueryData<Product | null, Error>(
+    key,
     () => fetchProduct(client!, locale, id!),
     { revalidateOnFocus: false }
   );
+  // A null key reads as loading forever; no read is running.
+  return key ? query : { ...query, isLoading: false };
 }

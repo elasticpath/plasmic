@@ -4,6 +4,7 @@
 // then require() the code under test so it loads AFTER mocks are registered.
 
 const mockGetByContextProduct = jest.fn();
+const mockGetByContextAllProducts = jest.fn();
 const mockGetByContextChildProducts = jest.fn();
 
 jest.mock("@epcc-sdk/sdks-shopper", () => ({
@@ -14,8 +15,27 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
   })),
   getByContextProduct: (...args: unknown[]) =>
     mockGetByContextProduct(...args),
+  getByContextAllProducts: (...args: unknown[]) =>
+    mockGetByContextAllProducts(...args),
   getByContextChildProducts: (...args: unknown[]) =>
     mockGetByContextChildProducts(...args),
+}));
+
+const mockShouldUseProxy = jest.fn(() => false);
+const mockCallEpProxy = jest.fn();
+jest.mock("../proxy-fetch", () => ({
+  shouldUseProxy: () => mockShouldUseProxy(),
+  callEpProxy: (...args: unknown[]) => mockCallEpProxy(...args),
+}));
+
+const mockWarn = jest.fn();
+jest.mock("../../utils/logger", () => ({
+  createLogger: () => ({
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: (...args: unknown[]) => mockWarn(...args),
+    error: jest.fn(),
+  }),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -29,50 +49,65 @@ const TEST_SESSION = {
   clientId: "client-xyz",
 };
 
+const PRODUCT_ID = "3f0c6d1e-8a2b-4c5d-9e7f-0a1b2c3d4e5f";
+const CHILD_ID = "7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e";
+const PARENT_ID = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d";
+
+function productRow(id: string, extra: Record<string, unknown> = {}) {
+  return {
+    id,
+    type: "product",
+    attributes: { name: `Product ${id}`, slug: `slug-${id}` },
+    meta: {
+      display_price: { without_tax: { amount: 1500, currency: "USD" } },
+      product_types: [],
+    },
+    ...extra,
+  };
+}
+
+const byId = (row: unknown) => ({ data: { data: row, included: {} } });
+const bySlug = (rows: unknown[]) => ({
+  data: { data: rows, included: {}, meta: { results: { total: rows.length } } },
+});
+const notFound = { data: undefined, error: { errors: [] }, response: { status: 404 } };
+
+const inSession = (fn: () => Promise<unknown>) => withEpSession(TEST_SESSION, fn);
+
 beforeEach(() => {
   mockGetByContextProduct.mockReset();
+  mockGetByContextAllProducts.mockReset();
   mockGetByContextChildProducts.mockReset();
+  mockShouldUseProxy.mockReset();
+  mockShouldUseProxy.mockReturnValue(false);
+  mockCallEpProxy.mockReset();
+  mockWarn.mockReset();
 });
 
 describe("epGetProduct", () => {
   it("returns a normalized product when EP returns a standalone product", async () => {
-    mockGetByContextProduct.mockResolvedValue({
-      data: {
-        data: {
-          id: "test-product-id",
-          type: "product",
+    mockGetByContextProduct.mockResolvedValue(
+      byId(
+        productRow(PRODUCT_ID, {
           attributes: {
             name: "Test Product",
             slug: "test-product",
             sku: "TEST-SKU",
             description: "A lovely product",
           },
-          meta: {
-            display_price: {
-              without_tax: {
-                amount: 1500,
-                currency: "USD",
-                formatted: "$15.00",
-              },
-            },
-            product_types: [],
-          },
-        },
-        included: {},
-      },
-    });
-
-    const result = await withEpSession(TEST_SESSION, () =>
-      epGetProduct({ id: "test-product-id" })
+        })
+      )
     );
 
+    const result = await inSession(() => epGetProduct({ id: PRODUCT_ID }));
+
     expect(result).not.toBeNull();
-    expect(result?.id).toBe("test-product-id");
+    expect(result?.id).toBe(PRODUCT_ID);
     expect(result?.attributes?.name).toBe("Test Product");
     expect(mockGetByContextProduct).toHaveBeenCalledTimes(1);
     expect(mockGetByContextProduct).toHaveBeenCalledWith(
       expect.objectContaining({
-        path: { product_id: "test-product-id" },
+        path: { product_id: PRODUCT_ID },
       })
     );
   });
@@ -82,7 +117,7 @@ describe("epGetProduct", () => {
   // fail-soft and return null — NOT throw. Designers see an empty preview
   // instead of a crashed query panel.
   it("returns null when called outside withEpSession", async () => {
-    const result = await epGetProduct({ id: "test-product-id" });
+    const result = await epGetProduct({ id: PRODUCT_ID });
 
     expect(result).toBeNull();
     expect(mockGetByContextProduct).not.toHaveBeenCalled();
@@ -94,7 +129,7 @@ describe("epGetProduct", () => {
   it("returns null when ALS session is missing required fields", async () => {
     const result = await withEpSession(
       { host: "", clientId: "x", accessToken: "y" } as any,
-      () => epGetProduct({ id: "test-product-id" })
+      () => epGetProduct({ id: PRODUCT_ID })
     );
 
     expect(result).toBeNull();
@@ -102,22 +137,11 @@ describe("epGetProduct", () => {
   });
 
   it("returns null when id is empty without calling EP", async () => {
-    const result = await withEpSession(TEST_SESSION, () =>
-      epGetProduct({ id: "" })
-    );
+    const result = await inSession(() => epGetProduct({ id: "" }));
 
     expect(result).toBeNull();
     expect(mockGetByContextProduct).not.toHaveBeenCalled();
-  });
-
-  it("returns null when EP responds with no product data", async () => {
-    mockGetByContextProduct.mockResolvedValue({ data: null });
-
-    const result = await withEpSession(TEST_SESSION, () =>
-      epGetProduct({ id: "missing-id" })
-    );
-
-    expect(result).toBeNull();
+    expect(mockGetByContextAllProducts).not.toHaveBeenCalled();
   });
 
   // Studio canvas + the data-query "Execute" panel call the function
@@ -126,53 +150,27 @@ describe("epGetProduct", () => {
   // SSR consumers never set `auth` in Studio bindings, so this fallback
   // doesn't affect the SSR cache key.
   it("falls back to input.auth when no ALS session is active", async () => {
-    mockGetByContextProduct.mockResolvedValue({
-      data: {
-        data: {
-          id: "canvas-product",
-          type: "product",
-          attributes: { name: "Canvas Product", slug: "canvas-product" },
-          meta: {
-            display_price: {
-              without_tax: { amount: 999, currency: "USD" },
-            },
-            product_types: [],
-          },
-        },
-        included: {},
-      },
-    });
+    mockGetByContextProduct.mockResolvedValue(byId(productRow(PRODUCT_ID)));
 
     // No withEpSession wrap — passes auth via input instead.
     const result = await epGetProduct({
-      id: "canvas-product",
+      id: PRODUCT_ID,
       auth: TEST_SESSION as any,
     } as any);
 
     expect(result).not.toBeNull();
-    expect(result?.id).toBe("canvas-product");
+    expect(result?.id).toBe(PRODUCT_ID);
   });
 
   it("prefers ALS session over input.auth when both are present", async () => {
-    mockGetByContextProduct.mockResolvedValue({
-      data: {
-        data: {
-          id: "test-product-id",
-          type: "product",
-          attributes: { name: "From ALS", slug: "p" },
-          meta: {
-            display_price: { without_tax: { amount: 1, currency: "USD" } },
-            product_types: [],
-          },
-        },
-        included: {},
-      },
-    });
+    mockGetByContextProduct.mockResolvedValue(
+      byId(productRow(PRODUCT_ID, { attributes: { name: "From ALS" } }))
+    );
 
     // Both ALS and input.auth set — ALS wins (so cache-key parity holds in SSR).
-    const result = await withEpSession(TEST_SESSION, () =>
+    const result = await inSession(() =>
       epGetProduct({
-        id: "test-product-id",
+        id: PRODUCT_ID,
         auth: { ...TEST_SESSION, accessToken: "FROM_INPUT" } as any,
       } as any)
     );
@@ -182,56 +180,234 @@ describe("epGetProduct", () => {
   });
 
   it("fetches parent and attaches __initialVariantId when id points at a child variant", async () => {
-    const childResponse = {
-      data: {
-        data: {
-          id: "child-id",
-          type: "product",
-          attributes: {
-            name: "Child Variant",
-            base_product_id: "parent-id",
-          },
-          meta: {
-            product_types: ["child"],
-            display_price: { without_tax: { amount: 2000, currency: "USD" } },
-          },
-        },
-        included: {},
-      },
-    };
-    const parentResponse = {
-      data: {
-        data: {
-          id: "parent-id",
-          type: "product",
-          attributes: { name: "Parent Product" },
-          meta: {
-            product_types: ["parent"],
-            display_price: { without_tax: { amount: 2000, currency: "USD" } },
-          },
-        },
-        included: {},
-      },
-    };
-
     mockGetByContextProduct
-      .mockResolvedValueOnce(childResponse)
-      .mockResolvedValueOnce(parentResponse);
+      .mockResolvedValueOnce(
+        byId(
+          productRow(CHILD_ID, {
+            attributes: { name: "Child Variant", base_product_id: PARENT_ID },
+            meta: { product_types: ["child"] },
+          })
+        )
+      )
+      .mockResolvedValueOnce(
+        byId(
+          productRow(PARENT_ID, {
+            attributes: { name: "Parent Product" },
+            meta: { product_types: ["parent"] },
+          })
+        )
+      );
 
-    const result = await withEpSession(TEST_SESSION, () =>
-      epGetProduct({ id: "child-id" })
-    );
+    const result = await inSession(() => epGetProduct({ id: CHILD_ID }));
 
-    expect(result).not.toBeNull();
-    expect(result?.id).toBe("parent-id");
+    expect(result?.id).toBe(PARENT_ID);
     expect(result?.attributes?.name).toBe("Parent Product");
     expect((result as { __initialVariantId?: string }).__initialVariantId).toBe(
-      "child-id"
+      CHILD_ID
     );
     expect(mockGetByContextProduct).toHaveBeenCalledTimes(2);
     expect(mockGetByContextProduct).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ path: { product_id: "parent-id" } })
+      expect.objectContaining({ path: { product_id: PARENT_ID } })
     );
+  });
+
+  describe("product reference", () => {
+    it("reads a slug with one filtered request carrying the single read's includes", async () => {
+      mockGetByContextAllProducts.mockResolvedValue(
+        bySlug([productRow(PRODUCT_ID, { attributes: { slug: "blue-shirt" } })])
+      );
+
+      const result = await inSession(() => epGetProduct({ id: "blue-shirt" }));
+
+      expect(result?.id).toBe(PRODUCT_ID);
+      expect(mockGetByContextProduct).not.toHaveBeenCalled();
+      expect(mockGetByContextAllProducts).toHaveBeenCalledTimes(1);
+      expect(mockGetByContextAllProducts).toHaveBeenCalledWith(
+        expect.objectContaining({
+          query: expect.objectContaining({
+            filter: "eq(slug,blue-shirt)",
+            "page[limit]": 1,
+            include: ["main_image", "files", "component_products"],
+          }),
+        })
+      );
+    });
+
+    it("joins images from the slug read's included block", async () => {
+      mockGetByContextAllProducts.mockResolvedValue({
+        data: {
+          data: [
+            productRow(PRODUCT_ID, {
+              relationships: { main_image: { data: { id: "img-1" } } },
+            }),
+          ],
+          included: {
+            main_images: [
+              { id: "img-1", link: { href: "https://cdn.test/img-1.png" } },
+            ],
+          },
+        },
+      });
+
+      const result = await inSession(() => epGetProduct({ id: "blue-shirt" }));
+
+      expect(result?.images?.[0]?.url).toBe("https://cdn.test/img-1.png");
+    });
+
+    it("reads a UUID-shaped reference by id without a slug read", async () => {
+      mockGetByContextProduct.mockResolvedValue(byId(productRow(PRODUCT_ID)));
+
+      const result = await inSession(() => epGetProduct({ id: PRODUCT_ID }));
+
+      expect(result?.id).toBe(PRODUCT_ID);
+      expect(mockGetByContextAllProducts).not.toHaveBeenCalled();
+    });
+
+    it("reads a UUID-shaped reference by slug when no product has that id", async () => {
+      mockGetByContextProduct.mockResolvedValue(notFound);
+      mockGetByContextAllProducts.mockResolvedValue(
+        bySlug([productRow(PRODUCT_ID)])
+      );
+
+      const result = await inSession(() => epGetProduct({ id: CHILD_ID }));
+
+      expect(result?.id).toBe(PRODUCT_ID);
+      expect(mockGetByContextProduct).toHaveBeenCalledWith(
+        expect.objectContaining({ path: { product_id: CHILD_ID } })
+      );
+      expect(mockGetByContextAllProducts).toHaveBeenCalledWith(
+        expect.objectContaining({
+          query: expect.objectContaining({ filter: `eq(slug,${CHILD_ID})` }),
+        })
+      );
+    });
+
+    it("returns null and warns with the reference and lookups when nothing matches", async () => {
+      mockGetByContextProduct.mockResolvedValue(notFound);
+      mockGetByContextAllProducts.mockResolvedValue(bySlug([]));
+
+      const result = await inSession(() => epGetProduct({ id: PRODUCT_ID }));
+
+      expect(result).toBeNull();
+      expect(mockWarn).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          reference: PRODUCT_ID,
+          lookups: ["id", "slug"],
+        })
+      );
+      expect(JSON.stringify(mockWarn.mock.calls)).not.toContain(
+        TEST_SESSION.accessToken
+      );
+    });
+
+    it("warns with only the slug lookup for a non-UUID reference", async () => {
+      mockGetByContextAllProducts.mockResolvedValue(bySlug([]));
+
+      const result = await inSession(() => epGetProduct({ id: "gone" }));
+
+      expect(result).toBeNull();
+      expect(mockGetByContextProduct).not.toHaveBeenCalled();
+      expect(mockWarn).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ reference: "gone", lookups: ["slug"] })
+      );
+    });
+
+    it("preselects the child a slug names, reading the family by resolved ids", async () => {
+      mockGetByContextAllProducts.mockResolvedValue(
+        bySlug([
+          productRow(CHILD_ID, {
+            attributes: { slug: "shirt-red-m", base_product_id: PARENT_ID },
+            meta: { product_types: ["child"] },
+          }),
+        ])
+      );
+      mockGetByContextProduct.mockResolvedValue(
+        byId(
+          productRow(PARENT_ID, {
+            meta: {
+              product_types: ["parent"],
+              variations: [{ id: "v1", name: "Colour", options: [] }],
+            },
+          })
+        )
+      );
+      mockGetByContextChildProducts.mockResolvedValue({ data: { data: [] } });
+
+      const result = await inSession(() => epGetProduct({ id: "shirt-red-m" }));
+
+      expect(result?.id).toBe(PARENT_ID);
+      expect((result as { __initialVariantId?: string }).__initialVariantId).toBe(
+        CHILD_ID
+      );
+      expect(mockGetByContextProduct).toHaveBeenCalledWith(
+        expect.objectContaining({ path: { product_id: PARENT_ID } })
+      );
+      expect(mockGetByContextChildProducts).toHaveBeenCalledWith(
+        expect.objectContaining({ path: { product_id: PARENT_ID } })
+      );
+    });
+
+    it("reads a slug base product's children by its resolved id", async () => {
+      mockGetByContextAllProducts.mockResolvedValue(
+        bySlug([
+          productRow(PARENT_ID, {
+            meta: {
+              product_types: ["parent"],
+              variations: [{ id: "v1", name: "Colour", options: [] }],
+            },
+          }),
+        ])
+      );
+      mockGetByContextChildProducts.mockResolvedValue({ data: { data: [] } });
+
+      await inSession(() => epGetProduct({ id: "shirt" }));
+
+      expect(mockGetByContextChildProducts).toHaveBeenCalledWith(
+        expect.objectContaining({ path: { product_id: PARENT_ID } })
+      );
+    });
+
+    it.each([
+      ["a comma", "a,b"],
+      ["a parenthesis", "shirt)"],
+      ["a space", "blue shirt"],
+      ["a slash", "a/b"],
+      ["only whitespace", "   "],
+    ])("returns null without a request for a reference with %s", async (_, id) => {
+      const result = await inSession(() => epGetProduct({ id }));
+
+      expect(result).toBeNull();
+      expect(mockGetByContextProduct).not.toHaveBeenCalled();
+      expect(mockGetByContextAllProducts).not.toHaveBeenCalled();
+    });
+
+    it("returns null rather than throwing when the read fails", async () => {
+      mockGetByContextAllProducts.mockResolvedValue({
+        data: undefined,
+        error: { errors: [{ status: 500 }] },
+        response: { status: 500 },
+      });
+
+      const result = await inSession(() => epGetProduct({ id: "blue-shirt" }));
+
+      expect(result).toBeNull();
+    });
+
+    it("forwards the reference unchanged through the proxy in the browser", async () => {
+      mockShouldUseProxy.mockReturnValue(true);
+      mockCallEpProxy.mockResolvedValue(null);
+
+      await epGetProduct({ id: "blue-shirt" });
+
+      expect(mockCallEpProxy).toHaveBeenCalledWith(
+        "getProduct",
+        { id: "blue-shirt" },
+        null
+      );
+      expect(mockGetByContextAllProducts).not.toHaveBeenCalled();
+    });
   });
 });

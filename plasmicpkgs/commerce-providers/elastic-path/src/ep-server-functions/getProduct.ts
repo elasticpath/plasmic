@@ -2,7 +2,13 @@ import {
   getByContextProduct,
   getByContextChildProducts,
 } from "@epcc-sdk/sdks-shopper";
+import type { ProductData } from "@epcc-sdk/sdks-shopper";
 import { normalizeProduct } from "../utils/normalize";
+import {
+  PRODUCT_INCLUDES,
+  ProductReadError,
+  readProductByReference,
+} from "../product/product-reference";
 import type { Product } from "../types/product";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
@@ -10,6 +16,7 @@ import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
 import type { EpServerAuth } from "./types";
 
 export interface EpGetProductInput {
+  /** A product reference: the product's slug, or its id when it has none. */
   id: string;
   /**
    * Optional explicit auth. SSR consumers normally rely on
@@ -41,15 +48,17 @@ export async function epGetProduct({
   if (!isUsableAuth(auth)) return null;
 
   const client = buildEpClient(auth);
-  const response = await getByContextProduct({
-    client,
-    path: { product_id: id },
-    query: { include: ["main_image", "files", "component_products"] },
-  });
+  let found;
+  try {
+    found = await readProductByReference(client, id);
+  } catch (err) {
+    if (err instanceof ProductReadError) return null;
+    throw err;
+  }
+  if (!found) return null;
 
-  if (!response.data?.data) return null;
-
-  let productData = response.data;
+  let productData: ProductData = found;
+  const resolvedId = found.data.id;
   let initialVariantId: string | undefined;
 
   const isChildProduct =
@@ -63,11 +72,11 @@ export async function epGetProduct({
     : null;
 
   if (isChildProduct && parentId) {
-    initialVariantId = id;
+    initialVariantId = resolvedId;
     const parentResponse = await getByContextProduct({
       client,
       path: { product_id: parentId },
-      query: { include: ["main_image", "files", "component_products"] },
+      query: { include: PRODUCT_INCLUDES },
     });
     if (parentResponse.data?.data) {
       productData = parentResponse.data;
@@ -77,7 +86,7 @@ export async function epGetProduct({
   const hasVariations =
     productData.data?.meta?.variations &&
     productData.data.meta.variations.length > 0;
-  const baseProductId = isChildProduct && parentId ? parentId : id;
+  const baseProductId = isChildProduct && parentId ? parentId : resolvedId;
 
   let childProducts = null;
   if (hasVariations) {
