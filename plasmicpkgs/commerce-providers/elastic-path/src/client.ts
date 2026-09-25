@@ -47,8 +47,6 @@ const initElasticPathClient = (creds: ElasticPathCredentials) => {
 
   const { client } = createShopperClient(config, authOpts);
 
-  // The browser mints its own anonymous token and never holds an account
-  // credential, so this contributes multi-location inventory only.
   client.interceptors.request.use(async (request, options) => {
     for (const [name, value] of Object.entries(epShopperHeaders({}))) {
       request.headers.set(name, value);

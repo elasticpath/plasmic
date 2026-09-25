@@ -21,8 +21,6 @@ describe("epShopperHeaders", () => {
     expect(epShopperHeaders({})).not.toHaveProperty(EP_ACCOUNT_TOKEN_HEADER);
   });
 
-  // The point of the function: spread last, a caller's own headers lose. If
-  // this ever spreads first, the guarantee quietly becomes a default again.
   it("wins over a caller's own headers when spread last", () => {
     const merged = {
       [EP_MULTI_LOCATION_INVENTORY_HEADER]: "false",

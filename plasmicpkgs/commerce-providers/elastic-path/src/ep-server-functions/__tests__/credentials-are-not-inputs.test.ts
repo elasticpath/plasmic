@@ -1,12 +1,5 @@
-/**
- * The proxy route forwards the browser's JSON body verbatim into the target
- * function. If any read function still took credentials from that body, a
- * caller could choose which shopper the server acts as. None of them do:
- * the shopper envelope is the only identity input.
- *
- * Jest's default environment is node, so `shouldUseProxy()` is false and each
- * function returns its empty shape without reaching the browser proxy branch.
- */
+// Jest's default environment is node, so `shouldUseProxy()` is false and each
+// function resolves without reaching the browser proxy branch.
 const sdk = {
   getByContextProduct: jest.fn(),
   getByContextChildProducts: jest.fn(),
@@ -72,8 +65,6 @@ function expectNoEpCall() {
   });
 }
 
-// One case per function that takes an input object. Each supplies credentials
-// the way a crafted request body would, and must act on none of them.
 const CASES: Array<[string, () => Promise<unknown>]> = [
   ["getProduct", () => epGetProduct({ id: "p1", auth: SMUGGLED })],
   ["getProductList", () => epGetProductList({ auth: SMUGGLED })],
@@ -114,9 +105,6 @@ const CASES: Array<[string, () => Promise<unknown>]> = [
 ];
 
 describe("credentials in the request body", () => {
-  // Some of these return an empty shape and some throw "no EP session".
-  // Either is fine. What must hold is that no call reaches Elastic Path
-  // carrying the credentials the body supplied.
   it.each(CASES)(
     "do not let %s act as another shopper",
     async (_name, call) => {

@@ -68,9 +68,6 @@ describe("buildEpClient", () => {
     expect(headers.has(EP_ACCOUNT_TOKEN_HEADER)).toBe(false);
   });
 
-  // Without this the server surface reads single-location stock while the
-  // browser path reads multi-location stock, so moving a component from one
-  // to the other changes the availability a shopper sees.
   it("asks for multi-location inventory, as the browser client does", async () => {
     const headers = await headersFor(BASE_AUTH);
 
