@@ -96,6 +96,7 @@ export type {
   EpPluginOptions,
   EpProviderBundleConfig,
   EpProxyRoutes,
+  EpResolveConfig,
   EpSession,
   EpSessionCartResolver,
   EpSessionCartResolverInput,
@@ -153,8 +154,6 @@ export {
 } from "./ep-server-functions";
 export type {
   AddCustomCartItemInput,
-  BuildEpCtxAccountInput,
-  BuildEpCtxSessionInput,
   CartAdjustmentKind,
   EpAddCartItemInput,
   EpApplyCartAdjustmentInput,

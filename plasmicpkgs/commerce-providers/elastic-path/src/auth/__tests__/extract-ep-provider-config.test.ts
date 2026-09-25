@@ -1,4 +1,7 @@
 import { extractEpProviderConfig } from "../extract-ep-provider-config";
+import { DEFAULT_HOST_ALLOWLIST } from "../host-allowlist";
+
+const DEFAULTS = { hostAllowlist: DEFAULT_HOST_ALLOWLIST };
 
 // Minified snippet taken from a real Plasmic loader response for a project
 // with the EP Provider configured: clientId set, host="custom", customHost set.
@@ -36,29 +39,35 @@ function E(r){
 
 describe("extractEpProviderConfig", () => {
   it("returns null for empty / missing prefetchedData", () => {
-    expect(extractEpProviderConfig(null)).toBeNull();
-    expect(extractEpProviderConfig(undefined)).toBeNull();
-    expect(extractEpProviderConfig({} as any)).toBeNull();
+    expect(extractEpProviderConfig(null, DEFAULTS)).toBeNull();
+    expect(extractEpProviderConfig(undefined, DEFAULTS)).toBeNull();
+    expect(extractEpProviderConfig({} as any, DEFAULTS)).toBeNull();
     expect(
-      extractEpProviderConfig({ bundle: { modules: { server: [] } } } as any)
+      extractEpProviderConfig(
+        { bundle: { modules: { server: [] } } } as any,
+        DEFAULTS
+      )
     ).toBeNull();
   });
 
   it("extracts clientId + customHost when host === 'custom'", () => {
-    const config = extractEpProviderConfig({
-      bundle: {
-        projects: [{ globalContextsProviderFileName: "global__proj.js" }],
-        modules: {
-          server: [
-            {
-              type: "code",
-              fileName: "global__proj.js",
-              code: EP_PROVIDER_MODULE_CUSTOM_HOST,
-            },
-          ],
+    const config = extractEpProviderConfig(
+      {
+        bundle: {
+          projects: [{ globalContextsProviderFileName: "global__proj.js" }],
+          modules: {
+            server: [
+              {
+                type: "code",
+                fileName: "global__proj.js",
+                code: EP_PROVIDER_MODULE_CUSTOM_HOST,
+              },
+            ],
+          },
         },
       },
-    });
+      DEFAULTS
+    );
     expect(config).toEqual({
       clientId: "oVC2dwzwVi0sCbov7voN63H8gami9do0TLm3GaVKAJ",
       host: "https://epcc-integration.global.ssl.fastly.net",
@@ -66,20 +75,23 @@ describe("extractEpProviderConfig", () => {
   });
 
   it("uses predefined host value directly when host !== 'custom'", () => {
-    const config = extractEpProviderConfig({
-      bundle: {
-        projects: [{ globalContextsProviderFileName: "global__proj.js" }],
-        modules: {
-          server: [
-            {
-              type: "code",
-              fileName: "global__proj.js",
-              code: EP_PROVIDER_MODULE_PREDEFINED_HOST,
-            },
-          ],
+    const config = extractEpProviderConfig(
+      {
+        bundle: {
+          projects: [{ globalContextsProviderFileName: "global__proj.js" }],
+          modules: {
+            server: [
+              {
+                type: "code",
+                fileName: "global__proj.js",
+                code: EP_PROVIDER_MODULE_PREDEFINED_HOST,
+              },
+            ],
+          },
         },
       },
-    });
+      DEFAULTS
+    );
     expect(config).toEqual({
       clientId: "abc123",
       host: "https://useast.api.elasticpath.com",
@@ -87,27 +99,30 @@ describe("extractEpProviderConfig", () => {
   });
 
   it("falls back to non-project modules when no project globalContexts file matches", () => {
-    const config = extractEpProviderConfig({
-      bundle: {
-        projects: [],
-        modules: {
-          server: [
-            {
-              type: "code",
-              fileName: "some-other.js",
-              code: EP_PROVIDER_MODULE_CUSTOM_HOST,
-            },
-          ],
+    const config = extractEpProviderConfig(
+      {
+        bundle: {
+          projects: [],
+          modules: {
+            server: [
+              {
+                type: "code",
+                fileName: "some-other.js",
+                code: EP_PROVIDER_MODULE_CUSTOM_HOST,
+              },
+            ],
+          },
         },
       },
-    });
+      DEFAULTS
+    );
     expect(config?.clientId).toBe("oVC2dwzwVi0sCbov7voN63H8gami9do0TLm3GaVKAJ");
   });
 
   describe("host allowlist", () => {
-    const smcModule = EP_PROVIDER_MODULE_CUSTOM_HOST.replace(
+    const customDomainModule = EP_PROVIDER_MODULE_CUSTOM_HOST.replace(
       "https://epcc-integration.global.ssl.fastly.net",
-      "https://commerce.selfmanaged.example"
+      "https://commerce.acme.example"
     );
     const bundleWith = (code: string) => ({
       bundle: {
@@ -120,51 +135,60 @@ describe("extractEpProviderConfig", () => {
 
     let errorSpy: jest.SpyInstance;
     beforeEach(() => {
-      errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+      errorSpy = jest
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
     });
     afterEach(() => errorSpy.mockRestore());
 
     it("accepts the Elastic Path regions and the integration host by default", () => {
       expect(
-        extractEpProviderConfig(bundleWith(EP_PROVIDER_MODULE_PREDEFINED_HOST))
-          ?.host
+        extractEpProviderConfig(
+          bundleWith(EP_PROVIDER_MODULE_PREDEFINED_HOST),
+          DEFAULTS
+        )?.host
       ).toBe("https://useast.api.elasticpath.com");
       expect(
-        extractEpProviderConfig(bundleWith(EP_PROVIDER_MODULE_CUSTOM_HOST))?.host
+        extractEpProviderConfig(
+          bundleWith(EP_PROVIDER_MODULE_CUSTOM_HOST),
+          DEFAULTS
+        )?.host
       ).toBe("https://epcc-integration.global.ssl.fastly.net");
       expect(errorSpy).not.toHaveBeenCalled();
     });
 
     it("rejects an unlisted host and says so, naming the host and the option", () => {
-      expect(extractEpProviderConfig(bundleWith(smcModule))).toBeNull();
+      expect(
+        extractEpProviderConfig(bundleWith(customDomainModule), DEFAULTS)
+      ).toBeNull();
       expect(errorSpy).toHaveBeenCalledWith(
-        expect.stringContaining("commerce.selfmanaged.example")
+        expect.stringContaining("commerce.acme.example")
       );
       expect(errorSpy).toHaveBeenCalledWith(
         expect.stringContaining("hostAllowlist")
       );
     });
 
-    it("accepts a Self Managed Commerce host once it is allowlisted", () => {
+    it("accepts a custom-domain host once it is on the list", () => {
       expect(
-        extractEpProviderConfig(bundleWith(smcModule), {
-          hostAllowlist: ["commerce.selfmanaged.example"],
+        extractEpProviderConfig(bundleWith(customDomainModule), {
+          hostAllowlist: ["commerce.acme.example"],
         })?.host
-      ).toBe("https://commerce.selfmanaged.example");
+      ).toBe("https://commerce.acme.example");
       expect(errorSpy).not.toHaveBeenCalled();
     });
 
     it("honours wildcard entries", () => {
       expect(
-        extractEpProviderConfig(bundleWith(smcModule), {
-          hostAllowlist: ["*.selfmanaged.example"],
+        extractEpProviderConfig(bundleWith(customDomainModule), {
+          hostAllowlist: ["*.acme.example"],
         })?.host
-      ).toBe("https://commerce.selfmanaged.example");
+      ).toBe("https://commerce.acme.example");
     });
 
     it("logs rather than silently returning null when nothing matches the regex", () => {
       expect(
-        extractEpProviderConfig(bundleWith("function noop(){}"))
+        extractEpProviderConfig(bundleWith("function noop(){}"), DEFAULTS)
       ).toBeNull();
       expect(errorSpy).toHaveBeenCalledWith(
         expect.stringContaining("no usable EP Provider config")
@@ -182,20 +206,23 @@ describe("extractEpProviderConfig", () => {
       }
     `;
     expect(
-      extractEpProviderConfig({
-        bundle: {
-          projects: [{ globalContextsProviderFileName: "global__proj.js" }],
-          modules: {
-            server: [
-              {
-                type: "code",
-                fileName: "global__proj.js",
-                code: unconfigured,
-              },
-            ],
+      extractEpProviderConfig(
+        {
+          bundle: {
+            projects: [{ globalContextsProviderFileName: "global__proj.js" }],
+            modules: {
+              server: [
+                {
+                  type: "code",
+                  fileName: "global__proj.js",
+                  code: unconfigured,
+                },
+              ],
+            },
           },
         },
-      })
+        DEFAULTS
+      )
     ).toBeNull();
   });
 
@@ -218,23 +245,28 @@ function E(r){
   },s)));
 }
 `;
-    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    const errorSpy = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
     try {
       expect(
-        extractEpProviderConfig({
-          bundle: {
-            projects: [{ globalContextsProviderFileName: "global__proj.js" }],
-            modules: {
-              server: [
-                {
-                  type: "code",
-                  fileName: "global__proj.js",
-                  code: sharedGlobalContexts,
-                },
-              ],
+        extractEpProviderConfig(
+          {
+            bundle: {
+              projects: [{ globalContextsProviderFileName: "global__proj.js" }],
+              modules: {
+                server: [
+                  {
+                    type: "code",
+                    fileName: "global__proj.js",
+                    code: sharedGlobalContexts,
+                  },
+                ],
+              },
             },
           },
-        })
+          DEFAULTS
+        )
       ).toEqual({
         clientId: "b6ratpsgidekICtcXjPWPODbGHckKfXWNNXnTivqQR",
         host: "https://epcc-integration.global.ssl.fastly.net",
@@ -257,7 +289,9 @@ function E(r){
 
     let errorSpy: jest.SpyInstance;
     beforeEach(() => {
-      errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+      errorSpy = jest
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
     });
     afterEach(() => errorSpy.mockRestore());
 
@@ -276,7 +310,9 @@ function E(r){
   },s));
 }
 `;
-      expect(extractEpProviderConfig(bundleWith(blankCustomHost))).toBeNull();
+      expect(
+        extractEpProviderConfig(bundleWith(blankCustomHost), DEFAULTS)
+      ).toBeNull();
       expect(errorSpy).toHaveBeenCalledWith(
         expect.stringContaining("no usable EP Provider config")
       );
@@ -299,7 +335,9 @@ function E(r){
   },s));
 }
 `;
-      expect(extractEpProviderConfig(bundleWith(foreignCustom))).toEqual({
+      expect(
+        extractEpProviderConfig(bundleWith(foreignCustom), DEFAULTS)
+      ).toEqual({
         clientId: "EP_REAL_CLIENT_ID",
         host: "https://useast.api.elasticpath.com",
       });
@@ -321,7 +359,9 @@ function E(r){
   },s));
 }
 `;
-      expect(extractEpProviderConfig(bundleWith(foreignClientIdFirst))).toEqual({
+      expect(
+        extractEpProviderConfig(bundleWith(foreignClientIdFirst), DEFAULTS)
+      ).toEqual({
         clientId: "EP_REAL_CLIENT_ID",
         host: "https://epcc-integration.global.ssl.fastly.net",
       });
@@ -341,13 +381,15 @@ function E(r){
     host:l&&"host"in l?l.host:"https://data.plasmic.app"
   },g.createElement(ep,{
     clientId:o&&"clientId"in o?o.clientId:"EP_REAL_CLIENT_ID",
-    host:o&&"host"in o?o.host:"https://commerce.selfmanaged.example"
+    host:o&&"host"in o?o.host:"https://commerce.acme.example"
   },s));
 }
 `;
-      expect(extractEpProviderConfig(bundleWith(cmsFirstUnlisted))).toBeNull();
+      expect(
+        extractEpProviderConfig(bundleWith(cmsFirstUnlisted), DEFAULTS)
+      ).toBeNull();
       expect(errorSpy).toHaveBeenCalledWith(
-        expect.stringContaining("commerce.selfmanaged.example")
+        expect.stringContaining("commerce.acme.example")
       );
       expect(errorSpy).not.toHaveBeenCalledWith(
         expect.stringContaining("data.plasmic.app")

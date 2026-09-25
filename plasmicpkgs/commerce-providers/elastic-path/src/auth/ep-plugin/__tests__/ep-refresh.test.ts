@@ -18,6 +18,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { betterAuth } from "better-auth";
 import { epPlugin } from "../ep-plugin";
+import { DEFAULT_HOST_ALLOWLIST } from "../../host-allowlist";
 
 const SECRET = "x".repeat(48);
 const EP_HOST = "https://api.test.elasticpath.com";
@@ -55,7 +56,8 @@ function buildAuth() {
   return betterAuth({
     secret: SECRET,
     baseURL: "http://localhost:3000",
-    plugins: [epPlugin({ clientId: EP_CLIENT_ID, host: EP_HOST })],
+    plugins: [epPlugin({
+      hostAllowlist: DEFAULT_HOST_ALLOWLIST, clientId: EP_CLIENT_ID, host: EP_HOST })],
     session: {
       cookieCache: { enabled: true, strategy: "jwe", refreshCache: true },
     },
@@ -78,6 +80,22 @@ function cookiesToHeaderValue(setCookies: string[]): string {
 }
 
 describe("/ep/refresh endpoint (PRD #273)", () => {
+  it("answers 502 with a code, rather than throwing, when Elastic Path refuses the mint", async () => {
+    (globalThis.fetch as any).mockImplementation(
+      async () => new Response("down", { status: 503 })
+    );
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = await (buildAuth().api as any).epRefresh({
+      body: {},
+      headers: new Headers(),
+      asResponse: true,
+    });
+
+    expect(result.status).toBe(502);
+    expect((await result.json()).code).toBe("shopper_token_mint_failed");
+  });
+
   it("rotates epAccessToken while preserving session identity", async () => {
     const auth = buildAuth();
 

@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+### Breaking
+
+There is one EP host allow-list, and `createEpAuth` resolves it: the Elastic
+Path-operated defaults, plus the `hostAllowlist` option, plus the
+comma-separated `EP_HOST_ALLOWLIST` environment variable (ADR-0005). Your
+entries extend the defaults rather than replacing them. Pass it once, to
+`createEpAuth`, and delete your own `EP_HOST_ALLOWLIST` parsing.
+
+| Was | Now |
+| --- | --- |
+| `buildEpCtx(prefetchedData, { session: { accessToken, cartId, account }, hostAllowlist })` | `buildEpCtx(session)`, where `session` is what `epAuth.api.getSession()` returned |
+| `extractEpProviderConfig(prefetchedData)` | `extractEpProviderConfig(prefetchedData, { hostAllowlist })` — the list is required |
+| `resolveConfig: async () => …` | `resolveConfig: async ({ hostAllowlist }) => …` — pass it to `extractEpProviderConfig` |
+| `epPlugin({ clientId, host })` | `epPlugin({ clientId, host, hostAllowlist })` — the list is required |
+
+`buildEpCtx` reads the host and client id from the session, which carries the
+ones admitted when it was minted, so the page and the auth routes use the same
+Elastic Path host by construction. An empty session yields an empty context,
+which the server functions refuse to run with, as before. `buildEpCtx` no
+longer throws when the page's bundle has no EP Provider. Code outside
+`resolveConfig` that calls `extractEpProviderConfig` passes
+`epAuth.config.hostAllowlist`. `locale` and `currency` move to an optional
+second argument, and the `BuildEpCtxSessionInput` and `BuildEpCtxAccountInput`
+types are removed.
+
+A rejected host now names the `hostAllowlist` option and `EP_HOST_ALLOWLIST`
+as the fix for a store whose Elastic Path API is served from a custom domain.
+It no longer points at Elastic Path Self Managed Commerce, which never reaches
+this package.
+
 ### Added
 
 Six server functions reach data that previously only the browser client could:
@@ -97,6 +127,14 @@ the Provider only reads — and `accountMember` carries an id and nothing
 else, so no member profile field (name, email) is in the contract.
 
 ### Fixed
+
+A page whose shopper token could not be minted renders without commerce data
+instead of failing with a 500. `getSession` was meant to return an empty
+session when the anonymous mint failed, but the mint's error escaped the
+endpoint, so the empty session was never reached. `/ep/anonymous` and
+`/ep/refresh` now answer 502 with `shopper_token_mint_failed` and log the
+cause. An Elastic Path outage, or a Studio host that is not on the EP host
+allow-list with no working fallback, reaches this path.
 
 `ep.applyCartAdjustment` is dispatchable from the browser. It has been
 registered as a Studio mutation since it landed, but had no entry in the proxy

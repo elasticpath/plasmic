@@ -1,7 +1,7 @@
 /**
  * Resolved EP connection + auth context. Built by the consumer's RSC
- * catchall page from `extractEpProviderConfig(prefetchedData)` (connection)
- * and `epAuth.api.getSession()` (per-shopper auth), then handed to
+ * catchall page with `buildEpCtx(await epAuth.api.getSession(...))`, then
+ * handed to
  * `withEpSession()` so every `ep.*` server function can read it via
  * AsyncLocalStorage (per PRD #272).
  *

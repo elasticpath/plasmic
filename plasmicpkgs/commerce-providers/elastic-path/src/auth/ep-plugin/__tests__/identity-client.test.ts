@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createEpAuth } from "../create-ep-auth-better";
 import { createEpAuthRoutes } from "../auth-routes";
 import { epPlugin } from "../ep-plugin";
+import { DEFAULT_HOST_ALLOWLIST } from "../../host-allowlist";
 import { createEpIdentityClient } from "../../../identity/client";
 import {
   EP_IDENTITY_OPERATION_NAMES,
@@ -247,7 +248,8 @@ describe("the identity client against the mounted handler", () => {
 describe("the client and the plugin agree on where every operation lives", () => {
   it("mounts every operation the client calls, at the path it calls", () => {
     const endpoints = (
-      epPlugin({ clientId: EP_CLIENT_ID, host: EP_HOST }) as any
+      epPlugin({
+        hostAllowlist: DEFAULT_HOST_ALLOWLIST, clientId: EP_CLIENT_ID, host: EP_HOST }) as any
     ).endpoints as Record<string, { path: string; options?: any }>;
 
     const mounted = new Map<string, string>();
@@ -268,7 +270,8 @@ describe("the client and the plugin agree on where every operation lives", () =>
 
   it("leaves no endpoint on the plugin without a client method", () => {
     const endpoints = (
-      epPlugin({ clientId: EP_CLIENT_ID, host: EP_HOST }) as any
+      epPlugin({
+        hostAllowlist: DEFAULT_HOST_ALLOWLIST, clientId: EP_CLIENT_ID, host: EP_HOST }) as any
     ).endpoints as Record<string, { path: string }>;
 
     const called = new Set(
