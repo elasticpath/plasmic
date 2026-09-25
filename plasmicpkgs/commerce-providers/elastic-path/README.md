@@ -240,7 +240,7 @@ Two options tighten the deployment further:
 | Option | Default | Use when |
 | --- | --- | --- |
 | `trustedOrigins` | the app's own origin | another origin must act as the shopper (e.g. Studio preview) |
-| `hostAllowlist` | Elastic Path Composable Commerce regions, the integration host, and loopback outside production | the EP API lives elsewhere — Elastic Path Self Managed Commerce |
+| `hostAllowlist` | Elastic Path Composable Commerce regions, `*.epcloudops.com`, the integration host, and loopback outside production | the EP API lives elsewhere — Elastic Path Self Managed Commerce |
 
 `hostAllowlist` is applied independently by `createEpAuth`,
 `extractEpProviderConfig` and `buildEpCtx`, so pass the same list to all
