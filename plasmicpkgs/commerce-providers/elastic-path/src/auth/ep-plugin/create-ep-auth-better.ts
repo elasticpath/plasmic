@@ -37,6 +37,7 @@ import {
   readEnvelopeAccount,
 } from "./envelope";
 import type { EpAccountSlot, EpLapsedAccount } from "./envelope";
+import type { EpSessionCartResolver } from "./session-cart";
 
 export interface CreateEpAuthBetterInput {
   clientId: string;
@@ -55,7 +56,27 @@ export interface CreateEpAuthBetterInput {
    */
   trustedOrigins?: string[];
   hostAllowlist?: string[];
+  /**
+   * @deprecated Read by no code. `sessionCartResolver` replaces it; this is
+   * removed in the breaking release.
+   */
   cartMergeStrategy?: "merge" | "replace" | "prompt";
+  /**
+   * Chooses the session cart at a login or an account switch, configured once
+   * rather than per call site.
+   *
+   * It runs after the account swap, under the shopper's new identity, so it
+   * can read and write carts rather than only choose between them. It is
+   * handed the guest cart, the carts already on the account, and which
+   * transition this is; it returns `{ keep }` naming one of them.
+   *
+   * Omitted, the guest cart wins — the one the shopper is looking at when they
+   * click log in. With no guest cart, the account's most recently updated cart
+   * is adopted. A rule that throws, or names a cart it was not offered, never
+   * blocks the sign-in: the default applies and the failure is logged. The
+   * losing cart is never deleted.
+   */
+  sessionCartResolver?: EpSessionCartResolver;
   checkout?: { sessionSecret: string };
   adapters?: { stripe?: { secretKey: string }; clover?: any };
   /**
@@ -236,6 +257,7 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
         hostAllowlist: input.hostAllowlist,
         resolveConfig: input.resolveConfig,
         passwordProfileId: input.passwordProfileId,
+        sessionCartResolver: input.sessionCartResolver,
       }),
       // `nextCookies()` MUST be the last plugin in the array per
       // better-auth's docs. It auto-forwards Set-Cookie headers from
@@ -397,9 +419,10 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
             }
             return h;
           },
-          // Serialized into page HTML via globalContextsProps.
+          // Serialized into page HTML via globalContextsProps, so this
+          // carries the mount path and never a credential.
           providerProps() {
-            return {};
+            return { basePath: config.basePath };
           },
           commitCookies(res) {
             for (const cookie of pendingSetCookies) {
@@ -415,14 +438,13 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
 }
 
 function makeEmptyEpSession(config: any): EpSession {
-  void config;
   return {
     session: null,
     user: null,
     cart: null,
     isAuthenticated: false,
     headers: () => ({}),
-    providerProps: () => ({}),
+    providerProps: () => ({ basePath: config.basePath }),
     commitCookies: () => {},
   };
 }

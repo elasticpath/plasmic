@@ -789,6 +789,14 @@ PlasmicClientRootProvider <-------- prefetchedQueryData
 | `ep.getProductList` | `{ limit?, search?, categoryId? }` | `Product[]` — the first page only, as a flat array with no total count |
 | `ep.getProductPage` | `{ limit?, offset?, search?, categoryId? }` | `{ data: Product[], meta: { results: { total }, page: { limit, offset } } }` — one page in Elastic Path's envelope, with the total count. `limit` defaults to 25 |
 | `ep.getRelatedProducts` | `{ productId, relationshipSlug, limit? }` | `Product[]` — products linked by EP custom relationship |
+| `ep.getStock` | `{ productIds, locationIds? }` | `Record<productId, ProductStock>` — multi-location stock; a product whose stock is unreadable comes back with zero counts |
+| `ep.getLocations` | `{ type? }` | `Location[]` — the inventory locations |
+| `ep.getBundleOptionProducts` | `{ productIds }` | `Record<productId, Product>` — the products a bundle offers as options, each the package's product shape |
+| `ep.getBaseProducts` | `{ productIds }` | `Record<productId, Product>` — the given products with their `variations` and `childProducts`. A product that is not a base product comes back with an empty `childProducts`; one the catalog does not return is omitted |
+| `ep.configureBundle` | `{ bundleId, selectedOptions }` | Elastic Path's configured-bundle payload — re-prices a bundle for a set of selections. Throws on failure, because a stale price is worse than none |
+| `ep.multiSearch` | `{ searches, include? }` | Elastic Path's multi-search response as-is. Pass `include: ["main_image"]` for hit images — Elastic Path omits the `included` block unless it is asked for |
+
+Every count `ep.getStock` returns is a `number`, not the SDK's `BigInt` — the value crosses `JSON.stringify` into prefetched query data and through the proxy route, and a BigInt cannot.
 
 `categoryId` takes a hierarchy **node** ID and reads that node's products from `/catalog/nodes/{id}/relationships/products`. Elastic Path's catalog product endpoints have no filterable category key, and they compose `filter` terms with a comma — `and(...)` is rejected.
 

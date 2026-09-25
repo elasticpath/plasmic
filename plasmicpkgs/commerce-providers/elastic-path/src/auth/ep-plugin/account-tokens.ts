@@ -47,7 +47,7 @@ export class EpAccountTokenError extends Error {
   }
 }
 
-async function readError(response: Response): Promise<string> {
+export async function readError(response: Response): Promise<string> {
   const body = (await response.json().catch(() => null)) as {
     errors?: { detail?: string; title?: string }[];
   } | null;

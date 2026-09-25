@@ -29,8 +29,13 @@ export const epAuth = createEpAuth({
   // Optional: custom API route prefix (default: /api/ep)
   // basePath: "/api/store",
 
-  // Optional: cart merge strategy on login (default: "merge")
+  // Dead config, read by no code. `sessionCartResolver` replaces it, and it
+  // is removed in the breaking release.
   // cartMergeStrategy: "replace",
+
+  // Optional: choose the shopper's cart when they sign in or switch
+  // organisation. See "Which cart wins at sign-in" below.
+  // sessionCartResolver: ({ guestCartId, accountCarts }) => ...,
 });
 ```
 
@@ -235,7 +240,7 @@ Two options tighten the deployment further:
 | Option | Default | Use when |
 | --- | --- | --- |
 | `trustedOrigins` | the app's own origin | another origin must act as the shopper (e.g. Studio preview) |
-| `hostAllowlist` | Elastic Path Composable Commerce regions, the integration host, and loopback outside production | the EP API lives elsewhere — Elastic Path Self Managed Commerce |
+| `hostAllowlist` | Elastic Path Composable Commerce regions, `*.epcloudops.com`, the integration host, and loopback outside production | the EP API lives elsewhere — Elastic Path Self Managed Commerce |
 
 `hostAllowlist` is applied independently by `createEpAuth`,
 `extractEpProviderConfig` and `buildEpCtx`, so pass the same list to all
@@ -323,6 +328,95 @@ run one on a shared host or against production Elastic Path credentials.
 | POST | `{basePath}/ep/account/logout` | Sign the account member out |
 | GET | `{basePath}/get-session` | Read the session, minus EP credentials |
 
+Call these through the identity client rather than by hand. The table is the
+contract the client is built from, not an instruction to write `fetch`.
+
+### The identity client
+
+`useEpIdentity()` gives a component the identity operations as methods. It
+passes no URL and no base path, so a component cannot get identity wrong by
+configuring it wrong:
+
+```tsx
+import { useEpIdentity } from "@elasticpath/plasmic-ep-commerce-elastic-path";
+
+function SignIn() {
+  const identity = useEpIdentity();
+
+  async function signIn(username: string, password: string) {
+    const { session, accounts } = await identity.login({ username, password });
+    // A member of exactly one account is already placed in it. A member of
+    // several has nothing selected, and chooses.
+    if (session.epAccount) return null;
+    return accounts;
+  }
+
+  async function chooseAccount(accountId: string) {
+    await identity.selectAccount({ accountId });
+  }
+  ...
+}
+```
+
+| Method | Argument | Resolves to |
+|--------|----------|-------------|
+| `getSession()` | — | the session, or `null` |
+| `signInAnonymously()` | — | the session |
+| `refresh()` | — | the session |
+| `setCart({ cartId })` | cart id | the session |
+| `login({ username, password, name? })` | credentials | the session, plus the member's organisations |
+| `roster({ limit?, offset? })` | paging | one page of organisations |
+| `selectAccount({ accountId })` | organisation id, or `null` to deselect | the session |
+| `rollAccount()` | — | the session |
+| `logout()` | — | the session |
+
+Arguments and results are one declaration, which the endpoints are typed
+against: renaming a field a method reads is a compile error in the handler,
+and calling a method wrongly is a compile error at the call site. The session
+each method resolves to is checked against the allowlist the handler filters
+every response through, so no method can be typed as returning an Elastic
+Path credential.
+
+A refused operation throws, carrying the server's own reason:
+
+```ts
+import { epIdentityErrorCode } from "@elasticpath/plasmic-ep-commerce-elastic-path";
+
+try {
+  await identity.roster();
+} catch (err) {
+  if (epIdentityErrorCode(err) === "account_lapsed") {
+    // Tell the shopper their account access ran out, rather than
+    // showing them list prices with no signal.
+  }
+}
+```
+
+**Outside React**, `createEpIdentityClient({ basePath })` builds the same
+client.
+
+**If you mounted the handler somewhere other than `/api/ep`**, hand the page
+the mount path once and the client finds it — `providerProps()` carries it,
+and the shopper context is where the client reads it from:
+
+```tsx
+<PlasmicRootProvider
+  loader={PLASMIC}
+  prefetchedData={plasmicData}
+  globalContextsProps={{ shopperContextProps: session.providerProps() }}
+>
+```
+
+`providerProps()` is serialized into the page HTML, so it carries the mount
+path and nothing else.
+
+**In the Studio canvas** the client stays relative, which resolves against the
+document serving the artboard — the consumer's own app, holding the shopper's
+cookies, with no CORS involved. It honours `window.__epProxyOrigin` so it
+agrees with the server-function client about where the consumer's app is, but
+reaching the auth handler across origins would also need that handler to
+reflect CORS with credentials, and it does not.
+
 ### Account identity
 
 The session holds the authenticated **account member** and the **selected
@@ -395,6 +489,78 @@ Mount the auth handler through `createEpAuthRoutes`, never better-auth's
 `toNextJsHandler` directly: better-auth's `/get-session` returns the whole
 session record, and this package keeps the shopper's EP access token on it.
 
+### Which cart wins at sign-in
+
+A shopper can arrive at the sign-in form with a cart, and already have one
+saved on the account they sign in to. Elastic Path merges nothing on its own,
+and its copy operation **adds** quantities, so ten saved plus two added becomes
+twelve. Which cart wins is merchant policy, so the package asks rather than
+decides.
+
+With no `sessionCartResolver` configured:
+
+- the guest cart wins — the one the shopper is looking at when they click
+  log in, and the only choice that cannot silently destroy or inflate what they
+  just built;
+- with no guest cart, the account's most recently updated cart is adopted;
+- the losing cart is never deleted;
+- switching organisation never carries the previous organisation's cart
+  across, because its lines carry that organisation's prices.
+
+To decide it yourself, configure the hook once on `createEpAuth`:
+
+```ts
+export const epAuth = createEpAuth({
+  clientId: "your-ep-client-id",
+  host: "https://useast.api.elasticpath.com",
+  secret: process.env.CHECKOUT_SESSION_SECRET,
+
+  async sessionCartResolver({ trigger, guestCartId, accountCarts, accountId }) {
+    // `trigger` is "login" or "accountSwitch". `guestCartId` is null at a
+    // switch. `accountCarts` carries { id, name, createdAt, updatedAt } —
+    // no line items; read them yourself if your rule needs them.
+    // `accountCarts` is newest-first, and may be empty.
+    if (!guestCartId) {
+      return { keep: accountCarts[0].id };
+    }
+    return { keep: guestCartId };
+  },
+});
+```
+
+The hook runs after the account swap, under the shopper's new identity, so
+`ep.*` server functions and raw `fetch` calls both act as the signed-in member
+of that organisation. That is how a rule like take-the-higher-quantity is
+written: read both carts, write the lines you want, then return the id of the
+cart you wrote to.
+
+`trigger` is `"accountSwitch"` only when the shopper changed organisation
+without signing in again — so `guestCartId` is always null when it is. Every
+other case is `"login"`: signing in, and choosing an organisation while acting
+for none, including a member of several picking their first.
+
+`accountCarts` is one page, **most recently updated first**, so
+`accountCarts[0]` is the organisation's newest cart. It can be empty. Elastic
+Path ignores `sort` on its cart list, so the order is applied here, and an
+organisation holding more carts than one page inside the store's expiry window
+can have a more recent one the hook never sees.
+
+`keep` must name a cart the hook was offered — `guestCartId` or one of
+`accountCarts`. A hook that throws, or names anything else, never blocks the
+sign-in: the default applies and the failure is logged. There is no package
+timeout; your platform's request timeout is the bound. A partial write is
+yours to avoid — decide first and write last, or make the writes safe to
+repeat.
+
+Signing out clears the cart pointer, so the next person on that browser does
+not inherit the previous shopper's cart. Signing in, like switching
+organisation, tears down any checkout session in flight: it was priced and
+addressed for the shopper who is no longer the one here.
+
+The hook is handed no cart id on the session scope, only in its input. Which
+cart is the session cart is the question it is answering, so `ep.*` calls
+inside it name the cart they mean rather than defaulting to one.
+
 ### Cookie Architecture
 
 | Cookie | Contents | Purpose |
@@ -458,13 +624,19 @@ import { registerEpCustomFunctions } from "@elasticpath/plasmic-ep-commerce-elas
 registerEpCustomFunctions(PLASMIC);
 ```
 
-This registers five read functions in the `ep` namespace, callable from Studio's Server Query builder:
+This registers the read functions in the `ep` namespace, callable from Studio's Server Query builder:
 
 - `ep.getProduct({ id })` — single product by EP product UUID.
 - `ep.getCart()` — current cart contents.
 - `ep.getProductList({ limit?, search?, categoryId?, sort? })` — a flat array of products. `categoryId` is a hierarchy **node** ID; it reads that node's products rather than filtering the whole catalog.
 - `ep.getProductPage({ limit?, offset?, search?, categoryId?, sort? })` — one page of products **with the total count**, in Elastic Path's envelope: `data`, plus `meta.results.total` and `meta.page`. Bind it to EP Product List Provider's **Products (pre-fetched)** prop to server-render a listing. Prefer this over `getProductList` whenever the page has pagination controls — the flat array carries no total, so ranges and next/previous cannot be computed.
 - `ep.getRelatedProducts({ productId, relationshipSlug, limit? })` — products linked by an EP custom relationship.
+- `ep.getStock({ productIds, locationIds? })` — multi-location stock, keyed by product ID. Counts are plain numbers, because the value crosses `JSON.stringify` twice. A product whose stock is unreadable comes back with zero counts rather than failing the batch.
+- `ep.getLocations({ type? })` — the inventory locations.
+- `ep.getBundleOptionProducts({ productIds })` — the products a bundle offers as options, keyed by product ID, each the package's own product shape with images joined and prices carrying all four members.
+- `ep.getBaseProducts({ productIds })` — the given products with their `variations` and `childProducts`. A product that is not a base product comes back with an empty `childProducts`; one the catalog does not return is omitted, because absent and purchasable-on-its-own are different answers.
+- `ep.configureBundle({ bundleId, selectedOptions })` — re-prices a bundle for a set of option selections and returns Elastic Path's configured-bundle payload. Throws on failure: a configurator showing a stale total is worse than one showing an error.
+- `ep.multiSearch({ searches, include? })` — a catalog multi-search, returned as-is. Pass `include: ["main_image"]` to get hit images: Elastic Path omits the top-level `included` block entirely unless it is asked for, and that block is what each hit's `relationships.main_image` resolves against. The response is passed through rather than reshaped so the block survives. It throws when the search fails: an empty result is a plausible correct answer here, so failing soft would render an outage as a no-results page.
 
 Auth is **not** an argument. The session (`accessToken`, `clientId`, `host`, `cartId`, …) is propagated through `AsyncLocalStorage` — see step 3.
 

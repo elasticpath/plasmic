@@ -37,6 +37,16 @@ async function headersFor(auth: Record<string, unknown>) {
 }
 
 describe("buildEpClient", () => {
+  it("asks for multi-location inventory on every call, as the browser client does", async () => {
+    // Not scoped to the inventory functions on purpose: the locations endpoint
+    // 404s without this header and stock loses its per-location breakdown, and
+    // both read as "this store has none" rather than as an error. Leaving it to
+    // each function to remember is how epGetLocations shipped returning [] for
+    // a store with five locations.
+    const headers = await headersFor(BASE_AUTH);
+    expect(headers.get("EP-Inventories-Multi-Location")).toBe("true");
+  });
+
   it("carries the selected organisation's credential on every call", async () => {
     const headers = await headersFor({
       ...BASE_AUTH,

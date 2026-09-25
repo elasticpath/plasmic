@@ -5,6 +5,7 @@ import { isProduction } from "./ep-plugin/production-guard";
 export const DEFAULT_HOST_ALLOWLIST: readonly string[] = [
   "*.elasticpath.com",
   "elasticpath.com",
+  "*.epcloudops.com",
   "epcc-integration.global.ssl.fastly.net",
 ];
 

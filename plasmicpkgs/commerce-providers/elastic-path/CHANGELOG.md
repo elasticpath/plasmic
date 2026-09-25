@@ -4,6 +4,109 @@
 
 ### Added
 
+Six server functions reach data that previously only the browser client could:
+`ep.getStock`, `ep.getLocations`, `ep.getBundleOptionProducts`,
+`ep.getBaseProducts`, `ep.configureBundle` and `ep.multiSearch`. Each is
+registered for Studio Server Queries and dispatchable from the browser through
+the proxy route. Nothing is removed and no call site moves — the browser client
+and every component that uses it behave exactly as before.
+
+`ep.multiSearch` returns Elastic Path's response as written, under a
+package-owned type that keeps the top-level `included` block. That block is
+where the search adapter resolves each hit's `main_image`, and the SDK's own
+`MultiSearchResponse` does not declare it — typing the result with the SDK
+shape would drop every search hit's picture with nothing failing. Ask for the
+block with `include: ["main_image"]`: Elastic Path omits it entirely unless the
+call requests it, verified against a live store.
+
+Every server call sends `EP-Inventories-Multi-Location`, as the browser client
+already did. The locations registry 404s outright without it, and stock comes
+back with no per-location breakdown — both of which read as "this store has
+none" rather than as an error. It lives on the shared client builder rather
+than on the two inventory functions, because leaving it to each function to
+remember is how `ep.getLocations` first shipped reporting an empty store.
+Confirmed inert on catalog and cart calls, reads and writes alike.
+
+`ep.getStock` reports its counts as numbers. The browser hook builds them as
+`BigInt`, which cannot cross `JSON.stringify` — and this value crosses it twice,
+into prefetched query data and through the proxy route. Its per-location shape
+is otherwise the browser client's, counts under `stock`, so a call site can
+move without rereading them.
+
+The two bundle product reads return the package's own product shape, so a
+bundle option carries joined images and a price with all four members rather
+than a bare formatted string. `ChildProduct` gains `bundleExcluded`, the
+Elastic Path custom field marking a variation the merchandiser kept out of
+bundle selection.
+
+`sessionCartResolver` on `createEpAuth` chooses the session cart at a login or
+an account switch, configured once rather than per call site. It is handed the
+guest cart, the carts already on the account, and which transition this is; it
+returns `{ keep }` naming one of them. It runs after the account swap, inside
+the session context under the shopper's new identity, so it can read and write
+carts rather than only choose between them — a rule like
+take-the-higher-quantity needs per-line arithmetic, and no verdict value
+carries that.
+
+With no resolver the guest cart wins, and with no guest cart the account's most
+recently updated cart is adopted. This is a change of behaviour from the
+documented `cartMergeStrategy: "merge"` default: nothing merges, because
+Elastic Path's own copy operation adds quantities together and ten saved plus
+two added becoming twelve is not a merge anyone asked for. `cartMergeStrategy`
+was read by no code, so nothing that worked stops working; it is removed in the
+breaking release.
+
+`trigger` is `"accountSwitch"` only where CONTEXT.md says an account switch is:
+the selected organisation changed without re-authenticating. Everything else is
+`"login"`, including a member of several organisations choosing their first
+one. `guestCartId` is null whenever the trigger is `"accountSwitch"`.
+
+The carts handed to a resolver arrive most recently updated first. Elastic Path
+ignores `sort` on its cart list, so the order is the package's own.
+
+A resolver that throws, or names a cart it was not offered, never blocks the
+sign-in: the default applies and the failure is logged. The losing cart is
+never deleted, and switching organisation never carries the previous
+organisation's cart across.
+
+`POST /ep/account/login` now tears down any checkout session in flight, as an
+account switch already did. The identity changed, so the checkout was priced
+and addressed for a shopper who is no longer the one here.
+
+The `EpAccountCart`, `EpSessionCartResolver`, `EpSessionCartResolverInput`,
+`EpSessionCartTrigger` and `EpSessionCartVerdict` types are exported from
+`/server`.
+
+### Fixed
+
+`ep.applyCartAdjustment` is dispatchable from the browser. It has been
+registered as a Studio mutation since it landed, but had no entry in the proxy
+route's dispatch table, so an adjustment a designer wired to an onClick — a
+promo code, a handling fee — could not reach the server at all and failed with
+`unknown_fn`.
+
+`epAddCartItem`, `epUpdateCartItem`, `epRemoveCartItem` and `epGetProductList`
+have a browser transport. Called outside a request scope they threw "no EP
+session" (or, for the list, fetched under another function's name) instead of
+routing through the proxy the way the other server functions do.
+
+Signing out clears the cart pointer. It stripped the account fields and left
+`epCartId`, handing the next shopper on that browser the previous one's cart.
+
+`withEpSession` keeps working when the package is loaded as ES modules. It
+reached `async_hooks` through `eval("require")`, which native ESM has no
+`require` for, so the session scope fell through to its no-op and every `ep.*`
+call fail-softed to `null` or `[]`. `process.getBuiltinModule` works in both
+module formats; `require` remains the fallback for Node below 20.16 / 22.3,
+which can still only reach it as CommonJS.
+
+A session scope that cannot load now says so on the console instead of leaving
+every `ep.*` call to return nothing for no visible reason.
+
+## 0.7.0
+
+### Added
+
 The session now carries business-account identity: `epMemberId` for the
 authenticated **account member**, and `epAccount { id, name, token, expires }`
 for the **selected account** — the organisation they are buying for. Every
@@ -61,6 +164,17 @@ dead credential to Elastic Path.
 The checkout session torn down on a switch is `CookieSessionStore`'s. A
 consumer-supplied `SessionStore` is out of the auth handler's reach and must be
 cleared by the consumer.
+
+`createEpIdentityClient` and the `useEpIdentity` hook call the identity
+operations by name — sign in, read the account roster, select or deselect an
+account, sign out, set the cart — so a call site never writes a route or a base
+path. The client takes the `basePath` the auth handler was mounted at and
+nothing else; `epIdentityErrorCode` reads the server's reason for refusing, so
+a storefront can branch on `account_lapsed` rather than on a status code.
+
+`RELEASED_SESSION_PATHS` and the `ReleasedEpSession` types state what
+`get-session` releases, so a consumer reading the session gets the same shape
+the server filters to rather than guessing at it.
 
 `passwordProfileId` on `createEpAuth` names the password profile members sign
 in against. The package discovers it when the store's authentication realm
@@ -121,10 +235,6 @@ account clear and cart-id persist all read no session in any HTTPS deployment
 
 `epAccountExpires` accepts the ISO-8601 timestamp Elastic Path actually
 returns, as well as epoch seconds. It previously demanded a number.
-
-## 0.6.1
-
-### Fixed
 
 After a successful **cart PaymentIntent** checkout, the cart's
 `payment_intent_id` is cleared (Update Cart with an empty id) before the

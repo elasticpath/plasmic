@@ -103,6 +103,11 @@ export interface EpApplyCartAdjustmentInput {
 
 export async function epAddCartItem(input: EpAddCartItemInput): Promise<Cart> {
   const auth = getCurrentEpSession();
+
+  if (!isUsableAuth(auth) && shouldUseProxy()) {
+    return callEpProxy<Cart>("addCartItem", input as unknown as Record<string, unknown>);
+  }
+
   if (!isUsableAuth(auth)) {
     throw new Error("epAddCartItem: no EP session");
   }
@@ -178,6 +183,11 @@ export async function epUpdateCartItem(
   input: EpUpdateCartItemInput
 ): Promise<Cart> {
   const auth = getCurrentEpSession();
+
+  if (!isUsableAuth(auth) && shouldUseProxy()) {
+    return callEpProxy<Cart>("updateCartItem", input as unknown as Record<string, unknown>);
+  }
+
   if (!isUsableAuth(auth)) {
     throw new Error("epUpdateCartItem: no EP session");
   }
@@ -293,6 +303,11 @@ export async function epRemoveCartItem(
   input: EpRemoveCartItemInput
 ): Promise<Cart> {
   const auth = getCurrentEpSession();
+
+  if (!isUsableAuth(auth) && shouldUseProxy()) {
+    return callEpProxy<Cart>("removeCartItem", input as unknown as Record<string, unknown>);
+  }
+
   if (!isUsableAuth(auth)) {
     throw new Error("epRemoveCartItem: no EP session");
   }
