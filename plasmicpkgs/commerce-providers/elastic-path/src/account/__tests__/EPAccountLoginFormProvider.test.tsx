@@ -52,6 +52,12 @@ function publishedForm() {
   return JSON.parse(node.getAttribute("data-value")!);
 }
 
+function publishedAccount() {
+  return JSON.parse(
+    screen.getByTestId("data-provider-account").getAttribute("data-value")!
+  );
+}
+
 function jsonResponse(body: unknown, ok = true) {
   return Promise.resolve({
     ok,
@@ -94,6 +100,9 @@ function installFetch(options?: {
   hangReload?: boolean;
   loginFails?: boolean;
   reloadSessionFails?: boolean;
+  /** Session `get-session` returns after the first, anonymous read. */
+  postLoginSession?: Record<string, unknown>;
+  roster?: { accounts: unknown[]; total: number };
 }) {
   let getSessionCount = 0;
   let releaseLogin: () => void = () => {};
@@ -114,9 +123,12 @@ function installFetch(options?: {
       if (options?.hangReload && getSessionCount > 1) {
         return reloadGate.then(() =>
           jsonResponse({
-            session: { epMemberId: "member-1" },
+            session: options.postLoginSession ?? { epMemberId: "member-1" },
           })
         );
+      }
+      if (options?.postLoginSession && getSessionCount > 1) {
+        return jsonResponse({ session: options.postLoginSession });
       }
       return jsonResponse({ session: {} });
     }
@@ -133,7 +145,7 @@ function installFetch(options?: {
       return options?.hangLogin ? loginGate.then(() => response) : response;
     }
     if (target.includes("/account/roster")) {
-      return jsonResponse({ accounts: [], total: 0 });
+      return jsonResponse(options?.roster ?? { accounts: [], total: 0 });
     }
     return jsonResponse({}, false);
   });
@@ -220,6 +232,101 @@ describe("EPAccountLoginFormProvider", () => {
       );
       expect(account.accountMember).toEqual({ id: "member-1" });
       expect(account.isLoading).toBe(false);
+    });
+  });
+
+  describe("login round trip", () => {
+    async function signIn(options: {
+      postLoginSession: Record<string, unknown>;
+      roster: { accounts: unknown[]; total: number };
+    }) {
+      const installed = installFetch(options);
+      const ref = renderForm();
+      await waitFor(() => {
+        expect(publishedAccount()).toEqual(
+          expect.objectContaining({ state: "anonymous", isLoading: false })
+        );
+      });
+      fireEvent.click(screen.getByTestId("fill"));
+      await act(async () => {
+        await ref.current!.submit();
+      });
+      expect(loginCalls(installed.fetchImpl)).toHaveLength(1);
+      expect(publishedForm()).toEqual({
+        status: "submitted",
+        error: null,
+        isSubmitting: false,
+      });
+      return installed;
+    }
+
+    it("publishes selected when the reloaded session has one account", async () => {
+      await signIn({
+        postLoginSession: {
+          epMemberId: "member-1",
+          epAccount: { id: "acct-1", name: "Acme", token: "secret" },
+        },
+        roster: {
+          accounts: [{ id: "acct-1", name: "Acme" }],
+          total: 1,
+        },
+      });
+
+      expect(publishedAccount()).toEqual({
+        state: "selected",
+        accountMember: { id: "member-1" },
+        selectedAccount: { id: "acct-1", name: "Acme" },
+        accountRoster: {
+          accounts: [{ id: "acct-1", name: "Acme" }],
+          total: 1,
+        },
+        lapsedAccount: null,
+        isLoading: false,
+      });
+    });
+
+    it("publishes memberOnly with the roster when several accounts are unselected", async () => {
+      await signIn({
+        postLoginSession: { epMemberId: "member-1" },
+        roster: {
+          accounts: [
+            { id: "acct-1", name: "Acme" },
+            { id: "acct-2", name: "Beta" },
+          ],
+          total: 2,
+        },
+      });
+
+      expect(publishedAccount()).toEqual({
+        state: "memberOnly",
+        accountMember: { id: "member-1" },
+        selectedAccount: null,
+        accountRoster: {
+          accounts: [
+            { id: "acct-1", name: "Acme" },
+            { id: "acct-2", name: "Beta" },
+          ],
+          total: 2,
+        },
+        lapsedAccount: null,
+        isLoading: false,
+      });
+    });
+
+    it("publishes memberOnly when login leaves the member with no accounts", async () => {
+      await signIn({
+        postLoginSession: { epMemberId: "member-1" },
+        roster: { accounts: [], total: 0 },
+      });
+
+      expect(publishedAccount()).toEqual({
+        state: "memberOnly",
+        accountMember: { id: "member-1" },
+        selectedAccount: null,
+        accountRoster: { accounts: [], total: 0 },
+        lapsedAccount: null,
+        isLoading: false,
+      });
     });
   });
 
