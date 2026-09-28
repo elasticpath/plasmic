@@ -74,6 +74,8 @@ import { registerEPCatalogSearchProvider } from "./catalog-search/EPCatalogSearc
 import { registerEPAccountField } from "./account/EPAccountField";
 import { registerEPAccountGate } from "./account/EPAccountGate";
 import { registerEPAccountProvider } from "./account/EPAccountProvider";
+import { registerEPAccountLoginFormProvider } from "./account/EPAccountLoginFormProvider";
+import { registerEPAccountFormField } from "./account/EPAccountFormField";
 import { Registerable } from "./registerable";
 
 export * from "./registerCommerceProvider";
@@ -239,6 +241,8 @@ export function registerAll(loader?: Registerable) {
   registerEPAccountField(loader);
   registerEPAccountGate(loader);
   registerEPAccountProvider(loader);
+  registerEPAccountFormField(loader);
+  registerEPAccountLoginFormProvider(loader);
 
   // Checkout
   registerEPCheckout(loader);

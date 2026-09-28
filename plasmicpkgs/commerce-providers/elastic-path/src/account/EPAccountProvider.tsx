@@ -14,7 +14,14 @@ import {
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
-import React, { useEffect, useState } from "react";
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import { useEpIdentity } from "../identity/useEpIdentity";
 import type { EpIdentityClient } from "../identity/operations";
 import { Registerable } from "../registerable";
@@ -32,10 +39,48 @@ const log = createLogger("EPAccountProvider");
 
 const EMPTY_ROSTER: AccountRoster = { accounts: [], total: 0 };
 
+/**
+ * Gap before each automatic retry of a failed manual reload. The last delay
+ * repeats, so a long outage stays at 30s instead of polling faster.
+ */
+export const RELOAD_RETRY_BACKOFF_MS = [
+  1000, 2000, 4000, 8000, 16000, 30000,
+] as const;
+
+function reloadRetryDelay(attempt: number): number {
+  const index = Math.min(
+    Math.max(attempt, 0),
+    RELOAD_RETRY_BACKOFF_MS.length - 1
+  );
+  return RELOAD_RETRY_BACKOFF_MS[index];
+}
+
+function clearTimer(
+  timer: React.MutableRefObject<ReturnType<typeof setTimeout> | null>
+) {
+  if (timer.current != null) {
+    clearTimeout(timer.current);
+    timer.current = null;
+  }
+}
+
+const NOOP_RELOAD = () => Promise.resolve();
+
+const AccountReloadContext =
+  React.createContext<() => Promise<void>>(NOOP_RELOAD);
+
+export function useAccountReload(): () => Promise<void> {
+  return useContext(AccountReloadContext);
+}
+
 interface EPAccountProviderProps {
   children?: React.ReactNode;
   previewState?: AccountPreviewState;
   className?: string;
+}
+
+interface EPAccountProviderActions {
+  logout(): Promise<void>;
 }
 
 /** Browser-readable get-session identity. Credentials are redacted server-side. */
@@ -135,13 +180,15 @@ async function loadAccountRoster(
 }
 
 export async function loadLiveAccountContext(
-  identity: EpIdentityClient
+  identity: EpIdentityClient,
+  options?: { rethrow?: boolean }
 ): Promise<AccountContext> {
   let mapped: AccountContext;
   try {
     const envelope = await identity.getSession();
     mapped = accountContextFromSession(envelope?.session);
-  } catch {
+  } catch (err) {
+    if (options?.rethrow) throw err;
     return accountContextFromSession(null);
   }
   if (!mapped.accountMember) return mapped;
@@ -193,9 +240,20 @@ export const epAccountProviderMeta: CodeComponentMeta<EPAccountProviderProps> =
     providesData: true,
     importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
     importName: "EPAccountProvider",
+    refActions: {
+      logout: {
+        displayName: "Log out",
+        description:
+          "Sign the shopper out and reload account identity. No-op in the Studio canvas.",
+        argTypes: [],
+      },
+    },
   };
 
-export function EPAccountProvider(props: EPAccountProviderProps) {
+export const EPAccountProvider = React.forwardRef<
+  EPAccountProviderActions,
+  EPAccountProviderProps
+>(function EPAccountProvider(props, ref) {
   const { children, previewState = "auto", className } = props;
   const inEditor = !!usePlasmicCanvasContext();
   const forcePreview = inEditor && previewState !== "auto";
@@ -204,21 +262,82 @@ export function EPAccountProvider(props: EPAccountProviderProps) {
     identity: EpIdentityClient;
     account: AccountContext;
   } | null>(null);
+  const [reloading, setReloading] = useState(false);
+  const requestId = useRef(0);
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleReloadRetry = useRef<
+    (id: number, client: EpIdentityClient, attempt: number) => void
+  >(() => {});
   const live = read?.identity === identity ? read.account : null;
 
+  scheduleReloadRetry.current = (id, client, attempt) => {
+    clearTimer(retryTimer);
+    retryTimer.current = setTimeout(() => {
+      retryTimer.current = null;
+      if (id !== requestId.current) return;
+      void loadLiveAccountContext(client, { rethrow: true }).then(
+        (account) => {
+          if (id !== requestId.current) return;
+          setRead({ identity: client, account });
+          setReloading(false);
+        },
+        () => {
+          if (id !== requestId.current) return;
+          scheduleReloadRetry.current(id, client, attempt + 1);
+        }
+      );
+    }, reloadRetryDelay(attempt));
+  };
+
   useEffect(() => {
+    const id = ++requestId.current;
+    clearTimer(retryTimer);
     if (forcePreview) {
       setRead(null);
-      return;
+      setReloading(false);
+      return () => {
+        clearTimer(retryTimer);
+        requestId.current += 1;
+      };
     }
     let cancelled = false;
     loadLiveAccountContext(identity).then((account) => {
-      if (!cancelled) setRead({ identity, account });
+      if (cancelled || id !== requestId.current) return;
+      setRead({ identity, account });
+      setReloading(false);
     });
     return () => {
       cancelled = true;
+      clearTimer(retryTimer);
+      requestId.current += 1;
     };
   }, [forcePreview, identity]);
+
+  const reloadAccount = useCallback(() => {
+    const id = ++requestId.current;
+    clearTimer(retryTimer);
+    setReloading(true);
+    return loadLiveAccountContext(identity, { rethrow: true }).then(
+      (account) => {
+        if (id !== requestId.current) return;
+        setRead({ identity, account });
+        setReloading(false);
+      },
+      (err: unknown) => {
+        if (id !== requestId.current) return;
+        scheduleReloadRetry.current(id, identity, 0);
+        throw err;
+      }
+    );
+  }, [identity]);
+
+  const logout = useCallback(async () => {
+    if (inEditor) return;
+    await identity.logout();
+    await reloadAccount();
+  }, [inEditor, identity, reloadAccount]);
+
+  useImperativeHandle(ref, () => ({ logout }), [logout]);
 
   const account = forcePreview
     ? previewAccountContext(previewState)
@@ -226,7 +345,9 @@ export function EPAccountProvider(props: EPAccountProviderProps) {
     ? live && hasMemberIdentity(live)
       ? live
       : previewAccountContext("auto")
-    : live ?? LOADING_ACCOUNT;
+    : !live || reloading
+    ? LOADING_ACCOUNT
+    : live;
 
   if (inEditor) {
     log.debug("Publishing account context", {
@@ -237,13 +358,15 @@ export function EPAccountProvider(props: EPAccountProviderProps) {
   }
 
   return (
-    <DataProvider name="account" data={account}>
-      <div className={className} data-ep-account-provider="">
-        {children}
-      </div>
-    </DataProvider>
+    <AccountReloadContext.Provider value={reloadAccount}>
+      <DataProvider name="account" data={account}>
+        <div className={className} data-ep-account-provider="">
+          {children}
+        </div>
+      </DataProvider>
+    </AccountReloadContext.Provider>
   );
-}
+});
 
 export function registerEPAccountProvider(
   loader?: Registerable,

@@ -6,16 +6,29 @@
  */
 
 const mockUsePlasmicCanvasContext = jest.fn().mockReturnValue(false);
-jest.mock("@plasmicapp/host", () => ({
-  DataProvider: ({ children, name, data }: any) => (
-    <div data-testid={`data-provider-${name}`} data-value={JSON.stringify(data)}>
-      {children}
-    </div>
-  ),
-  useSelector: jest.fn().mockReturnValue(undefined),
-  usePlasmicCanvasContext: (...args: any[]) =>
-    mockUsePlasmicCanvasContext(...args),
-}));
+jest.mock("@plasmicapp/host", () => {
+  const React = require("react");
+  const AccountCtx = React.createContext(undefined);
+  return {
+    DataProvider: ({ children, name, data }: any) =>
+      React.createElement(
+        "div",
+        {
+          "data-testid": `data-provider-${name}`,
+          "data-value": JSON.stringify(data),
+        },
+        name === "account"
+          ? React.createElement(AccountCtx.Provider, { value: data }, children)
+          : children
+      ),
+    useSelector: (key: string) => {
+      const data = React.useContext(AccountCtx);
+      return key === "account" ? data : undefined;
+    },
+    usePlasmicCanvasContext: (...args: any[]) =>
+      mockUsePlasmicCanvasContext(...args),
+  };
+});
 
 jest.mock("@plasmicapp/host/registerComponent", () => {
   const fn = jest.fn();
@@ -43,7 +56,19 @@ const {
   toAccountRef,
   deriveAccountState,
   normalizeAccountRoster,
+  useAccountReload,
+  RELOAD_RETRY_BACKOFF_MS,
 } = require("../EPAccountProvider");
+
+function ReloadHandle(props: { handle: { reload?: () => Promise<void> } }) {
+  props.handle.reload = useAccountReload();
+  return null;
+}
+const { EPAccountGate } = require("../EPAccountGate");
+
+interface AccountActions {
+  logout(): Promise<void>;
+}
 
 function publishedAccount() {
   const dp = screen.getByTestId("data-provider-account");
@@ -460,6 +485,784 @@ describe("EPAccountProvider", () => {
     );
   });
 
+  describe("logout", () => {
+    function installLogoutFetch(baseSession: Record<string, unknown>) {
+      let getSessionCount = 0;
+      let releaseReload: () => void = () => {};
+      const reloadGate = new Promise<void>((resolve) => {
+        releaseReload = resolve;
+      });
+      const fetchImpl = jest.fn((url: string, init?: RequestInit) => {
+        const target = String(url);
+        if (target.endsWith("/get-session")) {
+          getSessionCount += 1;
+          if (getSessionCount === 1) {
+            return jsonResponse({ session: baseSession });
+          }
+          return reloadGate.then(() => jsonResponse({ session: {} }));
+        }
+        if (target.includes("/account/logout")) {
+          expect(init?.method).toBe("POST");
+          return jsonResponse({ session: {} });
+        }
+        if (target.includes("/account/roster")) {
+          return jsonResponse({ accounts: [], total: 0 });
+        }
+        return jsonResponse({}, false);
+      });
+      (global as unknown as { fetch: typeof fetch }).fetch =
+        fetchImpl as typeof fetch;
+      return {
+        fetchImpl,
+        releaseReload,
+        logoutCalls: () =>
+          fetchImpl.mock.calls.filter(([url]) =>
+            String(url).includes("/account/logout")
+          ),
+      };
+    }
+
+    it("calls logout on the identity client and reloads to anonymous without remounting", async () => {
+      const { fetchImpl, releaseReload, logoutCalls } = installLogoutFetch({
+        epMemberId: "member-1",
+        epAccount: { id: "acct-1", name: "Acme" },
+      });
+      const ref = React.createRef<AccountActions>();
+      const { container } = render(
+        <EPAccountProvider ref={ref}>
+          <EPAccountGate when="anonymous">
+            <span data-testid="signed-out">Signed out</span>
+          </EPAccountGate>
+          <EPAccountGate when="authenticated">
+            <span data-testid="signed-in">Signed in</span>
+          </EPAccountGate>
+        </EPAccountProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("signed-in")).toBeTruthy();
+      });
+      expect(screen.queryByTestId("signed-out")).toBeNull();
+      const root = container.querySelector("[data-ep-account-provider]");
+
+      let pending: Promise<void> = Promise.resolve();
+      await act(async () => {
+        pending = ref.current!.logout();
+      });
+
+      expect(logoutCalls()).toHaveLength(1);
+      expect(String(logoutCalls()[0][0])).toBe("/api/ep/ep/account/logout");
+      expect(publishedAccount().isLoading).toBe(true);
+      expect(screen.queryByTestId("signed-out")).toBeNull();
+      expect(screen.queryByTestId("signed-in")).toBeNull();
+      expect(container.querySelector("[data-ep-account-provider]")).toBe(root);
+      expect(
+        fetchImpl.mock.calls.filter(([url]) =>
+          String(url).endsWith("/get-session")
+        )
+      ).toHaveLength(2);
+
+      await act(async () => {
+        releaseReload();
+        await pending;
+      });
+      await waitFor(() => {
+        expect(publishedAccount()).toEqual(MOCK_ACCOUNT_ANONYMOUS);
+      });
+      expect(screen.getByTestId("signed-out")).toBeTruthy();
+      expect(screen.queryByTestId("signed-in")).toBeNull();
+    });
+
+    it("posts logout to the ShopperContext basePath", async () => {
+      const { releaseReload, logoutCalls } = installLogoutFetch({
+        epMemberId: "member-1",
+      });
+      const ref = React.createRef<AccountActions>();
+      render(
+        <ShopperContext basePath="/api/store">
+          <EPAccountProvider ref={ref}>
+            <span>child</span>
+          </EPAccountProvider>
+        </ShopperContext>
+      );
+      await waitFor(() => {
+        expect(publishedAccount().state).toBe("memberOnly");
+      });
+
+      let pending: Promise<void> = Promise.resolve();
+      await act(async () => {
+        pending = ref.current!.logout();
+      });
+
+      expect(String(logoutCalls()[0][0])).toBe("/api/store/ep/account/logout");
+      const sessionUrls = (
+        (global as unknown as { fetch: jest.Mock }).fetch as jest.Mock
+      ).mock.calls
+        .map(([url]) => String(url))
+        .filter((url) => url.endsWith("/get-session"));
+      expect(sessionUrls.every((url) => url.startsWith("/api/store/"))).toBe(
+        true
+      );
+      await act(async () => {
+        releaseReload();
+        await pending;
+      });
+    });
+
+    it("does not call logout in the canvas", async () => {
+      mockUsePlasmicCanvasContext.mockReturnValue(true);
+      const { logoutCalls } = installLogoutFetch({
+        epMemberId: "member-1",
+      });
+      const ref = React.createRef<AccountActions>();
+      render(
+        <EPAccountProvider ref={ref}>
+          <span>child</span>
+        </EPAccountProvider>
+      );
+      await waitFor(() => {
+        expect(publishedAccount().accountMember).toEqual({ id: "member-1" });
+      });
+
+      await act(async () => {
+        await ref.current!.logout();
+      });
+
+      expect(logoutCalls()).toEqual([]);
+      expect(publishedAccount().accountMember).toEqual({ id: "member-1" });
+      expect(publishedAccount().isLoading).toBe(false);
+    });
+  });
+
+  describe("latest read", () => {
+    it("does not let a late initial read overwrite a newer reload", async () => {
+      let releaseInitial: () => void = () => {};
+      let releaseReload: () => void = () => {};
+      const initialGate = new Promise<void>((resolve) => {
+        releaseInitial = resolve;
+      });
+      const reloadGate = new Promise<void>((resolve) => {
+        releaseReload = resolve;
+      });
+      let sessionReads = 0;
+      (global as unknown as { fetch: typeof fetch }).fetch = jest.fn(
+        (url: string) => {
+          if (String(url).endsWith("/get-session")) {
+            sessionReads += 1;
+            const gate = sessionReads === 1 ? initialGate : reloadGate;
+            const memberId =
+              sessionReads === 1 ? "stale-initial" : "from-reload";
+            return gate.then(() =>
+              jsonResponse({ session: { epMemberId: memberId } })
+            );
+          }
+          if (String(url).includes("/account/roster")) {
+            return jsonResponse({ accounts: [], total: 0 });
+          }
+          return jsonResponse({}, false);
+        }
+      ) as typeof fetch;
+      const handle: { reload?: () => Promise<void> } = {};
+      render(
+        <EPAccountProvider>
+          <ReloadHandle handle={handle} />
+        </EPAccountProvider>
+      );
+      await waitFor(() => expect(sessionReads).toBe(1));
+
+      let reloadDone: Promise<void> = Promise.resolve();
+      await act(async () => {
+        reloadDone = handle.reload!();
+      });
+      expect(sessionReads).toBe(2);
+
+      await act(async () => {
+        releaseInitial();
+      });
+      expect(publishedAccount().isLoading).toBe(true);
+
+      await act(async () => {
+        releaseReload();
+        await reloadDone;
+      });
+      expect(publishedAccount().accountMember).toEqual({ id: "from-reload" });
+      expect(publishedAccount().isLoading).toBe(false);
+    });
+
+    it("does not let an older reload overwrite a newer one", async () => {
+      const releases: Array<() => void> = [];
+      let sessionReads = 0;
+      (global as unknown as { fetch: typeof fetch }).fetch = jest.fn(
+        (url: string) => {
+          if (String(url).endsWith("/get-session")) {
+            sessionReads += 1;
+            if (sessionReads === 1) {
+              return jsonResponse({ session: { epMemberId: "initial" } });
+            }
+            let release: () => void = () => {};
+            const gate = new Promise<void>((resolve) => {
+              release = resolve;
+            });
+            releases.push(release);
+            const memberId =
+              sessionReads === 2 ? "from-first-reload" : "from-second-reload";
+            return gate.then(() =>
+              jsonResponse({ session: { epMemberId: memberId } })
+            );
+          }
+          if (String(url).includes("/account/roster")) {
+            return jsonResponse({ accounts: [], total: 0 });
+          }
+          return jsonResponse({}, false);
+        }
+      ) as typeof fetch;
+      const handle: { reload?: () => Promise<void> } = {};
+      render(
+        <EPAccountProvider>
+          <ReloadHandle handle={handle} />
+        </EPAccountProvider>
+      );
+      await waitFor(() => {
+        expect(publishedAccount().accountMember).toEqual({ id: "initial" });
+      });
+
+      let first: Promise<void> = Promise.resolve();
+      let second: Promise<void> = Promise.resolve();
+      await act(async () => {
+        first = handle.reload!();
+      });
+      await act(async () => {
+        second = handle.reload!();
+      });
+      await act(async () => {
+        releases[0]();
+        await first;
+      });
+      expect(publishedAccount().isLoading).toBe(true);
+
+      await act(async () => {
+        releases[1]();
+        await second;
+      });
+      expect(publishedAccount().accountMember).toEqual({
+        id: "from-second-reload",
+      });
+    });
+
+    it("does not publish an in-flight reload onto a later basePath", async () => {
+      let releaseStale: () => void = () => {};
+      const staleGate = new Promise<void>((resolve) => {
+        releaseStale = resolve;
+      });
+      let readsOnA = 0;
+      (global as unknown as { fetch: typeof fetch }).fetch = jest.fn(
+        (url: string) => {
+          const target = String(url);
+          if (target.startsWith("/api/a/") && target.endsWith("/get-session")) {
+            readsOnA += 1;
+            if (readsOnA === 1) {
+              return jsonResponse({ session: { epMemberId: "member-a" } });
+            }
+            return staleGate.then(() =>
+              jsonResponse({ session: { epMemberId: "stale-a" } })
+            );
+          }
+          if (target.startsWith("/api/b/") && target.endsWith("/get-session")) {
+            return jsonResponse({ session: { epMemberId: "member-b" } });
+          }
+          if (target.includes("/account/roster")) {
+            return jsonResponse({ accounts: [], total: 0 });
+          }
+          return jsonResponse({}, false);
+        }
+      ) as typeof fetch;
+      const handle: { reload?: () => Promise<void> } = {};
+      const tree = (basePath: string) => (
+        <ShopperContext basePath={basePath}>
+          <EPAccountProvider>
+            <ReloadHandle handle={handle} />
+          </EPAccountProvider>
+        </ShopperContext>
+      );
+      const { rerender } = render(tree("/api/a"));
+      await waitFor(() => {
+        expect(publishedAccount().accountMember).toEqual({ id: "member-a" });
+      });
+
+      let stale: Promise<void> = Promise.resolve();
+      await act(async () => {
+        stale = handle.reload!();
+      });
+      rerender(tree("/api/b"));
+      await waitFor(() => {
+        expect(publishedAccount().accountMember).toEqual({ id: "member-b" });
+      });
+
+      await act(async () => {
+        releaseStale();
+        await stale;
+      });
+      expect(publishedAccount().accountMember).toEqual({ id: "member-b" });
+    });
+  });
+
+  describe("reload retry", () => {
+    const backoff = RELOAD_RETRY_BACKOFF_MS as readonly number[];
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    async function flushPromises() {
+      await act(async () => {
+        for (let i = 0; i < 20; i += 1) await Promise.resolve();
+      });
+    }
+
+    async function advance(ms: number) {
+      await act(async () => {
+        jest.advanceTimersByTime(ms);
+      });
+      await flushPromises();
+    }
+
+    function sessionReads(fetchImpl: jest.Mock, prefix = ""): string[] {
+      return fetchImpl.mock.calls
+        .map(([url]) => String(url))
+        .filter(
+          (url) => url.endsWith("/get-session") && url.startsWith(prefix)
+        );
+    }
+
+    it("rejects the reload, keeps Gates closed, and publishes the automatic retry", async () => {
+      let sessionReadsCount = 0;
+      const fetchImpl = jest.fn((url: string) => {
+        const target = String(url);
+        if (target.endsWith("/get-session")) {
+          sessionReadsCount += 1;
+          if (sessionReadsCount === 1) {
+            return jsonResponse({ session: { epMemberId: "member-1" } });
+          }
+          if (sessionReadsCount === 2) {
+            return jsonResponse({ message: "unavailable" }, false);
+          }
+          return jsonResponse({
+            session: { epMemberId: "member-recovered" },
+          });
+        }
+        if (target.includes("/account/roster")) {
+          return jsonResponse({ accounts: [], total: 0 });
+        }
+        return jsonResponse({}, false);
+      });
+      (global as unknown as { fetch: typeof fetch }).fetch =
+        fetchImpl as typeof fetch;
+      const handle: { reload?: () => Promise<void> } = {};
+      render(
+        <EPAccountProvider>
+          <ReloadHandle handle={handle} />
+          <EPAccountGate when="anonymous">
+            <span data-testid="signed-out">Signed out</span>
+          </EPAccountGate>
+          <EPAccountGate when="authenticated">
+            <span data-testid="signed-in">Signed in</span>
+          </EPAccountGate>
+        </EPAccountProvider>
+      );
+      await flushPromises();
+      expect(screen.getByTestId("signed-in")).toBeTruthy();
+
+      let settled = "pending";
+      let reloadPromise: Promise<void> = Promise.resolve();
+      await act(async () => {
+        reloadPromise = handle.reload!().then(
+          () => {
+            settled = "resolved";
+          },
+          () => {
+            settled = "rejected";
+          }
+        );
+      });
+      await flushPromises();
+      await act(async () => {
+        await reloadPromise;
+      });
+
+      expect(settled).toBe("rejected");
+      expect(sessionReadsCount).toBe(2);
+      expect(publishedAccount().isLoading).toBe(true);
+      expect(screen.queryByTestId("signed-in")).toBeNull();
+      expect(screen.queryByTestId("signed-out")).toBeNull();
+
+      await advance(backoff[0] - 1);
+      expect(sessionReadsCount).toBe(2);
+      expect(publishedAccount().isLoading).toBe(true);
+
+      await advance(1);
+      expect(sessionReadsCount).toBe(3);
+      expect(publishedAccount().accountMember).toEqual({
+        id: "member-recovered",
+      });
+      expect(publishedAccount().isLoading).toBe(false);
+      expect(screen.getByTestId("signed-in")).toBeTruthy();
+      expect(handle.reload).toBeTruthy();
+    });
+
+    it("does not let an older retry overwrite a newer reload", async () => {
+      let sessionReadsCount = 0;
+      let releaseNewer: () => void = () => {};
+      const newerGate = new Promise<void>((resolve) => {
+        releaseNewer = resolve;
+      });
+      const fetchImpl = jest.fn((url: string) => {
+        const target = String(url);
+        if (target.endsWith("/get-session")) {
+          sessionReadsCount += 1;
+          if (sessionReadsCount === 1) {
+            return jsonResponse({ session: { epMemberId: "initial" } });
+          }
+          if (sessionReadsCount === 2) {
+            return jsonResponse({ message: "unavailable" }, false);
+          }
+          const memberId =
+            sessionReadsCount === 3 ? "from-newer" : "from-stale-retry";
+          return newerGate.then(() =>
+            jsonResponse({ session: { epMemberId: memberId } })
+          );
+        }
+        if (target.includes("/account/roster")) {
+          return jsonResponse({ accounts: [], total: 0 });
+        }
+        return jsonResponse({}, false);
+      });
+      (global as unknown as { fetch: typeof fetch }).fetch =
+        fetchImpl as typeof fetch;
+      const handle: { reload?: () => Promise<void> } = {};
+      render(
+        <EPAccountProvider>
+          <ReloadHandle handle={handle} />
+        </EPAccountProvider>
+      );
+      await flushPromises();
+      expect(publishedAccount().accountMember).toEqual({ id: "initial" });
+
+      let first: Promise<void> = Promise.resolve();
+      await act(async () => {
+        first = handle.reload!().then(
+          () => undefined,
+          () => undefined
+        );
+      });
+      await flushPromises();
+      await act(async () => {
+        await first;
+      });
+      expect(sessionReadsCount).toBe(2);
+      expect(publishedAccount().isLoading).toBe(true);
+
+      let second: Promise<void> = Promise.resolve();
+      await act(async () => {
+        second = handle.reload!();
+      });
+      expect(sessionReadsCount).toBe(3);
+
+      await advance(backoff.reduce((sum, delay) => sum + delay, 0) + 1000);
+      expect(sessionReadsCount).toBe(3);
+      expect(publishedAccount().isLoading).toBe(true);
+
+      await act(async () => {
+        releaseNewer();
+        await second;
+      });
+      expect(publishedAccount().accountMember).toEqual({ id: "from-newer" });
+      expect(publishedAccount().isLoading).toBe(false);
+    });
+
+    it("cancels a pending retry when the identity client changes", async () => {
+      let readsOnA = 0;
+      const fetchImpl = jest.fn((url: string) => {
+        const target = String(url);
+        if (target.startsWith("/api/a/") && target.endsWith("/get-session")) {
+          readsOnA += 1;
+          if (readsOnA === 1) {
+            return jsonResponse({ session: { epMemberId: "member-a" } });
+          }
+          return jsonResponse({ message: "unavailable" }, false);
+        }
+        if (target.startsWith("/api/b/") && target.endsWith("/get-session")) {
+          return jsonResponse({ session: { epMemberId: "member-b" } });
+        }
+        if (target.includes("/account/roster")) {
+          return jsonResponse({ accounts: [], total: 0 });
+        }
+        return jsonResponse({}, false);
+      });
+      (global as unknown as { fetch: typeof fetch }).fetch =
+        fetchImpl as typeof fetch;
+      const handle: { reload?: () => Promise<void> } = {};
+      const tree = (basePath: string) => (
+        <ShopperContext basePath={basePath}>
+          <EPAccountProvider>
+            <ReloadHandle handle={handle} />
+          </EPAccountProvider>
+        </ShopperContext>
+      );
+      const { rerender } = render(tree("/api/a"));
+      await flushPromises();
+      expect(publishedAccount().accountMember).toEqual({ id: "member-a" });
+
+      let failed: Promise<void> = Promise.resolve();
+      await act(async () => {
+        failed = handle.reload!().then(
+          () => undefined,
+          () => undefined
+        );
+      });
+      await flushPromises();
+      await act(async () => {
+        await failed;
+      });
+      expect(readsOnA).toBe(2);
+
+      rerender(tree("/api/b"));
+      await flushPromises();
+      expect(publishedAccount().accountMember).toEqual({ id: "member-b" });
+
+      await advance(backoff[backoff.length - 1] * 4);
+      expect(readsOnA).toBe(2);
+      expect(sessionReads(fetchImpl, "/api/a/")).toHaveLength(2);
+      expect(publishedAccount().accountMember).toEqual({ id: "member-b" });
+    });
+
+    it("cancels a pending retry when the provider unmounts", async () => {
+      let sessionReadsCount = 0;
+      const fetchImpl = jest.fn((url: string) => {
+        if (String(url).endsWith("/get-session")) {
+          sessionReadsCount += 1;
+          if (sessionReadsCount === 1) {
+            return jsonResponse({ session: { epMemberId: "member-1" } });
+          }
+          return jsonResponse({ message: "unavailable" }, false);
+        }
+        return jsonResponse({ accounts: [], total: 0 });
+      });
+      (global as unknown as { fetch: typeof fetch }).fetch =
+        fetchImpl as typeof fetch;
+      const handle: { reload?: () => Promise<void> } = {};
+      const { unmount } = render(
+        <EPAccountProvider>
+          <ReloadHandle handle={handle} />
+        </EPAccountProvider>
+      );
+      await flushPromises();
+
+      let failed: Promise<void> = Promise.resolve();
+      await act(async () => {
+        failed = handle.reload!().then(
+          () => undefined,
+          () => undefined
+        );
+      });
+      await flushPromises();
+      await act(async () => {
+        await failed;
+      });
+      expect(sessionReadsCount).toBe(2);
+
+      unmount();
+      await advance(backoff[backoff.length - 1] * 4);
+      expect(sessionReadsCount).toBe(2);
+    });
+
+    it("spaces repeated failures so requests do not overlap", async () => {
+      let sessionReadsCount = 0;
+      let releaseHeld: ((fail: boolean) => void) | null = null;
+      const fetchImpl = jest.fn((url: string) => {
+        const target = String(url);
+        if (target.endsWith("/get-session")) {
+          sessionReadsCount += 1;
+          if (sessionReadsCount === 1) {
+            return jsonResponse({ session: { epMemberId: "member-1" } });
+          }
+          if (sessionReadsCount === 2) {
+            return jsonResponse({ message: "unavailable" }, false);
+          }
+          return new Promise((resolve) => {
+            releaseHeld = (fail: boolean) => {
+              resolve(
+                fail
+                  ? {
+                      ok: false,
+                      json: () => Promise.resolve({ message: "unavailable" }),
+                    }
+                  : {
+                      ok: true,
+                      json: () =>
+                        Promise.resolve({
+                          session: { epMemberId: "member-recovered" },
+                        }),
+                    }
+              );
+            };
+          });
+        }
+        if (target.includes("/account/roster")) {
+          return jsonResponse({ accounts: [], total: 0 });
+        }
+        return jsonResponse({}, false);
+      });
+      (global as unknown as { fetch: typeof fetch }).fetch =
+        fetchImpl as typeof fetch;
+      const handle: { reload?: () => Promise<void> } = {};
+      render(
+        <EPAccountProvider>
+          <ReloadHandle handle={handle} />
+          <EPAccountGate when="authenticated">
+            <span data-testid="signed-in">Signed in</span>
+          </EPAccountGate>
+        </EPAccountProvider>
+      );
+      await flushPromises();
+
+      let failed: Promise<void> = Promise.resolve();
+      await act(async () => {
+        failed = handle.reload!().then(
+          () => undefined,
+          () => undefined
+        );
+      });
+      await flushPromises();
+      await act(async () => {
+        await failed;
+      });
+      expect(sessionReadsCount).toBe(2);
+      expect(publishedAccount().isLoading).toBe(true);
+
+      await advance(backoff[0] - 1);
+      expect(sessionReadsCount).toBe(2);
+
+      await advance(1);
+      expect(sessionReadsCount).toBe(3);
+      expect(releaseHeld).toBeTruthy();
+      const releaseFirstRetry = releaseHeld!;
+      releaseHeld = null;
+
+      await advance(backoff[backoff.length - 1] * 4);
+      expect(sessionReadsCount).toBe(3);
+
+      await act(async () => {
+        releaseFirstRetry(true);
+      });
+      await flushPromises();
+      expect(sessionReadsCount).toBe(3);
+      expect(publishedAccount().isLoading).toBe(true);
+
+      await advance(backoff[1] - 1);
+      expect(sessionReadsCount).toBe(3);
+
+      await advance(1);
+      expect(sessionReadsCount).toBe(4);
+      expect(releaseHeld).toBeTruthy();
+      const releaseSecondRetry = releaseHeld!;
+
+      await advance(backoff[backoff.length - 1] * 4);
+      expect(sessionReadsCount).toBe(4);
+
+      await act(async () => {
+        releaseSecondRetry(false);
+      });
+      await flushPromises();
+      expect(publishedAccount().accountMember).toEqual({
+        id: "member-recovered",
+      });
+      expect(publishedAccount().isLoading).toBe(false);
+      expect(screen.getByTestId("signed-in")).toBeTruthy();
+    });
+
+    it("keeps retries after the listed delays at 30s", async () => {
+      expect([...backoff]).toEqual([1000, 2000, 4000, 8000, 16000, 30000]);
+      let sessionReadsCount = 0;
+      let releaseHeld: ((fail: boolean) => void) | null = null;
+      (global as unknown as { fetch: typeof fetch }).fetch = jest.fn(
+        (url: string) => {
+          const target = String(url);
+          if (target.endsWith("/get-session")) {
+            sessionReadsCount += 1;
+            if (sessionReadsCount === 1) {
+              return jsonResponse({ session: { epMemberId: "member-1" } });
+            }
+            if (sessionReadsCount === 2) {
+              return jsonResponse({ message: "unavailable" }, false);
+            }
+            return new Promise((resolve) => {
+              releaseHeld = (fail: boolean) => {
+                resolve({
+                  ok: !fail,
+                  json: () =>
+                    Promise.resolve(
+                      fail
+                        ? { message: "unavailable" }
+                        : { session: { epMemberId: "member-1" } }
+                    ),
+                });
+              };
+            });
+          }
+          if (target.includes("/account/roster")) {
+            return jsonResponse({ accounts: [], total: 0 });
+          }
+          return jsonResponse({}, false);
+        }
+      ) as typeof fetch;
+      const handle: { reload?: () => Promise<void> } = {};
+      render(
+        <EPAccountProvider>
+          <ReloadHandle handle={handle} />
+        </EPAccountProvider>
+      );
+      await flushPromises();
+
+      let failed: Promise<void> = Promise.resolve();
+      await act(async () => {
+        failed = handle.reload!().then(
+          () => undefined,
+          () => undefined
+        );
+      });
+      await flushPromises();
+      await act(async () => {
+        await failed;
+      });
+      expect(sessionReadsCount).toBe(2);
+
+      for (const delay of backoff) {
+        const before = sessionReadsCount;
+        await advance(delay - 1);
+        expect(sessionReadsCount).toBe(before);
+        await advance(1);
+        expect(sessionReadsCount).toBe(before + 1);
+        const release = releaseHeld!;
+        releaseHeld = null;
+        await act(async () => {
+          release(true);
+        });
+        await flushPromises();
+        expect(sessionReadsCount).toBe(before + 1);
+      }
+
+      const beforeCap = sessionReadsCount;
+      await advance(backoff[backoff.length - 1] - 1);
+      expect(sessionReadsCount).toBe(beforeCap);
+      await advance(1);
+      expect(sessionReadsCount).toBe(beforeCap + 1);
+    });
+  });
+
   describe("design-time preview", () => {
     beforeEach(() => {
       mockUsePlasmicCanvasContext.mockReturnValue(true);
@@ -534,14 +1337,16 @@ describe("EPAccountProvider", () => {
   });
 
   describe("registration", () => {
-    it("has the Accounts provider meta shape and no refActions", () => {
+    it("has the Accounts provider meta shape and a logout refAction", () => {
       expect(epAccountProviderMeta.name).toBe(
         "plasmic-commerce-ep-account-provider"
       );
       expect(epAccountProviderMeta.displayName).toBe("EP Account Provider");
       expect(epAccountProviderMeta.providesData).toBe(true);
       expect(epAccountProviderMeta.importName).toBe("EPAccountProvider");
-      expect(epAccountProviderMeta.refActions).toBeUndefined();
+      expect(epAccountProviderMeta.refActions?.logout).toEqual(
+        expect.objectContaining({ argTypes: [] })
+      );
       const previewState = (epAccountProviderMeta.props as any).previewState;
       expect(
         previewState.options.map((o: { value: string }) => o.value)

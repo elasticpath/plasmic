@@ -92,9 +92,21 @@ pattern as `EPCheckoutProvider`: explicit values force one of the four
 fixtures so Gates and Fields can be composed; `auto` uses live session
 identity when a member is present, otherwise the selected-account
 fixture. The published page always reads the live session and ignores
-Preview State. No login, logout or account-switching action exists yet —
-the Provider only reads — and `accountMember` carries an id and nothing
-else, so no member profile field (name, email) is in the contract.
+Preview State. `accountMember` carries an id and nothing else, so no
+member profile field (name, email) is in the contract.
+
+Login is composable rather than a single form component.
+`EPAccountLoginFormProvider` owns the username and password internally and
+publishes only `$ctx.accountLoginFormData` (`status`, `error`,
+`isSubmitting`). `EPAccountFormField` is the one field component: `name`
+is `username` or `password`, and `inputType` is `text`, `email`, or
+`password`. A normal Studio button calls the Login Form Provider's
+`submit()` ref action. That signs in through the shared identity client
+and asks the Account Provider to reload. A normal Studio button calls the
+Account Provider's `logout()` ref action, which signs out through the
+same client and reloads account state. Both actions no-op in the Plasmic
+canvas; the real mutations run at runtime and in interactive preview.
+Account switching is still not a registered action.
 
 ### Changed
 
