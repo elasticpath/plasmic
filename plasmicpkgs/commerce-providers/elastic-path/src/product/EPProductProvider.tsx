@@ -1,5 +1,6 @@
 /**
- * EPProductProvider — fetches a single product by ID and exposes it to
+ * EPProductProvider — fetches a single product by product reference (its slug,
+ * or its id when it has none) and exposes it to
  * descendants via `<DataProvider name="currentProduct">`.
  *
  * Companion to EPProductListProvider / EPRelatedProductsProvider: drop it
@@ -122,7 +123,7 @@ const MOCK_PRODUCT: Product = mockProduct({
   id: "mock-product",
   name: "Sample Product",
   description:
-    "This is a placeholder product shown only at design time. Add a real product ID (or bind productId to $ctx.params.slug) to fetch live data.",
+    "This is a placeholder product shown only at design time. Set Product ID or slug (usually bound to $ctx.params.slug) to fetch live data.",
   slug: "sample-product",
   sku: "MOCK-SKU",
   amount: 13500,
@@ -163,7 +164,7 @@ export const epProductProviderMeta: CodeComponentMeta<EPProductProviderProps> =
     name: "plasmic-commerce-ep-product-provider",
     displayName: "EP Product Provider",
     description:
-      "Fetches a single product from Elastic Path by ID and exposes it as `currentProduct` to children. Bind productId to $ctx.params.slug on a /product/[slug] page to wire up a PDP end-to-end.",
+      "Fetches a single product from Elastic Path by slug or ID and exposes it as `currentProduct` to children. On a /product/[slug] page, bind Product ID or slug to $ctx.params.slug to wire up a PDP end-to-end.",
     props: {
       children: {
         type: "slot",
@@ -191,15 +192,15 @@ export const epProductProviderMeta: CodeComponentMeta<EPProductProviderProps> =
       },
       productId: {
         type: "string",
-        displayName: "Product ID",
+        displayName: "Product ID or slug",
         description:
-          "Elastic Path product ID. Usually bound to $ctx.params.slug on /product/[slug] pages.",
+          "A product reference: the product's slug, or its ID when it has none. Usually bound to $ctx.params.slug on /product/[slug] pages.",
       },
       product: {
         type: "object",
         displayName: "Product (pre-fetched)",
         description:
-          "Bind to a Plasmic Server Query result (e.g. $q.product.data) to SSR the product from the catch-all route instead of fetching client-side. Leave empty to use the legacy client-fetch path based on Product ID.",
+          "Bind to a Server Query result (e.g. $q.product.data) to SSR the product from the catch-all route instead of fetching client-side. Leave empty to use the legacy client-fetch path based on Product ID or slug.",
         advanced: true,
       },
       previewState: {
@@ -208,7 +209,7 @@ export const epProductProviderMeta: CodeComponentMeta<EPProductProviderProps> =
         defaultValue: "auto",
         displayName: "Preview State",
         description:
-          "Controls which state is rendered inside Studio / MCP preview. `auto` uses real data when available, falling back to a mock product.",
+          "Controls which state is rendered inside Studio / MCP preview. `auto` uses real data when available, shows Empty Content when Product ID or slug names no product, and otherwise falls back to a mock product.",
       },
     },
     providesData: true,
@@ -254,15 +255,16 @@ export function EPProductProvider(props: EPProductProviderProps) {
   const isLoading = hasPrefetched ? false : swr.isLoading;
   const error = hasPrefetched ? undefined : swr.error;
 
-  const effectiveState: Exclude<PreviewState, "auto"> | "withData" = (() => {
+  // `null` is a read that ran and found nothing; `undefined` is one that has
+  // not run. The canvas shows the sample product only for the latter and for a
+  // failed read, so a reference that finds nothing is visible while authoring.
+  const effectiveState: Exclude<PreviewState, "auto"> = (() => {
     if (inCanvas && previewState !== "auto") return previewState;
-    if (isLoading && !product) return "loading";
-    if (error && !product) return "error";
-    if (!productId || (!product && !isLoading && !error)) {
-      // Canvas with no productId → render mock so designers see SOMETHING
-      return inCanvas ? "withData" : "empty";
-    }
-    return "withData";
+    if (product) return "withData";
+    if (isLoading) return "loading";
+    if (product === null) return "empty";
+    if (error) return inCanvas ? "withData" : "error";
+    return inCanvas ? "withData" : "empty";
   })();
 
   // Decide which product value flows through DataProvider. Studio canvas

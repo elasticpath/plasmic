@@ -1,4 +1,4 @@
-# ADR-0005: One EP host allow-list, extended not replaced, admitted at mint
+# ADR-0006: One EP host allow-list, extended not replaced, admitted at mint
 
 ## Status
 

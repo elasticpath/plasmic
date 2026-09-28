@@ -7,6 +7,15 @@ jest.mock("@plasmicapp/query", () => ({
     mockUseMutablePlasmicQueryData(...a),
 }));
 
+const mockGetByContextProduct = jest.fn();
+const mockGetByContextAllProducts = jest.fn();
+jest.mock("@epcc-sdk/sdks-shopper", () => ({
+  getByContextProduct: (...a: unknown[]) => mockGetByContextProduct(...a),
+  getByContextAllProducts: (...a: unknown[]) =>
+    mockGetByContextAllProducts(...a),
+  getByContextChildProducts: jest.fn(),
+}));
+
 const mockUseEpCommerce = jest.fn();
 jest.mock("../shopper-context/EpCommerceContext", () => ({
   useEpCommerce: (...a: unknown[]) => mockUseEpCommerce(...a),
@@ -71,5 +80,62 @@ describe("useProduct", () => {
       expect.any(Function),
       expect.any(Object)
     );
+  });
+
+  // The query hook reports a null key as loading forever: no data, no error.
+  it.each([
+    ["no reference is given", {}, true],
+    ["no provider is configured", { id: "prod-1" }, false],
+  ])("reports not loading when %s", (_, input, withProvider) => {
+    if (!withProvider) mockUseEpCommerce.mockReturnValue(null);
+    mockUseMutablePlasmicQueryData.mockReturnValue({
+      data: undefined,
+      error: undefined,
+      isLoading: true,
+    });
+
+    const { result } = renderHook(() => useProduct(input));
+
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  describe("fetcher", () => {
+    // The hook hands its fetcher to SWR; run the one it registered.
+    function runFetcher(id: string) {
+      renderHook(() => useProduct({ id }));
+      const fetcher = mockUseMutablePlasmicQueryData.mock.calls[0][1];
+      return fetcher();
+    }
+
+    it("resolves a slug to the product it names", async () => {
+      mockGetByContextAllProducts.mockResolvedValue({
+        data: { data: [{ id: "prod-1", attributes: { slug: "blue-shirt" } }] },
+      });
+
+      const product = await runFetcher("blue-shirt");
+
+      expect(product?.id).toBe("prod-1");
+    });
+
+    it("returns null when the reference names no product", async () => {
+      mockGetByContextAllProducts.mockResolvedValue({ data: { data: [] } });
+
+      await expect(runFetcher("gone")).resolves.toBeNull();
+    });
+
+    it("rejects when the read fails, so SWR reports an error", async () => {
+      mockGetByContextAllProducts.mockResolvedValue({
+        error: { errors: [] },
+        response: { status: 503 },
+      });
+
+      await expect(runFetcher("blue-shirt")).rejects.toThrow();
+    });
+
+    it("rejects when the request itself throws", async () => {
+      mockGetByContextAllProducts.mockRejectedValue(new TypeError("offline"));
+
+      await expect(runFetcher("blue-shirt")).rejects.toThrow("offline");
+    });
   });
 });

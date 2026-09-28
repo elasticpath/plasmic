@@ -73,8 +73,15 @@ const EP_FUNCTIONS: EpFunctionSpec[] = [
     fn: epGetProduct,
     name: "getProduct",
     description:
-      "Fetch a single EP product by ID, server-side. Returns null when the product is missing.",
-    params: [{ name: "id", type: "string", description: "EP product UUID." }],
+      "Fetch a single Elastic Path product by slug or ID, server-side. Returns null when no product matches.",
+    params: [
+      {
+        name: "id",
+        type: "string",
+        description:
+          "A product reference: the product's slug, or its ID when it has none. Usually bound to $ctx.params.slug.",
+      },
+    ],
   },
   {
     fn: epGetCart,
