@@ -27,20 +27,15 @@ import { PLASMIC } from "@/plasmic-init";
  */
 const SECRET = process.env.CHECKOUT_SESSION_SECRET;
 
-export const EP_HOST_ALLOWLIST = process.env.EP_HOST_ALLOWLIST?.split(",")
-  .map((h) => h.trim())
-  .filter(Boolean);
-
 export const epAuth = createBetterEpAuth({
   clientId: "bootstrap-placeholder",
   host: "https://useast.api.elasticpath.com",
   secret: SECRET,
   baseURL: process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3456",
   basePath: "/api/ep",
-  hostAllowlist: EP_HOST_ALLOWLIST,
   passwordProfileId: process.env.EP_PASSWORD_PROFILE_ID,
-  resolveConfig: async () => {
-    const config = await getEpProviderConfig();
+  resolveConfig: async ({ hostAllowlist }) => {
+    const config = await getEpProviderConfig(hostAllowlist);
     if (!config) return null;
     return { clientId: config.clientId, host: config.host };
   },
@@ -55,7 +50,9 @@ export const epAuth = createBetterEpAuth({
  * bundle which gets refetched when the project version bumps.
  */
 let _configPromise: Promise<EpProviderBundleConfig | null> | null = null;
-export function getEpProviderConfig(): Promise<EpProviderBundleConfig | null> {
+export function getEpProviderConfig(
+  hostAllowlist: readonly string[]
+): Promise<EpProviderBundleConfig | null> {
   if (!_configPromise) {
     _configPromise = (async () => {
       // The EP Provider globalContext config is part of the project bundle —
@@ -66,31 +63,8 @@ export function getEpProviderConfig(): Promise<EpProviderBundleConfig | null> {
       const pages = await PLASMIC.fetchPages();
       if (pages.length === 0) return null;
       const data = await PLASMIC.maybeFetchComponentData(pages[0].path);
-      return extractEpProviderConfig(data, {
-        hostAllowlist: EP_HOST_ALLOWLIST,
-      });
+      return extractEpProviderConfig(data, { hostAllowlist });
     })();
   }
   return _configPromise;
-}
-
-/**
- * @deprecated PRD #273 — `resolveConfig` on `createBetterEpAuth` makes this
- * redundant. Kept temporarily for any caller still passing
- * `epProviderHeaders()` to `epAuth.api.getSession({headers: ...})`.
- * The new auth ignores the headers; remove call sites and delete this
- * helper after the next release.
- */
-export async function epProviderHeaders(
-  prefetchedData?: unknown
-): Promise<Record<string, string>> {
-  const fromData = prefetchedData
-    ? extractEpProviderConfig(prefetchedData as any)
-    : null;
-  const config = fromData ?? (await getEpProviderConfig());
-  if (!config) return {};
-  return {
-    "x-ep-client-id": config.clientId,
-    "x-ep-host": config.host,
-  };
 }

@@ -7,7 +7,7 @@ import {
 } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
 import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
-import { epAuth, EP_HOST_ALLOWLIST } from "@/lib/ep-auth";
+import { epAuth } from "@/lib/ep-auth";
 
 export const revalidate = 60;
 
@@ -45,18 +45,10 @@ export default async function PlasmicLoaderPage({
     ),
   });
 
-
   // ---------------------------------------------------------------------------
   // Build EP session context + run Studio Server Queries (PRD #262 / #272)
   // ---------------------------------------------------------------------------
-  const epCtx = buildEpCtx(prefetchedData, {
-    session: {
-      accessToken: session.session?.accessToken,
-      cartId: session.cart?.id ?? undefined,
-      account: session.session?.account ?? null,
-    },
-    hostAllowlist: EP_HOST_ALLOWLIST,
-  });
+  const epCtx = buildEpCtx(session);
 
   const queryCtx = {
     pageRoute: pageMeta.path,

@@ -15,6 +15,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { betterAuth } from "better-auth";
 import { epPlugin } from "../ep-plugin";
+import { DEFAULT_HOST_ALLOWLIST } from "../../host-allowlist";
 import { createEpAuth } from "../create-ep-auth-better";
 
 const SECRET = "x".repeat(48);
@@ -50,7 +51,8 @@ function buildAuth() {
   return betterAuth({
     secret: SECRET,
     baseURL: "http://localhost:3000",
-    plugins: [epPlugin({ clientId: EP_CLIENT_ID, host: EP_HOST })],
+    plugins: [epPlugin({
+      hostAllowlist: DEFAULT_HOST_ALLOWLIST, clientId: EP_CLIENT_ID, host: EP_HOST })],
     session: {
       cookieCache: { enabled: true, strategy: "jwe", refreshCache: true },
     },

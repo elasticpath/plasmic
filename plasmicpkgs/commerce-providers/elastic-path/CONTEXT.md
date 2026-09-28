@@ -108,6 +108,15 @@ origins when cross-site, and pass when no browser origin signal exists
 layered with `SameSite=Lax` cookies, not CSRF tokens.
 _Avoid_: CORS check (CORS is response readability; the gate is request rejection)
 
+**EP host allow-list**:
+The one list of hosts an EP API host read from the Plasmic bundle may name:
+the Elastic Path-operated defaults plus whatever the operator adds. An
+operator's entries extend the defaults, never replace them. Resolved once,
+where the **trusted origin** list is, and read from there by every check.
+Needed because the bundle is designer-edited input; the operator's own
+`host` argument is theirs and is not checked against it.
+_Avoid_: hostAllowlist as a per-function option
+
 ### Identity & transport (ADR-0003)
 
 ADR-0003 decides this vocabulary. Entries marked *(not yet built)* name a

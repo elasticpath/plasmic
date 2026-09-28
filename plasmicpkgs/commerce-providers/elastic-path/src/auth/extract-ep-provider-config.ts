@@ -19,11 +19,7 @@
  * returns `null`, letting callers fall through to whatever defaults / env
  * vars they prefer.
  */
-import {
-  DEFAULT_HOST_ALLOWLIST,
-  isAllowedEpHost,
-  reportRejectedEpHost,
-} from "./host-allowlist";
+import { isAllowedEpHost, reportRejectedEpHost } from "./host-allowlist";
 
 export interface EpProviderBundleConfig {
   /** clientId configured on the EP Provider global context */
@@ -155,14 +151,17 @@ function resolveCandidateHost(c: ProviderCandidate): string | undefined {
 }
 
 export interface ExtractEpProviderConfigOptions {
-  hostAllowlist?: readonly string[];
+  /**
+   * The EP host allow-list. Inside `resolveConfig` it is the argument the
+   * plugin hands in; anywhere else read it from `epAuth.config.hostAllowlist`.
+   */
+  hostAllowlist: readonly string[];
 }
 
 export function extractEpProviderConfig(
   prefetchedData: ServerBundleLike | null | undefined,
-  opts?: ExtractEpProviderConfigOptions
+  { hostAllowlist }: ExtractEpProviderConfigOptions
 ): EpProviderBundleConfig | null {
-  const hostAllowlist = opts?.hostAllowlist ?? DEFAULT_HOST_ALLOWLIST;
   const allMods: BundleModule[] = [
     ...(prefetchedData?.bundle?.modules?.server ?? []),
     ...(prefetchedData?.bundle?.modules?.browser ?? []),

@@ -40,7 +40,7 @@ export interface RequestCheckoutContext {
 export async function buildCheckoutContext(
   request: Request
 ): Promise<RequestCheckoutContext> {
-  const config = await getEpProviderConfig();
+  const config = await getEpProviderConfig(epAuth.config.hostAllowlist);
   const clientId =
     config?.clientId ??
     process.env.EP_CLIENT_ID ??

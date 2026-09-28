@@ -9,6 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { betterAuth } from "better-auth";
 import { epPlugin } from "../ep-plugin";
+import { DEFAULT_HOST_ALLOWLIST } from "../../host-allowlist";
 import { createEpAuth } from "../create-ep-auth-better";
 import { createEpAuthRoutes } from "../auth-routes";
 
@@ -145,6 +146,7 @@ function buildAuth(options: { passwordProfileId?: string } = {}) {
     baseURL: "http://localhost:3000",
     plugins: [
       epPlugin({
+        hostAllowlist: DEFAULT_HOST_ALLOWLIST,
         clientId: EP_CLIENT_ID,
         host: EP_HOST,
         passwordProfileId: options.passwordProfileId,
