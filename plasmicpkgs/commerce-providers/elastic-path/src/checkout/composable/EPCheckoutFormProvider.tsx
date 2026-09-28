@@ -213,6 +213,7 @@ interface SessionBridge {
     payment?: { status?: string; gateway?: string | null } | null;
   } | null;
   updateSession?: (data: Record<string, unknown>) => Promise<unknown>;
+  calculateShipping?: () => Promise<unknown>;
   placeOrder?: () => Promise<
     | {
         success?: boolean;
@@ -347,6 +348,7 @@ export const EPCheckoutFormProvider = React.forwardRef<
       return;
     }
     const updateSession = sessionBridge?.updateSession;
+    const calculateShipping = sessionBridge?.calculateShipping;
     if (!updateSession) {
       shippingSyncRef.current = null;
       return;
@@ -358,9 +360,18 @@ export const EPCheckoutFormProvider = React.forwardRef<
       }
       try {
         const resp = (await updateSession({ shippingAddress: address })) as
-          | { success?: boolean }
+          | {
+              success?: boolean;
+              data?: { session?: { availableShippingRates?: unknown[] } };
+            }
           | undefined;
         if (resp && resp.success === false) return;
+        // An older server clears the rates on an address change without
+        // requoting, so ask for them once.
+        const rates = resp?.data?.session?.availableShippingRates;
+        if (Array.isArray(rates) && rates.length === 0 && calculateShipping) {
+          await calculateShipping();
+        }
         lastSyncedShippingRef.current = address;
       } catch (err) {
         log.warn("Shipping address sync failed", {
@@ -372,7 +383,12 @@ export const EPCheckoutFormProvider = React.forwardRef<
     return () => {
       shippingSyncRef.current?.clear();
     };
-  }, [inEditor, useSession, sessionBridge?.updateSession]);
+  }, [
+    inEditor,
+    useSession,
+    sessionBridge?.updateSession,
+    sessionBridge?.calculateShipping,
+  ]);
 
   useEffect(() => {
     if (inEditor || !useSession) return;
