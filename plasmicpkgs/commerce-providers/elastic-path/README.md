@@ -227,6 +227,10 @@ STRIPE_SECRET_KEY=sk_test_...
 # auth, the proxy's CORS reflection and the origin gate — add your Studio
 # origin here for cross-origin preview.
 BETTER_AUTH_TRUSTED_ORIGINS=https://studio.example.com
+
+# Optional: server log level. Unset, the server logs warnings and errors.
+# Takes the browser's EP_DEBUG values: "*", "silent", "error", "warn:Pay".
+EP_DEBUG=warn
 ```
 
 In production `createEpAuth` refuses to serve when the secret is missing, is
@@ -492,6 +496,25 @@ shopper to list prices with no signal.
 Mount the auth handler through `createEpAuthRoutes`, never better-auth's
 `toNextJsHandler` directly: better-auth's `/get-session` returns the whole
 session record, and this package keeps the shopper's EP access token on it.
+
+The checkout-session handlers are mounted one route each, under the
+`apiBaseUrl` the session provider is given:
+
+| Method | Path | Handler | Description |
+|--------|------|---------|-------------|
+| POST | `{apiBaseUrl}/checkout/sessions` | `handleCreateSession` | Open a session for the cart |
+| GET | `{apiBaseUrl}/checkout/sessions/current` | `handleGetSession` | Read the session |
+| PATCH | `{apiBaseUrl}/checkout/sessions/current` | `handleUpdateSession` | Merge fields; a changed shipping address requotes |
+| POST | `{apiBaseUrl}/checkout/sessions/current/shipping` | `handleCalculateShipping` | Requote on demand, for example after the cart changes |
+| POST | `{apiBaseUrl}/checkout/sessions/current/pay` | `handlePay` | Place the order and start payment |
+| POST | `{apiBaseUrl}/checkout/sessions/current/resume-payment` | `handleResumePayment` | Resume payment after a customer action |
+| POST | `{apiBaseUrl}/checkout/sessions/current/abandon-payment` | `handleAbandonPayment` | Unlink a failed or cancelled payment |
+| POST | `{apiBaseUrl}/checkout/sessions/current/confirm` | `handleConfirm` | Confirm a gateway action |
+
+A saved shipping address is a quoted address: the update runs the
+`shippingRateResolver` in the same write, so a host that mounts only the
+session route still offers rates. A resolver failure leaves the address saved
+with no rates; the `/shipping` route is the retry.
 
 ### Which cart wins at sign-in
 

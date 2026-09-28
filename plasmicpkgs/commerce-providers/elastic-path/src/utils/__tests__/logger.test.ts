@@ -98,39 +98,6 @@ describe("logger", () => {
   });
 
   // -----------------------------------------------------------------------
-  // SSR / localStorage undefined
-  // -----------------------------------------------------------------------
-  describe("SSR fallback (localStorage undefined)", () => {
-    it("should fall back to silent when localStorage is undefined", () => {
-      const original = global.localStorage;
-      // Temporarily remove localStorage to simulate SSR
-      Object.defineProperty(global, "localStorage", {
-        value: undefined,
-        writable: true,
-      });
-
-      resetConfig();
-      const log = getLogger("EPProduct");
-
-      log.debug("should not appear");
-      log.info("should not appear");
-      log.warn("should not appear");
-      log.error("should not appear");
-
-      expect(debugSpy).not.toHaveBeenCalled();
-      expect(infoSpy).not.toHaveBeenCalled();
-      expect(warnSpy).not.toHaveBeenCalled();
-      expect(errorSpy).not.toHaveBeenCalled();
-
-      // Restore for subsequent tests
-      Object.defineProperty(global, "localStorage", {
-        value: original,
-        writable: true,
-      });
-    });
-  });
-
-  // -----------------------------------------------------------------------
   // Wildcard "*" config
   // -----------------------------------------------------------------------
   describe('"*" enables all modules at DEBUG', () => {
@@ -559,6 +526,56 @@ describe("logger", () => {
       log.error("no");
 
       expect(debugSpy).not.toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("on the server (no localStorage)", () => {
+    const savedLocalStorage = (global as any).localStorage;
+    const savedEpDebug = process.env.EP_DEBUG;
+
+    beforeEach(() => {
+      (global as any).localStorage = undefined;
+      delete process.env.EP_DEBUG;
+      resetConfig();
+    });
+
+    afterEach(() => {
+      (global as any).localStorage = savedLocalStorage;
+      if (savedEpDebug === undefined) delete process.env.EP_DEBUG;
+      else process.env.EP_DEBUG = savedEpDebug;
+      resetConfig();
+    });
+
+    it("logs warnings and errors by default", () => {
+      const log = getLogger("UpdateSession");
+
+      log.debug("no");
+      log.info("no");
+      log.warn("yes");
+      log.error("yes");
+
+      expect(debugSpy).not.toHaveBeenCalled();
+      expect(infoSpy).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith("[EP:UpdateSession] yes");
+      expect(errorSpy).toHaveBeenCalledWith("[EP:UpdateSession] yes");
+    });
+
+    it("reads EP_DEBUG from the environment", () => {
+      process.env.EP_DEBUG = "*";
+      const log = getLogger("UpdateSession");
+
+      log.debug("yes");
+
+      expect(debugSpy).toHaveBeenCalledWith("[EP:UpdateSession] yes");
+    });
+
+    it("is silenced by EP_DEBUG=silent", () => {
+      process.env.EP_DEBUG = "silent";
+      const log = getLogger("UpdateSession");
+
+      log.error("no");
+
       expect(errorSpy).not.toHaveBeenCalled();
     });
   });

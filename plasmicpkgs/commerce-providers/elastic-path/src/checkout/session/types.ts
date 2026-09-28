@@ -294,15 +294,16 @@ export interface SessionHandlerContext {
    * Studio server query) feeds the checkout session without living in the
    * shared host or calling a (non-existent) EP shipping-rates endpoint.
    *
-   * `handleCalculateShipping` invokes it and persists the result into
+   * `handleUpdateSession` invokes it when the shipping address changes, and
+   * `handleCalculateShipping` on demand; both persist the result into
    * `session.availableShippingRates`. Because it runs SERVER-side, the amounts
    * it returns are trusted by `resolveShippingRate` and the /pay re-assertion —
    * the client only ever *selects* a rate id, never supplies an amount, and a
    * rate list is NEVER accepted from the browser (see ADR-0013).
    *
    * Omitting it means the store does not support server-computed shipping:
-   * `handleCalculateShipping` returns an empty rate list, and a checkout that
-   * requires shipping fails closed at /pay (no resolvable rate).
+   * the session holds an empty rate list, and a checkout that requires
+   * shipping fails closed at /pay (no resolvable rate).
    */
   shippingRateResolver?: (
     session: CheckoutSession

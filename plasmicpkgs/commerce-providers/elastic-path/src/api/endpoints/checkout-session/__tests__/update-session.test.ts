@@ -33,6 +33,10 @@ const { handleUpdateSession } = require("../update-session") as {
 const { EP_SHIPPING_LINE_SKU } = require("../../../../checkout/session/set-shipping-line") as {
   EP_SHIPPING_LINE_SKU: string;
 };
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { resetLogConfig } = require("../../../../utils/logger") as {
+  resetLogConfig: typeof import("../../../../utils/logger").resetLogConfig;
+};
 import type {
   SessionHandlerContext,
   SessionRequest,
@@ -578,5 +582,176 @@ describe("handleUpdateSession — shipping address invalidates rates", () => {
       ctx
     );
     expect(epSdk.manageCarts).not.toHaveBeenCalled();
+  });
+});
+
+describe("handleUpdateSession — a changed shipping address requotes", () => {
+  const NEW_ADDRESS: SessionAddress = { ...ADDRESS, line1: "999 Oak Ave" };
+
+  const sessionWithRates = () =>
+    makeSession({
+      shippingAddress: ADDRESS,
+      selectedShippingRateId: "example-standard",
+      availableShippingRates: [EXAMPLE_STANDARD],
+      totals: SHIPPED_TOTALS,
+    });
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it("persists and returns the resolver's rates in the same write, with selection and shipping cleared", async () => {
+    const store = createMockStore(sessionWithRates());
+    const shippingRateResolver = jest.fn().mockResolvedValue(RATES);
+    const res = await handleUpdateSession(
+      createMockReq({ shippingAddress: NEW_ADDRESS }),
+      createMockCtx(null, { sessionStore: store, shippingRateResolver })
+    );
+
+    expect(res.status).toBe(200);
+    const session = (res.body as any).data.session;
+    expect(session.availableShippingRates).toEqual(RATES);
+    expect(session.selectedShippingRateId).toBeNull();
+    expect(session.totals).toEqual(BASE_TOTALS);
+
+    expect(store.set).toHaveBeenCalledTimes(1);
+    const persisted: CheckoutSession = store.set.mock.calls[0][1];
+    expect(persisted.shippingAddress).toEqual(NEW_ADDRESS);
+    expect(persisted.availableShippingRates).toEqual(RATES);
+    expect(persisted.selectedShippingRateId).toBeNull();
+    expect(persisted.totals).toEqual(BASE_TOTALS);
+  });
+
+  it("quotes the session carrying the new address, not the stored one", async () => {
+    const shippingRateResolver = jest.fn().mockResolvedValue(RATES);
+    await handleUpdateSession(
+      createMockReq({ shippingAddress: NEW_ADDRESS }),
+      createMockCtx(sessionWithRates(), { shippingRateResolver })
+    );
+
+    expect(shippingRateResolver).toHaveBeenCalledTimes(1);
+    const quoted: CheckoutSession = shippingRateResolver.mock.calls[0][0];
+    expect(quoted.shippingAddress).toEqual(NEW_ADDRESS);
+    expect(quoted.id).toBe("sess-1");
+  });
+
+  it("does not requote an equivalent address, and keeps rates, selection and totals", async () => {
+    const store = createMockStore(sessionWithRates());
+    const shippingRateResolver = jest.fn().mockResolvedValue(RATES);
+    const res = await handleUpdateSession(
+      createMockReq({ shippingAddress: { ...ADDRESS, line2: "" } }),
+      createMockCtx(null, { sessionStore: store, shippingRateResolver })
+    );
+
+    expect(shippingRateResolver).not.toHaveBeenCalled();
+    const persisted: CheckoutSession = store.set.mock.calls[0][1];
+    expect(persisted.availableShippingRates).toEqual([EXAMPLE_STANDARD]);
+    expect(persisted.selectedShippingRateId).toBe("example-standard");
+    expect(persisted.totals).toEqual(SHIPPED_TOTALS);
+    expect((res.body as any).data.session.availableShippingRates).toEqual([EXAMPLE_STANDARD]);
+  });
+
+  it("ignores a stale selectedShippingRateId even when the requote offers that rate", async () => {
+    const shippingRateResolver = jest.fn().mockResolvedValue(RATES);
+    const res = await handleUpdateSession(
+      createMockReq({ shippingAddress: NEW_ADDRESS, selectedShippingRateId: "rate-express" }),
+      createMockCtx(sessionWithRates(), {
+        shippingRateResolver,
+        getClientCredentialsToken: jest.fn(async () => "ADMIN-TOKEN"),
+      })
+    );
+    const session = (res.body as any).data.session;
+    expect(session.availableShippingRates).toEqual(RATES);
+    expect(session.selectedShippingRateId).toBeNull();
+    expect(session.totals).toEqual(BASE_TOTALS);
+    expect(epSdk.manageCarts).not.toHaveBeenCalled();
+  });
+
+  it("does not requote an update that carries no shipping address", async () => {
+    const shippingRateResolver = jest.fn().mockResolvedValue(RATES);
+    await handleUpdateSession(
+      createMockReq({ customerInfo: CUSTOMER_INFO }),
+      createMockCtx(sessionWithRates(), { shippingRateResolver })
+    );
+    expect(shippingRateResolver).not.toHaveBeenCalled();
+  });
+
+  it("requotes when the session does not require shipping", async () => {
+    const shippingRateResolver = jest.fn().mockResolvedValue(RATES);
+    const res = await handleUpdateSession(
+      createMockReq({ shippingAddress: NEW_ADDRESS, requiresShipping: false }),
+      createMockCtx(sessionWithRates(), { shippingRateResolver })
+    );
+    expect(shippingRateResolver).toHaveBeenCalledTimes(1);
+    expect((res.body as any).data.session.availableShippingRates).toEqual(RATES);
+  });
+
+  it("coerces a non-array resolver result to an empty list", async () => {
+    const store = createMockStore(sessionWithRates());
+    const shippingRateResolver = jest.fn().mockResolvedValue({ rates: RATES });
+    await handleUpdateSession(
+      createMockReq({ shippingAddress: NEW_ADDRESS }),
+      createMockCtx(null, { sessionStore: store, shippingRateResolver })
+    );
+    const persisted: CheckoutSession = store.set.mock.calls[0][1];
+    expect(persisted.availableShippingRates).toEqual([]);
+  });
+
+  it("persists the address with an empty list when no resolver is wired", async () => {
+    const store = createMockStore(sessionWithRates());
+    const res = await handleUpdateSession(
+      createMockReq({ shippingAddress: NEW_ADDRESS }),
+      createMockCtx(null, { sessionStore: store })
+    );
+    expect(res.status).toBe(200);
+    const persisted: CheckoutSession = store.set.mock.calls[0][1];
+    expect(persisted.shippingAddress).toEqual(NEW_ADDRESS);
+    expect(persisted.availableShippingRates).toEqual([]);
+  });
+
+  describe("when the resolver throws", () => {
+    let errorSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      (globalThis as { localStorage?: unknown }).localStorage = {
+        getItem: () => "*",
+      };
+      resetLogConfig();
+      errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+      jest.spyOn(console, "info").mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+      delete (globalThis as { localStorage?: unknown }).localStorage;
+      resetLogConfig();
+    });
+
+    it("returns 200, persists the address with an empty list, and logs the session and cart ids", async () => {
+      const store = createMockStore(sessionWithRates());
+      const shippingRateResolver = jest.fn().mockRejectedValue(new Error("carrier down"));
+      const res = await handleUpdateSession(
+        createMockReq({ shippingAddress: NEW_ADDRESS }),
+        createMockCtx(null, { sessionStore: store, shippingRateResolver })
+      );
+
+      expect(res.status).toBe(200);
+      expect((res.body as any).success).toBe(true);
+      expect((res.body as any).data.session.shippingAddress).toEqual(NEW_ADDRESS);
+      expect((res.body as any).data.session.availableShippingRates).toEqual([]);
+      expect(Object.keys((res.body as any).data)).toEqual(["session"]);
+
+      expect(store.set).toHaveBeenCalledTimes(1);
+      const persisted: CheckoutSession = store.set.mock.calls[0][1];
+      expect(persisted.shippingAddress).toEqual(NEW_ADDRESS);
+      expect(persisted.availableShippingRates).toEqual([]);
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Shipping rate resolver failed"),
+        expect.objectContaining({
+          sessionId: "sess-1",
+          cartId: "cart-abc",
+          error: "carrier down",
+        })
+      );
+    });
   });
 });

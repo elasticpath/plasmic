@@ -2,8 +2,9 @@
  * A-4.3: Update Checkout Session
  *
  * Merges partial updates (customerInfo, shippingAddress, billingAddress,
- * selectedShippingRateId) onto the existing session. Only permitted when the
- * session is in "open" status. Returns 410 if no session exists.
+ * selectedShippingRateId) onto the existing session. A changed shipping address
+ * requotes through the shipping rate resolver in the same write. Only permitted
+ * when the session is in "open" status. Returns 410 if no session exists.
  */
 import type {
   SessionRequest,
@@ -12,6 +13,7 @@ import type {
   CheckoutSession,
   ClientCheckoutSession,
   SessionTotals,
+  SessionShippingRate,
   UpdateSessionRequest,
 } from "../../../checkout/session/types";
 import type { Cart } from "../../../types/cart";
@@ -42,6 +44,25 @@ function totalsWithoutShipping(totals: SessionTotals | null): SessionTotals | nu
     shipping: 0,
     total: totals.subtotal + totals.tax,
   };
+}
+
+/** Rates for a changed address; empty when the resolver is missing or fails. */
+async function requote(
+  session: CheckoutSession,
+  ctx: SessionHandlerContext
+): Promise<SessionShippingRate[]> {
+  if (!ctx.shippingRateResolver) return [];
+  try {
+    const resolved = await ctx.shippingRateResolver(session);
+    return Array.isArray(resolved) ? resolved : [];
+  } catch (err) {
+    log.error("Shipping rate resolver failed", {
+      sessionId: session.id,
+      cartId: session.cartId,
+      error: err instanceof Error ? err.message : String(err),
+    } as Record<string, unknown>);
+    return [];
+  }
 }
 
 export async function handleUpdateSession(
@@ -144,6 +165,10 @@ export async function handleUpdateSession(
         ? { selectedShippingRateId: update.selectedShippingRateId }
         : {}),
   };
+
+  if (shippingAddressChanged) {
+    updated = { ...updated, availableShippingRates: await requote(updated, ctx) };
+  }
 
   // When the shopper picks a shipping rate (an id only — never an amount), write
   // the SERVER-resolved cost into the cart credentialed so the cart shows it

@@ -290,6 +290,8 @@ _Avoid_: trusted cart line, server-priced line item
 The config-time `shippingRateResolver` hook on `SessionHandlerContext` that
 sources `availableShippingRates` server-side. The only correct path for real
 shipping charges — never `applyCartAdjustment` with `kind: "shipping"`.
+A shipping-address write requotes through it, so a saved address is a quoted
+address unless the resolver failed; the explicit requote is for on-demand use.
 
 ### Product & cart shapes
 

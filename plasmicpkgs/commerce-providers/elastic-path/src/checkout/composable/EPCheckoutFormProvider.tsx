@@ -213,7 +213,6 @@ interface SessionBridge {
     payment?: { status?: string; gateway?: string | null } | null;
   } | null;
   updateSession?: (data: Record<string, unknown>) => Promise<unknown>;
-  calculateShipping?: () => Promise<unknown>;
   placeOrder?: () => Promise<
     | {
         success?: boolean;
@@ -348,8 +347,7 @@ export const EPCheckoutFormProvider = React.forwardRef<
       return;
     }
     const updateSession = sessionBridge?.updateSession;
-    const calculateShipping = sessionBridge?.calculateShipping;
-    if (!updateSession || !calculateShipping) {
+    if (!updateSession) {
       shippingSyncRef.current = null;
       return;
     }
@@ -363,7 +361,6 @@ export const EPCheckoutFormProvider = React.forwardRef<
           | { success?: boolean }
           | undefined;
         if (resp && resp.success === false) return;
-        await calculateShipping();
         lastSyncedShippingRef.current = address;
       } catch (err) {
         log.warn("Shipping address sync failed", {
@@ -375,12 +372,7 @@ export const EPCheckoutFormProvider = React.forwardRef<
     return () => {
       shippingSyncRef.current?.clear();
     };
-  }, [
-    inEditor,
-    useSession,
-    sessionBridge?.updateSession,
-    sessionBridge?.calculateShipping,
-  ]);
+  }, [inEditor, useSession, sessionBridge?.updateSession]);
 
   useEffect(() => {
     if (inEditor || !useSession) return;
