@@ -151,6 +151,52 @@ describe("EPCheckoutFormProvider shipping sync", () => {
     });
   });
 
+  it("requotes once when the update returns no rates, as an older server does", async () => {
+    const order: string[] = [];
+    mockUpdateSession.mockImplementation(async () => {
+      order.push("update");
+      return { success: true, data: { session: { availableShippingRates: [] } } };
+    });
+    mockCalculateShipping.mockImplementation(async () => {
+      order.push("calculate");
+      return { success: true };
+    });
+
+    const handleRef = { current: null as FormHandle | null };
+    render(
+      <EPCheckoutFormProvider>
+        <FormHarness seed={COMPLETE_SHIPPING} handleRef={handleRef} />
+      </EPCheckoutFormProvider>
+    );
+
+    await waitFor(() => {
+      expect(mockCalculateShipping).toHaveBeenCalledTimes(1);
+    });
+    expect(order).toEqual(["update", "calculate"]);
+  });
+
+  it("does not requote when the update already returns rates", async () => {
+    mockUpdateSession.mockResolvedValue({
+      success: true,
+      data: { session: { availableShippingRates: [{ id: "rate-standard" }] } },
+    });
+
+    const handleRef = { current: null as FormHandle | null };
+    render(
+      <EPCheckoutFormProvider>
+        <FormHarness seed={COMPLETE_SHIPPING} handleRef={handleRef} />
+      </EPCheckoutFormProvider>
+    );
+
+    await waitFor(() => {
+      expect(mockUpdateSession).toHaveBeenCalledTimes(1);
+    });
+    await act(async () => {
+      await delay(50);
+    });
+    expect(mockCalculateShipping).not.toHaveBeenCalled();
+  });
+
   it("debounces repeated field edits into one address update", async () => {
     const handleRef = { current: null as FormHandle | null };
     render(

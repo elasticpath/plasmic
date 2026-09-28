@@ -216,7 +216,9 @@ behaviour. The browser stays silent unless `EP_DEBUG` is set there.
 
 The managed-form checkout no longer sends a second request after an address
 change. It called the update and then the requote, so a tenant's resolver ran
-twice for every address the shopper typed.
+twice for every address the shopper typed. When the update returns no rates, as
+a server on an earlier version does, the form still requotes once, so an app
+host whose server is behind its loader bundle keeps offering rates.
 
 ### Removed
 
