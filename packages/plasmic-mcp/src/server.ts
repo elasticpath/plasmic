@@ -1194,29 +1194,10 @@ export function createServer(): McpServer {
         pageParams: z.record(z.string()).optional().describe('For preview-url on page components: path-param values to substitute into the pageMeta.path template. e.g. {slug:"test-product"} on route /product/[slug] → /preview/product/test-product. Unspecified keys fall back to pageMeta.params defaults.'),
         pageQuery: z.record(z.string()).optional().describe('For preview-url on page components: query-string values appended as ?k=v. Merged over pageMeta.query defaults.'),
       },
-      outputSchema: {
-        // Union of output shapes per action. All fields optional since each action
-        // returns a different subset. z.unknown() on complex fields keeps validation permissive.
-        // tree action output:
-        name: z.string().optional().describe("Component name (tree/summary)"),
-        uuid: z.string().optional().describe("Component UUID (tree/summary)"),
-        path: z.string().optional().describe("Page path if page component (tree)"),
-        tree: z.unknown().optional().describe("TreeNode root: {type,tag,layoutHint,styles,children,...} (tree/subtree)"),
-        truncated: z.boolean().optional().describe("Whether tree was truncated (tree)"),
-        totalNodes: z.number().optional().describe("Total Tpl node count (tree)"),
-        nodesShown: z.number().optional().describe("Nodes included after truncation (tree)"),
-        hint: z.string().optional().describe("Truncation guidance (tree)"),
-        // list-design-system output:
-        tokenCount: z.number().optional().describe("Number of design tokens (list-design-system)"),
-        tokens: z.unknown().optional().describe("Tokens grouped by type: {Color:[{name,value},...],Spacing:[...]} (list-design-system)"),
-        mixinCount: z.number().optional().describe("Number of mixins (list-design-system)"),
-        mixins: z.unknown().optional().describe("Array of mixin summaries (list-design-system)"),
-        themeCount: z.number().optional().describe("Number of themes (list-design-system)"),
-        themes: z.unknown().optional().describe("Array of theme summaries (list-design-system)"),
-        note: z.string().optional().describe("Advisory note when design system is empty"),
-        // list-patterns output:
-        patterns: z.unknown().optional().describe("Array of {name,description,tags,customisationKeys} (list-patterns)"),
-      },
+      // No outputSchema. The SDK publishes it as JSON Schema draft-07, and a client
+      // whose validator only accepts 2020-12 (the Claude desktop app's does) rejects
+      // the schema itself, failing every inspect action. inspectResult() already
+      // returns the same data as JSON text, so declaring a schema gained nothing.
       annotations: { readOnlyHint: true },
     },
     async ({ action, componentUuid, nodeRef, maxDepth, maxChars, excludeStyles, summaryOnly, format, filter, pageParams, pageQuery }) => {
