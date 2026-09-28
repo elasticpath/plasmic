@@ -141,6 +141,13 @@ the rate list is empty, and the failure is logged. The `/shipping` route and
 the `calculateShipping` ref action are unchanged and are now the on-demand
 requote, for example after the cart changes.
 
+The server logs the package's warnings and errors. The logger read its level
+only from the browser's `localStorage`, so on the server every message was
+dropped, including a failed order reconciliation or a shipping-line write that
+could not authenticate. Set `EP_DEBUG` in the server environment with the
+browser's values to change the level; `EP_DEBUG=silent` restores the old
+behaviour. The browser stays silent unless `EP_DEBUG` is set there.
+
 The managed-form checkout no longer sends a second request after an address
 change. It called the update and then the requote, so a tenant's resolver ran
 twice for every address the shopper typed.

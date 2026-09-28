@@ -9,6 +9,9 @@
  *
  * Then reload the page. Call resetLogConfig() after changing the value
  * without a reload.
+ *
+ * On the server, set the EP_DEBUG environment variable with the same values.
+ * Unset, the server logs warnings and errors.
  */
 
 export enum LogLevel {
@@ -34,60 +37,57 @@ const LEVEL_NAMES: Record<string, LogLevel> = {
 
 let cachedConfig: LogConfig | null = null;
 
+function parseConfig(raw: string): LogConfig {
+  const trimmed = raw.trim().toLowerCase();
+
+  if (trimmed === "*") {
+    return { level: LogLevel.DEBUG, modules: "*" };
+  }
+
+  // Check for "level:modules" format
+  const colonIndex = raw.indexOf(":");
+  if (colonIndex > 0) {
+    const levelStr = raw.slice(0, colonIndex).trim().toLowerCase();
+    const modulesStr = raw.slice(colonIndex + 1).trim();
+    const level = LEVEL_NAMES[levelStr] ?? LogLevel.DEBUG;
+    const modules =
+      modulesStr === "*"
+        ? ("*" as const)
+        : new Set(modulesStr.split(",").map((m) => m.trim()));
+    return { level, modules };
+  }
+
+  // Check if the entire value is a level name
+  if (trimmed in LEVEL_NAMES) {
+    return { level: LEVEL_NAMES[trimmed], modules: "*" };
+  }
+
+  // Otherwise treat as comma-separated module names at DEBUG level
+  return {
+    level: LogLevel.DEBUG,
+    modules: new Set(raw.split(",").map((m) => m.trim())),
+  };
+}
+
 function readConfig(): LogConfig {
   if (cachedConfig) return cachedConfig;
 
-  const defaultConfig: LogConfig = { level: LogLevel.SILENT, modules: "*" };
-
+  // On the server a failure must reach the host's logs, so warnings and
+  // errors are on by default there; the browser console stays quiet.
   if (typeof localStorage === "undefined") {
-    cachedConfig = defaultConfig;
+    const raw = typeof process !== "undefined" ? process.env?.EP_DEBUG : undefined;
+    cachedConfig = raw ? parseConfig(raw) : { level: LogLevel.WARN, modules: "*" };
     return cachedConfig;
   }
 
+  const defaultConfig: LogConfig = { level: LogLevel.SILENT, modules: "*" };
   try {
     const raw = localStorage.getItem("EP_DEBUG");
-    if (!raw) {
-      cachedConfig = defaultConfig;
-      return cachedConfig;
-    }
-
-    const trimmed = raw.trim().toLowerCase();
-
-    if (trimmed === "*") {
-      cachedConfig = { level: LogLevel.DEBUG, modules: "*" };
-      return cachedConfig;
-    }
-
-    // Check for "level:modules" format
-    const colonIndex = raw.indexOf(":");
-    if (colonIndex > 0) {
-      const levelStr = raw.slice(0, colonIndex).trim().toLowerCase();
-      const modulesStr = raw.slice(colonIndex + 1).trim();
-      const level = LEVEL_NAMES[levelStr] ?? LogLevel.DEBUG;
-      const modules =
-        modulesStr === "*"
-          ? ("*" as const)
-          : new Set(modulesStr.split(",").map((m) => m.trim()));
-      cachedConfig = { level, modules };
-      return cachedConfig;
-    }
-
-    // Check if the entire value is a level name
-    if (trimmed in LEVEL_NAMES) {
-      cachedConfig = { level: LEVEL_NAMES[trimmed], modules: "*" };
-      return cachedConfig;
-    }
-
-    // Otherwise treat as comma-separated module names at DEBUG level
-    cachedConfig = {
-      level: LogLevel.DEBUG,
-      modules: new Set(raw.split(",").map((m) => m.trim())),
-    };
-    return cachedConfig;
+    cachedConfig = raw ? parseConfig(raw) : defaultConfig;
   } catch {
     cachedConfig = defaultConfig;
-    return cachedConfig;
   }
+  return cachedConfig;
 }
 
 export function resetLogConfig(): void {

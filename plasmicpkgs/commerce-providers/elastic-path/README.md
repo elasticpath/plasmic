@@ -227,6 +227,10 @@ STRIPE_SECRET_KEY=sk_test_...
 # auth, the proxy's CORS reflection and the origin gate — add your Studio
 # origin here for cross-origin preview.
 BETTER_AUTH_TRUSTED_ORIGINS=https://studio.example.com
+
+# Optional: server log level. Unset, the server logs warnings and errors.
+# Takes the browser's EP_DEBUG values: "*", "silent", "error", "warn:Pay".
+EP_DEBUG=warn
 ```
 
 In production `createEpAuth` refuses to serve when the secret is missing, is
