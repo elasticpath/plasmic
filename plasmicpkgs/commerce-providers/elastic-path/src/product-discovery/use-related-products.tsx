@@ -70,9 +70,14 @@ export function useRelatedProducts(
             product_id: productId!,
             custom_relationship_slug: relationshipSlug!,
           },
+          // Without `include` the response references each product's images
+          // by id only, and normalizeProductFromList finds no URL. The
+          // endpoint accepts it, but the SDK's generated type leaves it out —
+          // ep.getRelatedProducts casts for the same reason.
           query: {
             "page[limit]": BigInt(limit),
-          },
+            include: ["main_image", "files"],
+          } as any,
         });
 
         const products = response.data?.data

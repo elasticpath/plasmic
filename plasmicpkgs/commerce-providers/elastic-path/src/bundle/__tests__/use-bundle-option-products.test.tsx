@@ -154,7 +154,14 @@ describe("useBundleOptionProducts", () => {
   it("maps API response to OptionProduct shape", async () => {
     const apiProduct = makeApiProduct("prod-1");
     mockGetByContextAllProducts.mockResolvedValue({
-      data: { data: [apiProduct] },
+      data: {
+        data: [apiProduct],
+        included: {
+          main_images: [
+            { id: "img-prod-1", link: { href: "https://files.test/prod-1.jpg" } },
+          ],
+        },
+      },
     });
 
     renderHook(() =>
@@ -166,10 +173,64 @@ describe("useBundleOptionProducts", () => {
       id: "prod-1",
       name: "Product prod-1",
       description: "Desc prod-1",
-      image: "img-prod-1",
+      image: "https://files.test/prod-1.jpg",
       price: "$prod-1",
       sku: "SKU-prod-1",
     });
+  });
+
+  // -- Fetcher: images --
+  // A product references its images by id; the URLs are in `included`.
+
+  it("requests the main images and files with the products", async () => {
+    mockGetByContextAllProducts.mockResolvedValue({ data: { data: [] } });
+
+    renderHook(() =>
+      useBundleOptionProducts({ components: makeComponents(["prod-1"]) })
+    );
+    await capturedFetcher!();
+
+    expect(mockGetByContextAllProducts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        query: expect.objectContaining({ include: ["main_image", "files"] }),
+      })
+    );
+  });
+
+  it("falls back to the product's first file when it has no main image", async () => {
+    const apiProduct = {
+      ...makeApiProduct("prod-1"),
+      relationships: { files: { data: [{ id: "file-1", type: "file" }] } },
+    };
+    mockGetByContextAllProducts.mockResolvedValue({
+      data: {
+        data: [apiProduct],
+        included: {
+          files: [{ id: "file-1", link: { href: "https://files.test/file-1.jpg" } }],
+        },
+      },
+    });
+
+    renderHook(() =>
+      useBundleOptionProducts({ components: makeComponents(["prod-1"]) })
+    );
+    const result = await capturedFetcher!();
+
+    expect(result["prod-1"].image).toBe("https://files.test/file-1.jpg");
+  });
+
+  it("leaves the image unset when the product has no images", async () => {
+    const apiProduct = { ...makeApiProduct("prod-1"), relationships: {} };
+    mockGetByContextAllProducts.mockResolvedValue({
+      data: { data: [apiProduct] },
+    });
+
+    renderHook(() =>
+      useBundleOptionProducts({ components: makeComponents(["prod-1"]) })
+    );
+    const result = await capturedFetcher!();
+
+    expect(result["prod-1"].image).toBeUndefined();
   });
 
   // -- Fetcher: batch processing --

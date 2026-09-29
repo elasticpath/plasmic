@@ -86,6 +86,17 @@ const normalizeProductImages = (product: ProductData) => {
 };
 
 /**
+ * The URL a product is shown with: its main image, or its first other file
+ * when it has none — the same first entry `images` gets. Needs the response's
+ * `included` main images and files; without them there is no URL, only ids.
+ */
+export const primaryImageUrl = (
+  product: ElasticPathProduct,
+  included?: ProductData["included"]
+): string | undefined =>
+  normalizeProductImages({ data: product, included })[0]?.url;
+
+/**
  * A base product carries no `display_price` of its own — every child does.
  * The lowest of them is the "from" price a variation family displays.
  */

@@ -17,6 +17,16 @@ same client and reloads account state. Both actions no-op in the Plasmic
 canvas; the real mutations run at runtime and in interactive preview.
 Account switching is still not a registered action.
 
+### Fixed
+
+Related products and bundle options show their images. EP Related Products
+Provider requested products without their image files, so each product
+referenced its main image by id only and got no image URL. EP Bundle Provider
+requested the main images but used the main image's file id as the option's
+`imageUrl`. Both now request `main_image` and `files`. They use the product's
+main image, or its first file when it has none. A product with neither still
+has no image, as before.
+
 ## 0.8.0
 
 ### Breaking
