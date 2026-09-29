@@ -1,4 +1,5 @@
 const mockGetStock = jest.fn();
+const mockLocationList = jest.fn();
 const mockUse = jest.fn();
 
 jest.mock("@epcc-sdk/sdks-shopper", () => ({
@@ -8,6 +9,7 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
     },
   })),
   getStock: (...args: unknown[]) => mockGetStock(...args),
+  listLocations: (...args: unknown[]) => mockLocationList(...args),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -25,8 +27,20 @@ const mkStock = (
   locations: Record<string, { available: number; allocated: number; total: number }>
 ) => ({ data: { data: { attributes: { locations } } } });
 
+const mkLocations = (rows: Array<{ slug: string; name: string }>) => ({
+  data: {
+    data: rows.map(({ slug, name }) => ({
+      id: `uuid-${slug}`,
+      type: "inventory_location",
+      attributes: { slug, name },
+    })),
+  },
+});
+
 beforeEach(() => {
   mockGetStock.mockReset();
+  mockLocationList.mockReset();
+  mockLocationList.mockResolvedValue(mkLocations([]));
   mockUse.mockReset();
 });
 
@@ -70,10 +84,93 @@ describe("epGetStock", () => {
       epGetStock({ productIds: ["p1"] })
     );
 
-    // The result crosses the proxy route as JSON. The browser hook builds
-    // these counts as BigInt, which `JSON.stringify` throws on.
+    // The result crosses the proxy route as JSON. The SDK types these counts
+    // as BigInt, which `JSON.stringify` throws on.
     expect(() => JSON.stringify(result)).not.toThrow();
     expect(JSON.parse(JSON.stringify(result))).toEqual(result);
+  });
+
+  it("names each location from the locations list", async () => {
+    mockGetStock.mockResolvedValue(
+      mkStock({
+        "east-dc": { available: 4, allocated: 1, total: 5 },
+        "main-warehouse": { available: 2, allocated: 0, total: 2 },
+      })
+    );
+    mockLocationList.mockResolvedValue(
+      mkLocations([
+        { slug: "east-dc", name: "East Distribution Centre" },
+        { slug: "main-warehouse", name: "Main Warehouse" },
+      ])
+    );
+
+    const result = await withEpSession(SESSION, () =>
+      epGetStock({ productIds: ["p1"] })
+    );
+
+    expect(
+      result.p1.locations.map((l: any) => l.location.attributes)
+    ).toEqual([
+      { name: "East Distribution Centre", slug: "east-dc" },
+      { name: "Main Warehouse", slug: "main-warehouse" },
+    ]);
+    // Selection, filtering and ?location= read the slug off the id.
+    expect(result.p1.locations[0].location.id).toBe("east-dc");
+  });
+
+  it("reads the locations list once for several products", async () => {
+    mockGetStock.mockResolvedValue(
+      mkStock({ "east-dc": { available: 4, allocated: 1, total: 5 } })
+    );
+    mockLocationList.mockResolvedValue(
+      mkLocations([{ slug: "east-dc", name: "East Distribution Centre" }])
+    );
+
+    const result = await withEpSession(SESSION, () =>
+      epGetStock({ productIds: ["p1", "p2"] })
+    );
+
+    expect(mockLocationList).toHaveBeenCalledTimes(1);
+    expect(result.p2.locations[0].location.attributes.name).toBe(
+      "East Distribution Centre"
+    );
+  });
+
+  it("keeps the slug as the name of a location the list does not carry", async () => {
+    mockGetStock.mockResolvedValue(
+      mkStock({
+        "east-dc": { available: 4, allocated: 1, total: 5 },
+        "pop-up": { available: 1, allocated: 0, total: 1 },
+      })
+    );
+    mockLocationList.mockResolvedValue(
+      mkLocations([{ slug: "east-dc", name: "East Distribution Centre" }])
+    );
+
+    const result = await withEpSession(SESSION, () =>
+      epGetStock({ productIds: ["p1"] })
+    );
+
+    expect(
+      result.p1.locations.map((l: any) => l.location.attributes.name)
+    ).toEqual(["East Distribution Centre", "pop-up"]);
+  });
+
+  it("keeps the stock when the locations read fails", async () => {
+    mockGetStock.mockResolvedValue(
+      mkStock({ "east-dc": { available: 4, allocated: 1, total: 5 } })
+    );
+    mockLocationList.mockRejectedValue(new Error("boom"));
+
+    const result = await withEpSession(SESSION, () =>
+      epGetStock({ productIds: ["p1"] })
+    );
+
+    expect(result.p1.totalAvailable).toBe(4);
+    expect(result.p1.locations[0].location.attributes).toEqual({
+      name: "east-dc",
+      slug: "east-dc",
+    });
   });
 
   it("narrows to the requested locations", async () => {
@@ -133,11 +230,13 @@ describe("epGetStock", () => {
     );
     expect(result).toEqual({});
     expect(mockGetStock).not.toHaveBeenCalled();
+    expect(mockLocationList).not.toHaveBeenCalled();
   });
 
   it("returns an empty map when called outside withEpSession", async () => {
     const result = await epGetStock({ productIds: ["p1"] });
     expect(result).toEqual({});
     expect(mockGetStock).not.toHaveBeenCalled();
+    expect(mockLocationList).not.toHaveBeenCalled();
   });
 });

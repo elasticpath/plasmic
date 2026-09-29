@@ -4,13 +4,14 @@ import {
   filterStockByLocation,
 } from "../inventory/utils/stockCalculations";
 import { buildEpClient, isUsableAuth } from "./ep-client";
+import { epGetLocations } from "./getLocations";
 import { getCurrentEpSession } from "./session-context";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
 
 /**
  * One inventory location's counts for one product.
  *
- * Structurally the browser client's `LocationStock`, with one departure: the
+ * Structurally the package's `LocationStock`, with one departure: the
  * counts are `number`, not the SDK's `BigInt`. This value crosses
  * `JSON.stringify` on the way through `/api/ep/proxy` and into the loader's
  * prefetched query data, and a BigInt cannot cross it.
@@ -59,13 +60,32 @@ function toCount(value: unknown): number {
 }
 
 /**
+ * Location names keyed by slug, read from the locations list. Empty when that
+ * read fails, so a failed list costs the names, never the stock.
+ */
+async function readLocationNames(): Promise<Map<string, string>> {
+  const names = new Map<string, string>();
+  try {
+    for (const location of await epGetLocations()) {
+      const { slug, name } = location.attributes ?? {};
+      if (slug && name) names.set(slug, name);
+    }
+  } catch {
+    // fall through with no names
+  }
+  return names;
+}
+
+/**
  * Elastic Path reports multi-location stock as a slug-keyed map with no
- * location metadata on it, so the location is reconstructed from the slug —
- * same synthetic shape the browser client builds, names included later.
+ * location metadata on it, so the location is reconstructed from the slug.
+ * Its name comes from the locations list; a slug the list does not carry keeps
+ * the slug as its name.
  */
 function readLocations(
   productId: string,
-  stockData: unknown
+  stockData: unknown,
+  names: Map<string, string>
 ): EpLocationStock[] {
   const locations = (stockData as { attributes?: { locations?: unknown } })
     ?.attributes?.locations;
@@ -77,7 +97,7 @@ function readLocations(
         location: {
           id: slug,
           type: "inventory_location",
-          attributes: { name: slug, slug },
+          attributes: { name: names.get(slug) ?? slug, slug },
         },
         stock: {
           productId,
@@ -104,7 +124,8 @@ function aggregate(
 }
 
 /**
- * Multi-location stock for a set of products, keyed by product id.
+ * Multi-location stock for a set of products, keyed by product id. Each
+ * location carries its name, so a caller needs no second read to show it.
  *
  * A product whose stock read fails gets an all-zero entry rather than
  * failing the batch — one unstocked product must not blank a whole listing.
@@ -129,6 +150,8 @@ export async function epGetStock({
 
   if (!isUsableAuth(auth)) return {};
   const client = buildEpClient(auth);
+  // One locations read per call, alongside the stock reads rather than after.
+  const namesRead = readLocationNames();
 
   const entries = await Promise.all(
     ids.map(async (productId) => {
@@ -139,7 +162,7 @@ export async function epGetStock({
         });
         return aggregate(
           productId,
-          readLocations(productId, response.data?.data),
+          readLocations(productId, response.data?.data, await namesRead),
           locationIds
         );
       } catch {

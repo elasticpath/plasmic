@@ -41,6 +41,14 @@ and a code Elastic Path will not honour leaves the basket untouched and says
 so. Same props, same slots, same `promoCodeData`. `Use Server Routes` no
 longer does anything and is kept only so existing projects load.
 
+EP Stock Provider and EP Multi Location Stock show each location's name, such
+as "East Distribution Centre", instead of its slug, `east-dc`. Elastic Path's
+stock response names a location by slug only. `ep.getStock` now reads the
+locations list once per call and sets each location's `attributes.name` from
+it, so a Server Query bound to `ep.getStock` gets the names too. A location
+the list does not carry keeps its slug as its name. EP Stock Provider no
+longer reads the locations list itself.
+
 Related products and bundle options show their images. EP Related Products
 Provider requested products without their image files, so each product
 referenced its main image by id only and got no image URL. EP Bundle Provider

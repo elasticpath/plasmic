@@ -1,4 +1,4 @@
-import type { Location, LocationStock, ProductStock } from "../types";
+import type { LocationStock, ProductStock } from "../types";
 import { getLocationSlug } from "../../utils/getLocationSlug";
 
 /**
@@ -16,37 +16,6 @@ export interface StockTotals {
 export interface StockThresholds {
   low: number;
   medium: number;
-}
-
-/**
- * Maps raw stock response from EP API to LocationStock array
- * @param stockResponse Raw response from getStock API call
- * @param productId Product ID for the stock data
- * @returns Array of LocationStock objects
- */
-export function mapStockResponseToLocationStock(
-  stockResponse: any,
-  productId: string
-): LocationStock[] {
-  const locations = stockResponse?.attributes?.locations || {};
-  
-  return Object.entries(locations).map(([locationSlug, locationData]: [string, any]) => ({
-    location: {
-      id: locationSlug,
-      type: "inventory_location",
-      attributes: {
-        name: locationSlug, // Will be enhanced with actual names elsewhere
-        slug: locationSlug,
-      },
-    } as Location,
-    stock: {
-      productId,
-      available: BigInt(locationData.available || 0),
-      allocated: BigInt(locationData.allocated || 0),
-      total: BigInt(locationData.total || 0),
-    },
-    lastUpdated: undefined, // Not available in current API response
-  }));
 }
 
 /**
@@ -114,36 +83,6 @@ export function getAvailableStockForLocation(
   );
 
   return Number(locationStock?.stock.available || 0);
-}
-
-/**
- * Creates a ProductStock object from API response
- * @param productId Product ID
- * @param stockResponse Raw API response
- * @param locationIds Optional array of location IDs to filter by
- * @returns Complete ProductStock object
- */
-export function createProductStock(
-  productId: string,
-  stockResponse: any,
-  locationIds?: string[]
-): ProductStock {
-  const locationStocks = mapStockResponseToLocationStock(stockResponse, productId);
-  const filteredLocations = locationIds && locationIds.length > 0
-    ? locationStocks.filter(ls => {
-        const slug = getLocationSlug(ls.location);
-        return locationIds.includes(ls.location.id) ||
-          (slug && locationIds.includes(slug));
-      })
-    : locationStocks;
-
-  const totals = calculateTotalStock(filteredLocations);
-
-  return {
-    productId,
-    locations: filteredLocations,
-    ...totals,
-  };
 }
 
 /**
