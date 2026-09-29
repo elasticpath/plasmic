@@ -363,6 +363,10 @@ describe("useRelatedProducts", () => {
     expect(callArgs.query["page[limit]"]).toBe(BigInt(6));
     // Without it the response references images by id only.
     expect(callArgs.query.include).toEqual(["main_image", "files"]);
+    // Comma-separated, as the SDK sends it for the other catalog calls.
+    expect(callArgs.querySerializer).toEqual({
+      array: { explode: false, style: "form" },
+    });
   });
 
   it("should give each product its main image, or its first file when it has none", async () => {
@@ -374,13 +378,19 @@ describe("useRelatedProducts", () => {
       }
     );
 
-    const price = { display_price: { without_tax: { amount: 500, currency: "USD" } } };
+    const price = {
+      display_price: { without_tax: { amount: 500, currency: "USD" } },
+    };
     mockGetByContextAllRelatedProducts.mockResolvedValue({
       data: {
         data: [
           {
             id: "with-main",
-            attributes: { name: "With main", slug: "with-main", description: "" },
+            attributes: {
+              name: "With main",
+              slug: "with-main",
+              description: "",
+            },
             meta: price,
             relationships: {
               main_image: { data: { id: "img-1", type: "main_image" } },
@@ -389,13 +399,21 @@ describe("useRelatedProducts", () => {
           },
           {
             id: "files-only",
-            attributes: { name: "Files only", slug: "files-only", description: "" },
+            attributes: {
+              name: "Files only",
+              slug: "files-only",
+              description: "",
+            },
             meta: price,
-            relationships: { files: { data: [{ id: "file-2", type: "file" }] } },
+            relationships: {
+              files: { data: [{ id: "file-2", type: "file" }] },
+            },
           },
         ],
         included: {
-          main_images: [{ id: "img-1", link: { href: "https://files.test/main-1.jpg" } }],
+          main_images: [
+            { id: "img-1", link: { href: "https://files.test/main-1.jpg" } },
+          ],
           files: [
             { id: "file-1", link: { href: "https://files.test/file-1.jpg" } },
             { id: "file-2", link: { href: "https://files.test/file-2.jpg" } },
@@ -406,12 +424,19 @@ describe("useRelatedProducts", () => {
     });
 
     renderHook(() =>
-      useRelatedProducts({ productId: "prod-abc", relationshipSlug: "CRP_related_products" })
+      useRelatedProducts({
+        productId: "prod-abc",
+        relationshipSlug: "CRP_related_products",
+      })
     );
     const result = await capturedFetcher!();
 
-    expect(result.products[0].images[0].url).toBe("https://files.test/main-1.jpg");
-    expect(result.products[1].images[0].url).toBe("https://files.test/file-2.jpg");
+    expect(result.products[0].images[0].url).toBe(
+      "https://files.test/main-1.jpg"
+    );
+    expect(result.products[1].images[0].url).toBe(
+      "https://files.test/file-2.jpg"
+    );
   });
 
   it("should convert BigInt total count from API response", async () => {

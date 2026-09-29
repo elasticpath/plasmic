@@ -15,6 +15,7 @@ import { useMutablePlasmicQueryData } from "@plasmicapp/query";
 import { getByContextAllRelatedProducts } from "@epcc-sdk/sdks-shopper";
 import { useEpCommerce } from "../shopper-context/EpCommerceContext";
 import { normalizeProductFromList } from "../utils";
+import { EP_COMMA_ARRAY_QUERY } from "../utils/catalog-query";
 import { handleAPIError } from "../utils/errorHandling";
 import { createLogger } from "../utils/logger";
 import { SWR_DEDUPING_INTERVAL_LONG } from "../const";
@@ -78,6 +79,7 @@ export function useRelatedProducts(
             "page[limit]": BigInt(limit),
             include: ["main_image", "files"],
           } as any,
+          querySerializer: EP_COMMA_ARRAY_QUERY,
         });
 
         const products = response.data?.data

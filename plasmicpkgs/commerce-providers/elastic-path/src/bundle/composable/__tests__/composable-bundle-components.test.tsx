@@ -1085,6 +1085,65 @@ describe("EPBundleComponentList", () => {
     expect(componentData.options[0].quantity).toBe(1);
   });
 
+  it("shows the parent option's image when the chosen child has none", () => {
+    setupSelector({ bundleData: { componentCount: 1 } });
+
+    const formCtxChildNoImage = {
+      ...TEST_FORM_CONTEXT,
+      selectedOptions: {
+        storage: { "parent-ssd:child-512gb-red": 1 },
+      },
+      components: {
+        storage: {
+          name: "Storage",
+          min: 1,
+          max: 1,
+          sort_order: 1,
+          options: [
+            {
+              id: "parent-ssd",
+              sort_order: 1,
+              min: null,
+              max: null,
+              default: true,
+            },
+          ],
+        },
+      },
+      parentProducts: {
+        "parent-ssd": { isParent: true },
+      },
+      optionProducts: {
+        "parent-ssd": {
+          name: "SSD (Parent)",
+          price: "$99.00",
+          image: "/parent.jpg",
+        },
+        "child-512gb-red": { name: "512GB SSD Red", price: "$119.00" },
+      },
+    };
+
+    const { container } = render(
+      <BundleFormContext.Provider value={formCtxChildNoImage}>
+        <EPBundleComponentList>
+          <span>Item</span>
+        </EPBundleComponentList>
+      </BundleFormContext.Provider>
+    );
+
+    const providers = container.querySelectorAll(
+      "[data-provider='currentBundleComponent']"
+    );
+    const componentData = JSON.parse(
+      providers[0].getAttribute("data-provider-value")!
+    );
+
+    // The child's own name and price, the parent's image.
+    expect(componentData.options[0].name).toBe("512GB SSD Red");
+    expect(componentData.options[0].price).toBe("$119.00");
+    expect(componentData.options[0].imageUrl).toBe("/parent.jpg");
+  });
+
   it("falls back to parent metadata when no child variant is selected", () => {
     setupSelector({ bundleData: { componentCount: 1 } });
 

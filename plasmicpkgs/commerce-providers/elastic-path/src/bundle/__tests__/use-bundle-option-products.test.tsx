@@ -158,7 +158,10 @@ describe("useBundleOptionProducts", () => {
         data: [apiProduct],
         included: {
           main_images: [
-            { id: "img-prod-1", link: { href: "https://files.test/prod-1.jpg" } },
+            {
+              id: "img-prod-1",
+              link: { href: "https://files.test/prod-1.jpg" },
+            },
           ],
         },
       },
@@ -206,7 +209,9 @@ describe("useBundleOptionProducts", () => {
       data: {
         data: [apiProduct],
         included: {
-          files: [{ id: "file-1", link: { href: "https://files.test/file-1.jpg" } }],
+          files: [
+            { id: "file-1", link: { href: "https://files.test/file-1.jpg" } },
+          ],
         },
       },
     });

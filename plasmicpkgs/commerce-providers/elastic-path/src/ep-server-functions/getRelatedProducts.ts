@@ -1,4 +1,5 @@
 import { getByContextAllRelatedProducts } from "@epcc-sdk/sdks-shopper";
+import { EP_COMMA_ARRAY_QUERY } from "../utils/catalog-query";
 import { normalizeProductFromList } from "../utils/normalize";
 import type { Product } from "../types/product";
 import { buildEpClient, isUsableAuth } from "./ep-client";
@@ -46,6 +47,7 @@ export async function epGetRelatedProducts({
         custom_relationship_slug: relationshipSlug,
       },
       query: query as any,
+      querySerializer: EP_COMMA_ARRAY_QUERY,
     });
     const data = response.data?.data;
     if (!Array.isArray(data) || data.length === 0) return [];

@@ -25,7 +25,8 @@ referenced its main image by id only and got no image URL. EP Bundle Provider
 requested the main images but used the main image's file id as the option's
 `imageUrl`. Both now request `main_image` and `files`. They use the product's
 main image, or its first file when it has none. A product with neither still
-has no image, as before.
+has no image, as before. A selected bundle variant with no image of its own
+shows its parent option's image, as the product page does for a variant.
 
 ## 0.8.0
 
