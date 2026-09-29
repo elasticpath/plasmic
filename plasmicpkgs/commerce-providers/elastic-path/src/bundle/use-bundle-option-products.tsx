@@ -29,6 +29,7 @@ function toOptionProduct(product: Product): OptionProduct {
     id: product.id!,
     name: product.attributes?.name,
     description: product.attributes?.description,
+    // The main image, or the first file if there is no main image.
     image: product.images?.[0]?.url,
     price: product.meta?.display_price?.without_tax?.formatted,
     sku: product.attributes?.sku,

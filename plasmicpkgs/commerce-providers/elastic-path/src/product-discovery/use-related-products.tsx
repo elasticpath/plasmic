@@ -9,13 +9,16 @@ export interface UseRelatedProductsOptions {
   productId?: string;
   relationshipSlug?: string;
   limit?: number;
+  /** Only part of the cache key. The server uses the session locale. */
   locale?: string;
 }
 
 export interface UseRelatedProductsResult {
   products: Product[];
+  /** The number of products returned, not the Elastic Path total. */
   totalCount: number;
   isLoading: boolean;
+  /** A failed read returns an empty list, not an error. */
   error: Error | null;
   refetch: () => void;
 }
