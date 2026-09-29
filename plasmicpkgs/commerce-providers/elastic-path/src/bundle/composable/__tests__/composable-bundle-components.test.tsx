@@ -1138,7 +1138,6 @@ describe("EPBundleComponentList", () => {
       providers[0].getAttribute("data-provider-value")!
     );
 
-    // The child's own name and price, the parent's image.
     expect(componentData.options[0].name).toBe("512GB SSD Red");
     expect(componentData.options[0].price).toBe("$119.00");
     expect(componentData.options[0].imageUrl).toBe("/parent.jpg");

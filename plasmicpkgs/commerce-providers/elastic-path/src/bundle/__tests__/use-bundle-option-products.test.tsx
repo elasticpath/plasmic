@@ -183,7 +183,6 @@ describe("useBundleOptionProducts", () => {
   });
 
   // -- Fetcher: images --
-  // A product references its images by id; the URLs are in `included`.
 
   it("requests the main images and files with the products", async () => {
     mockGetByContextAllProducts.mockResolvedValue({ data: { data: [] } });

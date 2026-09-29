@@ -85,11 +85,6 @@ const normalizeProductImages = (product: ProductData) => {
   return dedupeByUrl(images);
 };
 
-/**
- * The URL a product is shown with: its main image, or its first other file
- * when it has none — the same first entry `images` gets. Needs the response's
- * `included` main images and files; without them there is no URL, only ids.
- */
 export const primaryImageUrl = (
   product: ElasticPathProduct,
   included?: ProductData["included"]

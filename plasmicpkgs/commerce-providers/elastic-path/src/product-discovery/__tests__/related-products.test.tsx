@@ -361,7 +361,6 @@ describe("useRelatedProducts", () => {
     expect(callArgs.path.product_id).toBe("prod-abc");
     expect(callArgs.path.custom_relationship_slug).toBe("CRP_accessories");
     expect(callArgs.query["page[limit]"]).toBe(BigInt(6));
-    // Without it the response references images by id only.
     expect(callArgs.query.include).toEqual(["main_image", "files"]);
   });
 

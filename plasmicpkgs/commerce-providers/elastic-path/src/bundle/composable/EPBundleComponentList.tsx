@@ -147,8 +147,6 @@ export function EPBundleComponentList(props: EPBundleComponentListProps) {
             isSelected,
             isParentProduct,
             price: productInfo.price ?? "",
-            // A chosen child with no image of its own shows its parent
-            // option's, as the product page's currentVariant does.
             imageUrl:
               productInfo.image || optionProducts[optionId]?.image || "",
             sortOrder: sortOrd,

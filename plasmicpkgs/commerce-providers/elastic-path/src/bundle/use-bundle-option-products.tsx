@@ -96,8 +96,6 @@ export function useBundleOptionProducts({
                 "page[limit]": BigInt(batchIds.length),
               },
             });
-            // Keep `included`: it holds the image files. A product only
-            // references its main image by id.
             return {
               products: response.data?.data || [],
               included: response.data?.included,
