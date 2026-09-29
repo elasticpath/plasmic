@@ -67,6 +67,51 @@ describe("epGetRelatedProducts", () => {
     );
   });
 
+  it("gives each product its main image, or its first file when it has none", async () => {
+    mockGetByContextAllRelatedProducts.mockResolvedValue({
+      data: {
+        data: [
+          {
+            id: "with-main",
+            type: "product",
+            attributes: { name: "With main" },
+            relationships: {
+              main_image: { data: { id: "img-1", type: "main_image" } },
+              files: { data: [{ id: "file-1", type: "file" }] },
+            },
+          },
+          {
+            id: "files-only",
+            type: "product",
+            attributes: { name: "Files only" },
+            relationships: {
+              files: { data: [{ id: "file-2", type: "file" }] },
+            },
+          },
+        ],
+        included: {
+          main_images: [
+            { id: "img-1", link: { href: "https://files.test/main-1.jpg" } },
+          ],
+          files: [
+            { id: "file-1", link: { href: "https://files.test/file-1.jpg" } },
+            { id: "file-2", link: { href: "https://files.test/file-2.jpg" } },
+          ],
+        },
+      },
+    });
+
+    const result = await withEpSession(SESSION, () =>
+      epGetRelatedProducts({
+        productId: "base-id",
+        relationshipSlug: "CRP_related_products",
+      })
+    );
+
+    expect(result[0].images[0].url).toBe("https://files.test/main-1.jpg");
+    expect(result[1].images[0].url).toBe("https://files.test/file-2.jpg");
+  });
+
   it("returns empty array when productId or relationshipSlug is missing", async () => {
     const noProductId = await withEpSession(SESSION, () =>
       epGetRelatedProducts({

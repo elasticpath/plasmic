@@ -76,9 +76,7 @@ describe("callEpProxy / FN_DISPATCH parity", () => {
     );
   });
 
-  it("dispatches every operation a component fetches today", () => {
-    // These are the names the browser client still serves directly. Each has
-    // to exist on the server before its call site can be moved.
+  it("dispatches every operation the data hooks read", () => {
     expect(EP_PROXY_FN_NAMES).toEqual(
       expect.arrayContaining([
         "getStock",
@@ -105,6 +103,21 @@ describe("callEpProxy / FN_DISPATCH parity", () => {
     expect(
       undispatchable,
       "callEpProxy names the proxy route would 404 on"
+    ).toEqual([]);
+  });
+
+  it("keeps the transport choice out of the components", () => {
+    const outsideServerFunctions = Array.from(calledFnNames().entries())
+      .filter(([name]) => !KNOWN_UNWIRED.includes(name))
+      .flatMap(([name, files]) =>
+        files
+          .filter((file) => !file.startsWith("ep-server-functions/"))
+          .map((file) => `${name} (${file})`)
+      );
+
+    expect(
+      outsideServerFunctions,
+      "call sites naming an operation instead of calling the ep.* function"
     ).toEqual([]);
   });
 

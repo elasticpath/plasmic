@@ -1,25 +1,8 @@
-/**
- * Data-fetching hook for paginated product listing.
- *
- * Calls `getByContextAllProducts` from the EP SDK directly with pagination
- * support, rather than extending the upstream SearchProductsHook type (D1).
- * Uses `useMutablePlasmicQueryData` from @plasmicapp/query — the established
- * caching pattern in this codebase (D6).
- */
-
 import { useMemo } from "react";
 import { useMutablePlasmicQueryData } from "@plasmicapp/query";
-import {
-  getByContextAllProducts,
-  getByContextProductsForNode,
-} from "@epcc-sdk/sdks-shopper";
 import { useEpCommerce } from "../shopper-context/EpCommerceContext";
-import { normalizeProductFromList } from "../utils";
-import { handleAPIError } from "../utils/errorHandling";
-import { createLogger } from "../utils/logger";
+import { epGetProductPage } from "../ep-server-functions/getProductPage";
 import type { Product } from "../types/product";
-
-const log = createLogger("useProductList");
 
 export interface UseProductListOptions {
   categoryId?: string;
@@ -55,12 +38,10 @@ export function useProductList(options: UseProductListOptions): UseProductListRe
   } = options;
 
   const commerce = useEpCommerce();
-  const client = commerce?.client;
-  const provider = commerce;
 
   // Stable query key — null skips the fetch
   const queryKey =
-    client && !skip
+    commerce && !skip
       ? ["ep-product-list", categoryId ?? "", search ?? "", page, pageSize, locale ?? ""]
       : null;
 
@@ -70,53 +51,16 @@ export function useProductList(options: UseProductListOptions): UseProductListRe
   >(
     queryKey,
     async () => {
-      const query: Record<string, unknown> = {
-        include: ["main_image", "files", "component_products"],
-        "page[limit]": BigInt(pageSize),
-        "page[offset]": BigInt(page * pageSize),
+      const result = await epGetProductPage({
+        limit: pageSize,
+        offset: page * pageSize,
+        search,
+        categoryId,
+      });
+      return {
+        products: result.data,
+        totalCount: result.meta.results.total,
       };
-
-      // Elastic Path composes filter terms with a comma; `and(...)` is
-      // rejected. There is no filterable category key, so a categoryId
-      // selects the node endpoint below instead of adding a term here.
-      if (search) {
-        query["filter"] = `eq(name,${search})`;
-      }
-
-      try {
-        const response = categoryId
-          ? await getByContextProductsForNode({
-              client: client!,
-              path: { node_id: categoryId },
-              query,
-            })
-          : await getByContextAllProducts({
-              client: client!,
-              query,
-            });
-
-        const products = response.data?.data
-          ? response.data.data.map((product) =>
-              normalizeProductFromList(
-                product,
-                provider?.locale ?? locale ?? "en",
-                response.data?.included
-              )
-            )
-          : [];
-
-        // BigInt → Number conversion for total count
-        const rawTotal = response.data?.meta?.results?.total;
-        const totalCount = rawTotal != null ? Number(rawTotal) : products.length;
-
-        return { products, totalCount };
-      } catch (err) {
-        const standardError = handleAPIError(err, "fetching product list");
-        log.error("Error fetching product list", {
-          error: standardError.message,
-        } as Record<string, unknown>);
-        throw standardError;
-      }
     },
     {
       revalidateOnFocus: false,

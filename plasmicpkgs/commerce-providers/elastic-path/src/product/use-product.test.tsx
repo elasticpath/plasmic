@@ -7,13 +7,9 @@ jest.mock("@plasmicapp/query", () => ({
     mockUseMutablePlasmicQueryData(...a),
 }));
 
-const mockGetByContextProduct = jest.fn();
-const mockGetByContextAllProducts = jest.fn();
-jest.mock("@epcc-sdk/sdks-shopper", () => ({
-  getByContextProduct: (...a: unknown[]) => mockGetByContextProduct(...a),
-  getByContextAllProducts: (...a: unknown[]) =>
-    mockGetByContextAllProducts(...a),
-  getByContextChildProducts: jest.fn(),
+const mockEpGetProduct = jest.fn();
+jest.mock("../ep-server-functions/getProduct", () => ({
+  epGetProduct: (...a: unknown[]) => mockEpGetProduct(...a),
 }));
 
 const mockUseEpCommerce = jest.fn();
@@ -21,23 +17,11 @@ jest.mock("../shopper-context/EpCommerceContext", () => ({
   useEpCommerce: (...a: unknown[]) => mockUseEpCommerce(...a),
 }));
 
-jest.mock("../utils/logger", () => ({
-  createLogger: () => ({
-    debug: jest.fn(),
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-  }),
-}));
-
 const useProduct = require("./use-product").default as typeof import("./use-product").default;
-
-const mockClient = { baseUrl: "https://api.test.com" };
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockUseEpCommerce.mockReturnValue({
-    client: mockClient,
     locale: "en-US",
     currencyDisplay: "symbol",
   });
@@ -107,35 +91,25 @@ describe("useProduct", () => {
       return fetcher();
     }
 
-    it("resolves a slug to the product it names", async () => {
-      mockGetByContextAllProducts.mockResolvedValue({
-        data: { data: [{ id: "prod-1", attributes: { slug: "blue-shirt" } }] },
-      });
+    it("reads the product through the server function, never the browser", async () => {
+      mockEpGetProduct.mockResolvedValue({ id: "prod-1" });
 
       const product = await runFetcher("blue-shirt");
 
+      expect(mockEpGetProduct).toHaveBeenCalledWith({ id: "blue-shirt" });
       expect(product?.id).toBe("prod-1");
     });
 
     it("returns null when the reference names no product", async () => {
-      mockGetByContextAllProducts.mockResolvedValue({ data: { data: [] } });
+      mockEpGetProduct.mockResolvedValue(null);
 
       await expect(runFetcher("gone")).resolves.toBeNull();
     });
 
     it("rejects when the read fails, so SWR reports an error", async () => {
-      mockGetByContextAllProducts.mockResolvedValue({
-        error: { errors: [] },
-        response: { status: 503 },
-      });
+      mockEpGetProduct.mockRejectedValue(new Error("boom"));
 
-      await expect(runFetcher("blue-shirt")).rejects.toThrow();
-    });
-
-    it("rejects when the request itself throws", async () => {
-      mockGetByContextAllProducts.mockRejectedValue(new TypeError("offline"));
-
-      await expect(runFetcher("blue-shirt")).rejects.toThrow("offline");
+      await expect(runFetcher("blue-shirt")).rejects.toThrow("boom");
     });
   });
 });

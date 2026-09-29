@@ -11,13 +11,10 @@ import { mutate as swrMutate } from "swr";
 import { Registerable } from "../registerable";
 import { createLogger } from "../utils/logger";
 import { MOCK_CART_LINE_ITEMS } from "../utils/design-time-data";
-import {
-  callEpProxy,
-  epProxyErrorCode,
-} from "../ep-server-functions/proxy-fetch";
+import { epProxyErrorCode } from "../ep-server-functions/proxy-fetch";
+import { epUpdateCartItem } from "../ep-server-functions/cart-mutations";
 import { cartMutationErrorCopy } from "../ep-server-functions/cart-mutation-error-copy";
 import { epCartCacheKey } from "../cart-provider/cache-keys";
-import type { Cart } from "../types/cart";
 import {
   CartItemQuantityContext,
   CartItemQuantityContextValue,
@@ -212,7 +209,7 @@ export function EPCartItemQuantityControl(
       setError(null);
       setIsLoading(true);
       try {
-        const updated = await callEpProxy<Cart | null>("updateCartItem", {
+        const updated = await epUpdateCartItem({
           itemId,
           quantity: newQuantity,
           ...(location ? { location } : {}),

@@ -1,26 +1,9 @@
-/**
- * Data-fetching hook for related products via EP Custom Relationships API.
- *
- * Calls `getByContextAllRelatedProducts` from the EP SDK to fetch products
- * related to a given product by custom relationship slug (e.g., "CRP_related_products",
- * "CRP_upsell", "CRP_accessories").
- *
- * Uses `useMutablePlasmicQueryData` from @plasmicapp/query — the established
- * caching pattern in this codebase (D6). Uses long deduping interval since
- * relationships change infrequently.
- */
-
 import { useMemo } from "react";
 import { useMutablePlasmicQueryData } from "@plasmicapp/query";
-import { getByContextAllRelatedProducts } from "@epcc-sdk/sdks-shopper";
 import { useEpCommerce } from "../shopper-context/EpCommerceContext";
-import { normalizeProductFromList } from "../utils";
-import { handleAPIError } from "../utils/errorHandling";
-import { createLogger } from "../utils/logger";
+import { epGetRelatedProducts } from "../ep-server-functions/getRelatedProducts";
 import { SWR_DEDUPING_INTERVAL_LONG } from "../const";
 import type { Product } from "../types/product";
-
-const log = createLogger("useRelatedProducts");
 
 export interface UseRelatedProductsOptions {
   productId?: string;
@@ -48,12 +31,10 @@ export function useRelatedProducts(
   } = options;
 
   const commerce = useEpCommerce();
-  const client = commerce?.client;
-  const provider = commerce;
 
   // Stable query key — null skips the fetch when missing required params
   const queryKey =
-    client && productId && relationshipSlug
+    commerce && productId && relationshipSlug
       ? ["ep-related-products", productId, relationshipSlug, limit, locale ?? ""]
       : null;
 
@@ -63,41 +44,13 @@ export function useRelatedProducts(
   >(
     queryKey,
     async () => {
-      try {
-        const response = await getByContextAllRelatedProducts({
-          client: client!,
-          path: {
-            product_id: productId!,
-            custom_relationship_slug: relationshipSlug!,
-          },
-          query: {
-            "page[limit]": BigInt(limit),
-            include: ["main_image", "files"],
-          } as any,
-        });
-
-        const products = response.data?.data
-          ? response.data.data.map((product) =>
-              normalizeProductFromList(
-                product,
-                provider?.locale ?? locale ?? "en",
-                response.data?.included
-              )
-            )
-          : [];
-
-        // BigInt → Number conversion for total count
-        const rawTotal = response.data?.meta?.results?.total;
-        const totalCount = rawTotal != null ? Number(rawTotal) : products.length;
-
-        return { products, totalCount };
-      } catch (err) {
-        const standardError = handleAPIError(err, "fetching related products");
-        log.error("Error fetching related products", {
-          error: standardError.message,
-        } as Record<string, unknown>);
-        throw standardError;
-      }
+      const products = await epGetRelatedProducts({
+        productId: productId!,
+        relationshipSlug: relationshipSlug!,
+        limit,
+      });
+      // One page, and nothing paginates it, so what came back is all there is.
+      return { products, totalCount: products.length };
     },
     {
       revalidateOnFocus: false,
