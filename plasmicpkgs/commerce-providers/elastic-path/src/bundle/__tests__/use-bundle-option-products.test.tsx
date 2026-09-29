@@ -37,6 +37,14 @@ jest.mock("../../ep-server-functions/getBundleOptionProducts", () => ({
     mockEpGetBundleOptionProducts(...args),
 }));
 
+const mockGetByContextAllProducts = jest.fn();
+
+jest.mock("@epcc-sdk/sdks-shopper", () => ({
+  ...jest.requireActual("@epcc-sdk/sdks-shopper"),
+  getByContextAllProducts: (...args: unknown[]) =>
+    mockGetByContextAllProducts(...args),
+}));
+
 jest.mock("../../shopper-context/EpCommerceContext", () => ({
   __esModule: true,
   useEpCommerce: () => ({ locale: "en-US" }),
@@ -187,7 +195,7 @@ describe("useBundleOptionProducts", () => {
     expect(result["prod-1"].image).toBeUndefined();
   });
 
-  it("asks the server function for every id in the key", async () => {
+  it("asks the server function for every id in the key, never Elastic Path directly", async () => {
     mockEpGetBundleOptionProducts.mockResolvedValue({});
 
     renderHook(() =>
@@ -198,6 +206,7 @@ describe("useBundleOptionProducts", () => {
     expect(mockEpGetBundleOptionProducts).toHaveBeenCalledWith({
       productIds: ["a", "b"],
     });
+    expect(mockGetByContextAllProducts).not.toHaveBeenCalled();
   });
 
   it("returns empty map when the catalog returns no products", async () => {

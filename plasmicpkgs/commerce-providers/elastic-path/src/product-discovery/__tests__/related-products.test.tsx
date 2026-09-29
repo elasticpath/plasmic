@@ -19,6 +19,7 @@ import React from "react";
 
 /* ---------- mock variables (declared before jest.mock) ---------- */
 const mockEpGetRelatedProducts = jest.fn();
+const mockGetByContextAllRelatedProducts = jest.fn();
 const mockUseMutablePlasmicQueryData = jest.fn();
 const mockUseCommerce = jest.fn();
 const mockUsePlasmicCanvasContext = jest.fn();
@@ -30,6 +31,12 @@ const mockHandleAPIError = jest.fn().mockImplementation((err: unknown) => {
 /* ---------- jest.mock calls ---------- */
 jest.mock("../../ep-server-functions/getRelatedProducts", () => ({
   epGetRelatedProducts: (...a: unknown[]) => mockEpGetRelatedProducts(...a),
+}));
+
+jest.mock("@epcc-sdk/sdks-shopper", () => ({
+  ...jest.requireActual("@epcc-sdk/sdks-shopper"),
+  getByContextAllRelatedProducts: (...a: unknown[]) =>
+    mockGetByContextAllRelatedProducts(...a),
 }));
 
 jest.mock("@plasmicapp/query", () => ({
@@ -328,7 +335,7 @@ describe("useRelatedProducts", () => {
     return () => capturedFetcher!();
   }
 
-  it("asks the server function for the relationship the caller named", async () => {
+  it("asks the server function for the relationship the caller named, never Elastic Path directly", async () => {
     const runFetcher = captureFetcher();
     mockEpGetRelatedProducts.mockResolvedValue([]);
 
@@ -346,6 +353,7 @@ describe("useRelatedProducts", () => {
       relationshipSlug: "CRP_accessories",
       limit: 6,
     });
+    expect(mockGetByContextAllRelatedProducts).not.toHaveBeenCalled();
   });
 
   it("counts what came back, since one page is all there is", async () => {
