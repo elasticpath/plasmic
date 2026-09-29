@@ -35,27 +35,15 @@ jest.mock("@plasmicapp/query", () => ({
   ),
 }));
 
-const mockGetStock = jest.fn();
+const mockEpGetStock = jest.fn();
 
-jest.mock("@epcc-sdk/sdks-shopper", () => ({
-  getStock: (...args: any[]) => mockGetStock(...args),
+jest.mock("../../ep-server-functions/getStock", () => ({
+  epGetStock: (...args: any[]) => mockEpGetStock(...args),
 }));
 
-const mockClient = { baseUrl: "https://test.epcc.io" };
 jest.mock("../../shopper-context/EpCommerceContext", () => ({
   __esModule: true,
-  useEpCommerce: () => ({ client: mockClient }),
-}));
-
-const mockCreateProductStock = jest.fn();
-jest.mock("../utils/stockCalculations", () => ({
-  createProductStock: (...args: any[]) => mockCreateProductStock(...args),
-}));
-
-jest.mock("../../utils/errorHandling", () => ({
-  handleAPIError: (_err: unknown, _ctx: string) => ({
-    message: "handled error",
-  }),
+  useEpCommerce: () => ({ locale: "en-US" }),
 }));
 
 jest.mock("../../utils/logger", () => ({
@@ -72,25 +60,6 @@ const { useStock, useProductStock } =
   require("../use-stock") as typeof import("../use-stock");
 
 // --- Helpers -------------------------------------------------------------
-
-function makeStockResponse(
-  productId: string,
-  available = 10,
-  allocated = 2,
-  total = 12
-) {
-  return {
-    data: {
-      data: {
-        attributes: {
-          locations: {
-            "warehouse-1": { available, allocated, total },
-          },
-        },
-      },
-    },
-  };
-}
 
 function makeProductStock(productId: string) {
   return {
@@ -175,36 +144,29 @@ describe("useStock", () => {
 
   // -- Fetcher: multi-product --
 
-  it("fetches stock for each product ID in parallel", async () => {
-    mockGetStock
-      .mockResolvedValueOnce(makeStockResponse("prod-1"))
-      .mockResolvedValueOnce(makeStockResponse("prod-2"));
-    mockCreateProductStock
-      .mockReturnValueOnce(makeProductStock("prod-1"))
-      .mockReturnValueOnce(makeProductStock("prod-2"));
+  it("reads every product's stock in one server call", async () => {
+    mockEpGetStock.mockResolvedValue({
+      "prod-1": makeProductStock("prod-1"),
+      "prod-2": makeProductStock("prod-2"),
+    });
 
     renderHook(() =>
       useStock({ productIds: ["prod-1", "prod-2"] })
     );
     const result = await capturedFetcher!();
 
-    expect(mockGetStock).toHaveBeenCalledTimes(2);
-    expect(mockGetStock).toHaveBeenCalledWith({
-      client: mockClient,
-      path: { product_uuid: "prod-1" },
-    });
-    expect(mockGetStock).toHaveBeenCalledWith({
-      client: mockClient,
-      path: { product_uuid: "prod-2" },
+    expect(mockEpGetStock).toHaveBeenCalledTimes(1);
+    expect(mockEpGetStock).toHaveBeenCalledWith({
+      productIds: ["prod-1", "prod-2"],
+      locationIds: undefined,
     });
     expect(result).toHaveProperty("prod-1");
     expect(result).toHaveProperty("prod-2");
   });
 
-  it("builds the stockMap keyed by productId", async () => {
-    mockGetStock.mockResolvedValue(makeStockResponse("prod-1"));
+  it("returns the stock map keyed by productId", async () => {
     const expectedStock = makeProductStock("prod-1");
-    mockCreateProductStock.mockReturnValue(expectedStock);
+    mockEpGetStock.mockResolvedValue({ "prod-1": expectedStock });
 
     renderHook(() => useStock({ productIds: ["prod-1"] }));
     const result = await capturedFetcher!();
@@ -212,89 +174,21 @@ describe("useStock", () => {
     expect(result["prod-1"]).toEqual(expectedStock);
   });
 
-  // -- Fetcher: graceful per-product error degradation --
-
-  it("returns empty stock for a product when its API call fails", async () => {
-    mockGetStock.mockRejectedValue(new Error("Product not found"));
-
-    renderHook(() => useStock({ productIds: ["bad-prod"] }));
-    const result = await capturedFetcher!();
-
-    expect(result["bad-prod"]).toEqual({
-      productId: "bad-prod",
-      locations: [],
-      totalStock: 0,
-      totalAllocated: 0,
-      totalAvailable: 0,
-    });
-  });
-
-  it("returns partial results when one of multiple products fails", async () => {
-    mockGetStock
-      .mockResolvedValueOnce(makeStockResponse("prod-good"))
-      .mockRejectedValueOnce(new Error("Not found"));
-    const goodStock = makeProductStock("prod-good");
-    mockCreateProductStock.mockReturnValueOnce(goodStock);
-
-    renderHook(() =>
-      useStock({ productIds: ["prod-good", "prod-bad"] })
-    );
-    const result = await capturedFetcher!();
-
-    expect(result["prod-good"]).toEqual(goodStock);
-    expect(result["prod-bad"]).toEqual({
-      productId: "prod-bad",
-      locations: [],
-      totalStock: 0,
-      totalAllocated: 0,
-      totalAvailable: 0,
-    });
-  });
-
-  it("does not throw when all products fail", async () => {
-    mockGetStock.mockRejectedValue(new Error("API down"));
-
-    renderHook(() =>
-      useStock({ productIds: ["p1", "p2"] })
-    );
-
-    await expect(capturedFetcher!()).resolves.not.toThrow();
-    const result = await capturedFetcher!();
-    expect(result["p1"].totalStock).toBe(0);
-    expect(result["p2"].totalStock).toBe(0);
-  });
-
   // -- Fetcher: locationIds passthrough --
 
-  it("passes locationIds to createProductStock", async () => {
+  it("passes locationIds through to the server function", async () => {
     const locationIds = ["store-a", "store-b"];
-    mockGetStock.mockResolvedValue(makeStockResponse("prod-1"));
-    mockCreateProductStock.mockReturnValue(makeProductStock("prod-1"));
+    mockEpGetStock.mockResolvedValue({});
 
     renderHook(() =>
       useStock({ productIds: ["prod-1"], locationIds })
     );
     await capturedFetcher!();
 
-    expect(mockCreateProductStock).toHaveBeenCalledWith(
-      "prod-1",
-      expect.anything(),
-      locationIds
-    );
-  });
-
-  it("passes undefined locationIds when not provided", async () => {
-    mockGetStock.mockResolvedValue(makeStockResponse("prod-1"));
-    mockCreateProductStock.mockReturnValue(makeProductStock("prod-1"));
-
-    renderHook(() => useStock({ productIds: ["prod-1"] }));
-    await capturedFetcher!();
-
-    expect(mockCreateProductStock).toHaveBeenCalledWith(
-      "prod-1",
-      expect.anything(),
-      undefined
-    );
+    expect(mockEpGetStock).toHaveBeenCalledWith({
+      productIds: ["prod-1"],
+      locationIds,
+    });
   });
 
   // -- SWR options --

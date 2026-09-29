@@ -35,16 +35,15 @@ jest.mock("@plasmicapp/query", () => ({
   ),
 }));
 
-const mockListLocations = jest.fn();
+const mockEpGetLocations = jest.fn();
 
-jest.mock("@epcc-sdk/sdks-shopper", () => ({
-  listLocations: (...args: any[]) => mockListLocations(...args),
+jest.mock("../../ep-server-functions/getLocations", () => ({
+  epGetLocations: (...args: any[]) => mockEpGetLocations(...args),
 }));
 
-const mockClient = { baseUrl: "https://test.epcc.io" };
 jest.mock("../../shopper-context/EpCommerceContext", () => ({
   __esModule: true,
-  useEpCommerce: () => ({ client: mockClient }),
+  useEpCommerce: () => ({ locale: "en-US" }),
 }));
 
 jest.mock("../../utils/logger", () => ({
@@ -70,14 +69,6 @@ function makeLocation(id: string, name: string, type = "physical") {
       name,
       slug: id,
       type,
-    },
-  };
-}
-
-function makeLocationsResponse(locations: ReturnType<typeof makeLocation>[]) {
-  return {
-    data: {
-      data: locations,
     },
   };
 }
@@ -140,74 +131,35 @@ describe("useLocations", () => {
 
   // -- Fetcher: all locations --
 
-  it("fetches all locations when no type filter is provided", async () => {
+  it("reads every location through the server function, with no type", async () => {
     const locations = [
       makeLocation("loc-1", "Warehouse One"),
       makeLocation("loc-2", "Store NY"),
     ];
-    mockListLocations.mockResolvedValue(makeLocationsResponse(locations));
+    mockEpGetLocations.mockResolvedValue(locations);
 
     renderHook(() => useLocations());
     const result = await capturedFetcher!();
 
-    expect(mockListLocations).toHaveBeenCalledWith({
-      client: mockClient,
-      query: {},
-    });
+    expect(mockEpGetLocations).toHaveBeenCalledWith({ type: undefined });
     expect(result).toEqual(locations);
-  });
-
-  it("returns locations array from response data", async () => {
-    const locations = [makeLocation("loc-a", "Location A")];
-    mockListLocations.mockResolvedValue(makeLocationsResponse(locations));
-
-    renderHook(() => useLocations());
-    const result = await capturedFetcher!();
-
-    expect(result).toHaveLength(1);
-    expect(result[0].id).toBe("loc-a");
-    expect(result[0].attributes.name).toBe("Location A");
   });
 
   // -- Fetcher: type filter --
 
-  it("passes type filter as eq() filter query when type is provided", async () => {
-    mockListLocations.mockResolvedValue(makeLocationsResponse([]));
+  it("passes the type through to the server function", async () => {
+    mockEpGetLocations.mockResolvedValue([]);
 
     renderHook(() => useLocations({ type: "physical" as any }));
     await capturedFetcher!();
 
-    expect(mockListLocations).toHaveBeenCalledWith({
-      client: mockClient,
-      query: { filter: "eq(type,physical)" },
-    });
-  });
-
-  it("does not include filter in query when no type is specified", async () => {
-    mockListLocations.mockResolvedValue(makeLocationsResponse([]));
-
-    renderHook(() => useLocations());
-    await capturedFetcher!();
-
-    expect(mockListLocations).toHaveBeenCalledWith({
-      client: mockClient,
-      query: {},
-    });
+    expect(mockEpGetLocations).toHaveBeenCalledWith({ type: "physical" });
   });
 
   // -- Fetcher: empty / missing data --
 
-  it("returns empty array when response data is empty", async () => {
-    mockListLocations.mockResolvedValue(makeLocationsResponse([]));
-
-    renderHook(() => useLocations());
-    const result = await capturedFetcher!();
-
-    expect(result).toEqual([]);
-  });
-
-  it("returns empty array when response data.data is null/undefined", async () => {
-    mockListLocations.mockResolvedValue({ data: { data: null } });
+  it("returns an empty array when there are no locations", async () => {
+    mockEpGetLocations.mockResolvedValue([]);
 
     renderHook(() => useLocations());
     const result = await capturedFetcher!();
@@ -256,12 +208,12 @@ describe("useLocations", () => {
     expect(result.current.error).toBeNull();
   });
 
-  it("does not call listLocations when disabled", () => {
+  it("reads nothing when disabled", () => {
     renderHook(() => useLocations({ enabled: false }));
 
     // capturedFetcher is null when queryKey is null
     expect(capturedFetcher).toBeNull();
-    expect(mockListLocations).not.toHaveBeenCalled();
+    expect(mockEpGetLocations).not.toHaveBeenCalled();
   });
 
   // -- Error state propagation --

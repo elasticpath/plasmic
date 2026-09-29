@@ -16,8 +16,7 @@
 import React from "react";
 
 /* ---------- mock variables (declared before jest.mock) ---------- */
-const mockGetByContextAllProducts = jest.fn();
-const mockGetByContextProductsForNode = jest.fn();
+const mockEpGetProductPage = jest.fn();
 const mockUseMutablePlasmicQueryData = jest.fn();
 const mockUseCommerce = jest.fn();
 const mockUsePlasmicCanvasContext = jest.fn();
@@ -30,11 +29,8 @@ const mockHandleAPIError = jest.fn().mockImplementation((err: unknown) => {
 });
 
 /* ---------- jest.mock calls ---------- */
-jest.mock("@epcc-sdk/sdks-shopper", () => ({
-  getByContextAllProducts: (...a: unknown[]) =>
-    mockGetByContextAllProducts(...a),
-  getByContextProductsForNode: (...a: unknown[]) =>
-    mockGetByContextProductsForNode(...a),
+jest.mock("../../ep-server-functions/getProductPage", () => ({
+  epGetProductPage: (...a: unknown[]) => mockEpGetProductPage(...a),
 }));
 
 jest.mock("@plasmicapp/query", () => ({
@@ -104,8 +100,14 @@ import type { Product } from "../../types/product";
 import { mockProduct } from "../../utils/design-time-data";
 
 /* ---------- helpers ---------- */
-const mockClient = { baseUrl: "https://api.test.com" };
-const mockProvider = { locale: "en-US", client: mockClient };
+const mockProvider = { locale: "en-US" };
+
+function emptyPage() {
+  return {
+    data: [],
+    meta: { results: { total: 0 }, page: { limit: 12, offset: 0 } },
+  };
+}
 
 function setupCommerce() {
   mockUseCommerce.mockReturnValue(mockProvider);
@@ -118,7 +120,7 @@ describe("useProductList", () => {
     setupCommerce();
   });
 
-  it("should return empty state when no client is available", () => {
+  it("should return empty state when no provider is configured", () => {
     mockUseCommerce.mockReturnValue(null);
     mockUseMutablePlasmicQueryData.mockReturnValue({
       data: null,
@@ -137,7 +139,7 @@ describe("useProductList", () => {
     expect(result.current.error).toBeNull();
   });
 
-  it("should pass null query key when client is unavailable", () => {
+  it("should pass null query key when no provider is configured", () => {
     mockUseCommerce.mockReturnValue(null);
     mockUseMutablePlasmicQueryData.mockReturnValue({
       data: null,
@@ -180,9 +182,9 @@ describe("useProductList", () => {
     );
   });
 
-  /** The browser-side hook must stay as sort-free as the server function. */
-  it("sends no sort to Elastic Path", async () => {
-    mockGetByContextAllProducts.mockResolvedValue({ data: { data: [] } });
+  /** The hook must stay as sort-free as the server function it reads through. */
+  it("sends no sort to the server function", async () => {
+    mockEpGetProductPage.mockResolvedValue(emptyPage());
     mockUseMutablePlasmicQueryData.mockReturnValue({
       data: null,
       error: null,
@@ -197,8 +199,7 @@ describe("useProductList", () => {
     const fetcher = mockUseMutablePlasmicQueryData.mock.calls[0][1];
     await fetcher();
 
-    const query = mockGetByContextAllProducts.mock.calls[0][0].query;
-    expect(query).not.toHaveProperty("sort");
+    expect(mockEpGetProductPage.mock.calls[0][0]).not.toHaveProperty("sort");
   });
 
   it("should report loading state", () => {
@@ -279,7 +280,7 @@ describe("useProductList", () => {
     expect(mockMutate).toHaveBeenCalled();
   });
 
-  it("should call getByContextAllProducts with BigInt pagination params in fetcher", async () => {
+  function captureFetcher() {
     let capturedFetcher: Function | null = null;
     mockUseMutablePlasmicQueryData.mockImplementation(
       (_key: unknown, fetcher: Function) => {
@@ -292,135 +293,59 @@ describe("useProductList", () => {
         };
       }
     );
+    return () => capturedFetcher!();
+  }
 
-    mockGetByContextAllProducts.mockResolvedValue({
-      data: {
-        data: [
-          {
-            id: "prod-0",
-            attributes: { name: "P0", slug: "p0", description: "" },
-            meta: {
-              display_price: { without_tax: { amount: 1000, currency: "USD" } },
-            },
-            relationships: {},
-          },
-        ],
-        included: { main_images: [], files: [] },
-        meta: { results: { total: BigInt(48) } },
-      },
-    });
+  it("turns the page number into a record offset", async () => {
+    const runFetcher = captureFetcher();
+    mockEpGetProductPage.mockResolvedValue(emptyPage());
 
     renderHook(() => useProductList({ page: 1, pageSize: 12 }));
+    await runFetcher();
 
-    expect(capturedFetcher).not.toBeNull();
-    await capturedFetcher!();
-
-    const callArgs = mockGetByContextAllProducts.mock.calls[0][0];
-    expect(callArgs.client).toBe(mockClient);
-    expect(callArgs.query["page[limit]"]).toBe(BigInt(12));
-    expect(callArgs.query["page[offset]"]).toBe(BigInt(12));
-    expect(callArgs.query.include).toEqual([
-      "main_image",
-      "files",
-      "component_products",
-    ]);
+    expect(mockEpGetProductPage).toHaveBeenCalledWith({
+      limit: 12,
+      offset: 12,
+      search: undefined,
+      categoryId: undefined,
+    });
   });
 
-  it("should pass search filter to the API", async () => {
-    let capturedFetcher: Function | null = null;
-    mockUseMutablePlasmicQueryData.mockImplementation(
-      (_key: unknown, fetcher: Function) => {
-        capturedFetcher = fetcher;
-        return {
-          data: null,
-          error: null,
-          isLoading: false,
-          mutate: jest.fn(),
-        };
-      }
-    );
-
-    mockGetByContextAllProducts.mockResolvedValue({
-      data: { data: [], included: {}, meta: { results: { total: BigInt(0) } } },
-    });
+  it("passes the search term to the server function", async () => {
+    const runFetcher = captureFetcher();
+    mockEpGetProductPage.mockResolvedValue(emptyPage());
 
     renderHook(() =>
       useProductList({ search: "jacket", page: 0, pageSize: 12 })
     );
+    await runFetcher();
 
-    await capturedFetcher!();
-
-    const callArgs = mockGetByContextAllProducts.mock.calls[0][0];
-    expect(callArgs.query.filter).toContain("eq(name,jacket)");
+    expect(mockEpGetProductPage.mock.calls[0][0].search).toBe("jacket");
   });
 
-  it("should pass category filter to the API", async () => {
-    let capturedFetcher: Function | null = null;
-    mockUseMutablePlasmicQueryData.mockImplementation(
-      (_key: unknown, fetcher: Function) => {
-        capturedFetcher = fetcher;
-        return {
-          data: null,
-          error: null,
-          isLoading: false,
-          mutate: jest.fn(),
-        };
-      }
-    );
-
-    mockGetByContextProductsForNode.mockResolvedValue({
-      data: { data: [], included: {}, meta: { results: { total: BigInt(0) } } },
-    });
+  it("passes the category to the server function", async () => {
+    const runFetcher = captureFetcher();
+    mockEpGetProductPage.mockResolvedValue(emptyPage());
 
     renderHook(() =>
       useProductList({ categoryId: "cat-123", page: 0, pageSize: 12 })
     );
+    await runFetcher();
 
-    await capturedFetcher!();
-
-    // Elastic Path has no filterable category key — a categoryId is a node ID
-    // and selects the node's products endpoint.
-    expect(mockGetByContextAllProducts).not.toHaveBeenCalled();
-    const callArgs = mockGetByContextProductsForNode.mock.calls[0][0];
-    expect(callArgs.path).toEqual({ node_id: "cat-123" });
-    expect(callArgs.query.filter).toBeUndefined();
+    expect(mockEpGetProductPage.mock.calls[0][0].categoryId).toBe("cat-123");
   });
 
-  it("should convert BigInt total count from API response", async () => {
-    let capturedFetcher: Function | null = null;
-    mockUseMutablePlasmicQueryData.mockImplementation(
-      (_key: unknown, fetcher: Function) => {
-        capturedFetcher = fetcher;
-        return {
-          data: null,
-          error: null,
-          isLoading: false,
-          mutate: jest.fn(),
-        };
-      }
-    );
-
-    mockGetByContextAllProducts.mockResolvedValue({
-      data: {
-        data: [
-          {
-            id: "prod-0",
-            attributes: { name: "P", slug: "p", description: "" },
-            meta: {
-              display_price: { without_tax: { amount: 100, currency: "USD" } },
-            },
-            relationships: {},
-          },
-        ],
-        included: { main_images: [], files: [] },
-        meta: { results: { total: BigInt(99) } },
-      },
+  it("reads the total count out of the page envelope", async () => {
+    const runFetcher = captureFetcher();
+    mockEpGetProductPage.mockResolvedValue({
+      data: [mockProduct as unknown as Product],
+      meta: { results: { total: 99 }, page: { limit: 12, offset: 0 } },
     });
 
     renderHook(() => useProductList({ page: 0, pageSize: 12 }));
+    const result = await runFetcher();
 
-    const result = await capturedFetcher!();
-
+    expect(result.products).toHaveLength(1);
     expect(result.totalCount).toBe(99);
     expect(typeof result.totalCount).toBe("number");
   });

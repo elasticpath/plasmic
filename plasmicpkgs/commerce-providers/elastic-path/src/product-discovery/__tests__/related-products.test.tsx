@@ -18,7 +18,7 @@
 import React from "react";
 
 /* ---------- mock variables (declared before jest.mock) ---------- */
-const mockGetByContextAllRelatedProducts = jest.fn();
+const mockEpGetRelatedProducts = jest.fn();
 const mockUseMutablePlasmicQueryData = jest.fn();
 const mockUseCommerce = jest.fn();
 const mockUsePlasmicCanvasContext = jest.fn();
@@ -28,9 +28,8 @@ const mockHandleAPIError = jest.fn().mockImplementation((err: unknown) => {
 });
 
 /* ---------- jest.mock calls ---------- */
-jest.mock("@epcc-sdk/sdks-shopper", () => ({
-  getByContextAllRelatedProducts: (...a: unknown[]) =>
-    mockGetByContextAllRelatedProducts(...a),
+jest.mock("../../ep-server-functions/getRelatedProducts", () => ({
+  epGetRelatedProducts: (...a: unknown[]) => mockEpGetRelatedProducts(...a),
 }));
 
 jest.mock("@plasmicapp/query", () => ({
@@ -102,8 +101,7 @@ import type { Product } from "../../types/product";
 import { mockProduct } from "../../utils/design-time-data";
 
 /* ---------- helpers ---------- */
-const mockClient = { baseUrl: "https://api.test.com" };
-const mockProvider = { locale: "en-US", client: mockClient };
+const mockProvider = { locale: "en-US" };
 
 function setupCommerce() {
   mockUseCommerce.mockReturnValue(mockProvider);
@@ -116,7 +114,7 @@ describe("useRelatedProducts", () => {
     setupCommerce();
   });
 
-  it("should return empty state when no client is available", () => {
+  it("should return empty state when no provider is configured", () => {
     mockUseCommerce.mockReturnValue(null);
     mockUseMutablePlasmicQueryData.mockReturnValue({
       data: null,
@@ -314,7 +312,7 @@ describe("useRelatedProducts", () => {
     expect(mockMutate).toHaveBeenCalled();
   });
 
-  it("should call getByContextAllRelatedProducts with correct params in fetcher", async () => {
+  function captureFetcher() {
     let capturedFetcher: Function | null = null;
     mockUseMutablePlasmicQueryData.mockImplementation(
       (_key: unknown, fetcher: Function) => {
@@ -327,23 +325,12 @@ describe("useRelatedProducts", () => {
         };
       }
     );
+    return () => capturedFetcher!();
+  }
 
-    mockGetByContextAllRelatedProducts.mockResolvedValue({
-      data: {
-        data: [
-          {
-            id: "rp-0",
-            attributes: { name: "RP0", slug: "rp0", description: "" },
-            meta: {
-              display_price: { without_tax: { amount: 500, currency: "USD" } },
-            },
-            relationships: {},
-          },
-        ],
-        included: { main_images: [], files: [] },
-        meta: { results: { total: BigInt(3) } },
-      },
-    });
+  it("asks the server function for the relationship the caller named", async () => {
+    const runFetcher = captureFetcher();
+    mockEpGetRelatedProducts.mockResolvedValue([]);
 
     renderHook(() =>
       useRelatedProducts({
@@ -352,118 +339,21 @@ describe("useRelatedProducts", () => {
         limit: 6,
       })
     );
+    await runFetcher();
 
-    expect(capturedFetcher).not.toBeNull();
-    await capturedFetcher!();
-
-    const callArgs = mockGetByContextAllRelatedProducts.mock.calls[0][0];
-    expect(callArgs.client).toBe(mockClient);
-    expect(callArgs.path.product_id).toBe("prod-abc");
-    expect(callArgs.path.custom_relationship_slug).toBe("CRP_accessories");
-    expect(callArgs.query["page[limit]"]).toBe(BigInt(6));
-    expect(callArgs.query.include).toEqual(["main_image", "files"]);
+    expect(mockEpGetRelatedProducts).toHaveBeenCalledWith({
+      productId: "prod-abc",
+      relationshipSlug: "CRP_accessories",
+      limit: 6,
+    });
   });
 
-  it("should give each product its main image, or its first file when it has none", async () => {
-    let capturedFetcher: Function | null = null;
-    mockUseMutablePlasmicQueryData.mockImplementation(
-      (_key: unknown, fetcher: Function) => {
-        capturedFetcher = fetcher;
-        return { data: null, error: null, isLoading: false, mutate: jest.fn() };
-      }
-    );
-
-    const price = {
-      display_price: { without_tax: { amount: 500, currency: "USD" } },
-    };
-    mockGetByContextAllRelatedProducts.mockResolvedValue({
-      data: {
-        data: [
-          {
-            id: "with-main",
-            attributes: {
-              name: "With main",
-              slug: "with-main",
-              description: "",
-            },
-            meta: price,
-            relationships: {
-              main_image: { data: { id: "img-1", type: "main_image" } },
-              files: { data: [{ id: "file-1", type: "file" }] },
-            },
-          },
-          {
-            id: "files-only",
-            attributes: {
-              name: "Files only",
-              slug: "files-only",
-              description: "",
-            },
-            meta: price,
-            relationships: {
-              files: { data: [{ id: "file-2", type: "file" }] },
-            },
-          },
-        ],
-        included: {
-          main_images: [
-            { id: "img-1", link: { href: "https://files.test/main-1.jpg" } },
-          ],
-          files: [
-            { id: "file-1", link: { href: "https://files.test/file-1.jpg" } },
-            { id: "file-2", link: { href: "https://files.test/file-2.jpg" } },
-          ],
-        },
-        meta: { results: { total: BigInt(2) } },
-      },
-    });
-
-    renderHook(() =>
-      useRelatedProducts({
-        productId: "prod-abc",
-        relationshipSlug: "CRP_related_products",
-      })
-    );
-    const result = await capturedFetcher!();
-
-    expect(result.products[0].images[0].url).toBe(
-      "https://files.test/main-1.jpg"
-    );
-    expect(result.products[1].images[0].url).toBe(
-      "https://files.test/file-2.jpg"
-    );
-  });
-
-  it("should convert BigInt total count from API response", async () => {
-    let capturedFetcher: Function | null = null;
-    mockUseMutablePlasmicQueryData.mockImplementation(
-      (_key: unknown, fetcher: Function) => {
-        capturedFetcher = fetcher;
-        return {
-          data: null,
-          error: null,
-          isLoading: false,
-          mutate: jest.fn(),
-        };
-      }
-    );
-
-    mockGetByContextAllRelatedProducts.mockResolvedValue({
-      data: {
-        data: [
-          {
-            id: "rp-0",
-            attributes: { name: "P", slug: "p", description: "" },
-            meta: {
-              display_price: { without_tax: { amount: 100, currency: "USD" } },
-            },
-            relationships: {},
-          },
-        ],
-        included: { main_images: [], files: [] },
-        meta: { results: { total: BigInt(7) } },
-      },
-    });
+  it("counts what came back, since one page is all there is", async () => {
+    const runFetcher = captureFetcher();
+    mockEpGetRelatedProducts.mockResolvedValue([
+      mockProduct as unknown as Product,
+      mockProduct as unknown as Product,
+    ]);
 
     renderHook(() =>
       useRelatedProducts({
@@ -472,11 +362,10 @@ describe("useRelatedProducts", () => {
         limit: 4,
       })
     );
+    const result = await runFetcher();
 
-    const result = await capturedFetcher!();
-
-    expect(result.totalCount).toBe(7);
-    expect(typeof result.totalCount).toBe("number");
+    expect(result.products).toHaveLength(2);
+    expect(result.totalCount).toBe(2);
   });
 
   it("should use default limit of 4", () => {

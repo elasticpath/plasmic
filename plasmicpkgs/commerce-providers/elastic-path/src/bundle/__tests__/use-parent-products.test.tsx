@@ -31,20 +31,15 @@ jest.mock("@plasmicapp/query", () => ({
   }),
 }));
 
-const mockGetByContextAllProducts = jest.fn();
-const mockGetByContextChildProducts = jest.fn();
+const mockEpGetBaseProducts = jest.fn();
 
-jest.mock("@epcc-sdk/sdks-shopper", () => ({
-  getByContextAllProducts: (...args: any[]) =>
-    mockGetByContextAllProducts(...args),
-  getByContextChildProducts: (...args: any[]) =>
-    mockGetByContextChildProducts(...args),
+jest.mock("../../ep-server-functions/getBaseProducts", () => ({
+  epGetBaseProducts: (...args: any[]) => mockEpGetBaseProducts(...args),
 }));
 
-const mockClient = { baseUrl: "https://test.epcc.io" };
 jest.mock("../../shopper-context/EpCommerceContext", () => ({
   __esModule: true,
-  useEpCommerce: () => ({ client: mockClient }),
+  useEpCommerce: () => ({ locale: "en-US" }),
 }));
 
 // Import under test AFTER mocks — require() is not hoisted by esbuild
@@ -71,7 +66,11 @@ function makeComponents(
   };
 }
 
-function makeProduct(id: string, isParent: boolean) {
+function makeProduct(
+  id: string,
+  isParent: boolean,
+  childProducts: any[] = []
+) {
   return {
     id,
     attributes: { name: `Product ${id}`, base_product: isParent },
@@ -79,17 +78,19 @@ function makeProduct(id: string, isParent: boolean) {
       ? { children: { data: [{ id: `${id}-child1` }] } }
       : {},
     meta: {
-      variations: isParent
-        ? [
-            {
-              id: "color",
-              name: "Color",
-              options: [{ id: "red", name: "Red" }],
-            },
-          ]
-        : [],
       variation_matrix: isParent ? { red: `${id}-child1` } : undefined,
     },
+    images: [],
+    variations: isParent
+      ? [
+          {
+            id: "color",
+            name: "Color",
+            options: [{ id: "red", name: "Red" }],
+          },
+        ]
+      : [],
+    childProducts,
   };
 }
 
@@ -149,13 +150,7 @@ describe("useParentProducts", () => {
   // -- Fetcher: parent detection --
 
   it("detects parent products via base_product attribute", async () => {
-    const parentProd = makeProduct("p1", true);
-    mockGetByContextAllProducts.mockResolvedValue({
-      data: { data: [parentProd] },
-    });
-    mockGetByContextChildProducts.mockResolvedValue({
-      data: { data: [] },
-    });
+    mockEpGetBaseProducts.mockResolvedValue({ p1: makeProduct("p1", true) });
 
     renderHook(() =>
       useParentProducts({ components: makeComponents(["p1"]) })
@@ -168,10 +163,7 @@ describe("useParentProducts", () => {
   });
 
   it("detects non-parent products", async () => {
-    const simpleProd = makeProduct("s1", false);
-    mockGetByContextAllProducts.mockResolvedValue({
-      data: { data: [simpleProd] },
-    });
+    mockEpGetBaseProducts.mockResolvedValue({ s1: makeProduct("s1", false) });
 
     renderHook(() =>
       useParentProducts({ components: makeComponents(["s1"]) })
@@ -182,21 +174,21 @@ describe("useParentProducts", () => {
     expect(result["s1"].variations).toEqual([]);
   });
 
-  // -- Fetcher: child fetching --
+  // -- Fetcher: child variations --
 
-  it("fetches children for parent products", async () => {
-    const parentProd = makeProduct("p1", true);
-    const childProd = {
-      id: "child-1",
-      attributes: { name: "Child 1", sku: "C1-SKU" },
-      meta: { display_price: { without_tax: { formatted: "$10.00" } } },
-    };
-
-    mockGetByContextAllProducts.mockResolvedValue({
-      data: { data: [parentProd] },
-    });
-    mockGetByContextChildProducts.mockResolvedValue({
-      data: { data: [childProd] },
+  it("carries each parent's children through", async () => {
+    mockEpGetBaseProducts.mockResolvedValue({
+      p1: makeProduct("p1", true, [
+        {
+          id: "child-1",
+          name: "Child 1",
+          sku: "C1-SKU",
+          price: { formatted: "$10.00" },
+          bundleExcluded: true,
+          optionIds: [],
+          images: [],
+        },
+      ]),
     });
 
     renderHook(() =>
@@ -204,43 +196,35 @@ describe("useParentProducts", () => {
     );
     const result = await capturedFetcher!();
 
-    expect(mockGetByContextChildProducts).toHaveBeenCalledWith(
-      expect.objectContaining({
-        client: mockClient,
-        path: { product_id: "p1" },
-      })
-    );
     expect(result["p1"].children).toEqual([
-      expect.objectContaining({
+      {
         id: "child-1",
         name: "Child 1",
         sku: "C1-SKU",
         price: "$10.00",
-      }),
+        excluded: true,
+      },
     ]);
     expect(result["p1"].loading).toBe(false);
   });
 
-  it("does not fetch children for non-parent products", async () => {
-    const simpleProd = makeProduct("s1", false);
-    mockGetByContextAllProducts.mockResolvedValue({
-      data: { data: [simpleProd] },
-    });
+  it("asks the server function for every id in the key", async () => {
+    mockEpGetBaseProducts.mockResolvedValue({});
 
     renderHook(() =>
-      useParentProducts({ components: makeComponents(["s1"]) })
+      useParentProducts({ components: makeComponents(["b", "a"]) })
     );
     await capturedFetcher!();
 
-    expect(mockGetByContextChildProducts).not.toHaveBeenCalled();
+    expect(mockEpGetBaseProducts).toHaveBeenCalledWith({
+      productIds: ["a", "b"],
+    });
   });
 
   // -- Fetcher: missing products --
 
   it("marks missing products as non-parent with error", async () => {
-    mockGetByContextAllProducts.mockResolvedValue({
-      data: { data: [] },
-    });
+    mockEpGetBaseProducts.mockResolvedValue({});
 
     renderHook(() =>
       useParentProducts({ components: makeComponents(["missing"]) })
@@ -250,44 +234,6 @@ describe("useParentProducts", () => {
     expect(result["missing"].isParent).toBe(false);
     expect(result["missing"].error).toBeDefined();
     expect(result["missing"].error!.message).toContain("missing");
-  });
-
-  // -- Fetcher: batch processing --
-
-  it("batch-fetches products when there are more than 100 IDs", async () => {
-    const ids = Array.from(
-      { length: 150 },
-      (_, i) => `id-${String(i).padStart(3, "0")}`
-    );
-    mockGetByContextAllProducts.mockResolvedValue({ data: { data: [] } });
-
-    renderHook(() =>
-      useParentProducts({ components: makeComponents(ids) })
-    );
-    await capturedFetcher!();
-
-    expect(mockGetByContextAllProducts).toHaveBeenCalledTimes(2);
-  });
-
-  // -- Fetcher: error handling --
-
-  it("handles child fetch errors gracefully", async () => {
-    const parentProd = makeProduct("p1", true);
-    mockGetByContextAllProducts.mockResolvedValue({
-      data: { data: [parentProd] },
-    });
-    mockGetByContextChildProducts.mockRejectedValue(
-      new Error("Network error")
-    );
-
-    renderHook(() =>
-      useParentProducts({ components: makeComponents(["p1"]) })
-    );
-    const result = await capturedFetcher!();
-
-    expect(result["p1"].isParent).toBe(true);
-    expect(result["p1"].children).toEqual([]);
-    expect(result["p1"].error).toBeDefined();
   });
 
   // -- Return shape --

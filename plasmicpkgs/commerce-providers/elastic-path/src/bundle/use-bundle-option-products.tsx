@@ -1,12 +1,11 @@
 import { useMemo } from "react";
 import { useMutablePlasmicQueryData } from "@plasmicapp/query";
-import { getByContextAllProducts } from "@epcc-sdk/sdks-shopper";
 import { SWR_DEDUPING_INTERVAL_SHORT } from "../const";
 import { useEpCommerce } from "../shopper-context/EpCommerceContext";
+import { epGetBundleOptionProducts } from "../ep-server-functions/getBundleOptionProducts";
+import type { Product } from "../types/product";
 import { ComponentProduct } from "./types";
-import { handleAPIError } from "../utils/errorHandling";
 import { createLogger } from "../utils/logger";
-import { primaryImageUrl } from "../utils/normalize";
 
 const log = createLogger("useBundleOptionProducts");
 
@@ -25,12 +24,20 @@ export interface OptionProduct {
   sku?: string;
 }
 
+function toOptionProduct(product: Product): OptionProduct {
+  return {
+    id: product.id!,
+    name: product.attributes?.name,
+    description: product.attributes?.description,
+    image: product.images?.[0]?.url,
+    price: product.meta?.display_price?.without_tax?.formatted,
+    sku: product.attributes?.sku,
+  };
+}
+
 /**
- * Fetches product metadata (name, image, price, SKU) for all bundle option products
- * using SWR caching. Includes child product IDs when parent product data is available.
- *
- * The query key incorporates both direct option IDs and child IDs from parent products,
- * so the cache automatically refreshes when parent product children become available.
+ * The query key carries both the direct option IDs and the child IDs of any
+ * parent products, so the cache refreshes once those children arrive.
  */
 export function useBundleOptionProducts({
   components,
@@ -38,7 +45,6 @@ export function useBundleOptionProducts({
   enabled = true,
 }: UseBundleOptionProductsOptions) {
   const commerce = useEpCommerce();
-  const client = commerce?.client;
 
   // Compute all product IDs to fetch (direct options + parent product children)
   // Sorted for stable SWR deduplication key
@@ -65,7 +71,7 @@ export function useBundleOptionProducts({
   }, [components, parentProducts]);
 
   const queryKey =
-    enabled && client && sortedProductIds.length > 0
+    enabled && commerce && sortedProductIds.length > 0
       ? ["ep-bundle-option-products", sortedProductIds]
       : null;
 
@@ -75,56 +81,16 @@ export function useBundleOptionProducts({
   >(
     queryKey,
     async () => {
-      const productIdsArray = sortedProductIds.split(",");
-      const productMap: Record<string, OptionProduct> = {};
-
-      // Batch fetch products (EP supports ~200 IDs per filter)
-      const batchSize = 100;
-      const batches: string[][] = [];
-      for (let i = 0; i < productIdsArray.length; i += batchSize) {
-        batches.push(productIdsArray.slice(i, i + batchSize));
-      }
-
-      const batchResults = await Promise.all(
-        batches.map(async (batchIds) => {
-          try {
-            const response = await getByContextAllProducts({
-              client: client!,
-              query: {
-                filter: `in(id,${batchIds.join(",")})`,
-                include: ["main_image", "files"],
-                "page[limit]": BigInt(batchIds.length),
-              },
-            });
-            return {
-              products: response.data?.data || [],
-              included: response.data?.included,
-            };
-          } catch (err) {
-            const apiError = handleAPIError(err, "fetching bundle option products batch");
-            log.error("Failed to fetch products in bulk", {
-              error: apiError.message,
-            } as Record<string, unknown>);
-            return { products: [], included: undefined };
-          }
-        })
-      );
-
-      batchResults.forEach(({ products, included }) => {
-        products.forEach((product) => {
-          if (product && product.id) {
-            productMap[product.id] = {
-              id: product.id,
-              name: product.attributes?.name,
-              description: product.attributes?.description,
-              image: primaryImageUrl(product, included),
-              price: product.meta?.display_price?.without_tax?.formatted,
-              sku: product.attributes?.sku,
-            };
-          }
-        });
+      const products = await epGetBundleOptionProducts({
+        productIds: sortedProductIds.split(","),
       });
 
+      const productMap: Record<string, OptionProduct> = {};
+      for (const product of Object.values(products)) {
+        if (product?.id) {
+          productMap[product.id] = toOptionProduct(product);
+        }
+      }
       return productMap;
     },
     {

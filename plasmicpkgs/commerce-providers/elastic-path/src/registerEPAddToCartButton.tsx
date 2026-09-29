@@ -16,10 +16,8 @@ import {
   extractCartItemFromForm,
   validateAndParseQuantity,
 } from "./cart/utils/cartDataBuilder";
-import {
-  callEpProxy,
-  epProxyErrorCode,
-} from "./ep-server-functions/proxy-fetch";
+import { epProxyErrorCode } from "./ep-server-functions/proxy-fetch";
+import { epAddCartItem } from "./ep-server-functions/cart-mutations";
 import { cartMutationErrorCopy } from "./ep-server-functions/cart-mutation-error-copy";
 import { epCartCacheKey } from "./cart-provider/cache-keys";
 
@@ -172,13 +170,7 @@ export function EPAddToCartButton(props: EPAddToCartButtonProps) {
         return;
       }
 
-      await callEpProxy(
-        "addCartItem",
-        extractCartItemFromForm(formValues, product, {}) as unknown as Record<
-          string,
-          unknown
-        >
-      );
+      await epAddCartItem(extractCartItemFromForm(formValues, product, {}));
 
       // Refresh any EPCartProvider in the tree.
       await swrMutate(epCartCacheKey());

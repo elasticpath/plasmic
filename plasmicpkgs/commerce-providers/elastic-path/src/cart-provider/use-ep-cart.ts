@@ -1,6 +1,6 @@
 import useSWR from "swr";
 import type { Cart } from "../types/cart";
-import { callEpProxy } from "../ep-server-functions/proxy-fetch";
+import { epGetCart } from "../ep-server-functions/getCart";
 import { epCartCacheKey } from "./cache-keys";
 
 export interface UseEpCartReturn {
@@ -35,7 +35,7 @@ export function cartLoadState(
 export function useEpCart(): UseEpCartReturn {
   const { data, error, mutate } = useSWR<Cart | null>(
     epCartCacheKey(),
-    () => callEpProxy<Cart | null>("getCart", {}, null),
+    () => epGetCart() as Promise<Cart | null>,
     { revalidateOnFocus: false }
   );
   return {

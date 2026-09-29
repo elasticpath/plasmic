@@ -30,17 +30,16 @@ jest.mock("@plasmicapp/query", () => ({
   }),
 }));
 
-const mockGetByContextAllProducts = jest.fn();
+const mockEpGetBundleOptionProducts = jest.fn();
 
-jest.mock("@epcc-sdk/sdks-shopper", () => ({
-  getByContextAllProducts: (...args: any[]) =>
-    mockGetByContextAllProducts(...args),
+jest.mock("../../ep-server-functions/getBundleOptionProducts", () => ({
+  epGetBundleOptionProducts: (...args: any[]) =>
+    mockEpGetBundleOptionProducts(...args),
 }));
 
-const mockClient = { baseUrl: "https://test.epcc.io" };
 jest.mock("../../shopper-context/EpCommerceContext", () => ({
   __esModule: true,
-  useEpCommerce: () => ({ client: mockClient }),
+  useEpCommerce: () => ({ locale: "en-US" }),
 }));
 
 // Import under test AFTER mocks — require() is not hoisted by esbuild
@@ -67,7 +66,7 @@ function makeComponents(
   };
 }
 
-function makeApiProduct(id: string) {
+function makeProduct(id: string, images: { url: string }[] = []) {
   return {
     id,
     attributes: {
@@ -75,8 +74,10 @@ function makeApiProduct(id: string) {
       description: `Desc ${id}`,
       sku: `SKU-${id}`,
     },
-    relationships: { main_image: { data: { id: `img-${id}` } } },
     meta: { display_price: { without_tax: { formatted: `$${id}` } } },
+    images,
+    variations: [],
+    childProducts: [],
   };
 }
 
@@ -151,20 +152,11 @@ describe("useBundleOptionProducts", () => {
 
   // -- Fetcher: product mapping --
 
-  it("maps API response to OptionProduct shape", async () => {
-    const apiProduct = makeApiProduct("prod-1");
-    mockGetByContextAllProducts.mockResolvedValue({
-      data: {
-        data: [apiProduct],
-        included: {
-          main_images: [
-            {
-              id: "img-prod-1",
-              link: { href: "https://files.test/prod-1.jpg" },
-            },
-          ],
-        },
-      },
+  it("maps the server function's products to the OptionProduct shape", async () => {
+    mockEpGetBundleOptionProducts.mockResolvedValue({
+      "prod-1": makeProduct("prod-1", [
+        { url: "https://files.test/prod-1.jpg" },
+      ]),
     });
 
     renderHook(() =>
@@ -182,51 +174,9 @@ describe("useBundleOptionProducts", () => {
     });
   });
 
-  // -- Fetcher: images --
-
-  it("requests the main images and files with the products", async () => {
-    mockGetByContextAllProducts.mockResolvedValue({ data: { data: [] } });
-
-    renderHook(() =>
-      useBundleOptionProducts({ components: makeComponents(["prod-1"]) })
-    );
-    await capturedFetcher!();
-
-    expect(mockGetByContextAllProducts).toHaveBeenCalledWith(
-      expect.objectContaining({
-        query: expect.objectContaining({ include: ["main_image", "files"] }),
-      })
-    );
-  });
-
-  it("falls back to the product's first file when it has no main image", async () => {
-    const apiProduct = {
-      ...makeApiProduct("prod-1"),
-      relationships: { files: { data: [{ id: "file-1", type: "file" }] } },
-    };
-    mockGetByContextAllProducts.mockResolvedValue({
-      data: {
-        data: [apiProduct],
-        included: {
-          files: [
-            { id: "file-1", link: { href: "https://files.test/file-1.jpg" } },
-          ],
-        },
-      },
-    });
-
-    renderHook(() =>
-      useBundleOptionProducts({ components: makeComponents(["prod-1"]) })
-    );
-    const result = await capturedFetcher!();
-
-    expect(result["prod-1"].image).toBe("https://files.test/file-1.jpg");
-  });
-
   it("leaves the image unset when the product has no images", async () => {
-    const apiProduct = { ...makeApiProduct("prod-1"), relationships: {} };
-    mockGetByContextAllProducts.mockResolvedValue({
-      data: { data: [apiProduct] },
+    mockEpGetBundleOptionProducts.mockResolvedValue({
+      "prod-1": makeProduct("prod-1"),
     });
 
     renderHook(() =>
@@ -237,25 +187,21 @@ describe("useBundleOptionProducts", () => {
     expect(result["prod-1"].image).toBeUndefined();
   });
 
-  // -- Fetcher: batch processing --
-
-  it("batch-fetches products in groups of 100", async () => {
-    const ids = Array.from(
-      { length: 150 },
-      (_, i) => `id-${String(i).padStart(3, "0")}`
-    );
-    mockGetByContextAllProducts.mockResolvedValue({ data: { data: [] } });
+  it("asks the server function for every id in the key", async () => {
+    mockEpGetBundleOptionProducts.mockResolvedValue({});
 
     renderHook(() =>
-      useBundleOptionProducts({ components: makeComponents(ids) })
+      useBundleOptionProducts({ components: makeComponents(["b", "a"]) })
     );
     await capturedFetcher!();
 
-    expect(mockGetByContextAllProducts).toHaveBeenCalledTimes(2);
+    expect(mockEpGetBundleOptionProducts).toHaveBeenCalledWith({
+      productIds: ["a", "b"],
+    });
   });
 
-  it("returns empty map when API returns no products", async () => {
-    mockGetByContextAllProducts.mockResolvedValue({ data: { data: [] } });
+  it("returns empty map when the catalog returns no products", async () => {
+    mockEpGetBundleOptionProducts.mockResolvedValue({});
 
     renderHook(() =>
       useBundleOptionProducts({ components: makeComponents(["missing"]) })
@@ -263,27 +209,6 @@ describe("useBundleOptionProducts", () => {
     const result = await capturedFetcher!();
 
     expect(result).toEqual({});
-  });
-
-  // -- Fetcher: error handling --
-
-  it("returns partial results when one batch fails", async () => {
-    const successProduct = makeApiProduct("good");
-    mockGetByContextAllProducts
-      .mockResolvedValueOnce({ data: { data: [successProduct] } })
-      .mockRejectedValueOnce(new Error("Network error"));
-
-    const ids = [
-      "good",
-      ...Array.from({ length: 100 }, (_, i) => `bad-${i}`),
-    ];
-    renderHook(() =>
-      useBundleOptionProducts({ components: makeComponents(ids) })
-    );
-    const result = await capturedFetcher!();
-
-    expect(result["good"]).toBeDefined();
-    expect(Object.keys(result)).toHaveLength(1);
   });
 
   // -- Return shape --

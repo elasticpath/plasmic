@@ -17,6 +17,16 @@ same client and reloads account state. Both actions no-op in the Plasmic
 canvas; the real mutations run at runtime and in interactive preview.
 Account switching is still not a registered action.
 
+### Changed
+
+Every catalogue and inventory read now goes through the server instead of the
+browser's Elastic Path client. Products, product lists, related products,
+stock, store locations and the three bundle reads all resolve through the
+session the server already holds, so a shopper's browser makes no request to
+Elastic Path and an account member sees their own prices on every surface, not
+only the ones that were already server-rendered. Nothing about the components
+changes: same props, same slots, same data.
+
 ### Fixed
 
 Related products and bundle options show their images. EP Related Products
