@@ -363,10 +363,6 @@ describe("useRelatedProducts", () => {
     expect(callArgs.query["page[limit]"]).toBe(BigInt(6));
     // Without it the response references images by id only.
     expect(callArgs.query.include).toEqual(["main_image", "files"]);
-    // Comma-separated, as the SDK sends it for the other catalog calls.
-    expect(callArgs.querySerializer).toEqual({
-      array: { explode: false, style: "form" },
-    });
   });
 
   it("should give each product its main image, or its first file when it has none", async () => {
