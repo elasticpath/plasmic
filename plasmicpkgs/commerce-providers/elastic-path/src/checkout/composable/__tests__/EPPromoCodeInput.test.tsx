@@ -1,8 +1,9 @@
 /** @jest-environment jsdom */
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-// The cart the input reads its already-applied promotion from.
+// The cart the input reads its applied promotion from — the only source of
+// truth for the applied state, since the discount lives on the EP cart.
 let mockCart: any = null;
 jest.mock("../../../cart-provider/use-ep-cart", () => ({
   useEpCart: () => ({
@@ -13,162 +14,268 @@ jest.mock("../../../cart-provider/use-ep-cart", () => ({
   }),
 }));
 
-// Required after the mock above: jest.mock does not hoist under this project's
-// esbuild transform, so a static import would bind the real module.
+// Mocked at the transport, not at the operation: the real `epApplyPromoCode` /
+// `epRemovePromoCode` run, so what reaches Elastic Path is what these tests
+// assert on.
+const mockCallEpProxy = jest.fn();
+jest.mock("../../../ep-server-functions/proxy-fetch", () => ({
+  __esModule: true,
+  // `epProxyErrorCode` is pure — exercise the real one.
+  ...jest.requireActual("../../../ep-server-functions/proxy-fetch"),
+  callEpProxy: (...args: unknown[]) => mockCallEpProxy(...args),
+}));
+
+const mockSwrMutate = jest.fn();
+jest.mock("swr", () => ({
+  __esModule: true,
+  mutate: (...args: unknown[]) => mockSwrMutate(...args),
+}));
+
+// Required after the mocks above: jest.mock does not hoist under this
+// project's esbuild transform, so a static import would bind the real modules.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { EPPromoCodeInput } =
   require("../EPPromoCodeInput") as typeof import("../EPPromoCodeInput");
 
-// ---------------------------------------------------------------------------
-// jest.mock doesn't hoist with this project's esbuild transform.
-// Mock global.fetch directly (matching existing test patterns).
-// useShopperFetch() internally calls global.fetch, so this tests the full
-// server-route path end-to-end.
-// ---------------------------------------------------------------------------
+const CART_WITHOUT_PROMOTION = {
+  id: "cart-1",
+  items: [],
+  promotions: [],
+  itemCount: 1,
+};
 
-const mockFetch = jest.fn();
-(global as any).fetch = mockFetch;
+const CART_WITH_PROMOTION = {
+  id: "cart-1",
+  items: [],
+  promotions: [
+    {
+      id: "promo-1",
+      type: "promotion_item",
+      name: "Five off",
+      code: "SAVE5",
+      meta: {
+        display_price: {
+          without_tax: {
+            value: { amount: -500, currency: "USD", formatted: "-$5.00" },
+          },
+        },
+      },
+    },
+  ],
+  itemCount: 1,
+};
 
-function mockFetchSuccess(data: any = {}) {
-  mockFetch.mockResolvedValue({
-    ok: true,
-    json: () => Promise.resolve(data),
-    text: () => Promise.resolve(JSON.stringify(data)),
-  });
+/** An error as the proxy route reports it in production: message withheld. */
+function sanitizedProxyError(code: string): Error {
+  const err = new Error("dispatch_failed") as Error & { code?: string };
+  err.code = code;
+  return err;
 }
 
-function mockFetchFailure(message: string) {
-  mockFetch.mockResolvedValue({
-    ok: false,
-    status: 400,
-    json: () => Promise.resolve({ error: message }),
-    text: () => Promise.resolve(message),
+function applyCode(value: string) {
+  fireEvent.change(screen.getByPlaceholderText("Promo code"), {
+    target: { value },
   });
+  fireEvent.click(screen.getByText("Apply"));
 }
 
 beforeEach(() => {
-  mockFetch.mockReset();
-  mockCart = null;
+  mockCallEpProxy.mockReset();
+  mockSwrMutate.mockReset();
+  mockCart = CART_WITHOUT_PROMOTION;
 });
 
-describe("EPPromoCodeInput — a promotion the cart already carries", () => {
+describe("EPPromoCodeInput — the promotion the cart carries", () => {
   it("shows it as applied without any interaction", () => {
-    // The applied state lived only in local useState, so any navigation lost
-    // the chip while the discount stayed live on the cart.
+    mockCart = CART_WITH_PROMOTION;
+
+    const { container } = render(<EPPromoCodeInput />);
+
+    expect(container.querySelector("[data-ep-promo-applied]")).toBeTruthy();
+    expect(container.textContent).toContain("SAVE5");
+  });
+
+  it("shows the discount Elastic Path computed, not a placeholder", () => {
+    mockCart = CART_WITH_PROMOTION;
+
+    const { container } = render(<EPPromoCodeInput />);
+
+    expect(container.textContent).toContain("-$5.00");
+  });
+
+  it("falls back to the promotion name when EP returns no code", () => {
     mockCart = {
-      id: "cart-1",
-      items: [],
+      ...CART_WITHOUT_PROMOTION,
       promotions: [{ id: "promo-1", type: "promotion_item", name: "TEST1" }],
-      itemCount: 1,
     };
 
-    const { container } = render(<EPPromoCodeInput useServerRoutes />);
+    const { container } = render(<EPPromoCodeInput />);
 
     expect(container.querySelector("[data-ep-promo-applied]")).toBeTruthy();
     expect(container.textContent).toContain("TEST1");
   });
 
   it("offers the input when the cart carries no promotion", () => {
-    mockCart = { id: "cart-1", items: [], promotions: [], itemCount: 1 };
-
-    const { container } = render(<EPPromoCodeInput useServerRoutes />);
+    const { container } = render(<EPPromoCodeInput />);
 
     expect(container.querySelector("[data-ep-promo-applied]")).toBeNull();
     expect(screen.getByPlaceholderText("Promo code")).toBeTruthy();
   });
 });
 
-describe("EPPromoCodeInput (useServerRoutes)", () => {
-  it("renders input and apply button", () => {
-    mockFetchSuccess();
-    render(<EPPromoCodeInput useServerRoutes />);
-    expect(screen.getByPlaceholderText("Promo code")).toBeTruthy();
-    expect(screen.getByText("Apply")).toBeTruthy();
-  });
+describe("EPPromoCodeInput — applying a code", () => {
+  it("sends the code and nothing else", async () => {
+    mockCallEpProxy.mockResolvedValue(CART_WITH_PROMOTION);
+    render(<EPPromoCodeInput />);
 
-  it("calls POST /api/cart/promo on apply", async () => {
-    mockFetchSuccess();
-    render(<EPPromoCodeInput useServerRoutes />);
-
-    const input = screen.getByPlaceholderText("Promo code");
-    fireEvent.change(input, { target: { value: "SAVE10" } });
-    fireEvent.click(screen.getByText("Apply"));
+    applyCode("SAVE5");
 
     await waitFor(() => {
-      const postCall = mockFetch.mock.calls.find(
-        ([url, init]: [string, RequestInit]) =>
-          url === "/api/cart/promo" && init?.method === "POST"
+      expect(mockCallEpProxy).toHaveBeenCalledWith("applyPromoCode", {
+        code: "SAVE5",
+      });
+    });
+    // No request originating in the browser states a discount amount.
+    const [, args] = mockCallEpProxy.mock.calls[0];
+    expect(Object.keys(args)).toEqual(["code"]);
+  });
+
+  it("re-prices every cart surface from the cart EP returned", async () => {
+    mockCallEpProxy.mockResolvedValue(CART_WITH_PROMOTION);
+    render(<EPPromoCodeInput />);
+
+    applyCode("SAVE5");
+
+    await waitFor(() => {
+      expect(mockSwrMutate).toHaveBeenCalledWith(
+        "ep-cart",
+        CART_WITH_PROMOTION,
+        { revalidate: false }
       );
-      expect(postCall).toBeDefined();
-
-      const body = JSON.parse(postCall![1].body as string);
-      expect(body.code).toBe("SAVE10");
     });
   });
 
-  it("shows applied state and remove button after successful apply", async () => {
-    mockFetchSuccess();
+  it("calls onApply with the code", async () => {
+    mockCallEpProxy.mockResolvedValue(CART_WITH_PROMOTION);
+    const onApply = jest.fn();
+    render(<EPPromoCodeInput onApply={onApply} />);
+
+    applyCode("SAVE5");
+
+    await waitFor(() => expect(onApply).toHaveBeenCalledWith("SAVE5"));
+  });
+
+  it("reaches the same operation whether or not useServerRoutes is set", async () => {
+    // The prop survives only so existing projects load; it is not the
+    // mechanism and never was.
+    mockCallEpProxy.mockResolvedValue(CART_WITH_PROMOTION);
     render(<EPPromoCodeInput useServerRoutes />);
 
-    const input = screen.getByPlaceholderText("Promo code");
-    fireEvent.change(input, { target: { value: "SAVE10" } });
-    fireEvent.click(screen.getByText("Apply"));
+    applyCode("SAVE5");
 
     await waitFor(() => {
-      expect(screen.getByText("SAVE10")).toBeTruthy();
-      expect(screen.getByText("Remove")).toBeTruthy();
+      expect(mockCallEpProxy).toHaveBeenCalledWith("applyPromoCode", {
+        code: "SAVE5",
+      });
     });
   });
 
-  it("calls DELETE /api/cart/promo on remove", async () => {
-    mockFetchSuccess();
-    render(<EPPromoCodeInput useServerRoutes />);
+  it("does not submit an empty code", () => {
+    render(<EPPromoCodeInput />);
 
-    // Apply first
-    const input = screen.getByPlaceholderText("Promo code");
-    fireEvent.change(input, { target: { value: "SAVE10" } });
-    fireEvent.click(screen.getByText("Apply"));
+    expect(screen.getByText("Apply")).toHaveProperty("disabled", true);
+    expect(mockCallEpProxy).not.toHaveBeenCalled();
+  });
+});
+
+describe("EPPromoCodeInput — a code EP will not honour", () => {
+  it("tells the shopper and leaves the basket alone", async () => {
+    mockCallEpProxy.mockRejectedValue(
+      sanitizedProxyError("invalid_promo_code")
+    );
+    const onError = jest.fn();
+    const { container } = render(<EPPromoCodeInput onError={onError} />);
+
+    applyCode("EXPIRED");
+
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    // The cart is never written to, so nothing invalidates or reseeds it.
+    expect(mockSwrMutate).not.toHaveBeenCalled();
+    expect(container.querySelector("[data-ep-promo-applied]")).toBeNull();
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it("maps the sanitized production failure to copy a shopper can act on", async () => {
+    // Production withholds `message`, so rendering it verbatim would show
+    // "dispatch_failed".
+    mockCallEpProxy.mockRejectedValue(
+      sanitizedProxyError("invalid_promo_code")
+    );
+    render(<EPPromoCodeInput />);
+
+    applyCode("EXPIRED");
 
     await waitFor(() => {
-      expect(screen.getByText("SAVE10")).toBeTruthy();
+      expect(screen.getByRole("alert").textContent).toMatch(/isn't valid/i);
+    });
+    expect(screen.queryByText(/dispatch_failed/)).toBeNull();
+  });
+
+  it("clears the message as soon as the shopper edits the code", async () => {
+    mockCallEpProxy.mockRejectedValue(
+      sanitizedProxyError("invalid_promo_code")
+    );
+    render(<EPPromoCodeInput />);
+
+    applyCode("EXPIRED");
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+
+    fireEvent.change(screen.getByPlaceholderText("Promo code"), {
+      target: { value: "EXPIRED2" },
     });
 
-    // Now remove
-    mockFetch.mockClear();
-    mockFetchSuccess();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("EPPromoCodeInput — removing a code", () => {
+  it("removes by the code the cart carries", async () => {
+    mockCart = CART_WITH_PROMOTION;
+    mockCallEpProxy.mockResolvedValue(CART_WITHOUT_PROMOTION);
+    const onRemove = jest.fn();
+    render(<EPPromoCodeInput onRemove={onRemove} />);
+
     fireEvent.click(screen.getByText("Remove"));
 
     await waitFor(() => {
-      const deleteCall = mockFetch.mock.calls.find(
-        ([url, init]: [string, RequestInit]) =>
-          url === "/api/cart/promo" && init?.method === "DELETE"
-      );
-      expect(deleteCall).toBeDefined();
-
-      const body = JSON.parse(deleteCall![1].body as string);
-      expect(body.promoCode).toBe("SAVE10");
+      expect(mockCallEpProxy).toHaveBeenCalledWith("removePromoCode", {
+        code: "SAVE5",
+      });
     });
+    expect(onRemove).toHaveBeenCalled();
   });
 
-  it("shows error state on fetch failure", async () => {
-    mockFetchFailure("Invalid promo code");
-    render(<EPPromoCodeInput useServerRoutes />);
+  it("keeps the chip when the removal fails, since the discount is still live", async () => {
+    mockCart = CART_WITH_PROMOTION;
+    mockCallEpProxy.mockRejectedValue(
+      sanitizedProxyError("invalid_promo_code")
+    );
+    const { container } = render(<EPPromoCodeInput />);
 
-    const input = screen.getByPlaceholderText("Promo code");
-    fireEvent.change(input, { target: { value: "BAD" } });
-    fireEvent.click(screen.getByText("Apply"));
+    fireEvent.click(screen.getByText("Remove"));
 
-    await waitFor(() => {
-      expect(screen.getByRole("alert")).toBeTruthy();
-      expect(screen.getByText("Invalid promo code")).toBeTruthy();
-    });
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    expect(container.querySelector("[data-ep-promo-applied]")).toBeTruthy();
   });
 
-  it("does not submit empty promo code", () => {
-    mockFetchSuccess();
-    render(<EPPromoCodeInput useServerRoutes />);
+  it("cannot be clicked when EP returned no code to remove", () => {
+    mockCart = {
+      ...CART_WITHOUT_PROMOTION,
+      promotions: [{ id: "promo-1", type: "promotion_item", name: "TEST1" }],
+    };
 
-    const button = screen.getByText("Apply");
-    expect(button).toHaveProperty("disabled", true);
+    render(<EPPromoCodeInput />);
+
+    expect(screen.getByText("Remove")).toHaveProperty("disabled", true);
   });
 });

@@ -1,13 +1,17 @@
 export {
   epAddCartItem,
   epApplyCartAdjustment,
+  epApplyPromoCode,
   epRemoveCartItem,
+  epRemovePromoCode,
   epUpdateCartItem,
 } from "./cart-mutations";
 export type {
   EpAddCartItemInput,
   EpApplyCartAdjustmentInput,
+  EpApplyPromoCodeInput,
   EpRemoveCartItemInput,
+  EpRemovePromoCodeInput,
   EpUpdateCartItemInput,
 } from "./cart-mutations";
 export { epConfigureBundle } from "./configureBundle";

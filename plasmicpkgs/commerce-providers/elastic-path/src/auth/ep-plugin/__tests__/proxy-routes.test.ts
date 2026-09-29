@@ -22,6 +22,8 @@ vi.mock("../../../ep-server-functions/cart-mutations", () => ({
   epUpdateCartItem: vi.fn(),
   epRemoveCartItem: vi.fn(),
   epApplyCartAdjustment: vi.fn(),
+  epApplyPromoCode: vi.fn(),
+  epRemovePromoCode: vi.fn(),
 }));
 
 vi.mock("../../../ep-server-functions/getCart", () => ({
@@ -446,8 +448,107 @@ describe("createEpProxyRoutes no-session handling", () => {
   );
 });
 
+describe("createEpProxyRoutes promo codes", () => {
+  it("dispatches a promo code the browser sends, passing only the code", async () => {
+    const auth = buildAuth();
+    const anonResp = await (auth.handler.api as any).epAnonymous({
+      body: {},
+      headers: new Headers(),
+      asResponse: true,
+    });
+
+    const discountedCart = { id: "fresh-cart-uuid", totalPrice: 45 };
+    (cartMutations.epApplyPromoCode as any).mockResolvedValue(discountedCart);
+
+    const proxy = createEpProxyRoutes(auth as any);
+    const res = await proxy.handle(
+      new Request("http://localhost:3000/api/ep/proxy/applyPromoCode", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "http://localhost:3000",
+          cookie: cookiesFromResponse(anonResp),
+        },
+        body: JSON.stringify({ code: "SUMMER10" }),
+      }),
+      { params: Promise.resolve({ fn: "applyPromoCode" }) }
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(discountedCart);
+    // What the merchant's discount is worth is never in the request.
+    expect(cartMutations.epApplyPromoCode).toHaveBeenCalledWith({
+      code: "SUMMER10",
+    });
+  });
+
+  it("dispatches a promo-code removal", async () => {
+    const auth = buildAuth();
+    const anonResp = await (auth.handler.api as any).epAnonymous({
+      body: {},
+      headers: new Headers(),
+      asResponse: true,
+    });
+
+    (cartMutations.epRemovePromoCode as any).mockResolvedValue({
+      id: "fresh-cart-uuid",
+    });
+
+    const proxy = createEpProxyRoutes(auth as any);
+    const res = await proxy.handle(
+      new Request("http://localhost:3000/api/ep/proxy/removePromoCode", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "http://localhost:3000",
+          cookie: cookiesFromResponse(anonResp),
+        },
+        body: JSON.stringify({ code: "SUMMER10" }),
+      }),
+      { params: Promise.resolve({ fn: "removePromoCode" }) }
+    );
+
+    expect(res.status).toBe(200);
+    expect(cartMutations.epRemovePromoCode).toHaveBeenCalledWith({
+      code: "SUMMER10",
+    });
+  });
+
+  it("carries invalid_promo_code through production sanitization", async () => {
+    // Production withholds `message`, so without a code of its own a rejected
+    // code is indistinguishable from the route falling over.
+    const auth = buildAuth();
+    const anonResp = await (auth.handler.api as any).epAnonymous({
+      body: {},
+      headers: new Headers(),
+      asResponse: true,
+    });
+
+    (cartMutations.epApplyPromoCode as any).mockRejectedValue(
+      new Error('epApplyPromoCode: "EXPIRED" did not apply to this cart')
+    );
+
+    const proxy = createEpProxyRoutes(auth as any);
+    const res = await proxy.handle(
+      new Request("http://localhost:3000/api/ep/proxy/applyPromoCode", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "http://localhost:3000",
+          cookie: cookiesFromResponse(anonResp),
+        },
+        body: JSON.stringify({ code: "EXPIRED" }),
+      }),
+      { params: Promise.resolve({ fn: "applyPromoCode" }) }
+    );
+
+    expect(res.status).toBe(500);
+    expect((await res.json()).code).toBe("invalid_promo_code");
+  });
+});
+
 describe("createEpProxyRoutes cart adjustments", () => {
-  it("dispatches an adjustment the browser sends, so a promo code reaches the server", async () => {
+  it("dispatches an adjustment the browser sends", async () => {
     const auth = buildAuth();
     const anonResp = await (auth.handler.api as any).epAnonymous({
       body: {},
