@@ -116,7 +116,11 @@ const MOCK_PROMO_DATA = {
 };
 
 interface AppliedPromotion {
-  /** The code Elastic Path keys removal on. Null when EP did not return one. */
+  /**
+   * The code Elastic Path keys removal on. It comes back as the promotion
+   * line's `sku`; `code` is what the shopper SDK types but not what the API
+   * returns. Null when neither is there.
+   */
   code: string | null;
   /** What the chip shows. */
   label: string | null;

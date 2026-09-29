@@ -44,6 +44,8 @@ const CART_WITHOUT_PROMOTION = {
   itemCount: 1,
 };
 
+// The live shape: Elastic Path returns the code the shopper typed as `sku`,
+// and no `code` field at all, whatever the shopper SDK's type says.
 const CART_WITH_PROMOTION = {
   id: "cart-1",
   items: [],
@@ -51,8 +53,9 @@ const CART_WITH_PROMOTION = {
     {
       id: "promo-1",
       type: "promotion_item",
+      promotion_id: "a590f816",
       name: "Five off",
-      code: "SAVE5",
+      sku: "SAVE5",
       meta: {
         display_price: {
           without_tax: {

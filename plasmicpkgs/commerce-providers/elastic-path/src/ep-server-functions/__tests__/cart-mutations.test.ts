@@ -598,8 +598,9 @@ const CART_WITH_PROMOTION_RESPONSE = {
         {
           id: "promo-1",
           type: "promotion_item",
+          promotion_id: "a590f816",
           name: "Five off",
-          code: "SAVE5",
+          sku: "SAVE5",
           meta: {
             display_price: {
               without_tax: {
