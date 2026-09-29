@@ -108,9 +108,7 @@ describe("epGetStock", () => {
       epGetStock({ productIds: ["p1"] })
     );
 
-    expect(
-      result.p1.locations.map((l: any) => l.location.attributes)
-    ).toEqual([
+    expect(result.p1.locations.map((l: any) => l.location.attributes)).toEqual([
       { name: "East Distribution Centre", slug: "east-dc" },
       { name: "Main Warehouse", slug: "main-warehouse" },
     ]);

@@ -15,9 +15,9 @@ jest.mock("../../shopper-context/EpCommerceContext", () => ({
   useEpCommerce: () => ({ locale: "en-US" }),
 }));
 
-import { render, screen } from "@testing-library/react";
 import { DataProvider } from "@plasmicapp/host";
 import { PlasmicQueryDataProvider } from "@plasmicapp/query";
+import { render, screen } from "@testing-library/react";
 
 const { EPStockProvider } =
   require("../EPStockProvider") as typeof import("../EPStockProvider");
