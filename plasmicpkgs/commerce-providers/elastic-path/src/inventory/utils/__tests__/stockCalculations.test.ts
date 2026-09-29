@@ -8,7 +8,8 @@ import {
   isOutOfStock,
   getStockStatus,
 } from '../stockCalculations';
-import type { LocationStock, ProductStock } from '../../types';
+import { getLocationDisplayName } from '../displayHelpers';
+import type { Location, LocationStock, ProductStock } from '../../types';
 
 describe('stockCalculations', () => {
   const mockStockResponse = {
@@ -86,6 +87,34 @@ describe('stockCalculations', () => {
       const result = mapStockResponseToLocationStock(malformedResponse, 'prod-123');
 
       expect(result).toHaveLength(0);
+    });
+
+    // The stock response carries no location names. A placeholder name would be
+    // returned by getLocationDisplayName ahead of the real one.
+    it('should not invent a location name', () => {
+      const result = mapStockResponseToLocationStock(mockStockResponse, 'prod-123');
+
+      expect(result[0].location.attributes?.name).toBeUndefined();
+      expect(result[0].location.attributes?.slug).toBe('warehouse-1');
+    });
+
+    it('should resolve its display name from the locations list', () => {
+      const [first] = mapStockResponseToLocationStock(mockStockResponse, 'prod-123');
+      const locations = [
+        {
+          id: 'f1c2e7a0-0000-4000-8000-000000000001',
+          type: 'inventory_location',
+          attributes: { name: 'Main Warehouse', slug: 'warehouse-1' },
+        },
+      ] as Location[];
+
+      expect(getLocationDisplayName(first.location, locations)).toBe('Main Warehouse');
+    });
+
+    it('should fall back to the slug when the locations list has no match', () => {
+      const [first] = mapStockResponseToLocationStock(mockStockResponse, 'prod-123');
+
+      expect(getLocationDisplayName(first.location, [])).toBe('warehouse-1');
     });
   });
 

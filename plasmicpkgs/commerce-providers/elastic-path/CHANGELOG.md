@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+EP Stock Provider's location cards and EP Multi Location Stock show each
+location's name, such as "East Distribution Centre", instead of its slug,
+`east-dc`. The stock response names locations only by slug, and the stock
+mapping filled the name with that slug. The display name returned the filled-in
+slug before it looked the location up, so the real name was never used. A
+location missing from the locations list still shows its slug.
+
 ## 0.8.0
 
 ### Breaking

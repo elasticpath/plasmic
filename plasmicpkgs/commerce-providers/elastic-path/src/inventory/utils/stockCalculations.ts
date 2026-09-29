@@ -31,11 +31,13 @@ export function mapStockResponseToLocationStock(
   const locations = stockResponse?.attributes?.locations || {};
   
   return Object.entries(locations).map(([locationSlug, locationData]: [string, any]) => ({
+    // The stock response keys locations by slug and carries no name. Leave
+    // `name` unset: getLocationDisplayName returns an own name before it looks
+    // the slug up in the locations list, so a placeholder here hid the real one.
     location: {
       id: locationSlug,
       type: "inventory_location",
       attributes: {
-        name: locationSlug, // Will be enhanced with actual names elsewhere
         slug: locationSlug,
       },
     } as Location,
