@@ -29,10 +29,8 @@ const initElasticPathClient = (creds: ElasticPathCredentials) => {
     storage: memoryStorageAdapter(),
   };
 
-  // Configure the SDK's GLOBAL singleton too. Some package-internal
-  // code paths (e.g., the bundle hooks `use-parent-products`,
-  // `use-bundle-option-products`) call SDK functions without passing a
-  // client — those resolve to the singleton. Without this call, the
+  // Configure the SDK's GLOBAL singleton too. An SDK function called
+  // without a client resolves to the singleton. Without this call, the
   // singleton defaults to `localStorageAdapter()` and writes
   // `_store_ep_credentials` on first auth-interceptor fire.
   if (typeof window !== "undefined") {

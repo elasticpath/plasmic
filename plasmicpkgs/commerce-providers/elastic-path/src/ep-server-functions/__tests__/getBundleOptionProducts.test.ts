@@ -74,6 +74,32 @@ describe("epGetBundleOptionProducts", () => {
     ]);
   });
 
+  it("falls back to an option's first file when it has no main image", async () => {
+    mockGetByContextAllProducts.mockResolvedValue({
+      data: {
+        data: [
+          {
+            ...mkProduct("p1"),
+            relationships: {
+              files: { data: [{ id: "file-1", type: "file" }] },
+            },
+          },
+        ],
+        included: {
+          files: [
+            { id: "file-1", link: { href: "https://cdn.example/file-1.jpg" } },
+          ],
+        },
+      },
+    });
+
+    const result = await withEpSession(SESSION, () =>
+      epGetBundleOptionProducts({ productIds: ["p1"] })
+    );
+
+    expect(result.p1.images[0].url).toBe("https://cdn.example/file-1.jpg");
+  });
+
   it("publishes a price carrying all four members, not a bare string", async () => {
     mockGetByContextAllProducts.mockResolvedValue({
       data: { data: [mkProduct("p1")], included: INCLUDED },

@@ -47,6 +47,13 @@ Elastic Path and an account member sees their own prices on every surface, not
 only the ones that were already server-rendered. Nothing about the components
 changes: same props, same slots, same data.
 
+`useRelatedProducts` is the exception: it changes in three ways a caller can
+see. `totalCount` is the number of products returned, at most `limit`, not
+Elastic Path's total. A failed read returns an empty list instead of setting
+`error`, so the provider's **Error Content** renders only from **Preview
+State**. `locale` is part of the cache key only: the server uses the shopper
+session's locale.
+
 ### Fixed
 
 Promo codes work. Neither of the component's two code paths did anything: one

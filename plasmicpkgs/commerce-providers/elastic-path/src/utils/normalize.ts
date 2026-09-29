@@ -85,12 +85,6 @@ const normalizeProductImages = (product: ProductData) => {
   return dedupeByUrl(images);
 };
 
-export const primaryImageUrl = (
-  product: ElasticPathProduct,
-  included?: ProductData["included"]
-): string | undefined =>
-  normalizeProductImages({ data: product, included })[0]?.url;
-
 /**
  * A base product carries no `display_price` of its own — every child does.
  * The lowest of them is the "from" price a variation family displays.

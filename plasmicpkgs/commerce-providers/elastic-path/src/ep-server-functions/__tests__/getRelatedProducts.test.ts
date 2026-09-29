@@ -68,26 +68,24 @@ describe("epGetRelatedProducts", () => {
   });
 
   it("gives each product its main image, or its first file when it has none", async () => {
+    const product = (id: string, relationships: Record<string, unknown>) => ({
+      id,
+      type: "product",
+      attributes: { name: id },
+      relationships,
+      meta: { product_types: [] },
+    });
     mockGetByContextAllRelatedProducts.mockResolvedValue({
       data: {
         data: [
-          {
-            id: "with-main",
-            type: "product",
-            attributes: { name: "With main" },
-            relationships: {
-              main_image: { data: { id: "img-1", type: "main_image" } },
-              files: { data: [{ id: "file-1", type: "file" }] },
-            },
-          },
-          {
-            id: "files-only",
-            type: "product",
-            attributes: { name: "Files only" },
-            relationships: {
-              files: { data: [{ id: "file-2", type: "file" }] },
-            },
-          },
+          product("with-main", {
+            main_image: { data: { id: "img-1", type: "main_image" } },
+            files: { data: [{ id: "file-1", type: "file" }] },
+          }),
+          product("files-only", {
+            files: { data: [{ id: "file-2", type: "file" }] },
+          }),
+          product("no-images", {}),
         ],
         included: {
           main_images: [
@@ -110,6 +108,7 @@ describe("epGetRelatedProducts", () => {
 
     expect(result[0].images[0].url).toBe("https://files.test/main-1.jpg");
     expect(result[1].images[0].url).toBe("https://files.test/file-2.jpg");
+    expect(result[2].images).toEqual([]);
   });
 
   it("returns empty array when productId or relationshipSlug is missing", async () => {
