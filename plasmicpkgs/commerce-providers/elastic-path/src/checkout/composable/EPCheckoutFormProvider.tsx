@@ -349,7 +349,7 @@ export const EPCheckoutFormProvider = React.forwardRef<
     }
     const updateSession = sessionBridge?.updateSession;
     const calculateShipping = sessionBridge?.calculateShipping;
-    if (!updateSession || !calculateShipping) {
+    if (!updateSession) {
       shippingSyncRef.current = null;
       return;
     }
@@ -360,10 +360,18 @@ export const EPCheckoutFormProvider = React.forwardRef<
       }
       try {
         const resp = (await updateSession({ shippingAddress: address })) as
-          | { success?: boolean }
+          | {
+              success?: boolean;
+              data?: { session?: { availableShippingRates?: unknown[] } };
+            }
           | undefined;
         if (resp && resp.success === false) return;
-        await calculateShipping();
+        // An older server clears the rates on an address change without
+        // requoting, so ask for them once.
+        const rates = resp?.data?.session?.availableShippingRates;
+        if (Array.isArray(rates) && rates.length === 0 && calculateShipping) {
+          await calculateShipping();
+        }
         lastSyncedShippingRef.current = address;
       } catch (err) {
         log.warn("Shipping address sync failed", {

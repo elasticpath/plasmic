@@ -227,6 +227,10 @@ STRIPE_SECRET_KEY=sk_test_...
 # auth, the proxy's CORS reflection and the origin gate — add your Studio
 # origin here for cross-origin preview.
 BETTER_AUTH_TRUSTED_ORIGINS=https://studio.example.com
+
+# Optional: server log level. Unset, the server logs warnings and errors.
+# Takes the browser's EP_DEBUG values: "*", "silent", "error", "warn:Pay".
+EP_DEBUG=warn
 ```
 
 In production `createEpAuth` refuses to serve when the secret is missing, is
@@ -240,11 +244,15 @@ Two options tighten the deployment further:
 | Option | Default | Use when |
 | --- | --- | --- |
 | `trustedOrigins` | the app's own origin | another origin must act as the shopper (e.g. Studio preview) |
-| `hostAllowlist` | Elastic Path Composable Commerce regions, `*.epcloudops.com`, the integration host, and loopback outside production | the EP API lives elsewhere — Elastic Path Self Managed Commerce |
+| `hostAllowlist` | Elastic Path Composable Commerce regions, `*.epcloudops.com`, the integration host, and loopback outside production | this store's Elastic Path API is served from a custom domain |
 
-`hostAllowlist` is applied independently by `createEpAuth`,
-`extractEpProviderConfig` and `buildEpCtx`, so pass the same list to all
-three rather than only to the factory.
+The EP API host named in the Plasmic bundle is checked against the **EP host
+allow-list**: the defaults, plus `hostAllowlist`, plus the comma-separated
+`EP_HOST_ALLOWLIST` environment variable. Your entries extend the defaults.
+`createEpAuth` resolves the list once, hands it to `resolveConfig`, and
+exposes it as `epAuth.config.hostAllowlist` for any other caller of
+`extractEpProviderConfig`. A host off the list is logged and ignored, and the
+session falls back to the `host` passed to `createEpAuth` (ADR-0006).
 
 ## Architecture
 
@@ -489,6 +497,25 @@ Mount the auth handler through `createEpAuthRoutes`, never better-auth's
 `toNextJsHandler` directly: better-auth's `/get-session` returns the whole
 session record, and this package keeps the shopper's EP access token on it.
 
+The checkout-session handlers are mounted one route each, under the
+`apiBaseUrl` the session provider is given:
+
+| Method | Path | Handler | Description |
+|--------|------|---------|-------------|
+| POST | `{apiBaseUrl}/checkout/sessions` | `handleCreateSession` | Open a session for the cart |
+| GET | `{apiBaseUrl}/checkout/sessions/current` | `handleGetSession` | Read the session |
+| PATCH | `{apiBaseUrl}/checkout/sessions/current` | `handleUpdateSession` | Merge fields; a changed shipping address requotes |
+| POST | `{apiBaseUrl}/checkout/sessions/current/shipping` | `handleCalculateShipping` | Requote on demand, for example after the cart changes |
+| POST | `{apiBaseUrl}/checkout/sessions/current/pay` | `handlePay` | Place the order and start payment |
+| POST | `{apiBaseUrl}/checkout/sessions/current/resume-payment` | `handleResumePayment` | Resume payment after a customer action |
+| POST | `{apiBaseUrl}/checkout/sessions/current/abandon-payment` | `handleAbandonPayment` | Unlink a failed or cancelled payment |
+| POST | `{apiBaseUrl}/checkout/sessions/current/confirm` | `handleConfirm` | Confirm a gateway action |
+
+A saved shipping address is a quoted address: the update runs the
+`shippingRateResolver` in the same write, so a host that mounts only the
+session route still offers rates. A resolver failure leaves the address saved
+with no rates; the `/shipping` route is the retry.
+
 ### Which cart wins at sign-in
 
 A shopper can arrive at the sign-in form with a cart, and already have one
@@ -651,7 +678,7 @@ import {
   buildEpCtx,
   withEpSession,
 } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
-import { epAuth, epProviderHeaders } from "@/lib/ep-auth";
+import { epAuth } from "@/lib/ep-auth";
 import { cookies } from "next/headers";
 
 export default async function PlasmicLoaderPage({ params, searchParams }) {
@@ -665,17 +692,10 @@ export default async function PlasmicLoaderPage({ params, searchParams }) {
   const cookieStore = await cookies();
   const session = await epAuth.api.getSession({
     cookies: Object.fromEntries(cookieStore.getAll().map((c) => [c.name, c.value])),
-    headers: await epProviderHeaders(prefetchedData),
   });
 
   // Compose the EP session — auth + cart context for server-side EP calls.
-  const epCtx = buildEpCtx(prefetchedData, {
-    session: {
-      accessToken: session.session?.accessToken,
-      cartId: session.cart?.id ?? undefined,
-      account: session.session?.account ?? null,
-    },
-  });
+  const epCtx = buildEpCtx(session);
 
   // Run Studio Server Queries inside an EP session scope. Each `ep.*`
   // function reads the active session via AsyncLocalStorage — no `auth`
@@ -715,7 +735,7 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 
 ### 5. Resolve EP credentials from Studio config
 
-`buildEpCtx` reads `clientId` and `host` from the EP Provider global context (configured in Studio), not from `.env.local`. The helper that powers the lookup, `extractEpProviderConfig`, scans the loader bundle for the global-context module. For projects without a homepage route, `epProviderHeaders` resolves a real page path via `PLASMIC.fetchPages()` rather than hardcoding `/`.
+`clientId` and `host` come from the EP Provider global context (configured in Studio), not from `.env.local`. `createEpAuth`'s `resolveConfig` callback reads them with `extractEpProviderConfig(prefetchedData, { hostAllowlist })`, which scans the loader bundle for the global-context module, and the session carries them from then on; `buildEpCtx` reads them from the session. For projects without a homepage route, resolve a real page path via `PLASMIC.fetchPages()` rather than hardcoding `/` — see `getEpProviderConfig` in the example's `lib/ep-auth.ts`.
 
 ### Common gotchas
 
@@ -723,7 +743,7 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 |---|---|---|
 | `$q.product.data` always `null` / queries return `null` despite valid input | `withEpSession` not wrapped around `unstable__getServerQueriesData` | Wrap the query call per step 3; functions fail-soft to `null` outside an EP session scope |
 | `prefetchedQueryData: "$undefined"` in the SSR HTML | `appDir: true` not set in `plasmic-init.ts` | Add `platformOptions: { nextjs: { appDir: true } }` |
-| `EP OAuth failed (401) Invalid credentials` | API route's `epProviderHeaders()` returned empty (project has no homepage at `/`) | Ensure the storefront resolves a real page path via `fetchPages()` (already done if you copied `lib/ep-auth.ts` from the example) |
+| `EP OAuth failed (401) Invalid credentials` | `resolveConfig` found no EP Provider config (project has no homepage at `/`) | Ensure the storefront resolves a real page path via `fetchPages()` (already done if you copied `lib/ep-auth.ts` from the example) |
 | Studio binding still references `auth: $ctx.ep` | Project predates PRD #272 | Drop `auth` from each Server Query argument — the session now flows via ALS, not execParams |
 
 ## Components

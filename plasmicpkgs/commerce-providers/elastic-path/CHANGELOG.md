@@ -1,6 +1,36 @@
 # Changelog
 
-## Unreleased
+## 0.8.0
+
+### Breaking
+
+There is one EP host allow-list, and `createEpAuth` resolves it: the Elastic
+Path-operated defaults, plus the `hostAllowlist` option, plus the
+comma-separated `EP_HOST_ALLOWLIST` environment variable (ADR-0006). Your
+entries extend the defaults rather than replacing them. Pass it once, to
+`createEpAuth`, and delete your own `EP_HOST_ALLOWLIST` parsing.
+
+| Was | Now |
+| --- | --- |
+| `buildEpCtx(prefetchedData, { session: { accessToken, cartId, account }, hostAllowlist })` | `buildEpCtx(session)`, where `session` is what `epAuth.api.getSession()` returned |
+| `extractEpProviderConfig(prefetchedData)` | `extractEpProviderConfig(prefetchedData, { hostAllowlist })` — the list is required |
+| `resolveConfig: async () => …` | `resolveConfig: async ({ hostAllowlist }) => …` — pass it to `extractEpProviderConfig` |
+| `epPlugin({ clientId, host })` | `epPlugin({ clientId, host, hostAllowlist })` — the list is required |
+
+`buildEpCtx` reads the host and client id from the session, which carries the
+ones admitted when it was minted, so the page and the auth routes use the same
+Elastic Path host by construction. An empty session yields an empty context,
+which the server functions refuse to run with, as before. `buildEpCtx` no
+longer throws when the page's bundle has no EP Provider. Code outside
+`resolveConfig` that calls `extractEpProviderConfig` passes
+`epAuth.config.hostAllowlist`. `locale` and `currency` move to an optional
+second argument, and the `BuildEpCtxSessionInput` and `BuildEpCtxAccountInput`
+types are removed.
+
+A rejected host now names the `hostAllowlist` option and `EP_HOST_ALLOWLIST`
+as the fix for a store whose Elastic Path API is served from a custom domain.
+It no longer points at Elastic Path Self Managed Commerce, which never reaches
+this package.
 
 ### Added
 
@@ -138,6 +168,14 @@ does. See ADR-0005.
 EP Product Provider's product input is now displayed as **Product ID or slug**.
 No component, prop or function is added.
 
+A page whose shopper token could not be minted renders without commerce data
+instead of failing with a 500. `getSession` was meant to return an empty
+session when the anonymous mint failed, but the mint's error escaped the
+endpoint, so the empty session was never reached. `/ep/anonymous` and
+`/ep/refresh` now answer 502 with `shopper_token_mint_failed` and log the
+cause. An Elastic Path outage, or a Studio host that is not on the EP host
+allow-list with no working fallback, reaches this path.
+
 `ep.applyCartAdjustment` is dispatchable from the browser. It has been
 registered as a Studio mutation since it landed, but had no entry in the proxy
 route's dispatch table, so an adjustment a designer wired to an onClick — a
@@ -168,6 +206,31 @@ three call sites. That is how one site came to be missing the multi-location
 header. The cart routes apply it after the caller's own headers, so neither the
 header nor the account credential can be overridden per call. No caller passed
 either, so nothing changes today.
+
+A saved shipping address is a quoted address. When the checkout-session update
+changes the shipping address it runs the `shippingRateResolver` and persists
+the address and the new rates in one write, so the response and the next read
+both carry rates. It used to clear the rates and leave fetching new ones to a
+second request, and a checkout that lacked one could not select a rate and
+failed at `/pay`. A host that called the requote handler from its update route
+can remove that call, along with the code that read the session cookie between
+the two. A resolver failure does not fail the update: the address is saved,
+the rate list is empty, and the failure is logged. The `/shipping` route and
+the `calculateShipping` ref action are unchanged and are now the on-demand
+requote, for example after the cart changes.
+
+The server logs the package's warnings and errors. The logger read its level
+only from the browser's `localStorage`, so on the server every message was
+dropped, including a failed order reconciliation or a shipping-line write that
+could not authenticate. Set `EP_DEBUG` in the server environment with the
+browser's values to change the level; `EP_DEBUG=silent` restores the old
+behaviour. The browser stays silent unless `EP_DEBUG` is set there.
+
+The managed-form checkout no longer sends a second request after an address
+change. It called the update and then the requote, so a tenant's resolver ran
+twice for every address the shopper typed. When the update returns no rates, as
+a server on an earlier version does, the form still requotes once, so an app
+host whose server is behind its loader bundle keeps offering rates.
 
 ### Removed
 

@@ -18,6 +18,7 @@
 import { describe, expect, it } from "vitest";
 import { betterAuth } from "better-auth";
 import { epPlugin } from "../ep-plugin";
+import { DEFAULT_HOST_ALLOWLIST } from "../../host-allowlist";
 
 const SECRET = "x".repeat(48);
 
@@ -27,6 +28,7 @@ describe("epPlugin tracer (PRD #273)", () => {
       secret: SECRET,
       plugins: [
         epPlugin({
+          hostAllowlist: DEFAULT_HOST_ALLOWLIST,
           clientId: "test-client",
           host: "https://api.test.elasticpath.com",
         }),
@@ -51,6 +53,7 @@ describe("epPlugin tracer (PRD #273)", () => {
       secret: SECRET,
       plugins: [
         epPlugin({
+          hostAllowlist: DEFAULT_HOST_ALLOWLIST,
           clientId: "test-client",
           host: "https://api.test.elasticpath.com",
         }),

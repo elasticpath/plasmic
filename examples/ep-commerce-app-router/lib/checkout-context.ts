@@ -40,7 +40,7 @@ export interface RequestCheckoutContext {
 export async function buildCheckoutContext(
   request: Request
 ): Promise<RequestCheckoutContext> {
-  const config = await getEpProviderConfig();
+  const config = await getEpProviderConfig(epAuth.config.hostAllowlist);
   const clientId =
     config?.clientId ??
     process.env.EP_CLIENT_ID ??
@@ -65,12 +65,13 @@ export async function buildCheckoutContext(
 
   // Per-request admin-token resolver. Built only when EP_CLIENT_SECRET is
   // present; absence cleanly disables admin-side EP calls (Stripe gateway
-  // won't be registered either).
+  // won't be registered either). The secret is EP_CLIENT_ID's, which need not
+  // be the project's shopper client.
   const clientSecret = process.env.EP_CLIENT_SECRET;
   const getClientCredentialsToken = clientSecret
     ? createClientCredentialsTokenResolver({
         host: apiBaseUrl,
-        clientId,
+        clientId: process.env.EP_CLIENT_ID ?? clientId,
         clientSecret,
       })
     : undefined;

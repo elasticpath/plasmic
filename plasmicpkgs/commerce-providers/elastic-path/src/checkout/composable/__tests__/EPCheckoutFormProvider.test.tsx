@@ -107,7 +107,7 @@ describe("EPCheckoutFormProvider shipping sync", () => {
     });
   });
 
-  it("does not calculate shipping for an incomplete address", async () => {
+  it("does not sync an incomplete address", async () => {
     const handleRef = { current: null as FormHandle | null };
     render(
       <EPCheckoutFormProvider>
@@ -124,11 +124,38 @@ describe("EPCheckoutFormProvider shipping sync", () => {
     expect(mockCalculateShipping).not.toHaveBeenCalled();
   });
 
-  it("PATCHes shippingAddress before calculateShipping when the destination is complete", async () => {
+  it("PATCHes shippingAddress without requoting when the destination is complete", async () => {
+    const handleRef = { current: null as FormHandle | null };
+    render(
+      <EPCheckoutFormProvider>
+        <FormHarness seed={COMPLETE_SHIPPING} handleRef={handleRef} />
+      </EPCheckoutFormProvider>
+    );
+
+    await waitFor(() => {
+      expect(mockUpdateSession).toHaveBeenCalledTimes(1);
+    });
+    await act(async () => {
+      await delay(50);
+    });
+    expect(mockCalculateShipping).not.toHaveBeenCalled();
+    expect(mockUpdateSession).toHaveBeenCalledWith({
+      shippingAddress: {
+        firstName: "",
+        lastName: "",
+        line1: "123 Main St",
+        city: "Springfield",
+        postcode: "12345",
+        country: "US",
+      },
+    });
+  });
+
+  it("requotes once when the update returns no rates, as an older server does", async () => {
     const order: string[] = [];
-    mockUpdateSession.mockImplementation(async (payload: unknown) => {
+    mockUpdateSession.mockImplementation(async () => {
       order.push("update");
-      return { success: true, payload };
+      return { success: true, data: { session: { availableShippingRates: [] } } };
     });
     mockCalculateShipping.mockImplementation(async () => {
       order.push("calculate");
@@ -146,19 +173,31 @@ describe("EPCheckoutFormProvider shipping sync", () => {
       expect(mockCalculateShipping).toHaveBeenCalledTimes(1);
     });
     expect(order).toEqual(["update", "calculate"]);
-    expect(mockUpdateSession).toHaveBeenCalledWith({
-      shippingAddress: {
-        firstName: "",
-        lastName: "",
-        line1: "123 Main St",
-        city: "Springfield",
-        postcode: "12345",
-        country: "US",
-      },
-    });
   });
 
-  it("debounces repeated field edits into one calculation", async () => {
+  it("does not requote when the update already returns rates", async () => {
+    mockUpdateSession.mockResolvedValue({
+      success: true,
+      data: { session: { availableShippingRates: [{ id: "rate-standard" }] } },
+    });
+
+    const handleRef = { current: null as FormHandle | null };
+    render(
+      <EPCheckoutFormProvider>
+        <FormHarness seed={COMPLETE_SHIPPING} handleRef={handleRef} />
+      </EPCheckoutFormProvider>
+    );
+
+    await waitFor(() => {
+      expect(mockUpdateSession).toHaveBeenCalledTimes(1);
+    });
+    await act(async () => {
+      await delay(50);
+    });
+    expect(mockCalculateShipping).not.toHaveBeenCalled();
+  });
+
+  it("debounces repeated field edits into one address update", async () => {
     const handleRef = { current: null as FormHandle | null };
     render(
       <EPCheckoutFormProvider>
@@ -180,15 +219,14 @@ describe("EPCheckoutFormProvider shipping sync", () => {
     });
 
     await waitFor(() => {
-      expect(mockCalculateShipping).toHaveBeenCalledTimes(1);
+      expect(mockUpdateSession).toHaveBeenCalledTimes(1);
     });
-    expect(mockUpdateSession).toHaveBeenCalledTimes(1);
     expect(mockUpdateSession.mock.calls[0][0].shippingAddress.line1).toBe(
       "3 C St"
     );
   });
 
-  it("does not recalculate an unchanged normalized address", async () => {
+  it("does not re-send an unchanged normalized address", async () => {
     const handleRef = { current: null as FormHandle | null };
     render(
       <EPCheckoutFormProvider>
@@ -196,7 +234,7 @@ describe("EPCheckoutFormProvider shipping sync", () => {
       </EPCheckoutFormProvider>
     );
     await waitFor(() => {
-      expect(mockCalculateShipping).toHaveBeenCalledTimes(1);
+      expect(mockUpdateSession).toHaveBeenCalledTimes(1);
     });
 
     await act(async () => {
@@ -207,7 +245,6 @@ describe("EPCheckoutFormProvider shipping sync", () => {
       await delay(DEFAULT_DEBOUNCE_MS + 50);
     });
 
-    expect(mockCalculateShipping).toHaveBeenCalledTimes(1);
     expect(mockUpdateSession).toHaveBeenCalledTimes(1);
   });
 
@@ -226,9 +263,8 @@ describe("EPCheckoutFormProvider shipping sync", () => {
       </EPCheckoutFormProvider>
     );
     await waitFor(() => {
-      expect(mockCalculateShipping).toHaveBeenCalledTimes(1);
+      expect(mockUpdateSession).toHaveBeenCalledTimes(1);
     });
-    mockCalculateShipping.mockClear();
 
     await act(async () => {
       await handleRef.current?.placeOrder();
@@ -240,7 +276,7 @@ describe("EPCheckoutFormProvider shipping sync", () => {
     expect(submitPayload.customAttributes.shippingAddress).toBeUndefined();
   });
 
-  it("defensively PATCHes shippingAddress on submit without calling calculateShipping", async () => {
+  it("defensively PATCHes shippingAddress on submit without requoting", async () => {
     const handleRef = { current: null as FormHandle | null };
     render(
       <EPCheckoutFormProvider>
@@ -248,9 +284,8 @@ describe("EPCheckoutFormProvider shipping sync", () => {
       </EPCheckoutFormProvider>
     );
     await waitFor(() => {
-      expect(mockCalculateShipping).toHaveBeenCalledTimes(1);
+      expect(mockUpdateSession).toHaveBeenCalledTimes(1);
     });
-    mockCalculateShipping.mockClear();
     mockUpdateSession.mockClear();
 
     await act(async () => {

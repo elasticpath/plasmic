@@ -25,6 +25,7 @@
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 import { epPlugin } from "./ep-plugin";
+import type { EpResolveConfig } from "./ep-plugin";
 import { DEFAULT_HOST_ALLOWLIST } from "../host-allowlist";
 import {
   assertNonSentinelSecret,
@@ -55,7 +56,15 @@ export interface CreateEpAuthBetterInput {
    * both the localhost and 127.0.0.1 variants of `baseURL`.
    */
   trustedOrigins?: string[];
-  hostAllowlist?: string[];
+  /**
+   * Hosts, beyond the Elastic Path-operated defaults, that an EP API host
+   * read from the Plasmic bundle may name — for a store whose Elastic Path
+   * API is served from a custom domain. Glob patterns such as
+   * `*.acme.example` are honoured. Entries extend the defaults, as do those
+   * in the comma-separated `EP_HOST_ALLOWLIST` environment variable. The
+   * resolved list is `config.hostAllowlist`.
+   */
+  hostAllowlist?: readonly string[];
   /**
    * @deprecated Read by no code. `sessionCartResolver` replaces it; this is
    * removed in the breaking release.
@@ -80,13 +89,12 @@ export interface CreateEpAuthBetterInput {
   checkout?: { sessionSecret: string };
   adapters?: { stripe?: { secretKey: string }; clover?: any };
   /**
-   * Per-request resolver for clientId/host. Lets the consumer pull
-   * config from the Plasmic loader bundle on each call instead of
-   * pinning at factory construction. Forwarded directly to `epPlugin`.
+   * Per-mint resolver for clientId/host. Lets the consumer pull config from
+   * the Plasmic loader bundle instead of pinning it at factory construction.
+   * It is handed the resolved EP host allow-list to pass to
+   * `extractEpProviderConfig`.
    */
-  resolveConfig?: () => Promise<
-    { clientId?: string; host?: string } | null | undefined
-  >;
+  resolveConfig?: EpResolveConfig;
   /**
    * The password profile account members sign in against. Discovered from the
    * store when omitted; required when the store's authentication realm carries
@@ -127,6 +135,21 @@ function resolveTrustedOrigins(
     if (trimmed) out.add(trimmed);
   }
   return [...out];
+}
+
+/** The defaults, extended (never replaced) by the option and the env var. */
+function resolveHostAllowlist(
+  configured: readonly string[] | undefined
+): readonly string[] {
+  const out = new Set<string>(DEFAULT_HOST_ALLOWLIST);
+  for (const host of [
+    ...(configured ?? []),
+    ...(process.env.EP_HOST_ALLOWLIST ?? "").split(","),
+  ]) {
+    const trimmed = host.trim();
+    if (trimmed) out.add(trimmed);
+  }
+  return Object.freeze([...out]);
 }
 
 export interface EpSessionData {
@@ -244,6 +267,7 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
   const basePath = input.basePath ?? "/api/ep";
   const baseURL = input.baseURL ?? "http://localhost";
   const trustedOrigins = resolveTrustedOrigins(input.trustedOrigins, baseURL);
+  const hostAllowlist = resolveHostAllowlist(input.hostAllowlist);
 
   const auth = betterAuth({
     secret,
@@ -254,7 +278,7 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
       epPlugin({
         clientId: input.clientId,
         host: input.host,
-        hostAllowlist: input.hostAllowlist,
+        hostAllowlist,
         resolveConfig: input.resolveConfig,
         passwordProfileId: input.passwordProfileId,
         sessionCartResolver: input.sessionCartResolver,
@@ -280,7 +304,7 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
   const config = Object.freeze({
     basePath,
     trustedOrigins,
-    hostAllowlist: input.hostAllowlist ?? DEFAULT_HOST_ALLOWLIST,
+    hostAllowlist,
     cartMergeStrategy: input.cartMergeStrategy ?? "merge",
     checkout: input.checkout,
     adapters: input.adapters,

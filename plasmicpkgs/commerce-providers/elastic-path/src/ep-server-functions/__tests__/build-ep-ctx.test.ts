@@ -1,123 +1,73 @@
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { buildEpCtx } = require("../build-ep-ctx");
+import { buildEpCtx } from "../build-ep-ctx";
+import { isUsableAuth } from "../ep-client";
 
-const EP_PROVIDER_MODULE = `
-function E(r){
-  return g.createElement(e, {
-    clientId:o&&"clientId"in o?o.clientId:"cid-abc",
-    customHost:o&&"customHost"in o?o.customHost:"https://epcc-integration.global.ssl.fastly.net",
-    host:o&&"host"in o?o.host:"custom",
-    serverCartMode:o&&"serverCartMode"in o?o.serverCartMode:!0
-  });
-}
-`;
+const HOST = "https://epcc-integration.global.ssl.fastly.net";
 
-const makePrefetchedData = () => ({
-  bundle: {
-    projects: [{ globalContextsProviderFileName: "global__p.js" }],
-    modules: {
-      server: [
-        { type: "code", fileName: "global__p.js", code: EP_PROVIDER_MODULE },
-      ],
+function sessionWith(
+  overrides: Record<string, unknown> = {},
+  cart: { id: string } | null = null
+) {
+  return {
+    session: {
+      accessToken: "tok-abc",
+      expires: 1786630149,
+      clientId: "cid-abc",
+      host: HOST,
+      account: null,
+      lapsedAccount: null,
+      ...overrides,
     },
-  },
-});
+    cart,
+  };
+}
 
 describe("buildEpCtx", () => {
-  it("returns clientId and host resolved from the Plasmic bundle", () => {
-    const ctx = buildEpCtx(makePrefetchedData(), {
-      session: { accessToken: "tok-abc" },
+  it("carries the host and client id the session was minted against", () => {
+    expect(buildEpCtx(sessionWith(), { locale: "en-GB" })).toEqual({
+      accessToken: "tok-abc",
+      host: HOST,
+      clientId: "cid-abc",
+      cartId: undefined,
+      accountId: undefined,
+      accountToken: undefined,
+      locale: "en-GB",
+      currency: undefined,
     });
-
-    expect(ctx).toEqual(
-      expect.objectContaining({
-        clientId: "cid-abc",
-        host: "https://epcc-integration.global.ssl.fastly.net",
-        accessToken: "tok-abc",
-      })
-    );
   });
 
-  it("produces an anonymous ctx (empty accessToken, no cartId/accountId) when the session is empty", () => {
-    const ctx = buildEpCtx(makePrefetchedData(), { session: {} });
-
-    expect(ctx.accessToken).toBe("");
-    expect(ctx.cartId).toBeUndefined();
-    expect(ctx.accountId).toBeUndefined();
-    expect(ctx.clientId).toBe("cid-abc");
-    expect(ctx.host).toBe("https://epcc-integration.global.ssl.fastly.net");
+  it("carries the session cart", () => {
+    expect(buildEpCtx(sessionWith({}, { id: "cart-1" })).cartId).toBe("cart-1");
   });
 
   it("carries the selected organisation's id and credential", () => {
-    const ctx = buildEpCtx(makePrefetchedData(), {
-      session: {
-        accessToken: "tok-abc",
+    const ctx = buildEpCtx(
+      sessionWith({
         account: {
           id: "acct-1",
           name: "Acme Industrial",
           token: "account-management-token",
           expires: 1786630149,
         },
-      },
-    });
+      })
+    );
 
     expect(ctx.accountId).toBe("acct-1");
     expect(ctx.accountToken).toBe("account-management-token");
   });
 
   it("carries no account credential when no organisation is selected", () => {
-    const ctx = buildEpCtx(makePrefetchedData(), {
-      session: { accessToken: "tok-abc", account: null },
-    });
+    const ctx = buildEpCtx(sessionWith());
 
     expect(ctx.accountId).toBeUndefined();
     expect(ctx.accountToken).toBeUndefined();
   });
 
-  it("rejects a host outside the allowlist, and accepts it once the deployment opts in", () => {
-    const smcData = {
-      bundle: {
-        projects: [{ globalContextsProviderFileName: "global__p.js" }],
-        modules: {
-          server: [
-            {
-              type: "code",
-              fileName: "global__p.js",
-              code: EP_PROVIDER_MODULE.replace(
-                "https://epcc-integration.global.ssl.fastly.net",
-                "https://commerce.selfmanaged.example"
-              ),
-            },
-          ],
-        },
-      },
-    };
-    const errorSpy = jest
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
+  it("yields a context the server functions refuse when the session is empty", () => {
+    const ctx = buildEpCtx({ session: null, cart: null });
 
-    expect(() =>
-      buildEpCtx(smcData, { session: { accessToken: "tok" } })
-    ).toThrow(/EP Provider config not found/);
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("commerce.selfmanaged.example")
+    expect(ctx).toEqual(
+      expect.objectContaining({ accessToken: "", host: "", clientId: "" })
     );
-
-    const ctx = buildEpCtx(smcData, {
-      session: { accessToken: "tok" },
-      hostAllowlist: ["commerce.selfmanaged.example"],
-    });
-    expect(ctx.host).toBe("https://commerce.selfmanaged.example");
-
-    errorSpy.mockRestore();
-  });
-
-  it("throws a clear error when prefetchedData has no EP Provider config", () => {
-    expect(() =>
-      buildEpCtx(
-        { bundle: { projects: [], modules: { server: [] } } },
-        { session: { accessToken: "tok" } }
-      )
-    ).toThrow(/EP Provider config not found/);
+    expect(isUsableAuth(ctx)).toBe(false);
   });
 });
