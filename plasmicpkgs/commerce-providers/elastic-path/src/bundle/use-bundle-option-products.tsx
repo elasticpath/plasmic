@@ -6,6 +6,7 @@ import { useEpCommerce } from "../shopper-context/EpCommerceContext";
 import { ComponentProduct } from "./types";
 import { handleAPIError } from "../utils/errorHandling";
 import { createLogger } from "../utils/logger";
+import { primaryImageUrl } from "../utils/normalize";
 
 const log = createLogger("useBundleOptionProducts");
 
@@ -91,32 +92,37 @@ export function useBundleOptionProducts({
               client: client!,
               query: {
                 filter: `in(id,${batchIds.join(",")})`,
-                include: ["main_image"],
+                include: ["main_image", "files"],
                 "page[limit]": BigInt(batchIds.length),
               },
             });
-            return response.data?.data || [];
+            return {
+              products: response.data?.data || [],
+              included: response.data?.included,
+            };
           } catch (err) {
             const apiError = handleAPIError(err, "fetching bundle option products batch");
             log.error("Failed to fetch products in bulk", {
               error: apiError.message,
             } as Record<string, unknown>);
-            return [];
+            return { products: [], included: undefined };
           }
         })
       );
 
-      batchResults.flat().forEach((product) => {
-        if (product && product.id) {
-          productMap[product.id] = {
-            id: product.id,
-            name: product.attributes?.name,
-            description: product.attributes?.description,
-            image: product.relationships?.main_image?.data?.id,
-            price: product.meta?.display_price?.without_tax?.formatted,
-            sku: product.attributes?.sku,
-          };
-        }
+      batchResults.forEach(({ products, included }) => {
+        products.forEach((product) => {
+          if (product && product.id) {
+            productMap[product.id] = {
+              id: product.id,
+              name: product.attributes?.name,
+              description: product.attributes?.description,
+              image: primaryImageUrl(product, included),
+              price: product.meta?.display_price?.without_tax?.formatted,
+              sku: product.attributes?.sku,
+            };
+          }
+        });
       });
 
       return productMap;

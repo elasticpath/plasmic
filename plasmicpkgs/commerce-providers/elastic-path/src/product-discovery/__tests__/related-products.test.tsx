@@ -361,6 +361,77 @@ describe("useRelatedProducts", () => {
     expect(callArgs.path.product_id).toBe("prod-abc");
     expect(callArgs.path.custom_relationship_slug).toBe("CRP_accessories");
     expect(callArgs.query["page[limit]"]).toBe(BigInt(6));
+    expect(callArgs.query.include).toEqual(["main_image", "files"]);
+  });
+
+  it("should give each product its main image, or its first file when it has none", async () => {
+    let capturedFetcher: Function | null = null;
+    mockUseMutablePlasmicQueryData.mockImplementation(
+      (_key: unknown, fetcher: Function) => {
+        capturedFetcher = fetcher;
+        return { data: null, error: null, isLoading: false, mutate: jest.fn() };
+      }
+    );
+
+    const price = {
+      display_price: { without_tax: { amount: 500, currency: "USD" } },
+    };
+    mockGetByContextAllRelatedProducts.mockResolvedValue({
+      data: {
+        data: [
+          {
+            id: "with-main",
+            attributes: {
+              name: "With main",
+              slug: "with-main",
+              description: "",
+            },
+            meta: price,
+            relationships: {
+              main_image: { data: { id: "img-1", type: "main_image" } },
+              files: { data: [{ id: "file-1", type: "file" }] },
+            },
+          },
+          {
+            id: "files-only",
+            attributes: {
+              name: "Files only",
+              slug: "files-only",
+              description: "",
+            },
+            meta: price,
+            relationships: {
+              files: { data: [{ id: "file-2", type: "file" }] },
+            },
+          },
+        ],
+        included: {
+          main_images: [
+            { id: "img-1", link: { href: "https://files.test/main-1.jpg" } },
+          ],
+          files: [
+            { id: "file-1", link: { href: "https://files.test/file-1.jpg" } },
+            { id: "file-2", link: { href: "https://files.test/file-2.jpg" } },
+          ],
+        },
+        meta: { results: { total: BigInt(2) } },
+      },
+    });
+
+    renderHook(() =>
+      useRelatedProducts({
+        productId: "prod-abc",
+        relationshipSlug: "CRP_related_products",
+      })
+    );
+    const result = await capturedFetcher!();
+
+    expect(result.products[0].images[0].url).toBe(
+      "https://files.test/main-1.jpg"
+    );
+    expect(result.products[1].images[0].url).toBe(
+      "https://files.test/file-2.jpg"
+    );
   });
 
   it("should convert BigInt total count from API response", async () => {

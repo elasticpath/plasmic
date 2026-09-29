@@ -62,6 +62,7 @@ describe("epGetRelatedProducts", () => {
           product_id: "base-id",
           custom_relationship_slug: "CRP_related_products",
         }),
+        query: expect.objectContaining({ include: ["main_image", "files"] }),
       })
     );
   });

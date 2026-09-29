@@ -147,7 +147,8 @@ export function EPBundleComponentList(props: EPBundleComponentListProps) {
             isSelected,
             isParentProduct,
             price: productInfo.price ?? "",
-            imageUrl: productInfo.image ?? "",
+            imageUrl:
+              productInfo.image || optionProducts[optionId]?.image || "",
             sortOrder: sortOrd,
             sort_order: sortOrd,
             isDefault: option.default ?? false,

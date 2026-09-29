@@ -72,7 +72,8 @@ export function useRelatedProducts(
           },
           query: {
             "page[limit]": BigInt(limit),
-          },
+            include: ["main_image", "files"],
+          } as any,
         });
 
         const products = response.data?.data
