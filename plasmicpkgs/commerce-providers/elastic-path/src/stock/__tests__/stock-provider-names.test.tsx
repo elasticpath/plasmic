@@ -1,10 +1,5 @@
 /**
  * @jest-environment jsdom
- *
- * EPStockProvider's live path shows each location's name, not its slug. The
- * stock response keys locations by slug only; epGetStock resolves the names
- * server-side, so the provider reads them off the stock and makes no second
- * read for the locations list.
  */
 
 import React from "react";
@@ -45,7 +40,6 @@ const location = (
   stock: { productId, available, allocated: 0, total: available },
 });
 
-// epGetStock's result as the proxy route returns it, names already resolved.
 beforeEach(() => {
   mockCallEpProxy.mockReset();
   mockCallEpProxy.mockImplementation(
@@ -68,7 +62,8 @@ beforeEach(() => {
   );
 });
 
-// A fresh query cache per render, so each test sees every read it causes.
+// Each render gets its own query cache, so a test does not reuse the reads
+// of an earlier test.
 function renderProvider(productId: string) {
   return render(
     <PlasmicQueryDataProvider provider={() => new Map()}>

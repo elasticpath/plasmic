@@ -114,7 +114,6 @@ describe("epGetStock", () => {
       { name: "East Distribution Centre", slug: "east-dc" },
       { name: "Main Warehouse", slug: "main-warehouse" },
     ]);
-    // Selection, filtering and ?location= read the slug off the id.
     expect(result.p1.locations[0].location.id).toBe("east-dc");
   });
 

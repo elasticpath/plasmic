@@ -59,28 +59,21 @@ function toCount(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/**
- * Location names keyed by slug, read from the locations list. Empty when that
- * read fails, so a failed list costs the names, never the stock.
- */
+/** If the locations read fails, the map is empty and the stock still returns. */
 async function readLocationNames(): Promise<Map<string, string>> {
+  const locations = await epGetLocations().catch(() => []);
   const names = new Map<string, string>();
-  try {
-    for (const location of await epGetLocations()) {
-      const { slug, name } = location.attributes ?? {};
-      if (slug && name) names.set(slug, name);
-    }
-  } catch {
-    // fall through with no names
+  for (const location of locations) {
+    const { slug, name } = location.attributes ?? {};
+    if (slug && name) names.set(slug, name);
   }
   return names;
 }
 
 /**
- * Elastic Path reports multi-location stock as a slug-keyed map with no
- * location metadata on it, so the location is reconstructed from the slug.
- * Its name comes from the locations list; a slug the list does not carry keeps
- * the slug as its name.
+ * Elastic Path returns stock as a map keyed by location slug, with no other
+ * location data. The name comes from `names`. If a slug is not in `names`,
+ * the slug is the name.
  */
 function readLocations(
   productId: string,
@@ -124,8 +117,7 @@ function aggregate(
 }
 
 /**
- * Multi-location stock for a set of products, keyed by product id. Each
- * location carries its name, so a caller needs no second read to show it.
+ * Multi-location stock for a set of products, keyed by product id.
  *
  * A product whose stock read fails gets an all-zero entry rather than
  * failing the batch — one unstocked product must not blank a whole listing.
@@ -150,7 +142,7 @@ export async function epGetStock({
 
   if (!isUsableAuth(auth)) return {};
   const client = buildEpClient(auth);
-  // One locations read per call, alongside the stock reads rather than after.
+  // Start the locations read now, so that it runs with the stock reads.
   const namesRead = readLocationNames();
 
   const entries = await Promise.all(
