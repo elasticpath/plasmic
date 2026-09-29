@@ -10,6 +10,16 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
     mockGetByContextAllProducts(...args),
 }));
 
+const mockBatchWarn = jest.fn();
+jest.mock("../../utils/logger", () => ({
+  createLogger: () => ({
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: (...args: unknown[]) => mockBatchWarn(...args),
+    error: jest.fn(),
+  }),
+}));
+
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { epGetBundleOptionProducts } = require("../getBundleOptionProducts");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -43,6 +53,7 @@ const INCLUDED = {
 
 beforeEach(() => {
   mockGetByContextAllProducts.mockReset();
+  mockBatchWarn.mockReset();
 });
 
 describe("epGetBundleOptionProducts", () => {
@@ -169,6 +180,30 @@ describe("epGetBundleOptionProducts", () => {
     );
 
     expect(Object.keys(result)).toEqual(["p1"]);
+    expect(mockBatchWarn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ requested: 50, error: "boom" })
+    );
+  });
+
+  it("warns with the batch size and status when Elastic Path answers a batch with an error", async () => {
+    mockGetByContextAllProducts.mockResolvedValue({
+      error: { errors: [{ status: 500, title: "Internal Server Error" }] },
+      response: { status: 500 },
+    });
+
+    const result = await withEpSession(SESSION, () =>
+      epGetBundleOptionProducts({ productIds: ["p1", "p2"] })
+    );
+
+    expect(result).toEqual({});
+    expect(mockBatchWarn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ requested: 2, status: 500 })
+    );
+    expect(JSON.stringify(mockBatchWarn.mock.calls)).not.toContain(
+      SESSION.accessToken
+    );
   });
 
   it("returns an empty map for no product ids", async () => {

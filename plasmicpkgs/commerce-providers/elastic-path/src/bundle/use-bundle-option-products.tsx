@@ -5,9 +5,6 @@ import { useEpCommerce } from "../shopper-context/EpCommerceContext";
 import { epGetBundleOptionProducts } from "../ep-server-functions/getBundleOptionProducts";
 import type { Product } from "../types/product";
 import { ComponentProduct } from "./types";
-import { createLogger } from "../utils/logger";
-
-const log = createLogger("useBundleOptionProducts");
 
 interface UseBundleOptionProductsOptions {
   components: Record<string, ComponentProduct>;
@@ -97,11 +94,6 @@ export function useBundleOptionProducts({
     {
       revalidateOnFocus: false,
       dedupingInterval: SWR_DEDUPING_INTERVAL_SHORT,
-      onError: (err: Error) => {
-        log.error("Error fetching bundle option products", {
-          error: err.message,
-        } as Record<string, unknown>);
-      },
     }
   );
 

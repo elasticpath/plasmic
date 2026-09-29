@@ -1,5 +1,8 @@
 import { getByContextAllProducts } from "@epcc-sdk/sdks-shopper";
+import { createLogger } from "../utils/logger";
 import type { buildEpClient } from "./ep-client";
+
+const log = createLogger("productBatches");
 
 /** Elastic Path accepts roughly 200 ids per `in(id,…)` filter. */
 const BATCH_SIZE = 100;
@@ -40,11 +43,22 @@ export async function readProductsByIds(
             "page[limit]": batch.length,
           } as any,
         });
+        if (response.error) {
+          log.warn("Product batch read failed (non-fatal)", {
+            requested: batch.length,
+            status: response.response?.status,
+          });
+          return { rows: [], included: undefined };
+        }
         return {
           rows: response.data?.data ?? [],
           included: response.data?.included,
         };
-      } catch {
+      } catch (err) {
+        log.warn("Product batch read failed (non-fatal)", {
+          requested: batch.length,
+          error: err instanceof Error ? err.message : String(err),
+        });
         return { rows: [], included: undefined };
       }
     })

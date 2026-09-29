@@ -10,6 +10,16 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
     mockGetByContextAllRelatedProducts(...args),
 }));
 
+const mockRelatedWarn = jest.fn();
+jest.mock("../../utils/logger", () => ({
+  createLogger: () => ({
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: (...args: unknown[]) => mockRelatedWarn(...args),
+    error: jest.fn(),
+  }),
+}));
+
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { epGetRelatedProducts } = require("../getRelatedProducts");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -23,6 +33,7 @@ const SESSION = {
 
 beforeEach(() => {
   mockGetByContextAllRelatedProducts.mockReset();
+  mockRelatedWarn.mockReset();
 });
 
 const mkProduct = (id: string, name: string) => ({
@@ -65,6 +76,7 @@ describe("epGetRelatedProducts", () => {
         query: expect.objectContaining({ include: ["main_image", "files"] }),
       })
     );
+    expect(mockRelatedWarn).not.toHaveBeenCalled();
   });
 
   it("gives each product its main image, or its first file when it has none", async () => {
@@ -151,5 +163,40 @@ describe("epGetRelatedProducts", () => {
       })
     );
     expect(result).toEqual([]);
+    expect(mockRelatedWarn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        productId: "base-id",
+        relationshipSlug: "CRP_related_products",
+        error: "not found",
+      })
+    );
+  });
+
+  it("returns empty array and warns with the status when Elastic Path answers with an error", async () => {
+    mockGetByContextAllRelatedProducts.mockResolvedValue({
+      error: { errors: [{ status: 500, title: "Internal Server Error" }] },
+      response: { status: 500 },
+    });
+
+    const result = await withEpSession(SESSION, () =>
+      epGetRelatedProducts({
+        productId: "base-id",
+        relationshipSlug: "CRP_related_products",
+      })
+    );
+
+    expect(result).toEqual([]);
+    expect(mockRelatedWarn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        productId: "base-id",
+        relationshipSlug: "CRP_related_products",
+        status: 500,
+      })
+    );
+    expect(JSON.stringify(mockRelatedWarn.mock.calls)).not.toContain(
+      SESSION.accessToken
+    );
   });
 });

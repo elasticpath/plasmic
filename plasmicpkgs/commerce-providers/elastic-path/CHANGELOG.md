@@ -54,6 +54,12 @@ Elastic Path's total. A failed read returns an empty list instead of setting
 State**. `locale` is part of the cache key only: the server uses the shopper
 session's locale.
 
+A failed read in `ep.getRelatedProducts`, or in a batch of
+`ep.getBundleOptionProducts` or `ep.getBaseProducts`, now logs a warning on
+the server. The warning carries the Elastic Path status, or the error message
+when the request did not complete. Before, an error status read as an empty
+result and left no trace.
+
 ### Fixed
 
 Promo codes work. Neither of the component's two code paths did anything: one

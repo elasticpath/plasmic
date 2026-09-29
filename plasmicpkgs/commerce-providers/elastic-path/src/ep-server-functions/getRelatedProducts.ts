@@ -1,9 +1,12 @@
 import { getByContextAllRelatedProducts } from "@epcc-sdk/sdks-shopper";
 import { normalizeProductFromList } from "../utils/normalize";
 import type { Product } from "../types/product";
+import { createLogger } from "../utils/logger";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
+
+const log = createLogger("getRelatedProducts");
 
 export interface EpGetRelatedProductsInput {
   productId: string;
@@ -47,6 +50,14 @@ export async function epGetRelatedProducts({
       },
       query: query as any,
     });
+    if (response.error) {
+      log.warn("Related products read failed (non-fatal)", {
+        productId,
+        relationshipSlug,
+        status: response.response?.status,
+      });
+      return [];
+    }
     const data = response.data?.data;
     if (!Array.isArray(data) || data.length === 0) return [];
     return data.map((p: any) =>
@@ -56,7 +67,12 @@ export async function epGetRelatedProducts({
         response.data?.included
       )
     );
-  } catch {
+  } catch (err) {
+    log.warn("Related products read failed (non-fatal)", {
+      productId,
+      relationshipSlug,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return [];
   }
 }
