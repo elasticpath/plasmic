@@ -84,6 +84,18 @@ describe("epGetLocations", () => {
     ]);
   });
 
+  it("keeps one copy of a location that two pages return", async () => {
+    const second = page(3, 99);
+    mockListLocations
+      .mockResolvedValueOnce(page(100))
+      .mockResolvedValueOnce(second);
+
+    const result = await withEpSession(SESSION, () => epGetLocations());
+
+    expect(result).toHaveLength(102);
+    expect(result.filter((l: any) => l.id === "l99")).toHaveLength(1);
+  });
+
   it("keeps the pages already read when a later page fails", async () => {
     mockListLocations
       .mockResolvedValueOnce(page(100))

@@ -1,7 +1,10 @@
 import { listLocations } from "@epcc-sdk/sdks-shopper";
+import { createLogger } from "../utils/logger";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
+
+const log = createLogger("epGetLocations");
 
 /** An Elastic Path inventory location, as the locations list returns it. */
 export interface EpLocation {
@@ -35,6 +38,11 @@ const MAX_OFFSET = 10_000;
  * Elastic Path uses the page length in the store configuration. The response
  * has no total count, so a page with fewer rows than the page size is the last
  * page. If a later page fails, this returns the pages that it already read.
+ *
+ * Elastic Path sorts the list by update time. If a location changes while this
+ * reads the pages, that location can come back twice and another location can
+ * be missing. This keeps one copy of each location, but it cannot find a
+ * missing one.
  */
 export async function epGetLocations(
   _input: EpGetLocationsInput = {}
@@ -50,20 +58,28 @@ export async function epGetLocations(
   if (!isUsableAuth(auth)) return [];
   const client = buildEpClient(auth);
 
-  const locations: EpLocation[] = [];
+  const locations = new Map<unknown, EpLocation>();
   for (let offset = 0; offset <= MAX_OFFSET; offset += PAGE_LIMIT) {
     const response = await listLocations({
       client,
       query: { "page[limit]": PAGE_LIMIT, "page[offset]": offset },
-    }).catch(() => null);
-    const rows = response?.data?.data;
+    }).catch((error: unknown) => ({ data: undefined, error }));
+    if (response.error) {
+      log.warn("Could not read a page of locations", {
+        offset,
+        error: response.error,
+      });
+    }
+    const rows = response.data?.data;
     if (!Array.isArray(rows)) {
       break;
     }
-    locations.push(...(rows as EpLocation[]));
+    for (const row of rows as EpLocation[]) {
+      locations.set(row?.id ?? row, row);
+    }
     if (rows.length < PAGE_LIMIT) {
       break;
     }
   }
-  return locations;
+  return Array.from(locations.values());
 }

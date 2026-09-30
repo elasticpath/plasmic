@@ -3,10 +3,12 @@ import {
   calculateTotalStock,
   filterStockByLocation,
 } from "../inventory/utils/stockCalculations";
+import { createLogger } from "../utils/logger";
 import { buildEpClient, isUsableAuth } from "./ep-client";
-import { batchIds } from "./product-batches";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
 import { getCurrentEpSession } from "./session-context";
+
+const log = createLogger("epGetStock");
 
 /**
  * This holds the counts of one product at one inventory location.
@@ -60,8 +62,37 @@ function toCount(value: unknown): number {
 }
 
 // The locations list returns at most 100 locations in a page, so one request
-// asks for at most 100 slugs.
+// asks for at most 100 slugs. A long filter can pass the URL length limit of a
+// gateway or a CDN, so a request also stops at 4,000 characters of filter.
 const SLUGS_PER_REQUEST = 100;
+const FILTER_CHARS_PER_REQUEST = 4000;
+
+// Each location falls back to its slug, so a slow names request must not
+// delay the stock for longer than this.
+const NAMES_TIMEOUT_MS = 3000;
+
+function batchSlugs(slugs: string[]): string[][] {
+  const batches: string[][] = [];
+  let batch: string[] = [];
+  let chars = 0;
+  for (const slug of slugs) {
+    const cost = encodeURIComponent(`"${slug}",`).length;
+    if (
+      batch.length === SLUGS_PER_REQUEST ||
+      (batch.length > 0 && chars + cost > FILTER_CHARS_PER_REQUEST)
+    ) {
+      batches.push(batch);
+      batch = [];
+      chars = 0;
+    }
+    batch.push(slug);
+    chars += cost;
+  }
+  if (batch.length > 0) {
+    batches.push(batch);
+  }
+  return batches;
+}
 
 /**
  * If a request fails, its locations are not in the map, so that the stock
@@ -73,7 +104,7 @@ async function readLocationNames(
 ): Promise<Map<string, string>> {
   const names = new Map<string, string>();
   await Promise.all(
-    batchIds(slugs, SLUGS_PER_REQUEST).map(async (batch) => {
+    batchSlugs(slugs).map(async (batch) => {
       const response = await listLocations({
         client,
         query: {
@@ -82,8 +113,15 @@ async function readLocationNames(
           filter: `in(slug,${batch.map((slug) => `"${slug}"`).join(",")})`,
           "page[limit]": batch.length,
         },
-      }).catch(() => null);
-      for (const location of response?.data?.data ?? []) {
+        signal: AbortSignal.timeout(NAMES_TIMEOUT_MS),
+      }).catch((error: unknown) => ({ data: undefined, error }));
+      if (response.error) {
+        log.warn("Could not read location names", {
+          slugs: batch.length,
+          error: response.error,
+        });
+      }
+      for (const location of response.data?.data ?? []) {
         const slug = location?.attributes?.slug;
         const name = location?.attributes?.name;
         if (slug && name) {
@@ -170,6 +208,7 @@ export async function epGetStock({
 
   if (!isUsableAuth(auth)) return {};
   const client = buildEpClient(auth);
+  const narrowTo = Array.isArray(locationIds) ? locationIds : [];
 
   const reads = await Promise.all(
     ids.map(async (productId) => {
@@ -178,15 +217,27 @@ export async function epGetStock({
           client,
           path: { product_uuid: productId },
         });
+        // A product with no stock record gets a 404, which is not a fault.
+        if (response.error && response.response?.status !== 404) {
+          log.warn("Could not read stock", {
+            productId,
+            error: response.error,
+          });
+        }
         return { productId, countsBySlug: readCounts(response.data?.data) };
-      } catch {
+      } catch (error) {
+        log.warn("Could not read stock", { productId, error });
         return { productId, countsBySlug: null };
       }
     })
   );
 
   const slugs = new Set(
-    reads.flatMap(({ countsBySlug }) => Object.keys(countsBySlug ?? {}))
+    reads.flatMap(({ countsBySlug }) =>
+      Object.keys(countsBySlug ?? {}).filter(
+        (slug) => narrowTo.length === 0 || narrowTo.includes(slug)
+      )
+    )
   );
   const names = await readLocationNames(client, Array.from(slugs));
 
@@ -196,7 +247,7 @@ export async function epGetStock({
       ? aggregate(
           productId,
           readLocations(productId, countsBySlug, names),
-          locationIds
+          narrowTo
         )
       : emptyStock(productId);
   }

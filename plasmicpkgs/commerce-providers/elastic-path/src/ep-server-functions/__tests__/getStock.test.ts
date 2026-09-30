@@ -148,6 +148,93 @@ describe("epGetStock", () => {
     );
   });
 
+  it("asks only for the names of the locations it keeps", async () => {
+    mockGetStock.mockResolvedValue(
+      mkStock({
+        "east-dc": { available: 4, allocated: 1, total: 5 },
+        "main-warehouse": { available: 2, allocated: 0, total: 2 },
+      })
+    );
+
+    await withEpSession(SESSION, () =>
+      epGetStock({ productIds: ["p1"], locationIds: ["east-dc"] })
+    );
+
+    expect(mockLocationList.mock.calls[0][0].query.filter).toBe(
+      'in(slug,"east-dc")'
+    );
+  });
+
+  it("gives each names request a time limit", async () => {
+    mockGetStock.mockResolvedValue(
+      mkStock({ "east-dc": { available: 4, allocated: 1, total: 5 } })
+    );
+
+    await withEpSession(SESSION, () => epGetStock({ productIds: ["p1"] }));
+
+    expect(mockLocationList.mock.calls[0][0].signal).toBeInstanceOf(
+      AbortSignal
+    );
+  });
+
+  it("keeps each names filter within 4,000 characters", async () => {
+    const slug = (i: number) =>
+      `${"x".repeat(66)}-${String(i).padStart(3, "0")}`;
+    mockGetStock.mockResolvedValue(
+      mkStock(
+        Object.fromEntries(
+          Array.from({ length: 100 }, (_, i) => [
+            slug(i),
+            { available: 1, allocated: 0, total: 1 },
+          ])
+        )
+      )
+    );
+
+    await withEpSession(SESSION, () => epGetStock({ productIds: ["p1"] }));
+
+    const filters = mockLocationList.mock.calls.map(
+      ([arg]) => arg.query.filter as string
+    );
+    expect(filters.length).toBeGreaterThan(1);
+    for (const filter of filters) {
+      expect(encodeURIComponent(filter).length).toBeLessThanOrEqual(4000);
+    }
+  });
+
+  it("treats a locationIds that is not an array as no narrowing", async () => {
+    mockGetStock.mockResolvedValue(
+      mkStock({ "east-dc": { available: 4, allocated: 1, total: 5 } })
+    );
+
+    const result = await withEpSession(SESSION, () =>
+      epGetStock({ productIds: ["p1"], locationIds: 5 as never })
+    );
+
+    expect(result.p1.totalAvailable).toBe(4);
+  });
+
+  it("logs a failed stock read, but not a product with no stock record", async () => {
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    mockGetStock.mockImplementation(({ path }: any) =>
+      Promise.resolve({
+        data: undefined,
+        error: { errors: [{ title: "failed" }] },
+        response: { status: path.product_uuid === "p1" ? 404 : 500 },
+      })
+    );
+
+    await withEpSession(SESSION, () =>
+      epGetStock({ productIds: ["p1", "p2"] })
+    );
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][1]).toEqual(
+      expect.objectContaining({ productId: "p2" })
+    );
+    warn.mockRestore();
+  });
+
   it("reads the locations list once for several products", async () => {
     mockGetStock.mockResolvedValue(
       mkStock({ "east-dc": { available: 4, allocated: 1, total: 5 } })

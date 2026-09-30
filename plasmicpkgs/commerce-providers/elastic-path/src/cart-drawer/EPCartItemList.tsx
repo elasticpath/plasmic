@@ -12,7 +12,6 @@ import { DEFAULT_LOW_STOCK_THRESHOLD } from "../const";
 import { Registerable } from "../registerable";
 import type { Cart, CartItem, SelectedOption } from "../types/cart";
 import { createLogger } from "../utils/logger";
-import { useLocations } from "../inventory/use-locations";
 import { useStock } from "../inventory/use-stock";
 import { MOCK_CART_LINE_ITEMS } from "../utils/design-time-data";
 import { getLocationSlug } from "../utils/getLocationSlug";
@@ -173,26 +172,27 @@ export function EPCartItemList(props: EPCartItemListProps) {
 
   const hasLocations = locationSlugs.length > 0;
 
-  // Fetch all locations (only when cart items have locations)
-  const { locations } = useLocations({ enabled: hasLocations && !inEditor });
-
-  // Build slug → name map
-  const locationMap = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const loc of locations) {
-      const slug = loc.attributes?.slug ?? loc.id;
-      const name = loc.attributes?.name ?? slug ?? "";
-      if (slug) map[slug] = name;
-    }
-    return map;
-  }, [locations]);
-
   // Fetch stock for products that have locations
   const { productStock } = useStock({
     productIds,
     locationIds: locationSlugs,
     enabled: hasLocations && !inEditor,
   });
+
+  // epGetStock names each location, so the cart needs no read of the
+  // locations list.
+  const locationMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const stock of Object.values(productStock)) {
+      for (const ls of (stock as any).locations) {
+        const slug = getLocationSlug(ls.location);
+        if (slug) {
+          map[slug] = ls.location.attributes?.name ?? slug;
+        }
+      }
+    }
+    return map;
+  }, [productStock]);
 
   // Build productId → { locationSlug → available } map
   const stockMap = useMemo(() => {
