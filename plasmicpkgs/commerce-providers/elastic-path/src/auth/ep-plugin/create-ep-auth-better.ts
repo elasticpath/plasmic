@@ -192,6 +192,16 @@ export interface EpAuth {
     basePath: string;
     trustedOrigins: string[];
     hostAllowlist: readonly string[];
+    /**
+     * The store the factory was constructed with, and the per-request resolver
+     * that may override it. `createEpDesignRoutes` reads both: a consumer
+     * pulling its store from the Plasmic bundle bootstraps these with
+     * placeholders, so the static pair alone names a store that does not
+     * exist.
+     */
+    clientId: string;
+    host: string;
+    resolveConfig?: EpResolveConfig;
     cartMergeStrategy: "merge" | "replace" | "prompt";
     checkout?: { sessionSecret: string };
     adapters?: { stripe?: { secretKey: string }; clover?: any };
@@ -305,6 +315,9 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
     basePath,
     trustedOrigins,
     hostAllowlist,
+    clientId: input.clientId,
+    host: input.host,
+    resolveConfig: input.resolveConfig,
     cartMergeStrategy: input.cartMergeStrategy ?? "merge",
     checkout: input.checkout,
     adapters: input.adapters,

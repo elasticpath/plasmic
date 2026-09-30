@@ -37,6 +37,8 @@ export { createCartRoutes } from "../cart/server-routes";
 export type { CartRoutes } from "../cart/server-routes";
 export { createEpProxyRoutes } from "./ep-plugin/proxy-routes";
 export type { EpProxyRoutes } from "./ep-plugin/proxy-routes";
+export { createEpDesignRoutes } from "./ep-plugin/design-routes";
+export type { EpDesignRoutes } from "./ep-plugin/design-routes";
 export {
   enforceOriginGate,
   isTrustedOrigin,

@@ -339,6 +339,47 @@ run one on a shared host or against production Elastic Path credentials.
 Call these through the identity client rather than by hand. The table is the
 contract the client is built from, not an instruction to write `fetch`.
 
+### The two browser routes
+
+Components call the `ep.*` functions directly; in a browser those calls go out
+over one of two routes, and both need mounting.
+
+```ts
+// app/api/ep/proxy/[fn]/route.ts — the shopper's own reads and cart writes
+import { createEpProxyRoutes } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
+import { epAuth } from "@/lib/ep-auth";
+
+const routes = createEpProxyRoutes(epAuth);
+export const POST = routes.handle;
+export const OPTIONS = routes.options;
+```
+
+```ts
+// app/api/ep/design/[fn]/route.ts — Studio design time only
+import { createEpDesignRoutes } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
+import { epAuth } from "@/lib/ep-auth";
+
+const routes = createEpDesignRoutes(epAuth);
+export const POST = routes.handle;
+export const OPTIONS = routes.options;
+```
+
+The design route reads no shopper session, which is what lets it answer inside
+Studio's editing frame: the session cookie is `SameSite=Lax` and never travels
+there once the app host is served from the storefront's own domain. It serves
+four catalog reads — `getProduct`, `getProductList`, `getProductPage`,
+`getRelatedProducts` — under a bare implicit token, and refuses every other
+name. Mount it in production: designers edit against a deployed app host.
+
+Its CORS is `Access-Control-Allow-Origin: *` with no credentials and no origin
+gate, because it serves what the store's public client id already unlocks. It
+takes no entry in `trustedOrigins`, which stays shopper-only (ADR-0001).
+
+Leave it unmounted and Studio still works: the canvas falls back to its
+labelled `"Sample"` fixtures and the console says once which route is missing.
+What a designer loses is per-store schema — extension slugs, hierarchy node
+ids, variation names — which no fixture can supply.
+
 ### The identity client
 
 `useEpIdentity()` gives a component the identity operations as methods. It
@@ -420,10 +461,9 @@ path and nothing else.
 
 **In the Studio canvas** the client stays relative, which resolves against the
 document serving the artboard — the consumer's own app, holding the shopper's
-cookies, with no CORS involved. It honours `window.__epProxyOrigin` so it
-agrees with the server-function client about where the consumer's app is, but
-reaching the auth handler across origins would also need that handler to
-reflect CORS with credentials, and it does not.
+cookies, with no CORS involved. There is no origin to pin: reaching the auth
+handler across origins would need that handler to reflect CORS with
+credentials, and it does not.
 
 ### Account identity
 

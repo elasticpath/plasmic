@@ -21,7 +21,11 @@ import type {
   EpSelectAccountRequest,
   EpSetCartRequest,
 } from "../../identity/operations";
-import { isAllowedEpHost, reportRejectedEpHost } from "../host-allowlist";
+import {
+  mintImplicitEpToken,
+  resolveEpStore,
+} from "./implicit-token";
+import type { EpImplicitTokenResponse } from "./implicit-token";
 import {
   EP_ACCOUNT_TOKEN_HEADER,
   accountNeedsRoll,
@@ -88,37 +92,9 @@ export type EpResolveConfig = (input: {
   hostAllowlist: readonly string[];
 }) => Promise<{ clientId?: string; host?: string } | null | undefined>;
 
-interface EpAnonymousTokenResponse {
-  access_token: string;
-  expires: number;
-  expires_in: number;
-  token_type: string;
-}
-
 interface SessionContextSnapshot {
   user: any;
   session: any;
-}
-
-async function mintAnonymousEpToken(
-  clientId: string,
-  host: string
-): Promise<EpAnonymousTokenResponse> {
-  const url = `${host}/oauth/access_token`;
-  const body = new URLSearchParams({
-    grant_type: "implicit",
-    client_id: clientId,
-  });
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
-  });
-  if (!response.ok) {
-    const text = await response.text().catch(() => "<no body>");
-    throw new Error(`EP OAuth failed (${response.status}): ${text}`);
-  }
-  return (await response.json()) as EpAnonymousTokenResponse;
 }
 
 function generateAnonymousId(): string {
@@ -130,24 +106,8 @@ function generateAnonymousId(): string {
     .join("");
 }
 
-async function resolveConfigFor(options: EpPluginOptions) {
-  const { hostAllowlist } = options;
-  const resolved = options.resolveConfig
-    ? await options.resolveConfig({ hostAllowlist }).catch(() => null)
-    : null;
-  if (resolved?.host && !isAllowedEpHost(resolved.host, hostAllowlist)) {
-    reportRejectedEpHost(resolved.host, "epPlugin.resolveConfig", hostAllowlist);
-    // clientId is only valid against the host it was resolved with.
-    return { clientId: options.clientId, host: options.host };
-  }
-  return {
-    clientId: resolved?.clientId ?? options.clientId,
-    host: resolved?.host ?? options.host,
-  };
-}
-
 function buildAnonymousSnapshot(
-  tokenData: EpAnonymousTokenResponse,
+  tokenData: EpImplicitTokenResponse,
   clientId: string,
   host: string
 ): SessionContextSnapshot {
@@ -498,10 +458,10 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
         "/ep/anonymous",
         { method: "POST" },
         async (ctx) => {
-          const { clientId, host } = await resolveConfigFor(options);
-          let tokenData: EpAnonymousTokenResponse;
+          const { clientId, host } = await resolveEpStore(options, "epPlugin.resolveConfig");
+          let tokenData: EpImplicitTokenResponse;
           try {
-            tokenData = await mintAnonymousEpToken(clientId, host);
+            tokenData = await mintImplicitEpToken(clientId, host);
           } catch (err) {
             return shopperTokenFailure(err);
           }
@@ -515,10 +475,10 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
         "/ep/refresh",
         { method: "POST" },
         async (ctx) => {
-          const { clientId, host } = await resolveConfigFor(options);
-          let tokenData: EpAnonymousTokenResponse;
+          const { clientId, host } = await resolveEpStore(options, "epPlugin.resolveConfig");
+          let tokenData: EpImplicitTokenResponse;
           try {
-            tokenData = await mintAnonymousEpToken(clientId, host);
+            tokenData = await mintImplicitEpToken(clientId, host);
           } catch (err) {
             return shopperTokenFailure(err);
           }

@@ -253,8 +253,9 @@ deliberately not used)
 
 ### Design time & registration (ADR-0003, ADR-0004)
 
-**Design-time catalog route** *(not yet built)*:
-The session-free route serving the store's default catalog to Studio under an
+**Design-time catalog route**:
+`createEpDesignRoutes`, mounted at `app/api/ep/design/[fn]/route.ts`. The
+session-free route serving the store's default catalog to Studio under an
 anonymous implicit token, with four declared names and no cart or order
 access. Distinct from the shopper proxy, which carries session identity.
 

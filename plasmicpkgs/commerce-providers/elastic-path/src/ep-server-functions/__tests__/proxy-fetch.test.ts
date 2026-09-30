@@ -18,7 +18,7 @@ const { callEpProxy, epProxyErrorCode } = require("../proxy-fetch");
 
 beforeEach(() => {
   mockFetch.mockReset();
-  delete (window as any).__epProxyOrigin;
+  delete (window as any).__CanvasPkgs;
 });
 
 describe("callEpProxy", () => {

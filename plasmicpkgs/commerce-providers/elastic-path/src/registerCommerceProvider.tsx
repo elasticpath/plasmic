@@ -6,6 +6,7 @@ import { Registerable } from "./registerable";
 import type { CurrencyDisplay } from "./utils/price";
 import { EpCommerceProvider } from "./shopper-context/EpCommerceContext";
 import { ServerCartActionsProvider } from "./shopper-context/ServerCartActionsProvider";
+import { useEpDesignRealmBridge } from "./ep-server-functions/useEpDesignRealmBridge";
 
 /**
  * Action and parameter names are a saved-binding contract: renaming one breaks
@@ -116,6 +117,7 @@ export const commerceProviderMeta: any = {
 };
 
 export function CommerceProviderComponent(props: CommerceProviderProps) {
+  useEpDesignRealmBridge();
   const {
     children,
     clientId,
