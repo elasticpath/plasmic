@@ -81,6 +81,7 @@ interface EPAccountProviderProps {
 
 interface EPAccountProviderActions {
   logout(): Promise<void>;
+  selectAccount(accountId: string): Promise<void>;
 }
 
 /** Browser-readable get-session identity. Credentials are redacted server-side. */
@@ -247,6 +248,14 @@ export const epAccountProviderMeta: CodeComponentMeta<EPAccountProviderProps> =
           "Sign the shopper out and reload account identity. No-op in the Studio canvas.",
         argTypes: [],
       },
+      selectAccount: {
+        displayName: "Select account",
+        description:
+          "Select an organisation and reload account identity. No-op in the Studio canvas. The already-selected id returns without a request. A call during an in-flight selection returns without another request.",
+        argTypes: [
+          { name: "accountId", type: "string", displayName: "Account ID" },
+        ],
+      },
     },
   };
 
@@ -264,6 +273,7 @@ export const EPAccountProvider = React.forwardRef<
   } | null>(null);
   const [reloading, setReloading] = useState(false);
   const requestId = useRef(0);
+  const selectInFlight = useRef(false);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleReloadRetry = useRef<
     (id: number, client: EpIdentityClient, attempt: number) => void
@@ -337,7 +347,26 @@ export const EPAccountProvider = React.forwardRef<
     await reloadAccount();
   }, [inEditor, identity, reloadAccount]);
 
-  useImperativeHandle(ref, () => ({ logout }), [logout]);
+  const selectAccount = useCallback(
+    async (accountId: string) => {
+      if (inEditor) return;
+      if (live?.selectedAccount?.id === accountId) return;
+      if (selectInFlight.current) return;
+      selectInFlight.current = true;
+      try {
+        await identity.selectAccount({ accountId });
+        await reloadAccount();
+      } finally {
+        selectInFlight.current = false;
+      }
+    },
+    [inEditor, live, identity, reloadAccount]
+  );
+
+  useImperativeHandle(ref, () => ({ logout, selectAccount }), [
+    logout,
+    selectAccount,
+  ]);
 
   const account = forcePreview
     ? previewAccountContext(previewState)

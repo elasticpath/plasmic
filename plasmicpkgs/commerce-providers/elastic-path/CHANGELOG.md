@@ -15,7 +15,12 @@ and asks the Account Provider to reload. A normal Studio button calls the
 Account Provider's `logout()` ref action, which signs out through the
 same client and reloads account state. Both actions no-op in the Plasmic
 canvas; the real mutations run at runtime and in interactive preview.
-Account switching is still not a registered action.
+A normal Studio button calls the Account Provider's `selectAccount(accountId)`
+ref action to choose an organisation. It no-ops in the Plasmic canvas. At
+runtime the already-selected id returns without a request or a reload; any
+other id selects through the shared identity client and then reloads account
+state. A further call while that selection is still in progress returns
+without another request or reload.
 
 ### Changed
 
