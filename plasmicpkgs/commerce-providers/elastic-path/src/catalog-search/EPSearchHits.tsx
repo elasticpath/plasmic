@@ -23,6 +23,7 @@ import { Registerable } from "../registerable";
 import { MOCK_SEARCH_PRODUCTS } from "./design-time-data";
 import type { Product } from "../types/product";
 import { completePrice } from "../utils/price";
+import { useHits, useInstantSearch } from "react-instantsearch";
 
 type PreviewState = "auto" | "withData";
 
@@ -351,7 +352,6 @@ function EPSearchHitsInner(props: {
 }) {
   const { children, className, gridStyle, productPathPrefix } = props;
 
-  const { useHits, useInstantSearch } = require("react-instantsearch");
   const { hits } = useHits();
   const { indexUiState } = useInstantSearch();
 

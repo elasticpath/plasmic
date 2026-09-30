@@ -1,4 +1,5 @@
 import { createShopperClient } from "@epcc-sdk/sdks-shopper";
+import type { Client } from "@epcc-sdk/sdks-shopper";
 import type { EpServerAuth } from "./types";
 import { epShopperHeaders } from "../utils/ep-shopper-headers";
 
@@ -16,7 +17,7 @@ export function isUsableAuth(auth: unknown): auth is EpServerAuth {
   return Boolean(a.host && a.clientId && a.accessToken);
 }
 
-export function buildEpClient(auth: EpServerAuth) {
+export function buildEpClient(auth: EpServerAuth): Client {
   const { client } = createShopperClient(
     { baseUrl: auth.host },
     {
