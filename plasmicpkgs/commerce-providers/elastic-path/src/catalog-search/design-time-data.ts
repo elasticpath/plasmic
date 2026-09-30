@@ -94,6 +94,11 @@ export interface CatalogSearchData {
   isSearchActive: boolean;
   query: string;
   currencyCode: string;
+  /**
+   * Set only while a search has failed to run. A search that matched nothing
+   * leaves this unset — no hits is an answer, not a failure.
+   */
+  error?: { code?: string; message: string };
 }
 
 export const MOCK_CATALOG_SEARCH_DATA: CatalogSearchData = {

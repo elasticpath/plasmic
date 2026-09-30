@@ -9,8 +9,9 @@
  * EPAutocompleteContext.
  *
  * Editor branch: renders mock collections without touching autocomplete-core
- * or the EP client. Runtime branch: wires postMultiSearch from the EP
- * shopper SDK and runs the live state machine.
+ * or the network. Runtime branch: wires `epMultiSearch` — which resolves the
+ * session on the server rather than a credential in the browser — and runs the
+ * live state machine.
  */
 
 import { DataProvider, usePlasmicCanvasContext } from "@plasmicapp/host";
@@ -18,7 +19,7 @@ import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useCallback, useImperativeHandle, useMemo } from "react";
-import { useEpCommerce } from "../shopper-context/EpCommerceContext";
+import { epMultiSearch } from "../ep-server-functions/multiSearch";
 import { Registerable } from "../registerable";
 import {
   AutocompleteData,
@@ -260,23 +261,10 @@ const EPSearchAutocompleteInner = React.forwardRef<
 >(function EPSearchAutocompleteInner(props, ref) {
   const { children, className, ...stateConfig } = props;
 
-  const commerce = useEpCommerce();
-  const epClient = commerce?.client;
-
   const postMultiSearch = useCallback(
-    async (body: MultiSearchBody): Promise<MultiSearchResponse> => {
-      try {
-        const sdk = require("@epcc-sdk/sdks-shopper");
-        const result = await sdk.postMultiSearch({
-          client: epClient,
-          body,
-        });
-        return (result?.data ?? {}) as MultiSearchResponse;
-      } catch {
-        return {};
-      }
-    },
-    [epClient]
+    async (body: MultiSearchBody): Promise<MultiSearchResponse> =>
+      (await epMultiSearch({ searches: body.searches })) as MultiSearchResponse,
+    []
   );
 
   const hookOutput = useEPAutocompleteState({
