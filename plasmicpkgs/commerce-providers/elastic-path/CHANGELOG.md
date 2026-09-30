@@ -49,6 +49,12 @@ it, so a Server Query bound to `ep.getStock` gets the names too. A location
 the list does not carry keeps its slug as its name. EP Stock Provider no
 longer reads the locations list itself.
 
+`ep.getLocations` returns every inventory location, not only the first page.
+Elastic Path pages the locations list, and the package read one page of the
+store's page length. A store with more locations than that lost the rest from
+EP Multi-Location Stock's location selector, from EP Cart Item List's location
+names, and from the names `ep.getStock` sets.
+
 Related products and bundle options show their images. EP Related Products
 Provider requested products without their image files, so each product
 referenced its main image by id only and got no image URL. EP Bundle Provider

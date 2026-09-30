@@ -133,6 +133,32 @@ describe("epGetStock", () => {
     );
   });
 
+  it("names a location from a later page of the locations list", async () => {
+    mockGetStock.mockResolvedValue(
+      mkStock({ "east-dc": { available: 4, allocated: 1, total: 5 } })
+    );
+    mockLocationList
+      .mockResolvedValueOnce(
+        mkLocations(
+          Array.from({ length: 100 }, (_, i) => ({
+            slug: `loc-${i}`,
+            name: `Location ${i}`,
+          }))
+        )
+      )
+      .mockResolvedValueOnce(
+        mkLocations([{ slug: "east-dc", name: "East Distribution Centre" }])
+      );
+
+    const result = await withEpSession(SESSION, () =>
+      epGetStock({ productIds: ["p1"] })
+    );
+
+    expect(result.p1.locations[0].location.attributes.name).toBe(
+      "East Distribution Centre"
+    );
+  });
+
   it("keeps the slug as the name of a location the list does not carry", async () => {
     mockGetStock.mockResolvedValue(
       mkStock({
