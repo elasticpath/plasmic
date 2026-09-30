@@ -111,6 +111,7 @@ describe("accountContextFromSession", () => {
       accountRoster: { accounts: [], total: 0 },
       lapsedAccount: null,
       isLoading: false,
+      isSelecting: false,
     });
   });
 
@@ -124,6 +125,7 @@ describe("accountContextFromSession", () => {
       accountRoster: { accounts: [], total: 0 },
       lapsedAccount: null,
       isLoading: false,
+      isSelecting: false,
     });
   });
 
@@ -140,6 +142,7 @@ describe("accountContextFromSession", () => {
       accountRoster: { accounts: [], total: 0 },
       lapsedAccount: null,
       isLoading: false,
+      isSelecting: false,
     });
   });
 
@@ -156,6 +159,7 @@ describe("accountContextFromSession", () => {
       accountRoster: { accounts: [], total: 0 },
       lapsedAccount: { id: "acct-1", name: "Acme" },
       isLoading: false,
+      isSelecting: false,
     });
   });
 
@@ -413,6 +417,7 @@ describe("EPAccountProvider", () => {
       },
       lapsedAccount: null,
       isLoading: false,
+      isSelecting: false,
     });
     expect(JSON.stringify(published)).not.toMatch(/token/i);
     expect(fetchImpl).toHaveBeenCalledWith(
@@ -442,6 +447,7 @@ describe("EPAccountProvider", () => {
         accountRoster: { accounts: [], total: 0 },
         lapsedAccount: null,
         isLoading: false,
+        isSelecting: false,
       });
     });
   });
@@ -1017,6 +1023,7 @@ describe("EPAccountProvider", () => {
         expect(selectCalls()).toHaveLength(1);
         expect(sessionReadsCount).toBe(2);
         expect(publishedAccount().isLoading).toBe(true);
+        expect(publishedAccount().isSelecting).toBe(false);
         expect(screen.queryByTestId("signed-in")).toBeNull();
         expect(screen.queryByTestId("signed-out")).toBeNull();
 
@@ -1033,6 +1040,7 @@ describe("EPAccountProvider", () => {
           name: "Northwind",
         });
         expect(publishedAccount().isLoading).toBe(false);
+        expect(publishedAccount().isSelecting).toBe(false);
         expect(screen.getByTestId("signed-in")).toBeTruthy();
         expect(screen.queryByTestId("signed-out")).toBeNull();
       } finally {
@@ -1385,6 +1393,205 @@ describe("EPAccountProvider", () => {
         name: "Northwind",
       });
       expect(publishedAccount().isLoading).toBe(false);
+    });
+
+    it("publishes isSelecting through a real selection and its reload", async () => {
+      const { releaseSelect, releaseReload, selectCalls } = installSelectFetch({
+        initialSession: { epMemberId: "member-1" },
+        nextSession: {
+          epMemberId: "member-1",
+          epAccount: { id: "acct-b", name: "Northwind" },
+        },
+        holdSelect: true,
+        holdReload: true,
+      });
+      const ref = React.createRef<AccountActions>();
+      render(
+        <EPAccountProvider ref={ref}>
+          <EPAccountGate when="authenticated">
+            <span data-testid="signed-in">Signed in</span>
+          </EPAccountGate>
+        </EPAccountProvider>
+      );
+      await waitFor(() => {
+        expect(publishedAccount().state).toBe("memberOnly");
+      });
+      expect(publishedAccount().isSelecting).toBe(false);
+      const roster = publishedAccount().accountRoster;
+
+      let first = "pending";
+      let ignored = "pending";
+      let firstDone: Promise<unknown> = Promise.resolve();
+      await act(async () => {
+        firstDone = ref.current!.selectAccount("acct-b").then(
+          () => {
+            first = "resolved";
+          },
+          () => {
+            first = "rejected";
+          }
+        );
+        void ref.current!.selectAccount("acct-a").then(
+          () => {
+            ignored = "resolved";
+          },
+          () => {
+            ignored = "rejected";
+          }
+        );
+      });
+
+      expect(selectCalls()).toHaveLength(1);
+      expect(ignored).toBe("resolved");
+      expect(first).toBe("pending");
+      expect(publishedAccount().isSelecting).toBe(true);
+      expect(publishedAccount().isLoading).toBe(false);
+      expect(publishedAccount().state).toBe("memberOnly");
+      expect(publishedAccount().accountRoster).toEqual(roster);
+      expect(screen.getByTestId("signed-in")).toBeTruthy();
+
+      await act(async () => {
+        releaseSelect();
+      });
+      await waitFor(() => {
+        expect(publishedAccount().isLoading).toBe(true);
+      });
+      expect(publishedAccount().isSelecting).toBe(true);
+      expect(first).toBe("pending");
+      expect(selectCalls()).toHaveLength(1);
+      expect(screen.queryByTestId("signed-in")).toBeNull();
+
+      await act(async () => {
+        releaseReload();
+        await firstDone;
+      });
+
+      expect(first).toBe("resolved");
+      expect(publishedAccount().isSelecting).toBe(false);
+      expect(publishedAccount().isLoading).toBe(false);
+      expect(publishedAccount().selectedAccount).toEqual({
+        id: "acct-b",
+        name: "Northwind",
+      });
+      expect(screen.getByTestId("signed-in")).toBeTruthy();
+    });
+
+    it("does not set isSelecting for a canvas no-op or the already-selected id", async () => {
+      mockUsePlasmicCanvasContext.mockReturnValue(true);
+      const canvas = installSelectFetch({
+        initialSession: { epMemberId: "member-1" },
+      });
+      const canvasRef = React.createRef<AccountActions>();
+      const { rerender, unmount } = render(
+        <EPAccountProvider ref={canvasRef} previewState="auto">
+          <span>child</span>
+        </EPAccountProvider>
+      );
+      await waitFor(() => {
+        expect(publishedAccount().state).toBe("memberOnly");
+      });
+      const canvasBefore = publishedAccount();
+
+      await act(async () => {
+        await canvasRef.current!.selectAccount("acct-b");
+      });
+
+      expect(canvas.selectCalls()).toEqual([]);
+      expect(publishedAccount()).toEqual(canvasBefore);
+      expect(publishedAccount().isSelecting).toBe(false);
+
+      mockUsePlasmicCanvasContext.mockReturnValue(false);
+      rerender(
+        <EPAccountProvider ref={canvasRef} previewState="auto">
+          <span>child</span>
+        </EPAccountProvider>
+      );
+      await act(async () => {
+        await canvasRef.current!.selectAccount("acct-b");
+      });
+      expect(canvas.selectCalls()).toHaveLength(1);
+      unmount();
+
+      const selected = installSelectFetch({
+        initialSession: {
+          epMemberId: "member-1",
+          epAccount: { id: "acct-a", name: "Acme" },
+        },
+      });
+      const ref = React.createRef<AccountActions>();
+      render(
+        <EPAccountProvider ref={ref}>
+          <span>child</span>
+        </EPAccountProvider>
+      );
+      await waitFor(() => {
+        expect(publishedAccount().selectedAccount).toEqual({
+          id: "acct-a",
+          name: "Acme",
+        });
+      });
+      const before = publishedAccount();
+
+      await act(async () => {
+        await ref.current!.selectAccount("acct-a");
+      });
+
+      expect(selected.selectCalls()).toEqual([]);
+      expect(publishedAccount()).toEqual(before);
+      expect(publishedAccount().isSelecting).toBe(false);
+    });
+
+    it("clears isSelecting when selection fails and leaves the published account", async () => {
+      const { releaseSelect, selectCalls, sessionReads } = installSelectFetch({
+        initialSession: { epMemberId: "member-1" },
+        selectOk: false,
+        selectCode: "account_not_found",
+        holdSelect: true,
+      });
+      const ref = React.createRef<AccountActions>();
+      render(
+        <EPAccountProvider ref={ref}>
+          <EPAccountGate when="authenticated">
+            <span data-testid="signed-in">Signed in</span>
+          </EPAccountGate>
+        </EPAccountProvider>
+      );
+      await waitFor(() => {
+        expect(publishedAccount().state).toBe("memberOnly");
+      });
+      const before = publishedAccount();
+
+      let settled = "pending";
+      let pending: Promise<unknown> = Promise.resolve();
+      await act(async () => {
+        pending = ref.current!.selectAccount("acct-missing").then(
+          () => {
+            settled = "resolved";
+          },
+          () => {
+            settled = "rejected";
+          }
+        );
+      });
+
+      expect(selectCalls()).toHaveLength(1);
+      expect(publishedAccount().isSelecting).toBe(true);
+      expect(publishedAccount().isLoading).toBe(false);
+      expect(publishedAccount().state).toBe("memberOnly");
+      expect(screen.getByTestId("signed-in")).toBeTruthy();
+      expect(settled).toBe("pending");
+
+      await act(async () => {
+        releaseSelect();
+        await pending;
+      });
+
+      expect(settled).toBe("rejected");
+      expect(sessionReads()).toHaveLength(1);
+      expect(publishedAccount()).toEqual(before);
+      expect(publishedAccount().isSelecting).toBe(false);
+      expect(publishedAccount().isLoading).toBe(false);
+      expect(screen.getByTestId("signed-in")).toBeTruthy();
     });
   });
 

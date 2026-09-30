@@ -833,6 +833,7 @@ export const MOCK_ACCOUNT_ANONYMOUS: AccountContext = {
   accountRoster: EMPTY_ACCOUNT_ROSTER,
   lapsedAccount: null,
   isLoading: false,
+  isSelecting: false,
 };
 
 /** Signed-in member with several organisations and none selected. */
@@ -843,6 +844,7 @@ export const MOCK_ACCOUNT_MEMBER_ONLY: AccountContext = {
   accountRoster: SAMPLE_ACCOUNT_ROSTER,
   lapsedAccount: null,
   isLoading: false,
+  isSelecting: false,
 };
 
 /** Signed-in member acting for an organisation. Canvas `auto` mock floor. */
@@ -853,6 +855,7 @@ export const MOCK_ACCOUNT_SELECTED: AccountContext = {
   accountRoster: SAMPLE_ACCOUNT_ROSTER,
   lapsedAccount: null,
   isLoading: false,
+  isSelecting: false,
 };
 
 /** Signed-in member whose organisation credential has lapsed. */
@@ -863,6 +866,7 @@ export const MOCK_ACCOUNT_LAPSED: AccountContext = {
   accountRoster: SAMPLE_ACCOUNT_ROSTER,
   lapsedAccount: SAMPLE_COMPANY_A,
   isLoading: false,
+  isSelecting: false,
 };
 
 export const MOCK_ACCOUNT_BY_PREVIEW_STATE: Record<AccountState, AccountContext> = {

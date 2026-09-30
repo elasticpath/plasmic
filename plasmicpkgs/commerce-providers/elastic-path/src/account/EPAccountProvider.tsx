@@ -150,6 +150,7 @@ export function accountContextFromSession(
     accountRoster: roster ?? EMPTY_ROSTER,
     lapsedAccount,
     isLoading: false,
+    isSelecting: false,
   };
 }
 
@@ -251,7 +252,7 @@ export const epAccountProviderMeta: CodeComponentMeta<EPAccountProviderProps> =
       selectAccount: {
         displayName: "Select account",
         description:
-          "Select an organisation and reload account identity. No-op in the Studio canvas. The already-selected id returns without a request. A call during an in-flight selection returns without another request.",
+          "Select an organisation and reload account identity. No-op in the Studio canvas. The already-selected id returns without a request. A call during an in-flight selection returns without another request. `$ctx.account.isSelecting` is true while this call is in progress.",
         argTypes: [
           { name: "accountId", type: "string", displayName: "Account ID" },
         ],
@@ -272,6 +273,7 @@ export const EPAccountProvider = React.forwardRef<
     account: AccountContext;
   } | null>(null);
   const [reloading, setReloading] = useState(false);
+  const [isSelecting, setIsSelecting] = useState(false);
   const requestId = useRef(0);
   const selectInFlight = useRef(false);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -353,11 +355,13 @@ export const EPAccountProvider = React.forwardRef<
       if (live?.selectedAccount?.id === accountId) return;
       if (selectInFlight.current) return;
       selectInFlight.current = true;
+      setIsSelecting(true);
       try {
         await identity.selectAccount({ accountId });
         await reloadAccount();
       } finally {
         selectInFlight.current = false;
+        setIsSelecting(false);
       }
     },
     [inEditor, live, identity, reloadAccount]
@@ -368,7 +372,7 @@ export const EPAccountProvider = React.forwardRef<
     selectAccount,
   ]);
 
-  const account = forcePreview
+  const base = forcePreview
     ? previewAccountContext(previewState)
     : inEditor
     ? live && hasMemberIdentity(live)
@@ -377,6 +381,8 @@ export const EPAccountProvider = React.forwardRef<
     : !live || reloading
     ? LOADING_ACCOUNT
     : live;
+  const account =
+    base.isSelecting === isSelecting ? base : { ...base, isSelecting };
 
   if (inEditor) {
     log.debug("Publishing account context", {

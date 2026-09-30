@@ -36,6 +36,7 @@ export type AccountContext = {
   accountRoster: AccountRoster;
   lapsedAccount: AccountRef | null;
   isLoading: boolean;
+  isSelecting: boolean;
 };
 
 export type AccountGateWhen =

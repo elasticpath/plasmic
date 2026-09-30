@@ -20,7 +20,9 @@ ref action to choose an organisation. It no-ops in the Plasmic canvas. At
 runtime the already-selected id returns without a request or a reload; any
 other id selects through the shared identity client and then reloads account
 state. A further call while that selection is still in progress returns
-without another request or reload.
+without another request or reload. `$ctx.account.isSelecting` is true only
+while that call is in progress, including its immediate reload, and is false
+again when the call resolves or rejects. It does not replace `isLoading`.
 
 ### Changed
 
