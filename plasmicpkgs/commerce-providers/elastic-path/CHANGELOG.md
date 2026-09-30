@@ -19,6 +19,26 @@ Account switching is still not a registered action.
 
 ### Changed
 
+Catalog search and search-as-you-type run through the server. EP Catalog
+Search Provider and EP Search Autocomplete handed the browser's Elastic Path
+client to the search adapter; both now go through `ep.multiSearch`, which
+resolves the session the server already holds. The browser sends no request to
+Elastic Path, results keep their product images, and the same code runs on the
+server and in the browser, so nothing forwards a cookie or names an absolute
+origin. Same props, same slots, same data.
+
+The search error slot says what went wrong. It previously blamed the adapter
+installation and the store's Catalog Search setting, neither of which was ever
+the cause, and it only appeared when the provider could not start at all — a
+search that failed mid-flight rendered as no results, which a shopper cannot
+tell from a search that matched nothing. It now appears whenever a search
+fails, naming an unreachable route, a route older than the components, and an
+expired session separately, and the search stays on screen so the shopper can
+try again. `$ctx.catalogSearchData.error` carries the same `code` and
+`message` for designers who want their own copy. The `Error Content` slot no
+longer ships default text; existing projects keep whatever text they have, so
+clear that slot to get the new message.
+
 Every catalogue and inventory read now goes through the server instead of the
 browser's Elastic Path client. Products, product lists, related products,
 stock, store locations and the three bundle reads all resolve through the

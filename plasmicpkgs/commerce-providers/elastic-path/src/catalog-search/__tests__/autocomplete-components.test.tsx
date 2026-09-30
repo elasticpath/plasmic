@@ -204,12 +204,12 @@ jest.mock(
   { virtual: true }
 );
 
-const mockPostMultiSearch = jest.fn().mockResolvedValue({
-  data: { results: [{ hits: [] }] },
+const mockEpMultiSearch = jest.fn().mockResolvedValue({
+  results: [{ hits: [] }],
 });
-jest.mock("@epcc-sdk/sdks-shopper", () => ({
+jest.mock("../../ep-server-functions/multiSearch", () => ({
   __esModule: true,
-  postMultiSearch: (...a: any[]) => mockPostMultiSearch(...a),
+  epMultiSearch: (...a: any[]) => mockEpMultiSearch(...a),
 }));
 
 /* ---------- code under test ---------- */
@@ -259,11 +259,9 @@ function setIsSelected(isSelected: boolean) {
 beforeEach(() => {
   jest.clearAllMocks();
   // mockClear leaves mockResolvedValueOnce queues intact across tests; reset
-  // the postMultiSearch mock to flush anything left over.
-  mockPostMultiSearch.mockReset();
-  mockPostMultiSearch.mockResolvedValue({
-    data: { results: [{ hits: [] }] },
-  });
+  // the multi-search mock to flush anything left over.
+  mockEpMultiSearch.mockReset();
+  mockEpMultiSearch.mockResolvedValue({ results: [{ hits: [] }] });
   fakeAutocompleteInstances.length = 0;
   mockUsePlasmicCanvasContext.mockReturnValue(null);
   mockUsePlasmicCanvasComponentInfo.mockReturnValue({ isSelected: false });
@@ -340,9 +338,7 @@ describe("EPSearchAutocomplete provider", () => {
 
   it("at runtime, publishes autocompleteData with collections from the hook", async () => {
     setEditorMode(false);
-    mockPostMultiSearch.mockResolvedValueOnce({
-      data: { results: [{ hits: [{ q: "leather bag" }] }] },
-    });
+    mockEpMultiSearch.mockResolvedValueOnce({ results: [{ hits: [{ q: "leather bag" }] }] });
 
     const { container } = render(
       <EPSearchAutocomplete>
@@ -363,6 +359,32 @@ describe("EPSearchAutocomplete provider", () => {
     expect(data.query).toBe("leat");
     expect(data.isOpen).toBe(true);
     expect(data.collections[0].items[0].q).toBe("leather bag");
+  });
+
+  it("asks for suggestions through epMultiSearch, with no client of its own", async () => {
+    setEditorMode(false);
+    mockUseCommerce.mockReturnValue({ locale: "en-US" });
+
+    render(
+      <EPSearchAutocomplete predictionsField="q">
+        <div>child</div>
+      </EPSearchAutocomplete>
+    );
+
+    await act(async () => {
+      await fakeAutocompleteInstances[0].__triggerInput("leat");
+    });
+
+    expect(mockEpMultiSearch).toHaveBeenCalledWith({
+      searches: [
+        {
+          type: "autocomplete",
+          q: "leat",
+          include_fields: "q",
+          highlight_full_fields: "q",
+        },
+      ],
+    });
   });
 });
 
@@ -415,9 +437,7 @@ describe("EPSearchAutocompleteInput", () => {
 
   it("typing in the slot input drives autocomplete-core's setQuery (and the DataProvider state)", async () => {
     setEditorMode(false);
-    mockPostMultiSearch.mockResolvedValueOnce({
-      data: { results: [{ hits: [{ q: "boots" }] }] },
-    });
+    mockEpMultiSearch.mockResolvedValueOnce({ results: [{ hits: [{ q: "boots" }] }] });
 
     const { container } = render(
       <EPSearchAutocomplete>
@@ -572,9 +592,7 @@ describe("EPSearchAutocompletePanel", () => {
     ).toBeNull();
 
     // Type a query to open the panel.
-    mockPostMultiSearch.mockResolvedValueOnce({
-      data: { results: [{ hits: [{ q: "shoes" }] }] },
-    });
+    mockEpMultiSearch.mockResolvedValueOnce({ results: [{ hits: [{ q: "shoes" }] }] });
     await act(async () => {
       await fakeAutocompleteInstances[0].__triggerInput("sho");
     });
@@ -589,9 +607,7 @@ describe("EPSearchAutocompletePanel", () => {
 
   it("renders the mobile close button with data-ep-autocomplete-close at runtime when open", async () => {
     setEditorMode(false);
-    mockPostMultiSearch.mockResolvedValueOnce({
-      data: { results: [{ hits: [{ q: "x" }] }] },
-    });
+    mockEpMultiSearch.mockResolvedValueOnce({ results: [{ hits: [{ q: "x" }] }] });
 
     const { container } = render(
       <EPSearchAutocomplete>
@@ -733,18 +749,16 @@ describe("EPSearchAutocompleteList", () => {
 
   it("renders one <li> per item in the configured source at runtime", async () => {
     setEditorMode(false);
-    mockPostMultiSearch.mockResolvedValueOnce({
-      data: {
-        results: [
-          {
-            hits: [
-              { q: "leather bag" },
-              { q: "leather wallet" },
-              { q: "leather shoes" },
-            ],
-          },
-        ],
-      },
+    mockEpMultiSearch.mockResolvedValueOnce({
+      results: [
+        {
+          hits: [
+            { q: "leather bag" },
+            { q: "leather wallet" },
+            { q: "leather shoes" },
+          ],
+        },
+      ],
     });
 
     const { container } = render(
@@ -765,10 +779,8 @@ describe("EPSearchAutocompleteList", () => {
 
   it("publishes per-iteration currentSuggestion via DataProvider at runtime", async () => {
     setEditorMode(false);
-    mockPostMultiSearch.mockResolvedValueOnce({
-      data: {
-        results: [{ hits: [{ q: "leather bag" }] }],
-      },
+    mockEpMultiSearch.mockResolvedValueOnce({
+      results: [{ hits: [{ q: "leather bag" }] }],
     });
 
     const { container } = render(

@@ -197,3 +197,35 @@ describe("callEpProxy unknown fn", () => {
     expect(epProxyErrorCode(err)).toBe("unknown_fn");
   });
 });
+
+describe("callEpProxy route not mounted", () => {
+  it("codes a bodyless 404 so callers can tell it from a failed dispatch", async () => {
+    // A storefront that never mounted /api/ep/proxy answers with its own 404
+    // page, not JSON — there is no `code` in the body to read.
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => {
+        throw new Error("Unexpected token < in JSON");
+      },
+    });
+
+    const err = await callEpProxy("multiSearch", { searches: [] }).catch(
+      (e: unknown) => e
+    );
+
+    expect(epProxyErrorCode(err)).toBe("route_not_found");
+  });
+
+  it("keeps the route's own code when the 404 carries one", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({ error: "unknown_fn", code: "unknown_fn" }),
+    });
+
+    const err = await callEpProxy("placeOrder", {}).catch((e: unknown) => e);
+
+    expect(epProxyErrorCode(err)).toBe("unknown_fn");
+  });
+});

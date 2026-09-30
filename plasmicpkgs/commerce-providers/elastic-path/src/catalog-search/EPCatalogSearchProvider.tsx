@@ -15,12 +15,14 @@ import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useMemo } from "react";
-import { useEpCommerce } from "../shopper-context/EpCommerceContext";
 import { Registerable } from "../registerable";
 import { DEFAULT_CURRENCY_CODE } from "../const";
 import { MOCK_CATALOG_SEARCH_DATA } from "./design-time-data";
 import type { CatalogSearchData } from "./design-time-data";
 import { useHeadlessStyling } from "./headless-styling";
+import { createMultiSearchClient } from "./multi-search-client";
+import { catalogSearchErrorCopy } from "./search-error-copy";
+import { readEpErrorCode } from "../browser-call";
 
 type PreviewState = "auto" | "withData" | "loading" | "empty" | "error";
 
@@ -75,11 +77,8 @@ export const epCatalogSearchProviderMeta: CodeComponentMeta<EPCatalogSearchProvi
       errorContent: {
         type: "slot",
         displayName: "Error Content",
-        defaultValue: {
-          type: "text",
-          value:
-            "Catalog Search is not available. Ensure it is enabled for this store.",
-        },
+        description:
+          "Rendered when a search fails to run. Leave empty to show the built-in message, which names the cause. No hits is not a failure and renders the results area empty instead.",
       },
       indexName: {
         type: "string",
@@ -249,12 +248,8 @@ function EPCatalogSearchProviderInner(props: {
     className,
   } = props;
 
-  const commerce = useEpCommerce();
-  const client = commerce?.client;
-
   // Create the search client from the EP adapter
   const searchClient = useMemo(() => {
-    if (!client) return null;
     try {
       // Dynamic require — the adapter is a default export.
       // The published 0.0.5 build ships an esbuild __toESM(..., 1)
@@ -266,7 +261,9 @@ function EPCatalogSearchProviderInner(props: {
           ? mod.default
           : mod.default?.default ?? mod;
       const adapter = new CatalogSearchInstantSearchAdapter({
-        client,
+        // Not an Elastic Path client: the one `.post()` the adapter reaches
+        // for runs the search through `epMultiSearch` instead.
+        client: createMultiSearchClient(),
         additionalSearchParameters: {
           query_by: queryBy,
           // Typesense snippets long fields by default; fields listed here are
@@ -291,29 +288,25 @@ function EPCatalogSearchProviderInner(props: {
       );
       return null;
     }
-  }, [client, queryBy, highlightFullFields]);
+  }, [queryBy, highlightFullFields]);
 
   if (!searchClient) {
     return (
       <div className={className} data-ep-catalog-search-provider="">
-        {errorContent || (
-          <div>
-            Catalog Search is not available. Ensure the adapter is installed and
-            the store has Catalog Search enabled.
-          </div>
-        )}
+        <div data-ep-catalog-search-error="">
+          {errorContent || (
+            <div>
+              Search is unavailable: the catalog-search adapter could not be
+              loaded.
+            </div>
+          )}
+        </div>
       </div>
     );
   }
 
   // Dynamic require to avoid hard dependency
   const { InstantSearch, Configure } = require("react-instantsearch");
-
-  const catalogSearchData: CatalogSearchData = {
-    isSearchActive: true,
-    query: "",
-    currencyCode,
-  };
 
   return (
     <InstantSearch
@@ -330,12 +323,61 @@ function EPCatalogSearchProviderInner(props: {
         hitsPerPage={hitsPerPage}
         {...(baseFilter ? { filters: baseFilter } : {})}
       />
-      <DataProvider name="catalogSearchData" data={catalogSearchData}>
-        <div className={className} data-ep-catalog-search-provider="">
-          {children}
-        </div>
-      </DataProvider>
+      <EPCatalogSearchBody
+        className={className}
+        currencyCode={currencyCode}
+        errorContent={errorContent}
+      >
+        {children}
+      </EPCatalogSearchBody>
     </InstantSearch>
+  );
+}
+
+/**
+ * Renders the search surface and, when a search fails, the error slot above it.
+ *
+ * The error slot stays rather than soft-failing to no hits: a search box that
+ * is always empty looks exactly like one that works and matches nothing. The
+ * children stay mounted alongside it so the shopper can change the query and
+ * try again — the common failures here are transient.
+ */
+function EPCatalogSearchBody(props: {
+  children?: React.ReactNode;
+  errorContent?: React.ReactNode;
+  className?: string;
+  currencyCode: string;
+}) {
+  const { children, errorContent, className, currencyCode } = props;
+  const { useInstantSearch } = require("react-instantsearch");
+  const { status, error } = useInstantSearch({ catchError: true });
+  const failed = status === "error";
+
+  const catalogSearchData: CatalogSearchData = {
+    isSearchActive: true,
+    query: "",
+    currencyCode,
+    ...(failed
+      ? {
+          error: {
+            code: readEpErrorCode(error),
+            message: catalogSearchErrorCopy(error),
+          },
+        }
+      : {}),
+  };
+
+  return (
+    <DataProvider name="catalogSearchData" data={catalogSearchData}>
+      <div className={className} data-ep-catalog-search-provider="">
+        {failed ? (
+          <div data-ep-catalog-search-error="">
+            {errorContent || <div>{catalogSearchErrorCopy(error)}</div>}
+          </div>
+        ) : null}
+        {children}
+      </div>
+    </DataProvider>
   );
 }
 
