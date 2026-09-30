@@ -16,7 +16,11 @@ export interface EpLocation {
 }
 
 export interface EpGetLocationsInput {
-  /** Location type to filter on, e.g. "warehouse" or "store". */
+  /**
+   * Ignored. An inventory location has no type, and Elastic Path filters
+   * locations by slug only. The field stays so that a saved Server Query that
+   * sets it still runs.
+   */
   type?: string;
 }
 
@@ -32,31 +36,25 @@ const MAX_OFFSET = 10_000;
  * has no total count, so a page with fewer rows than the page size is the last
  * page. If a later page fails, this returns the pages that it already read.
  */
-export async function epGetLocations({
-  type,
-}: EpGetLocationsInput = {}): Promise<EpLocation[]> {
+export async function epGetLocations(
+  _input: EpGetLocationsInput = {}
+): Promise<EpLocation[]> {
   const auth = getCurrentEpSession();
 
   if (!isUsableAuth(auth) && shouldUseProxy()) {
     return (
-      (await callEpProxy<EpLocation[] | null>("getLocations", { type }, null)) ??
-      []
+      (await callEpProxy<EpLocation[] | null>("getLocations", {}, null)) ?? []
     );
   }
 
   if (!isUsableAuth(auth)) return [];
   const client = buildEpClient(auth);
-  const typeFilter = type ? { filter: `eq(type,${type})` } : {};
 
   const locations: EpLocation[] = [];
   for (let offset = 0; offset <= MAX_OFFSET; offset += PAGE_LIMIT) {
     const response = await listLocations({
       client,
-      query: {
-        ...typeFilter,
-        "page[limit]": PAGE_LIMIT,
-        "page[offset]": offset,
-      },
+      query: { "page[limit]": PAGE_LIMIT, "page[offset]": offset },
     }).catch(() => null);
     const rows = response?.data?.data;
     if (!Array.isArray(rows)) {

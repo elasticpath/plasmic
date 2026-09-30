@@ -56,6 +56,11 @@ store's page length. A store with more locations than that lost the rest from
 the location selector of EP Multi-Location Stock (deprecated) and from the
 location names of EP Cart Item List.
 
+`ep.getLocations` with a `type` returns the locations instead of an empty list.
+Elastic Path filters inventory locations by slug only, so it rejected the
+`type` filter, and the package returned no locations. An inventory location has
+no type, so the package now ignores `type`.
+
 Related products and bundle options show their images. EP Related Products
 Provider requested products without their image files, so each product
 referenced its main image by id only and got no image URL. EP Bundle Provider

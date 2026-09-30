@@ -47,7 +47,6 @@ export interface UseStockOptions {
 }
 
 export interface UseLocationsOptions {
-  type?: InventoryLocationType;
   enabled?: boolean;
 }
 

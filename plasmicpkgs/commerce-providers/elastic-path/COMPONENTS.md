@@ -791,7 +791,7 @@ PlasmicClientRootProvider <-------- prefetchedQueryData
 | `ep.getProductPage` | `{ limit?, offset?, search?, categoryId? }` | `{ data: Product[], meta: { results: { total }, page: { limit, offset } } }` — one page in Elastic Path's envelope, with the total count. `limit` defaults to 25 |
 | `ep.getRelatedProducts` | `{ productId, relationshipSlug, limit? }` | `Product[]` — products linked by EP custom relationship |
 | `ep.getStock` | `{ productIds, locationIds? }` | `Record<productId, ProductStock>` — multi-location stock, each location named from the locations list (its slug when the list lacks it); a product whose stock is unreadable comes back with zero counts |
-| `ep.getLocations` | `{ type? }` | `Location[]` — the inventory locations |
+| `ep.getLocations` | `{}` (a `type` is ignored) | `Location[]` — every inventory location |
 | `ep.getBundleOptionProducts` | `{ productIds }` | `Record<productId, Product>` — the products a bundle offers as options, each the package's product shape |
 | `ep.getBaseProducts` | `{ productIds }` | `Record<productId, Product>` — the given products with their `variations` and `childProducts`. A product that is not a base product comes back with an empty `childProducts`; one the catalog does not return is omitted |
 | `ep.configureBundle` | `{ bundleId, selectedOptions }` | Elastic Path's configured-bundle payload — re-prices a bundle for a set of selections. Throws on failure, because a stale price is worse than none |

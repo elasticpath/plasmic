@@ -8,15 +8,10 @@ import { createLogger } from "../utils/logger";
 
 const log = createLogger("useLocations");
 
-export function useLocations({
-  type,
-  enabled = true,
-}: UseLocationsOptions = {}) {
+export function useLocations({ enabled = true }: UseLocationsOptions = {}) {
   const commerce = useEpCommerce();
 
-  const queryKey = enabled && commerce
-    ? ["ep-locations", type ?? "__all__"]
-    : null;
+  const queryKey = enabled && commerce ? ["ep-locations"] : null;
 
   const { data, error, isLoading, mutate } = useMutablePlasmicQueryData<
     Location[],
@@ -24,7 +19,7 @@ export function useLocations({
   >(
     queryKey,
     async () => {
-      const locations = await epGetLocations({ type });
+      const locations = await epGetLocations();
       return locations as unknown as Location[];
     },
     {

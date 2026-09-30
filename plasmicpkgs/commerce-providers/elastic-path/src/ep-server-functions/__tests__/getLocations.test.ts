@@ -57,18 +57,14 @@ describe("epGetLocations", () => {
     );
   });
 
-  it("filters by location type when one is given", async () => {
+  it("ignores a location type, which Elastic Path cannot filter on", async () => {
     mockListLocations.mockResolvedValue({ data: { data: [] } });
 
     await withEpSession(SESSION, () => epGetLocations({ type: "warehouse" }));
 
     expect(mockListLocations).toHaveBeenCalledWith(
       expect.objectContaining({
-        query: {
-          filter: "eq(type,warehouse)",
-          "page[limit]": 100,
-          "page[offset]": 0,
-        },
+        query: { "page[limit]": 100, "page[offset]": 0 },
       })
     );
   });
@@ -78,15 +74,13 @@ describe("epGetLocations", () => {
       .mockResolvedValueOnce(page(100))
       .mockResolvedValueOnce(page(3, 100));
 
-    const result = await withEpSession(SESSION, () =>
-      epGetLocations({ type: "warehouse" })
-    );
+    const result = await withEpSession(SESSION, () => epGetLocations());
 
     expect(result).toHaveLength(103);
     expect(result[102].attributes.slug).toBe("loc-102");
     expect(mockListLocations.mock.calls.map(([arg]) => arg.query)).toEqual([
-      { filter: "eq(type,warehouse)", "page[limit]": 100, "page[offset]": 0 },
-      { filter: "eq(type,warehouse)", "page[limit]": 100, "page[offset]": 100 },
+      { "page[limit]": 100, "page[offset]": 0 },
+      { "page[limit]": 100, "page[offset]": 100 },
     ]);
   });
 
