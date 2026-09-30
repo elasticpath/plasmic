@@ -23,6 +23,7 @@
 import {
   epAddCartItem,
   epApplyCartAdjustment,
+  epApplyPromoCode,
   epConfigureBundle,
   epGetBundleOptionProducts,
   epGetCart,
@@ -35,11 +36,13 @@ import {
   epGetStock,
   epMultiSearch,
   epRemoveCartItem,
+  epRemovePromoCode,
   epUpdateCartItem,
 } from "../../ep-server-functions";
 import type {
   EpAddCartItemInput,
   EpApplyCartAdjustmentInput,
+  EpApplyPromoCodeInput,
   EpConfigureBundleInput,
   EpGetBundleOptionProductsInput,
   EpGetLocationsInput,
@@ -47,6 +50,7 @@ import type {
   EpGetStockInput,
   EpMultiSearchInput,
   EpRemoveCartItemInput,
+  EpRemovePromoCodeInput,
   EpUpdateCartItemInput,
 } from "../../ep-server-functions";
 import { withEpSession } from "../../ep-server-functions/session-context";
@@ -81,6 +85,8 @@ const CART_WRITE_FNS = new Set([
   "updateCartItem",
   "removeCartItem",
   "applyCartAdjustment",
+  "applyPromoCode",
+  "removePromoCode",
 ]);
 
 /**
@@ -95,6 +101,11 @@ function classifyDispatchError(err: unknown): string {
   }
   if (/no cart on session|no EP session/i.test(message)) {
     return "no_session";
+  }
+  // Production withholds `message`, so the code is the only thing that tells
+  // the promo input a code was rejected rather than the request failing.
+  if (/^epApplyPromoCode:|^epRemovePromoCode:/.test(message)) {
+    return "invalid_promo_code";
   }
   return "dispatch_failed";
 }
@@ -150,6 +161,10 @@ const FN_DISPATCH: Record<
     epUpdateCartItem(args as unknown as EpUpdateCartItemInput),
   removeCartItem: (args) =>
     epRemoveCartItem(args as unknown as EpRemoveCartItemInput),
+  applyPromoCode: (args) =>
+    epApplyPromoCode(args as unknown as EpApplyPromoCodeInput),
+  removePromoCode: (args) =>
+    epRemovePromoCode(args as unknown as EpRemovePromoCodeInput),
 };
 
 /**

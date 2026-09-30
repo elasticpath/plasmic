@@ -29,6 +29,18 @@ changes: same props, same slots, same data.
 
 ### Fixed
 
+Promo codes work. Neither of the component's two code paths did anything: one
+posted to `/api/cart/promo`, a route the package never served, and the other
+wrote the discount line from the browser on the public anonymous credential.
+EP Promo Code Input now applies and removes codes through
+`ep.applyPromoCode` / `ep.removePromoCode`, which resolve the session the
+server already holds. The shopper's browser sends a code and nothing else, so
+what a discount is worth is never a number the browser states. The applied
+code, its discount and the re-priced basket all come back from Elastic Path,
+and a code Elastic Path will not honour leaves the basket untouched and says
+so. Same props, same slots, same `promoCodeData`. `Use Server Routes` no
+longer does anything and is kept only so existing projects load.
+
 Related products and bundle options show their images. EP Related Products
 Provider requested products without their image files, so each product
 referenced its main image by id only and got no image URL. EP Bundle Provider

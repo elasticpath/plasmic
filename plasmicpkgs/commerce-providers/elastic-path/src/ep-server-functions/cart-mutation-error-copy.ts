@@ -12,6 +12,8 @@ const CART_MUTATION_ERROR_COPY: Record<string, string> = {
   insufficient_stock:
     "There isn't enough stock to add that quantity. Try a smaller amount.",
   no_session: "Your session expired. Refresh the page and try again.",
+  invalid_promo_code:
+    "That code isn't valid for this basket. Check it and try again.",
 };
 
 /**

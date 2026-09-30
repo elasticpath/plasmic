@@ -3,6 +3,7 @@ const mockCreateACart = jest.fn();
 const mockUpdateACartItem = jest.fn();
 const mockDeleteACartItem = jest.fn();
 const mockGetACart = jest.fn();
+const mockDeleteAPromotion = jest.fn();
 
 jest.mock("@epcc-sdk/sdks-shopper", () => ({
   createShopperClient: jest.fn(() => ({
@@ -15,6 +16,8 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
   updateACartItem: (...args: unknown[]) => mockUpdateACartItem(...args),
   deleteACartItem: (...args: unknown[]) => mockDeleteACartItem(...args),
   getACart: (...args: unknown[]) => mockGetACart(...args),
+  deleteAPromotionViaPromotionCode: (...args: unknown[]) =>
+    mockDeleteAPromotion(...args),
 }));
 
 // Proxy fallback is the browser path. Default `shouldUseProxy` to false so the
@@ -31,6 +34,8 @@ jest.mock("../proxy-fetch", () => ({
 const {
   epAddCartItem,
   epApplyCartAdjustment,
+  epApplyPromoCode,
+  epRemovePromoCode,
   epUpdateCartItem,
   epRemoveCartItem,
 } = require("../cart-mutations");
@@ -114,6 +119,7 @@ beforeEach(() => {
   mockUpdateACartItem.mockReset();
   mockDeleteACartItem.mockReset();
   mockGetACart.mockReset();
+  mockDeleteAPromotion.mockReset();
   mockShouldUseProxy.mockReset();
   mockShouldUseProxy.mockReturnValue(false);
   mockCallEpProxy.mockReset();
@@ -573,6 +579,169 @@ describe("epRemoveCartItem", () => {
   });
 });
 
+const CART_WITH_PROMOTION_RESPONSE = {
+  data: {
+    data: {
+      id: "cart-id",
+      type: "cart",
+      attributes: { name: "Cart" },
+      meta: {
+        display_price: {
+          with_tax: { amount: 4500, currency: "USD", formatted: "$45.00" },
+          without_tax: { amount: 4500, currency: "USD", formatted: "$45.00" },
+          discount: { amount: -500, currency: "USD", formatted: "-$5.00" },
+        },
+      },
+    },
+    included: {
+      items: [
+        {
+          id: "promo-1",
+          type: "promotion_item",
+          promotion_id: "a590f816",
+          name: "Five off",
+          sku: "SAVE5",
+          meta: {
+            display_price: {
+              without_tax: {
+                unit: { amount: -500, currency: "USD", formatted: "-$5.00" },
+                value: { amount: -500, currency: "USD", formatted: "-$5.00" },
+              },
+            },
+          },
+        },
+      ],
+    },
+  },
+};
+
+describe("epApplyPromoCode", () => {
+  it("sends the code and nothing else, then returns the re-priced cart", async () => {
+    mockManageCarts.mockResolvedValue({ data: {} });
+    mockGetACart.mockResolvedValue(CART_WITH_PROMOTION_RESPONSE);
+
+    const result = await withEpSession(
+      { ...SESSION_BASE, cartId: "cart-id" },
+      () => epApplyPromoCode({ code: "SAVE5" })
+    );
+
+    // The merchant's money never travels from the caller: the body carries a
+    // code, and the amount comes back from Elastic Path.
+    expect(mockManageCarts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { cartID: "cart-id" },
+        body: { data: { type: "promotion_item", code: "SAVE5" } },
+      })
+    );
+    expect(result.promotions).toHaveLength(1);
+    expect(
+      result.promotions[0].meta.display_price.without_tax.value.formatted
+    ).toBe("-$5.00");
+  });
+
+  it("trims the code the shopper typed", async () => {
+    mockManageCarts.mockResolvedValue({ data: {} });
+    mockGetACart.mockResolvedValue(CART_WITH_PROMOTION_RESPONSE);
+
+    await withEpSession({ ...SESSION_BASE, cartId: "cart-id" }, () =>
+      epApplyPromoCode({ code: "  SAVE5 " })
+    );
+
+    expect(mockManageCarts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: { data: { type: "promotion_item", code: "SAVE5" } },
+      })
+    );
+  });
+
+  it("throws EP's reason when the code is rejected", async () => {
+    mockManageCarts.mockResolvedValue({
+      error: { errors: [{ detail: "promotion code is not valid" }] },
+    });
+
+    await expect(
+      withEpSession({ ...SESSION_BASE, cartId: "cart-id" }, () =>
+        epApplyPromoCode({ code: "EXPIRED" })
+      )
+    ).rejects.toThrow(/promotion code is not valid/);
+    expect(mockGetACart).not.toHaveBeenCalled();
+  });
+
+  it("throws when EP accepts the code but writes no promotion line", async () => {
+    // A 201 with an unchanged cart is how a code the basket does not qualify
+    // for comes back; reporting success would leave the shopper staring at the
+    // same total with nothing said.
+    mockManageCarts.mockResolvedValue({ data: {} });
+    mockGetACart.mockResolvedValue(CART_RESPONSE);
+
+    await expect(
+      withEpSession({ ...SESSION_BASE, cartId: "cart-id" }, () =>
+        epApplyPromoCode({ code: "NOPE" })
+      )
+    ).rejects.toThrow(/did not apply/i);
+  });
+
+  it("throws on an empty code without calling EP", async () => {
+    await expect(
+      withEpSession({ ...SESSION_BASE, cartId: "cart-id" }, () =>
+        epApplyPromoCode({ code: "   " })
+      )
+    ).rejects.toThrow(/no code/i);
+    expect(mockManageCarts).not.toHaveBeenCalled();
+  });
+
+  it("throws when called without an active EP session", async () => {
+    await expect(epApplyPromoCode({ code: "SAVE5" })).rejects.toThrow(
+      /no EP session/i
+    );
+  });
+
+  it("throws when the session has no cartId", async () => {
+    await expect(
+      withEpSession(SESSION_BASE, () => epApplyPromoCode({ code: "SAVE5" }))
+    ).rejects.toThrow(/no cart/i);
+    expect(mockManageCarts).not.toHaveBeenCalled();
+  });
+});
+
+describe("epRemovePromoCode", () => {
+  it("removes by code and returns the re-priced cart", async () => {
+    mockDeleteAPromotion.mockResolvedValue({});
+    mockGetACart.mockResolvedValue(CART_RESPONSE);
+
+    const result = await withEpSession(
+      { ...SESSION_BASE, cartId: "cart-id" },
+      () => epRemovePromoCode({ code: "SAVE5" })
+    );
+
+    expect(mockDeleteAPromotion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { cartID: "cart-id", promoCode: "SAVE5" },
+      })
+    );
+    expect(result.promotions).toEqual([]);
+  });
+
+  it("throws when EP rejects the removal", async () => {
+    mockDeleteAPromotion.mockResolvedValue({
+      error: { errors: [{ detail: "promotion not found" }] },
+    });
+
+    await expect(
+      withEpSession({ ...SESSION_BASE, cartId: "cart-id" }, () =>
+        epRemovePromoCode({ code: "SAVE5" })
+      )
+    ).rejects.toThrow(/promotion not found/);
+    expect(mockGetACart).not.toHaveBeenCalled();
+  });
+
+  it("throws when called without an active EP session", async () => {
+    await expect(epRemovePromoCode({ code: "SAVE5" })).rejects.toThrow(
+      /no EP session/i
+    );
+  });
+});
+
 describe("browser transport", () => {
   beforeEach(() => {
     mockShouldUseProxy.mockReturnValue(true);
@@ -633,6 +802,32 @@ describe("browser transport", () => {
       itemId: "item-1",
     });
     expect(mockDeleteACartItem).not.toHaveBeenCalled();
+    expect(result).toBe(proxiedCart);
+  });
+
+  it("applies a promo code through the proxy, sending only the code", async () => {
+    const proxiedCart = { id: "cart-id", items: [], promotions: [] };
+    mockCallEpProxy.mockResolvedValue(proxiedCart);
+
+    const result = await epApplyPromoCode({ code: " SAVE5 " });
+
+    expect(mockCallEpProxy).toHaveBeenCalledWith("applyPromoCode", {
+      code: "SAVE5",
+    });
+    expect(mockManageCarts).not.toHaveBeenCalled();
+    expect(result).toBe(proxiedCart);
+  });
+
+  it("removes a promo code through the proxy", async () => {
+    const proxiedCart = { id: "cart-id", items: [], promotions: [] };
+    mockCallEpProxy.mockResolvedValue(proxiedCart);
+
+    const result = await epRemovePromoCode({ code: "SAVE5" });
+
+    expect(mockCallEpProxy).toHaveBeenCalledWith("removePromoCode", {
+      code: "SAVE5",
+    });
+    expect(mockDeleteAPromotion).not.toHaveBeenCalled();
     expect(result).toBe(proxiedCart);
   });
 

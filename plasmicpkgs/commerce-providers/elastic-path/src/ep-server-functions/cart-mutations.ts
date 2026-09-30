@@ -1,6 +1,7 @@
 import {
   createACart,
   deleteACartItem,
+  deleteAPromotionViaPromotionCode,
   getACart,
   manageCarts,
   updateACartItem,
@@ -88,6 +89,16 @@ export interface EpUpdateCartItemInput {
 
 export interface EpRemoveCartItemInput {
   itemId: string;
+}
+
+export interface EpApplyPromoCodeInput {
+  /** The promotion code the shopper typed. */
+  code: string;
+}
+
+export interface EpRemovePromoCodeInput {
+  /** The promotion code currently applied to the cart. */
+  code: string;
 }
 
 export interface EpApplyCartAdjustmentInput {
@@ -321,6 +332,95 @@ export async function epRemoveCartItem(
     path: { cartID: auth.cartId, cartitemID: input.itemId },
   });
   assertEpSdkOk(deleteRes, "epRemoveCartItem");
+
+  return fetchNormalizedCart(client, auth, auth.cartId);
+}
+
+/**
+ * Applies a promotion code to the current cart.
+ *
+ * The shopper supplies a code and nothing else; Elastic Path decides what it
+ * is worth and re-prices the cart. No caller — browser or server — can state
+ * a discount amount, which is what separates this from
+ * {@link epApplyCartAdjustment} and what makes it safe to reach from a public
+ * proxy route.
+ *
+ * Elastic Path answers a code it will not honour with a 4xx, which
+ * `assertEpSdkOk` turns into a throw carrying EP's own reason.
+ */
+export async function epApplyPromoCode(
+  input: EpApplyPromoCodeInput
+): Promise<Cart> {
+  const code = input.code?.trim();
+  if (!code) {
+    throw new Error("epApplyPromoCode: no code");
+  }
+
+  const auth = getCurrentEpSession();
+
+  if (!isUsableAuth(auth) && shouldUseProxy()) {
+    return callEpProxy<Cart>("applyPromoCode", { code });
+  }
+
+  if (!isUsableAuth(auth)) {
+    throw new Error("epApplyPromoCode: no EP session");
+  }
+  if (!auth.cartId) {
+    throw new Error("epApplyPromoCode: no cart on session");
+  }
+  const client = buildEpClient(auth);
+
+  const applyRes = await manageCarts({
+    client,
+    path: { cartID: auth.cartId },
+    body: { data: { type: "promotion_item", code } },
+  });
+  assertEpSdkOk(applyRes, "epApplyPromoCode");
+
+  const cart = await fetchNormalizedCart(client, auth, auth.cartId);
+  // A code the cart does not qualify for can come back 201 with no promotion
+  // line written. Reporting that as success leaves the shopper looking at an
+  // unchanged total with nothing said, so treat it as the rejection it is.
+  if (cart.promotions.length === 0) {
+    throw new Error(
+      `epApplyPromoCode: "${code}" did not apply to this cart`
+    );
+  }
+  return cart;
+}
+
+/**
+ * Removes a promotion code from the current cart. Elastic Path keys the
+ * removal on the code itself, which is why the applied code is read back off
+ * the cart's promotion line rather than remembered in component state.
+ */
+export async function epRemovePromoCode(
+  input: EpRemovePromoCodeInput
+): Promise<Cart> {
+  const code = input.code?.trim();
+  if (!code) {
+    throw new Error("epRemovePromoCode: no code");
+  }
+
+  const auth = getCurrentEpSession();
+
+  if (!isUsableAuth(auth) && shouldUseProxy()) {
+    return callEpProxy<Cart>("removePromoCode", { code });
+  }
+
+  if (!isUsableAuth(auth)) {
+    throw new Error("epRemovePromoCode: no EP session");
+  }
+  if (!auth.cartId) {
+    throw new Error("epRemovePromoCode: no cart on session");
+  }
+  const client = buildEpClient(auth);
+
+  const deleteRes = await deleteAPromotionViaPromotionCode({
+    client,
+    path: { cartID: auth.cartId, promoCode: code },
+  });
+  assertEpSdkOk(deleteRes, "epRemovePromoCode");
 
   return fetchNormalizedCart(client, auth, auth.cartId);
 }
