@@ -27,4 +27,14 @@ describe("cartMutationErrorCopy", () => {
       "Network error"
     );
   });
+
+  it("falls back for route_not_found rather than showing the proxy's own text", () => {
+    // A storefront that never mounted the proxy route answers with its own 404
+    // page. Before that carried a code, this returned the raw
+    // "ep proxy addCartItem failed (404)" straight to the shopper.
+    const err = Object.assign(new Error("ep proxy addCartItem failed (404)"), {
+      code: "route_not_found",
+    });
+    expect(cartMutationErrorCopy(err, generic)).toBe(generic);
+  });
 });
