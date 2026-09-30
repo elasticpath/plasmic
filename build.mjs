@@ -24,7 +24,7 @@ async function main() {
   // loader-react uses it for "react/jsx-runtime" imports.
   // See https://app.shortcut.com/plasmic/story/33688/es-module-support for more details.
   const noEsm = findAndRemoveOption(options, "--no-esm");
-  const noMjs = findAndRemoveOption(options, "--no-mjs");
+  const noMjs = !noEsm && findAndRemoveOption(options, "--no-mjs");
   // Opt-in native ESM for one subpath: emits "<name>.mjs" plus a "<name>.d.mts"
   // copy of the rolled-up types, and expects per-condition types in package.json.
   const mjs = findAndRemoveOption(options, "--mjs");

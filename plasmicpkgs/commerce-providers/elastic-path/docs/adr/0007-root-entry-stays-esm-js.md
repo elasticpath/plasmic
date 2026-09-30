@@ -36,7 +36,7 @@ canvas. `verify:package` reproduces this.
 The root entry stays on the `.esm.js` shape: `index.js`, `index.esm.js`,
 `index.d.ts`. `build.mjs` refuses `--mjs` for an index entry.
 
-Two findings on the root entry are recorded exceptions. `verify:package`
+The root entry's findings below are recorded exceptions. `verify:package`
 ignores them by exact rule and path, so a new finding still fails CI:
 
 | Tool | Finding | Rule / code |

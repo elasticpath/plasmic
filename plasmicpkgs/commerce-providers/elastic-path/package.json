@@ -33,14 +33,14 @@
     "dist"
   ],
   "scripts": {
-    "build": "pnpm build:types && pnpm build:index && pnpm build:server",
+    "build": "rm -rf dist && pnpm build:types && pnpm build:index && pnpm build:server",
     "build:types": "tsc",
     "build:index": "node ../../../build.mjs ./src/index.tsx --use-client",
     "build:server": "node ../../../build.mjs ./src/server.ts --mjs",
     "start": "tsc && (tsc --watch --preserveWatchOutput & node ../../../build.mjs ./src/index.tsx --use-client --watch & node ../../../build.mjs ./src/server.ts --mjs --watch & wait)",
     "test": "NODE_OPTIONS=--experimental-vm-modules TEST_CWD=`pwd` pnpm -w test --passWithNoTests && pnpm test:vitest",
     "test:vitest": "vitest run",
-    "prepublishOnly": "npm run build && npx --yes publint --pack npm",
+    "prepublishOnly": "npm run build && npm run verify:package",
     "verify:package": "node scripts/verify-package.mjs"
   },
   "devDependencies": {

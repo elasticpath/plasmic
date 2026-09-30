@@ -11,13 +11,17 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { publint } from "publint";
 import { formatMessage } from "publint/utils";
 
 const pkgDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(fs.readFileSync(path.join(pkgDir, "package.json"), "utf8"));
-const require = createRequire(path.join(pkgDir, "package.json"));
+// The smoke loads the packed files from here, so only what the tarball ships
+// can be imported; dependencies still resolve from the workspace install.
+const installRoot = path.join(pkgDir, "node_modules/.verify-package");
+const installedDir = path.join(installRoot, "node_modules", pkg.name);
+const require = createRequire(path.join(installRoot, "index.cjs"));
 
 const ROOT_PUBLINT_EXCEPTIONS = [
   { code: "EXPORTS_TYPES_INVALID_FORMAT", path: ["exports", ".", "types"] },
@@ -34,11 +38,14 @@ const EXPECTED_DIST = [
   "dist/server.js",
   "dist/server.mjs",
 ];
+const EXPECTED_SOURCE_MAPS = EXPECTED_DIST.filter((p) => /\.m?js$/.test(p)).map((p) => `${p}.map`);
 
 const failures = [];
 function check(label, ok, detail) {
   console.info(`${ok ? "ok  " : "FAIL"} ${label}`);
-  if (!ok) failures.push(detail ? `${label}\n${detail}` : label);
+  if (!ok) {
+    failures.push(detail ? `${label}\n${detail}` : label);
+  }
 }
 
 function pack() {
@@ -58,9 +65,12 @@ function checkFileSet(files) {
   const missing = EXPECTED_DIST.filter((p) => !paths.includes(p));
   check("tarball carries every built entry file", missing.length === 0, missing.join("\n"));
   const stray = paths.filter(
-    (p) => !p.startsWith("dist/") && !/^(package\.json|README|LICEN[CS]E|CHANGELOG)/i.test(p)
+    (p) =>
+      !EXPECTED_DIST.includes(p) &&
+      !EXPECTED_SOURCE_MAPS.includes(p) &&
+      !/^(package\.json|README|LICEN[CS]E|CHANGELOG)/i.test(p)
   );
-  check("tarball carries nothing outside dist/", stray.length === 0, stray.join("\n"));
+  check("tarball carries only the built entry files", stray.length === 0, stray.join("\n"));
 }
 
 async function checkPublint(tarball) {
@@ -83,16 +93,21 @@ async function checkPublint(tarball) {
 
 function checkAttw(tarball, entrypoint, ignoreRules) {
   const args = [tarball, "--entrypoints", entrypoint, "--format", "table-flipped"];
-  if (ignoreRules.length) args.push("--ignore-rules", ...ignoreRules);
+  if (ignoreRules.length) {
+    args.push("--ignore-rules", ...ignoreRules);
+  }
+  const label = `arethetypeswrong ${entrypoint} ${
+    ignoreRules.length ? `(ignoring ${ignoreRules.join(", ")})` : "(strict)"
+  }`;
   try {
     execFileSync(path.join(pkgDir, "node_modules/.bin/attw"), args, {
       cwd: pkgDir,
       encoding: "utf8",
       stdio: "pipe",
     });
-    check(`arethetypeswrong ${entrypoint}${ignoreRules.length ? ` (ignoring ${ignoreRules.join(", ")})` : " (strict)"}`, true);
+    check(label, true);
   } catch (error) {
-    check(`arethetypeswrong ${entrypoint}`, false, `${error.stdout ?? ""}${error.stderr ?? ""}`);
+    check(label, false, `${error.stdout ?? ""}${error.stderr ?? ""}`);
   }
 }
 
@@ -101,10 +116,13 @@ function checkAttw(tarball, entrypoint, ignoreRules) {
 // the browser, and native Node ESM.
 function checkNoRequireShim() {
   for (const file of ["dist/index.esm.js", "dist/server.mjs"]) {
+    if (!fs.existsSync(path.join(installedDir, file))) {
+      continue;
+    }
     const shimmed = [
       ...new Set(
         fs
-          .readFileSync(path.join(pkgDir, file), "utf8")
+          .readFileSync(path.join(installedDir, file), "utf8")
           .match(/__require\("[^"]+"\)/g) ?? []
       ),
     ];
@@ -124,8 +142,17 @@ function sameNames(label, actual, expected) {
   );
 }
 
+function install(tarball) {
+  fs.rmSync(installRoot, { recursive: true, force: true });
+  fs.mkdirSync(installedDir, { recursive: true });
+  execFileSync("tar", ["-xzf", tarball, "-C", installedDir, "--strip-components=1"]);
+  // Its own package scope, or Node resolves the name to this package's dist.
+  fs.writeFileSync(path.join(installRoot, "package.json"), `{ "private": true }\n`);
+  fs.writeFileSync(path.join(installRoot, "server.mjs"), `export * from "${pkg.name}/server";\n`);
+}
+
 async function smokeServer() {
-  const esm = await import(`${pkg.name}/server`);
+  const esm = await import(pathToFileURL(path.join(installRoot, "server.mjs")).href);
   const cjs = require(`${pkg.name}/server`);
   sameNames("require(/server) exposes the same names as import(/server)", Object.keys(cjs), Object.keys(esm));
 
@@ -152,21 +179,29 @@ function captureRegistrations(registerAll) {
   };
 }
 
-// The Studio canvas bundles the root ESM build as an IIFE and supplies
-// @plasmicapp/host as CommonJS at run time.
+// The Studio canvas bundles the root ESM build and its dependencies as an
+// IIFE, and supplies only React and @plasmicapp/host at run time, as CommonJS.
+const CANVAS_EXTERNALS = ["@plasmicapp/host", "react", "react-dom"];
+
 function loadRootAsCanvasBundle() {
   const { outputFiles } = esbuild.buildSync({
-    entryPoints: [path.join(pkgDir, "dist/index.esm.js")],
+    entryPoints: [path.join(installedDir, "dist/index.esm.js")],
     bundle: true,
     format: "iife",
     globalName: "__epRoot",
     platform: "browser",
     target: "es2020",
-    packages: "external",
+    external: CANVAS_EXTERNALS,
     write: false,
     logLevel: "silent",
   });
-  return new Function("require", `${outputFiles[0].text}\nreturn __epRoot;`)(require);
+  const canvasRequire = (id) => {
+    if (!CANVAS_EXTERNALS.some((e) => id === e || id.startsWith(`${e}/`))) {
+      throw new Error(`the canvas cannot load "${id}" at run time`);
+    }
+    return require(id);
+  };
+  return new Function("require", `${outputFiles[0].text}\nreturn __epRoot;`)(canvasRequire);
 }
 
 function smokeRoot() {
@@ -204,19 +239,24 @@ function smokeRoot() {
 }
 
 const { tarball, files } = pack();
-checkFileSet(files);
-await checkPublint(tarball);
-checkAttw(tarball, ".", ROOT_ATTW_EXCEPTIONS);
-checkAttw(tarball, "./server", []);
-checkNoRequireShim();
-for (const [label, smoke] of [["/server smoke", smokeServer], ["root smoke", smokeRoot]]) {
-  try {
-    await smoke();
-  } catch (error) {
-    check(label, false, error.stack);
+try {
+  checkFileSet(files);
+  await checkPublint(tarball);
+  checkAttw(tarball, ".", ROOT_ATTW_EXCEPTIONS);
+  checkAttw(tarball, "./server", []);
+  install(tarball);
+  checkNoRequireShim();
+  for (const [label, smoke] of [["/server smoke", smokeServer], ["root smoke", smokeRoot]]) {
+    try {
+      await smoke();
+    } catch (error) {
+      check(label, false, error.stack);
+    }
   }
+} finally {
+  fs.rmSync(path.dirname(tarball), { recursive: true, force: true });
+  fs.rmSync(installRoot, { recursive: true, force: true });
 }
-fs.rmSync(path.dirname(tarball), { recursive: true, force: true });
 
 if (failures.length) {
   console.error(`\n${failures.length} check(s) failed:\n\n${failures.join("\n\n")}`);

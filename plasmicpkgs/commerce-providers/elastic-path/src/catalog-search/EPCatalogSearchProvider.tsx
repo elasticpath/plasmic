@@ -253,7 +253,6 @@ function EPCatalogSearchProviderInner(props: {
   // Create the search client from the EP adapter
   const searchClient = useMemo(() => {
     try {
-      // The adapter is a default export.
       // The published 0.0.5 build ships an esbuild __toESM(..., 1)
       // double-wrap, so `mod.default` is `{ default: <class>, __esModule: true }`
       // instead of the class itself. Unwrap defensively to handle both shapes.
