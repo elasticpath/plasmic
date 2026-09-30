@@ -9,12 +9,12 @@ import { getCurrentEpSession } from "./session-context";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
 
 /**
- * One inventory location's counts for one product.
+ * This holds the counts of one product at one inventory location.
  *
- * Structurally the package's `LocationStock`, with one departure: the
- * counts are `number`, not the SDK's `BigInt`. This value crosses
- * `JSON.stringify` on the way through `/api/ep/proxy` and into the loader's
- * prefetched query data, and a BigInt cannot cross it.
+ * It has the same shape as the package's `LocationStock`, but the counts are
+ * `number`, not the SDK's `BigInt`. `JSON.stringify` converts this value when
+ * it goes through `/api/ep/proxy` and when the loader puts it into prefetched
+ * query data. `JSON.stringify` throws an error on a `BigInt`.
  */
 export interface EpLocationStock {
   location: {
@@ -59,21 +59,25 @@ function toCount(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** If the locations read fails, the map is empty and the stock still returns. */
+/**
+ * If the read of the locations list fails, this returns an empty map, so
+ * that the stock read does not fail too.
+ */
 async function readLocationNames(): Promise<Map<string, string>> {
   const locations = await epGetLocations().catch(() => []);
   const names = new Map<string, string>();
   for (const location of locations) {
     const { slug, name } = location.attributes ?? {};
-    if (slug && name) names.set(slug, name);
+    if (slug && name) {
+      names.set(slug, name);
+    }
   }
   return names;
 }
 
 /**
- * Elastic Path returns stock as a map keyed by location slug, with no other
- * location data. The name comes from `names`. If a slug is not in `names`,
- * the slug is the name.
+ * Elastic Path returns stock as a map from location slug to counts. It gives
+ * no other data about the location.
  */
 function readLocations(
   productId: string,
@@ -142,7 +146,8 @@ export async function epGetStock({
 
   if (!isUsableAuth(auth)) return {};
   const client = buildEpClient(auth);
-  // Start the locations read now, so that it runs with the stock reads.
+  // Start the read of the locations list now, so that it runs at the same
+  // time as the stock reads.
   const namesRead = readLocationNames();
 
   const entries = await Promise.all(

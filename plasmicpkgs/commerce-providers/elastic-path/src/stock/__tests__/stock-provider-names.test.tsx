@@ -44,7 +44,9 @@ beforeEach(() => {
   mockCallEpProxy.mockReset();
   mockCallEpProxy.mockImplementation(
     (fn: string, { productIds }: { productIds: string[] }) => {
-      if (fn !== "getStock") return Promise.resolve(null);
+      if (fn !== "getStock") {
+        return Promise.resolve(null);
+      }
       const [productId] = productIds;
       return Promise.resolve({
         [productId]: {
@@ -62,8 +64,8 @@ beforeEach(() => {
   );
 });
 
-// Each render gets its own query cache, so a test does not reuse the reads
-// of an earlier test.
+// Each render gets its own query cache, so that a test does not reuse the
+// reads of an earlier test.
 function renderProvider(productId: string) {
   return render(
     <PlasmicQueryDataProvider provider={() => new Map()}>

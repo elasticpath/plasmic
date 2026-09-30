@@ -191,7 +191,7 @@ export function EPStockProvider(props: EPStockProviderProps) {
       const available = Number(ls.stock.available || 0);
       const allocated = Number(ls.stock.allocated || 0);
       return {
-        // epGetStock sets the name from the locations list.
+        // epGetStock already sets the name from the locations list.
         name: getLocationDisplayName(ls.location),
         slug: getLocationSlug(ls.location),
         available,

@@ -20,16 +20,17 @@ export interface EpGetLocationsInput {
   type?: string;
 }
 
-/** Elastic Path's largest page, and the furthest it lets a read offset. */
+// Elastic Path does not accept a larger page size or a larger offset.
 const PAGE_LIMIT = 100;
 const MAX_OFFSET = 10_000;
 
 /**
- * Every inventory location the shopper's catalog context can see.
+ * Returns every inventory location that the shopper's catalog context can see.
  *
- * The list is paged. Without a limit, Elastic Path returns one page of the
- * store's page length, so this reads pages until one comes back short. If a
- * later page fails, the pages already read are returned.
+ * Elastic Path splits this list into pages. If a request gives no page size,
+ * Elastic Path uses the page length in the store configuration. The response
+ * has no total count, so a page with fewer rows than the page size is the last
+ * page. If a later page fails, this returns the pages that it already read.
  */
 export async function epGetLocations({
   type,
@@ -45,18 +46,26 @@ export async function epGetLocations({
 
   if (!isUsableAuth(auth)) return [];
   const client = buildEpClient(auth);
-  const filter = type ? { filter: `eq(type,${type})` } : {};
+  const typeFilter = type ? { filter: `eq(type,${type})` } : {};
 
   const locations: EpLocation[] = [];
   for (let offset = 0; offset <= MAX_OFFSET; offset += PAGE_LIMIT) {
     const response = await listLocations({
       client,
-      query: { ...filter, "page[limit]": PAGE_LIMIT, "page[offset]": offset },
+      query: {
+        ...typeFilter,
+        "page[limit]": PAGE_LIMIT,
+        "page[offset]": offset,
+      },
     }).catch(() => null);
     const rows = response?.data?.data;
-    if (!Array.isArray(rows)) break;
+    if (!Array.isArray(rows)) {
+      break;
+    }
     locations.push(...(rows as EpLocation[]));
-    if (rows.length < PAGE_LIMIT) break;
+    if (rows.length < PAGE_LIMIT) {
+      break;
+    }
   }
   return locations;
 }

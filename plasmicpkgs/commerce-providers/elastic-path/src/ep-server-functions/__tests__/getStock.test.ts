@@ -84,8 +84,9 @@ describe("epGetStock", () => {
       epGetStock({ productIds: ["p1"] })
     );
 
-    // The result crosses the proxy route as JSON. The SDK types these counts
-    // as BigInt, which `JSON.stringify` throws on.
+    // The result goes through the proxy route as JSON. In the SDK, these
+    // counts have the type `BigInt`, and `JSON.stringify` throws an error on
+    // a `BigInt`.
     expect(() => JSON.stringify(result)).not.toThrow();
     expect(JSON.parse(JSON.stringify(result))).toEqual(result);
   });
