@@ -61,6 +61,26 @@ and a code Elastic Path will not honour leaves the basket untouched and says
 so. Same props, same slots, same `promoCodeData`. `Use Server Routes` no
 longer does anything and is kept only so existing projects load.
 
+EP Stock Provider and EP Multi-Location Stock (deprecated) show each
+location's name, such as "East Distribution Centre", instead of its slug,
+`east-dc`. Elastic Path's stock response names a location by slug only. After
+it reads the stock, `ep.getStock` asks the locations list for those slugs only,
+100 slugs to a request, and sets each location's `attributes.name` from the
+answer. A Server Query bound to `ep.getStock` gets the names too. A location
+the list does not return keeps its slug as its name. EP Stock Provider no
+longer reads the locations list itself.
+
+`ep.getLocations` returns every inventory location, not only the first page.
+Elastic Path pages the locations list, and the package read one page of the
+store's page length. A store with more locations than that lost the rest from
+the location selector of EP Multi-Location Stock (deprecated) and from the
+location names of EP Cart Item List.
+
+`ep.getLocations` with a `type` returns the locations instead of an empty list.
+Elastic Path filters inventory locations by slug only, so it rejected the
+`type` filter, and the package returned no locations. An inventory location has
+no type, so the package now ignores `type`.
+
 Related products and bundle options show their images. EP Related Products
 Provider requested products without their image files, so each product
 referenced its main image by id only and got no image URL. EP Bundle Provider

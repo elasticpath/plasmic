@@ -172,7 +172,8 @@ const EP_FUNCTIONS: EpFunctionSpec[] = [
       {
         name: "type",
         type: "string",
-        description: 'Location type to filter on, e.g. "warehouse".',
+        description:
+          "Deprecated — ignored. An inventory location has no type, so every location is returned.",
       },
     ],
   },

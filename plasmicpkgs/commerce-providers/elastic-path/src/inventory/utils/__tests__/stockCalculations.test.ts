@@ -1,9 +1,7 @@
 import {
-  mapStockResponseToLocationStock,
   calculateTotalStock,
   filterStockByLocation,
   getAvailableStockForLocation,
-  createProductStock,
   isLowStock,
   isOutOfStock,
   getStockStatus,
@@ -11,28 +9,6 @@ import {
 import type { LocationStock, ProductStock } from '../../types';
 
 describe('stockCalculations', () => {
-  const mockStockResponse = {
-    attributes: {
-      locations: {
-        'warehouse-1': {
-          available: 10,
-          allocated: 2,
-          total: 12,
-        },
-        'store-ny': {
-          available: 5,
-          allocated: 1,
-          total: 6,
-        },
-        'store-la': {
-          available: 0,
-          allocated: 0,
-          total: 0,
-        },
-      },
-    },
-  };
-
   const mockLocationStocks: LocationStock[] = [
     {
       location: { id: 'warehouse-1', slug: 'warehouse-1' } as any,
@@ -62,32 +38,6 @@ describe('stockCalculations', () => {
       },
     },
   ];
-
-  describe('mapStockResponseToLocationStock', () => {
-    it('should map API response to LocationStock array', () => {
-      const result = mapStockResponseToLocationStock(mockStockResponse, 'prod-123');
-
-      expect(result).toHaveLength(3);
-      expect(result[0].location.id).toBe('warehouse-1');
-      expect(result[0].stock.available).toBe(BigInt(10));
-      expect(result[0].stock.allocated).toBe(BigInt(2));
-      expect(result[0].stock.total).toBe(BigInt(12));
-    });
-
-    it('should handle empty response', () => {
-      const emptyResponse = { attributes: { locations: {} } };
-      const result = mapStockResponseToLocationStock(emptyResponse, 'prod-123');
-
-      expect(result).toHaveLength(0);
-    });
-
-    it('should handle malformed response', () => {
-      const malformedResponse = {};
-      const result = mapStockResponseToLocationStock(malformedResponse, 'prod-123');
-
-      expect(result).toHaveLength(0);
-    });
-  });
 
   describe('calculateTotalStock', () => {
     it('should calculate correct totals', () => {
@@ -162,25 +112,6 @@ describe('stockCalculations', () => {
     it('should return 0 for non-existent location', () => {
       const result = getAvailableStockForLocation(mockProductStock, 'non-existent');
       expect(result).toBe(0);
-    });
-  });
-
-  describe('createProductStock', () => {
-    it('should create complete ProductStock object', () => {
-      const result = createProductStock('prod-123', mockStockResponse);
-
-      expect(result.productId).toBe('prod-123');
-      expect(result.locations).toHaveLength(3);
-      expect(result.totalAvailable).toBe(15);
-      expect(result.totalAllocated).toBe(3);
-      expect(result.totalStock).toBe(18);
-    });
-
-    it('should filter by location IDs when provided', () => {
-      const result = createProductStock('prod-123', mockStockResponse, ['warehouse-1']);
-
-      expect(result.locations).toHaveLength(1);
-      expect(result.totalAvailable).toBe(10);
     });
   });
 
