@@ -1,12 +1,12 @@
-import { getStock } from "@epcc-sdk/sdks-shopper";
+import { getStock, listLocations } from "@epcc-sdk/sdks-shopper";
 import {
   calculateTotalStock,
   filterStockByLocation,
 } from "../inventory/utils/stockCalculations";
 import { buildEpClient, isUsableAuth } from "./ep-client";
-import { epGetLocations } from "./getLocations";
-import { getCurrentEpSession } from "./session-context";
+import { batchIds } from "./product-batches";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
+import { getCurrentEpSession } from "./session-context";
 
 /**
  * This holds the counts of one product at one inventory location.
@@ -59,19 +59,39 @@ function toCount(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+// The locations list returns at most 100 locations in a page, so one request
+// asks for at most 100 slugs.
+const SLUGS_PER_REQUEST = 100;
+
 /**
- * If the read of the locations list fails, this returns an empty map, so
- * that the stock read does not fail too.
+ * If a request fails, its locations are not in the map, so that the stock
+ * read does not fail too.
  */
-async function readLocationNames(): Promise<Map<string, string>> {
-  const locations = await epGetLocations().catch(() => []);
+async function readLocationNames(
+  client: ReturnType<typeof buildEpClient>,
+  slugs: string[]
+): Promise<Map<string, string>> {
   const names = new Map<string, string>();
-  for (const location of locations) {
-    const { slug, name } = location.attributes ?? {};
-    if (slug && name) {
-      names.set(slug, name);
-    }
-  }
+  await Promise.all(
+    batchIds(slugs, SLUGS_PER_REQUEST).map(async (batch) => {
+      const response = await listLocations({
+        client,
+        query: {
+          // Each slug goes in quotes, because a slug can contain brackets
+          // that break the filter.
+          filter: `in(slug,${batch.map((slug) => `"${slug}"`).join(",")})`,
+          "page[limit]": batch.length,
+        },
+      }).catch(() => null);
+      for (const location of response?.data?.data ?? []) {
+        const slug = location?.attributes?.slug;
+        const name = location?.attributes?.name;
+        if (slug && name) {
+          names.set(slug, name);
+        }
+      }
+    })
+  );
   return names;
 }
 
@@ -79,32 +99,36 @@ async function readLocationNames(): Promise<Map<string, string>> {
  * Elastic Path returns stock as a map from location slug to counts. It gives
  * no other data about the location.
  */
-function readLocations(
-  productId: string,
-  stockData: unknown,
-  names: Map<string, string>
-): EpLocationStock[] {
+function readCounts(stockData: unknown): Record<string, unknown> {
   const locations = (stockData as { attributes?: { locations?: unknown } })
     ?.attributes?.locations;
-  if (!locations || typeof locations !== "object") return [];
-  return Object.entries(locations as Record<string, unknown>).map(
-    ([slug, counts]) => {
-      const c = (counts ?? {}) as Record<string, unknown>;
-      return {
-        location: {
-          id: slug,
-          type: "inventory_location",
-          attributes: { name: names.get(slug) ?? slug, slug },
-        },
-        stock: {
-          productId,
-          available: toCount(c.available),
-          allocated: toCount(c.allocated),
-          total: toCount(c.total),
-        },
-      };
-    }
-  );
+  if (!locations || typeof locations !== "object") {
+    return {};
+  }
+  return locations as Record<string, unknown>;
+}
+
+function readLocations(
+  productId: string,
+  countsBySlug: Record<string, unknown>,
+  names: Map<string, string>
+): EpLocationStock[] {
+  return Object.entries(countsBySlug).map(([slug, counts]) => {
+    const c = (counts ?? {}) as Record<string, unknown>;
+    return {
+      location: {
+        id: slug,
+        type: "inventory_location",
+        attributes: { name: names.get(slug) ?? slug, slug },
+      },
+      stock: {
+        productId,
+        available: toCount(c.available),
+        allocated: toCount(c.allocated),
+        total: toCount(c.total),
+      },
+    };
+  });
 }
 
 function aggregate(
@@ -146,29 +170,35 @@ export async function epGetStock({
 
   if (!isUsableAuth(auth)) return {};
   const client = buildEpClient(auth);
-  // Start the read of the locations list now, so that it runs at the same
-  // time as the stock reads.
-  const namesRead = readLocationNames();
 
-  const entries = await Promise.all(
+  const reads = await Promise.all(
     ids.map(async (productId) => {
       try {
         const response = await getStock({
           client,
           path: { product_uuid: productId },
         });
-        return aggregate(
-          productId,
-          readLocations(productId, response.data?.data, await namesRead),
-          locationIds
-        );
+        return { productId, countsBySlug: readCounts(response.data?.data) };
       } catch {
-        return emptyStock(productId);
+        return { productId, countsBySlug: null };
       }
     })
   );
 
+  const slugs = new Set(
+    reads.flatMap(({ countsBySlug }) => Object.keys(countsBySlug ?? {}))
+  );
+  const names = await readLocationNames(client, Array.from(slugs));
+
   const stockMap: Record<string, EpProductStock> = {};
-  for (const entry of entries) stockMap[entry.productId] = entry;
+  for (const { productId, countsBySlug } of reads) {
+    stockMap[productId] = countsBySlug
+      ? aggregate(
+          productId,
+          readLocations(productId, countsBySlug, names),
+          locationIds
+        )
+      : emptyStock(productId);
+  }
   return stockMap;
 }

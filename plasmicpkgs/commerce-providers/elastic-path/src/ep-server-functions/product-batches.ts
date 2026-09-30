@@ -9,10 +9,10 @@ export interface ProductBatch {
   included: any;
 }
 
-function batchIds(ids: string[]): string[][] {
+export function batchIds(ids: string[], size = BATCH_SIZE): string[][] {
   const batches: string[][] = [];
-  for (let i = 0; i < ids.length; i += BATCH_SIZE) {
-    batches.push(ids.slice(i, i + BATCH_SIZE));
+  for (let i = 0; i < ids.length; i += size) {
+    batches.push(ids.slice(i, i + size));
   }
   return batches;
 }

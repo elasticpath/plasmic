@@ -116,6 +116,38 @@ describe("epGetStock", () => {
     expect(result.p1.locations[0].location.id).toBe("east-dc");
   });
 
+  it("asks only for the locations the stock response names", async () => {
+    mockGetStock.mockResolvedValue(
+      mkStock({
+        "east-dc": { available: 4, allocated: 1, total: 5 },
+        "main-warehouse": { available: 2, allocated: 0, total: 2 },
+      })
+    );
+
+    await withEpSession(SESSION, () => epGetStock({ productIds: ["p1"] }));
+
+    expect(mockLocationList).toHaveBeenCalledWith(
+      expect.objectContaining({
+        query: {
+          filter: 'in(slug,"east-dc","main-warehouse")',
+          "page[limit]": 2,
+        },
+      })
+    );
+  });
+
+  it("quotes each slug in the filter", async () => {
+    mockGetStock.mockResolvedValue(
+      mkStock({ "pop(up)&co!": { available: 1, allocated: 0, total: 1 } })
+    );
+
+    await withEpSession(SESSION, () => epGetStock({ productIds: ["p1"] }));
+
+    expect(mockLocationList.mock.calls[0][0].query.filter).toBe(
+      'in(slug,"pop(up)&co!")'
+    );
+  });
+
   it("reads the locations list once for several products", async () => {
     mockGetStock.mockResolvedValue(
       mkStock({ "east-dc": { available: 4, allocated: 1, total: 5 } })
@@ -129,35 +161,31 @@ describe("epGetStock", () => {
     );
 
     expect(mockLocationList).toHaveBeenCalledTimes(1);
+    expect(mockLocationList.mock.calls[0][0].query.filter).toBe(
+      'in(slug,"east-dc")'
+    );
     expect(result.p2.locations[0].location.attributes.name).toBe(
       "East Distribution Centre"
     );
   });
 
-  it("names a location from a later page of the locations list", async () => {
+  it("asks for at most 100 slugs in one request", async () => {
     mockGetStock.mockResolvedValue(
-      mkStock({ "east-dc": { available: 4, allocated: 1, total: 5 } })
-    );
-    mockLocationList
-      .mockResolvedValueOnce(
-        mkLocations(
-          Array.from({ length: 100 }, (_, i) => ({
-            slug: `loc-${i}`,
-            name: `Location ${i}`,
-          }))
+      mkStock(
+        Object.fromEntries(
+          Array.from({ length: 150 }, (_, i) => [
+            `loc-${i}`,
+            { available: 1, allocated: 0, total: 1 },
+          ])
         )
       )
-      .mockResolvedValueOnce(
-        mkLocations([{ slug: "east-dc", name: "East Distribution Centre" }])
-      );
-
-    const result = await withEpSession(SESSION, () =>
-      epGetStock({ productIds: ["p1"] })
     );
 
-    expect(result.p1.locations[0].location.attributes.name).toBe(
-      "East Distribution Centre"
-    );
+    await withEpSession(SESSION, () => epGetStock({ productIds: ["p1"] }));
+
+    expect(
+      mockLocationList.mock.calls.map(([arg]) => arg.query["page[limit]"])
+    ).toEqual([100, 50]);
   });
 
   it("keeps the slug as the name of a location the list does not carry", async () => {
@@ -246,6 +274,14 @@ describe("epGetStock", () => {
       totalAllocated: 0,
       totalAvailable: 0,
     });
+  });
+
+  it("makes no locations read when no stock read succeeds", async () => {
+    mockGetStock.mockRejectedValue(new Error("boom"));
+
+    await withEpSession(SESSION, () => epGetStock({ productIds: ["p1"] }));
+
+    expect(mockLocationList).not.toHaveBeenCalled();
   });
 
   it("returns an empty map for no product ids", async () => {
