@@ -879,6 +879,81 @@ describe("EPAccountProvider", () => {
       });
     });
 
+    it("ignores a return to the selected account while another selection is in flight", async () => {
+      const { releaseSelect, selectCalls, sessionReads } = installSelectFetch({
+        initialSession: {
+          epMemberId: "member-1",
+          epAccount: { id: "acct-a", name: "Acme" },
+        },
+        nextSession: {
+          epMemberId: "member-1",
+          epAccount: { id: "acct-b", name: "Northwind" },
+        },
+        holdSelect: true,
+      });
+      const ref = React.createRef<AccountActions>();
+      render(
+        <EPAccountProvider ref={ref}>
+          <span>child</span>
+        </EPAccountProvider>
+      );
+      await waitFor(() => {
+        expect(publishedAccount().selectedAccount).toEqual({
+          id: "acct-a",
+          name: "Acme",
+        });
+      });
+      expect(sessionReads()).toHaveLength(1);
+
+      let first = "pending";
+      let back = "pending";
+      let firstDone: Promise<unknown> = Promise.resolve();
+      await act(async () => {
+        firstDone = ref.current!.selectAccount("acct-b").then(
+          () => {
+            first = "resolved";
+          },
+          () => {
+            first = "rejected";
+          }
+        );
+        void ref.current!.selectAccount("acct-a").then(
+          () => {
+            back = "resolved";
+          },
+          () => {
+            back = "rejected";
+          }
+        );
+      });
+
+      expect(selectCalls()).toHaveLength(1);
+      expect(JSON.parse(String(selectCalls()[0][1]?.body))).toEqual({
+        accountId: "acct-b",
+      });
+      expect(sessionReads()).toHaveLength(1);
+      expect(back).toBe("resolved");
+      expect(first).toBe("pending");
+      expect(publishedAccount().selectedAccount).toEqual({
+        id: "acct-a",
+        name: "Acme",
+      });
+
+      await act(async () => {
+        releaseSelect();
+        await firstDone;
+      });
+
+      expect(first).toBe("resolved");
+      expect(selectCalls()).toHaveLength(1);
+      expect(sessionReads()).toHaveLength(2);
+      expect(publishedAccount().selectedAccount).toEqual({
+        id: "acct-b",
+        name: "Northwind",
+      });
+      expect(publishedAccount().isLoading).toBe(false);
+    });
+
     it("leaves the published account unchanged when selection fails", async () => {
       const { selectCalls, sessionReads } = installSelectFetch({
         initialSession: { epMemberId: "member-1" },

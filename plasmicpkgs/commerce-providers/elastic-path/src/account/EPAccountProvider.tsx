@@ -352,8 +352,8 @@ export const EPAccountProvider = React.forwardRef<
   const selectAccount = useCallback(
     async (accountId: string) => {
       if (inEditor) return;
-      if (live?.selectedAccount?.id === accountId) return;
       if (selectInFlight.current) return;
+      if (live?.selectedAccount?.id === accountId) return;
       selectInFlight.current = true;
       setIsSelecting(true);
       try {
