@@ -81,6 +81,7 @@ interface EPAccountProviderProps {
 
 interface EPAccountProviderActions {
   logout(): Promise<void>;
+  selectAccount(accountId: string): Promise<void>;
 }
 
 /** Browser-readable get-session identity. Credentials are redacted server-side. */
@@ -149,6 +150,7 @@ export function accountContextFromSession(
     accountRoster: roster ?? EMPTY_ROSTER,
     lapsedAccount,
     isLoading: false,
+    isSelecting: false,
   };
 }
 
@@ -247,6 +249,14 @@ export const epAccountProviderMeta: CodeComponentMeta<EPAccountProviderProps> =
           "Sign the shopper out and reload account identity. No-op in the Studio canvas.",
         argTypes: [],
       },
+      selectAccount: {
+        displayName: "Select account",
+        description:
+          "Select an organisation and reload account identity. No-op in the Studio canvas. The already-selected id returns without a request. A call during an in-flight selection returns without another request. `$ctx.account.isSelecting` is true while this call is in progress.",
+        argTypes: [
+          { name: "accountId", type: "string", displayName: "Account ID" },
+        ],
+      },
     },
   };
 
@@ -263,7 +273,9 @@ export const EPAccountProvider = React.forwardRef<
     account: AccountContext;
   } | null>(null);
   const [reloading, setReloading] = useState(false);
+  const [isSelecting, setIsSelecting] = useState(false);
   const requestId = useRef(0);
+  const selectInFlight = useRef(false);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleReloadRetry = useRef<
     (id: number, client: EpIdentityClient, attempt: number) => void
@@ -337,9 +349,30 @@ export const EPAccountProvider = React.forwardRef<
     await reloadAccount();
   }, [inEditor, identity, reloadAccount]);
 
-  useImperativeHandle(ref, () => ({ logout }), [logout]);
+  const selectAccount = useCallback(
+    async (accountId: string) => {
+      if (inEditor) return;
+      if (selectInFlight.current) return;
+      if (!reloading && live?.selectedAccount?.id === accountId) return;
+      selectInFlight.current = true;
+      setIsSelecting(true);
+      try {
+        await identity.selectAccount({ accountId });
+        await reloadAccount();
+      } finally {
+        selectInFlight.current = false;
+        setIsSelecting(false);
+      }
+    },
+    [inEditor, reloading, live, identity, reloadAccount]
+  );
 
-  const account = forcePreview
+  useImperativeHandle(ref, () => ({ logout, selectAccount }), [
+    logout,
+    selectAccount,
+  ]);
+
+  const base = forcePreview
     ? previewAccountContext(previewState)
     : inEditor
     ? live && hasMemberIdentity(live)
@@ -348,6 +381,8 @@ export const EPAccountProvider = React.forwardRef<
     : !live || reloading
     ? LOADING_ACCOUNT
     : live;
+  const account =
+    base.isSelecting === isSelecting ? base : { ...base, isSelecting };
 
   if (inEditor) {
     log.debug("Publishing account context", {

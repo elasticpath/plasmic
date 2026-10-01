@@ -282,6 +282,7 @@ describe("EPAccountLoginFormProvider", () => {
         },
         lapsedAccount: null,
         isLoading: false,
+        isSelecting: false,
       });
     });
 
@@ -310,6 +311,7 @@ describe("EPAccountLoginFormProvider", () => {
         },
         lapsedAccount: null,
         isLoading: false,
+        isSelecting: false,
       });
     });
 
@@ -326,6 +328,7 @@ describe("EPAccountLoginFormProvider", () => {
         accountRoster: { accounts: [], total: 0 },
         lapsedAccount: null,
         isLoading: false,
+        isSelecting: false,
       });
     });
   });
