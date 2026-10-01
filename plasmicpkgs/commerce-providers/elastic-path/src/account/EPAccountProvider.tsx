@@ -353,7 +353,7 @@ export const EPAccountProvider = React.forwardRef<
     async (accountId: string) => {
       if (inEditor) return;
       if (selectInFlight.current) return;
-      if (live?.selectedAccount?.id === accountId) return;
+      if (!reloading && live?.selectedAccount?.id === accountId) return;
       selectInFlight.current = true;
       setIsSelecting(true);
       try {
@@ -364,7 +364,7 @@ export const EPAccountProvider = React.forwardRef<
         setIsSelecting(false);
       }
     },
-    [inEditor, live, identity, reloadAccount]
+    [inEditor, reloading, live, identity, reloadAccount]
   );
 
   useImperativeHandle(ref, () => ({ logout, selectAccount }), [

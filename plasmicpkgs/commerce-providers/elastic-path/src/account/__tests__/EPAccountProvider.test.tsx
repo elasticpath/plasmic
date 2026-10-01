@@ -1123,6 +1123,107 @@ describe("EPAccountProvider", () => {
       }
     });
 
+    it("does not drop the previously selected account while a failed refresh is retrying", async () => {
+      jest.useFakeTimers();
+      const flushPromises = async () => {
+        await act(async () => {
+          for (let i = 0; i < 20; i += 1) await Promise.resolve();
+        });
+      };
+
+      try {
+        let sessionReadsCount = 0;
+        const fetchImpl = jest.fn((url: string, init?: RequestInit) => {
+          const target = String(url);
+          if (target.endsWith("/get-session")) {
+            sessionReadsCount += 1;
+            if (sessionReadsCount === 1) {
+              return jsonResponse({
+                session: {
+                  epMemberId: "member-1",
+                  epAccount: { id: "acct-a", name: "Acme" },
+                },
+              });
+            }
+            if (sessionReadsCount === 2) {
+              return jsonResponse({ message: "unavailable" }, false);
+            }
+            return jsonResponse({
+              session: {
+                epMemberId: "member-1",
+                epAccount: { id: "acct-a", name: "Acme" },
+              },
+            });
+          }
+          if (target.includes("/account/select")) {
+            expect(init?.method).toBe("POST");
+            return jsonResponse({ session: {} });
+          }
+          if (target.includes("/account/roster")) {
+            return jsonResponse(roster);
+          }
+          return jsonResponse({}, false);
+        });
+        (global as unknown as { fetch: typeof fetch }).fetch =
+          fetchImpl as typeof fetch;
+
+        const selectCalls = () =>
+          fetchImpl.mock.calls.filter(([url]) =>
+            String(url).includes("/account/select")
+          );
+
+        const ref = React.createRef<AccountActions>();
+        render(
+          <EPAccountProvider ref={ref}>
+            <span>child</span>
+          </EPAccountProvider>
+        );
+        await flushPromises();
+        expect(publishedAccount().selectedAccount).toEqual({
+          id: "acct-a",
+          name: "Acme",
+        });
+
+        let settled = "pending";
+        await act(async () => {
+          await ref.current!.selectAccount("acct-b").then(
+            () => {
+              settled = "resolved";
+            },
+            () => {
+              settled = "rejected";
+            }
+          );
+        });
+
+        expect(settled).toBe("rejected");
+        expect(selectCalls()).toHaveLength(1);
+        expect(JSON.parse(String(selectCalls()[0][1]?.body))).toEqual({
+          accountId: "acct-b",
+        });
+        expect(sessionReadsCount).toBe(2);
+        expect(publishedAccount().isLoading).toBe(true);
+        expect(publishedAccount().isSelecting).toBe(false);
+
+        await act(async () => {
+          await ref.current!.selectAccount("acct-a");
+        });
+
+        expect(selectCalls()).toHaveLength(2);
+        expect(JSON.parse(String(selectCalls()[1][1]?.body))).toEqual({
+          accountId: "acct-a",
+        });
+        expect(sessionReadsCount).toBe(3);
+        expect(publishedAccount().selectedAccount).toEqual({
+          id: "acct-a",
+          name: "Acme",
+        });
+        expect(publishedAccount().isLoading).toBe(false);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it("does not select in the canvas when previewState is auto", async () => {
       mockUsePlasmicCanvasContext.mockReturnValue(true);
       const { selectCalls, sessionReads } = installSelectFetch({
