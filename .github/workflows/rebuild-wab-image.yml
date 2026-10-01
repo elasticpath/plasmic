@@ -1,0 +1,137 @@
+name: Rebuild wab Image
+
+# Rebuilds the wab image for a past commit and pushes it to ECR under that
+# commit's SHA, for when an image has gone missing from the registry. Builds
+# the commit's own Dockerfile, with its FROM lines pinned to the base image
+# digest the original build resolved (shown in the original run's build log),
+# so the rebuild gets the same Node and Alpine release. Does not trigger a
+# deployment.
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: 'Full 40-character commit SHA to rebuild (also the image tag)'
+        required: true
+        type: string
+      base_image:
+        description: 'Base image pinned by digest, e.g. node:24-alpine@sha256:<digest>'
+        required: true
+        type: string
+
+jobs:
+  rebuild:
+    name: Rebuild and Push Docker Image
+    runs-on: ubuntu-latest
+    environment: integration
+    permissions:
+      contents: read   # Read repo contents
+      id-token: write  # Required for AWS OIDC authentication
+
+    steps:
+      - name: Validate inputs
+        env:
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+          BASE_IMAGE: ${{ inputs.base_image }}
+        run: |
+          if [[ ! "$COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::commit_sha must be a full 40-character lowercase SHA, got: $COMMIT_SHA"
+            exit 1
+          fi
+          if [[ ! "$BASE_IMAGE" =~ ^node:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::base_image must be node:<tag>@sha256:<digest>, got: $BASE_IMAGE"
+            exit 1
+          fi
+
+      - name: Checkout target commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+
+      - name: Pin Dockerfile to original base image
+        env:
+          BASE_IMAGE: ${{ inputs.base_image }}
+        run: |
+          sed -i -E "s#^FROM node:[^ ]+ AS #FROM ${BASE_IMAGE} AS #" platform/wab/Dockerfile
+          if grep -E '^FROM ' platform/wab/Dockerfile | grep -vqF "FROM ${BASE_IMAGE} AS "; then
+            echo "::error::Not every FROM line was pinned to $BASE_IMAGE"
+            exit 1
+          fi
+
+          # Alpine no longer ships bubblewrap 0.11, so the old ~=0.11 pin can't
+          # be satisfied (see #510)
+          sed -i 's/bubblewrap~=0\.11/bubblewrap~=0.12/g' platform/wab/Dockerfile
+
+          echo "Changes to the target commit's Dockerfile:"
+          git diff -- platform/wab/Dockerfile
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ECR_PUSH_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Mask ECR registry URL
+        run: |
+          echo "::add-mask::${{ steps.login-ecr.outputs.registry }}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        id: push
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ inputs.commit_sha }}
+        run: |
+          # Mask sensitive values
+          echo "::add-mask::$ECR_REGISTRY"
+          echo "::add-mask::$ECR_REPOSITORY"
+
+          # Build the Docker image
+          docker build \
+            --platform linux/amd64 \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            -f platform/wab/Dockerfile \
+            platform/
+
+          # Push to ECR
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+          REPO_DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG)
+          echo "digest=${REPO_DIGEST#*@}" >> $GITHUB_OUTPUT
+
+          echo "Pushed image: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+      - name: Build summary
+        if: success()
+        env:
+          IMAGE_TAG: ${{ inputs.commit_sha }}
+          IMAGE_DIGEST: ${{ steps.push.outputs.digest }}
+          BASE_IMAGE: ${{ inputs.base_image }}
+        run: |
+          echo "### ✅ Docker Image Rebuilt and Pushed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${{ vars.ENVIRONMENT }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Image Tag:** \`$IMAGE_TAG\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Image Digest:** \`$IMAGE_DIGEST\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Base Image:** \`$BASE_IMAGE\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The digest differs from the original image. Update any reference that pins the old digest." >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          IMAGE_TAG: ${{ inputs.commit_sha }}
+        run: |
+          echo "### ❌ Rebuild Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${{ vars.ENVIRONMENT }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`$IMAGE_TAG\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Check the workflow logs for details." >> $GITHUB_STEP_SUMMARY
