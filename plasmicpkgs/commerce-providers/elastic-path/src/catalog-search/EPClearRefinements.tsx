@@ -19,6 +19,7 @@ import {
   MOCK_CLEAR_REFINEMENTS_DATA,
   ClearRefinementsData,
 } from "./design-time-data";
+import { useClearRefinements } from "react-instantsearch";
 
 type PreviewState = "auto" | "withData";
 
@@ -164,7 +165,6 @@ const EPClearRefinementsInner = React.forwardRef<
   { children, includedAttributes, excludedAttributes, alwaysRender, className },
   ref
 ) {
-  const { useClearRefinements } = require("react-instantsearch");
   const { refine, canRefine } = useClearRefinements({
     includedAttributes,
     excludedAttributes,

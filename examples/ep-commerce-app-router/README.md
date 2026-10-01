@@ -46,8 +46,7 @@ tarball:
 
 ```bash
 # in plasmicpkgs/commerce-providers/elastic-path
-yarn start                        # tsdx watch — a full `yarn build` takes ~28 minutes
-node build-server.mjs             # only needed for the /server entry (esbuild, seconds)
+pnpm build                        # seconds
 npm pack --pack-destination /tmp
 
 # here — point the dependency at the tarball, then reinstall from scratch

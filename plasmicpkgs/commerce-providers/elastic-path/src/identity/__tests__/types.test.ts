@@ -1,7 +1,6 @@
 /**
- * Neither test runner type-checks, and `tsdx build` only walks the entry
- * graph, so nothing would otherwise notice the client's methods widening to
- * `any`. Compiling the fixture requires every `@ts-expect-error` to fire.
+ * Neither test runner type-checks, and the build's `tsc` excludes tests, so
+ * nothing would otherwise notice the client's methods widening to `any`. Compiling the fixture requires every `@ts-expect-error` to fire.
  */
 import * as ts from "typescript";
 import * as path from "path";

@@ -25,6 +25,7 @@ import React, {
 import { Registerable } from "../registerable";
 import { MOCK_SEARCH_FIELD_DATA } from "./design-time-data";
 import type { SearchFieldData } from "./design-time-data";
+import { useSearchBox } from "react-instantsearch";
 
 type PreviewState = "auto" | "withData";
 
@@ -172,7 +173,6 @@ const EPSearchBoxInner = React.forwardRef<
   EPSearchBoxActions,
   { children?: React.ReactNode; debounceMs: number }
 >(function EPSearchBoxInner({ children, debounceMs }, ref) {
-  const { useSearchBox } = require("react-instantsearch");
   const { query: refinedQuery, refine, clear: refineClear } = useSearchBox();
 
   const [value, setValueState] = useState(refinedQuery ?? "");

@@ -1,4 +1,5 @@
 import { createShopperClient, configureClient } from "@epcc-sdk/sdks-shopper";
+import type { Client } from "@epcc-sdk/sdks-shopper";
 import { epShopperHeaders } from "./utils/ep-shopper-headers";
 
 export interface ElasticPathCredentials {
@@ -20,7 +21,7 @@ function memoryStorageAdapter() {
   };
 }
 
-const initElasticPathClient = (creds: ElasticPathCredentials) => {
+const initElasticPathClient = (creds: ElasticPathCredentials): Client => {
   const config = {
     baseUrl: creds.host || "https://euwest.api.elasticpath.com",
   };

@@ -23,9 +23,19 @@ async function main() {
   // Some packages may not work with a .mjs extension due to the stricter Node ES module rules.
   // loader-react uses it for "react/jsx-runtime" imports.
   // See https://app.shortcut.com/plasmic/story/33688/es-module-support for more details.
-  const esmExtension = findAndRemoveOption(options, "--no-esm")
+  const noEsm = findAndRemoveOption(options, "--no-esm");
+  const noMjs = !noEsm && findAndRemoveOption(options, "--no-mjs");
+  // Opt-in native ESM for one subpath: emits "<name>.mjs" plus a "<name>.d.mts"
+  // copy of the rolled-up types, and expects per-condition types in package.json.
+  const mjs = findAndRemoveOption(options, "--mjs");
+  if (mjs && (noEsm || noMjs)) {
+    throw new Error("--mjs cannot be combined with --no-esm or --no-mjs");
+  }
+  const esmExtension = noEsm
     ? null
-    : findAndRemoveOption(options, "--no-mjs")
+    : mjs
+    ? "mjs"
+    : noMjs
     ? "esm.js"
     : defaultEsmExtension;
   const watch = findAndRemoveOption(options, "--watch");
@@ -35,6 +45,11 @@ async function main() {
 
   const name = path.parse(entryPoint).name;
   const subpath = name === "index" ? "." : `./${name}`;
+  if (mjs && name === "index") {
+    // Bundlers that externalize a CommonJS dependency apply Node-mode interop
+    // to .mjs importers, turning default imports into the module object.
+    throw new Error("--mjs is not supported for the index entry point");
+  }
 
   const expectedPackageJson = generateExpectedPackageJson(
     name,
@@ -54,10 +69,19 @@ async function main() {
     useClient,
     watch,
   });
+  const dtsRollupPath = mjs
+    ? expectedPackageJson.exports[subpath].require.types
+    : expectedPackageJson.exports[subpath].types;
   await extractApi({
     name,
-    dtsRollupPath: expectedPackageJson.exports[subpath].types,
+    dtsRollupPath,
   });
+  if (mjs) {
+    // The rollup has no relative imports, so a plain copy is a valid .d.mts.
+    const dmtsPath = expectedPackageJson.exports[subpath].import.types;
+    await fs.copyFile(dtsRollupPath, dmtsPath);
+    console.info(`copied type declarations to "${dmtsPath}"`);
+  }
 }
 
 function findAndRemoveOption(options, option) {
@@ -92,7 +116,18 @@ function generateExpectedPackageJson(name, subpath, esmExtension) {
 }
 
 function generateExpectedPackageJsonSubpath(name, esmExtension) {
-  if (esmExtension) {
+  if (esmExtension === "mjs") {
+    return {
+      import: {
+        types: `./dist/${name}.d.mts`,
+        default: `./dist/${name}.mjs`,
+      },
+      require: {
+        types: `./dist/${name}.d.ts`,
+        default: `./dist/${name}.js`,
+      },
+    };
+  } else if (esmExtension) {
     return {
       types: `./dist/${name}.d.ts`,
       import: `./dist/${name}.${esmExtension}`,

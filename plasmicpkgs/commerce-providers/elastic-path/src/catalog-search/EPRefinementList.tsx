@@ -23,6 +23,7 @@ import React, { useImperativeHandle, useMemo } from "react";
 import { Registerable } from "../registerable";
 import { MOCK_REFINEMENT_ITEMS } from "./design-time-data";
 import type { RefinementItem } from "./design-time-data";
+import { useMenu, useRefinementList } from "react-instantsearch";
 
 type PreviewState = "auto" | "withData";
 
@@ -276,15 +277,13 @@ const EPRefinementListInner = React.forwardRef<
     className?: string;
   }
 >(function EPRefinementListInner(
-  { children, attribute, label, limit, showMore, searchable, className },
+  { children, attribute, label, limit, showMore, className },
   ref
 ) {
-  const { useRefinementList } = require("react-instantsearch");
   const { items, refine } = useRefinementList({
     attribute,
     limit,
     showMore,
-    searchable,
   });
 
   useImperativeHandle(ref, () => ({
@@ -350,7 +349,6 @@ const EPMenuListInner = React.forwardRef<
   { children, attribute, label, limit, showMore, itemGap, className },
   ref
 ) {
-  const { useMenu } = require("react-instantsearch");
   const { items, refine } = useMenu({
     attribute,
     limit,

@@ -13,6 +13,7 @@ import React, { useCallback, useImperativeHandle } from "react";
 import { Registerable } from "../registerable";
 import { MOCK_SEARCH_PAGINATION_DATA } from "./design-time-data";
 import type { SearchPaginationData } from "./design-time-data";
+import { usePagination } from "react-instantsearch";
 
 type PreviewState = "auto" | "withData";
 
@@ -140,7 +141,6 @@ const EPSearchPaginationInner = React.forwardRef<
   EPSearchPaginationActions,
   { children?: React.ReactNode; className?: string }
 >(function EPSearchPaginationInner({ children, className }, ref) {
-  const { usePagination } = require("react-instantsearch");
   const {
     currentRefinement,
     nbPages,

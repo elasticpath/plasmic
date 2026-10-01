@@ -84,6 +84,15 @@ EP replaced `Sentry.captureException`/`captureMessage` with
 (e.g. the ts-failable→neverthrow migration) reintroduce Sentry calls — translate them
 back to Datadog on every merge.
 
+**`build.mjs` — the `--mjs` flag**
+
+EP-only opt-in flag for one subpath: emits `<name>.mjs` instead of `<name>.esm.js`,
+copies the rolled-up `<name>.d.ts` to `<name>.d.mts`, and validates split
+`import`/`require` types in `package.json`. The elastic-path `/server` entry needs it for
+native ESM. Without the flag the script behaves as upstream's, so take upstream's changes
+and re-apply the flag on top. It refuses the index entry on purpose (elastic-path
+ADR-0007).
+
 **Package manager: pnpm at root, yarn for `platform/*`**
 
 EP adopted upstream's split (2026-08). Take upstream's side on every package-manager file:
@@ -97,6 +106,9 @@ EP-only divergences to preserve in `pnpm-workspace.yaml`:
 - `verifyDepsBeforeRun: false`. pnpm 11 otherwise prompts before every `pnpm run` and
   auto-answers yes when non-interactive, which lets a CI script reinstall `node_modules`
   mid-job.
+- `"@arethetypeswrong/core>typescript": "5.6.1-rc"`. The repo-wide `typescript` override
+  otherwise gives arethetypeswrong a compiler that lacks the APIs it calls, and the
+  elastic-path `verify:package` step crashes.
 
 One thing to check on every merge: new workspace packages must declare dependency ranges that
 the workspace version actually satisfies. yarn 1 linked a workspace package by name regardless

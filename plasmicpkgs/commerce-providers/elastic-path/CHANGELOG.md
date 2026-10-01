@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Breaking
+
+The package needs Node 22.12 or later, and says so in `engines`. The CommonJS
+build `require`s better-auth, which ships only as ES modules.
+
+The package is built with the repository's shared `build.mjs` instead of tsdx,
+so the published files change. Importing by package name, as every documented
+example does, resolves as before.
+
+| Was | Now |
+| --- | --- |
+| `dist/plasmic-ep-commerce-elastic-path.esm.js` | `dist/index.esm.js` |
+| one `.d.ts` per source file under `dist/` | one rolled-up `dist/index.d.ts`, `dist/server.d.ts` and `dist/server.d.mts` |
+| `/server` types under a single `types` condition | `import` resolves `server.d.mts`, `require` resolves `server.d.ts` |
+
 ### Added
 
 Login is composable rather than a single form component.
@@ -55,6 +70,13 @@ only the ones that were already server-rendered. Nothing about the components
 changes: same props, same slots, same data.
 
 ### Fixed
+
+`/server` type declarations are generated from the entry point instead of a
+hand-kept list, so an export can no longer ship without its type. `/server`
+also resolves under TypeScript's legacy `moduleResolution: node`.
+
+`seedCartFallback` works when `/server` is imported as a native ES module. It
+threw `Dynamic require of "swr" is not supported`.
 
 Promo codes work. Neither of the component's two code paths did anything: one
 posted to `/api/cart/promo`, a route the package never served, and the other
