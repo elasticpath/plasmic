@@ -67,6 +67,13 @@ async function readProxyError(
   const info: ProxyErrorInfo = {
     message: `ep proxy ${fnName} failed (${res.status})`,
   };
+  // A storefront that never mounted the proxy route answers with its own 404
+  // page, so there is no body to read a code out of. Without a code of its own
+  // that case is indistinguishable from the route failing, and callers can
+  // only branch on the code.
+  if (res.status === 404) {
+    info.code = "route_not_found";
+  }
   try {
     const body = (await res.json()) as {
       message?: string;

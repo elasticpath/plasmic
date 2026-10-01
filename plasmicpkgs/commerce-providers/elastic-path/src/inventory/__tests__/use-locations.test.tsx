@@ -3,9 +3,6 @@
  */
 
 // Tests for the SWR-based useLocations hook.
-// Verifies query key construction (type filter, "__all__" default), fetcher
-// logic (all locations, type-filtered requests), disabled state, and error
-// propagation.
 
 import { renderHook } from "@testing-library/react";
 
@@ -101,37 +98,21 @@ describe("useLocations", () => {
     expect(capturedQueryKey).toBeNull();
   });
 
-  it("uses '__all__' as the type segment when no type filter provided", () => {
+  it("uses one query key for every location", () => {
     renderHook(() => useLocations());
 
-    expect(capturedQueryKey).toEqual(["ep-locations", "__all__"]);
+    expect(capturedQueryKey).toEqual(["ep-locations"]);
   });
 
-  it("uses '__all__' when called with an empty options object", () => {
+  it("uses the same query key when called with an empty options object", () => {
     renderHook(() => useLocations({}));
 
-    expect(capturedQueryKey).toEqual(["ep-locations", "__all__"]);
-  });
-
-  it("includes the type value in the query key when type is provided", () => {
-    renderHook(() => useLocations({ type: "physical" as any }));
-
-    expect(capturedQueryKey).toEqual(["ep-locations", "physical"]);
-  });
-
-  it("produces different query keys for different type filters", () => {
-    renderHook(() => useLocations({ type: "virtual" as any }));
-    const virtualKey = capturedQueryKey;
-
-    renderHook(() => useLocations({ type: "physical" as any }));
-    const physicalKey = capturedQueryKey;
-
-    expect(virtualKey).not.toEqual(physicalKey);
+    expect(capturedQueryKey).toEqual(["ep-locations"]);
   });
 
   // -- Fetcher: all locations --
 
-  it("reads every location through the server function, with no type", async () => {
+  it("reads every location through the server function", async () => {
     const locations = [
       makeLocation("loc-1", "Warehouse One"),
       makeLocation("loc-2", "Store NY"),
@@ -141,19 +122,8 @@ describe("useLocations", () => {
     renderHook(() => useLocations());
     const result = await capturedFetcher!();
 
-    expect(mockEpGetLocations).toHaveBeenCalledWith({ type: undefined });
+    expect(mockEpGetLocations).toHaveBeenCalledWith();
     expect(result).toEqual(locations);
-  });
-
-  // -- Fetcher: type filter --
-
-  it("passes the type through to the server function", async () => {
-    mockEpGetLocations.mockResolvedValue([]);
-
-    renderHook(() => useLocations({ type: "physical" as any }));
-    await capturedFetcher!();
-
-    expect(mockEpGetLocations).toHaveBeenCalledWith({ type: "physical" });
   });
 
   // -- Fetcher: empty / missing data --

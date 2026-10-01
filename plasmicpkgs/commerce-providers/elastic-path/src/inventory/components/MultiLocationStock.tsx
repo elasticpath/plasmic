@@ -169,7 +169,7 @@ export function MultiLocationStock({
             >
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: "500", fontSize: "0.875rem" }}>
-                  {getLocationDisplayName(locationStock.location, locations)}
+                  {getLocationDisplayName(locationStock.location)}
                 </div>
                 {allocatedStock > 0 && (
                   <div style={{ fontSize: "0.75rem", color: "#666" }}>

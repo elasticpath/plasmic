@@ -510,6 +510,121 @@ describe("EPCatalogSearchProvider", () => {
       "highlight_full_fields"
     );
   });
+
+  it("builds the adapter without an Elastic Path client in the browser", () => {
+    const AdapterMock = (
+      require("@elasticpath/catalog-search-instantsearch-adapter") as {
+        default: jest.Mock;
+      }
+    ).default;
+    mockUseCommerce.mockReturnValue({ locale: "en-US" });
+
+    const { container } = render(
+      <EPCatalogSearchProvider>
+        <div data-testid="child">children</div>
+      </EPCatalogSearchProvider>
+    );
+
+    // The one method the adapter reaches for, and nothing an EP credential
+    // could ride in on.
+    const passed = AdapterMock.mock.calls[0][0].client;
+    expect(typeof passed.post).toBe("function");
+    expect(Object.keys(passed)).toEqual(["post"]);
+    expect(container.querySelector('[data-testid="child"]')).not.toBeNull();
+  });
+
+  describe("search failures", () => {
+    function failWith(code?: string) {
+      const err = new Error("multi-search failed") as Error & { code?: string };
+      if (code) err.code = code;
+      mockUseInstantSearch.mockReturnValue({
+        indexUiState: {},
+        status: "error",
+        error: err,
+      });
+    }
+
+    afterEach(() => {
+      mockUseInstantSearch.mockReturnValue({ indexUiState: {} });
+    });
+
+    it("renders the error slot when a search fails", () => {
+      failWith("dispatch_failed");
+
+      const { container } = render(
+        <EPCatalogSearchProvider errorContent={<div>Custom error</div>}>
+          <div>children</div>
+        </EPCatalogSearchProvider>
+      );
+
+      expect(container.textContent).toContain("Custom error");
+    });
+
+    it("keeps the search surface mounted so the shopper can try again", () => {
+      failWith("dispatch_failed");
+
+      const { container } = render(
+        <EPCatalogSearchProvider>
+          <div data-testid="child">children</div>
+        </EPCatalogSearchProvider>
+      );
+
+      expect(container.querySelector('[data-testid="child"]')).not.toBeNull();
+    });
+
+    it("names an unmounted route rather than blaming the adapter install", () => {
+      failWith("route_not_found");
+
+      const { container } = render(
+        <EPCatalogSearchProvider>
+          <div>children</div>
+        </EPCatalogSearchProvider>
+      );
+
+      const slot = container.querySelector("[data-ep-catalog-search-error]");
+      expect(slot).not.toBeNull();
+      expect(slot!.textContent).toContain(
+        "does not serve the Elastic Path route"
+      );
+      expect(slot!.textContent).not.toContain("adapter is installed");
+    });
+
+    it("exposes the failure on catalogSearchData for designer bindings", () => {
+      failWith("no_session");
+
+      const { container } = render(
+        <EPCatalogSearchProvider>
+          <div>children</div>
+        </EPCatalogSearchProvider>
+      );
+
+      const el = container.querySelector(
+        '[data-testid="data-provider-catalogSearchData"]'
+      );
+      const data = JSON.parse(el!.getAttribute("data-provider-data") || "{}");
+      expect(data.error.code).toBe("no_session");
+      expect(data.error.message).toContain("Refresh");
+    });
+
+    it("renders no error slot for a search that simply matched nothing", () => {
+      // A zero-hit search is a correct answer. Showing the failure copy for it
+      // would make a working search look broken.
+      const { container } = render(
+        <EPCatalogSearchProvider errorContent={<div>Custom error</div>}>
+          <div>children</div>
+        </EPCatalogSearchProvider>
+      );
+
+      expect(container.querySelector("[data-ep-catalog-search-error]")).toBeNull();
+      expect(container.textContent).not.toContain("Custom error");
+
+      const el = container.querySelector(
+        '[data-testid="data-provider-catalogSearchData"]'
+      );
+      const data = JSON.parse(el!.getAttribute("data-provider-data") || "{}");
+      expect(data).not.toHaveProperty("error");
+    });
+  });
 });
 
 /* ================================================================
