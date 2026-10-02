@@ -471,7 +471,7 @@ describe("EP Fork Integrity", () => {
     });
   });
 
-  describe("EP branch-merge performance (fork-first, not yet upstream)", () => {
+  describe("Elastic Path branch-merge performance (not yet upstream)", () => {
     // These checks guard speedups that are not upstream yet. If an upstream
     // merge drops one, no other test fails. Branch merges only become slower.
     const modelTreeUtil = () =>
