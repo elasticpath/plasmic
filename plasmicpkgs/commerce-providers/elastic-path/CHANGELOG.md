@@ -71,6 +71,13 @@ changes: same props, same slots, same data.
 
 ### Fixed
 
+Switching organisation no longer hides a roster-backed selector. While the
+reload started by `selectAccount`, including its existing retry, is unsettled,
+`$ctx.account.accountRoster` stays the last roster that loaded successfully.
+`isLoading` stays true, Account Gates stay closed, and the previous
+organisation is not published as the current one. The initial load, login
+reload, and logout reload still publish the empty loading roster.
+
 `/server` type declarations are generated from the entry point instead of a
 hand-kept list, so an export can no longer ship without its type. `/server`
 also resolves under TypeScript's legacy `moduleResolution: node`.
