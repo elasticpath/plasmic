@@ -274,6 +274,12 @@ export const EPAccountProvider = React.forwardRef<
   } | null>(null);
   const [reloading, setReloading] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
+  // Last settled roster for a select-originated reload. Null for every other
+  // reload. It outlives selectAccount() so a failed refresh can keep it
+  // through the background retry, and it is cleared only when that request
+  // settles or a newer reload supersedes it.
+  const [preservedSwitchRoster, setPreservedSwitchRoster] =
+    useState<AccountRoster | null>(null);
   const requestId = useRef(0);
   const selectInFlight = useRef(false);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -281,6 +287,8 @@ export const EPAccountProvider = React.forwardRef<
     (id: number, client: EpIdentityClient, attempt: number) => void
   >(() => {});
   const live = read?.identity === identity ? read.account : null;
+  const liveAccountRef = useRef(live);
+  liveAccountRef.current = live;
 
   scheduleReloadRetry.current = (id, client, attempt) => {
     clearTimer(retryTimer);
@@ -292,6 +300,7 @@ export const EPAccountProvider = React.forwardRef<
           if (id !== requestId.current) return;
           setRead({ identity: client, account });
           setReloading(false);
+          setPreservedSwitchRoster(null);
         },
         () => {
           if (id !== requestId.current) return;
@@ -304,6 +313,7 @@ export const EPAccountProvider = React.forwardRef<
   useEffect(() => {
     const id = ++requestId.current;
     clearTimer(retryTimer);
+    setPreservedSwitchRoster(null);
     if (forcePreview) {
       setRead(null);
       setReloading(false);
@@ -325,23 +335,37 @@ export const EPAccountProvider = React.forwardRef<
     };
   }, [forcePreview, identity]);
 
-  const reloadAccount = useCallback(() => {
-    const id = ++requestId.current;
-    clearTimer(retryTimer);
-    setReloading(true);
-    return loadLiveAccountContext(identity, { rethrow: true }).then(
-      (account) => {
-        if (id !== requestId.current) return;
-        setRead({ identity, account });
-        setReloading(false);
-      },
-      (err: unknown) => {
-        if (id !== requestId.current) return;
-        scheduleReloadRetry.current(id, identity, 0);
-        throw err;
-      }
-    );
-  }, [identity]);
+  const reloadAccount = useCallback(
+    (options?: { preserveRoster?: boolean }) => {
+      const id = ++requestId.current;
+      clearTimer(retryTimer);
+      // Snapshot the last settled roster only for a select-originated reload.
+      // Login, logout, and any other caller clear it in the same update as
+      // setReloading, so they still publish the empty loading placeholder.
+      // A matching request id clears it again on success. A mismatch leaves
+      // it alone, because the newer reload has already set or cleared it.
+      setPreservedSwitchRoster(
+        options?.preserveRoster
+          ? liveAccountRef.current?.accountRoster ?? null
+          : null
+      );
+      setReloading(true);
+      return loadLiveAccountContext(identity, { rethrow: true }).then(
+        (account) => {
+          if (id !== requestId.current) return;
+          setRead({ identity, account });
+          setReloading(false);
+          setPreservedSwitchRoster(null);
+        },
+        (err: unknown) => {
+          if (id !== requestId.current) return;
+          scheduleReloadRetry.current(id, identity, 0);
+          throw err;
+        }
+      );
+    },
+    [identity]
+  );
 
   const logout = useCallback(async () => {
     if (inEditor) return;
@@ -358,7 +382,7 @@ export const EPAccountProvider = React.forwardRef<
       setIsSelecting(true);
       try {
         await identity.selectAccount({ accountId });
-        await reloadAccount();
+        await reloadAccount({ preserveRoster: true });
       } finally {
         selectInFlight.current = false;
         setIsSelecting(false);
@@ -372,6 +396,10 @@ export const EPAccountProvider = React.forwardRef<
     selectAccount,
   ]);
 
+  const loadingAccount: AccountContext =
+    reloading && live && preservedSwitchRoster
+      ? { ...LOADING_ACCOUNT, accountRoster: preservedSwitchRoster }
+      : LOADING_ACCOUNT;
   const base = forcePreview
     ? previewAccountContext(previewState)
     : inEditor
@@ -379,7 +407,7 @@ export const EPAccountProvider = React.forwardRef<
       ? live
       : previewAccountContext("auto")
     : !live || reloading
-    ? LOADING_ACCOUNT
+    ? loadingAccount
     : live;
   const account =
     base.isSelecting === isSelecting ? base : { ...base, isSelecting };
