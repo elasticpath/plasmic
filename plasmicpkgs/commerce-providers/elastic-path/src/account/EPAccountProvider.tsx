@@ -274,10 +274,6 @@ export const EPAccountProvider = React.forwardRef<
   } | null>(null);
   const [reloading, setReloading] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
-  // Last settled roster for a select-originated reload. Null for every other
-  // reload. It outlives selectAccount() so a failed refresh can keep it
-  // through the background retry, and it is cleared only when that request
-  // settles or a newer reload supersedes it.
   const [preservedSwitchRoster, setPreservedSwitchRoster] =
     useState<AccountRoster | null>(null);
   const requestId = useRef(0);
@@ -339,11 +335,6 @@ export const EPAccountProvider = React.forwardRef<
     (options?: { preserveRoster?: boolean }) => {
       const id = ++requestId.current;
       clearTimer(retryTimer);
-      // Snapshot the last settled roster only for a select-originated reload.
-      // Login, logout, and any other caller clear it in the same update as
-      // setReloading, so they still publish the empty loading placeholder.
-      // A matching request id clears it again on success. A mismatch leaves
-      // it alone, because the newer reload has already set or cleared it.
       setPreservedSwitchRoster(
         options?.preserveRoster
           ? liveAccountRef.current?.accountRoster ?? null
