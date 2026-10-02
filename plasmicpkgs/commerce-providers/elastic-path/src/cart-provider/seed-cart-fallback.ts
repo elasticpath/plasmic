@@ -19,7 +19,9 @@ export async function seedCartFallback(): Promise<Record<string, Cart | null>> {
   } catch {
     cart = null;
   }
-  const { unstable_serialize } = require("swr") as typeof import("swr");
+  // Node loads swr, not the bundler: swr 1.x calls createContext at load,
+  // which React's react-server build lacks. Native ESM has no require().
+  const { unstable_serialize } = await import(/* webpackIgnore: true */ "swr");
   const key = unstable_serialize(epCartCacheKey());
   return { [key]: cart };
 }

@@ -200,11 +200,10 @@ jest.mock("react-instantsearch", () => ({
   useSearchBox: (...a: unknown[]) => mockUseSearchBox(...a),
 }));
 
-/* ---------- code under test ---------- */
-import {
-  useEPAutocompleteState,
-  UseEPAutocompleteStateConfig,
-} from "../useEPAutocompleteState";
+/* ---------- code under test (after mocks) ---------- */
+import type { UseEPAutocompleteStateConfig } from "../useEPAutocompleteState";
+const { useEPAutocompleteState } =
+  require("../useEPAutocompleteState") as typeof import("../useEPAutocompleteState");
 
 /* ---------- harness ---------- */
 type CapturedHookOutput = ReturnType<typeof useEPAutocompleteState>;

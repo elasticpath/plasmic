@@ -24,6 +24,8 @@ import {
   MultiSearchResponse,
 } from "./predictionsSource";
 import { AutocompleteCollection } from "./design-time-data";
+import { useSearchBox } from "react-instantsearch";
+import { createAutocomplete } from "@algolia/autocomplete-core";
 
 export interface UseEPAutocompleteStateConfig {
   predictionsField: string;
@@ -61,7 +63,6 @@ export function useEPAutocompleteState(
     postMultiSearch,
   } = config;
 
-  const { useSearchBox } = require("react-instantsearch");
   const {
     query: instantSearchQuery,
     refine,
@@ -115,7 +116,6 @@ export function useEPAutocompleteState(
   const instanceRef = useRef<any>(null);
   if (instanceRef.current === null) {
     const source = predictionsSource({ predictionsField, postMultiSearch });
-    const { createAutocomplete } = require("@algolia/autocomplete-core");
 
     instanceRef.current = createAutocomplete({
       onStateChange: ({ state }: any) => {

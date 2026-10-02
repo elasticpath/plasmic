@@ -13,6 +13,7 @@ import React from "react";
 import { Registerable } from "../registerable";
 import { MOCK_SEARCH_STATS_DATA } from "./design-time-data";
 import type { SearchStatsData } from "./design-time-data";
+import { useStats } from "react-instantsearch";
 
 type PreviewState = "auto" | "withData";
 
@@ -77,7 +78,6 @@ function EPSearchStatsInner(props: {
 }) {
   const { children, className } = props;
 
-  const { useStats } = require("react-instantsearch");
   const { nbHits, processingTimeMS, query } = useStats();
 
   const summary = query

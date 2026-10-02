@@ -426,6 +426,30 @@ describe("EP Fork Integrity", () => {
     });
   });
 
+  describe("EP commerce package build", () => {
+    it("build.mjs keeps the --mjs flag", () => {
+      expect(readFile("build.mjs")).toContain('"--mjs"');
+    });
+
+    it("elastic-path builds /server with --mjs", () => {
+      const pkgJson = readJson(
+        "plasmicpkgs/commerce-providers/elastic-path/package.json"
+      );
+      expect(pkgJson.scripts["build:server"]).toContain("--mjs");
+    });
+
+    it("attw keeps its own typescript", () => {
+      expect(readFile("pnpm-workspace.yaml")).toContain(
+        '"@arethetypeswrong/core>typescript"'
+      );
+    });
+
+    it("CI builds and verifies the elastic-path package", () => {
+      const workflow = readFile(".github/workflows/tests.yml");
+      expect(workflow).toContain("pnpm verify:package");
+    });
+  });
+
   describe("EP Dockerfiles", () => {
     it("WAB Dockerfile exists", () => {
       expect(fileExists("platform/wab/Dockerfile")).toBe(true);

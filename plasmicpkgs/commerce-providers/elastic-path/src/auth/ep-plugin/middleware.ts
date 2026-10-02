@@ -28,8 +28,8 @@
  * latter is treated by Next as a terminal response and the page never
  * runs.
  */
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server.js";
+import type { NextRequest } from "next/server.js";
 import { hasCookie, parseCookieHeader } from "../../utils/cookie-header";
 import type { EpAuth } from "./create-ep-auth-better";
 

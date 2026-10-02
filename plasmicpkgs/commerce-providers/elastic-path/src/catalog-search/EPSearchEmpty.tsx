@@ -33,6 +33,7 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../registerable";
+import { useInstantSearch } from "react-instantsearch";
 
 type PreviewState = "auto" | "withData";
 
@@ -140,7 +141,6 @@ function EPSearchEmptyInner({
   children?: React.ReactNode;
   className?: string;
 }) {
-  const { useInstantSearch } = require("react-instantsearch");
   const { results } = useInstantSearch();
 
   // Stay silent during the SSR-to-first-response window (results === null)

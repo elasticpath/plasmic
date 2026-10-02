@@ -28,6 +28,7 @@ import React, { useImperativeHandle, useMemo } from "react";
 import { Registerable } from "../registerable";
 import { MOCK_SORT_BY_DATA } from "./design-time-data";
 import type { SortByData } from "./design-time-data";
+import { useSortBy } from "react-instantsearch";
 
 type PreviewState = "auto" | "withData";
 
@@ -197,7 +198,6 @@ const EPSearchSortByInner = React.forwardRef<
     className?: string;
   }
 >(function EPSearchSortByInner({ children, items, indexName, className }, ref) {
-  const { useSortBy } = require("react-instantsearch");
 
   // Normalise items into the `{value, label}` shape useSortBy expects.
   // Done in a memo so identity is stable across renders.
