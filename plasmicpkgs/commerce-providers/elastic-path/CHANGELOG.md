@@ -38,6 +38,11 @@ state. A further call while that selection is still in progress returns
 without another request or reload. `$ctx.account.isSelecting` is true only
 while that call is in progress, including its immediate reload, and is false
 again when the call resolves or rejects. It does not replace `isLoading`.
+While the reload after a selection, including its retry, is unsettled,
+`$ctx.account.accountRoster` stays the last roster that loaded, so a selector
+outside an Account Gate stays on screen. `isLoading` stays true, Account Gates
+stay closed, and the previous organisation is not published as the current
+one. The initial load, login reload, and logout reload publish an empty roster.
 
 ### Changed
 
@@ -70,13 +75,6 @@ only the ones that were already server-rendered. Nothing about the components
 changes: same props, same slots, same data.
 
 ### Fixed
-
-Switching organisation no longer hides a roster-backed selector. While the
-reload started by `selectAccount`, including its existing retry, is unsettled,
-`$ctx.account.accountRoster` stays the last roster that loaded successfully.
-`isLoading` stays true, Account Gates stay closed, and the previous
-organisation is not published as the current one. The initial load, login
-reload, and logout reload still publish the empty loading roster.
 
 `/server` type declarations are generated from the entry point instead of a
 hand-kept list, so an export can no longer ship without its type. `/server`
