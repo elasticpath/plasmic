@@ -470,4 +470,19 @@ describe("EP Fork Integrity", () => {
       expect(workflow).toContain("name=='wab'");
     });
   });
+
+  describe("EP branch-merge performance (fork-first, not yet upstream)", () => {
+    // These checks guard speedups that are not upstream yet. If an upstream
+    // merge drops one, no other test fails. Branch merges only become slower.
+    const modelTreeUtil = () =>
+      readFile("platform/wab/src/wab/shared/model/model-tree-util.ts");
+
+    it("nextCtx builds keyPath without lodash zip (#642)", () => {
+      expect(modelTreeUtil()).not.toContain("zip(ctx.path");
+    });
+
+    it("walkModelTree walks values without a context per value (#642)", () => {
+      expect(modelTreeUtil()).toContain("function walkFieldValue(");
+    });
+  });
 });
