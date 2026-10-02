@@ -1608,6 +1608,208 @@ describe("EPAccountProvider", () => {
       expect(screen.getByTestId("selected")).toBeTruthy();
     });
 
+    it("does not let an in-flight retry clear a newer select-preserved roster", async () => {
+      jest.useFakeTimers();
+      const backoff = RELOAD_RETRY_BACKOFF_MS as readonly number[];
+      const flushPromises = async () => {
+        await act(async () => {
+          for (let i = 0; i < 20; i += 1) await Promise.resolve();
+        });
+      };
+      const advance = async (ms: number) => {
+        await act(async () => {
+          jest.advanceTimersByTime(ms);
+        });
+        await flushPromises();
+      };
+      const previousRoster = {
+        accounts: [
+          { id: "acct-a", name: "Acme" },
+          { id: "acct-b", name: "Northwind" },
+        ],
+        total: 2,
+      };
+      const staleRoster = {
+        accounts: [{ id: "stale", name: "Stale" }],
+        total: 1,
+      };
+      const nextRoster = {
+        accounts: [
+          { id: "acct-a", name: "Acme" },
+          { id: "acct-b", name: "Northwind" },
+          { id: "acct-c", name: "Contoso" },
+        ],
+        total: 3,
+      };
+
+      try {
+        let sessionReadsCount = 0;
+        let rosterCount = 0;
+        let releaseOlder: () => void = () => {};
+        let releaseNewer: () => void = () => {};
+        const olderGate = new Promise<void>((resolve) => {
+          releaseOlder = resolve;
+        });
+        const newerGate = new Promise<void>((resolve) => {
+          releaseNewer = resolve;
+        });
+        const fetchImpl = jest.fn((url: string, init?: RequestInit) => {
+          const target = String(url);
+          if (target.endsWith("/get-session")) {
+            sessionReadsCount += 1;
+            const read = sessionReadsCount;
+            if (read === 1) {
+              return jsonResponse({
+                session: {
+                  epMemberId: "member-1",
+                  epAccount: { id: "acct-a", name: "Acme" },
+                },
+              });
+            }
+            if (read === 2) {
+              return jsonResponse({ message: "unavailable" }, false);
+            }
+            if (read === 3) {
+              return olderGate.then(() =>
+                jsonResponse({
+                  session: {
+                    epMemberId: "stale-member",
+                    epAccount: { id: "stale", name: "Stale" },
+                  },
+                })
+              );
+            }
+            return newerGate.then(() =>
+              jsonResponse({
+                session: {
+                  epMemberId: "member-1",
+                  epAccount: { id: "acct-c", name: "Contoso" },
+                },
+              })
+            );
+          }
+          if (target.includes("/account/select")) {
+            expect(init?.method).toBe("POST");
+            return jsonResponse({ session: {} });
+          }
+          if (target.includes("/account/roster")) {
+            rosterCount += 1;
+            if (rosterCount === 1) return jsonResponse(previousRoster);
+            if (rosterCount === 2) return jsonResponse(staleRoster);
+            return jsonResponse(nextRoster);
+          }
+          return jsonResponse({}, false);
+        });
+        (global as unknown as { fetch: typeof fetch }).fetch =
+          fetchImpl as typeof fetch;
+
+        const selectCalls = () =>
+          fetchImpl.mock.calls.filter(([url]) =>
+            String(url).includes("/account/select")
+          );
+
+        const ref = React.createRef<AccountActions>();
+        render(
+          <EPAccountProvider ref={ref}>
+            <span>child</span>
+          </EPAccountProvider>
+        );
+        await flushPromises();
+        expect(publishedAccount().selectedAccount).toEqual({
+          id: "acct-a",
+          name: "Acme",
+        });
+        expect(publishedAccount().accountRoster).toEqual(previousRoster);
+        expect(publishedAccount().isLoading).toBe(false);
+
+        let firstSettled = "pending";
+        let firstSelect: Promise<void> = Promise.resolve();
+        await act(async () => {
+          firstSelect = ref.current!.selectAccount("acct-b").then(
+            () => {
+              firstSettled = "resolved";
+            },
+            () => {
+              firstSettled = "rejected";
+            }
+          );
+        });
+        await flushPromises();
+        await act(async () => {
+          await firstSelect;
+        });
+
+        expect(firstSettled).toBe("rejected");
+        expect(selectCalls()).toHaveLength(1);
+        expect(JSON.parse(String(selectCalls()[0][1]?.body))).toEqual({
+          accountId: "acct-b",
+        });
+        expect(sessionReadsCount).toBe(2);
+        expect(rosterCount).toBe(1);
+        expect(publishedAccount().isLoading).toBe(true);
+        expect(publishedAccount().isSelecting).toBe(false);
+        expect(publishedAccount().accountRoster).toEqual(previousRoster);
+
+        await advance(backoff[0] - 1);
+        expect(sessionReadsCount).toBe(2);
+
+        await advance(1);
+        expect(sessionReadsCount).toBe(3);
+        expect(rosterCount).toBe(1);
+        expect(publishedAccount().isLoading).toBe(true);
+        expect(publishedAccount().accountRoster).toEqual(previousRoster);
+        expect(publishedAccount().selectedAccount).toBeNull();
+
+        let secondSelect: Promise<void> = Promise.resolve();
+        await act(async () => {
+          secondSelect = ref.current!.selectAccount("acct-c");
+        });
+        await flushPromises();
+
+        expect(selectCalls()).toHaveLength(2);
+        expect(JSON.parse(String(selectCalls()[1][1]?.body))).toEqual({
+          accountId: "acct-c",
+        });
+        expect(sessionReadsCount).toBe(4);
+        expect(publishedAccount().isLoading).toBe(true);
+        expect(publishedAccount().accountRoster).toEqual(previousRoster);
+        expect(publishedAccount().selectedAccount).toBeNull();
+        expect(publishedAccount().accountMember).toBeNull();
+
+        await act(async () => {
+          releaseOlder();
+        });
+        await flushPromises();
+
+        expect(rosterCount).toBe(2);
+        expect(sessionReadsCount).toBe(4);
+        expect(publishedAccount().isLoading).toBe(true);
+        expect(publishedAccount().accountRoster).toEqual(previousRoster);
+        expect(publishedAccount().selectedAccount).toBeNull();
+        expect(publishedAccount().lapsedAccount).toBeNull();
+        expect(publishedAccount().accountMember).toBeNull();
+        expect(publishedAccount().state).toBe("anonymous");
+
+        await act(async () => {
+          releaseNewer();
+          await secondSelect;
+        });
+        await flushPromises();
+
+        expect(rosterCount).toBe(3);
+        expect(publishedAccount().isLoading).toBe(false);
+        expect(publishedAccount().isSelecting).toBe(false);
+        expect(publishedAccount().accountRoster).toEqual(nextRoster);
+        expect(publishedAccount().selectedAccount).toEqual({
+          id: "acct-c",
+          name: "Contoso",
+        });
+        expect(publishedAccount().accountMember).toEqual({ id: "member-1" });
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it("clears a preserved switch roster when logout reloads", async () => {
       const previousRoster = {
         accounts: [
