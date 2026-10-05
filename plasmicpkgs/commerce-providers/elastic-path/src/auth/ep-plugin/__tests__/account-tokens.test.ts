@@ -10,6 +10,7 @@ import {
   EpAccountTokenError,
   resolveAccountPageLimit,
   resolveAccountPageOffset,
+  collectAccountTokens,
   discoverPasswordProfileId,
   findAccountToken,
   mintAccountTokens,
@@ -359,6 +360,148 @@ describe("findAccountToken", () => {
 
     expect(found.entry).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("collectAccountTokens", () => {
+  function pagedFetch(
+    accounts: { id: string; name?: string }[],
+    onPage?: (offset: number) => Response | undefined
+  ) {
+    const offsets: number[] = [];
+    const fetchMock = vi.fn(async (url: any) => {
+      const offset = Number(new URL(String(url)).searchParams.get("page[offset]"));
+      offsets.push(offset);
+      const refused = onPage?.(offset);
+      if (refused) return refused;
+      const page = accounts.slice(offset, offset + ACCOUNT_PAGE_LIMIT_MAX);
+      return tokenResponse(page, accounts.length);
+    });
+    globalThis.fetch = fetchMock as any;
+    return { fetchMock, offsets };
+  }
+
+  it("reads a roster that fits on one page in one request", async () => {
+    const accounts = Array.from({ length: 100 }, (_, i) => ({
+      id: `acct-${i}`,
+      name: `Account ${i}`,
+    }));
+    const { fetchMock } = pagedFetch(accounts);
+
+    const page = await collectAccountTokens({
+      host: HOST,
+      implicitToken: IMPLICIT,
+      credential: { accountToken: "held-token" },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(page.total).toBe(100);
+    expect(page.entries.map((entry) => entry.id)).toEqual(
+      accounts.map((account) => account.id)
+    );
+  });
+
+  it("walks a later page by the size it asked for", async () => {
+    const accounts = Array.from({ length: 150 }, (_, i) => ({
+      id: `acct-${i}`,
+      name: `Account ${i}`,
+    }));
+    const { offsets } = pagedFetch(accounts);
+
+    const page = await collectAccountTokens({
+      host: HOST,
+      implicitToken: IMPLICIT,
+      credential: { accountToken: "held-token" },
+    });
+
+    expect(offsets).toEqual([0, 100]);
+    expect(page.total).toBe(150);
+    expect(page.entries).toHaveLength(150);
+    expect(page.entries[149]?.id).toBe("acct-149");
+  });
+
+  it("keeps the requested stride when a record on the first page is dropped", async () => {
+    const accounts = Array.from({ length: 150 }, (_, i) => ({
+      id: `acct-${i}`,
+      name: `Account ${i}`,
+    }));
+    const { offsets } = pagedFetch(accounts, (offset) => {
+      if (offset !== 0) return undefined;
+      return tokenResponse(accounts.slice(0, 99), 150);
+    });
+
+    const page = await collectAccountTokens({
+      host: HOST,
+      implicitToken: IMPLICIT,
+      credential: { accountToken: "held-token" },
+    });
+
+    expect(offsets).toEqual([0, 100]);
+    expect(page.entries).toHaveLength(149);
+    expect(page.total).toBe(150);
+  });
+
+  it("continues past a page whose rows were all rejected", async () => {
+    const valid = (id: string) => ({
+      account_id: id,
+      account_name: id,
+      token: `token-for-${id}`,
+      expires: EXPIRES_ISO,
+    });
+    const rejected = (id: string) => ({
+      account_id: id,
+      account_name: id,
+      expires: EXPIRES_ISO,
+    });
+    const pages: Record<number, unknown[]> = {
+      0: [valid("acct-0")],
+      100: [rejected("acct-100")],
+      200: [valid("acct-200")],
+    };
+    const offsets: number[] = [];
+    globalThis.fetch = vi.fn(async (url: any) => {
+      const offset = Number(new URL(String(url)).searchParams.get("page[offset]"));
+      offsets.push(offset);
+      return new Response(
+        JSON.stringify({
+          meta: { account_member_id: "member-1", results: { total: 201 } },
+          data: pages[offset] ?? [],
+        }),
+        { status: 201, headers: { "Content-Type": "application/json" } }
+      );
+    }) as any;
+
+    const page = await collectAccountTokens({
+      host: HOST,
+      implicitToken: IMPLICIT,
+      credential: { accountToken: "held-token" },
+    });
+
+    expect(offsets).toEqual([0, 100, 200]);
+    expect(page.entries.map((entry) => entry.id)).toEqual([
+      "acct-0",
+      "acct-200",
+    ]);
+    expect(page.entries.some((entry) => entry.id === "acct-100")).toBe(false);
+    expect(page.total).toBe(201);
+  });
+
+  it("fails the whole read when a later page fails", async () => {
+    const accounts = Array.from({ length: 150 }, (_, i) => ({
+      id: `acct-${i}`,
+    }));
+    const { fetchMock } = pagedFetch(accounts, (offset) =>
+      offset === 100 ? errorResponse(500, "page failed") : undefined
+    );
+
+    await expect(
+      collectAccountTokens({
+        host: HOST,
+        implicitToken: IMPLICIT,
+        credential: { accountToken: "held-token" },
+      })
+    ).rejects.toBeInstanceOf(EpAccountTokenError);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 

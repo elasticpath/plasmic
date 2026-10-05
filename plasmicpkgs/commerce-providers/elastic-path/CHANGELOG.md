@@ -124,6 +124,12 @@ main image, or its first file when it has none. A product with neither still
 has no image, as before. A selected bundle variant with no image of its own
 shows its parent option's image, as the product page does for a variant.
 
+The account roster includes every organisation, not only the first 100. An
+unpaged roster read asked Elastic Path for one page. It now reads each
+following page on the server until the list is complete, and still answers
+`{ accounts, total }` with no tokens. A request that sets `limit` or `offset`
+still returns that one page.
+
 ## 0.8.0
 
 ### Breaking

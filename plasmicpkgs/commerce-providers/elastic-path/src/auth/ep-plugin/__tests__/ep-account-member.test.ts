@@ -29,6 +29,8 @@ let originalFetch: typeof fetch;
 /** Account tokens EP hands out, newest first, so a roll is observable. */
 let tokenGeneration = 0;
 let tokenCalls: { body: any; headers: Record<string, string>; url: string }[];
+/** Offsets of `/v2/account-members/tokens` that answer as a mint failure. */
+let failTokenOffsets: Set<number>;
 
 function accountTokenFor(id: string): string {
   return `token-${id}-gen${tokenGeneration}`;
@@ -101,6 +103,9 @@ function installFetch() {
       const parsed = new URL(u);
       const limit = Number(parsed.searchParams.get("page[limit]") ?? 100);
       const offset = Number(parsed.searchParams.get("page[offset]") ?? 0);
+      if (failTokenOffsets.has(offset)) {
+        return json({ errors: [{ detail: "page failed" }] }, 500);
+      }
       const page = store.accounts.slice(offset, offset + limit);
       return json(
         {
@@ -127,6 +132,7 @@ function installFetch() {
 beforeEach(() => {
   originalFetch = globalThis.fetch;
   tokenGeneration = 0;
+  failTokenOffsets = new Set();
   store = {
     accounts: [...ACCOUNTS],
     ttlSeconds: 86400,
@@ -346,6 +352,98 @@ describe("reading the roster", () => {
       total: 2,
     });
     expect(raw).not.toContain(accountTokenFor("acct-north"));
+  });
+
+  function tokenOffsets(): number[] {
+    return tokenCalls.map((call) =>
+      Number(new URL(call.url).searchParams.get("page[offset]"))
+    );
+  }
+
+  it("reads a roster of at most one page in one token request", async () => {
+    store.accounts = Array.from({ length: 100 }, (_, i) => ({
+      id: `acct-${i}`,
+      name: `Account ${i}`,
+    }));
+    const auth = buildAuth({ passwordProfileId: PROFILE });
+    let cookies = await anonymous(auth);
+    ({ cookies } = await signIn(auth, cookies));
+    const callsAfterLogin = tokenCalls.length;
+
+    const res = await (auth.api as any).epAccountRoster({
+      body: {},
+      headers: new Headers({ cookie: cookies }),
+      asResponse: true,
+    });
+
+    expect(res.status).toBe(200);
+    const raw = await res.text();
+    const body = JSON.parse(raw);
+    expect(body.total).toBe(100);
+    expect(body.accounts).toEqual(
+      store.accounts.map((account) => ({ id: account.id, name: account.name }))
+    );
+    expect(tokenCalls.length - callsAfterLogin).toBe(1);
+    expect(tokenOffsets().slice(callsAfterLogin)).toEqual([0]);
+    expect(raw).not.toContain(accountTokenFor("acct-0"));
+  });
+
+  it("reads every page of a roster larger than the platform maximum", async () => {
+    store.accounts = Array.from({ length: 150 }, (_, i) => ({
+      id: `acct-${i}`,
+      name: `Account ${i}`,
+    }));
+    const auth = buildAuth({ passwordProfileId: PROFILE });
+    let cookies = await anonymous(auth);
+    const signedIn = await signIn(auth, cookies);
+    cookies = signedIn.cookies;
+    const loginBody = await signedIn.res.json();
+    expect(loginBody.accounts).toHaveLength(100);
+    expect(loginBody.total).toBe(150);
+    const callsAfterLogin = tokenCalls.length;
+
+    const res = await (auth.api as any).epAccountRoster({
+      body: {},
+      headers: new Headers({ cookie: cookies }),
+      asResponse: true,
+    });
+
+    expect(res.status).toBe(200);
+    const raw = await res.text();
+    const body = JSON.parse(raw);
+    expect(body.total).toBe(150);
+    expect(body.accounts).toEqual(
+      store.accounts.map((account) => ({ id: account.id, name: account.name }))
+    );
+    expect(tokenCalls.length - callsAfterLogin).toBe(2);
+    expect(tokenOffsets().slice(callsAfterLogin)).toEqual([0, 100]);
+    expect(raw).not.toContain("token-acct-0");
+    expect(raw).not.toContain("token-acct-149");
+  });
+
+  it("fails the whole roster when a later page cannot be read", async () => {
+    store.accounts = Array.from({ length: 150 }, (_, i) => ({
+      id: `acct-${i}`,
+      name: `Account ${i}`,
+    }));
+    const auth = buildAuth({ passwordProfileId: PROFILE });
+    let cookies = await anonymous(auth);
+    ({ cookies } = await signIn(auth, cookies));
+    failTokenOffsets.add(100);
+
+    const res = await (auth.api as any).epAccountRoster({
+      body: {},
+      headers: new Headers({ cookie: cookies }),
+      asResponse: true,
+    });
+
+    expect(res.status).toBe(502);
+    const raw = await res.text();
+    const body = JSON.parse(raw);
+    expect(body.code).toBe("account_token_mint_failed");
+    expect(body.accounts).toBeUndefined();
+    expect(raw).not.toContain("acct-0");
+    expect(raw).not.toContain("acct-100");
   });
 
   it("reaches an account past the first page", async () => {

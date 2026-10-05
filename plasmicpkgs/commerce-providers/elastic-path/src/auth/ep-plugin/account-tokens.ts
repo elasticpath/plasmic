@@ -29,6 +29,8 @@ export interface EpAccountTokenPage {
   memberId: string;
   entries: EpAccountTokenEntry[];
   total: number;
+  /** Raw `data` rows on this page, before unusable rows are dropped. */
+  rawEntryCount: number;
 }
 
 export type EpAccountCredential =
@@ -148,8 +150,8 @@ export async function discoverPasswordProfileId(input: {
  *
  * With a password this is the sign-in; with an account token it re-mints from
  * a credential the session already holds, which needs no password and returns
- * a fresh full window. Either way the response carries the whole roster, so
- * one call answers both "who is this" and "what may they buy for".
+ * a fresh window of one page. `collectAccountTokens` walks the rest when the
+ * roster is larger than that page.
  */
 export async function mintAccountTokens(input: {
   host: string;
@@ -242,8 +244,9 @@ export async function mintAccountTokens(input: {
     );
   }
 
+  const raw = body.data ?? [];
   const entries: EpAccountTokenEntry[] = [];
-  for (const entry of body.data ?? []) {
+  for (const entry of raw) {
     const expires = parseEpExpires(entry.expires);
     if (typeof entry.account_id !== "string" || !entry.account_id) continue;
     if (typeof entry.token !== "string" || !entry.token) continue;
@@ -263,7 +266,44 @@ export async function mintAccountTokens(input: {
       ? reported
       : entries.length;
 
-  return { memberId, entries, total };
+  return { memberId, entries, total, rawEntryCount: raw.length };
+}
+
+/**
+ * Reads every page of the member's account tokens.
+ *
+ * An unpaged roster is this walk. A later page that fails throws, so the
+ * caller keeps none of the pages already read. The offset advances by the
+ * page that was asked for. A page whose rows were all dropped is not the
+ * end: only a page Elastic Path returned with no rows is.
+ */
+export async function collectAccountTokens(input: {
+  host: string;
+  implicitToken: string;
+  credential: EpAccountCredential;
+}): Promise<EpAccountTokenPage> {
+  let offset = 0;
+  const entries: EpAccountTokenEntry[] = [];
+  let memberId = "";
+  let total = 0;
+  let rawEntryCount = 0;
+  for (;;) {
+    const page = await mintAccountTokens({
+      host: input.host,
+      implicitToken: input.implicitToken,
+      credential: input.credential,
+      limit: ACCOUNT_PAGE_LIMIT_MAX,
+      offset,
+    });
+    memberId = page.memberId;
+    total = page.total;
+    rawEntryCount = page.rawEntryCount;
+    entries.push(...page.entries);
+    if (page.rawEntryCount === 0) break;
+    offset += ACCOUNT_PAGE_LIMIT_MAX;
+    if (offset >= page.total) break;
+  }
+  return { memberId, entries, total, rawEntryCount };
 }
 
 /**
