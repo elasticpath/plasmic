@@ -6,9 +6,8 @@ import {
   tuple,
 } from "@/wab/shared/common";
 import isObject from "lodash/isObject";
-import omit from "lodash/omit";
+import keysIn from "lodash/keysIn";
 import pick from "lodash/pick";
-import sortBy from "lodash/sortBy";
 import uniqBy from "lodash/uniqBy";
 
 export class Class {
@@ -171,12 +170,14 @@ export class MetaRuntime extends BaseRuntime {
               console.warn(`Error instantiating ${cls.name}: ${e}`);
             }
           }
-          inst = Object.assign(inst, args);
-
-          // If this args was from json bundle, then it will have the __type field.
-          // We remove it from our instance.
           if ("__type" in args) {
-            delete inst["__type"];
+            // This args is from a json bundle, so it has the __type field.
+            // Leave it out of the instance instead of deleting it afterwards,
+            // as the delete puts the instance into V8 dictionary mode.
+            const { __type, ...rest } = args as any;
+            inst = Object.assign(inst, rest);
+          } else {
+            inst = Object.assign(inst, args);
           }
 
           inst.uid = this.mkUid();
@@ -190,7 +191,7 @@ export class MetaRuntime extends BaseRuntime {
     if (this.clsToFieldsCache.has(cls)) {
       return ensure(
         this.clsToFieldsCache.get(cls),
-        `Class ${cls} does not exist in clsToFieldsCache`
+        () => `Class ${cls} does not exist in clsToFieldsCache`
       );
     }
 
@@ -209,7 +210,7 @@ export class MetaRuntime extends BaseRuntime {
     if (this.clsToFieldKeysCache.has(cls)) {
       return ensure(
         this.clsToFieldKeysCache.get(cls),
-        `Class ${cls} does not exist in clsToFieldKeysCache`
+        () => `Class ${cls} does not exist in clsToFieldKeysCache`
       );
     }
 
@@ -223,7 +224,7 @@ export class MetaRuntime extends BaseRuntime {
     if (this.clsToTransientFieldKeysCache.has(cls)) {
       return ensure(
         this.clsToTransientFieldKeysCache.get(cls),
-        `Class ${cls} does not exist in clsToPersistentFieldKeysCache`
+        () => `Class ${cls} does not exist in clsToPersistentFieldKeysCache`
       );
     }
 
@@ -364,12 +365,16 @@ export function withoutUids(
         }
         seen[uid] = counter++;
       }
-      return Object.fromEntries(
-        sortBy(
-          Object.entries(includeUids ? x : omit(x, "uid", "uuid")),
-          ([k, v]) => k
-        ).map(([k, v]) => tuple(k, rec(v)))
-      );
+      // omit and sortBy are slow on large sites. keysIn also lists inherited keys.
+      // Every value is read before uid and uuid are dropped, so a getter that
+      // throws still throws.
+      const entries = includeUids
+        ? Object.entries(x)
+        : keysIn(x)
+            .map((k) => tuple(k, x[k]))
+            .filter(([k]) => k !== "uid" && k !== "uuid");
+      entries.sort(([k1], [k2]) => (k1 < k2 ? -1 : k1 > k2 ? 1 : 0));
+      return Object.fromEntries(entries.map(([k, v]) => tuple(k, rec(v))));
     } else {
       return x;
     }

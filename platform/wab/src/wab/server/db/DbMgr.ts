@@ -1390,22 +1390,16 @@ export class DbMgr implements MigrationDbMgr {
    */
   async getAffiliatedTeams() {
     const userId = this.checkNormalUser();
+    const permissions = await this.permissions().find({
+      select: ["teamId"],
+      where: { userId, ...excludeDeleted() },
+    });
+    const teamIds = _.uniq(withoutNils(permissions.map((p) => p.teamId)));
+    if (teamIds.length === 0) {
+      return [];
+    }
     return this._queryTeams({}, false)
-      .innerJoin(
-        Permission,
-        "perm",
-        "perm.teamId = t.id or perm.teamId = pt.id"
-      )
-      .andWhere(
-        `
-          t.deletedAt is null
-          and
-          perm.userId = :userId
-          and
-          perm.deletedAt is null
-          `,
-        { userId }
-      )
+      .andWhere([{ id: In(teamIds) }, { parentTeamId: In(teamIds) }])
       .getMany();
   }
 
@@ -2323,30 +2317,31 @@ export class DbMgr implements MigrationDbMgr {
    */
   async getAffiliatedWorkspaces(teamId?: TeamId, userId?: UserId) {
     userId = userId ?? this.checkNormalUser();
-    let qb = this._queryWorkspaces({})
-      .innerJoin(
-        Permission,
-        "perm",
-        `
-          perm.workspaceId = w.id
-          or
-          perm.teamId = w.teamId
-          or
-          perm.teamId = t.parentTeamId
-        `
-      )
-      .andWhere(
-        `
-          w.deletedAt is null
-          and
-          perm.userId = :userId
-          and
-          perm.accessLevel <> 'blocked'
-          and
-          perm.deletedAt is null
-          `,
-        { userId }
-      );
+    const permissions = await this.permissions().find({
+      select: ["workspaceId", "teamId"],
+      where: { userId, accessLevel: Not("blocked"), ...excludeDeleted() },
+    });
+    const workspaceIds = _.uniq(
+      withoutNils(permissions.map((p) => p.workspaceId))
+    );
+    const teamIds = _.uniq(withoutNils(permissions.map((p) => p.teamId)));
+    const childTeams = teamIds.length
+      ? await this.teams().find({
+          select: ["id"],
+          where: { parentTeamId: In(teamIds) },
+        })
+      : [];
+    const affiliatedTeamIds = _.uniq([
+      ...teamIds,
+      ...childTeams.map((t) => t.id),
+    ]);
+    if (workspaceIds.length === 0 && affiliatedTeamIds.length === 0) {
+      return [];
+    }
+    let qb = this._queryWorkspaces({}).andWhere([
+      { id: In(workspaceIds) },
+      { teamId: In(affiliatedTeamIds) },
+    ]);
     if (teamId) {
       qb = qb.andWhere(`w.teamId = :teamId`).setParameters({ teamId: teamId });
     }
@@ -2851,28 +2846,19 @@ export class DbMgr implements MigrationDbMgr {
     // filter by it, than to do a giant join between permission, workspace,
     // project, and team.
     const workspaces = await this.getAffiliatedWorkspaces(undefined, userId);
+    const permissions = await this.permissions().find({
+      select: ["projectId"],
+      where: { userId, accessLevel: Not("blocked"), ...excludeDeleted() },
+    });
+    const projectIds = _.uniq(withoutNils(permissions.map((p) => p.projectId)));
+    if (workspaces.length === 0 && projectIds.length === 0) {
+      return [];
+    }
     return this._queryProjects({})
-      .leftJoin(Permission, "perm", "perm.projectId = p.id")
-      .andWhere(
-        `
-          (
-            p.workspaceId IN (:...workspaceIds) OR
-            (
-              perm.userId = :userId
-              and
-              perm.accessLevel <> 'blocked'
-              and
-              perm.deletedAt is null
-            )
-          )
-        `,
-        {
-          userId,
-          // We append an invalid 'x' value so we don't end up with an empty list
-          // (resulting in invalid SQL).
-          workspaceIds: [...workspaces.map((w) => w.id), "x"],
-        }
-      )
+      .andWhere([
+        { workspaceId: In(workspaces.map((w) => w.id)) },
+        { id: In(projectIds) },
+      ])
       .getMany();
   }
 
