@@ -1,29 +1,16 @@
 /**
- * Browser-side proxy fetch for the EP server functions.
+ * Browser-side proxy fetch for the EP server functions. The registered `ep*`
+ * functions run in the browser with no AsyncLocalStorage session, so they POST
+ * to a route on the consumer app that reads the better-auth session cookie SSR
+ * also reads, dispatches, and returns the JSON result.
  *
- * Why this exists: in Studio canvas (and the data-query "Configure"
- * preview panel) the registered `ep*` server functions run in a browser
- * context with no AsyncLocalStorage session and no reachable
- * EPCommerceProvider client (the picker preview runs in the Studio
- * main frame, separate from the canvas iframe). To still resolve real
- * data we POST to a route on the consumer app that:
- *   1. reads the better-auth session cookie that SSR also reads,
- *   2. dispatches to the matching `ep*` server function, and
- *   3. returns its JSON result.
- *
- * SSR (Node) NEVER hits this code path — `getCurrentEpSession()` is
- * already populated by `withEpSession`, so the function fetches EP
- * directly. The proxy is strictly a browser fallback, with zero
- * impact on the shopper-facing first render.
- *
- * Cross-origin note: when invoked from the canvas iframe (same origin
- * as the consumer app), the relative URL works without CORS. When
- * invoked from Studio's main frame at a different origin, set
- * `window.__epProxyOrigin = "http://localhost:3456"` (or equivalent)
- * before the call — the proxy route's CORS headers must allow that
- * origin and `credentials`.
+ * SSR never reaches this: `getCurrentEpSession()` is already populated, so the
+ * function fetches EP directly.
  */
-import { readEpErrorCode, resolveConsumerOrigin } from "../browser-call";
+import { readEpErrorCode } from "../browser-call";
+import { makeEpCallError, readEpCallError } from "./call-error";
+import { callEpDesign } from "./design-fetch";
+import { currentEpDesignRealm } from "./design-realm";
 
 const PROXY_PATH = "/api/ep/proxy";
 
@@ -32,13 +19,7 @@ export function shouldUseProxy(): boolean {
 }
 
 function resolveProxyUrl(fnName: string): string {
-  return `${resolveConsumerOrigin()}${PROXY_PATH}/${fnName}`;
-}
-
-interface ProxyErrorInfo {
-  message: string;
-  code?: string;
-  correlationId?: string;
+  return `${PROXY_PATH}/${fnName}`;
 }
 
 /**
@@ -48,61 +29,6 @@ interface ProxyErrorInfo {
  */
 export function epProxyErrorCode(err: unknown): string | undefined {
   return readEpErrorCode(err);
-}
-
-function proxyError(info: ProxyErrorInfo): Error {
-  const err = new Error(info.message) as Error & {
-    code?: string;
-    correlationId?: string;
-  };
-  if (info.code) err.code = info.code;
-  if (info.correlationId) err.correlationId = info.correlationId;
-  return err;
-}
-
-async function readProxyError(
-  res: Response,
-  fnName: string
-): Promise<ProxyErrorInfo> {
-  const info: ProxyErrorInfo = {
-    message: `ep proxy ${fnName} failed (${res.status})`,
-  };
-  // A storefront that never mounted the proxy route answers with its own 404
-  // page, so there is no body to read a code out of. Without a code of its own
-  // that case is indistinguishable from the route failing, and callers can
-  // only branch on the code.
-  if (res.status === 404) {
-    info.code = "route_not_found";
-  }
-  try {
-    const body = (await res.json()) as {
-      message?: string;
-      code?: string;
-      correlationId?: string;
-      error?: string | { message?: string };
-    };
-    if (typeof body.code === "string" && body.code.trim()) {
-      info.code = body.code;
-    }
-    if (typeof body.correlationId === "string" && body.correlationId.trim()) {
-      info.correlationId = body.correlationId;
-    }
-    if (typeof body.message === "string" && body.message.trim()) {
-      info.message = body.message;
-    } else if (typeof body.error === "string" && body.error.trim()) {
-      info.message = body.error;
-    } else if (
-      body.error &&
-      typeof body.error === "object" &&
-      typeof body.error.message === "string" &&
-      body.error.message.trim()
-    ) {
-      info.message = body.error.message;
-    }
-  } catch {
-    // ignore parse failures — use status fallback
-  }
-  return info;
 }
 
 /**
@@ -124,6 +50,12 @@ export function callEpProxy<T>(
   // Detect "fallback was passed" via `arguments` on a sync wrapper —
   // `arguments` is illegal inside async functions under our TS target.
   const softFail = arguments.length >= 3;
+  // One fork, taken before the request. Design time never reaches the session
+  // proxy and a proxy failure never reaches the design route.
+  const realm = currentEpDesignRealm();
+  if (realm) {
+    return callEpDesign(fnName, args, fallback as T, realm);
+  }
   return callEpProxyImpl(fnName, args, softFail, fallback as T);
 }
 
@@ -150,7 +82,7 @@ async function callEpProxyImpl<T>(
   }
   if (!res.ok) {
     if (softFail) return fallback;
-    throw proxyError(await readProxyError(res, fnName));
+    throw makeEpCallError(await readEpCallError(res, `ep proxy ${fnName}`));
   }
   try {
     return (await res.json()) as T;

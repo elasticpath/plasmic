@@ -206,15 +206,4 @@ describe("createEpIdentityClient in a Studio canvas", () => {
     expect(stub.calls[0].url).toBe("/api/ep/ep/anonymous");
   });
 
-  it("follows the pin when the page is served from another origin", async () => {
-    (globalThis as any).window = { __epProxyOrigin: "http://localhost:3456/" };
-    const stub = fetchStub(() => json(ENVELOPE));
-    const client = createEpIdentityClient({ fetch: stub.fetch });
-
-    await client.signInAnonymously();
-
-    expect(stub.calls[0].url).toBe(
-      "http://localhost:3456/api/ep/ep/anonymous"
-    );
-  });
 });

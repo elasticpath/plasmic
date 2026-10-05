@@ -1,4 +1,4 @@
-import { readEpErrorCode, resolveConsumerOrigin } from "../browser-call";
+import { readEpErrorCode } from "../browser-call";
 import {
   EP_IDENTITY_OPERATION_NAMES,
   EP_IDENTITY_ROUTES,
@@ -68,7 +68,7 @@ export function createEpIdentityClient(
     input?: unknown
   ): Promise<unknown> {
     const route = EP_IDENTITY_ROUTES[operation];
-    const url = `${resolveConsumerOrigin()}${basePath}${route.path}`;
+    const url = `${basePath}${route.path}`;
 
     const init: RequestInit = { method: route.method, credentials: "include" };
     if (route.method === "POST") {
