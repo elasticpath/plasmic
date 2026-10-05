@@ -16,7 +16,11 @@ import {
   walkDependencyTree,
 } from "@/wab/shared/core/project-deps";
 import { expandRuleSets } from "@/wab/shared/core/styles";
-import { FinalToken, toFinalToken } from "@/wab/shared/core/tokens";
+import {
+  FinalToken,
+  setMembership,
+  toFinalToken,
+} from "@/wab/shared/core/tokens";
 import { isTplVariantable } from "@/wab/shared/core/tpls";
 import { maybeComputedFn } from "@/wab/shared/mobx-util";
 import {
@@ -142,19 +146,27 @@ export const siteStyleTokensAllDepsDict = maybeComputedFn(
     keyBy(siteStyleTokensAllDeps(site), (t) => t.uuid)
 );
 
+function toFinalStyleTokens(
+  tokens: ReadonlyArray<StyleToken>,
+  site: Site
+): FinalToken<StyleToken>[] {
+  const isMember = setMembership();
+  return tokens.map((token) => toFinalToken(token, site, isMember));
+}
+
 export const siteFinalStyleTokens = maybeComputedFn(
   (site: Site): ReadonlyArray<FinalToken<StyleToken>> =>
-    siteStyleTokens(site).map((token) => toFinalToken(token, site))
+    toFinalStyleTokens(siteStyleTokens(site), site)
 );
 
 export const siteFinalStyleTokensDirectDeps = maybeComputedFn(
   (site: Site): ReadonlyArray<FinalToken<StyleToken>> =>
-    siteStyleTokensDirectDeps(site).map((token) => toFinalToken(token, site))
+    toFinalStyleTokens(siteStyleTokensDirectDeps(site), site)
 );
 
 export const siteFinalStyleTokensAllDeps = maybeComputedFn(
   (site: Site): ReadonlyArray<FinalToken<StyleToken>> =>
-    siteStyleTokensAllDeps(site).map((token) => toFinalToken(token, site))
+    toFinalStyleTokens(siteStyleTokensAllDeps(site), site)
 );
 
 export const siteFinalStyleTokensAllDepsDict = maybeComputedFn(
@@ -248,30 +260,38 @@ const usedTokensForExp = maybeComputedFn(function usedTokensForExp(
   tpl: TplNode
 ): ReadonlyArray<StyleToken> {
   const exp = readonlyRSH(rs, tpl);
-  const allTokensDict = siteFinalStyleTokensAllDepsDict(site);
+  let allTokensDict:
+    | ReturnType<typeof siteFinalStyleTokensAllDepsDict>
+    | undefined;
   const collector = new Set<StyleToken>();
   for (const prop of exp.props()) {
     const val = exp.getRaw(prop);
     if (val) {
       const refTokenIds = extractAllReferencedTokenIds(val);
-      const refTokens = withoutNils(refTokenIds.map((x) => allTokensDict[x]));
+      if (refTokenIds.length === 0) {
+        continue;
+      }
+      const dict = (allTokensDict ??= siteFinalStyleTokensAllDepsDict(site));
+      const refTokens = withoutNils(refTokenIds.map((x) => dict[x]));
       xAddAll(
         collector,
         refTokens.map((t) => t.base)
       );
       for (const token of refTokens) {
-        xAddAll(collector, usedTokensForToken(site, allTokensDict[token.uuid]));
+        xAddAll(collector, usedTokensForToken(site, dict[token.uuid], dict));
       }
     }
   }
   return [...collector.keys()];
 });
 
+// `site` is unused. Without an observable argument `maybeComputedFn` does not
+// cache this in Studio.
 const usedTokensForToken = maybeComputedFn(function collectUsedTokensForToken(
   site: Site,
-  token: FinalToken<StyleToken>
+  token: FinalToken<StyleToken>,
+  allTokensDict: ReturnType<typeof siteFinalStyleTokensAllDepsDict>
 ): ReadonlyArray<StyleToken> {
-  const allTokensDict = siteFinalStyleTokensAllDepsDict(site);
   const collector = new Set<StyleToken>();
   let sub = tryParseTokenRef(token.value, allTokensDict);
   while (sub) {

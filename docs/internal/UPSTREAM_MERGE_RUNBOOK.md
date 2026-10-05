@@ -94,6 +94,13 @@ change, take upstream's version and delete its check from `ep-fork-integrity.spe
 - `platform/wab/src/wab/shared/model/model-meta.ts`: the model initializer leaves
   `__type` out of bundle-built instances instead of deleting it, and the field-cache hit
   path builds its `ensure` message lazily (#644).
+- `platform/wab/src/wab/shared/core/site-style-tokens.ts`, `shared/cached-selectors.ts`,
+  `shared/core/tokens.ts` and `shared/site-diffs/index.ts`: `usedTokensForExp` and
+  `tplToUsedImageAssets` build their all-deps dictionary at most once per call, and only
+  when they find a ref to resolve. `compareSites` builds the all-deps token dictionary
+  once per site per call and passes it down through `hashRuleSet` and `hashExpr`. Final
+  tokens are classified with set lookups through the `isMember` argument of
+  `toFinalToken` (#643).
 
 **Sentry → Datadog (fork-wide)**
 

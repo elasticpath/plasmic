@@ -498,5 +498,40 @@ describe("EP Fork Integrity", () => {
       expect(src).toContain("const { __type, ...rest } =");
       expect(src).not.toContain('delete inst["__type"]');
     });
+
+    it("usedTokensForExp builds the token dictionary only when a ref needs it", () => {
+      const src = readFile(
+        "platform/wab/src/wab/shared/core/site-style-tokens.ts"
+      );
+      expect(src).not.toMatch(
+        /const\s+allTokensDict\s*=\s*siteFinalStyleTokensAllDepsDict\(/
+      );
+      expect(src).toMatch(/\?\?=\s*siteFinalStyleTokensAllDepsDict\(/);
+    });
+
+    it("tplToUsedImageAssets builds the asset dictionary only when a ref needs it", () => {
+      const src = readFile("platform/wab/src/wab/shared/cached-selectors.ts");
+      expect(src).not.toMatch(
+        /const\s+allAssetsDict\s*=\s*siteToAllImageAssetsDict\(/
+      );
+      expect(src).toMatch(/allAssetsDict\s*\?\?=\s*siteToAllImageAssetsDict\(/);
+    });
+
+    it("compareSites builds the token dictionary once per site", () => {
+      const src = readFile("platform/wab/src/wab/shared/site-diffs/index.ts");
+      expect(src).not.toMatch(
+        /const\s+allTokensDict\s*=\s*siteFinalStyleTokensAllDepsDict\(/
+      );
+      expect(src).toContain("getTokensDict");
+    });
+
+    it("final style tokens are classified with set lookups", () => {
+      expect(
+        readFile("platform/wab/src/wab/shared/core/tokens.ts")
+      ).toMatch(/export function setMembership\(/);
+      expect(
+        readFile("platform/wab/src/wab/shared/core/site-style-tokens.ts")
+      ).toMatch(/setMembership\(\)/);
+    });
   });
 });

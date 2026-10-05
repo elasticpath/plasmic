@@ -271,29 +271,52 @@ export function cloneToken(token: Token): Token {
     .result();
 }
 
+export type TokenMembership = (
+  tokens: ReadonlyArray<Token>,
+  token: Token
+) => boolean;
+
+const arrayMembership: TokenMembership = (tokens, token) =>
+  tokens.includes(token);
+
+/** For a batch of `toFinalToken` calls on a site that does not change. */
+export function setMembership(): TokenMembership {
+  const sets = new Map<ReadonlyArray<Token>, Set<Token>>();
+  return (tokens, token) => {
+    let set = sets.get(tokens);
+    if (!set) {
+      set = new Set(tokens);
+      sets.set(tokens, set);
+    }
+    return set.has(token);
+  };
+}
+
 export function toFinalToken(
   token: DataToken,
-  site: Site
+  site: Site,
+  isMember?: TokenMembership
 ): FinalToken<DataToken>;
 export function toFinalToken(
   token: StyleToken,
-  site: Site
+  site: Site,
+  isMember?: TokenMembership
 ): FinalToken<StyleToken>;
-export function toFinalToken(token: Token, site: Site) {
-  const isLocal = isKnownStyleToken(token)
-    ? site.styleTokens.includes(token)
-    : site.dataTokens.includes(token);
+export function toFinalToken(
+  token: Token,
+  site: Site,
+  isMember: TokenMembership = arrayMembership
+) {
+  const tokensOf = (s: Site) =>
+    isKnownStyleToken(token) ? s.styleTokens : s.dataTokens;
+  const isLocal = isMember(tokensOf(site), token);
 
   if (isLocal && token.isRegistered) {
     return new OverrideableToken(token, site);
   } else if (isLocal) {
     return new MutableToken(token);
   } else if (
-    site.projectDependencies.some((dep) =>
-      isKnownStyleToken(token)
-        ? dep.site.styleTokens.includes(token)
-        : dep.site.dataTokens.includes(token)
-    )
+    site.projectDependencies.some((dep) => isMember(tokensOf(dep.site), token))
   ) {
     return new OverrideableToken(token, site);
   } else {
