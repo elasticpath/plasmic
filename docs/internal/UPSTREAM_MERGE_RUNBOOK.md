@@ -91,6 +91,9 @@ change, take upstream's version and delete its check from `ep-fork-integrity.spe
   `walkFieldValue` without building a context per value (#642).
 - `platform/wab/src/wab/shared/model/model-meta.ts`: `withoutUids` reads and sorts
   each object's keys itself instead of calling lodash `omit` and `sortBy` (#650).
+- `platform/wab/src/wab/shared/model/model-meta.ts`: the model initializer leaves
+  `__type` out of bundle-built instances instead of deleting it, and the field-cache hit
+  path builds its `ensure` message lazily (#644).
 
 **Sentry → Datadog (fork-wide)**
 

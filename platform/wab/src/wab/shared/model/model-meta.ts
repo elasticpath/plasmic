@@ -170,12 +170,14 @@ export class MetaRuntime extends BaseRuntime {
               console.warn(`Error instantiating ${cls.name}: ${e}`);
             }
           }
-          inst = Object.assign(inst, args);
-
-          // If this args was from json bundle, then it will have the __type field.
-          // We remove it from our instance.
           if ("__type" in args) {
-            delete inst["__type"];
+            // This args is from a json bundle, so it has the __type field.
+            // Leave it out of the instance instead of deleting it afterwards,
+            // as the delete puts the instance into V8 dictionary mode.
+            const { __type, ...rest } = args as any;
+            inst = Object.assign(inst, rest);
+          } else {
+            inst = Object.assign(inst, args);
           }
 
           inst.uid = this.mkUid();
@@ -189,7 +191,7 @@ export class MetaRuntime extends BaseRuntime {
     if (this.clsToFieldsCache.has(cls)) {
       return ensure(
         this.clsToFieldsCache.get(cls),
-        `Class ${cls} does not exist in clsToFieldsCache`
+        () => `Class ${cls} does not exist in clsToFieldsCache`
       );
     }
 
@@ -208,7 +210,7 @@ export class MetaRuntime extends BaseRuntime {
     if (this.clsToFieldKeysCache.has(cls)) {
       return ensure(
         this.clsToFieldKeysCache.get(cls),
-        `Class ${cls} does not exist in clsToFieldKeysCache`
+        () => `Class ${cls} does not exist in clsToFieldKeysCache`
       );
     }
 
@@ -222,7 +224,7 @@ export class MetaRuntime extends BaseRuntime {
     if (this.clsToTransientFieldKeysCache.has(cls)) {
       return ensure(
         this.clsToTransientFieldKeysCache.get(cls),
-        `Class ${cls} does not exist in clsToPersistentFieldKeysCache`
+        () => `Class ${cls} does not exist in clsToPersistentFieldKeysCache`
       );
     }
 
