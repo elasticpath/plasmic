@@ -38,6 +38,11 @@ state. A further call while that selection is still in progress returns
 without another request or reload. `$ctx.account.isSelecting` is true only
 while that call is in progress, including its immediate reload, and is false
 again when the call resolves or rejects. It does not replace `isLoading`.
+While the reload after a selection, including its retry, is unsettled,
+`$ctx.account.accountRoster` stays the last roster that loaded, so a selector
+outside an Account Gate stays on screen. `isLoading` stays true, Account Gates
+stay closed, and the previous organisation is not published as the current
+one. The initial load, login reload, and logout reload publish an empty roster.
 
 ### Changed
 
