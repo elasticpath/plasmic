@@ -488,7 +488,9 @@ describe("EP Fork Integrity", () => {
     });
 
     it("withoutUids builds its copy without lodash omit (#650)", () => {
-      expect(modelMeta()).not.toContain('omit(x, "uid", "uuid")');
+      const src = modelMeta();
+      expect(src).not.toContain('omit(x, "uid", "uuid")');
+      expect(src).toContain("keysIn(x)");
     });
   });
 });

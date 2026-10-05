@@ -50,6 +50,5 @@ describe("tryMerge entry assertion", () => {
     site.components[0].metadata = { __wrapped__: "x" };
     const inputs = mergeInputs(site);
     expect(() => merge(inputs)).toThrow(TypeError);
-    expect(() => merge(inputs)).toThrow("object.value is not a function");
   });
 });

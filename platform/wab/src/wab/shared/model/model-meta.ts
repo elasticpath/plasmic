@@ -363,9 +363,9 @@ export function withoutUids(
         }
         seen[uid] = counter++;
       }
-      // omit and sortBy are slow on large sites. keysIn lists the string keys
-      // that omit copies, and each one is read, uid and uuid included, as omit
-      // reads them.
+      // omit and sortBy are slow on large sites. keysIn also lists inherited keys.
+      // Every value is read before uid and uuid are dropped, so a getter that
+      // throws still throws.
       const entries = includeUids
         ? Object.entries(x)
         : keysIn(x)
