@@ -282,14 +282,21 @@ const usedTokensForExp = maybeComputedFn(function usedTokensForExp(
         refTokens.map((t) => t.base)
       );
       for (const token of refTokens) {
-        xAddAll(collector, collectUsedTokensForToken(dict[token.uuid], dict));
+        xAddAll(
+          collector,
+          usedTokensForToken(site, dict[token.uuid], dict)
+        );
       }
     }
   }
   return [...collector.keys()];
 });
 
-function collectUsedTokensForToken(
+// The caller passes the dict it built, so this does not build it again. `site`
+// is not read. It is the argument that makes Studio cache this by arguments,
+// because `maybeComputedFn` only caches when an argument is observable.
+const usedTokensForToken = maybeComputedFn(function collectUsedTokensForToken(
+  site: Site,
   token: FinalToken<StyleToken>,
   allTokensDict: ReturnType<typeof siteFinalStyleTokensAllDepsDict>
 ): ReadonlyArray<StyleToken> {
@@ -304,4 +311,4 @@ function collectUsedTokensForToken(
     }
   }
   return [...collector.keys()];
-}
+});
