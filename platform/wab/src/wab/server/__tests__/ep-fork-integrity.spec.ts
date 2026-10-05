@@ -487,7 +487,7 @@ describe("EP Fork Integrity", () => {
       expect(modelTreeUtil()).toContain("function walkFieldValue(");
     });
 
-    it("withoutUids builds its copy without lodash omit (#650)", () => {
+    it("withoutUids builds its copy without lodash omit", () => {
       const src = modelMeta();
       expect(src).not.toContain('omit(x, "uid", "uuid")');
       expect(src).toContain("keysIn(x)");
