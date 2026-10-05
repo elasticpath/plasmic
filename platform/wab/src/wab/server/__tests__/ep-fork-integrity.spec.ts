@@ -476,6 +476,8 @@ describe("EP Fork Integrity", () => {
     // merge drops one, no other test fails. Branch merges only become slower.
     const modelTreeUtil = () =>
       readFile("platform/wab/src/wab/shared/model/model-tree-util.ts");
+    const modelMeta = () =>
+      readFile("platform/wab/src/wab/shared/model/model-meta.ts");
 
     it("nextCtx builds keyPath without lodash zip (#642)", () => {
       expect(modelTreeUtil()).not.toContain("zip(ctx.path");
@@ -483,6 +485,10 @@ describe("EP Fork Integrity", () => {
 
     it("walkModelTree walks values without a context per value (#642)", () => {
       expect(modelTreeUtil()).toContain("function walkFieldValue(");
+    });
+
+    it("withoutUids builds its copy without lodash omit (#650)", () => {
+      expect(modelMeta()).not.toContain('omit(x, "uid", "uuid")');
     });
   });
 });
