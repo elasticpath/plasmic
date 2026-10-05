@@ -2,7 +2,9 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: ".",
-  testMatch: "*.spec.ts",
+  // Not *.spec.ts: the repository-wide jest run matches that by name, and its
+  // ignore list is overridden on the CI command line.
+  testMatch: "*.e2e.ts",
   fullyParallel: false,
   workers: 1,
   retries: 0,
