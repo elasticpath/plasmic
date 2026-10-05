@@ -126,6 +126,9 @@ export function createEpAuthRoutes(epAuth: EpAuth): {
 };
 
 // @public (undocumented)
+export function createEpDesignRoutes(epAuth: EpAuth): EpDesignRoutes;
+
+// @public (undocumented)
 export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes;
 
 // @public (undocumented)
@@ -224,6 +227,9 @@ export interface EpAuth {
         basePath: string;
         trustedOrigins: string[];
         hostAllowlist: readonly string[];
+        clientId: string;
+        host: string;
+        resolveConfig?: EpResolveConfig;
         cartMergeStrategy: "merge" | "replace" | "prompt";
         checkout?: {
             sessionSecret: string;
@@ -323,6 +329,14 @@ export interface EpCtx {
     host: string;
     // (undocumented)
     locale?: string;
+}
+
+// @public (undocumented)
+export interface EpDesignRoutes {
+    // (undocumented)
+    handle: (request: Request, context: DesignRouteContext) => Promise<Response>;
+    // (undocumented)
+    options: () => Response;
 }
 
 // @public
