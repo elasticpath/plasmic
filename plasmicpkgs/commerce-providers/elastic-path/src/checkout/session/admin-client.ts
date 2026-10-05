@@ -10,9 +10,12 @@
  * re-deriving it.
  */
 import { createShopperClient } from "@epcc-sdk/sdks-shopper";
+import type { Client } from "@epcc-sdk/sdks-shopper";
 import type { SessionHandlerContext } from "./types";
 
-export async function buildAdminEpClient(ctx: SessionHandlerContext) {
+export async function buildAdminEpClient(
+  ctx: SessionHandlerContext
+): Promise<Client> {
   const token = ctx.getClientCredentialsToken
     ? await ctx.getClientCredentialsToken()
     : "";

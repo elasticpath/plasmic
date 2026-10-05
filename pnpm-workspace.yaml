@@ -25,6 +25,9 @@ overrides:
   # typescript-json-schema bundles its compiler and pins to typescript ~5.9.3.
   # The repo 5.2.2 override above otherwise forces a resolution outside that range.
   "typescript-json-schema>typescript": "5.9.3"
+  # @arethetypeswrong/core pins its checker to typescript 5.6.1-rc and calls
+  # APIs 5.2.2 lacks (typeChecker.getSymbolFlags).
+  "@arethetypeswrong/core>typescript": "5.6.1-rc"
   "picomatch@2": "2.3.1"
   "antd@5": "5.12.8"
   "@radix-ui/react-popper": "1.1.3"

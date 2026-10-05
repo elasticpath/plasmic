@@ -14,6 +14,7 @@ import React, { useCallback, useImperativeHandle } from "react";
 import { Registerable } from "../registerable";
 import { MOCK_RANGE_DATA } from "./design-time-data";
 import type { RangeData } from "./design-time-data";
+import { useRange } from "react-instantsearch";
 
 type PreviewState = "auto" | "withData";
 
@@ -125,7 +126,6 @@ const EPRangeFilterInner = React.forwardRef<
     className?: string;
   }
 >(function EPRangeFilterInner({ children, attribute, className }, ref) {
-  const { useRange } = require("react-instantsearch");
   const { range, start, refine, canRefine } = useRange({ attribute });
 
   const handleSetRange = useCallback(

@@ -10,6 +10,7 @@ on:
       - 'platform/canvas-packages/**'
       - 'packages/**'
       - 'plasmicpkgs/**'
+      - 'build.mjs'
       - '.github/workflows/tests.yml'
       - '.github/actions/setup-env/**'
   pull_request:
@@ -20,6 +21,7 @@ on:
       - 'platform/canvas-packages/**'
       - 'packages/**'
       - 'plasmicpkgs/**'
+      - 'build.mjs'
       - '.github/workflows/tests.yml'
       - '.github/actions/setup-env/**'
 
@@ -324,6 +326,17 @@ jobs:
 
       - name: Build @plasmicapp/host and @plasmicpkgs/commerce
         run: pnpm lerna run build --scope '@plasmicapp/host' --scope '@plasmicpkgs/commerce'
+
+      # CI makes api-extractor fail on an uncommitted API report change.
+      - name: Build elastic-path
+        env:
+          CI: true
+        working-directory: plasmicpkgs/commerce-providers/elastic-path
+        run: pnpm build
+
+      - name: Verify elastic-path package
+        working-directory: plasmicpkgs/commerce-providers/elastic-path
+        run: pnpm verify:package
 
       - name: Run plasmicpkgs Jest tests
         env:

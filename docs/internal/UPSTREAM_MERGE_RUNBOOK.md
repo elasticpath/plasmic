@@ -77,12 +77,39 @@ check (`tryGetS3CacheEntry`), `htmlPreviewSemaphore` + `timedProxy` +
 `runWithServerTiming`. Collides regularly with upstream's OTel/metrics work in the same
 functions — layer upstream's additions inside EP's wrappers, don't choose sides.
 
+**Branch-merge performance (fork-first)**
+
+Elastic Path speedups from the "Branch merge performance" milestone (#642–#654). Each one
+goes upstream as its own PR once it has proven itself here. They change no behaviour, so
+a merge that takes upstream's side breaks nothing visibly: merges just get slower again.
+On conflict, keep the Elastic Path version of the functions below and apply upstream's
+other changes around them, including its prettier 3 reformat. Once upstream has the same
+change, take upstream's version and delete its check from `ep-fork-integrity.spec.ts`.
+
+- `platform/wab/src/wab/shared/model/model-tree-util.ts`: `nextCtx` builds `keyPath`
+  without lodash `zip`, and `walkModelTree` walks values through `walkInst` /
+  `walkFieldValue` without building a context per value (#642).
+- `platform/wab/src/wab/shared/model/model-meta.ts`: `withoutUids` reads and sorts
+  each object's keys itself instead of calling lodash `omit` and `sortBy` (#650).
+- `platform/wab/src/wab/shared/model/model-meta.ts`: the model initializer leaves
+  `__type` out of bundle-built instances instead of deleting it, and the field-cache hit
+  path builds its `ensure` message lazily (#644).
+
 **Sentry → Datadog (fork-wide)**
 
 EP replaced `Sentry.captureException`/`captureMessage` with
 `@/wab/server/observability/datadog` equivalents. Upstream error-handling refactors
 (e.g. the ts-failable→neverthrow migration) reintroduce Sentry calls — translate them
 back to Datadog on every merge.
+
+**`build.mjs` — the `--mjs` flag**
+
+EP-only opt-in flag for one subpath: emits `<name>.mjs` instead of `<name>.esm.js`,
+copies the rolled-up `<name>.d.ts` to `<name>.d.mts`, and validates split
+`import`/`require` types in `package.json`. The elastic-path `/server` entry needs it for
+native ESM. Without the flag the script behaves as upstream's, so take upstream's changes
+and re-apply the flag on top. It refuses the index entry on purpose (elastic-path
+ADR-0007).
 
 **Package manager: pnpm at root, yarn for `platform/*`**
 
@@ -97,6 +124,9 @@ EP-only divergences to preserve in `pnpm-workspace.yaml`:
 - `verifyDepsBeforeRun: false`. pnpm 11 otherwise prompts before every `pnpm run` and
   auto-answers yes when non-interactive, which lets a CI script reinstall `node_modules`
   mid-job.
+- `"@arethetypeswrong/core>typescript": "5.6.1-rc"`. The repo-wide `typescript` override
+  otherwise gives arethetypeswrong a compiler that lacks the APIs it calls, and the
+  elastic-path `verify:package` step crashes.
 
 One thing to check on every merge: new workspace packages must declare dependency ranges that
 the workspace version actually satisfies. yarn 1 linked a workspace package by name regardless

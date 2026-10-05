@@ -27,6 +27,7 @@ import {
   CurrentRefinementChip,
   CurrentRefinementType,
 } from "./design-time-data";
+import { useCurrentRefinements } from "react-instantsearch";
 
 type PreviewState = "auto" | "withData";
 
@@ -198,7 +199,6 @@ function EPCurrentRefinementsInner({
   excludedAttributes?: string[];
   className?: string;
 }) {
-  const { useCurrentRefinements } = require("react-instantsearch");
   const { items } = useCurrentRefinements({
     includedAttributes,
     excludedAttributes,

@@ -426,6 +426,30 @@ describe("EP Fork Integrity", () => {
     });
   });
 
+  describe("EP commerce package build", () => {
+    it("build.mjs keeps the --mjs flag", () => {
+      expect(readFile("build.mjs")).toContain('"--mjs"');
+    });
+
+    it("elastic-path builds /server with --mjs", () => {
+      const pkgJson = readJson(
+        "plasmicpkgs/commerce-providers/elastic-path/package.json"
+      );
+      expect(pkgJson.scripts["build:server"]).toContain("--mjs");
+    });
+
+    it("attw keeps its own typescript", () => {
+      expect(readFile("pnpm-workspace.yaml")).toContain(
+        '"@arethetypeswrong/core>typescript"'
+      );
+    });
+
+    it("CI builds and verifies the elastic-path package", () => {
+      const workflow = readFile(".github/workflows/tests.yml");
+      expect(workflow).toContain("pnpm verify:package");
+    });
+  });
+
   describe("EP Dockerfiles", () => {
     it("WAB Dockerfile exists", () => {
       expect(fileExists("platform/wab/Dockerfile")).toBe(true);
@@ -444,6 +468,35 @@ describe("EP Fork Integrity", () => {
       // The deployed image lookup must filter by container name, not use
       // index [0] which could be a sidecar (Fluent Bit, Datadog).
       expect(workflow).toContain("name=='wab'");
+    });
+  });
+
+  describe("Elastic Path branch-merge performance (not yet upstream)", () => {
+    // These checks guard speedups that are not upstream yet. If an upstream
+    // merge drops one, no other test fails. Branch merges only become slower.
+    const modelTreeUtil = () =>
+      readFile("platform/wab/src/wab/shared/model/model-tree-util.ts");
+    const modelMeta = () =>
+      readFile("platform/wab/src/wab/shared/model/model-meta.ts");
+
+    it("nextCtx builds keyPath without lodash zip", () => {
+      expect(modelTreeUtil()).not.toContain("zip(ctx.path");
+    });
+
+    it("walkModelTree walks values without a context per value", () => {
+      expect(modelTreeUtil()).toContain("function walkFieldValue(");
+    });
+
+    it("withoutUids builds its copy without lodash omit", () => {
+      const src = modelMeta();
+      expect(src).not.toContain('omit(x, "uid", "uuid")');
+      expect(src).toContain("keysIn(x)");
+    });
+
+    it("model initializer leaves __type out instead of deleting it", () => {
+      const src = modelMeta();
+      expect(src).toContain("const { __type, ...rest } =");
+      expect(src).not.toContain('delete inst["__type"]');
     });
   });
 });

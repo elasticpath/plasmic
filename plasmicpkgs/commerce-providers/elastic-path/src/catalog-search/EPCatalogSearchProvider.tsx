@@ -23,6 +23,8 @@ import { useHeadlessStyling } from "./headless-styling";
 import { createMultiSearchClient } from "./multi-search-client";
 import { catalogSearchErrorCopy } from "./search-error-copy";
 import { readEpErrorCode } from "../browser-call";
+import { Configure, InstantSearch, useInstantSearch } from "react-instantsearch";
+import * as catalogSearchAdapterModule from "@elasticpath/catalog-search-instantsearch-adapter";
 
 type PreviewState = "auto" | "withData" | "loading" | "empty" | "error";
 
@@ -251,11 +253,10 @@ function EPCatalogSearchProviderInner(props: {
   // Create the search client from the EP adapter
   const searchClient = useMemo(() => {
     try {
-      // Dynamic require — the adapter is a default export.
       // The published 0.0.5 build ships an esbuild __toESM(..., 1)
       // double-wrap, so `mod.default` is `{ default: <class>, __esModule: true }`
       // instead of the class itself. Unwrap defensively to handle both shapes.
-      const mod = require("@elasticpath/catalog-search-instantsearch-adapter");
+      const mod = catalogSearchAdapterModule as any;
       const CatalogSearchInstantSearchAdapter =
         typeof mod.default === "function"
           ? mod.default
@@ -305,9 +306,6 @@ function EPCatalogSearchProviderInner(props: {
     );
   }
 
-  // Dynamic require to avoid hard dependency
-  const { InstantSearch, Configure } = require("react-instantsearch");
-
   return (
     <InstantSearch
       searchClient={searchClient}
@@ -349,7 +347,6 @@ function EPCatalogSearchBody(props: {
   currencyCode: string;
 }) {
   const { children, errorContent, className, currencyCode } = props;
-  const { useInstantSearch } = require("react-instantsearch");
   const { status, error } = useInstantSearch({ catchError: true });
   const failed = status === "error";
 

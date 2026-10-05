@@ -21,6 +21,16 @@ const SESSION = {
   clientId: "cid",
 };
 
+const page = (count: number, from = 0) => ({
+  data: {
+    data: Array.from({ length: count }, (_, i) => ({
+      id: `l${from + i}`,
+      type: "location",
+      attributes: { name: `Location ${from + i}`, slug: `loc-${from + i}` },
+    })),
+  },
+});
+
 beforeEach(() => {
   mockListLocations.mockReset();
   mockUse.mockReset();
@@ -41,17 +51,69 @@ describe("epGetLocations", () => {
 
     expect(result.map((l: any) => l.id)).toEqual(["l1", "l2"]);
     expect(mockListLocations).toHaveBeenCalledWith(
-      expect.objectContaining({ query: {} })
+      expect.objectContaining({
+        query: { "page[limit]": 100, "page[offset]": 0 },
+      })
     );
   });
 
-  it("filters by location type when one is given", async () => {
+  it("ignores a location type, which Elastic Path cannot filter on", async () => {
     mockListLocations.mockResolvedValue({ data: { data: [] } });
 
     await withEpSession(SESSION, () => epGetLocations({ type: "warehouse" }));
 
     expect(mockListLocations).toHaveBeenCalledWith(
-      expect.objectContaining({ query: { filter: "eq(type,warehouse)" } })
+      expect.objectContaining({
+        query: { "page[limit]": 100, "page[offset]": 0 },
+      })
+    );
+  });
+
+  it("reads every page of the list", async () => {
+    mockListLocations
+      .mockResolvedValueOnce(page(100))
+      .mockResolvedValueOnce(page(3, 100));
+
+    const result = await withEpSession(SESSION, () => epGetLocations());
+
+    expect(result).toHaveLength(103);
+    expect(result[102].attributes.slug).toBe("loc-102");
+    expect(mockListLocations.mock.calls.map(([arg]) => arg.query)).toEqual([
+      { "page[limit]": 100, "page[offset]": 0 },
+      { "page[limit]": 100, "page[offset]": 100 },
+    ]);
+  });
+
+  it("keeps one copy of a location that two pages return", async () => {
+    const second = page(3, 99);
+    mockListLocations
+      .mockResolvedValueOnce(page(100))
+      .mockResolvedValueOnce(second);
+
+    const result = await withEpSession(SESSION, () => epGetLocations());
+
+    expect(result).toHaveLength(102);
+    expect(result.filter((l: any) => l.id === "l99")).toHaveLength(1);
+  });
+
+  it("keeps the pages already read when a later page fails", async () => {
+    mockListLocations
+      .mockResolvedValueOnce(page(100))
+      .mockRejectedValueOnce(new Error("boom"));
+
+    const result = await withEpSession(SESSION, () => epGetLocations());
+
+    expect(result).toHaveLength(100);
+  });
+
+  it("stops at the furthest offset Elastic Path allows", async () => {
+    mockListLocations.mockImplementation(() => Promise.resolve(page(100)));
+
+    await withEpSession(SESSION, () => epGetLocations());
+
+    expect(mockListLocations).toHaveBeenCalledTimes(101);
+    expect(mockListLocations.mock.calls[100][0].query["page[offset]"]).toBe(
+      10_000
     );
   });
 

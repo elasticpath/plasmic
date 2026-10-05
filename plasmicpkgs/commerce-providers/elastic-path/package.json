@@ -2,44 +2,57 @@
   "name": "@elasticpath/plasmic-ep-commerce-elastic-path",
   "version": "0.8.0",
   "description": "Plasmic registration calls for elastic path commerce provider",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "module": "dist/plasmic-ep-commerce-elastic-path.esm.js",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "module": "./dist/index.esm.js",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/plasmic-ep-commerce-elastic-path.esm.js",
+      "import": "./dist/index.esm.js",
       "require": "./dist/index.js"
     },
     "./server": {
-      "types": "./dist/server.d.ts",
-      "import": "./dist/server.mjs",
-      "require": "./dist/server.js"
+      "import": {
+        "types": "./dist/server.d.mts",
+        "default": "./dist/server.mjs"
+      },
+      "require": {
+        "types": "./dist/server.d.ts",
+        "default": "./dist/server.js"
+      }
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "server": [
+        "./dist/server.d.ts"
+      ]
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsdx build && node build-server.mjs",
-    "start": "tsdx watch",
-    "test": "TEST_CWD=`pwd` pnpm -w test --passWithNoTests && pnpm test:vitest",
+    "build": "rm -rf dist && pnpm build:types && pnpm build:index && pnpm build:server",
+    "build:types": "tsc",
+    "build:index": "node ../../../build.mjs ./src/index.tsx --use-client",
+    "build:server": "node ../../../build.mjs ./src/server.ts --mjs",
+    "start": "tsc && (tsc --watch --preserveWatchOutput & node ../../../build.mjs ./src/index.tsx --use-client --watch & node ../../../build.mjs ./src/server.ts --mjs --watch & wait)",
+    "test": "NODE_OPTIONS=--experimental-vm-modules TEST_CWD=`pwd` pnpm -w test --passWithNoTests && pnpm test:vitest",
     "test:vitest": "vitest run",
-    "lint": "tsdx lint",
-    "prepublishOnly": "npm run build && npx --yes publint --pack npm",
-    "verify:package": "npx --yes publint --pack npm && npx --yes @arethetypeswrong/cli --pack",
-    "size": "size-limit",
-    "analyze": "size-limit --why"
+    "prepublishOnly": "npm run build && npm run verify:package",
+    "verify:package": "node scripts/verify-package.mjs"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
     "@plasmicapp/host": "2.0.15",
     "@plasmicapp/query": "0.1.87",
     "@types/debounce": "^1.2.4",
     "@types/js-cookie": "^3.0.1",
     "@types/node": "^14.0.26",
+    "publint": "0.3.24",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "tsdx": "^0.14.1"
+    "react-dom": "^18.2.0"
   },
   "peerDependencies": {
     "@plasmicapp/host": ">=1.0.0",
@@ -69,5 +82,8 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "engines": {
+    "node": ">=22.12"
   }
 }

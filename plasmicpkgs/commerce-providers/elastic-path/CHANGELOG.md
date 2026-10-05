@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Breaking
+
+The package needs Node 22.12 or later, and says so in `engines`. The CommonJS
+build `require`s better-auth, which ships only as ES modules.
+
+The package is built with the repository's shared `build.mjs` instead of tsdx,
+so the published files change. Importing by package name, as every documented
+example does, resolves as before.
+
+| Was | Now |
+| --- | --- |
+| `dist/plasmic-ep-commerce-elastic-path.esm.js` | `dist/index.esm.js` |
+| one `.d.ts` per source file under `dist/` | one rolled-up `dist/index.d.ts`, `dist/server.d.ts` and `dist/server.d.mts` |
+| `/server` types under a single `types` condition | `import` resolves `server.d.mts`, `require` resolves `server.d.ts` |
+
 ### Added
 
 Login is composable rather than a single form component.
@@ -15,7 +30,19 @@ and asks the Account Provider to reload. A normal Studio button calls the
 Account Provider's `logout()` ref action, which signs out through the
 same client and reloads account state. Both actions no-op in the Plasmic
 canvas; the real mutations run at runtime and in interactive preview.
-Account switching is still not a registered action.
+A normal Studio button calls the Account Provider's `selectAccount(accountId)`
+ref action to choose an organisation. It no-ops in the Plasmic canvas. At
+runtime the already-selected id returns without a request or a reload; any
+other id selects through the shared identity client and then reloads account
+state. A further call while that selection is still in progress returns
+without another request or reload. `$ctx.account.isSelecting` is true only
+while that call is in progress, including its immediate reload, and is false
+again when the call resolves or rejects. It does not replace `isLoading`.
+While the reload after a selection, including its retry, is unsettled,
+`$ctx.account.accountRoster` stays the last roster that loaded, so a selector
+outside an Account Gate stays on screen. `isLoading` stays true, Account Gates
+stay closed, and the previous organisation is not published as the current
+one. The initial load, login reload, and logout reload publish an empty roster.
 
 ### Changed
 
@@ -49,6 +76,13 @@ changes: same props, same slots, same data.
 
 ### Fixed
 
+`/server` type declarations are generated from the entry point instead of a
+hand-kept list, so an export can no longer ship without its type. `/server`
+also resolves under TypeScript's legacy `moduleResolution: node`.
+
+`seedCartFallback` works when `/server` is imported as a native ES module. It
+threw `Dynamic require of "swr" is not supported`.
+
 Promo codes work. Neither of the component's two code paths did anything: one
 posted to `/api/cart/promo`, a route the package never served, and the other
 wrote the discount line from the browser on the public anonymous credential.
@@ -60,6 +94,26 @@ code, its discount and the re-priced basket all come back from Elastic Path,
 and a code Elastic Path will not honour leaves the basket untouched and says
 so. Same props, same slots, same `promoCodeData`. `Use Server Routes` no
 longer does anything and is kept only so existing projects load.
+
+EP Stock Provider and EP Multi-Location Stock (deprecated) show each
+location's name, such as "East Distribution Centre", instead of its slug,
+`east-dc`. Elastic Path's stock response names a location by slug only. After
+it reads the stock, `ep.getStock` asks the locations list for those slugs only,
+100 slugs to a request, and sets each location's `attributes.name` from the
+answer. A Server Query bound to `ep.getStock` gets the names too. A location
+the list does not return keeps its slug as its name. EP Stock Provider no
+longer reads the locations list itself.
+
+`ep.getLocations` returns every inventory location, not only the first page.
+Elastic Path pages the locations list, and the package read one page of the
+store's page length. A store with more locations than that lost the rest from
+the location selector of EP Multi-Location Stock (deprecated) and from the
+location names of EP Cart Item List.
+
+`ep.getLocations` with a `type` returns the locations instead of an empty list.
+Elastic Path filters inventory locations by slug only, so it rejected the
+`type` filter, and the package returned no locations. An inventory location has
+no type, so the package now ignores `type`.
 
 Related products and bundle options show their images. EP Related Products
 Provider requested products without their image files, so each product

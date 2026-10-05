@@ -926,16 +926,16 @@ describe("EPCartItemList", () => {
     expect(items.length).toBe(1);
   });
 
-  it("does not fetch locations/stock for items without locationSlug", () => {
+  it("does not fetch stock for items without locationSlug", () => {
     mockUseSelector.mockReturnValue(mockCartData);
     render(<EPCartItemList><div>Item</div></EPCartItemList>);
-    expect(mockUseLocations).toHaveBeenCalledWith({ enabled: false });
+    expect(mockUseLocations).not.toHaveBeenCalled();
     expect(mockUseStock).toHaveBeenCalledWith(
       expect.objectContaining({ enabled: false })
     );
   });
 
-  it("fetches locations/stock for items with locationSlug", () => {
+  it("fetches stock, and no locations list, for items with locationSlug", () => {
     const dataWithLocations = {
       ...mockCartData,
       items: [
@@ -944,7 +944,7 @@ describe("EPCartItemList", () => {
     };
     mockUseSelector.mockReturnValue(dataWithLocations);
     render(<EPCartItemList><div>Item</div></EPCartItemList>);
-    expect(mockUseLocations).toHaveBeenCalledWith({ enabled: true });
+    expect(mockUseLocations).not.toHaveBeenCalled();
     expect(mockUseStock).toHaveBeenCalledWith(
       expect.objectContaining({
         productIds: ["prod-1"],
@@ -952,6 +952,36 @@ describe("EPCartItemList", () => {
         enabled: true,
       })
     );
+  });
+
+  it("names each item's location from the stock", () => {
+    mockUseSelector.mockReturnValue({
+      ...mockCartData,
+      items: [{ ...mockCartData.items[0], location: "store-a" }],
+    });
+    mockUseStock.mockReturnValue({
+      productStock: {
+        "prod-1": {
+          locations: [
+            {
+              location: {
+                id: "store-a",
+                attributes: { slug: "store-a", name: "Store A" },
+              },
+              stock: { available: 5 },
+            },
+          ],
+        },
+      },
+      loading: false,
+    });
+    render(<EPCartItemList><div>Item</div></EPCartItemList>);
+    const item = JSON.parse(
+      screen
+        .getAllByTestId("data-provider-currentCartItem")[0]
+        .getAttribute("data-state") ?? "{}"
+    );
+    expect(item.locationName).toBe("Store A");
   });
 
   it("uses mock data in editor when no cart items", () => {

@@ -17,6 +17,7 @@ import React, { useImperativeHandle, useMemo } from "react";
 import { Registerable } from "../registerable";
 import { MOCK_CATEGORY_ITEMS } from "./design-time-data";
 import type { CategoryItem } from "./design-time-data";
+import { useHierarchicalMenu } from "react-instantsearch";
 
 type PreviewState = "auto" | "withData";
 
@@ -195,7 +196,6 @@ const EPHierarchicalMenuInner = React.forwardRef<
     className?: string;
   }
 >(function EPHierarchicalMenuInner({ children, attributes, className }, ref) {
-  const { useHierarchicalMenu } = require("react-instantsearch");
 
   const attributeArray = useMemo(
     () =>

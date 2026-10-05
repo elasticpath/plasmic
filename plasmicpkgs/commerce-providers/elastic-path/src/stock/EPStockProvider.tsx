@@ -13,7 +13,6 @@ import { useFormContext } from "react-hook-form";
 import { DEFAULT_LOW_STOCK_THRESHOLD } from "../const";
 import { Registerable } from "../registerable";
 import { useProductStock } from "../inventory/use-stock";
-import { useLocations } from "../inventory/use-locations";
 import { getLocationDisplayName } from "../inventory/utils/displayHelpers";
 import { isLowStock, isOutOfStock } from "../inventory/utils/stockCalculations";
 import { getLocationSlug } from "../utils/getLocationSlug";
@@ -178,15 +177,12 @@ export function EPStockProvider(props: EPStockProviderProps) {
     ? (selectedVariantId || "")
     : (product?.id || "");
 
-  const { stock, loading: stockLoading, error: stockError } = useProductStock(
+  const { stock, loading, error: stockError } = useProductStock(
     stockProductId,
     undefined,
     !!stockProductId
   );
-  const { locations, loading: locationsLoading } = useLocations();
   const { containerRef, onKeyDown: handleGroupKeyDown } = useRovingTabIndex();
-
-  const loading = stockLoading || locationsLoading;
 
   // All useMemo hooks must be called unconditionally (React rules of hooks)
   const stockLocations = useMemo<StockLocationData[]>(() => {
@@ -195,7 +191,8 @@ export function EPStockProvider(props: EPStockProviderProps) {
       const available = Number(ls.stock.available || 0);
       const allocated = Number(ls.stock.allocated || 0);
       return {
-        name: getLocationDisplayName(ls.location, locations),
+        // epGetStock already sets the name from the locations list.
+        name: getLocationDisplayName(ls.location),
         slug: getLocationSlug(ls.location),
         available,
         allocated,
@@ -215,7 +212,7 @@ export function EPStockProvider(props: EPStockProviderProps) {
         (STOCK_SORT_ORDER[b.stockStatus] ?? 2)
     );
     return mapped;
-  }, [stock, locations, lowStockThreshold]);
+  }, [stock, lowStockThreshold]);
 
   const productStock = useMemo<ProductStockSummary | null>(() => {
     if (!stock) return null;
