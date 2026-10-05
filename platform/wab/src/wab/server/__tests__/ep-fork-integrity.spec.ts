@@ -499,30 +499,41 @@ describe("EP Fork Integrity", () => {
       expect(src).not.toContain('delete inst["__type"]');
     });
 
+    // These match the shape of the code with a tolerant regex, so formatting
+    // changes do not fail them. They fail when the old eager build comes back.
     it("usedTokensForExp builds the token dictionary only when a ref needs it", () => {
       const src = readFile(
         "platform/wab/src/wab/shared/core/site-style-tokens.ts"
       );
-      expect(src).toContain("??= siteFinalStyleTokensAllDepsDict(site)");
-      expect(src).not.toContain("const usedTokensForToken");
+      expect(src).not.toMatch(
+        /const\s+allTokensDict\s*=\s*siteFinalStyleTokensAllDepsDict\(/
+      );
+      expect(src).toMatch(/\?\?=\s*siteFinalStyleTokensAllDepsDict\(/);
     });
 
     it("tplToUsedImageAssets builds the asset dictionary only when a ref needs it", () => {
-      expect(
-        readFile("platform/wab/src/wab/shared/cached-selectors.ts")
-      ).toContain("allAssetsDict ??= siteToAllImageAssetsDict(site)");
+      const src = readFile("platform/wab/src/wab/shared/cached-selectors.ts");
+      expect(src).not.toMatch(
+        /const\s+allAssetsDict\s*=\s*siteToAllImageAssetsDict\(/
+      );
+      expect(src).toMatch(/allAssetsDict\s*\?\?=\s*siteToAllImageAssetsDict\(/);
     });
 
     it("compareSites builds the token dictionary once per site", () => {
       const src = readFile("platform/wab/src/wab/shared/site-diffs/index.ts");
-      expect(src).toContain("const getTokensDict: GetTokensDict");
-      expect(src).toContain("const allTokensDict = getTokensDict(site);");
+      expect(src).not.toMatch(
+        /const\s+allTokensDict\s*=\s*siteFinalStyleTokensAllDepsDict\(/
+      );
+      expect(src).toContain("getTokensDict");
     });
 
     it("final style tokens are classified with set lookups", () => {
       expect(
         readFile("platform/wab/src/wab/shared/core/tokens.ts")
-      ).toContain("export function toFinalStyleTokens(");
+      ).toMatch(/export function setMembership\(/);
+      expect(
+        readFile("platform/wab/src/wab/shared/core/site-style-tokens.ts")
+      ).toMatch(/setMembership\(\)/);
     });
   });
 });

@@ -99,7 +99,8 @@ change, take upstream's version and delete its check from `ep-fork-integrity.spe
   `tplToUsedImageAssets` build their all-deps dictionary at most once per call, and only
   when they find a ref to resolve. `compareSites` builds the all-deps token dictionary
   once per site per call and passes it down through `hashRuleSet` and `hashExpr`. Final
-  tokens are classified with set lookups in `toFinalStyleTokens` (#643).
+  tokens are classified with set lookups through the `isMember` argument of `toFinalToken`
+  (#643).
 
 **Sentry → Datadog (fork-wide)**
 

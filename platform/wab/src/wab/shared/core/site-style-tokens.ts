@@ -18,7 +18,7 @@ import {
 import { expandRuleSets } from "@/wab/shared/core/styles";
 import {
   FinalToken,
-  toFinalStyleTokens,
+  setMembership,
   toFinalToken,
 } from "@/wab/shared/core/tokens";
 import { isTplVariantable } from "@/wab/shared/core/tpls";
@@ -145,6 +145,16 @@ export const siteStyleTokensAllDepsDict = maybeComputedFn(
   (site: Site): Readonly<{ [uuid: string]: StyleToken }> =>
     keyBy(siteStyleTokensAllDeps(site), (t) => t.uuid)
 );
+
+// toFinalToken scans the site's token arrays on each call. A batch of tokens
+// of one site shares one set-based lookup, so each array is scanned once.
+function toFinalStyleTokens(
+  tokens: ReadonlyArray<StyleToken>,
+  site: Site
+): FinalToken<StyleToken>[] {
+  const isMember = setMembership();
+  return tokens.map((token) => toFinalToken(token, site, isMember));
+}
 
 export const siteFinalStyleTokens = maybeComputedFn(
   (site: Site): ReadonlyArray<FinalToken<StyleToken>> =>

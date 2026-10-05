@@ -271,66 +271,62 @@ export function cloneToken(token: Token): Token {
     .result();
 }
 
+/**
+ * Says whether a token is in a token array. The default scans the array. For
+ * many tokens of one site, pass `setMembership()` to scan each array once.
+ */
+export type TokenMembership = (
+  tokens: ReadonlyArray<Token>,
+  token: Token
+) => boolean;
+
+const arrayMembership: TokenMembership = (tokens, token) =>
+  tokens.includes(token);
+
+/**
+ * Use one for a batch of `toFinalToken` calls on a site that does not change
+ * during the batch. It turns each token array into a Set on first use.
+ */
+export function setMembership(): TokenMembership {
+  const sets = new Map<ReadonlyArray<Token>, Set<Token>>();
+  return (tokens, token) => {
+    let set = sets.get(tokens);
+    if (!set) {
+      set = new Set(tokens);
+      sets.set(tokens, set);
+    }
+    return set.has(token);
+  };
+}
+
 export function toFinalToken(
   token: DataToken,
-  site: Site
+  site: Site,
+  isMember?: TokenMembership
 ): FinalToken<DataToken>;
 export function toFinalToken(
   token: StyleToken,
-  site: Site
+  site: Site,
+  isMember?: TokenMembership
 ): FinalToken<StyleToken>;
-export function toFinalToken(token: Token, site: Site) {
-  const isLocal = isKnownStyleToken(token)
-    ? site.styleTokens.includes(token)
-    : site.dataTokens.includes(token);
+export function toFinalToken(
+  token: Token,
+  site: Site,
+  isMember: TokenMembership = arrayMembership
+) {
+  const tokensOf = (s: Site) =>
+    isKnownStyleToken(token) ? s.styleTokens : s.dataTokens;
+  const isLocal = isMember(tokensOf(site), token);
 
   if (isLocal && token.isRegistered) {
     return new OverrideableToken(token, site);
   } else if (isLocal) {
     return new MutableToken(token);
   } else if (
-    site.projectDependencies.some((dep) =>
-      isKnownStyleToken(token)
-        ? dep.site.styleTokens.includes(token)
-        : dep.site.dataTokens.includes(token)
-    )
+    site.projectDependencies.some((dep) => isMember(tokensOf(dep.site), token))
   ) {
     return new OverrideableToken(token, site);
   } else {
     return new ImmutableToken(token, isLocal);
   }
-}
-
-/**
- * Same as `tokens.map((token) => toFinalToken(token, site))`, but checks
- * whether each token is local or from a direct dependency with Sets, instead
- * of scanning the site's token arrays once per token.
- */
-export function toFinalStyleTokens(
-  tokens: ReadonlyArray<StyleToken>,
-  site: Site
-): FinalToken<StyleToken>[] {
-  let localTokens: Set<Token> | undefined;
-  let directDepTokens: Set<Token> | undefined;
-  return tokens.map((token) => {
-    if (!isKnownStyleToken(token)) {
-      // Not reachable for a well-typed site; keeps toFinalToken's behaviour.
-      return toFinalToken(token as StyleToken, site);
-    }
-    localTokens ??= new Set(site.styleTokens);
-    const isLocal = localTokens.has(token);
-    if (isLocal && token.isRegistered) {
-      return new OverrideableToken(token, site);
-    } else if (isLocal) {
-      return new MutableToken(token);
-    }
-    directDepTokens ??= new Set(
-      site.projectDependencies.flatMap((dep) => dep.site.styleTokens)
-    );
-    if (directDepTokens.has(token)) {
-      return new OverrideableToken(token, site);
-    } else {
-      return new ImmutableToken(token, isLocal);
-    }
-  });
 }

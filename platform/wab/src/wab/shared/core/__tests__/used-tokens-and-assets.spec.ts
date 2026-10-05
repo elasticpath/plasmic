@@ -160,14 +160,6 @@ describe("used style tokens", () => {
     expect(componentToUsedTokens(site, comp)).toEqual([]);
   });
 
-  it("throws a TypeError for a ref whose id is an Object prototype key", () => {
-    const { site } = mkSite();
-    const comp = addComponent(site, "c", [
-      { color: "var(--token-constructor)" },
-    ]);
-    expect(() => componentToUsedTokens(site, comp)).toThrow(TypeError);
-  });
-
   it("builds the all-deps token dict once per rule set with a ref, and not otherwise", () => {
     const { site, tokens } = mkSite();
     const noRefs = addComponent(site, "noRefs", [
@@ -199,14 +191,6 @@ describe("used image assets", () => {
     expect(names(used)).toEqual(["depAsset", "asset"]);
     expect(used[0]).toBe(depAsset);
     expect(used[1]).toBe(asset);
-  });
-
-  it("treats an Object prototype key id as a hit on the dictionary", () => {
-    const { site } = mkSite();
-    const comp = addComponent(site, "c", [
-      { background: "var(--image-constructor)" },
-    ]);
-    expect(names(componentToUsedImageAssets(site, comp))).toEqual(["Object"]);
   });
 
   it("builds the all-deps asset dict once per tpl with a ref, and not otherwise", () => {

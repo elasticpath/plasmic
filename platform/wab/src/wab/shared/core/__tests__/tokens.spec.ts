@@ -7,7 +7,7 @@ import {
   ImmutableToken,
   MutableToken,
   OverrideableToken,
-  toFinalStyleTokens,
+  setMembership,
   toFinalToken,
 } from "@/wab/shared/core/tokens";
 import { instUtil } from "@/wab/shared/model/InstUtil";
@@ -460,13 +460,14 @@ describe("toFinalToken", () => {
       cleanup();
     });
 
-    it("converts a batch of style tokens like toFinalToken, in order", () => {
+    it("classifies style tokens the same with set membership as with scans", () => {
       const { site, styleTokens } = mkTokens();
       const cleanup = prepare(site);
       const shuffled = [...styleTokens].reverse();
       for (const tokens of [styleTokens, shuffled, [], [styleTokens[2]]]) {
         const expected = tokens.map((t) => toFinalToken(t, site));
-        const actual = toFinalStyleTokens(tokens, site);
+        const isMember = setMembership();
+        const actual = tokens.map((t) => toFinalToken(t, site, isMember));
         expect(actual.map(describeFinal)).toEqual(expected.map(describeFinal));
         actual.forEach((t, i) => {
           expect(t.constructor).toBe(expected[i].constructor);
@@ -476,10 +477,11 @@ describe("toFinalToken", () => {
       cleanup();
     });
 
-    it("converts a token that is not a style token like toFinalToken", () => {
+    it("classifies data tokens the same with set membership as with scans", () => {
       const { site, dataTokens } = mkTokens();
       const cleanup = prepare(site);
-      const actual = toFinalStyleTokens(dataTokens as any, site);
+      const isMember = setMembership();
+      const actual = dataTokens.map((t) => toFinalToken(t, site, isMember));
       expect(actual.map(describeFinal)).toEqual(
         dataTokens.map((t) => describeFinal(toFinalToken(t, site)))
       );
@@ -496,5 +498,19 @@ describe("toFinalToken", () => {
       ]);
       cleanup();
     });
+  });
+
+  it("stops at the first dependency that holds the token, like a scan", () => {
+    const { site, styleTokens } = mkTokens();
+    const direct = styleTokens[2];
+    const brokenDep = { site: undefined } as unknown as ProjectDependency;
+    site.projectDependencies.push(brokenDep);
+    expect(() => toFinalToken(direct, site)).not.toThrow();
+    expect(() => toFinalToken(direct, site, setMembership())).not.toThrow();
+    const orphan = styleTokens[4];
+    expect(() => toFinalToken(orphan, site)).toThrow(TypeError);
+    expect(() => toFinalToken(orphan, site, setMembership())).toThrow(
+      TypeError
+    );
   });
 });
