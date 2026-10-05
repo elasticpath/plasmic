@@ -29,6 +29,8 @@ export interface EpAccountTokenPage {
   memberId: string;
   entries: EpAccountTokenEntry[];
   total: number;
+  /** Raw `data` rows on this page, before unusable rows are dropped. */
+  rawEntryCount: number;
 }
 
 export type EpAccountCredential =
@@ -242,8 +244,9 @@ export async function mintAccountTokens(input: {
     );
   }
 
+  const raw = body.data ?? [];
   const entries: EpAccountTokenEntry[] = [];
-  for (const entry of body.data ?? []) {
+  for (const entry of raw) {
     const expires = parseEpExpires(entry.expires);
     if (typeof entry.account_id !== "string" || !entry.account_id) continue;
     if (typeof entry.token !== "string" || !entry.token) continue;
@@ -263,9 +266,17 @@ export async function mintAccountTokens(input: {
       ? reported
       : entries.length;
 
-  return { memberId, entries, total };
+  return { memberId, entries, total, rawEntryCount: raw.length };
 }
 
+/**
+ * Reads every page of the member's account tokens.
+ *
+ * An unpaged roster is this walk. A later page that fails throws, so the
+ * caller keeps none of the pages already read. The offset advances by the
+ * page that was asked for. A page whose rows were all dropped is not the
+ * end: only a page Elastic Path returned with no rows is.
+ */
 export async function collectAccountTokens(input: {
   host: string;
   implicitToken: string;
@@ -275,6 +286,7 @@ export async function collectAccountTokens(input: {
   const entries: EpAccountTokenEntry[] = [];
   let memberId = "";
   let total = 0;
+  let rawEntryCount = 0;
   for (;;) {
     const page = await mintAccountTokens({
       host: input.host,
@@ -285,12 +297,13 @@ export async function collectAccountTokens(input: {
     });
     memberId = page.memberId;
     total = page.total;
+    rawEntryCount = page.rawEntryCount;
     entries.push(...page.entries);
-    if (page.entries.length === 0) break;
+    if (page.rawEntryCount === 0) break;
     offset += ACCOUNT_PAGE_LIMIT_MAX;
     if (offset >= page.total) break;
   }
-  return { memberId, entries, total };
+  return { memberId, entries, total, rawEntryCount };
 }
 
 /**

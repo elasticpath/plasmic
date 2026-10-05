@@ -441,6 +441,51 @@ describe("collectAccountTokens", () => {
     expect(page.total).toBe(150);
   });
 
+  it("continues past a page whose rows were all rejected", async () => {
+    const valid = (id: string) => ({
+      account_id: id,
+      account_name: id,
+      token: `token-for-${id}`,
+      expires: EXPIRES_ISO,
+    });
+    const rejected = (id: string) => ({
+      account_id: id,
+      account_name: id,
+      expires: EXPIRES_ISO,
+    });
+    const pages: Record<number, unknown[]> = {
+      0: [valid("acct-0")],
+      100: [rejected("acct-100")],
+      200: [valid("acct-200")],
+    };
+    const offsets: number[] = [];
+    globalThis.fetch = vi.fn(async (url: any) => {
+      const offset = Number(new URL(String(url)).searchParams.get("page[offset]"));
+      offsets.push(offset);
+      return new Response(
+        JSON.stringify({
+          meta: { account_member_id: "member-1", results: { total: 201 } },
+          data: pages[offset] ?? [],
+        }),
+        { status: 201, headers: { "Content-Type": "application/json" } }
+      );
+    }) as any;
+
+    const page = await collectAccountTokens({
+      host: HOST,
+      implicitToken: IMPLICIT,
+      credential: { accountToken: "held-token" },
+    });
+
+    expect(offsets).toEqual([0, 100, 200]);
+    expect(page.entries.map((entry) => entry.id)).toEqual([
+      "acct-0",
+      "acct-200",
+    ]);
+    expect(page.entries.some((entry) => entry.id === "acct-100")).toBe(false);
+    expect(page.total).toBe(201);
+  });
+
   it("fails the whole read when a later page fails", async () => {
     const accounts = Array.from({ length: 150 }, (_, i) => ({
       id: `acct-${i}`,
