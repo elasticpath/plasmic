@@ -1,29 +1,11 @@
 /**
- * Browser-side proxy fetch for the EP server functions.
+ * Browser-side proxy fetch for the EP server functions. The registered `ep*`
+ * functions run in the browser with no AsyncLocalStorage session, so they POST
+ * to a route on the consumer app that reads the better-auth session cookie SSR
+ * also reads, dispatches, and returns the JSON result.
  *
- * Why this exists: in the browser the registered `ep*` server functions run
- * with no AsyncLocalStorage session, so to resolve real data we POST to a
- * route on the consumer app that:
- *   1. reads the better-auth session cookie that SSR also reads,
- *   2. dispatches to the matching `ep*` server function, and
- *   3. returns its JSON result.
- *
- * SSR (Node) NEVER hits this code path — `getCurrentEpSession()` is
- * already populated by `withEpSession`, so the function fetches EP
- * directly. The proxy is strictly a browser fallback, with zero
- * impact on the shopper-facing first render.
- *
- * Design time does not come through here. Both Studio realms — the canvas
- * artboard and the app-host document that resolves the data-query Configure
- * panel — are decided in `callEpProxy` before the request and served by the
- * session-free design route instead. That branch is a fork, never a retry: a
- * proxy failure must not fall through to a route that cannot see the shopper,
- * or a logged-in shopper with a just-expired envelope is silently served
- * unscoped prices.
- *
- * The URL is relative. Both design realms and the canvas are served by the
- * consumer's own document, so there is no cross-origin case to pin an origin
- * for.
+ * SSR never reaches this: `getCurrentEpSession()` is already populated, so the
+ * function fetches EP directly.
  */
 import { readEpErrorCode } from "../browser-call";
 import { makeEpCallError, readEpCallError } from "./call-error";

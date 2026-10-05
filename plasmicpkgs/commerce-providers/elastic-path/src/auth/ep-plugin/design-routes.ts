@@ -1,42 +1,3 @@
-/**
- * Session-free catalog route for Studio design time (ADR-0003).
- *
- * A designer editing in Studio has to see their own store's catalog — real
- * names, real images, the store's own extension slugs and hierarchy node ids,
- * none of which a fixture can supply. The shopper session cannot serve that:
- * better-auth's `SameSite=Lax` cookie never reaches Studio's editing frame
- * once a customer hosts their app host on their own registrable domain.
- *
- * So this is a separate file, not a branch in `proxy-routes.ts`. "Never reads
- * the session" is a property of what this file imports. It has no cookie
- * parser, no `getSession` call and no cart writer, and nothing here may grow
- * one: the route runs under a bare implicit token that belongs to no shopper.
- *
- * It is a **closed list of declared names, not a forwarder**, which is the
- * opposite of the rule the session proxy follows. The proxy can forward
- * because the shopper's credential is the boundary; this route cannot,
- * because its implicit token is public *and* can write to `/carts` and
- * `/checkout` — an open forwarder here is an open proxy with a write surface
- * on the customer's own origin.
- *
- * Consumer mounts at `app/api/ep/design/[fn]/route.ts`:
- *
- *   import { createEpDesignRoutes } from
- *     "@elasticpath/plasmic-ep-commerce-elastic-path/server";
- *   import { epAuth } from "@/lib/ep-auth";
- *
- *   const routes = createEpDesignRoutes(epAuth);
- *   export const POST = routes.handle;
- *   export const OPTIONS = routes.options;
- *
- * CORS is `*` with no credentials and no origin gate: it serves what the
- * store's public client id already unlocks, and a gate on a credential-free
- * public-data route buys nothing. `trustedOrigins` stays shopper-only
- * (ADR-0001) and must never gain an entry for this route.
- */
-// Imported per module rather than through the package's server-function
-// barrel, so the closed list below is structural: a name this file does not
-// import is a name it cannot dispatch.
 import { epGetProduct } from "../../ep-server-functions/getProduct";
 import { epGetProductList } from "../../ep-server-functions/getProductList";
 import { epGetProductPage } from "../../ep-server-functions/getProductPage";
@@ -51,12 +12,6 @@ import type { EpAuth } from "./create-ep-auth-better";
 import { mintImplicitEpToken, resolveEpStore } from "./implicit-token";
 import { isTrustedDevEnvironment } from "./production-guard";
 
-/**
- * Declared, not subtracted. Every name here is readable by anyone who can
- * reach the consumer's origin, so the list is written out rather than derived
- * from the proxy's dispatch table — otherwise the next session-scoped
- * operation added there becomes anonymously readable by omission.
- */
 const DESIGN_FN_DISPATCH: Record<
   EpDesignFnName,
   (args: Record<string, unknown>) => Promise<unknown>
@@ -90,18 +45,11 @@ interface CachedToken {
   expiresAtMs: number;
 }
 
-/**
- * Implicit tokens live an hour, and minting one per request doubles every
- * design-time read's latency. Keyed by host and client id so a consumer whose
- * `resolveConfig` moves stores does not serve the old store's token.
- */
 const tokenCache = new Map<string, CachedToken>();
 const pendingMints = new Map<string, Promise<string>>();
 
-/** Re-mint this long before expiry, so a token never expires mid-request. */
 const TOKEN_REFRESH_SKEW_SECONDS = 60;
 
-/** Test seam. */
 export function resetEpDesignTokenCache(): void {
   tokenCache.clear();
   pendingMints.clear();
@@ -148,12 +96,6 @@ function jsonResponse(body: unknown, status: number): Response {
 }
 
 export function createEpDesignRoutes(epAuth: EpAuth): EpDesignRoutes {
-  /**
-   * `epAuth.config` rather than a new option, and the resolver as well as the
-   * static pair: a consumer reading its store from the Plasmic bundle
-   * bootstraps the factory with placeholders, so the static pair alone names a
-   * store that does not exist.
-   */
   const store = epAuth.config;
 
   return {

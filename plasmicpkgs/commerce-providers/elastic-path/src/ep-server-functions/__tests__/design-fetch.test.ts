@@ -1,26 +1,15 @@
 /**
  * @jest-environment jsdom
- *
- * The design-time fork in `callEpProxy`, and the two realms behind it.
- *
- * The rule under test is "soft-fail where a mock floor exists, throw where
- * none does": the canvas artboard renders `"Sample"` fixtures behind a null,
- * and Studio's data-query Configure panel renders nothing behind one, so the
- * same null there is indistinguishable from a wrong argument binding.
  */
-
 const mockFetch = jest.fn();
 (globalThis as any).fetch = mockFetch;
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { callEpProxy } = require("../proxy-fetch");
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
   latchEpCanvasArtboard,
   resetEpCanvasArtboard,
   currentEpDesignRealm,
 } = require("../design-realm");
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { resetEpDesignRouteWarning } = require("../design-fetch");
 
 function inArtboard() {
@@ -110,10 +99,6 @@ describe("callEpProxy at design time", () => {
     inArtboard();
     mockFetch.mockRejectedValue(new Error("offline"));
 
-    // The caller's fallback is its own empty shape, not a mock floor: a null
-    // from getProduct reads as "no such product". The components render their
-    // labelled fixtures off their error branch, so the throw is what shows
-    // them.
     await expect(callEpProxy("getProduct", { id: "p1" }, null)).rejects.toThrow(
       /offline/
     );
@@ -136,9 +121,6 @@ describe("an operation the design route cannot serve", () => {
 
   it("soft-fails the cart mutations in the artboard too", async () => {
     inArtboard();
-    // They pass no fallback, so the value is `undefined`. A mutation has no
-    // result to render at design time; what matters is that the artboard does
-    // not surface an error a designer cannot act on.
     await expect(
       callEpProxy("addCartItem", { productId: "p1" })
     ).resolves.toBeUndefined();

@@ -1,10 +1,3 @@
-/**
- * Error shaping shared by the two browser transports — the session proxy and
- * the session-free design route. Both answer with the same JSON error shape,
- * and callers branch on `code` rather than on message text, which the routes
- * withhold in production.
- */
-
 export interface EpCallErrorInfo {
   message: string;
   code?: string;
@@ -21,15 +14,6 @@ export function makeEpCallError(info: EpCallErrorInfo): Error {
   return err;
 }
 
-/**
- * Reads a route's error body into a code/message pair.
- *
- * A storefront that never mounted the route answers with its own 404 page, or
- * with a 405 when a page route sits at that path and refuses the POST. Neither
- * carries a body to read a code out of, and without a code of its own that
- * case is indistinguishable from the route failing — callers can only branch
- * on the code.
- */
 export async function readEpCallError(
   res: Response,
   label: string
@@ -66,7 +50,7 @@ export async function readEpCallError(
       info.message = body.error.message;
     }
   } catch {
-    // ignore parse failures — use status fallback
+    /* ignore */
   }
   return info;
 }

@@ -1,11 +1,3 @@
-/**
- * createEpDesignRoutes — the session-free catalog route.
- *
- * Two properties carry the whole design: it serves exactly four declared
- * names, and it reads no shopper session. The second is a property of the
- * file's imports, asserted here by source inspection, because a route that
- * merely happens not to call `getSession` today can grow the call tomorrow.
- */
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -212,11 +204,6 @@ describe("CORS", () => {
 });
 
 describe("the file itself", () => {
-  /**
-   * Comments stripped: "never reads the session" has to be a property of the
-   * code, and the file explains at length why, in prose full of the words
-   * this asserts the absence of.
-   */
   const code = readFileSync(
     fileURLToPath(new URL("../design-routes.ts", import.meta.url)),
     "utf8"

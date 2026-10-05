@@ -1,16 +1,3 @@
-/**
- * Browser-side transport for Studio design time.
- *
- * At design time the shopper session is out of reach: better-auth's
- * `SameSite=Lax` cookie does not travel into Studio's editing frame once a
- * customer hosts their app host on their own registrable domain. So design
- * time reads the catalog from a route that never touches the session at all —
- * `createEpDesignRoutes`, mounted at `app/api/ep/design/[fn]/route.ts`.
- *
- * The URL is relative, so it resolves against whatever document serves the
- * artboard. Nothing here retries the session proxy: the realm is decided once,
- * before the request, and a failure here never falls back to the proxy.
- */
 import { makeEpCallError, readEpCallError } from "./call-error";
 import {
   epDesignFnNotServedMessage,
@@ -31,7 +18,6 @@ const MOUNT_SNIPPET =
 
 let warnedMissingRoute = false;
 
-/** Test seam — the warning is deliberately once per page load. */
 export function resetEpDesignRouteWarning(): void {
   warnedMissingRoute = false;
 }
@@ -46,7 +32,7 @@ function warnMissingRouteOnce(): void {
         MOUNT_SNIPPET
     );
   } catch {
-    // Reporting the problem must not become a second problem.
+    /* ignore */
   }
 }
 
@@ -56,12 +42,6 @@ export async function callEpDesign<T>(
   fallback: T,
   realm: EpDesignRealm
 ): Promise<T> {
-  // A name this route cannot serve soft-fails on the artboard and throws in
-  // the Configure panel: soft-fail where a mock floor exists, throw where none
-  // does. The canvas has one, and the fallback is what lets the `"Sample"`
-  // fixtures render in its place. Nothing sits behind the panel, so the same
-  // value there is indistinguishable from a wrong argument binding, on the one
-  // surface a designer opens to check one.
   if (!isEpDesignFnName(fnName)) {
     if (realm === "artboard") return fallback;
     throw makeEpCallError({
@@ -72,18 +52,10 @@ export async function callEpDesign<T>(
     });
   }
 
-  // Everything below is a transport failure, and every one of them throws,
-  // in both realms. A caller's fallback is its own empty shape, not a mock
-  // floor: `null` from `getProduct` means "no such product", and a designer
-  // who has not mounted the route would read "Product not found" off a route
-  // that was never asked. The components reach their labelled `"Sample"`
-  // fixtures through their error branch, so a throw is what renders them.
   let res: Response;
   try {
     res = await fetch(`${DESIGN_PATH}/${fnName}`, {
       method: "POST",
-      // No credentials: the route reads no session, and sending one would
-      // invite a reader to start reading it.
       credentials: "omit",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(args),
