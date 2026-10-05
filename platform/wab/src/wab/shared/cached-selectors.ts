@@ -767,11 +767,14 @@ const tplToUsedImageAssets = maybeComputedFn(function tplToUsedImageAssets(
     return [...assets.keys()];
   }
 
-  const allAssetsDict = siteToAllImageAssetsDict(site);
+  // Built lazily: on the server `maybeComputedFn` doesn't cache, so this
+  // rebuilds the all-deps asset dict on each call.
+  let allAssetsDict: ReturnType<typeof siteToAllImageAssetsDict> | undefined;
   for (const vs of tpl.vsettings) {
     const rulesets = expandRuleSets([vs.rs]);
     for (const rs of rulesets) {
       for (const refId of expToPictureAssetRefs(rs, tpl)) {
+        allAssetsDict ??= siteToAllImageAssetsDict(site);
         if (refId in allAssetsDict) {
           assets.add(allAssetsDict[refId]);
         }

@@ -300,3 +300,37 @@ export function toFinalToken(token: Token, site: Site) {
     return new ImmutableToken(token, isLocal);
   }
 }
+
+/**
+ * Same as `tokens.map((token) => toFinalToken(token, site))`, but checks
+ * whether each token is local or from a direct dependency with Sets, instead
+ * of scanning the site's token arrays once per token.
+ */
+export function toFinalStyleTokens(
+  tokens: ReadonlyArray<StyleToken>,
+  site: Site
+): FinalToken<StyleToken>[] {
+  let localTokens: Set<Token> | undefined;
+  let directDepTokens: Set<Token> | undefined;
+  return tokens.map((token) => {
+    if (!isKnownStyleToken(token)) {
+      // Not reachable for a well-typed site; keeps toFinalToken's behaviour.
+      return toFinalToken(token as StyleToken, site);
+    }
+    localTokens ??= new Set(site.styleTokens);
+    const isLocal = localTokens.has(token);
+    if (isLocal && token.isRegistered) {
+      return new OverrideableToken(token, site);
+    } else if (isLocal) {
+      return new MutableToken(token);
+    }
+    directDepTokens ??= new Set(
+      site.projectDependencies.flatMap((dep) => dep.site.styleTokens)
+    );
+    if (directDepTokens.has(token)) {
+      return new OverrideableToken(token, site);
+    } else {
+      return new ImmutableToken(token, isLocal);
+    }
+  });
+}

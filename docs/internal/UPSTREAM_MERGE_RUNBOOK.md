@@ -89,6 +89,12 @@ change, take upstream's version and delete its check from `ep-fork-integrity.spe
 - `platform/wab/src/wab/shared/model/model-tree-util.ts`: `nextCtx` builds `keyPath`
   without lodash `zip`, and `walkModelTree` walks values through `walkInst` /
   `walkFieldValue` without building a context per value (#642).
+- `platform/wab/src/wab/shared/core/site-style-tokens.ts`, `shared/cached-selectors.ts`,
+  `shared/core/tokens.ts` and `shared/site-diffs/index.ts`: `usedTokensForExp` and
+  `tplToUsedImageAssets` build their all-deps dictionary at most once per call, and only
+  when they find a ref to resolve. `compareSites` builds the all-deps token dictionary
+  once per site per call and passes it down through `hashRuleSet` and `hashExpr`. Final
+  tokens are classified with set lookups in `toFinalStyleTokens` (#643).
 
 **Sentry → Datadog (fork-wide)**
 

@@ -484,5 +484,31 @@ describe("EP Fork Integrity", () => {
     it("walkModelTree walks values without a context per value (#642)", () => {
       expect(modelTreeUtil()).toContain("function walkFieldValue(");
     });
+
+    it("usedTokensForExp builds the token dictionary only when a ref needs it", () => {
+      const src = readFile(
+        "platform/wab/src/wab/shared/core/site-style-tokens.ts"
+      );
+      expect(src).toContain("??= siteFinalStyleTokensAllDepsDict(site)");
+      expect(src).not.toContain("const usedTokensForToken");
+    });
+
+    it("tplToUsedImageAssets builds the asset dictionary only when a ref needs it", () => {
+      expect(
+        readFile("platform/wab/src/wab/shared/cached-selectors.ts")
+      ).toContain("allAssetsDict ??= siteToAllImageAssetsDict(site)");
+    });
+
+    it("compareSites builds the token dictionary once per site", () => {
+      const src = readFile("platform/wab/src/wab/shared/site-diffs/index.ts");
+      expect(src).toContain("const getTokensDict: GetTokensDict");
+      expect(src).toContain("const allTokensDict = getTokensDict(site);");
+    });
+
+    it("final style tokens are classified with set lookups", () => {
+      expect(
+        readFile("platform/wab/src/wab/shared/core/tokens.ts")
+      ).toContain("export function toFinalStyleTokens(");
+    });
   });
 });
