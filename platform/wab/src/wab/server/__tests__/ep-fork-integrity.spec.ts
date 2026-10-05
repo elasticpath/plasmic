@@ -499,8 +499,6 @@ describe("EP Fork Integrity", () => {
       expect(src).not.toContain('delete inst["__type"]');
     });
 
-    // These match the shape of the code with a tolerant regex, so formatting
-    // changes do not fail them. They fail when the old eager build comes back.
     it("usedTokensForExp builds the token dictionary only when a ref needs it", () => {
       const src = readFile(
         "platform/wab/src/wab/shared/core/site-style-tokens.ts"

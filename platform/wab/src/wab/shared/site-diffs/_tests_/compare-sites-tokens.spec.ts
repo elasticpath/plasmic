@@ -89,7 +89,6 @@ function mkSite(namedTpls: number) {
 
 const clone = (site: Site) => L.cloneDeep(site);
 
-/** The changelog without uuids: description, release type and names. */
 function compare(prev: Site, curr: Site) {
   const entries = compareSites(prev, curr);
   return {

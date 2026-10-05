@@ -382,9 +382,7 @@ export function compareSites(prev: Site, curr: Site): ChangeLogEntry[] {
   // we will keep track of what kinds of changes we see here
   const results: ChangeLogEntry[] = [];
 
-  // hashRuleSet needs the all-deps token dict for every RuleSet, and
-  // siteFinalStyleTokensAllDepsDict is not cached on the server. Neither site
-  // is modified here, so build it at most once per site for this call.
+  // Neither site changes during this call, so build each dict once.
   const tokensDicts = new Map<Site, TokensDict>();
   const getTokensDict: GetTokensDict = (site) => {
     let dict = tokensDicts.get(site);

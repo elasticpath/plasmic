@@ -271,10 +271,6 @@ export function cloneToken(token: Token): Token {
     .result();
 }
 
-/**
- * Says whether a token is in a token array. The default scans the array. For
- * many tokens of one site, pass `setMembership()` to scan each array once.
- */
 export type TokenMembership = (
   tokens: ReadonlyArray<Token>,
   token: Token
@@ -283,10 +279,7 @@ export type TokenMembership = (
 const arrayMembership: TokenMembership = (tokens, token) =>
   tokens.includes(token);
 
-/**
- * Use one for a batch of `toFinalToken` calls on a site that does not change
- * during the batch. It turns each token array into a Set on first use.
- */
+/** For a batch of `toFinalToken` calls on a site that does not change. */
 export function setMembership(): TokenMembership {
   const sets = new Map<ReadonlyArray<Token>, Set<Token>>();
   return (tokens, token) => {

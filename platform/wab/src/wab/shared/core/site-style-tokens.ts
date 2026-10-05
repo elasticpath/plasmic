@@ -146,8 +146,6 @@ export const siteStyleTokensAllDepsDict = maybeComputedFn(
     keyBy(siteStyleTokensAllDeps(site), (t) => t.uuid)
 );
 
-// toFinalToken scans the site's token arrays on each call. A batch of tokens
-// of one site shares one set-based lookup, so each array is scanned once.
 function toFinalStyleTokens(
   tokens: ReadonlyArray<StyleToken>,
   site: Site
@@ -262,8 +260,6 @@ const usedTokensForExp = maybeComputedFn(function usedTokensForExp(
   tpl: TplNode
 ): ReadonlyArray<StyleToken> {
   const exp = readonlyRSH(rs, tpl);
-  // Built lazily: on the server `maybeComputedFn` doesn't cache, so this
-  // rebuilds every final token (including deps) on each call.
   let allTokensDict:
     | ReturnType<typeof siteFinalStyleTokensAllDepsDict>
     | undefined;
@@ -282,19 +278,15 @@ const usedTokensForExp = maybeComputedFn(function usedTokensForExp(
         refTokens.map((t) => t.base)
       );
       for (const token of refTokens) {
-        xAddAll(
-          collector,
-          usedTokensForToken(site, dict[token.uuid], dict)
-        );
+        xAddAll(collector, usedTokensForToken(site, dict[token.uuid], dict));
       }
     }
   }
   return [...collector.keys()];
 });
 
-// The caller passes the dict it built, so this does not build it again. `site`
-// is not read. It is the argument that makes Studio cache this by arguments,
-// because `maybeComputedFn` only caches when an argument is observable.
+// `site` is unused. Without an observable argument `maybeComputedFn` does not
+// cache this in Studio.
 const usedTokensForToken = maybeComputedFn(function collectUsedTokensForToken(
   site: Site,
   token: FinalToken<StyleToken>,

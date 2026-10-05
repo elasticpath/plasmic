@@ -30,7 +30,6 @@ function mkSite() {
   return { site, tokC };
 }
 
-/** Adds a component with one child that uses `token` as its color. */
 function addComponent(site: Site, name: string, token: StyleToken) {
   const root = mkTplTagX("div", { name: `${name}Root` });
   const component = mkComponent({
@@ -61,7 +60,6 @@ function observe(site: Site) {
   } as any);
 }
 
-/** Counts the token ref lookups made while running `run`. */
 function refLookups(run: () => void) {
   const spy = jest.spyOn(styleToken, "tryParseTokenRef");
   try {
@@ -72,11 +70,7 @@ function refLookups(run: () => void) {
   }
 }
 
-/**
- * Two components use the same token. Reading the used tokens of the second one
- * should reuse the alias chain walk from the first one when the site is
- * observable, because Studio caches by arguments. A plain site caches nothing.
- */
+// Only an observable site is cached, as in Studio.
 function lookupsForFirstAndSecond(observable: boolean) {
   const { site, tokC } = mkSite();
   const first = addComponent(site, "first", tokC);

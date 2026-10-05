@@ -28,7 +28,6 @@ function mkSite() {
     type: "Color",
     value: "#111111",
   });
-  // alias in a dependency: depAlias -> depBase
   const depAlias = mkStyleToken({
     name: "depAlias",
     type: "Color",
@@ -52,7 +51,6 @@ function mkSite() {
       site: depSite,
     })
   );
-  // chain: tokC -> tokB -> tokA, and tokD -> depAlias -> depBase
   const tokA = mkStyleToken({ name: "tokA", type: "Color", value: "#aaaaaa" });
   const tokB = mkStyleToken({
     name: "tokB",
@@ -80,7 +78,6 @@ function mkSite() {
   };
 }
 
-/** Adds a component whose children have the given `background`/`color` values. */
 function addComponent(
   site: Site,
   name: string,
