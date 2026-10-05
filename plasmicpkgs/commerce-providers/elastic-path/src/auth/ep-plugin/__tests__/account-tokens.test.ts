@@ -10,6 +10,7 @@ import {
   EpAccountTokenError,
   resolveAccountPageLimit,
   resolveAccountPageOffset,
+  collectAccountTokens,
   discoverPasswordProfileId,
   findAccountToken,
   mintAccountTokens,
@@ -359,6 +360,103 @@ describe("findAccountToken", () => {
 
     expect(found.entry).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("collectAccountTokens", () => {
+  function pagedFetch(
+    accounts: { id: string; name?: string }[],
+    onPage?: (offset: number) => Response | undefined
+  ) {
+    const offsets: number[] = [];
+    const fetchMock = vi.fn(async (url: any) => {
+      const offset = Number(new URL(String(url)).searchParams.get("page[offset]"));
+      offsets.push(offset);
+      const refused = onPage?.(offset);
+      if (refused) return refused;
+      const page = accounts.slice(offset, offset + ACCOUNT_PAGE_LIMIT_MAX);
+      return tokenResponse(page, accounts.length);
+    });
+    globalThis.fetch = fetchMock as any;
+    return { fetchMock, offsets };
+  }
+
+  it("reads a roster that fits on one page in one request", async () => {
+    const accounts = Array.from({ length: 100 }, (_, i) => ({
+      id: `acct-${i}`,
+      name: `Account ${i}`,
+    }));
+    const { fetchMock } = pagedFetch(accounts);
+
+    const page = await collectAccountTokens({
+      host: HOST,
+      implicitToken: IMPLICIT,
+      credential: { accountToken: "held-token" },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(page.total).toBe(100);
+    expect(page.entries.map((entry) => entry.id)).toEqual(
+      accounts.map((account) => account.id)
+    );
+  });
+
+  it("walks a later page by the size it asked for", async () => {
+    const accounts = Array.from({ length: 150 }, (_, i) => ({
+      id: `acct-${i}`,
+      name: `Account ${i}`,
+    }));
+    const { offsets } = pagedFetch(accounts);
+
+    const page = await collectAccountTokens({
+      host: HOST,
+      implicitToken: IMPLICIT,
+      credential: { accountToken: "held-token" },
+    });
+
+    expect(offsets).toEqual([0, 100]);
+    expect(page.total).toBe(150);
+    expect(page.entries).toHaveLength(150);
+    expect(page.entries[149]?.id).toBe("acct-149");
+  });
+
+  it("keeps the requested stride when a record on the first page is dropped", async () => {
+    const accounts = Array.from({ length: 150 }, (_, i) => ({
+      id: `acct-${i}`,
+      name: `Account ${i}`,
+    }));
+    const { offsets } = pagedFetch(accounts, (offset) => {
+      if (offset !== 0) return undefined;
+      return tokenResponse(accounts.slice(0, 99), 150);
+    });
+
+    const page = await collectAccountTokens({
+      host: HOST,
+      implicitToken: IMPLICIT,
+      credential: { accountToken: "held-token" },
+    });
+
+    expect(offsets).toEqual([0, 100]);
+    expect(page.entries).toHaveLength(149);
+    expect(page.total).toBe(150);
+  });
+
+  it("fails the whole read when a later page fails", async () => {
+    const accounts = Array.from({ length: 150 }, (_, i) => ({
+      id: `acct-${i}`,
+    }));
+    const { fetchMock } = pagedFetch(accounts, (offset) =>
+      offset === 100 ? errorResponse(500, "page failed") : undefined
+    );
+
+    await expect(
+      collectAccountTokens({
+        host: HOST,
+        implicitToken: IMPLICIT,
+        credential: { accountToken: "held-token" },
+      })
+    ).rejects.toBeInstanceOf(EpAccountTokenError);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 

@@ -38,6 +38,7 @@ import {
 import type { EpAccountSlot, EpAnchorTokenSlot } from "./envelope";
 import {
   EpAccountTokenError,
+  collectAccountTokens,
   discoverPasswordProfileId,
   findAccountToken,
   mintAccountTokens,
@@ -735,14 +736,22 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
           }
 
           const body = ((ctx.body as any) ?? {}) as EpAccountRosterRequest;
+          const explicitPage =
+            body.limit !== undefined || body.offset !== undefined;
           try {
-            const page = await mintAccountTokens({
-              host: session.epHost,
-              implicitToken: session.epAccessToken,
-              credential: { accountToken },
-              limit: body.limit,
-              offset: body.offset,
-            });
+            const page = explicitPage
+              ? await mintAccountTokens({
+                  host: session.epHost,
+                  implicitToken: session.epAccessToken,
+                  credential: { accountToken },
+                  limit: body.limit,
+                  offset: body.offset,
+                })
+              : await collectAccountTokens({
+                  host: session.epHost,
+                  implicitToken: session.epAccessToken,
+                  credential: { accountToken },
+                });
             return ctx.json(
               epIdentityPayload("roster", {
                 accounts: toAccountRoster(page.entries),

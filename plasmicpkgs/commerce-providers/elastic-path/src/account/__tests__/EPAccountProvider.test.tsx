@@ -430,6 +430,33 @@ describe("EPAccountProvider", () => {
     );
   });
 
+  it("publishes a roster larger than one page from a single roster request", async () => {
+    const accounts = Array.from({ length: 150 }, (_, i) => ({
+      id: `acct-${i}`,
+      name: `Account ${i}`,
+    }));
+    const fetchImpl = mockSessionAndRoster(
+      { epMemberId: "member-1" },
+      { accounts, total: 150 }
+    );
+
+    render(
+      <EPAccountProvider>
+        <span>child</span>
+      </EPAccountProvider>
+    );
+
+    await waitFor(() => {
+      expect(publishedAccount().accountRoster.accounts).toHaveLength(150);
+    });
+    expect(publishedAccount().accountRoster).toEqual({ accounts, total: 150 });
+    const rosterCalls = fetchImpl.mock.calls.filter(([url]) =>
+      String(url).includes("/account/roster")
+    );
+    expect(rosterCalls).toHaveLength(1);
+    expect(JSON.parse(String(rosterCalls[0][1]?.body))).toEqual({});
+  });
+
   it("does not let previewState override runtime identity", async () => {
     mockSessionAndRoster({ epMemberId: "member-live" });
 

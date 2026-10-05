@@ -148,8 +148,8 @@ export async function discoverPasswordProfileId(input: {
  *
  * With a password this is the sign-in; with an account token it re-mints from
  * a credential the session already holds, which needs no password and returns
- * a fresh full window. Either way the response carries the whole roster, so
- * one call answers both "who is this" and "what may they buy for".
+ * a fresh window of one page. `collectAccountTokens` walks the rest when the
+ * roster is larger than that page.
  */
 export async function mintAccountTokens(input: {
   host: string;
@@ -263,6 +263,33 @@ export async function mintAccountTokens(input: {
       ? reported
       : entries.length;
 
+  return { memberId, entries, total };
+}
+
+export async function collectAccountTokens(input: {
+  host: string;
+  implicitToken: string;
+  credential: EpAccountCredential;
+}): Promise<EpAccountTokenPage> {
+  let offset = 0;
+  const entries: EpAccountTokenEntry[] = [];
+  let memberId = "";
+  let total = 0;
+  for (;;) {
+    const page = await mintAccountTokens({
+      host: input.host,
+      implicitToken: input.implicitToken,
+      credential: input.credential,
+      limit: ACCOUNT_PAGE_LIMIT_MAX,
+      offset,
+    });
+    memberId = page.memberId;
+    total = page.total;
+    entries.push(...page.entries);
+    if (page.entries.length === 0) break;
+    offset += ACCOUNT_PAGE_LIMIT_MAX;
+    if (offset >= page.total) break;
+  }
   return { memberId, entries, total };
 }
 
