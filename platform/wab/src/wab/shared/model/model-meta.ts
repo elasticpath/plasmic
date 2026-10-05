@@ -175,7 +175,7 @@ export class MetaRuntime extends BaseRuntime {
             // This args is from a json bundle, so it has the __type field.
             // Leave it out of the instance instead of deleting it afterwards,
             // as the delete puts the instance into V8 dictionary mode.
-            const { __type: _type, ...rest } = args as any;
+            const { __type, ...rest } = args as any;
             inst = Object.assign(inst, rest);
           } else {
             inst = Object.assign(inst, args);

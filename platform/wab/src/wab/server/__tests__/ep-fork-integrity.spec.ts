@@ -484,5 +484,13 @@ describe("EP Fork Integrity", () => {
     it("walkModelTree walks values without a context per value (#642)", () => {
       expect(modelTreeUtil()).toContain("function walkFieldValue(");
     });
+
+    it("model initializer leaves __type out instead of deleting it (#644)", () => {
+      const modelMeta = readFile(
+        "platform/wab/src/wab/shared/model/model-meta.ts"
+      );
+      expect(modelMeta).toContain("const { __type, ...rest } =");
+      expect(modelMeta).not.toContain('delete inst["__type"]');
+    });
   });
 });
