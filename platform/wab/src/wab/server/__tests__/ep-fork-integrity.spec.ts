@@ -477,15 +477,15 @@ describe("EP Fork Integrity", () => {
     const modelTreeUtil = () =>
       readFile("platform/wab/src/wab/shared/model/model-tree-util.ts");
 
-    it("nextCtx builds keyPath without lodash zip (#642)", () => {
+    it("nextCtx builds keyPath without lodash zip", () => {
       expect(modelTreeUtil()).not.toContain("zip(ctx.path");
     });
 
-    it("walkModelTree walks values without a context per value (#642)", () => {
+    it("walkModelTree walks values without a context per value", () => {
       expect(modelTreeUtil()).toContain("function walkFieldValue(");
     });
 
-    it("model initializer leaves __type out instead of deleting it (#644)", () => {
+    it("model initializer leaves __type out instead of deleting it", () => {
       const modelMeta = readFile(
         "platform/wab/src/wab/shared/model/model-meta.ts"
       );
