@@ -4,34 +4,43 @@ import { ShopperContext } from "./ShopperContext";
 import type { ShopperContextProps } from "./ShopperContext";
 import type { Registerable } from "../registerable";
 
+const DEPRECATED = "Deprecated — ignored.";
+
 export const shopperContextMeta: GlobalContextMeta<ShopperContextProps> = {
   name: "plasmic-commerce-ep-shopper-context",
-  displayName: "EP Shopper Context",
+  displayName: "EP Shopper Context (deprecated)",
   description:
-    "Override channel for cart identity. Paste a cart UUID for Studio preview. In production, leave empty — the server uses an httpOnly cookie.",
+    "Does nothing. It used to override cart identity from the page; the shopper's cart, account, locale and currency now come from the session the server holds, and nothing here can change them. Remove it from your project.",
   props: {
     cartId: {
       type: "string",
       displayName: "Cart ID",
       description:
-        "Override cart ID for preview. Leave empty for production cookie-based flow.",
+        `${DEPRECATED} There is no replacement: a cart is addressed by its id ` +
+        "alone, so a cart id a page can set is a cart a page can take over.",
+      hidden: () => true,
     },
     accountId: {
       type: "string",
       displayName: "Account ID",
-      description: "Future: logged-in customer ID.",
+      description:
+        `${DEPRECATED} Sign an account member in with the account login ` +
+        "operation; the server selects the account and scopes pricing to it.",
+      hidden: () => true,
       advanced: true,
     },
     locale: {
       type: "string",
       displayName: "Locale",
-      description: "Future: locale override (e.g., en-US).",
+      description: `${DEPRECATED} Set Locale on the Elastic Path Provider.`,
+      hidden: () => true,
       advanced: true,
     },
     currency: {
       type: "string",
       displayName: "Currency",
-      description: "Future: currency override (e.g., USD, GBP).",
+      description: `${DEPRECATED} Set Currency on the Elastic Path Provider.`,
+      hidden: () => true,
       advanced: true,
     },
   },

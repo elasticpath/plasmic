@@ -66,11 +66,6 @@ export interface CreateEpAuthBetterInput {
    */
   hostAllowlist?: readonly string[];
   /**
-   * @deprecated Read by no code. `sessionCartResolver` replaces it; this is
-   * removed in the breaking release.
-   */
-  cartMergeStrategy?: "merge" | "replace" | "prompt";
-  /**
    * Chooses the session cart at a login or an account switch, configured once
    * rather than per call site.
    *
@@ -202,7 +197,6 @@ export interface EpAuth {
     clientId: string;
     host: string;
     resolveConfig?: EpResolveConfig;
-    cartMergeStrategy: "merge" | "replace" | "prompt";
     checkout?: { sessionSecret: string };
     adapters?: { stripe?: { secretKey: string }; clover?: any };
   };
@@ -318,7 +312,6 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
     clientId: input.clientId,
     host: input.host,
     resolveConfig: input.resolveConfig,
-    cartMergeStrategy: input.cartMergeStrategy ?? "merge",
     checkout: input.checkout,
     adapters: input.adapters,
   });

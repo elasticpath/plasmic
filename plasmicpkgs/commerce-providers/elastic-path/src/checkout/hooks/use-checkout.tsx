@@ -142,9 +142,8 @@ export function useCheckout(options: UseCheckoutOptions = {}): UseCheckoutReturn
     }));
   }, [autoAdvanceSteps]);
 
-  // Create order from cart.
-  // cartId is optional — in server-cart mode the server resolves identity
-  // from the httpOnly cookie / X-Shopper-Context header.
+  // Create order from cart. cartId is optional: the server resolves the
+  // shopper from the session envelope.
   const createOrder = useCallback(async (): Promise<ElasticPathOrder> => {
     if (!state.customerData || !state.billingAddress) {
       throw new Error('Missing required checkout data');

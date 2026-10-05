@@ -1,8 +1,4 @@
-import { useMemo } from "react";
-import { useCart } from "./use-cart";
-import type { CartData } from "./use-cart";
-
-import { normalizeCart } from "../utils/normalize";
+import { useEpCart } from "../cart-provider/use-ep-cart";
 import type { Cart } from "../types/cart";
 
 export interface UseCheckoutCartReturn {
@@ -10,27 +6,20 @@ export interface UseCheckoutCartReturn {
   error: Error | null;
   isLoading: boolean;
   isEmpty: boolean;
-  mutate: () => Promise<CartData | undefined>;
+  mutate: () => Promise<Cart | null | undefined>;
 }
 
 /**
- * The cart as the checkout components see it.
- *
- * This reads the cart-routes path (`GET /api/ep/cart`) rather than the proxy,
- * but produces the same Elastic Path cart the rest of the package publishes, so
- * a checkout summary and a cart drawer bind identically. The wire shape is a
- * projection — `{ items, meta }` — so it is rewrapped before normalizing.
+ * The cart as the checkout components see it. One read with `useEpCart`, so a
+ * checkout summary and a cart drawer share a cache entry and cannot disagree.
  */
 export function useCheckoutCart(): UseCheckoutCartReturn {
-  const { data, error, isLoading, isEmpty, mutate } = useCart();
-
-  const cart = useMemo<Cart | null>(() => {
-    if (!data) return null;
-    return normalizeCart({
-      data: { id: "", type: "cart", meta: data.meta ?? undefined } as any,
-      included: { items: (data.items ?? []) as any },
-    });
-  }, [data]);
-
-  return { data: cart, error, isLoading, isEmpty, mutate };
+  const { cart, isLoading, error, refresh } = useEpCart();
+  return {
+    data: cart,
+    error,
+    isLoading,
+    isEmpty: !cart || !cart.items || cart.items.length === 0,
+    mutate: refresh,
+  };
 }

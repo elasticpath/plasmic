@@ -127,20 +127,14 @@ describe("ServerCartActionsProvider", () => {
     });
   });
 
-  it("refreshes both cart caches after a write", async () => {
+  it("refreshes the one cart cache after a write", async () => {
     const actions = renderProvider();
 
     await act(async () => {
       actions.addItem("prod-1", "", 1);
     });
 
-    expect(mockSwrMutate).toHaveBeenCalledWith("ep-cart");
-    const [matcher] = mockSwrMutate.mock.calls.find(
-      ([arg]) => typeof arg === "function"
-    )!;
-    expect(matcher("cart")).toBe(true);
-    expect(matcher(["cart", "cart-123"])).toBe(true);
-    expect(matcher("ep-product")).toBe(false);
+    expect(mockSwrMutate.mock.calls).toEqual([["ep-cart"]]);
   });
 
   it("does not throw when a write fails", async () => {

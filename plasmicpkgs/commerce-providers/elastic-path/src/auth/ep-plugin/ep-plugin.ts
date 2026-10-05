@@ -187,50 +187,6 @@ async function readExistingSession(ctx: any): Promise<any | null> {
   }
 }
 
-/**
- * Verify an EP account token by calling EP's account endpoint with both
- * the shopper bearer and the account-management header. EP returns 200
- * with the account record only when the supplied token grants access to
- * the supplied accountId. Returns the canonical id from the response so
- * the session stores EP's source of truth, not the caller's claim.
- *
- * Returns null on any non-2xx, network failure, or shape mismatch — the
- * caller treats null as a hard rejection.
- */
-async function verifyEpAccountToken(input: {
-  host: string;
-  shopperToken: string;
-  accountId: string;
-  accountToken: string;
-}): Promise<{
-  canonicalAccountId: string;
-  canonicalAccountName?: string;
-} | null> {
-  try {
-    const url = `${input.host}/v2/accounts/${encodeURIComponent(input.accountId)}`;
-    const res = await fetch(url, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${input.shopperToken}`,
-        [EP_ACCOUNT_TOKEN_HEADER]: input.accountToken,
-      },
-    });
-    if (!res.ok) return null;
-    const body = (await res.json().catch(() => null)) as
-      | { data?: { id?: string; name?: string } }
-      | null;
-    const id = body?.data?.id;
-    if (typeof id !== "string" || !id) return null;
-    const name = body?.data?.name;
-    return {
-      canonicalAccountId: id,
-      canonicalAccountName: typeof name === "string" ? name : undefined,
-    };
-  } catch {
-    return null;
-  }
-}
-
 function jsonError(code: string, status: number, message: string): Response {
   return new Response(JSON.stringify({ error: code, code, message }), {
     status,
@@ -379,16 +335,6 @@ function accountTokenFailure(err: unknown): Response {
   );
 }
 
-/** The older shape, where the caller supplied a credential it minted itself. */
-interface LegacyAccountLoginRequest {
-  epMemberId: string;
-  epAccountId: string;
-  epAccountToken: string;
-  epAccountExpires: string | number;
-  email?: string;
-  name?: string;
-}
-
 export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
   // One discovery per auth instance. The realm and its profiles are store
   // configuration, so re-reading them on every sign-in buys nothing.
@@ -519,15 +465,11 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
           const existing = await readExistingSession(ctx);
           if (!existing?.user || !existing?.session) return noSessionError();
 
-          const body = ((ctx.body as any) ?? {}) as Partial<
-            EpAccountLoginRequest & LegacyAccountLoginRequest
-          >;
+          const body = ((ctx.body as any) ?? {}) as Partial<EpAccountLoginRequest>;
           const { username, password } = body;
 
-          // The credential shape: the package signs the member in itself, so
-          // no Elastic Path credential ever passes through the browser. The
-          // token shape below is the older contract, kept until the breaking
-          // release retires it.
+          // The package signs the member in itself, so no Elastic Path
+          // credential passes through the browser in either direction.
           if (typeof username === "string" && typeof password === "string") {
             const host = existing.session.epHost;
             const implicitToken = existing.session.epAccessToken;
@@ -594,82 +536,11 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             );
           }
 
-          const { epMemberId, epAccountId, epAccountToken, epAccountExpires } =
-            body;
-          const accountExpires = parseEpExpires(epAccountExpires);
-
-          if (
-            typeof epMemberId !== "string" ||
-            !epMemberId ||
-            typeof epAccountId !== "string" ||
-            typeof epAccountToken !== "string" ||
-            accountExpires === null
-          ) {
-            return jsonError(
-              "invalid_input",
-              400,
-              "Body must include { username, password }, or the older " +
-                "{ epMemberId, epAccountId, epAccountToken, epAccountExpires } " +
-                "from EP /v2/account-members/tokens. epAccountExpires may be " +
-                "ISO-8601 or epoch seconds."
-            );
-          }
-
-          // Verify the supplied account token against EP before persisting.
-          // Without this the endpoint trusts whatever the caller sent, so
-          // any user with a session cookie could claim arbitrary epAccountId
-          // and any storefront authorizing on session.user.epAccountId would
-          // leak data. Issue #280.
-          const verified = await verifyEpAccountToken({
-            host: existing.session.epHost,
-            shopperToken: existing.session.epAccessToken,
-            accountId: epAccountId,
-            accountToken: epAccountToken,
-          });
-          if (!verified) {
-            return jsonError(
-              "invalid_account_token",
-              401,
-              "EP rejected the supplied account token. Re-mint via /v2/account-members/tokens."
-            );
-          }
-
-          // Upgrade the user record. Keep the same id/createdAt; switch
-          // email + name to the real account values so downstream readers
-          // can distinguish "real shopper" from "anonymous" via the
-          // @anonymous.local sentinel.
-          const user = {
-            ...existing.user,
-            email:
-              typeof body.email === "string" ? body.email : existing.user.email,
-            name: typeof body.name === "string" ? body.name : existing.user.name,
-            updatedAt: new Date(),
-          };
-
-          tearDownCheckoutSession(ctx);
-
-          const selected = selectAccount(
-            { ...existing.session, updatedAt: new Date() },
-            {
-              memberId: epMemberId,
-              account: {
-                id: verified.canonicalAccountId,
-                name: verified.canonicalAccountName,
-                token: epAccountToken,
-                expires: accountExpires,
-              },
-            }
+          return jsonError(
+            "invalid_input",
+            400,
+            "Body must include { username, password }."
           );
-          const session = await applySessionCart(selected, {
-            priorSession: existing.session,
-            account: selected.epAccount!,
-            memberId: epMemberId,
-            reauthenticated: true,
-          });
-
-          await setSessionCookie(ctx, { session, user } as any);
-          // The legacy shape, which no client method can reach.
-          return ctx.json({ user, session });
         }
       ),
 

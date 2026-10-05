@@ -1,7 +1,6 @@
 import { GlobalContextMeta } from "@plasmicapp/host";
 import registerGlobalContext from "@plasmicapp/host/registerGlobalContext";
 import React from "react";
-import { ElasticPathCredentials } from "./client";
 import { Registerable } from "./registerable";
 import type { CurrencyDisplay } from "./utils/price";
 import { EpCommerceProvider } from "./shopper-context/EpCommerceContext";
@@ -36,7 +35,9 @@ const globalActionsRegistrations = {
   },
 } as const;
 
-interface CommerceProviderProps extends ElasticPathCredentials {
+interface CommerceProviderProps {
+  clientId: string;
+  host?: string;
   children?: React.ReactNode;
   locale?: string;
   currency?: string;
@@ -97,18 +98,18 @@ export const commerceProviderMeta: any = {
         "How money renders across product prices, cart lines and totals. The default uses Elastic Path's own formatted price, so a store's Commerce Manager settings are honoured; the other two re-format through the browser's Intl instead.",
       advanced: true,
     },
-    // Retired, but hostless prop schemas are append-only: removing one
-    // breaks hostless publishing for every package.
     serverCartMode: {
       type: "boolean",
       hidden: () => true,
-      description: "Retired. Cart operations always use server routes.",
+      description:
+        "Deprecated — ignored. Cart operations always run on the server.",
     },
     serverToken: {
       type: "string",
       hidden: () => true,
       description:
-        "Retired. The shopper's EP access token never reaches the browser.",
+        "Deprecated — ignored. The shopper's Elastic Path credential never " +
+        "reaches the browser.",
     },
   },
   ...{ globalActions: globalActionsRegistrations },

@@ -106,9 +106,6 @@ export class CookieSessionStore implements SessionStore {
 export function createAdapterRegistry(): AdapterRegistry;
 
 // @public (undocumented)
-export function createCartRoutes(epAuth: EpAuth): CartRoutes;
-
-// @public (undocumented)
 export function createClientCredentialsTokenResolver(config: ClientCredentialsResolverConfig): ClientCredentialsTokenResolver;
 
 // @public (undocumented)
@@ -230,7 +227,6 @@ export interface EpAuth {
         clientId: string;
         host: string;
         resolveConfig?: EpResolveConfig;
-        cartMergeStrategy: "merge" | "replace" | "prompt";
         checkout?: {
             sessionSecret: string;
         };
@@ -257,8 +253,6 @@ export interface EpAuthConfig {
     basePath?: string;
     // (undocumented)
     baseURL?: string;
-    // @deprecated (undocumented)
-    cartMergeStrategy?: "merge" | "replace" | "prompt";
     // (undocumented)
     checkout?: {
         sessionSecret: string;

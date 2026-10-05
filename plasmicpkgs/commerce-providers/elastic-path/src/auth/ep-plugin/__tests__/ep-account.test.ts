@@ -1,16 +1,6 @@
 /**
- * /ep/account/login + /ep/account/logout (PRD #273).
- *
- * Login: caller has already exchanged a username/password (or other EP
- * credential) for an EP account token via EP's
- * `/v2/account-members/tokens` endpoint. The plugin's role is to PERSIST
- * the resulting account fields onto the better-auth session via
- * `setSessionCookie`, leaving the anonymous EP access token intact (the
- * shopper still browses anonymously for catalog reads, but checkout +
- * order calls use the account token).
- *
- * Logout: strips account fields. Preserves anonymous EP access token so
- * the visitor's cart and browsing continue without a re-mint.
+ * Signing out, refusing a sign-in, and what a lapsed account credential looks
+ * like from outside. Signing in itself is covered in ep-account-member.test.ts.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { betterAuth } from "better-auth";
@@ -21,25 +11,80 @@ import { createEpAuth } from "../create-ep-auth-better";
 const SECRET = "x".repeat(48);
 const EP_HOST = "https://api.test.elasticpath.com";
 const EP_CLIENT_ID = "test-client-id";
+const PROFILE = "profile-1";
+const USERNAME = "buyer@example.com";
+const PASSWORD = "Passw0rd!";
+const ACCOUNT = { id: "acct-north", name: "Acme North" };
+const ACCOUNT_TOKEN = "acct-tok-xyz";
 
 let originalFetch: typeof fetch;
+/** Negative leaves the minted credential already expired. */
+let ttlSeconds: number;
+
+function installFetch() {
+  globalThis.fetch = vi.fn(async (url: any, init: any = {}) => {
+    const u = String(url);
+    const json = (body: unknown, status = 200) =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      });
+
+    if (u === `${EP_HOST}/oauth/access_token`) {
+      return json({
+        access_token: "anon-token",
+        token_type: "Bearer",
+        expires: Math.floor(Date.now() / 1000) + 3600,
+        expires_in: 3600,
+      });
+    }
+    if (u === `${EP_HOST}/v2/settings/account-authentication`) {
+      return json({
+        data: {
+          relationships: { authentication_realm: { data: { id: "realm-1" } } },
+        },
+      });
+    }
+    if (u.includes("/password-profiles")) {
+      return json({ data: [{ id: PROFILE, name: "password" }] });
+    }
+    if (u.startsWith(`${EP_HOST}/v2/account-members/tokens`)) {
+      const data = JSON.parse(init.body).data;
+      if (
+        data.authentication_mechanism === "password" &&
+        (data.username !== USERNAME || data.password !== PASSWORD)
+      ) {
+        return json({ errors: [{ detail: "authentication failed" }] }, 400);
+      }
+      return json(
+        {
+          meta: {
+            account_member_id: "member-123",
+            results: { total: 1 },
+          },
+          data: [
+            {
+              account_id: ACCOUNT.id,
+              account_name: ACCOUNT.name,
+              token: ACCOUNT_TOKEN,
+              type: "account_management_authentication_token",
+              expires: new Date(
+                (Math.floor(Date.now() / 1000) + ttlSeconds) * 1000
+              ).toISOString(),
+            },
+          ],
+        },
+        201
+      );
+    }
+    throw new Error(`Unexpected URL: ${u}`);
+  }) as any;
+}
 
 beforeEach(() => {
   originalFetch = globalThis.fetch;
-  globalThis.fetch = vi.fn(async (url: any) => {
-    if (String(url) === `${EP_HOST}/oauth/access_token`) {
-      return new Response(
-        JSON.stringify({
-          access_token: "anon-token",
-          token_type: "Bearer",
-          expires: Math.floor(Date.now() / 1000) + 3600,
-          expires_in: 3600,
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      );
-    }
-    throw new Error(`Unexpected URL: ${url}`);
-  }) as any;
+  ttlSeconds = 1800;
+  installFetch();
 });
 
 afterEach(() => {
@@ -51,12 +96,17 @@ function buildAuth() {
   return betterAuth({
     secret: SECRET,
     baseURL: "http://localhost:3000",
-    plugins: [epPlugin({
-      hostAllowlist: DEFAULT_HOST_ALLOWLIST, clientId: EP_CLIENT_ID, host: EP_HOST })],
+    plugins: [
+      epPlugin({
+        hostAllowlist: DEFAULT_HOST_ALLOWLIST,
+        clientId: EP_CLIENT_ID,
+        host: EP_HOST,
+      }),
+    ],
     session: {
       cookieCache: { enabled: true, strategy: "jwe", refreshCache: true },
     },
-  });
+  } as any);
 }
 
 function mergeCookies(prior: string, res: Response): string {
@@ -77,10 +127,6 @@ function mergeCookies(prior: string, res: Response): string {
   return [...map.entries()].map(([n, v]) => `${n}=${v}`).join("; ");
 }
 
-function cookiesFromResponse(res: Response): string {
-  return mergeCookies("", res);
-}
-
 function nextStyleCookies(cookieHeader: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const part of cookieHeader.split(";")) {
@@ -94,375 +140,138 @@ function nextStyleCookies(cookieHeader: string): Record<string, string> {
   return out;
 }
 
-const ACCOUNT_EXPIRES_ISO = new Date(Date.now() + 1800_000).toISOString();
-
-const ACCOUNT_INPUT = {
-  epMemberId: "member-123",
-  epAccountId: "acct-123",
-  epAccountToken: "acct-tok-xyz",
-  epAccountExpires: ACCOUNT_EXPIRES_ISO,
-  email: "shopper@example.com",
-  name: "Test Shopper",
-};
-
-/**
- * Install a fetch mock that verifies the supplied account token by
- * returning EP's canonical account record. `canonicalId` defaults to
- * the body's `epAccountId` (the happy "EP and caller agree" case);
- * pass a different value to assert that the session stores EP's id
- * rather than the body's claim.
- */
-function mockEpVerificationSuccess(canonicalId = ACCOUNT_INPUT.epAccountId) {
-  globalThis.fetch = vi.fn(async (url: any) => {
-    const u = String(url);
-    if (u === `${EP_HOST}/oauth/access_token`) {
-      return new Response(
-        JSON.stringify({
-          access_token: "anon-token",
-          token_type: "Bearer",
-          expires: Math.floor(Date.now() / 1000) + 3600,
-          expires_in: 3600,
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      );
-    }
-    if (u === `${EP_HOST}/v2/accounts/${ACCOUNT_INPUT.epAccountId}`) {
-      return new Response(
-        JSON.stringify({
-          data: { id: canonicalId, type: "account", name: "Test Account" },
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      );
-    }
-    throw new Error(`Unexpected URL: ${url}`);
-  }) as any;
+async function anonymous(api: any): Promise<{ cookies: string; body: any }> {
+  const res = await api.epAnonymous({
+    body: {},
+    headers: new Headers(),
+    asResponse: true,
+  });
+  return { cookies: mergeCookies("", res), body: await res.json() };
 }
 
-describe("/ep/account/login + /ep/account/logout (PRD #273)", () => {
-  it("login persists EP-canonical account id, preserves anonymous epAccessToken", async () => {
-    const auth = buildAuth();
-
-    const anonResp = await (auth.api as any).epAnonymous({
-      body: {},
-      headers: new Headers(),
-      asResponse: true,
-    });
-    const anonCookies = cookiesFromResponse(anonResp);
-    const anonBody = await anonResp.json();
-
-    // EP returns a DIFFERENT id than the body claims — session must
-    // persist EP's canonical value, not the caller's claim. Issue #280.
-    const CANONICAL_ID = "acct-canonical-from-ep";
-    mockEpVerificationSuccess(CANONICAL_ID);
-
-    const loginResp = await (auth.api as any).epAccountLogin({
-      body: ACCOUNT_INPUT,
-      headers: new Headers({ cookie: anonCookies }),
-      asResponse: true,
-    });
-    expect(loginResp.status).toBe(200);
-    const loginBody = await loginResp.json();
-    expect(loginBody.session.epMemberId).toBe(ACCOUNT_INPUT.epMemberId);
-    expect(loginBody.session.epAccount).toEqual({
-      id: CANONICAL_ID,
-      name: "Test Account",
-      token: ACCOUNT_INPUT.epAccountToken,
-      expires: Math.floor(Date.parse(ACCOUNT_EXPIRES_ISO) / 1000),
-    });
-    // Anonymous EP token preserved.
-    expect(loginBody.session.epAccessToken).toBe(
-      anonBody.session.epAccessToken
-    );
-    // User upgraded from anonymous → real account.
-    expect(loginBody.user.email).toBe(ACCOUNT_INPUT.email);
-    expect(loginBody.user.name).toBe(ACCOUNT_INPUT.name);
+async function signIn(api: any, cookies: string): Promise<Response> {
+  return api.epAccountLogin({
+    body: { username: USERNAME, password: PASSWORD },
+    headers: new Headers({ cookie: cookies }),
+    asResponse: true,
   });
+}
 
-  it("logout strips account fields, preserves anonymous epAccessToken", async () => {
+describe("signing out", () => {
+  it("strips the account fields and keeps the anonymous credential", async () => {
     const auth = buildAuth();
-    const anonResp = await (auth.api as any).epAnonymous({
-      body: {},
-      headers: new Headers(),
-      asResponse: true,
-    });
-    const anonCookies = cookiesFromResponse(anonResp);
-    const anonBody = await anonResp.json();
+    const anon = await anonymous(auth.api);
+    const loginResp = await signIn(auth.api, anon.cookies);
+    const loggedIn = mergeCookies(anon.cookies, loginResp);
 
-    mockEpVerificationSuccess();
-    const loginResp = await (auth.api as any).epAccountLogin({
-      body: ACCOUNT_INPUT,
-      headers: new Headers({ cookie: anonCookies }),
-      asResponse: true,
-    });
-    const loggedInCookies = mergeCookies(anonCookies, loginResp);
-
-    const logoutResp = await (auth.api as any).epAccountLogout({
+    const res = await (auth.api as any).epAccountLogout({
       body: {},
-      headers: new Headers({ cookie: loggedInCookies }),
+      headers: new Headers({ cookie: loggedIn }),
       asResponse: true,
     });
-    expect(logoutResp.status).toBe(200);
-    const body = await logoutResp.json();
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
     expect(body.session.epMemberId).toBeUndefined();
     expect(body.session.epAccount).toBeUndefined();
     expect(body.session.epAnchorToken).toBeUndefined();
     expect(body.session.epLapsedAccount).toBeUndefined();
-    expect(JSON.stringify(body)).not.toContain(ACCOUNT_INPUT.epAccountToken);
-    expect(body.session.epAccessToken).toBe(anonBody.session.epAccessToken);
-    // User downgraded back to anonymous.
+    expect(JSON.stringify(body)).not.toContain(ACCOUNT_TOKEN);
+    expect(body.session.epAccessToken).toBe(anon.body.session.epAccessToken);
     expect(body.user.email).toMatch(/@anonymous\.local$/);
   });
+});
 
-  it("login rejects a body with no account member", async () => {
+describe("refusing a sign-in", () => {
+  it("refuses a body that carries no credentials", async () => {
     const auth = buildAuth();
-    const anonResp = await (auth.api as any).epAnonymous({
-      body: {},
+    const anon = await anonymous(auth.api);
+
+    const res = await (auth.api as any).epAccountLogin({
+      body: { username: USERNAME },
+      headers: new Headers({ cookie: anon.cookies }),
+      asResponse: true,
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("refuses a caller the package minted no token for", async () => {
+    const auth = buildAuth();
+
+    const res = await (auth.api as any).epAccountLogin({
+      body: {
+        epMemberId: "member-123",
+        epAccountId: ACCOUNT.id,
+        epAccountToken: "a-token-the-caller-minted",
+        epAccountExpires: new Date(Date.now() + 1800_000).toISOString(),
+      },
+      headers: new Headers({ cookie: (await anonymous(auth.api)).cookies }),
+      asResponse: true,
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("refuses when no anonymous session exists", async () => {
+    const auth = buildAuth();
+
+    const res = await (auth.api as any).epAccountLogin({
+      body: { username: USERNAME, password: PASSWORD },
       headers: new Headers(),
       asResponse: true,
     });
-    const anonCookies = cookiesFromResponse(anonResp);
-    mockEpVerificationSuccess();
 
-    const { epMemberId, ...withoutMember } = ACCOUNT_INPUT;
-    void epMemberId;
-    const resp = await (auth.api as any).epAccountLogin({
-      body: withoutMember,
-      headers: new Headers({ cookie: anonCookies }),
-      asResponse: true,
-    });
-
-    expect(resp.status).toBe(400);
+    expect(res.status).toBe(401);
   });
+});
 
-  it("login accepts an expiry in epoch seconds as well as ISO-8601", async () => {
+describe("a lapsed account credential", () => {
+  it("releases the anchor token on sign-in, so both slots are never filled", async () => {
     const auth = buildAuth();
-    const anonResp = await (auth.api as any).epAnonymous({
-      body: {},
-      headers: new Headers(),
-      asResponse: true,
-    });
-    const anonCookies = cookiesFromResponse(anonResp);
-    mockEpVerificationSuccess();
+    const anon = await anonymous(auth.api);
 
-    const epochSeconds = Math.floor(Date.now() / 1000) + 1800;
-    const resp = await (auth.api as any).epAccountLogin({
-      body: { ...ACCOUNT_INPUT, epAccountExpires: epochSeconds },
-      headers: new Headers({ cookie: anonCookies }),
-      asResponse: true,
-    });
+    const res = await signIn(auth.api, anon.cookies);
 
-    expect(resp.status).toBe(200);
-    expect((await resp.json()).session.epAccount.expires).toBe(epochSeconds);
+    expect((await res.json()).session.epAnchorToken).toBeUndefined();
   });
 
-  it("login rejects an expiry in no format at all", async () => {
-    const auth = buildAuth();
-    const anonResp = await (auth.api as any).epAnonymous({
-      body: {},
-      headers: new Headers(),
-      asResponse: true,
-    });
-    const anonCookies = cookiesFromResponse(anonResp);
-    mockEpVerificationSuccess();
-
-    const resp = await (auth.api as any).epAccountLogin({
-      body: { ...ACCOUNT_INPUT, epAccountExpires: "next tuesday" },
-      headers: new Headers({ cookie: anonCookies }),
-      asResponse: true,
-    });
-
-    expect(resp.status).toBe(400);
-  });
-
-  it("login releases the anchor token, so both slots are never filled", async () => {
-    const auth = buildAuth();
-    const anonResp = await (auth.api as any).epAnonymous({
-      body: {},
-      headers: new Headers(),
-      asResponse: true,
-    });
-    const anonCookies = cookiesFromResponse(anonResp);
-    mockEpVerificationSuccess();
-
-    const resp = await (auth.api as any).epAccountLogin({
-      body: ACCOUNT_INPUT,
-      headers: new Headers({ cookie: anonCookies }),
-      asResponse: true,
-    });
-
-    expect((await resp.json()).session.epAnchorToken).toBeUndefined();
-  });
-
-  it("states a lapse on every read, not only when a refresh happens to run", async () => {
+  it("is stated on every read, not only when a refresh happens to run", async () => {
+    ttlSeconds = -10;
     const epAuth = createEpAuth({
       clientId: EP_CLIENT_ID,
       host: EP_HOST,
       secret: SECRET,
       baseURL: "http://localhost:3000",
     });
-    const anonResp = await (epAuth.handler.api as any).epAnonymous({
-      body: {},
-      headers: new Headers(),
-      asResponse: true,
-    });
-    const anonCookies = cookiesFromResponse(anonResp);
-    mockEpVerificationSuccess();
+    const anon = await anonymous(epAuth.handler.api);
+    const loginResp = await signIn(epAuth.handler.api, anon.cookies);
 
-    const loginResp = await (epAuth.handler.api as any).epAccountLogin({
-      body: {
-        ...ACCOUNT_INPUT,
-        epAccountExpires: new Date(Date.now() - 1000).toISOString(),
-      },
-      headers: new Headers({ cookie: anonCookies }),
-      asResponse: true,
-    });
     const session = await epAuth.api.getSession({
-      cookies: nextStyleCookies(mergeCookies(anonCookies, loginResp)),
+      cookies: nextStyleCookies(mergeCookies(anon.cookies, loginResp)),
     });
 
     expect(session.session?.account).toBeNull();
-    expect(session.session?.lapsedAccount).toEqual({
-      id: ACCOUNT_INPUT.epAccountId,
-      name: "Test Account",
-    });
+    expect(session.session?.lapsedAccount).toEqual(ACCOUNT);
     expect(session.isAuthenticated).toBe(true);
   });
 
-  it("states a lapse on refresh rather than letting the shopper see list prices", async () => {
+  it("is stated on refresh rather than letting the shopper see list prices", async () => {
+    ttlSeconds = -10;
     const auth = buildAuth();
-    const anonResp = await (auth.api as any).epAnonymous({
+    const anon = await anonymous(auth.api);
+    const loginResp = await signIn(auth.api, anon.cookies);
+    const loggedIn = mergeCookies(anon.cookies, loginResp);
+
+    const res = await (auth.api as any).epRefresh({
       body: {},
-      headers: new Headers(),
+      headers: new Headers({ cookie: loggedIn }),
       asResponse: true,
     });
-    const anonCookies = cookiesFromResponse(anonResp);
-    mockEpVerificationSuccess();
 
-    const loginResp = await (auth.api as any).epAccountLogin({
-      body: {
-        ...ACCOUNT_INPUT,
-        epAccountExpires: new Date(Date.now() - 1000).toISOString(),
-      },
-      headers: new Headers({ cookie: anonCookies }),
-      asResponse: true,
-    });
-    const loggedInCookies = mergeCookies(anonCookies, loginResp);
-
-    const refreshResp = await (auth.api as any).epRefresh({
-      body: {},
-      headers: new Headers({ cookie: loggedInCookies }),
-      asResponse: true,
-    });
-    const body = await refreshResp.json();
-
-    expect(body.session.epLapsedAccount).toEqual({
-      id: ACCOUNT_INPUT.epAccountId,
-      name: "Test Account",
-    });
+    const body = await res.json();
+    expect(body.session.epLapsedAccount).toEqual(ACCOUNT);
     expect(body.session.epAccount).toBeUndefined();
-    expect(body.session.epMemberId).toBe(ACCOUNT_INPUT.epMemberId);
-  });
-
-  it("login returns 401 when no anonymous session exists", async () => {
-    const auth = buildAuth();
-    const resp = await (auth.api as any).epAccountLogin({
-      body: ACCOUNT_INPUT,
-      headers: new Headers(),
-      asResponse: true,
-    });
-    expect(resp.status).toBe(401);
-  });
-
-  it("login returns 401 with no Set-Cookie when EP verification network call throws (#280)", async () => {
-    const auth = buildAuth();
-
-    const anonResp = await (auth.api as any).epAnonymous({
-      body: {},
-      headers: new Headers(),
-      asResponse: true,
-    });
-    const anonCookies = cookiesFromResponse(anonResp);
-
-    // EP unreachable: verification fetch throws. Endpoint must fail
-    // closed rather than treat the absence of a NACK as an ACK.
-    globalThis.fetch = vi.fn(async (url: any) => {
-      const u = String(url);
-      if (u === `${EP_HOST}/oauth/access_token`) {
-        return new Response(
-          JSON.stringify({
-            access_token: "anon-token",
-            token_type: "Bearer",
-            expires: Math.floor(Date.now() / 1000) + 3600,
-            expires_in: 3600,
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        );
-      }
-      if (u === `${EP_HOST}/v2/accounts/${ACCOUNT_INPUT.epAccountId}`) {
-        throw new Error("network down");
-      }
-      throw new Error(`Unexpected URL: ${url}`);
-    }) as any;
-
-    const loginResp = await (auth.api as any).epAccountLogin({
-      body: ACCOUNT_INPUT,
-      headers: new Headers({ cookie: anonCookies }),
-      asResponse: true,
-    });
-
-    expect(loginResp.status).toBe(401);
-    const setCookies: string[] = [];
-    loginResp.headers.forEach((v: string, k: string) => {
-      if (k.toLowerCase() === "set-cookie") setCookies.push(v);
-    });
-    expect(setCookies).toEqual([]);
-  });
-
-  it("login returns 401 with no Set-Cookie when EP rejects the supplied account token (#280)", async () => {
-    const auth = buildAuth();
-
-    // Bootstrap an anon session first.
-    const anonResp = await (auth.api as any).epAnonymous({
-      body: {},
-      headers: new Headers(),
-      asResponse: true,
-    });
-    const anonCookies = cookiesFromResponse(anonResp);
-
-    // Swap the fetch mock so EP's verification endpoint returns 401.
-    globalThis.fetch = vi.fn(async (url: any) => {
-      const u = String(url);
-      if (u === `${EP_HOST}/oauth/access_token`) {
-        return new Response(
-          JSON.stringify({
-            access_token: "anon-token",
-            token_type: "Bearer",
-            expires: Math.floor(Date.now() / 1000) + 3600,
-            expires_in: 3600,
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        );
-      }
-      if (u === `${EP_HOST}/v2/accounts/${ACCOUNT_INPUT.epAccountId}`) {
-        return new Response(
-          JSON.stringify({ errors: [{ status: "401", title: "Unauthorized" }] }),
-          { status: 401, headers: { "Content-Type": "application/json" } }
-        );
-      }
-      throw new Error(`Unexpected URL: ${url}`);
-    }) as any;
-
-    const loginResp = await (auth.api as any).epAccountLogin({
-      body: ACCOUNT_INPUT,
-      headers: new Headers({ cookie: anonCookies }),
-      asResponse: true,
-    });
-
-    expect(loginResp.status).toBe(401);
-    const setCookies: string[] = [];
-    loginResp.headers.forEach((v: string, k: string) => {
-      if (k.toLowerCase() === "set-cookie") setCookies.push(v);
-    });
-    expect(setCookies).toEqual([]);
+    expect(body.session.epMemberId).toBe("member-123");
   });
 });

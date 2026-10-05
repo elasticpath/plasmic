@@ -7,7 +7,6 @@
 import { CanvasComponentProps } from '@plasmicapp/host/registerComponent';
 import type { CartItemObject } from '@epcc-sdk/sdks-shopper';
 import type { CartResponse } from '@epcc-sdk/sdks-shopper';
-import type { Client } from '@epcc-sdk/sdks-shopper';
 import { CodeComponentMeta } from '@plasmicapp/host/registerComponent';
 import type { FormattedPrice as FormattedPrice_2 } from '@epcc-sdk/sdks-shopper';
 import { GlobalContextMeta } from '@plasmicapp/host';
@@ -57,27 +56,6 @@ export type AccountRoster = {
 
 // @public
 export type AccountState = "anonymous" | "memberOnly" | "selected" | "lapsed";
-
-// @public (undocumented)
-export interface AddItemInput {
-    // (undocumented)
-    bundleConfiguration?: unknown;
-    // (undocumented)
-    locationId?: string;
-    // (undocumented)
-    productId: string;
-    // (undocumented)
-    quantity?: number;
-    // (undocumented)
-    selectedOptions?: {
-        variationId: string;
-        optionId: string;
-        optionName: string;
-        variationName: string;
-    }[];
-    // (undocumented)
-    variantId?: string;
-}
 
 // @public
 export interface AddressData {
@@ -137,12 +115,6 @@ export interface AutocompleteSuggestionItem {
     _raw?: Record<string, unknown>;
 }
 
-// @public
-export function buildCartCookieHeader(cartId: string, opts?: CartCookieOptions): string;
-
-// @public
-export function buildClearCartCookieHeader(opts?: CartCookieOptions): string;
-
 // @public (undocumented)
 export function buildFieldOptions(templates: ExtensionTemplate[] | undefined, templateSlug: string | undefined): ChoiceObject[];
 
@@ -151,107 +123,6 @@ export function buildLeafOptions(): ChoiceObject[];
 
 // @public (undocumented)
 export function buildTemplateOptions(templates: ExtensionTemplate[] | undefined): ChoiceObject[];
-
-// @public (undocumented)
-export interface CartCookieOptions {
-    // (undocumented)
-    cookieName?: string;
-    // (undocumented)
-    maxAge?: number;
-    // (undocumented)
-    path?: string;
-    // (undocumented)
-    secure?: boolean;
-}
-
-// @public (undocumented)
-export interface CartData {
-    // (undocumented)
-    items: CartItem[];
-    // (undocumented)
-    meta: CartMeta | null;
-}
-
-// @public (undocumented)
-export interface CartItem {
-    // (undocumented)
-    description: string;
-    // (undocumented)
-    id: string;
-    // (undocumented)
-    image?: {
-        href: string;
-        mime_type?: string;
-    };
-    // (undocumented)
-    meta: {
-        display_price: {
-            with_tax: {
-                unit: {
-                    amount: number;
-                    formatted: string;
-                    currency: string;
-                };
-                value: {
-                    amount: number;
-                    formatted: string;
-                    currency: string;
-                };
-            };
-            without_tax: {
-                unit: {
-                    amount: number;
-                    formatted: string;
-                    currency: string;
-                };
-                value: {
-                    amount: number;
-                    formatted: string;
-                    currency: string;
-                };
-            };
-        };
-    };
-    // (undocumented)
-    name: string;
-    // (undocumented)
-    product_id: string;
-    // (undocumented)
-    quantity: number;
-    // (undocumented)
-    sku: string;
-    // (undocumented)
-    slug: string;
-    // (undocumented)
-    type: string;
-}
-
-// @public (undocumented)
-export interface CartMeta {
-    // (undocumented)
-    display_price: {
-        with_tax: {
-            amount: number;
-            formatted: string;
-            currency: string;
-        };
-        without_tax: {
-            amount: number;
-            formatted: string;
-            currency: string;
-        };
-        tax: {
-            amount: number;
-            formatted: string;
-            currency: string;
-        };
-        discount?: {
-            amount: number;
-            formatted: string;
-            currency: string;
-        };
-    };
-}
 
 // @public (undocumented)
 export interface CatalogSearchData {
@@ -933,8 +804,6 @@ export const epCloverPaymentMeta: CodeComponentMeta<EPCloverPaymentProps>;
 
 // @public (undocumented)
 export interface EpCommerce {
-    // (undocumented)
-    client: Client;
     currency?: string;
     currencyDisplay: CurrencyDisplay;
     // (undocumented)
@@ -942,7 +811,7 @@ export interface EpCommerce {
 }
 
 // @public
-export function EpCommerceProvider({ clientId, host, locale, currency, currencyDisplay, children, }: EpCommerceProviderProps): React_2.JSX.Element;
+export function EpCommerceProvider({ locale, currency, currencyDisplay, children, }: EpCommerceProviderProps): React_2.JSX.Element;
 
 // @public (undocumented)
 export interface EpCommerceProviderProps {
@@ -1478,9 +1347,6 @@ export function getMockExtensionsData(): ExtensionsData;
 // @public (undocumented)
 export function getProductFieldLeaf(id: string): ProductFieldLeaf | undefined;
 
-// @public (undocumented)
-export function getShopperContext(): React_2.Context<ShopperOverrides>;
-
 // @public
 export function humanizeFieldKey(key: string): string;
 
@@ -1523,9 +1389,6 @@ export enum OrderStatus {
 
 // @public
 export function parseOptions(raw: string | undefined): SelectOption[];
-
-// @public
-export function parseShopperHeader(headers: Record<string, string | string[] | undefined>): ShopperHeader;
 
 // @public
 export interface PaymentSetup {
@@ -2042,9 +1905,6 @@ export interface ReleasedEpUser {
 export type ReleasedSessionPath = (typeof RELEASED_SESSION_PATHS)[number];
 
 // @public
-export function resolveCartId(headers: Record<string, string | string[] | undefined>, cookies: Record<string, string | undefined>, cookieName?: string): string | null;
-
-// @public
 export interface ResolvedField {
     // (undocumented)
     displayValue: string;
@@ -2125,35 +1985,17 @@ export interface ShippingRate {
     service_level: string;
 }
 
-// @public
-export function ShopperContext({ cartId, accountId, locale, currency, basePath, children, }: ShopperContextProps): React_2.JSX.Element;
-
 // @public (undocumented)
-export interface ShopperContextProps extends ShopperOverrides {
+export function ShopperContext({ children }: ShopperContextProps): React_2.JSX.Element;
+
+// @public
+export interface ShopperContextProps {
+    // (undocumented)
+    accountId?: string;
+    // (undocumented)
+    cartId?: string;
     // (undocumented)
     children?: React_2.ReactNode;
-}
-
-// @public (undocumented)
-export interface ShopperHeader {
-    // (undocumented)
-    accountId?: string;
-    // (undocumented)
-    cartId?: string;
-    // (undocumented)
-    currency?: string;
-    // (undocumented)
-    locale?: string;
-}
-
-// @public (undocumented)
-export interface ShopperOverrides {
-    // (undocumented)
-    accountId?: string;
-    // (undocumented)
-    basePath?: string;
-    // (undocumented)
-    cartId?: string;
     // (undocumented)
     currency?: string;
     // (undocumented)
@@ -2200,28 +2042,8 @@ export const stripeProviderMeta: GlobalContextMeta<StripeProviderProps>;
 // @public (undocumented)
 export function toggleDrawer(): void;
 
-// @public
-export function useAddItem(): (item: AddItemInput) => Promise<unknown>;
-
-// @public
-export function useCart(): UseCartReturn;
-
 // @public (undocumented)
 export function useCartItemQuantity(): CartItemQuantityContextValue | null;
-
-// @public (undocumented)
-export interface UseCartReturn {
-    // (undocumented)
-    data: CartData | null;
-    // (undocumented)
-    error: Error | null;
-    // (undocumented)
-    isEmpty: boolean;
-    // (undocumented)
-    isLoading: boolean;
-    // (undocumented)
-    mutate: () => Promise<CartData | undefined>;
-}
 
 // @public
 export function useCheckout(options?: UseCheckoutOptions): UseCheckoutReturn;
@@ -2240,7 +2062,7 @@ export interface UseCheckoutCartReturn {
     // (undocumented)
     isLoading: boolean;
     // (undocumented)
-    mutate: () => Promise<CartData | undefined>;
+    mutate: () => Promise<Cart | null | undefined>;
 }
 
 // @public
@@ -2377,9 +2199,6 @@ export interface UseRelatedProductsResult {
 }
 
 // @public
-export function useRemoveItem(): (itemId: string) => Promise<void>;
-
-// @public
 export function useResolvedField(args: ResolveArgs): UseResolvedFieldResult;
 
 // @public (undocumented)
@@ -2393,16 +2212,7 @@ export interface UseResolvedFieldResult {
 }
 
 // @public
-export function useShopperContext(): ShopperOverrides;
-
-// @public
-export function useShopperFetch(): <T = unknown>(path: string, init?: RequestInit) => Promise<T>;
-
-// @public
 export function useStripePayment(options: UseStripePaymentOptions): UseStripePaymentReturn;
-
-// @public
-export function useUpdateItem(): (itemId: string, quantity: number) => void;
 
 // @public (undocumented)
 export function useVariationPicker(): VariationPickerContextValue | null;
