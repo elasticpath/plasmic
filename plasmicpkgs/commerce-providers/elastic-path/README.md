@@ -30,8 +30,8 @@ export const epAuth = createEpAuth({
   // Optional: payment adapters
   adapters: { stripe: { secretKey: process.env.STRIPE_SECRET_KEY! } },
 
-  // Optional: auth handler prefix (default: /api/ep). The components only
-  // call /api/ep, so change this only if you call the handler yourself.
+  // Optional: auth handler prefix (default: /api/ep). The components and
+  // epAuthMiddleware only call /api/ep, so leave it unless you use neither.
   // basePath: "/api/store",
 
   // Optional: choose the shopper's cart when they sign in or switch
@@ -98,7 +98,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 ```
 
 Mount the proxy and design-time routes too — the components call them. See
-[The two browser routes](#the-two-browser-routes).
+[The two browser routes](#the-two-browser-routes). Those recipes are App Router
+route handlers; under the Pages Router, adapt each one the way the auth
+handler is adapted above.
 
 ### 3. Wire the page with session
 
@@ -225,7 +227,7 @@ export const getServerSideProps: GetServerSideProps = async ({ req, res, params 
     )
   );
 
-  // Write the session cookies for the next request (no-op if nothing changed)
+  // Write the auth cookies for the next request (no-op if nothing changed)
   session.commitCookies({
     appendHeader(name: string, value: string) {
       res.appendHeader(name, value);
@@ -302,8 +304,10 @@ session falls back to the `host` passed to `createEpAuth` (ADR-0006).
 
 The shopper has one Elastic Path identity, and it lives on the server.
 
-- **One encrypted cookie.** `better-auth.session_data` is an encrypted (JWE),
-  `HttpOnly` cookie. It holds the shopper's Elastic Path access token, the
+- **One encrypted cookie holds the credentials.** `better-auth.session_data`,
+  the shopper envelope, is an encrypted (JWE), `HttpOnly` cookie. Beside it,
+  better-auth's signed `session_token` cookie carries only a session id. The
+  envelope holds the shopper's Elastic Path access token, the
   signed-in account member, the selected organisation's account credential and
   the cart id. Page scripts cannot read it.
 - **No Elastic Path credential in the browser.** The browser holds no access
@@ -318,9 +322,9 @@ The shopper has one Elastic Path identity, and it lives on the server.
 
 ```
 First visit:
-  page → epAuth.api.getSession() → no cookie → mint an access token
-  → buildEpCtx() → withEpSession() → Server Queries render product data
-  → commitCookies() → better-auth.session_data set
+  middleware (App Router) or getSession() + commitCookies() (Pages Router)
+  → no cookie → mint an access token → better-auth.session_data set
+  → page → buildEpCtx() → withEpSession() → Server Queries render product data
 
 Returning visit:
   page → epAuth.api.getSession() → read better-auth.session_data
@@ -483,9 +487,9 @@ try {
 **Outside React**, `createEpIdentityClient({ basePath })` builds the same
 client.
 
-**Mount the routes at `/api/ep`.** The registered components and
-`useEpIdentity()` call `/api/ep`, `/api/ep/proxy` and `/api/ep/design`, and
-nothing tells them otherwise. `basePath` on `createEpAuth` moves the auth
+**Mount the routes at `/api/ep`.** The registered components,
+`useEpIdentity()` and `epAuthMiddleware` call `/api/ep`, `/api/ep/proxy` and
+`/api/ep/design`, and nothing tells them otherwise. `basePath` on `createEpAuth` moves the auth
 handler, and only a client you build with
 `createEpIdentityClient({ basePath })` can reach it there.
 `providerProps()` returns that mount path; no component reads it.
@@ -746,13 +750,14 @@ Auth is **not** an argument. The session (`accessToken`, `clientId`, `host`, `ca
 
 ### 3. Wrap Server Queries in `withEpSession`
 
-The quick start's page already does this: it reads the session, builds an EP
-context with `buildEpCtx(session)`, and runs
+The quick start's page already does this: it reads the session, builds an
+Elastic Path context with `buildEpCtx(session)`, and runs
 `PLASMIC.unstable__getServerQueriesData` inside `withEpSession`. Each `ep.*`
 function reads the active session from that scope through
 `AsyncLocalStorage`, so a query in Studio needs no `auth` binding and the page
-needs no `<DataProvider name="ep">`. Outside any `withEpSession` scope, the
-functions return `null` or `[]` without calling Elastic Path.
+needs no `<DataProvider name="ep">`. On the server, outside any
+`withEpSession` scope, the functions return `null` or `[]` without calling
+Elastic Path.
 
 ### 4. Bind the queries in Studio
 

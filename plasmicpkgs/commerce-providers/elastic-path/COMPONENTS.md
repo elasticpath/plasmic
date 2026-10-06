@@ -22,8 +22,8 @@ Page render (Server Queries)
   withEpSession(session) → ep.* fn ──────────────────────────────────→ catalog, carts
 ```
 
-**Key principle:** the browser holds no Elastic Path credential. The encrypted
-session cookie holds them, and the server attaches them. Each `ep.*` function
+**Key principle:** the browser holds no Elastic Path credential. The shopper
+envelope holds them, and the server attaches them. Each `ep.*` function
 is isomorphic: on the server it calls Elastic Path inside `withEpSession`, and
 in the browser it posts to the proxy route, which runs the same function
 server-side. See the README's
@@ -60,10 +60,9 @@ Catalog Search Provider.
 
 **Server rendering.** EP Product List Provider renders on the server: bind its
 **Products (pre-fetched)** prop to an `ep.getProductPage` Server Query, and the
-first page is in the HTML. Catalog search renders in the browser only, so a
-crawler or link preview sees an empty listing. If a listing page must be in the
-HTML and you have no other way to put it there, use EP Product List Provider
-for that page.
+first page is in the HTML. Catalog search does not render on the server yet. Its
+products appear only after the browser runs the page, so a crawler or link
+preview that does not run scripts sees an empty listing.
 
 **Design time.** Both providers show labelled `"Sample"` fixtures on the Studio
 canvas, not your catalog. Catalog search never mounts its inner component on
@@ -503,9 +502,9 @@ Every count `ep.getStock` returns is a `number`, not the SDK's `BigInt` — the 
 
 `categoryId` takes a hierarchy **node** ID and reads that node's products from `/catalog/nodes/{id}/relationships/products`. Elastic Path's catalog product endpoints have no filterable category key, and they compose `filter` terms with a comma — `and(...)` is rejected.
 
-Neither function takes a `sort`. Elastic Path's catalog product endpoints do not support sorting: the [Sorting guide](https://developer.elasticpath.com/guides/Getting-Started/sorting) lists the eight endpoints that accept a `sort` parameter and no catalog endpoint is among them, and an unsupported value is ignored rather than rejected — a request with `sort` returns HTTP 200 in the store's own order, so nothing at runtime reveals that it did nothing. See [Choosing a listing path](#3-choosing-a-listing-path).
+Neither function takes a `sort`; see [Choosing a listing path](#3-choosing-a-listing-path).
 
-The session (`accessToken`, `host`, `clientId`, `cartId?`, `accountId?`, `accountToken?`, `locale?`, `currency?`) is **not** an argument. `withEpSession(epCtx, callback)` establishes a per-request `AsyncLocalStorage` scope; each `ep.*` function reads the active session via `getCurrentEpSession()` internally. Outside any `withEpSession` scope (Studio canvas, mistakes), functions fail-soft to `null` / `[]` without calling EP.
+The session (`accessToken`, `host`, `clientId`, `cartId?`, `accountId?`, `accountToken?`, `locale?`, `currency?`) is **not** an argument. `withEpSession(epCtx, callback)` establishes a per-request `AsyncLocalStorage` scope; each `ep.*` function reads the active session via `getCurrentEpSession()` internally. On the server, outside any `withEpSession` scope, they fail-soft to `null` / `[]` without calling Elastic Path. On a published page in the browser, they post to the proxy route. In Studio they post to the design-time route, which serves the four catalog reads only: any other function returns its empty shape on the canvas and throws in the data-query Configure panel.
 
 ### Studio binding
 

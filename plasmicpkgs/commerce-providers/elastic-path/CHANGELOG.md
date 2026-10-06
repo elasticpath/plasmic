@@ -11,8 +11,8 @@ described keeping that token in browser memory as a security property. **That
 claim is retired.** It protected nothing: anyone holding the `clientId` can mint
 the same token, and the token can write to `/carts` and `/checkout`.
 
-The package now has one Elastic Path identity. The encrypted session cookie is
-the only input to it, no Elastic Path credential of any kind reaches the
+The package now has one Elastic Path identity. The shopper envelope, the
+encrypted `better-auth.session_data` cookie, is the only input to it, no Elastic Path credential of any kind reaches the
 browser, and every browser call that carries identity goes through the
 storefront's own origin.
 [ADR-0003](docs/adr/0003-one-session-for-elastic-path-identity.md) records the
@@ -71,7 +71,7 @@ removed component or a removed published prop. Both are empty instead.
 reads, `getProduct`, `getProductList`, `getProductPage` and
 `getRelatedProducts`, under the store's public credential, and refuses every
 other name. It reads no shopper session, so it works inside Studio's editing
-frame, where the session cookie never travels. Mount it at
+frame, where the browser never sends the shopper envelope. Mount it at
 `app/api/ep/design/[fn]/route.ts`. Without it, the canvas shows labelled
 `"Sample"` fixtures and the console says once which route is missing.
 
