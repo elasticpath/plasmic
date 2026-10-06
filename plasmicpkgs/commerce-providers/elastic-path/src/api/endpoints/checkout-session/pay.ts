@@ -30,8 +30,8 @@ import {
   confirmOrder,
   paymentSetup,
   updateACart,
-  createShopperClient,
 } from "@epcc-sdk/sdks-shopper";
+import type { Client } from "@epcc-sdk/sdks-shopper";
 import type {
   SessionRequest,
   SessionResponse,
@@ -60,6 +60,7 @@ import {
   cartHasPhysicalItem,
 } from "../../../checkout/session/cart-shipping";
 import { buildAdminEpClient } from "../../../checkout/session/admin-client";
+import { buildShopperEpClient } from "../../../checkout/session/shopper-client";
 import {
   applyShippingSelection,
   ShippingResolutionError,
@@ -127,7 +128,7 @@ function toClientSession(s: CheckoutSession): ClientCheckoutSession {
 /** Persist the session's extra fields + consent flags as cart custom
  * attributes immediately before checkout, so they travel with the order. */
 async function persistCustomAttributes(
-  client: ReturnType<typeof createShopperClient>["client"],
+  client: Client,
   cartId: string,
   session: CheckoutSession
 ): Promise<void> {
@@ -148,20 +149,6 @@ async function persistCustomAttributes(
   }
 }
 
-function buildShopperEpClient(ctx: SessionHandlerContext) {
-  const { client } = createShopperClient(
-    { baseUrl: ctx.epCredentials.apiBaseUrl },
-    {
-      clientId: ctx.epCredentials.clientId,
-      storage: {
-        get: () => ctx.shopperAccessToken ?? "",
-        set: () => {},
-      },
-    }
-  );
-  return client;
-}
-
 /**
  * Settle a zero-total order: cart → order, then a manual/purchase payment
  * (which authorises-and-captures with no card), then cart cleanup. EP's
@@ -172,7 +159,7 @@ async function settleFreeOrder(
   req: SessionRequest,
   ctx: SessionHandlerContext,
   session: CheckoutSession,
-  adminClient: ReturnType<typeof createShopperClient>["client"],
+  adminClient: Client,
   ttl: number
 ): Promise<SessionResponse> {
   // 1. checkoutApi (cart → order)
@@ -301,7 +288,7 @@ async function settleFreeOrder(
   };
 }
 
-type AdminClient = ReturnType<typeof createShopperClient>["client"];
+type AdminClient = Client;
 
 interface PayContinuation {
   req: SessionRequest;
@@ -891,12 +878,10 @@ export async function handlePay(
   //     needs no extra call.
   let cartHasPhysical = false;
   if (session.requiresShipping === false) {
-    cartHasPhysical = await cartHasPhysicalItem({
-      host: ctx.epCredentials.apiBaseUrl,
-      clientId: ctx.epCredentials.clientId,
-      shopperAccessToken: ctx.shopperAccessToken,
-      productIds: freshCartItems.map((it) => it.product_id ?? "").filter(Boolean),
-    });
+    cartHasPhysical = await cartHasPhysicalItem(
+      ctx,
+      freshCartItems.map((it) => it.product_id ?? "").filter(Boolean)
+    );
     if (cartHasPhysical) {
       log.warn("Physical cart overrode client requiresShipping:false", {
         sessionId: session.id,

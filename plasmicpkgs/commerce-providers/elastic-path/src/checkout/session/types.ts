@@ -281,6 +281,14 @@ export interface SessionHandlerContext {
    */
   shopperAccessToken?: string;
   /**
+   * The selected account's Elastic Path account-management token, resolved
+   * per-request from the same session as `shopperAccessToken`. Sent with every
+   * call made under the shopper's token, as the `ep.*` functions do. Omit it
+   * when no account is selected. Never sent with a `getClientCredentialsToken`
+   * call.
+   */
+  accountToken?: string;
+  /**
    * Request-scoped admin token resolver for EP operations that require
    * `client_credentials` grant (createCartPaymentIntent, checkoutApi,
    * confirmOrder, cart cleanup). Memoized within the request via closure.

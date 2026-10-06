@@ -17,7 +17,10 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
   checkoutApi: jest.fn(),
   paymentSetup: jest.fn(),
   confirmPayment: jest.fn(),
-  createShopperClient: jest.fn(() => ({ client: {} })),
+  createShopperClient: jest.fn(
+    require("../../../../checkout/session/__tests__/fake-shopper-client")
+      .fakeShopperClient
+  ),
 }));
 
 // We must use require() here (not ES import) to obtain the mocked module
@@ -43,6 +46,8 @@ import type {
 } from "../../../../checkout/session/types";
 import { hashCart } from "../../../../checkout/session/cart-hash";
 import { EP_SHIPPING_LINE_SKU } from "../../../../checkout/session/set-shipping-line";
+import { EP_ACCOUNT_TOKEN_HEADER } from "../../../../auth/ep-plugin/envelope";
+import { headersSentBy } from "../../../../checkout/session/__tests__/fake-shopper-client";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -312,6 +317,56 @@ describe("handleCreateSession", () => {
 
       const storedSession: CheckoutSession = store.set.mock.calls[0][1];
       expect(typeof storedSession.cartHash).toBe("string");
+    });
+  });
+
+  describe("selected account", () => {
+    beforeEach(() => {
+      epSdk.getACart.mockResolvedValue(makeCartResponse([]) as any);
+    });
+
+    it("reads the cart with the selected account's credential", async () => {
+      await handleCreateSession(
+        createMockReq({ cartId: "cart-abc" }),
+        createMockCtx({
+          shopperAccessToken: "shopper-token",
+          accountToken: "account-token",
+        })
+      );
+
+      const { client } = epSdk.getACart.mock.calls[0][0];
+      expect(client.token).toBe("shopper-token");
+      expect((await headersSentBy(client)).get(EP_ACCOUNT_TOKEN_HEADER)).toBe(
+        "account-token"
+      );
+    });
+
+    it("reads the cart with no account credential when none is selected", async () => {
+      await handleCreateSession(
+        createMockReq({ cartId: "cart-abc" }),
+        createMockCtx({ shopperAccessToken: "shopper-token" })
+      );
+
+      const { client } = epSdk.getACart.mock.calls[0][0];
+      expect((await headersSentBy(client)).has(EP_ACCOUNT_TOKEN_HEADER)).toBe(
+        false
+      );
+    });
+
+    it("sends no account credential on the client_credentials fallback read", async () => {
+      await handleCreateSession(
+        createMockReq({ cartId: "cart-abc" }),
+        createMockCtx({
+          accountToken: "account-token",
+          getClientCredentialsToken: jest.fn(async () => "admin-token"),
+        })
+      );
+
+      const { client } = epSdk.getACart.mock.calls[0][0];
+      expect(client.token).toBe("admin-token");
+      expect((await headersSentBy(client)).has(EP_ACCOUNT_TOKEN_HEADER)).toBe(
+        false
+      );
     });
   });
 });

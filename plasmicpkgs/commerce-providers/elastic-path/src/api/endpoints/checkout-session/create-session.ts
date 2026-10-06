@@ -7,7 +7,7 @@
  * with the client-visible session shape plus Set-Cookie headers.
  */
 import { randomUUID } from "crypto";
-import { getACart, createShopperClient } from "@epcc-sdk/sdks-shopper";
+import { getACart } from "@epcc-sdk/sdks-shopper";
 import type {
   SessionRequest,
   SessionResponse,
@@ -17,6 +17,8 @@ import type {
   SessionTotals,
 } from "../../../checkout/session/types";
 import { hashCart } from "../../../checkout/session/cart-hash";
+import { buildAdminEpClient } from "../../../checkout/session/admin-client";
+import { buildShopperEpClient } from "../../../checkout/session/shopper-client";
 import { EP_SHIPPING_LINE_SKU } from "../../../checkout/session/set-shipping-line";
 import { createLogger } from "../../../utils/logger";
 
@@ -70,17 +72,9 @@ export async function handleCreateSession(
   // Authenticated client to read the cart (compute hash + totals). Prefer the
   // shopper token; fall back to the admin token when no shopper token is
   // present. A tokenless client cannot read a private cart (→ EP 401).
-  let cartReadToken = ctx.shopperAccessToken ?? "";
-  if (!cartReadToken && ctx.getClientCredentialsToken) {
-    cartReadToken = await ctx.getClientCredentialsToken();
-  }
-  const { client } = createShopperClient(
-    { baseUrl: ctx.epCredentials.apiBaseUrl },
-    {
-      clientId: ctx.epCredentials.clientId,
-      storage: { get: () => cartReadToken, set: () => {} },
-    },
-  );
+  const client = ctx.shopperAccessToken
+    ? buildShopperEpClient(ctx)
+    : await buildAdminEpClient(ctx);
 
   let cartItems: Array<{ id: string; quantity: number; unit_price?: { amount?: number }; value?: { amount?: number } }> = [];
   let totals: SessionTotals | null = null;

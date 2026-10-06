@@ -11,9 +11,10 @@
  * shipping from each line's product `commodity_type`, and the client flag may
  * only ADD a shipping requirement, never suppress one a physical cart imposes.
  */
-import { getByContextAllProducts, createShopperClient } from "@epcc-sdk/sdks-shopper";
+import { getByContextAllProducts } from "@epcc-sdk/sdks-shopper";
 import { createLogger } from "../../utils/logger";
-import type { SessionShippingRate } from "./types";
+import { buildShopperEpClient } from "./shopper-client";
+import type { SessionHandlerContext, SessionShippingRate } from "./types";
 
 const log = createLogger("CartShipping");
 
@@ -75,16 +76,6 @@ export function resolveShippingRate(
   return rate;
 }
 
-export interface CartPhysicalLookup {
-  /** EP API base URL. */
-  host: string;
-  clientId: string;
-  /** Shopper token resolving the same catalog context the cart was built in. */
-  shopperAccessToken?: string;
-  /** The cart lines' `product_id`s. */
-  productIds: string[];
-}
-
 /**
  * True when ANY of the cart's products is a physical (shippable) commodity.
  *
@@ -96,19 +87,17 @@ export interface CartPhysicalLookup {
  * client tried to suppress shipping (otherwise shipping is already required).
  */
 export async function cartHasPhysicalItem(
-  opts: CartPhysicalLookup
+  ctx: Pick<
+    SessionHandlerContext,
+    "epCredentials" | "shopperAccessToken" | "accountToken"
+  >,
+  productIds: string[]
 ): Promise<boolean> {
-  const ids = Array.from(new Set(opts.productIds.filter(Boolean)));
+  const ids = Array.from(new Set(productIds.filter(Boolean)));
   if (ids.length === 0) return false;
 
   try {
-    const { client } = createShopperClient(
-      { baseUrl: opts.host },
-      {
-        clientId: opts.clientId,
-        storage: { get: () => opts.shopperAccessToken ?? "", set: () => {} },
-      }
-    );
+    const client = buildShopperEpClient(ctx);
     const res = await getByContextAllProducts({
       client,
       query: { filter: `in(id,${ids.join(",")})`, "page[limit]": ids.length },

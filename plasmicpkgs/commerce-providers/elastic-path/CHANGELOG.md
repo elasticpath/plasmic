@@ -100,6 +100,14 @@ outside an Account Gate stays on screen. `isLoading` stays true, Account Gates
 stay closed, and the previous organisation is not published as the current
 one. The initial load, login reload, and logout reload publish an empty roster.
 
+`SessionHandlerContext` takes `accountToken`, the selected account's
+credential, next to `shopperAccessToken`. Resolve it in the same
+checkout-context factory, from `session.session.account?.token`, and every
+checkout-session handler call made as the shopper carries
+`EP-Account-Management-Authentication-Token`, as every `ep.*` server function
+already does. Calls made with `getClientCredentialsToken` never carry it, and
+with no account selected no checkout call does.
+
 ### Changed
 
 A shopper's cart at sign-in is not merged with the account's. 0.8.0 replaced

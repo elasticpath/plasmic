@@ -13,7 +13,6 @@ import {
   getACart,
   checkoutApi,
   confirmOrder,
-  createShopperClient,
 } from "@epcc-sdk/sdks-shopper";
 import type {
   SessionRequest,
@@ -30,6 +29,7 @@ import {
   cartHasPhysicalItem,
 } from "../../../checkout/session/cart-shipping";
 import { buildAdminEpClient } from "../../../checkout/session/admin-client";
+import { buildShopperEpClient } from "../../../checkout/session/shopper-client";
 import { EP_SHIPPING_LINE_SKU } from "../../../checkout/session/set-shipping-line";
 import {
   applyPaymentFailed,
@@ -267,16 +267,7 @@ export async function handleResumePayment(
   }
 
   // Cart-hash re-check — same mechanism as /pay, no shipping rewrite.
-  const { client: shopperClient } = createShopperClient(
-    { baseUrl: ctx.epCredentials.apiBaseUrl },
-    {
-      clientId: ctx.epCredentials.clientId,
-      storage: {
-        get: () => ctx.shopperAccessToken ?? "",
-        set: () => {},
-      },
-    }
-  );
+  const shopperClient = buildShopperEpClient(ctx);
 
   let freshCartItems: Array<{
     id: string;
@@ -331,14 +322,10 @@ export async function handleResumePayment(
 
   let cartHasPhysical = false;
   if (session.requiresShipping === false) {
-    cartHasPhysical = await cartHasPhysicalItem({
-      host: ctx.epCredentials.apiBaseUrl,
-      clientId: ctx.epCredentials.clientId,
-      shopperAccessToken: ctx.shopperAccessToken,
-      productIds: freshCartItems
-        .map((it) => it.product_id ?? "")
-        .filter(Boolean),
-    });
+    cartHasPhysical = await cartHasPhysicalItem(
+      ctx,
+      freshCartItems.map((it) => it.product_id ?? "").filter(Boolean)
+    );
   }
   const requiresShipping = resolveRequiresShipping(
     session.requiresShipping,

@@ -19,7 +19,10 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
   deleteACart: jest.fn(),
   manageCarts: jest.fn(),
   deleteACartItem: jest.fn(),
-  createShopperClient: jest.fn(() => ({ client: {} })),
+  createShopperClient: jest.fn(
+    require("../../../../checkout/session/__tests__/fake-shopper-client")
+      .fakeShopperClient
+  ),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires

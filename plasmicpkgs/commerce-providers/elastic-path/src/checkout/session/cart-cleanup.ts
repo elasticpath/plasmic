@@ -7,7 +7,8 @@
  * Failures are logged but never propagated. The order is genuine; cleanup
  * is housekeeping.
  */
-import { deleteACart, createShopperClient } from "@epcc-sdk/sdks-shopper";
+import { deleteACart } from "@epcc-sdk/sdks-shopper";
+import { buildFixedTokenEpClient } from "../../ep-server-functions/fixed-token-ep-client";
 import { createLogger } from "../../utils/logger";
 
 const log = createLogger("CartCleanup");
@@ -25,16 +26,11 @@ export async function runCartCleanup(config: CartCleanupConfig): Promise<void> {
 
   try {
     const adminToken = await getClientCredentialsToken();
-    const { client } = createShopperClient(
-      { baseUrl: host },
-      {
-        clientId,
-        storage: {
-          get: () => adminToken,
-          set: () => {},
-        },
-      }
-    );
+    const client = buildFixedTokenEpClient({
+      host,
+      clientId,
+      token: adminToken,
+    });
     await deleteACart({ client, path: { cartID: cartId } });
   } catch (err) {
     log.warn("Cart cleanup failed (non-fatal)", {

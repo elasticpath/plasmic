@@ -23,7 +23,10 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
   manageCarts: jest.fn(),
   deleteACartItem: jest.fn(),
   getByContextAllProducts: jest.fn(),
-  createShopperClient: jest.fn(() => ({ client: {} })),
+  createShopperClient: jest.fn(
+    require("../../../../checkout/session/__tests__/fake-shopper-client")
+      .fakeShopperClient
+  ),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -37,6 +40,7 @@ const epSdk = require("@epcc-sdk/sdks-shopper") as {
   updateAnOrder: jest.Mock;
   deleteACart: jest.Mock;
   manageCarts: jest.Mock;
+  getByContextAllProducts: jest.Mock;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -55,6 +59,8 @@ import type {
   SessionStore,
 } from "../../../../checkout/session/types";
 import { hashCart } from "../../../../checkout/session/cart-hash";
+import { EP_ACCOUNT_TOKEN_HEADER } from "../../../../auth/ep-plugin/envelope";
+import { headersSentBy } from "../../../../checkout/session/__tests__/fake-shopper-client";
 
 const CART_ITEMS = [
   { id: "item-1", quantity: 2, unit_price: { amount: 1500 } },
@@ -502,6 +508,73 @@ describe("handleResumePayment — success", () => {
       orderID: "order-existing",
       paymentID: "pi_abc",
     });
+  });
+});
+
+describe("handleResumePayment — selected account", () => {
+  const DIGITAL_ITEMS = [
+    { id: "item-1", product_id: "prod-1", quantity: 1, unit_price: { amount: 1500 } },
+  ];
+
+  it("re-reads the cart with the selected account's credential", async () => {
+    await handleResumePayment(
+      createMockReq(),
+      createMockCtx(makeSession(), { accountToken: "account-token" })
+    );
+
+    const { client } = epSdk.getACart.mock.calls[0][0];
+    expect(client.token).toBe("shopper-token");
+    expect((await headersSentBy(client)).get(EP_ACCOUNT_TOKEN_HEADER)).toBe(
+      "account-token"
+    );
+  });
+
+  it("looks up shippability with the selected account's credential", async () => {
+    epSdk.getACart.mockResolvedValue({
+      data: { included: { items: DIGITAL_ITEMS }, data: { id: "cart-abc" } },
+    });
+    epSdk.getByContextAllProducts.mockResolvedValue({
+      data: { data: [{ id: "prod-1", attributes: { commodity_type: "digital" } }] },
+    });
+
+    await handleResumePayment(
+      createMockReq(),
+      createMockCtx(
+        makeSession({ cartHash: hashCart(DIGITAL_ITEMS), requiresShipping: false }),
+        { accountToken: "account-token" }
+      )
+    );
+
+    const { client } = epSdk.getByContextAllProducts.mock.calls[0][0];
+    expect((await headersSentBy(client)).get(EP_ACCOUNT_TOKEN_HEADER)).toBe(
+      "account-token"
+    );
+  });
+
+  it("sends no account credential when no account is selected", async () => {
+    await handleResumePayment(createMockReq(), createMockCtx(makeSession()));
+
+    const { client } = epSdk.getACart.mock.calls[0][0];
+    expect((await headersSentBy(client)).has(EP_ACCOUNT_TOKEN_HEADER)).toBe(
+      false
+    );
+  });
+
+  it("keeps the account credential off the client_credentials order calls", async () => {
+    await handleResumePayment(
+      createMockReq(),
+      createMockCtx(makeSession(), { accountToken: "account-token" })
+    );
+
+    for (const call of [
+      epSdk.checkoutApi.mock.calls[0][0],
+      epSdk.confirmOrder.mock.calls[0][0],
+    ]) {
+      expect(call.client.token).toBe("admin-token");
+      expect(
+        (await headersSentBy(call.client)).has(EP_ACCOUNT_TOKEN_HEADER)
+      ).toBe(false);
+    }
   });
 });
 

@@ -506,8 +506,11 @@ The session holds the authenticated **account member** and the **selected
 account** — the organisation they are buying for — as two separate facts.
 `isAuthenticated` reports the member, so a member who belongs to no
 organisation reads as signed in. While an account is selected, every `ep.*`
-server function carries `EP-Account-Management-Authentication-Token`. The checkout-session handlers
-do not yet — they take their own shopper token on `SessionHandlerContext`.
+server function carries `EP-Account-Management-Authentication-Token`. The
+checkout-session handlers carry it on every call made as the shopper: pass the
+selected account's token as `accountToken` on `SessionHandlerContext`, resolved
+from `session.session.account?.token` next to `shopperAccessToken`. Calls made
+with `getClientCredentialsToken` never carry it.
 
 `POST /ep/account/login` takes `{ username, password }`. The server calls
 Elastic Path's `/v2/account-members/tokens` itself, so no Elastic Path

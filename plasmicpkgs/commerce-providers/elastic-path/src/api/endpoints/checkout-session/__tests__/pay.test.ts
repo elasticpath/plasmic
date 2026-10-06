@@ -18,7 +18,11 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
   deleteACart: jest.fn(),
   manageCarts: jest.fn(() => ({})),
   deleteACartItem: jest.fn(() => ({})),
-  createShopperClient: jest.fn(() => ({ client: {} })),
+  getByContextAllProducts: jest.fn(),
+  createShopperClient: jest.fn(
+    require("../../../../checkout/session/__tests__/fake-shopper-client")
+      .fakeShopperClient
+  ),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -31,6 +35,7 @@ const epSdk = require("@epcc-sdk/sdks-shopper") as {
   deleteACart: jest.Mock;
   manageCarts: jest.Mock;
   deleteACartItem: jest.Mock;
+  getByContextAllProducts: jest.Mock;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -50,6 +55,8 @@ import type {
   SessionStore,
 } from "../../../../checkout/session/types";
 import { hashCart } from "../../../../checkout/session/cart-hash";
+import { EP_ACCOUNT_TOKEN_HEADER } from "../../../../auth/ep-plugin/envelope";
+import { headersSentBy } from "../../../../checkout/session/__tests__/fake-shopper-client";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -534,6 +541,76 @@ describe("handlePay", () => {
         )
       );
       expect((res.body as any).data.session.payment.gateway).toBe("stripe");
+    });
+  });
+
+  describe("selected account", () => {
+    const PAID = createMockAdapter.bind(null, {
+      status: "succeeded",
+      gatewayOrderId: "pi_1",
+      gatewayMetadata: { paymentIntentId: "pi_1" },
+    });
+
+    it("re-reads the cart with the selected account's credential", async () => {
+      await handlePay(
+        createMockReq({ gateway: "stripe", confirmation_token: "ct" }),
+        createMockCtx(makeSession(), PAID(), { accountToken: "account-token" })
+      );
+
+      const { client } = epSdk.getACart.mock.calls[0][0];
+      expect(client.token).toBe("shopper-token");
+      expect((await headersSentBy(client)).get(EP_ACCOUNT_TOKEN_HEADER)).toBe(
+        "account-token"
+      );
+    });
+
+    it("looks up shippability with the selected account's credential", async () => {
+      const digitalItems = [
+        { id: "item-1", product_id: "prod-1", quantity: 1, unit_price: { amount: 1500 } },
+      ];
+      epSdk.getACart.mockResolvedValue(makeCartResponse(digitalItems) as any);
+      epSdk.getByContextAllProducts.mockResolvedValue({
+        data: { data: [{ id: "prod-1", attributes: { commodity_type: "digital" } }] },
+      });
+
+      await handlePay(
+        createMockReq({ gateway: "stripe", confirmation_token: "ct" }),
+        createMockCtx(
+          makeSession({ cartHash: hashCart(digitalItems), requiresShipping: false }),
+          PAID(),
+          { accountToken: "account-token" }
+        )
+      );
+
+      const { client } = epSdk.getByContextAllProducts.mock.calls[0][0];
+      expect((await headersSentBy(client)).get(EP_ACCOUNT_TOKEN_HEADER)).toBe(
+        "account-token"
+      );
+    });
+
+    it("sends no account credential when no account is selected", async () => {
+      await handlePay(
+        createMockReq({ gateway: "stripe", confirmation_token: "ct" }),
+        createMockCtx(makeSession(), PAID())
+      );
+
+      const { client } = epSdk.getACart.mock.calls[0][0];
+      expect((await headersSentBy(client)).has(EP_ACCOUNT_TOKEN_HEADER)).toBe(
+        false
+      );
+    });
+
+    it("keeps the account credential off the client_credentials checkout", async () => {
+      await handlePay(
+        createMockReq({ gateway: "stripe", confirmation_token: "ct" }),
+        createMockCtx(makeSession(), PAID(), { accountToken: "account-token" })
+      );
+
+      const { client } = epSdk.checkoutApi.mock.calls[0][0];
+      expect(client.token).toBe("admin-token");
+      expect((await headersSentBy(client)).has(EP_ACCOUNT_TOKEN_HEADER)).toBe(
+        false
+      );
     });
   });
 });
