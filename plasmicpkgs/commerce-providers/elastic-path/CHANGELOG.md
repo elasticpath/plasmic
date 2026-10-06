@@ -70,6 +70,20 @@ one. The initial load, login reload, and logout reload publish an empty roster.
 
 ### Changed
 
+A shopper whose account credential lapses now keeps the cart they build after
+the lapse. The package clears the session cart once, at the moment it sees the
+lapse, so the next cart is the shopper's own guest cart. At their next sign-in,
+`sessionCartResolver` receives it as `guestCartId`, and the default keeps it.
+Before this release, sign-in discarded that cart and adopted the
+organisation's most recently updated cart. The package does not delete the
+cart held before the lapse. It stays with the organisation, and the shopper
+gets it back when they sign in to that organisation without a newer cart.
+A session that an earlier release recorded as lapsed still holds the
+organisation's cart. The package clears that cart the first time it reads the
+session, so it is never offered to another organisation.
+Deselecting an organisation still clears the session cart, and the README now
+says so.
+
 Catalog search and search-as-you-type run through the server. EP Catalog
 Search Provider and EP Search Autocomplete handed the browser's Elastic Path
 client to the search adapter; both now go through `ep.multiSearch`, which
