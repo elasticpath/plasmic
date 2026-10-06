@@ -36,6 +36,7 @@ export interface EpEnvelopeAccountFields {
   epAccount?: EpAccountSlot;
   epAnchorToken?: EpAnchorTokenSlot;
   epLapsedAccount?: EpLapsedAccount;
+  epLapseClearedCart?: true;
 }
 
 export function parseEpExpires(isoOrEpochSeconds: unknown): number | null {
@@ -58,6 +59,7 @@ function withoutAccountSlots<T extends object>(
   delete next.epAccount;
   delete next.epAnchorToken;
   delete next.epLapsedAccount;
+  delete next.epLapseClearedCart;
   return next;
 }
 
@@ -126,6 +128,12 @@ export function applyAccountLapse<T extends object>(
   if (account && account.expires <= nowSeconds) {
     const next = clearSessionCart(withoutAccountSlots(session));
     next.epLapsedAccount = { id: account.id, name: account.name };
+    next.epLapseClearedCart = true;
+    return next;
+  }
+  if (current.epLapsedAccount && !current.epLapseClearedCart) {
+    const next = clearSessionCart(current);
+    next.epLapseClearedCart = true;
     return next;
   }
   const anchor = current.epAnchorToken;

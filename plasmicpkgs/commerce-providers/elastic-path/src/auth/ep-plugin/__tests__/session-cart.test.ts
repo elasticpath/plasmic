@@ -9,6 +9,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { betterAuth } from "better-auth";
+import { symmetricDecodeJWT, symmetricEncodeJWT } from "better-auth/crypto";
 import { epPlugin } from "../ep-plugin";
 import { createEpAuth } from "../create-ep-auth-better";
 import { DEFAULT_HOST_ALLOWLIST } from "../../host-allowlist";
@@ -289,6 +290,48 @@ function nextStyleCookies(cookieHeader: string): Record<string, string> {
     );
   }
   return out;
+}
+
+const SESSION_DATA_COOKIE = "better-auth.session_data";
+
+function cookieJar(cookies: string): Map<string, string> {
+  return new Map(
+    cookies.split("; ").map((part) => {
+      const eq = part.indexOf("=");
+      return [part.slice(0, eq), part.slice(eq + 1)] as [string, string];
+    })
+  );
+}
+
+async function readEnvelope(cookies: string): Promise<Record<string, any>> {
+  return (await symmetricDecodeJWT(
+    cookieJar(cookies).get(SESSION_DATA_COOKIE)!,
+    SECRET,
+    "better-auth-session"
+  )) as Record<string, any>;
+}
+
+async function rewriteEnvelope(
+  cookies: string,
+  rewrite: (session: Record<string, any>) => Record<string, any>
+): Promise<string> {
+  const { iat, exp, jti, ...payload } = await readEnvelope(cookies);
+  payload.session = rewrite(payload.session);
+  const jar = cookieJar(cookies);
+  jar.set(
+    SESSION_DATA_COOKIE,
+    await symmetricEncodeJWT(payload, SECRET, "better-auth-session", 300)
+  );
+  return [...jar.entries()].map(([n, v]) => `${n}=${v}`).join("; ");
+}
+
+/** What 0.8.0's refresh persisted on a lapse: the account gone, its cart kept. */
+async function lapsedByAnEarlierRelease(auth: any, cookies: string) {
+  const signedIn = await signIn(auth, cookies);
+  return rewriteEnvelope(signedIn.cookies, (session) => {
+    const { epAccount, epAnchorToken, ...rest } = session;
+    return { ...rest, epLapsedAccount: { id: epAccount.id, name: epAccount.name } };
+  });
 }
 
 async function signInThenLapse(auth: any, cookies: string) {
@@ -1121,5 +1164,112 @@ describe("an account credential that lapses", () => {
         store.carts.find((c) => c.id === "cart-after-lapse")?.accountIds
       ).toEqual([]);
     });
+  });
+});
+
+describe("a session an earlier release persisted as lapsed", () => {
+  it("holds the cart of the selected account it was built from", async () => {
+    store.carts = [cart("cart-north", { accountIds: [NORTH.id] })];
+    const auth = buildAuth();
+    const cookies = await lapsedByAnEarlierRelease(auth, await anonymous(auth));
+
+    const { session } = await readEnvelope(cookies);
+
+    expect(session.epLapsedAccount).toEqual(NORTH);
+    expect(session.epAccount).toBeUndefined();
+    expect(session.epCartId).toBe("cart-north");
+  });
+
+  it("reads as holding no cart", async () => {
+    store.carts = [cart("cart-north", { accountIds: [NORTH.id] })];
+    const auth = buildAuth();
+    const cookies = await lapsedByAnEarlierRelease(auth, await anonymous(auth));
+
+    const { res } = await refresh(auth, cookies);
+    const body = await res.json();
+
+    expect(body.session.epLapsedAccount).toEqual(NORTH);
+    expect(body.session.epCartId).toBeUndefined();
+  });
+
+  it("never offers the organisation's cart to a different organisation at sign-in", async () => {
+    store.carts = [
+      cart("cart-north", { accountIds: [NORTH.id] }),
+      cart("cart-south", { accountIds: [SOUTH.id] }),
+    ];
+    const offered: (string | null)[] = [];
+    const auth = buildAuth({
+      sessionCartResolver: (input) => {
+        offered.push(input.guestCartId);
+        return { keep: input.guestCartId ?? input.accountCarts[0].id };
+      },
+    });
+    const cookies = await lapsedByAnEarlierRelease(auth, await anonymous(auth));
+    offered.length = 0;
+    store.accounts = [SOUTH];
+
+    const { res } = await signIn(auth, cookies);
+    const body = await res.json();
+
+    expect(offered).toEqual([null]);
+    expect(body.session.epCartId).toBe("cart-south");
+    expect(store.carts.find((c) => c.id === "cart-north")?.accountIds).toEqual([
+      NORTH.id,
+    ]);
+  });
+
+  it("never offers it at the next selection either", async () => {
+    store.carts = [
+      cart("cart-north", { accountIds: [NORTH.id] }),
+      cart("cart-south", { accountIds: [SOUTH.id] }),
+    ];
+    const offered: (string | null)[] = [];
+    const auth = buildAuth({
+      sessionCartResolver: (input) => {
+        offered.push(input.guestCartId);
+        return { keep: input.guestCartId ?? input.accountCarts[0].id };
+      },
+    });
+    const cookies = await lapsedByAnEarlierRelease(auth, await anonymous(auth));
+    offered.length = 0;
+    store.accounts = [NORTH, SOUTH];
+    const signedIn = await signIn(auth, cookies);
+
+    const { res } = await select(auth, signedIn.cookies, SOUTH.id);
+    const body = await res.json();
+
+    expect(offered).toEqual([null]);
+    expect(body.session.epCartId).toBe("cart-south");
+    expect(store.carts.find((c) => c.id === "cart-north")?.accountIds).toEqual([
+      NORTH.id,
+    ]);
+  });
+
+  it.each([
+    ["once a refresh has persisted it", true],
+    ["before anything has persisted it", false],
+  ])("keeps a cart built afterwards through the next sign-in, %s", async (_label, persisted) => {
+    store.carts = [
+      cart("cart-north", { accountIds: [NORTH.id], updatedAt: isoIn(-60) }),
+      cart("cart-after-lapse"),
+    ];
+    const offered: (string | null)[] = [];
+    const auth = buildAuth({
+      sessionCartResolver: (input) => {
+        offered.push(input.guestCartId);
+        return { keep: input.guestCartId ?? input.accountCarts[0].id };
+      },
+    });
+    let cookies = await lapsedByAnEarlierRelease(auth, await anonymous(auth));
+    if (persisted) cookies = (await refresh(auth, cookies)).cookies;
+    cookies = await setCart(auth, cookies, "cart-after-lapse");
+    cookies = (await refresh(auth, cookies)).cookies;
+    offered.length = 0;
+
+    const { res } = await signIn(auth, cookies);
+    const body = await res.json();
+
+    expect(offered).toEqual(["cart-after-lapse"]);
+    expect(body.session.epCartId).toBe("cart-after-lapse");
   });
 });

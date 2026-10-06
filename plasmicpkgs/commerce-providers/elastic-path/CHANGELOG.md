@@ -78,6 +78,9 @@ Before this release, sign-in discarded that cart and adopted the
 organisation's most recently updated cart. The package does not delete the
 cart held before the lapse. It stays with the organisation, and the shopper
 gets it back when they sign in to that organisation without a newer cart.
+A session that an earlier release recorded as lapsed still holds the
+organisation's cart. The package clears that cart the first time it reads the
+session, so it is never offered to another organisation.
 Deselecting an organisation still clears the session cart, and the README now
 says so.
 
