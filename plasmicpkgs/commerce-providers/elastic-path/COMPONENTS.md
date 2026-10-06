@@ -7,404 +7,109 @@
 ## 1. Architecture Overview
 
 ```
-Browser                          Server (Next.js)              Elastic Path
--------                          ----------------              ------------
-ShopperContext                   /api/cart          ------>     Cart API
-  useCart() ---- SWR GET -----> /api/cart/items     ------>     Cart Items API
-  useAddItem() - POST --------> /api/cart/items     ------>
-  useRemoveItem() DELETE -----> /api/cart/items/[id] ----->
-  useUpdateItem() PUT --------> /api/cart/items/[id] ----->
-                                /api/checkout/*     ------>     Orders / Payments
-                                                               Stripe API
+Browser                          Storefront server                     Elastic Path
+-------                          -----------------                     ------------
+component → ep.* function
+  POST /api/ep/proxy/<fn> ─────→ session → withEpSession → ep.* fn ──→ catalog, carts, stock
+  POST /api/ep/ep/<operation> ─→ auth handler (sign in, select…)  ──→ account-member tokens
+  GET  /api/ep/get-session ────→ session, minus every credential
+  /api/checkout/sessions/* ────→ checkout-session handlers         ──→ orders, payments
+
+Studio canvas
+  POST /api/ep/design/<fn> ────→ catalog reads, no session         ──→ catalog
+
+Page render (Server Queries)
+  withEpSession(session) → ep.* fn ──────────────────────────────────→ catalog, carts
 ```
 
-**Three layers:**
-
-| Layer | Purpose | Runs on |
-|-------|---------|---------|
-| **Context** | ShopperContext, shopper overrides, fetch wrapper | Browser |
-| **Cart Hooks** | SWR-cached cart state, add/remove/update mutations | Browser -> Server |
-| **Checkout** | Multi-step orchestrator, forms, payment, totals | Browser -> Server |
-
-**Key principle:** EP credentials (`client_id`, `client_secret`) stay on the server. Browser hooks call Next.js API routes which proxy to EP.
+**Key principle:** the browser holds no Elastic Path credential. The encrypted
+session cookie holds them, and the server attaches them. Each `ep.*` function
+is isomorphic: on the server it calls Elastic Path inside `withEpSession`, and
+in the browser it posts to the proxy route, which runs the same function
+server-side. See the README's
+[Security model](README.md#security-model).
 
 ---
 
-## 2. Quick Start
+## 2. Setup
 
-### Step 1 — Register ShopperContext
-
-```ts
-// plasmic-init.ts
-import { ShopperContext } from "@elasticpath/plasmic-ep-commerce-elastic-path";
-
-PLASMIC.registerComponent(ShopperContext, {
-  name: "ShopperContext",
-  props: {
-    cartId:    { type: "string" },
-    accountId: { type: "string" },
-    locale:    { type: "string" },
-    currency:  { type: "string" },
-  },
-  providesData: true,
-  isDefaultExport: false,
-});
-```
-
-### Step 2 — Create API routes
-
-```ts
-// app/api/cart/route.ts
-import { resolveCartId, buildCartCookieHeader } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
-
-export async function GET(req: Request) {
-  const cartId = resolveCartId(
-    Object.fromEntries(req.headers),
-    parseCookies(req)
-  );
-  if (!cartId) return Response.json({ items: [], meta: null });
-
-  const cart = await epClient.getCart(cartId); // your EP SDK call
-  return new Response(JSON.stringify(cart), {
-    headers: { "Set-Cookie": buildCartCookieHeader(cartId) },
-  });
-}
-```
-
-```ts
-// app/api/cart/items/route.ts  (POST — add item)
-// app/api/cart/items/[id]/route.ts  (DELETE — remove, PUT — update quantity)
-```
-
-### Step 3 — Wrap layout with ServerCartActionsProvider
-
-```tsx
-// app/layout.tsx (or Plasmic global context)
-import { ServerCartActionsProvider } from "@elasticpath/plasmic-ep-commerce-elastic-path";
-
-<ServerCartActionsProvider globalContextName="epCart">
-  {children}
-</ServerCartActionsProvider>
-```
-
-### Step 4 — Use cart hooks
-
-```tsx
-import { useCart, useAddItem } from "@elasticpath/plasmic-ep-commerce-elastic-path";
-
-function AddToCartButton({ productId }: { productId: string }) {
-  const { data, isEmpty } = useCart();
-  const addItem = useAddItem();
-
-  return (
-    <button onClick={() => addItem({ productId, quantity: 1 })}>
-      Add to Cart {!isEmpty && `(${data?.items.length})`}
-    </button>
-  );
-}
-```
+The README's [Quick Start](README.md#quick-start) covers it: the auth
+instance, the auth handler, the proxy and design-time routes, the middleware
+and the page. The components call those routes at `/api/ep`, so mount them
+there.
 
 ---
 
-## 3. Shopper Context
+## 3. Choosing a listing path
 
-### ShopperContext (Global Context Provider)
+Two components build a product listing. Choose by what your store has, not by
+what the page is for.
 
-Provides shopper identity overrides to all descendant hooks.
+| Your store | Use |
+| --- | --- |
+| Has a Catalog Search index | **EP Catalog Search Provider** — search, filters, facets and sorting |
+| Has no search index | **EP Product List Provider** — paging only |
 
-| Prop | Type | Description |
-|------|------|-------------|
-| `cartId` | `string?` | Override cart UUID (e.g. from URL or Plasmic Studio) |
-| `accountId` | `string?` | EP account token for account-member carts |
-| `locale` | `string?` | Locale override (e.g. `en-US`) |
-| `currency` | `string?` | Currency override (e.g. `USD`) |
+Neither path is deprecated, and neither can be removed. EP Product List
+Provider is the supported path for a store without a search index.
 
-Singleton via `Symbol.for('@elasticpath/ep-shopper-context')` — safe across multiple package instances.
+**Sorting needs catalog search.** Elastic Path's catalog product endpoints take
+no `sort` parameter, and ignore one rather than reject it, so a sort control
+over EP Product List Provider changes nothing. Use EP Search Sort By inside EP
+Catalog Search Provider.
 
-### useShopperContext()
+**Server rendering.** EP Product List Provider renders on the server: bind its
+**Products (pre-fetched)** prop to an `ep.getProductPage` Server Query, and the
+first page is in the HTML. Catalog search renders in the browser only, so a
+crawler or link preview sees an empty listing. If a listing page must be in the
+HTML and you have no other way to put it there, use EP Product List Provider
+for that page.
 
-```ts
-const overrides: ShopperOverrides = useShopperContext();
-// Returns { cartId?, accountId?, locale?, currency? }
-// Returns {} when no ShopperContext provider is present
-```
+**Design time.** Both providers show labelled `"Sample"` fixtures on the Studio
+canvas, not your catalog. Catalog search never mounts its inner component on
+the canvas. EP Product List Provider's Server Query reads the real catalog in
+the data-query Configure panel.
 
-### useShopperFetch()
+**Switching paths.** Three things change, and card layouts survive, because
+both repeaters publish the same `currentProduct`:
 
-Returns a `fetch` wrapper that auto-attaches `X-Shopper-Context` header when overrides are active.
+| EP Product List Provider path | EP Catalog Search Provider path |
+| --- | --- |
+| EP Product List Provider | EP Catalog Search Provider |
+| EP Product Grid | EP Search Hits |
+| buttons bound to the provider's `nextPage` / `prevPage` / `goToPage` / `loadMore` | EP Search Pagination |
 
-```ts
-const shopperFetch = useShopperFetch();
-
-const data = await shopperFetch<CartData>("/api/cart");
-// Automatically adds: X-Shopper-Context: {"cartId":"..."}
-// Adds Content-Type: application/json, credentials: "same-origin"
-```
-
----
-
-## 4. Cart Hooks
-
-### useCart()
-
-SWR-cached cart data. Cache key includes `cartId` when present via ShopperContext.
-
-```ts
-interface UseCartReturn {
-  data: CartData | null;    // { items: CartItem[], meta: CartMeta | null }
-  error: Error | null;
-  isLoading: boolean;
-  isEmpty: boolean;         // true when items.length === 0
-  mutate: () => Promise<CartData | undefined>;  // force re-fetch
-}
-```
-
-**CartItem** fields: `id`, `type`, `product_id`, `name`, `description`, `sku`, `slug`, `quantity`, `image?`, `meta.display_price.with_tax.unit/value { amount, formatted, currency }`.
-
-### useCheckoutCart()
-
-The shopper's cart, in Elastic Path's own shape — the same `Cart` a cart drawer
-binds, so a checkout summary and a mini-cart use identical paths.
-
-```ts
-interface UseCheckoutCartReturn {
-  data: Cart | null;
-  error: Error | null;
-  isLoading: boolean;
-  isEmpty: boolean;
-  mutate: () => Promise<CartData | undefined>;
-}
-```
-
-`Cart` is Elastic Path's cart response plus `items` (which Elastic Path
-side-loads under `included`) and `itemCount` (the quantity sum). Totals live at
-`meta.display_price.without_tax`, `.tax` and `.with_tax`, each carrying
-`amount`, `currency`, `formatted` and `float_price`.
-
-
-### useAddItem()
-
-```ts
-const addItem = useAddItem();
-
-interface AddItemInput {
-  productId: string;
-  variantId?: string;
-  quantity?: number;            // Default: 1
-  bundleConfiguration?: unknown;
-  locationId?: string;
-  selectedOptions?: {
-    variationId: string;
-    optionId: string;
-    optionName: string;
-    variationName: string;
-  }[];
-}
-
-await addItem({ productId: "abc-123", quantity: 2 });
-// POST /api/cart/items -> auto-refetches cart via SWR mutate
-```
-
-### useRemoveItem()
-
-```ts
-const removeItem = useRemoveItem();
-await removeItem("line-item-id");
-// DELETE /api/cart/items/{id} -> auto-refetches cart
-```
-
-### useUpdateItem()
-
-```ts
-const updateItem = useUpdateItem();
-updateItem("line-item-id", 3);
-// PUT /api/cart/items/{id} — debounced at 500ms
-// Quantity 0 triggers removal on the server
-```
-
-### ServerCartActionsProvider
-
-Bridges cart hooks to Plasmic `$actions` for visual interaction authoring.
-
-```ts
-// Registers three global actions:
-interface ServerCartActions {
-  addItem(productId: string, variantId: string, quantity: number): void;
-  updateItem(lineItemId: string, quantity: number): void;
-  removeItem(lineItemId: string): void;
-}
-
-// In Plasmic: $actions.epCart.addItem(productId, "", 1)
-```
-
-| Prop | Type | Description |
-|------|------|-------------|
-| `globalContextName` | `string` | Action namespace (e.g. `"epCart"`) |
-
-### MOCK_SERVER_CART_DATA
-
-Design-time mock data for Plasmic Studio canvas previews. Import for storybook or testing:
-
-```ts
-import { MOCK_SERVER_CART_DATA } from "@elasticpath/plasmic-ep-commerce-elastic-path";
-// A Cart with 2 Ember & Wick candles, $108.25 total
-```
+Moving to catalog search also drops the **Products (pre-fetched)** Server Query
+binding, which has no counterpart there. Set EP Search Hits' route prefix so
+product links match your product page route.
 
 ---
 
-## 5. Server Utilities
+## 4. Cart
 
-Import from the `/server` subpath:
+**In Studio,** use the cart components, or the Elastic Path Provider's global
+actions **Add item to cart**, **Update item in cart** and **Remove item from
+cart**. Each runs on the server through the proxy route and refreshes the cart.
 
-```ts
-import {
-  resolveCartId,
-  parseShopperHeader,
-  buildCartCookieHeader,
-  buildClearCartCookieHeader,
-} from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
-```
-
-### resolveCartId(headers, cookies, cookieName?)
-
-Resolves cart identity with priority: `X-Shopper-Context` header > `ep_cart` cookie > `null`.
+**In React code,** `useEpCart()` reads the shopper's cart:
 
 ```ts
-function resolveCartId(
-  headers: Record<string, string | string[] | undefined>,
-  cookies: Record<string, string | undefined>,
-  cookieName?: string  // default: "ep_cart"
-): string | null
+import { useEpCart } from "@elasticpath/plasmic-ep-commerce-elastic-path";
+
+const { cart, isLoading, error, refresh } = useEpCart();
 ```
 
-### parseShopperHeader(headers)
+`useCheckoutCart()` reads the same cart for checkout, as
+`{ data, isEmpty, isLoading, error, mutate }`.
 
-Extracts JSON from the `x-shopper-context` header.
-
-```ts
-function parseShopperHeader(
-  headers: Record<string, string | string[] | undefined>
-): ShopperHeader
-// Returns { cartId?, accountId?, locale?, currency? }
-// Returns {} if header absent or malformed
-```
-
-### buildCartCookieHeader(cartId, opts?)
-
-Builds a `Set-Cookie` header value.
-
-```ts
-interface CartCookieOptions {
-  cookieName?: string;  // default: "ep_cart"
-  secure?: boolean;     // default: true in production
-  maxAge?: number;      // default: 30 days (in seconds)
-  path?: string;        // default: "/"
-}
-
-const header = buildCartCookieHeader("cart-uuid-123");
-// "ep_cart=cart-uuid-123; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=2592000"
-```
-
-### buildClearCartCookieHeader(opts?)
-
-Use after order completion to remove the cart cookie.
-
-```ts
-const header = buildClearCartCookieHeader();
-// Sets Max-Age=0 to expire the cookie
-```
+The cart writes `epAddCartItem`, `epUpdateCartItem` and `epRemoveCartItem` are
+exported from `/server` for server code. The root entry exports no cart write,
+so browser code writes to the cart through the components or the global
+actions.
 
 ---
 
-## 6. Consumer API Routes
-
-Full Next.js App Router examples. These routes are what the browser hooks call.
-
-### GET /api/cart
-
-```ts
-// app/api/cart/route.ts
-import { NextRequest, NextResponse } from "next/server";
-import { resolveCartId, buildCartCookieHeader } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
-
-export async function GET(req: NextRequest) {
-  const headers = Object.fromEntries(req.headers);
-  const cookies = Object.fromEntries(
-    req.cookies.getAll().map((c) => [c.name, c.value])
-  );
-  const cartId = resolveCartId(headers, cookies);
-
-  if (!cartId) {
-    return NextResponse.json({ items: [], meta: null });
-  }
-
-  const cart = await fetchEPCart(cartId); // your EP SDK call
-  const res = NextResponse.json(cart);
-  res.headers.set("Set-Cookie", buildCartCookieHeader(cartId));
-  return res;
-}
-```
-
-### POST /api/cart/items
-
-```ts
-// app/api/cart/items/route.ts
-export async function POST(req: NextRequest) {
-  const body = await req.json();
-  const { productId, variantId, quantity = 1 } = body;
-
-  let cartId = resolveCartId(/* ... */);
-  if (!cartId) {
-    const newCart = await createEPCart(); // auto-create
-    cartId = newCart.id;
-  }
-
-  await addItemToEPCart(cartId, { productId, variantId, quantity });
-  const cart = await fetchEPCart(cartId);
-
-  const res = NextResponse.json(cart);
-  res.headers.set("Set-Cookie", buildCartCookieHeader(cartId));
-  return res;
-}
-```
-
-### DELETE /api/cart/items/[id]
-
-```ts
-// app/api/cart/items/[id]/route.ts
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  const cartId = resolveCartId(/* ... */);
-  if (!cartId) return NextResponse.json({ error: "No cart" }, { status: 400 });
-
-  await removeItemFromEPCart(cartId, params.id);
-  const cart = await fetchEPCart(cartId);
-  return NextResponse.json(cart);
-}
-```
-
-### PUT /api/cart/items/[id]
-
-```ts
-// app/api/cart/items/[id]/route.ts
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  const { quantity } = await req.json();
-  const cartId = resolveCartId(/* ... */);
-
-  await updateItemQuantity(cartId!, params.id, quantity);
-  const cart = await fetchEPCart(cartId!);
-  return NextResponse.json(cart);
-}
-```
-
----
-
-## 7. Checkout Components
+## 5. Checkout Components
 
 ### EPCheckoutProvider
 
@@ -537,12 +242,14 @@ Step-aware button that derives its label and behavior from the current checkout 
 | `shipping` | "Continue to Payment" |
 | `payment` | "Place Order" |
 | `confirmation` | "Done" |
+| outside a checkout provider | "Checkout", linking to `checkoutUrl` |
 
 **Props:**
 
 | Prop | Type | Description |
 |------|------|-------------|
 | `onComplete` | `(data: { orderId: string }) => void` | Fires on confirmation step |
+| `checkoutUrl` | `string?` | Where the button links outside a checkout provider. Default `/checkout` |
 | `previewState` | `"auto" \| "customerInfo" \| "shipping" \| "payment" \| "confirmation"` | |
 
 ---
@@ -630,7 +337,7 @@ Form state manager for 9 address fields with country-aware postcode validation.
 }
 ```
 
-**refActions:** `setField(name, value)`, `validate()`, `clear()`
+**refActions:** `setField(name, value)`, `validate()`, `clear()`, `useAccountAddress(addressId)`. `useAccountAddress` copies a saved address from an ancestor `shopperContextData` DataProvider's `addresses`. Nothing in this package provides that DataProvider, so it does nothing unless you supply one.
 
 **Props:**
 
@@ -675,7 +382,7 @@ Reads toggle state from `billingToggleData.isSameAsShipping` (EPBillingAddressTo
 
 ### EPShippingMethodSelector
 
-Repeater over shipping rates fetched from the server. Calls `POST /api/checkout/calculate-shipping`.
+Repeater over the shipping rates the checkout session quoted (`availableShippingRates` on EP Checkout Session Provider). It makes no request of its own. Without a checkout session it has no rates and logs a warning.
 
 **DataProvider `currentShippingMethod`** (per iteration):
 
@@ -703,17 +410,7 @@ Repeater over shipping rates fetched from the server. Calls `POST /api/checkout/
 | `emptyContent` | `ReactNode?` | Shown when no rates available |
 | `previewState` | `"auto" \| "withRates" \| "loading" \| "empty"` | |
 
-**API request shape:**
-```ts
-POST /api/checkout/calculate-shipping
-{
-  shippingAddress: {
-    first_name: string; last_name: string;
-    line_1: string; city: string;
-    postcode: string; country: string;
-  }
-}
-```
+Rates come from the `shippingRateResolver` configured on the server; see the README's checkout-session routes.
 
 ---
 
@@ -729,7 +426,7 @@ Stripe Payment Element wrapper. Lazy-loads `@stripe/stripe-js` and `@stripe/reac
   isProcessing: boolean;
   error: string | null;
   paymentMethodType: string;
-  clientSecret: string | null;  // from CheckoutPaymentContext
+  clientSecret: string | null;  // from EPCheckoutProvider's internal context
 }
 ```
 
@@ -741,24 +438,29 @@ Stripe Payment Element wrapper. Lazy-loads `@stripe/stripe-js` and `@stripe/reac
 | `appearance` | `Record<string, any>?` | Stripe Elements appearance theme |
 | `previewState` | `"auto" \| "ready" \| "processing" \| "error"` | |
 
-Reads `clientSecret` from `CheckoutPaymentContext` (provided by EPCheckoutProvider after calling `/api/checkout/setup-payment`).
+Reads `clientSecret` from EPCheckoutProvider's internal context, which it sets after calling `/api/checkout/setup-payment`.
 
 ---
 
 ### Checkout API Routes
 
-These server routes must be implemented in your Next.js app:
+The supported checkout runs on the checkout-session routes, whose handlers this
+package ships; the README lists them. EPCheckoutProvider without a checkout
+session calls these routes instead, which the package does not ship — you
+implement them:
 
 | Route | Method | Purpose | Request Body |
 |-------|--------|---------|-------------|
-| `/api/checkout/calculate-shipping` | POST | Returns shipping rates | `{ shippingAddress: AddressData }` |
-| `/api/checkout/create-order` | POST | Creates EP order | `{ cartId, customer, shipping, billing, shippingRate }` |
+| `/api/checkout/create-order` | POST | Creates EP order | `{ cartId?, customerData, billingAddress, shippingAddress }` |
 | `/api/checkout/setup-payment` | POST | Creates Stripe PaymentIntent | `{ orderId, amount, currency }` |
-| `/api/checkout/confirm-payment` | POST | Confirms payment | `{ paymentIntentId, orderId }` |
+| `/api/checkout/confirm-payment` | POST | Confirms payment | `{ orderId, transactionId, stripePaymentIntentId }` |
+
+Without a checkout session there are no shipping rates: the session's
+`shippingRateResolver` is the only source.
 
 ---
 
-## 7.5. Studio Server Queries (SSR)
+## 6. Studio Server Queries (SSR)
 
 For SSR'd product/cart/list data — where the initial HTML payload contains real EP data without a client-side waterfall — wire up Plasmic's Server Queries against the EP custom functions exposed by `@elasticpath/plasmic-ep-commerce-elastic-path/server`. This is what makes a PDP render `Test product English` `$15.00` in the response from the first request, before any JS runs in the browser.
 
@@ -801,9 +503,9 @@ Every count `ep.getStock` returns is a `number`, not the SDK's `BigInt` — the 
 
 `categoryId` takes a hierarchy **node** ID and reads that node's products from `/catalog/nodes/{id}/relationships/products`. Elastic Path's catalog product endpoints have no filterable category key, and they compose `filter` terms with a comma — `and(...)` is rejected.
 
-Neither function takes a `sort`. Elastic Path's catalog product endpoints do not support sorting: the [Sorting guide](https://developer.elasticpath.com/guides/Getting-Started/sorting) lists the eight endpoints that accept a `sort` parameter and no catalog endpoint is among them, and an unsupported value is ignored rather than rejected — a request with `sort` returns HTTP 200 in the store's own order, so nothing at runtime reveals that it did nothing. For a sortable listing use the catalog search components (`EPCatalogSearchProvider` with `EPSearchSortBy`), which sort on the search index.
+Neither function takes a `sort`. Elastic Path's catalog product endpoints do not support sorting: the [Sorting guide](https://developer.elasticpath.com/guides/Getting-Started/sorting) lists the eight endpoints that accept a `sort` parameter and no catalog endpoint is among them, and an unsupported value is ignored rather than rejected — a request with `sort` returns HTTP 200 in the store's own order, so nothing at runtime reveals that it did nothing. See [Choosing a listing path](#3-choosing-a-listing-path).
 
-The session (`accessToken`, `host`, `clientId`, `cartId?`, `accountId?`, `locale?`) is **not** an argument. `withEpSession(epCtx, callback)` establishes a per-request `AsyncLocalStorage` scope; each `ep.*` function reads the active session via `getCurrentEpSession()` internally. Outside any `withEpSession` scope (Studio canvas, mistakes), functions fail-soft to `null` / `[]` without calling EP.
+The session (`accessToken`, `host`, `clientId`, `cartId?`, `accountId?`, `accountToken?`, `locale?`, `currency?`) is **not** an argument. `withEpSession(epCtx, callback)` establishes a per-request `AsyncLocalStorage` scope; each `ep.*` function reads the active session via `getCurrentEpSession()` internally. Outside any `withEpSession` scope (Studio canvas, mistakes), functions fail-soft to `null` / `[]` without calling EP.
 
 ### Studio binding
 
@@ -812,7 +514,7 @@ For each Server Query in the Plasmic UI:
 - **Function:** `ep.getProduct` (or `getCart`/`getProductList`/`getProductPage`/`getRelatedProducts`)
 - **Arguments (object editor):** `{ id: $ctx.params.slug }` — note `$q` (server queries) vs `$queries` (client data queries) when binding the result.
 
-Then bind the consuming component's `product` / `cart` / `products` prop (advanced section) to `$q.<queryName>.data`.
+Then bind the result to **EP Product Provider**'s `product` prop (advanced section) as `$q.<queryName>.data`. For a listing, see the next paragraph.
 
 For a server-rendered listing, bind an `ep.getProductPage` query to **EP Product List Provider** → **Products (pre-fetched)** (`initialPage`, advanced section) as `$q.<queryName>.data`. The provider renders that page without a browser fetch, and takes its page boundaries from the query's `page[limit]` rather than the **Page Size** prop. Changing page discards the seed and falls back to client fetching; in load-more mode the seeded products are the buffer the next page appends to. Where server queries do not execute — the Studio canvas — the binding evaluates to an unresolved Promise, and anything that is not a settled object carrying a `data` array counts as no seed, so the provider fetches for itself.
 
@@ -848,11 +550,10 @@ Like Add to Cart, these values are shopper-facing copy derived from stable proxy
 | Queries return `null` / `[]` despite valid arguments | Missing `withEpSession(epCtx, …)` wrap around `unstable__getServerQueriesData` |
 | `prefetchedQueryData: "$undefined"` in the SSR HTML | `appDir: true` missing from loader config |
 | `EP OAuth failed (401)` in dev log | `resolveConfig` found no EP Provider config — usually because `getEpProviderConfig` hardcoded `/` and the project has no homepage |
-| Auth works on the page but `/api/ep/cart` returns 500 | Pre-fix: `toNextJsHandler` was passing the native Next `Request` directly; resolved by the Request adapter committed in `a363aaf23` |
 | Studio binding still references `auth: $ctx.ep` | Project predates PRD #272 — drop `auth` from each Server Query argument |
-| A sort control over **EP Product List Provider** changes nothing | Expected — the catalog product endpoints cannot sort. Build the listing on `EPCatalogSearchProvider` + `EPSearchSortBy` instead |
+| A sort control over **EP Product List Provider** changes nothing | Expected — the catalog product endpoints cannot sort. See [Choosing a listing path](#3-choosing-a-listing-path) |
 
-## 8. Utility Components
+## 7. Utility Components
 
 ### EPCheckoutCartSummary
 
@@ -865,7 +566,7 @@ Fetches cart data and provides it to children. Supports collapsible mode for mob
 
 Repeater over `cart.items`.
 
-- **DataProvider (per item):** `currentCheckoutItem` — `{ id, name, quantity, price, formattedPrice, imageUrl, sku, options }`
+- **DataProvider (per item):** `currentCheckoutItem` — Elastic Path's cart line, as listed in the quick reference below
 - **DataProvider (per item):** `currentCheckoutItemIndex` — `number`
 
 ### EPCheckoutCartField
@@ -873,7 +574,7 @@ Repeater over `cart.items`.
 Renders a single cart or item field as a `<span>` (or `<img>` for `imageUrl`).
 
 - **Cart fields:** `formattedSubtotal`, `formattedTotal`, `formattedShipping`, `formattedTax`, `itemCount`
-- **Item fields** (inside EPCheckoutCartItemList): `name`, `quantity`, `sku`, `image.href`, `meta.display_price.without_tax.unit.formatted`
+- **Item fields** (inside EPCheckoutCartItemList): `name`, `quantity`, `formattedPrice`, `imageUrl`, `sku`
 
 ### EPCountrySelect
 
@@ -890,14 +591,14 @@ Renders a single cart or item field as a `<span>` (or `<img>` for `imageUrl`).
 
 ### EPPromoCodeInput
 
-Promo code input with apply/remove. Supports client-side EP SDK or server routes.
+Promo code input with apply/remove. Codes are applied and removed on the server through `ep.applyPromoCode` / `ep.removePromoCode`.
 
 - **DataProvider:** `promoCodeData` — `{ code, state, formattedDiscount, errorMessage }`
-- **Props:** `useServerRoutes?` (toggle between EP SDK and `/api/cart/promo`), `placeholder?`, `applyLabel?`, `removeLabel?`, `onApply?`, `onRemove?`, `onError?`
+- **Props:** `placeholder?`, `applyLabel?`, `removeLabel?`, `onApply?`, `onRemove?`, `onError?`
 
 ---
 
-## 9. DataProvider Quick Reference
+## 8. DataProvider Quick Reference
 
 Lookup table for Plasmic dynamic value bindings (`$ctx.xxx`).
 
