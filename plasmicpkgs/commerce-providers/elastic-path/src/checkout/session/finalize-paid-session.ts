@@ -23,6 +23,7 @@ import { applyPaymentSucceeded } from "./session-state-transition";
 import { runCartCleanup } from "./cart-cleanup";
 import { clearCartPaymentIntentId } from "./clear-cart-payment-intent";
 import { isCartPaymentIntentAdapter } from "./payment-sequence";
+import { buildShopperEpClient } from "./shopper-client";
 import { createLogger } from "../../utils/logger";
 
 const log = createLogger("FinalizePaidSession");
@@ -62,10 +63,10 @@ async function detachCartPaymentIntentIfNeeded(
 
   // Prefer client_credentials (same as cart delete). A present-but-expired
   // shopper token must not block success cleanup when admin credentials exist.
-  let token = "";
+  let adminToken = "";
   if (ctx.getClientCredentialsToken) {
     try {
-      token = await ctx.getClientCredentialsToken();
+      adminToken = await ctx.getClientCredentialsToken();
     } catch (err) {
       log.warn(
         "Cart PaymentIntent detach — could not mint admin token after successful payment; trying shopper token",
@@ -77,10 +78,7 @@ async function detachCartPaymentIntentIfNeeded(
       );
     }
   }
-  if (!token) {
-    token = ctx.shopperAccessToken ?? "";
-  }
-  if (!token) {
+  if (!adminToken && !ctx.shopperAccessToken) {
     log.warn(
       "Cart PaymentIntent detach skipped — no shopper or admin token after successful payment",
       { cartId, gateway } as Record<string, unknown>
@@ -89,7 +87,9 @@ async function detachCartPaymentIntentIfNeeded(
   }
 
   const result = await clearCartPaymentIntentId({
-    client: buildEpClient(ctx, token),
+    client: adminToken
+      ? buildEpClient(ctx, adminToken)
+      : buildShopperEpClient(ctx),
     cartId,
   });
   if (!result.ok) {

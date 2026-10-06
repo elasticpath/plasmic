@@ -60,6 +60,7 @@ import {
   cartHasPhysicalItem,
 } from "../../../checkout/session/cart-shipping";
 import { buildAdminEpClient } from "../../../checkout/session/admin-client";
+import { buildShopperEpClient } from "../../../checkout/session/shopper-client";
 import {
   applyShippingSelection,
   ShippingResolutionError,
@@ -146,20 +147,6 @@ async function persistCustomAttributes(
       error: err instanceof Error ? err.message : String(err),
     } as Record<string, unknown>);
   }
-}
-
-function buildShopperEpClient(ctx: SessionHandlerContext) {
-  const { client } = createShopperClient(
-    { baseUrl: ctx.epCredentials.apiBaseUrl },
-    {
-      clientId: ctx.epCredentials.clientId,
-      storage: {
-        get: () => ctx.shopperAccessToken ?? "",
-        set: () => {},
-      },
-    }
-  );
-  return client;
 }
 
 /**
@@ -895,6 +882,7 @@ export async function handlePay(
       host: ctx.epCredentials.apiBaseUrl,
       clientId: ctx.epCredentials.clientId,
       shopperAccessToken: ctx.shopperAccessToken,
+      accountToken: ctx.accountToken,
       productIds: freshCartItems.map((it) => it.product_id ?? "").filter(Boolean),
     });
     if (cartHasPhysical) {

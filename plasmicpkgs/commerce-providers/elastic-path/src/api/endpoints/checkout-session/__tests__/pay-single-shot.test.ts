@@ -26,11 +26,10 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
   deleteACart: jest.fn(),
   manageCarts: jest.fn(),
   deleteACartItem: jest.fn(),
-  createShopperClient: jest.fn((_cfg: unknown, opts: { storage?: { get?: () => string } }) => ({
-    client: {
-      token: typeof opts?.storage?.get === "function" ? opts.storage.get() : "",
-    },
-  })),
+  createShopperClient: jest.fn(
+    require("../../../../checkout/session/__tests__/fake-shopper-client")
+      .fakeShopperClient
+  ),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires

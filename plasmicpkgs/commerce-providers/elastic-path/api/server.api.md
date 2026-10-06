@@ -844,6 +844,7 @@ export function seedCartFallback(): Promise<Record<string, Cart | null>>;
 
 // @public (undocumented)
 export interface SessionHandlerContext {
+    accountToken?: string;
     // (undocumented)
     adapterRegistry: AdapterRegistry;
     allowedCustomAttributeKeys?: CustomAttributeAllowList;

@@ -1,7 +1,10 @@
 jest.mock("@epcc-sdk/sdks-shopper", () => ({
   getByContextAllProducts: jest.fn(),
-  createShopperClient: jest.fn(() => ({ client: {} })),
+  createShopperClient: jest.fn(require("./fake-shopper-client").fakeShopperClient),
 }));
+
+import { EP_ACCOUNT_TOKEN_HEADER } from "../../../auth/ep-plugin/envelope";
+import { headersSentBy } from "./fake-shopper-client";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const epSdk = require("@epcc-sdk/sdks-shopper") as {
@@ -106,6 +109,31 @@ describe("cartHasPhysicalItem", () => {
     expect(
       await cartHasPhysicalItem({ ...LOOKUP, productIds: ["a", "b"] })
     ).toBe(true);
+  });
+
+  it("looks the products up with the selected account's credential", async () => {
+    epSdk.getByContextAllProducts.mockResolvedValue(productsResponse(["digital"]));
+    await cartHasPhysicalItem({
+      ...LOOKUP,
+      accountToken: "account-token",
+      productIds: ["a"],
+    });
+
+    const { client } = epSdk.getByContextAllProducts.mock.calls[0][0];
+    expect(client.token).toBe("shopper-token");
+    expect((await headersSentBy(client)).get(EP_ACCOUNT_TOKEN_HEADER)).toBe(
+      "account-token"
+    );
+  });
+
+  it("sends no account credential when no account is selected", async () => {
+    epSdk.getByContextAllProducts.mockResolvedValue(productsResponse(["digital"]));
+    await cartHasPhysicalItem({ ...LOOKUP, productIds: ["a"] });
+
+    const { client } = epSdk.getByContextAllProducts.mock.calls[0][0];
+    expect((await headersSentBy(client)).has(EP_ACCOUNT_TOKEN_HEADER)).toBe(
+      false
+    );
   });
 });
 

@@ -18,7 +18,10 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
   manageCarts: jest.fn(),
   deleteACartItem: jest.fn(),
   getByContextAllProducts: jest.fn(),
-  createShopperClient: jest.fn(() => ({ client: {} })),
+  createShopperClient: jest.fn(
+    require("../../../../checkout/session/__tests__/fake-shopper-client")
+      .fakeShopperClient
+  ),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -45,6 +48,8 @@ import type {
   AdapterRegistry,
   SessionStore,
 } from "../../../../checkout/session/types";
+import { EP_ACCOUNT_TOKEN_HEADER } from "../../../../auth/ep-plugin/envelope";
+import { headersSentBy } from "../../../../checkout/session/__tests__/fake-shopper-client";
 
 const REQUIRES_ACTION_PAYMENT: CheckoutSession["payment"] = {
   gateway: "stripe",
@@ -235,6 +240,30 @@ describe("handleAbandonPayment — success", () => {
     expect(epSdk.checkoutApi).not.toHaveBeenCalled();
     expect(epSdk.confirmOrder).not.toHaveBeenCalled();
     expect(epSdk.deleteACart).not.toHaveBeenCalled();
+  });
+});
+
+describe("handleAbandonPayment — selected account", () => {
+  it("unlinks the PaymentIntent with the selected account's credential", async () => {
+    await handleAbandonPayment(
+      createMockReq(),
+      createMockCtx(makeSession(), { accountToken: "account-token" })
+    );
+
+    const { client } = epSdk.updateACart.mock.calls[0][0];
+    expect(client.token).toBe("shopper-token");
+    expect((await headersSentBy(client)).get(EP_ACCOUNT_TOKEN_HEADER)).toBe(
+      "account-token"
+    );
+  });
+
+  it("sends no account credential when no account is selected", async () => {
+    await handleAbandonPayment(createMockReq(), createMockCtx(makeSession()));
+
+    const { client } = epSdk.updateACart.mock.calls[0][0];
+    expect((await headersSentBy(client)).has(EP_ACCOUNT_TOKEN_HEADER)).toBe(
+      false
+    );
   });
 });
 

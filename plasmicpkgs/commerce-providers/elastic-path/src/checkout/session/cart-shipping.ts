@@ -11,8 +11,9 @@
  * shipping from each line's product `commodity_type`, and the client flag may
  * only ADD a shipping requirement, never suppress one a physical cart imposes.
  */
-import { getByContextAllProducts, createShopperClient } from "@epcc-sdk/sdks-shopper";
+import { getByContextAllProducts } from "@epcc-sdk/sdks-shopper";
 import { createLogger } from "../../utils/logger";
+import { buildShopperEpClient } from "./shopper-client";
 import type { SessionShippingRate } from "./types";
 
 const log = createLogger("CartShipping");
@@ -81,6 +82,8 @@ export interface CartPhysicalLookup {
   clientId: string;
   /** Shopper token resolving the same catalog context the cart was built in. */
   shopperAccessToken?: string;
+  /** The selected account's credential, so the lookup sees the account's catalog. */
+  accountToken?: string;
   /** The cart lines' `product_id`s. */
   productIds: string[];
 }
@@ -102,13 +105,11 @@ export async function cartHasPhysicalItem(
   if (ids.length === 0) return false;
 
   try {
-    const { client } = createShopperClient(
-      { baseUrl: opts.host },
-      {
-        clientId: opts.clientId,
-        storage: { get: () => opts.shopperAccessToken ?? "", set: () => {} },
-      }
-    );
+    const client = buildShopperEpClient({
+      epCredentials: { apiBaseUrl: opts.host, clientId: opts.clientId },
+      shopperAccessToken: opts.shopperAccessToken,
+      accountToken: opts.accountToken,
+    });
     const res = await getByContextAllProducts({
       client,
       query: { filter: `in(id,${ids.join(",")})`, "page[limit]": ids.length },

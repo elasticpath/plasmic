@@ -13,7 +13,6 @@
  * Does not create a PaymentIntent, call updateCartPaymentIntent, confirmOrder,
  * checkoutApi, or /confirm.
  */
-import { createShopperClient } from "@epcc-sdk/sdks-shopper";
 import type {
   SessionRequest,
   SessionResponse,
@@ -24,6 +23,7 @@ import type {
 import { applyAbandonedRequiresAction } from "../../../checkout/session/session-state-transition";
 import { isCartPaymentIntentAdapter } from "../../../checkout/session/payment-sequence";
 import { clearCartPaymentIntentId } from "../../../checkout/session/clear-cart-payment-intent";
+import { buildShopperEpClient } from "../../../checkout/session/shopper-client";
 import { createLogger } from "../../../utils/logger";
 
 const log = createLogger("AbandonPayment");
@@ -31,20 +31,6 @@ const log = createLogger("AbandonPayment");
 function toClientSession(s: CheckoutSession): ClientCheckoutSession {
   const { cartHash, ...rest } = s;
   return rest;
-}
-
-function buildShopperEpClient(ctx: SessionHandlerContext) {
-  const { client } = createShopperClient(
-    { baseUrl: ctx.epCredentials.apiBaseUrl },
-    {
-      clientId: ctx.epCredentials.clientId,
-      storage: {
-        get: () => ctx.shopperAccessToken ?? "",
-        set: () => {},
-      },
-    }
-  );
-  return client;
 }
 
 export async function handleAbandonPayment(
