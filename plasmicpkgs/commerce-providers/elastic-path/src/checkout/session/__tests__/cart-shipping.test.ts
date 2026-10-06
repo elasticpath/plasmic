@@ -35,8 +35,7 @@ function productsResponse(commodityTypes: string[]) {
 }
 
 const LOOKUP = {
-  host: "https://api.test.com",
-  clientId: "test-id",
+  epCredentials: { apiBaseUrl: "https://api.test.com", clientId: "test-id" },
   shopperAccessToken: "shopper-token",
 };
 
@@ -70,7 +69,7 @@ describe("cartHasPhysicalItem", () => {
       productsResponse(["digital", "physical"])
     );
     expect(
-      await cartHasPhysicalItem({ ...LOOKUP, productIds: ["a", "b"] })
+      await cartHasPhysicalItem(LOOKUP, ["a", "b"])
     ).toBe(true);
   });
 
@@ -79,18 +78,18 @@ describe("cartHasPhysicalItem", () => {
       productsResponse(["digital", "digital"])
     );
     expect(
-      await cartHasPhysicalItem({ ...LOOKUP, productIds: ["a", "b"] })
+      await cartHasPhysicalItem(LOOKUP, ["a", "b"])
     ).toBe(false);
   });
 
   it("does not call EP and returns false for an empty product list", async () => {
-    expect(await cartHasPhysicalItem({ ...LOOKUP, productIds: [] })).toBe(false);
+    expect(await cartHasPhysicalItem(LOOKUP, [])).toBe(false);
     expect(epSdk.getByContextAllProducts).not.toHaveBeenCalled();
   });
 
   it("dedupes ids and queries with an in(id,...) filter", async () => {
     epSdk.getByContextAllProducts.mockResolvedValue(productsResponse(["digital"]));
-    await cartHasPhysicalItem({ ...LOOKUP, productIds: ["a", "a", "b", ""] });
+    await cartHasPhysicalItem(LOOKUP, ["a", "a", "b", ""]);
     const query = epSdk.getByContextAllProducts.mock.calls[0][0].query;
     expect(query.filter).toBe("in(id,a,b)");
   });
@@ -98,7 +97,7 @@ describe("cartHasPhysicalItem", () => {
   it("fails open (returns false) and does not throw when the lookup errors", async () => {
     epSdk.getByContextAllProducts.mockRejectedValue(new Error("EP down"));
     expect(
-      await cartHasPhysicalItem({ ...LOOKUP, productIds: ["a"] })
+      await cartHasPhysicalItem(LOOKUP, ["a"])
     ).toBe(false);
   });
 
@@ -107,17 +106,16 @@ describe("cartHasPhysicalItem", () => {
     // can't prove the cart is all-digital, so require shipping.
     epSdk.getByContextAllProducts.mockResolvedValue(productsResponse(["digital"]));
     expect(
-      await cartHasPhysicalItem({ ...LOOKUP, productIds: ["a", "b"] })
+      await cartHasPhysicalItem(LOOKUP, ["a", "b"])
     ).toBe(true);
   });
 
   it("looks the products up with the selected account's credential", async () => {
     epSdk.getByContextAllProducts.mockResolvedValue(productsResponse(["digital"]));
-    await cartHasPhysicalItem({
-      ...LOOKUP,
-      accountToken: "account-token",
-      productIds: ["a"],
-    });
+    await cartHasPhysicalItem(
+      { ...LOOKUP, accountToken: "account-token" },
+      ["a"]
+    );
 
     const { client } = epSdk.getByContextAllProducts.mock.calls[0][0];
     expect(client.token).toBe("shopper-token");
@@ -128,7 +126,7 @@ describe("cartHasPhysicalItem", () => {
 
   it("sends no account credential when no account is selected", async () => {
     epSdk.getByContextAllProducts.mockResolvedValue(productsResponse(["digital"]));
-    await cartHasPhysicalItem({ ...LOOKUP, productIds: ["a"] });
+    await cartHasPhysicalItem(LOOKUP, ["a"]);
 
     const { client } = epSdk.getByContextAllProducts.mock.calls[0][0];
     expect((await headersSentBy(client)).has(EP_ACCOUNT_TOKEN_HEADER)).toBe(

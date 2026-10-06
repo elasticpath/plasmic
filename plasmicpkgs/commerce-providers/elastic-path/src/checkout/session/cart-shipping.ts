@@ -14,7 +14,7 @@
 import { getByContextAllProducts } from "@epcc-sdk/sdks-shopper";
 import { createLogger } from "../../utils/logger";
 import { buildShopperEpClient } from "./shopper-client";
-import type { SessionShippingRate } from "./types";
+import type { SessionHandlerContext, SessionShippingRate } from "./types";
 
 const log = createLogger("CartShipping");
 
@@ -76,18 +76,6 @@ export function resolveShippingRate(
   return rate;
 }
 
-export interface CartPhysicalLookup {
-  /** EP API base URL. */
-  host: string;
-  clientId: string;
-  /** Shopper token resolving the same catalog context the cart was built in. */
-  shopperAccessToken?: string;
-  /** The selected account's credential, sent with the lookup. */
-  accountToken?: string;
-  /** The cart lines' `product_id`s. */
-  productIds: string[];
-}
-
 /**
  * True when ANY of the cart's products is a physical (shippable) commodity.
  *
@@ -99,17 +87,17 @@ export interface CartPhysicalLookup {
  * client tried to suppress shipping (otherwise shipping is already required).
  */
 export async function cartHasPhysicalItem(
-  opts: CartPhysicalLookup
+  ctx: Pick<
+    SessionHandlerContext,
+    "epCredentials" | "shopperAccessToken" | "accountToken"
+  >,
+  productIds: string[]
 ): Promise<boolean> {
-  const ids = Array.from(new Set(opts.productIds.filter(Boolean)));
+  const ids = Array.from(new Set(productIds.filter(Boolean)));
   if (ids.length === 0) return false;
 
   try {
-    const client = buildShopperEpClient({
-      epCredentials: { apiBaseUrl: opts.host, clientId: opts.clientId },
-      shopperAccessToken: opts.shopperAccessToken,
-      accountToken: opts.accountToken,
-    });
+    const client = buildShopperEpClient(ctx);
     const res = await getByContextAllProducts({
       client,
       query: { filter: `in(id,${ids.join(",")})`, "page[limit]": ids.length },

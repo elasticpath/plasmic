@@ -322,15 +322,10 @@ export async function handleResumePayment(
 
   let cartHasPhysical = false;
   if (session.requiresShipping === false) {
-    cartHasPhysical = await cartHasPhysicalItem({
-      host: ctx.epCredentials.apiBaseUrl,
-      clientId: ctx.epCredentials.clientId,
-      shopperAccessToken: ctx.shopperAccessToken,
-      accountToken: ctx.accountToken,
-      productIds: freshCartItems
-        .map((it) => it.product_id ?? "")
-        .filter(Boolean),
-    });
+    cartHasPhysical = await cartHasPhysicalItem(
+      ctx,
+      freshCartItems.map((it) => it.product_id ?? "").filter(Boolean)
+    );
   }
   const requiresShipping = resolveRequiresShipping(
     session.requiresShipping,
