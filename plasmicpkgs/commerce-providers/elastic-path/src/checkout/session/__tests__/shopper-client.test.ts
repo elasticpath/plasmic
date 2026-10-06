@@ -68,13 +68,22 @@ describe("buildShopperEpClient", () => {
     expect(headers.has(EP_ACCOUNT_TOKEN_HEADER)).toBe(false);
   });
 
+  it("sends the shopper's own token", async () => {
+    const headers = await cartReadHeadersFor(ctxWith());
+
+    expect(headers.get("Authorization")).toBe("Bearer shopper-token");
+  });
+
   it("keeps the account credential off the token endpoint", async () => {
     const sent = await requestsSentFor(
-      ctxWith({ accountToken: "account-management-token" })
+      ctxWith({
+        shopperAccessToken: "",
+        accountToken: "account-management-token",
+      })
     );
 
-    for (const request of sent.filter((r) => r.url.includes("/oauth/"))) {
-      expect(request.headers.has(EP_ACCOUNT_TOKEN_HEADER)).toBe(false);
-    }
+    const mints = sent.filter((r) => r.url.includes("/oauth/"));
+    expect(mints).toHaveLength(1);
+    expect(mints[0].headers.has(EP_ACCOUNT_TOKEN_HEADER)).toBe(false);
   });
 });
