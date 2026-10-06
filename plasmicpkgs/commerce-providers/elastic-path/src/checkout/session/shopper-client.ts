@@ -1,6 +1,6 @@
-import { createShopperClient } from "@epcc-sdk/sdks-shopper";
 import type { Client } from "@epcc-sdk/sdks-shopper";
 import { accountTokenHeaders } from "../../auth/ep-plugin/envelope";
+import { buildFixedTokenEpClient } from "../../utils/fixed-token-ep-client";
 import type { SessionHandlerContext } from "./types";
 
 /**
@@ -14,22 +14,10 @@ export function buildShopperEpClient(
     "epCredentials" | "shopperAccessToken" | "accountToken"
   >
 ): Client {
-  const token = ctx.shopperAccessToken ?? "";
-  const { client } = createShopperClient(
-    { baseUrl: ctx.epCredentials.apiBaseUrl },
-    {
-      clientId: ctx.epCredentials.clientId,
-      storage: { get: () => token, set: () => {} },
-    }
-  );
-
-  const headers = accountTokenHeaders(ctx);
-  client.interceptors.request.use(async (request: Request) => {
-    for (const [name, value] of Object.entries(headers)) {
-      request.headers.set(name, value);
-    }
-    return request;
+  return buildFixedTokenEpClient({
+    host: ctx.epCredentials.apiBaseUrl,
+    clientId: ctx.epCredentials.clientId,
+    token: ctx.shopperAccessToken ?? "",
+    headers: accountTokenHeaders(ctx),
   });
-
-  return client;
 }

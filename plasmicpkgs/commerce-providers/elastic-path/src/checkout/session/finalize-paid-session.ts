@@ -11,7 +11,6 @@
  * Callers handle order custom-field writes themselves so /pay can write them
  * before confirmOrder.
  */
-import { createShopperClient } from "@epcc-sdk/sdks-shopper";
 import type {
   CheckoutSession,
   ClientCheckoutSession,
@@ -24,6 +23,7 @@ import { runCartCleanup } from "./cart-cleanup";
 import { clearCartPaymentIntentId } from "./clear-cart-payment-intent";
 import { isCartPaymentIntentAdapter } from "./payment-sequence";
 import { buildShopperEpClient } from "./shopper-client";
+import { buildAdminEpClientFromToken } from "./admin-client";
 import { createLogger } from "../../utils/logger";
 
 const log = createLogger("FinalizePaidSession");
@@ -31,23 +31,6 @@ const log = createLogger("FinalizePaidSession");
 function toClientSession(s: CheckoutSession): ClientCheckoutSession {
   const { cartHash, ...rest } = s;
   return rest;
-}
-
-function buildEpClient(
-  ctx: SessionHandlerContext,
-  token: string
-): unknown {
-  const { client } = createShopperClient(
-    { baseUrl: ctx.epCredentials.apiBaseUrl },
-    {
-      clientId: ctx.epCredentials.clientId,
-      storage: {
-        get: () => token,
-        set: () => {},
-      },
-    }
-  );
-  return client;
 }
 
 async function detachCartPaymentIntentIfNeeded(
@@ -88,7 +71,7 @@ async function detachCartPaymentIntentIfNeeded(
 
   const result = await clearCartPaymentIntentId({
     client: adminToken
-      ? buildEpClient(ctx, adminToken)
+      ? buildAdminEpClientFromToken(ctx, adminToken)
       : buildShopperEpClient(ctx),
     cartId,
   });

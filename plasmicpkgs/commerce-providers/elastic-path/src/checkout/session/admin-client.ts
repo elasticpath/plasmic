@@ -9,8 +9,8 @@
  * checkout-session shipping step build it the same way rather than each
  * re-deriving it.
  */
-import { createShopperClient } from "@epcc-sdk/sdks-shopper";
 import type { Client } from "@epcc-sdk/sdks-shopper";
+import { buildFixedTokenEpClient } from "../../utils/fixed-token-ep-client";
 import type { SessionHandlerContext } from "./types";
 
 export async function buildAdminEpClient(
@@ -19,15 +19,17 @@ export async function buildAdminEpClient(
   const token = ctx.getClientCredentialsToken
     ? await ctx.getClientCredentialsToken()
     : "";
-  const { client } = createShopperClient(
-    { baseUrl: ctx.epCredentials.apiBaseUrl },
-    {
-      clientId: ctx.epCredentials.clientId,
-      storage: {
-        get: () => token,
-        set: () => {},
-      },
-    }
-  );
-  return client;
+  return buildAdminEpClientFromToken(ctx, token);
+}
+
+/** For a caller that already minted the `client_credentials` token. */
+export function buildAdminEpClientFromToken(
+  ctx: Pick<SessionHandlerContext, "epCredentials">,
+  token: string
+): Client {
+  return buildFixedTokenEpClient({
+    host: ctx.epCredentials.apiBaseUrl,
+    clientId: ctx.epCredentials.clientId,
+    token,
+  });
 }
