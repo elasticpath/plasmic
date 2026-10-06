@@ -283,9 +283,9 @@ export interface SessionHandlerContext {
   /**
    * The selected account's Elastic Path account-management token, resolved
    * per-request from the same session as `shopperAccessToken`. Sent with every
-   * call made under the shopper's token, so checkout prices the cart the way
-   * the basket does. Omit it when no account is selected. Never sent with a
-   * `getClientCredentialsToken` call.
+   * call made under the shopper's token, as the `ep.*` functions do. Omit it
+   * when no account is selected. Never sent with a `getClientCredentialsToken`
+   * call.
    */
   accountToken?: string;
   /**

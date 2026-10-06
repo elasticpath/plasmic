@@ -82,7 +82,7 @@ export interface CartPhysicalLookup {
   clientId: string;
   /** Shopper token resolving the same catalog context the cart was built in. */
   shopperAccessToken?: string;
-  /** The selected account's credential, so the lookup sees the account's catalog. */
+  /** The selected account's credential, sent with the lookup. */
   accountToken?: string;
   /** The cart lines' `product_id`s. */
   productIds: string[];

@@ -104,10 +104,9 @@ one. The initial load, login reload, and logout reload publish an empty roster.
 credential, next to `shopperAccessToken`. Resolve it in the same
 checkout-context factory, from `session.session.account?.token`, and every
 checkout-session handler call made as the shopper carries
-`EP-Account-Management-Authentication-Token`. Checkout then prices the cart
-the way the basket does, instead of reading list prices for an account member.
-Calls made with `getClientCredentialsToken` never carry it, and with no account
-selected no checkout call does.
+`EP-Account-Management-Authentication-Token`, as every `ep.*` server function
+already does. Calls made with `getClientCredentialsToken` never carry it, and
+with no account selected no checkout call does.
 
 ### Changed
 
