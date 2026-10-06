@@ -10,6 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { betterAuth } from "better-auth";
 import { epPlugin } from "../ep-plugin";
+import { createEpAuth } from "../create-ep-auth-better";
 import { DEFAULT_HOST_ALLOWLIST } from "../../host-allowlist";
 import { getCurrentEpSession } from "../../../ep-server-functions/session-context";
 import type { EpSessionCartResolver } from "../session-cart";
@@ -275,6 +276,19 @@ async function refresh(auth: any, cookies: string) {
     asResponse: true,
   });
   return { res, cookies: mergeCookies(cookies, res) };
+}
+
+function nextStyleCookies(cookieHeader: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const part of cookieHeader.split(";")) {
+    const head = part.trim();
+    const eq = head.indexOf("=");
+    if (eq < 0) continue;
+    out[head.slice(0, eq).trim()] = decodeURIComponent(
+      head.slice(eq + 1).trim()
+    );
+  }
+  return out;
 }
 
 async function signInThenLapse(auth: any, cookies: string) {
@@ -846,7 +860,7 @@ describe("deselecting an organisation", () => {
     expect(asked).toBe(askedBefore);
   });
 
-  it("deletes nothing: the basket stays with the organisation", async () => {
+  it("deletes nothing: the cart stays with the organisation", async () => {
     const auth = buildAuth();
     const cookies = await selectedWithCart(auth);
 
@@ -858,7 +872,7 @@ describe("deselecting an organisation", () => {
     ]);
   });
 
-  it("re-adopts the basket when the same organisation is selected again", async () => {
+  it("re-adopts the account cart when the same organisation is selected again", async () => {
     const auth = buildAuth();
     const cookies = await selectedWithCart(auth);
     store.carts.push(
@@ -916,7 +930,29 @@ describe("an account credential that lapses", () => {
     expect(asked).toBe(askedBefore);
   });
 
-  it("clears it once: a basket built afterwards stays", async () => {
+  it("hands a server render no cart before anything has persisted the lapse", async () => {
+    store.carts = [cart("cart-north", { accountIds: [NORTH.id] })];
+    const epAuth = createEpAuth({
+      clientId: EP_CLIENT_ID,
+      host: EP_HOST,
+      secret: SECRET,
+      baseURL: "http://localhost:3000",
+      passwordProfileId: PROFILE,
+    });
+    const signedIn = await signInThenLapse(
+      epAuth.handler,
+      await anonymous(epAuth.handler)
+    );
+
+    const session = await epAuth.api.getSession({
+      cookies: nextStyleCookies(signedIn.cookies),
+    });
+
+    expect(session.session?.lapsedAccount).toEqual(NORTH);
+    expect(session.cart).toBeNull();
+  });
+
+  it("clears it once: a cart built afterwards stays", async () => {
     store.carts = [cart("cart-north", { accountIds: [NORTH.id] })];
     const auth = buildAuth();
     const signedIn = await signInThenLapse(auth, await anonymous(auth));
@@ -929,7 +965,7 @@ describe("an account credential that lapses", () => {
     expect(body.session.epCartId).toBe("cart-after-lapse");
   });
 
-  it("deletes nothing: the basket held before it stays with the organisation", async () => {
+  it("deletes nothing: the cart held before it stays with the organisation", async () => {
     store.carts = [cart("cart-north", { accountIds: [NORTH.id] })];
     const auth = buildAuth();
     const signedIn = await signInThenLapse(auth, await anonymous(auth));
@@ -942,7 +978,7 @@ describe("an account credential that lapses", () => {
     ]);
   });
 
-  it("returns the shopper to the basket held before it when they sign back in", async () => {
+  it("returns the shopper to the cart held before it when they sign back in", async () => {
     store.carts = [cart("cart-north", { accountIds: [NORTH.id] })];
     const auth = buildAuth();
     const signedIn = await signInThenLapse(auth, await anonymous(auth));
@@ -965,7 +1001,7 @@ describe("an account credential that lapses", () => {
         : signedIn.cookies;
     }
 
-    it("keeps a basket built after it through the next sign-in, offered as the guest cart", async () => {
+    it("keeps a cart built after it through the next sign-in, offered as the guest cart", async () => {
       store.carts = [
         cart("cart-north", { accountIds: [NORTH.id] }),
         cart("cart-after-lapse"),
@@ -990,7 +1026,7 @@ describe("an account credential that lapses", () => {
       expect(body.session.epCartId).toBe("cart-after-lapse");
     });
 
-    it("keeps that basket by default", async () => {
+    it("keeps that cart by default", async () => {
       store.carts = [
         cart("cart-north", { accountIds: [NORTH.id], updatedAt: isoIn(-60) }),
         cart("cart-after-lapse"),
@@ -1005,7 +1041,7 @@ describe("an account credential that lapses", () => {
       expect(body.session.epCartId).toBe("cart-after-lapse");
     });
 
-    it("never offers the basket held before it to a different organisation", async () => {
+    it("never offers the cart held before it to a different organisation", async () => {
       store.carts = [
         cart("cart-north", { accountIds: [NORTH.id] }),
         cart("cart-south", { accountIds: [SOUTH.id] }),
@@ -1031,7 +1067,7 @@ describe("an account credential that lapses", () => {
       ).toEqual([NORTH.id]);
     });
 
-    it("never offers the basket held before it at the next selection either", async () => {
+    it("never offers the cart held before it at the next selection either", async () => {
       store.carts = [
         cart("cart-north", { accountIds: [NORTH.id] }),
         cart("cart-south", { accountIds: [SOUTH.id] }),

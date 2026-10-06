@@ -416,14 +416,13 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
           }
         }
 
-        const epSession = session?.session ?? null;
+        const stored = session?.session ?? null;
         const epUser = session?.user ?? null;
+        const epSession = stored
+          ? applyAccountLapse(stored, Math.floor(Date.now() / 1000))
+          : stored;
 
-        const envelopeAccount = readEnvelopeAccount(
-          epSession
-            ? applyAccountLapse(epSession, Math.floor(Date.now() / 1000))
-            : epSession
-        );
+        const envelopeAccount = readEnvelopeAccount(epSession);
 
         const sessionData: EpSessionData | null = epSession?.epAccessToken
           ? {
