@@ -25,7 +25,6 @@ jest.mock("@plasmicapp/host/registerComponent", () => {
   return fn;
 });
 
-jest.mock("../../../client", () => ({ __esModule: true, default: () => ({}) }));
 
 import React from "react";
 import { render, screen } from "@testing-library/react";

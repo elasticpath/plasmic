@@ -98,7 +98,9 @@ export const epPromoCodeInputMeta: CodeComponentMeta<EPPromoCodeInputProps> = {
       type: "boolean",
       displayName: "Use Server Routes",
       description:
-        "No effect. Promo codes always reach Elastic Path through the server; the prop is kept so existing projects still load.",
+        "Deprecated — ignored. A promo code always reaches Elastic Path " +
+        "through the server; there was never a second path to choose.",
+      hidden: () => true,
       advanced: true,
       defaultValue: false,
     },

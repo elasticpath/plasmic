@@ -1,12 +1,9 @@
-import type { Client } from "@epcc-sdk/sdks-shopper";
 import React from "react";
-import initElasticPathClient from "../client";
 
 export type { CurrencyDisplay } from "../utils/price";
 import type { CurrencyDisplay } from "../utils/price";
 
 export interface EpCommerce {
-  client: Client;
   locale: string;
   /** ISO 4217 currency for the cart read (X-Moltin-Currency). Storefront-resolved. */
   currency?: string;
@@ -47,13 +44,10 @@ export interface EpCommerceProviderProps {
 }
 
 /**
- * Props are primitives so the memo dependencies are stable by value. Passing a
- * `creds` object here instead would re-create the client on every render of the
- * parent, re-keying every downstream query.
+ * `clientId` and `host` identify the store for the server that resolves the
+ * shopper's session; they are not credentials this provider can act with.
  */
 export function EpCommerceProvider({
-  clientId,
-  host,
   locale = "en-US",
   currency,
   currencyDisplay = "platform",
@@ -61,14 +55,9 @@ export function EpCommerceProvider({
 }: EpCommerceProviderProps) {
   const EpCommerceCtx = getSingletonContext();
 
-  const client = React.useMemo(
-    () => initElasticPathClient({ clientId, host }),
-    [clientId, host]
-  );
-
   const value = React.useMemo<EpCommerce>(
-    () => ({ client, locale, currency, currencyDisplay }),
-    [client, locale, currency, currencyDisplay]
+    () => ({ locale, currency, currencyDisplay }),
+    [locale, currency, currencyDisplay]
   );
 
   return (

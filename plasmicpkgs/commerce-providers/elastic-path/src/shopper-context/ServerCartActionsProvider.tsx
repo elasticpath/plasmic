@@ -18,15 +18,8 @@ interface ServerCartActions extends GlobalActionDict {
   removeItem: (lineItemId: string) => void;
 }
 
-/** `EPCartProvider`'s single key, and `useCart`'s, which may carry a cartId. */
 async function refreshCart(): Promise<void> {
-  await Promise.all([
-    swrMutate(epCartCacheKey()),
-    swrMutate(
-      (key: unknown) =>
-        key === "cart" || (Array.isArray(key) && key[0] === "cart")
-    ),
-  ]);
+  await swrMutate(epCartCacheKey());
 }
 
 /**

@@ -1,27 +1,12 @@
 /** @jest-environment jsdom */
 import React from "react";
 import { render } from "@testing-library/react";
-
-const mockInit = jest.fn();
-jest.mock("../../client", () => ({
-  __esModule: true,
-  default: (...args: unknown[]) => mockInit(...args),
-}));
-
-const { EpCommerceProvider, useEpCommerce } =
-  require("../EpCommerceContext") as typeof import("../EpCommerceContext");
+import { EpCommerceProvider, useEpCommerce } from "../EpCommerceContext";
 
 function Probe({ onValue }: { onValue: (v: unknown) => void }) {
   onValue(useEpCommerce());
   return null;
 }
-
-beforeEach(() => {
-  jest.clearAllMocks();
-  mockInit.mockImplementation((creds: { clientId: string; host?: string }) => ({
-    tag: `${creds.clientId}:${creds.host ?? ""}`,
-  }));
-});
 
 describe("useEpCommerce", () => {
   it("returns null with no provider above it", () => {
@@ -30,7 +15,7 @@ describe("useEpCommerce", () => {
     expect(value).toBeNull();
   });
 
-  it("exposes the client, locale, currency and currencyDisplay", () => {
+  it("exposes locale, currency and currencyDisplay, and no client", () => {
     let value: any;
     render(
       <EpCommerceProvider
@@ -43,7 +28,6 @@ describe("useEpCommerce", () => {
       </EpCommerceProvider>
     );
     expect(value).toEqual({
-      client: { tag: "abc:" },
       locale: "fr-FR",
       currency: "EUR",
       currencyDisplay: "code",
@@ -69,42 +53,17 @@ describe("EpCommerceProvider", () => {
     expect(seen[1]).toBe(seen[0]);
   });
 
-  it("does not rebuild the client when an unrelated prop changes", () => {
-    const { rerender } = render(
-      <EpCommerceProvider clientId="abc" currency="USD">
-        <Probe onValue={() => undefined} />
+  it("publishes nothing a caller could authenticate with", () => {
+    let value: any;
+    render(
+      <EpCommerceProvider clientId="abc" host="https://useast.api.elasticpath.com">
+        <Probe onValue={(v) => (value = v)} />
       </EpCommerceProvider>
     );
-    expect(mockInit).toHaveBeenCalledTimes(1);
-
-    rerender(
-      <EpCommerceProvider clientId="abc" currency="GBP">
-        <Probe onValue={() => undefined} />
-      </EpCommerceProvider>
-    );
-    expect(mockInit).toHaveBeenCalledTimes(1);
-  });
-
-  it("rebuilds the client when clientId or host changes", () => {
-    const { rerender } = render(
-      <EpCommerceProvider clientId="abc">
-        <Probe onValue={() => undefined} />
-      </EpCommerceProvider>
-    );
-    expect(mockInit).toHaveBeenCalledTimes(1);
-
-    rerender(
-      <EpCommerceProvider clientId="def">
-        <Probe onValue={() => undefined} />
-      </EpCommerceProvider>
-    );
-    expect(mockInit).toHaveBeenCalledTimes(2);
-
-    rerender(
-      <EpCommerceProvider clientId="def" host="https://useast.api.elasticpath.com">
-        <Probe onValue={() => undefined} />
-      </EpCommerceProvider>
-    );
-    expect(mockInit).toHaveBeenCalledTimes(3);
+    expect(Object.keys(value).sort()).toEqual([
+      "currency",
+      "currencyDisplay",
+      "locale",
+    ]);
   });
 });

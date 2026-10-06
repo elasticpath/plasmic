@@ -74,7 +74,6 @@ export {
   EP_ACCOUNT_TOKEN_HEADER,
   assertProductionSecret,
   createBetterEpAuth,
-  createCartRoutes,
   createEpAuth,
   createEpAuthRoutes,
   createEpDesignRoutes,

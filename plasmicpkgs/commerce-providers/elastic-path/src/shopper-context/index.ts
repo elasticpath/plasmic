@@ -8,19 +8,11 @@ export type {
   EpCommerce,
   EpCommerceProviderProps,
 } from "./EpCommerceContext";
-export { ShopperContext, getShopperContext } from "./ShopperContext";
-export type { ShopperOverrides, ShopperContextProps } from "./ShopperContext";
+export { ShopperContext } from "./ShopperContext";
+export type { ShopperContextProps } from "./ShopperContext";
 export { useMoneyFormat } from "./use-money-format";
 export type { MoneyFormat } from "./use-money-format";
-export { useShopperContext } from "./useShopperContext";
-export { useShopperFetch } from "./useShopperFetch";
-export { useCart } from "./use-cart";
-export type { CartItem, CartMeta, CartData, UseCartReturn } from "./use-cart";
 export { useCheckoutCart } from "./use-checkout-cart";
 export type { UseCheckoutCartReturn } from "./use-checkout-cart";
 export { MOCK_SERVER_CART_DATA } from "./design-time-data";
-export { useAddItem } from "./use-add-item";
-export type { AddItemInput } from "./use-add-item";
-export { useRemoveItem } from "./use-remove-item";
-export { useUpdateItem } from "./use-update-item";
 export { ServerCartActionsProvider } from "./ServerCartActionsProvider";

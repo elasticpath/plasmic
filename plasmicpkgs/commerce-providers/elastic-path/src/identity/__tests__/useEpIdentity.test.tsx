@@ -1,12 +1,10 @@
 /**
  * @jest-environment jsdom
  *
- * A component calls a method; it never sees a URL, and the base path comes
- * from the same context the cart hooks read.
+ * A component calls a method; it never sees a URL.
  */
 import * as React from "react";
 import { act, render } from "@testing-library/react";
-import { ShopperContext } from "../../shopper-context/ShopperContext";
 import { useEpIdentity } from "../useEpIdentity";
 
 let calls: string[] = [];
@@ -55,20 +53,6 @@ describe("useEpIdentity", () => {
     });
 
     expect(calls).toEqual(["/api/ep/ep/account/login"]);
-  });
-
-  it("follows the base path the shopper context carries", async () => {
-    const { getByText } = render(
-      <ShopperContext basePath="/api/store">
-        <SignInButton />
-      </ShopperContext>
-    );
-
-    await act(async () => {
-      getByText("Sign in").click();
-    });
-
-    expect(calls).toEqual(["/api/store/ep/account/login"]);
   });
 
   it("hands back the same client across renders, so it is safe in a dependency list", () => {

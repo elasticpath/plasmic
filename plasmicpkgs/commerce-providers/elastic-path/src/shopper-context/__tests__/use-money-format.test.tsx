@@ -3,11 +3,6 @@ import React from "react";
 import { render } from "@testing-library/react";
 import type { CurrencyDisplay } from "../../utils/price";
 
-jest.mock("../../client", () => ({
-  __esModule: true,
-  default: () => ({}),
-}));
-
 const { EpCommerceProvider } =
   require("../EpCommerceContext") as typeof import("../EpCommerceContext");
 const { useMoneyFormat } =

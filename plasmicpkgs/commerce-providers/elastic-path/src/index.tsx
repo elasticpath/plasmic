@@ -121,7 +121,6 @@ export * from "./product-discovery";
 export * from "./catalog-search";
 export * from "./shopper-context";
 export * from "./identity";
-export * from "./shopper-context/server";
 export * from "./product-extensions";
 export * from "./account";
 

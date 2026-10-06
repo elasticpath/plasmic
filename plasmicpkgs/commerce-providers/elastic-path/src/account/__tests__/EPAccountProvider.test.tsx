@@ -36,9 +36,28 @@ jest.mock("@plasmicapp/host/registerComponent", () => {
   return fn;
 });
 
+// The provider re-reads whenever it is handed a different identity client.
+// Nothing in a page varies the mount path any more, so the tests that cover
+// that reaction drive it here instead.
+let identityBasePath = "/api/ep";
+jest.mock("../../identity/useEpIdentity", () => {
+  const ReactLocal = require("react");
+  const {
+    createEpIdentityClient,
+  } = require("../../identity/client") as typeof import("../../identity/client");
+  return {
+    useEpIdentity: () => {
+      const basePath = identityBasePath;
+      return ReactLocal.useMemo(
+        () => createEpIdentityClient({ basePath }),
+        [basePath]
+      );
+    },
+  };
+});
+
 import React from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
-import { ShopperContext } from "../../shopper-context/ShopperContext";
 import {
   MOCK_ACCOUNT_ANONYMOUS,
   MOCK_ACCOUNT_LAPSED,
@@ -59,6 +78,12 @@ const {
   useAccountReload,
   RELOAD_RETRY_BACKOFF_MS,
 } = require("../EPAccountProvider");
+
+/** Stands in for an auth handler mounted somewhere other than the default. */
+function MountedAt(props: { basePath: string; children: React.ReactNode }) {
+  identityBasePath = props.basePath;
+  return <>{props.children}</>;
+}
 
 function ReloadHandle(props: { handle: { reload?: () => Promise<void> } }) {
   props.handle.reload = useAccountReload();
@@ -269,6 +294,7 @@ describe("previewAccountContext", () => {
 describe("EPAccountProvider", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    identityBasePath = "/api/ep";
     mockUsePlasmicCanvasContext.mockReturnValue(false);
     (global as unknown as { fetch: typeof fetch }).fetch = jest.fn(
       () => new Promise(() => {})
@@ -331,14 +357,14 @@ describe("EPAccountProvider", () => {
     });
   });
 
-  it("reads the session from the ShopperContext basePath", async () => {
+  it("reads the session from the mount path", async () => {
     const fetchImpl = mockSessionAndRoster({ epMemberId: "member-1" });
     render(
-      <ShopperContext basePath="/api/store">
+      <MountedAt basePath="/api/store">
         <EPAccountProvider>
           <span>child</span>
         </EPAccountProvider>
-      </ShopperContext>
+      </MountedAt>
     );
     await waitFor(() => {
       expect(publishedAccount().state).toBe("memberOnly");
@@ -353,7 +379,7 @@ describe("EPAccountProvider", () => {
     );
   });
 
-  it("does not publish the previous identity after the basePath changes", async () => {
+  it("does not publish the previous identity after the identity client changes", async () => {
     const fetchImpl = mockSessionAndRoster({ epMemberId: "member-a" });
     const pending = new Promise<never>(() => {});
     const baseFetch = fetchImpl.getMockImplementation()!;
@@ -361,11 +387,11 @@ describe("EPAccountProvider", () => {
       String(url).startsWith("/api/b/") ? pending : baseFetch(url, init)
     );
     const tree = (basePath: string) => (
-      <ShopperContext basePath={basePath}>
+      <MountedAt basePath={basePath}>
         <EPAccountProvider>
           <span>child</span>
         </EPAccountProvider>
-      </ShopperContext>
+      </MountedAt>
     );
 
     const { rerender } = render(tree("/api/a"));
@@ -607,17 +633,17 @@ describe("EPAccountProvider", () => {
       expect(screen.queryByTestId("signed-in")).toBeNull();
     });
 
-    it("posts logout to the ShopperContext basePath", async () => {
+    it("posts logout to the mount path", async () => {
       const { releaseReload, logoutCalls } = installLogoutFetch({
         epMemberId: "member-1",
       });
       const ref = React.createRef<AccountActions>();
       render(
-        <ShopperContext basePath="/api/store">
+        <MountedAt basePath="/api/store">
           <EPAccountProvider ref={ref}>
             <span>child</span>
           </EPAccountProvider>
-        </ShopperContext>
+        </MountedAt>
       );
       await waitFor(() => {
         expect(publishedAccount().state).toBe("memberOnly");
@@ -2091,7 +2117,7 @@ describe("EPAccountProvider", () => {
       });
     });
 
-    it("posts select to the ShopperContext basePath", async () => {
+    it("posts select to the mount path", async () => {
       const { selectCalls, sessionReads } = installSelectFetch({
         initialSession: { epMemberId: "member-1" },
         nextSession: {
@@ -2101,11 +2127,11 @@ describe("EPAccountProvider", () => {
       });
       const ref = React.createRef<AccountActions>();
       render(
-        <ShopperContext basePath="/api/store">
+        <MountedAt basePath="/api/store">
           <EPAccountProvider ref={ref}>
             <span>child</span>
           </EPAccountProvider>
-        </ShopperContext>
+        </MountedAt>
       );
       await waitFor(() => {
         expect(publishedAccount().state).toBe("memberOnly");
@@ -2706,7 +2732,7 @@ describe("EPAccountProvider", () => {
       });
     });
 
-    it("does not publish an in-flight reload onto a later basePath", async () => {
+    it("does not publish an in-flight reload onto a later identity client", async () => {
       let releaseStale: () => void = () => {};
       const staleGate = new Promise<void>((resolve) => {
         releaseStale = resolve;
@@ -2735,11 +2761,11 @@ describe("EPAccountProvider", () => {
       ) as typeof fetch;
       const handle: { reload?: () => Promise<void> } = {};
       const tree = (basePath: string) => (
-        <ShopperContext basePath={basePath}>
+        <MountedAt basePath={basePath}>
           <EPAccountProvider>
             <ReloadHandle handle={handle} />
           </EPAccountProvider>
-        </ShopperContext>
+        </MountedAt>
       );
       const { rerender } = render(tree("/api/a"));
       await waitFor(() => {
@@ -2963,11 +2989,11 @@ describe("EPAccountProvider", () => {
         fetchImpl as typeof fetch;
       const handle: { reload?: () => Promise<void> } = {};
       const tree = (basePath: string) => (
-        <ShopperContext basePath={basePath}>
+        <MountedAt basePath={basePath}>
           <EPAccountProvider>
             <ReloadHandle handle={handle} />
           </EPAccountProvider>
-        </ShopperContext>
+        </MountedAt>
       );
       const { rerender } = render(tree("/api/a"));
       await flushPromises();

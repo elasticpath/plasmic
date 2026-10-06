@@ -4,6 +4,30 @@
 
 ### Breaking
 
+The browser's Elastic Path client is gone, and with it everything built on it.
+Every Elastic Path credential now lives on the storefront's server, and a
+browser-originated call reaches Elastic Path by asking the storefront's own
+origin to fetch. Upgrade in one step: there is no release where both paths
+work.
+
+| Removed | Replacement |
+| --- | --- |
+| `useEpCommerce().client`, `EpCommerce.client` | None. Call an `ep.*` server function; it resolves the session the server holds. |
+| `createCartRoutes`, the `/api/ep/cart/*` routes | `createEpProxyRoutes`, already mounted at `/api/ep/proxy/[fn]`. Delete the cart route file. |
+| `useCart`, `useAddItem`, `useUpdateItem`, `useRemoveItem` | `useEpCart`, and `epAddCartItem` / `epUpdateCartItem` / `epRemoveCartItem`. |
+| `useShopperFetch`, `useShopperContext`, `ShopperOverrides` | None. Nothing in the page carries shopper identity. |
+| `X-Shopper-Context`, `resolveCartId`, `parseShopperHeader` | None. The shopper envelope is the only identity input. |
+| `buildCartCookieHeader`, `buildClearCartCookieHeader`, the `ep_cart` cookie | The envelope's own cart pointer, written by `setCart`. |
+| `ShopperContext`'s `basePath` | `createEpIdentityClient({ basePath })` for a handler mounted elsewhere. |
+| `cartMergeStrategy` on `createEpAuth` | `sessionCartResolver`. |
+| `/ep/account/login` with `{ epMemberId, epAccountId, epAccountToken, epAccountExpires }` | `{ username, password }`. The package mints the account credential itself, so there is nothing left to verify. |
+
+Two registrations could not be removed — hostless publishing rejects a removed
+component or a removed published prop — so they are empty instead. **EP Shopper
+Context** renders its children and nothing else; its four props are hidden and
+ignored. **EP Promo Code Input**'s `Use Server Routes` is hidden and ignored.
+Remove EP Shopper Context from your project; nothing reads it.
+
 The package needs Node 22.12 or later, and says so in `engines`. The CommonJS
 build `require`s better-auth, which ships only as ES modules.
 

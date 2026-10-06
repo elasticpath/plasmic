@@ -33,8 +33,6 @@ export type {
 } from "./ep-plugin/session-cart";
 export { epAuthMiddleware } from "./ep-plugin/middleware";
 export { createEpAuthRoutes } from "./ep-plugin/auth-routes";
-export { createCartRoutes } from "../cart/server-routes";
-export type { CartRoutes } from "../cart/server-routes";
 export { createEpProxyRoutes } from "./ep-plugin/proxy-routes";
 export type { EpProxyRoutes } from "./ep-plugin/proxy-routes";
 export { createEpDesignRoutes } from "./ep-plugin/design-routes";

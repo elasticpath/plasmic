@@ -32,7 +32,6 @@ jest.mock("@plasmicapp/host/registerComponent", () => {
 
 import React, { useEffect, useRef } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ShopperContext } from "../../shopper-context/ShopperContext";
 
 const { EPAccountProvider } = require("../EPAccountProvider");
 const { useAccountReload } = require("../EPAccountProvider");
@@ -173,21 +172,14 @@ describe("EPAccountLoginFormProvider", () => {
     delete (global as unknown as { fetch?: typeof fetch }).fetch;
   });
 
-  function renderForm(basePath?: string) {
+  function renderForm() {
     const ref = React.createRef<LoginActions>();
-    const tree = (
+    render(
       <EPAccountProvider>
         <EPAccountLoginFormProvider ref={ref}>
           <Fill />
         </EPAccountLoginFormProvider>
       </EPAccountProvider>
-    );
-    render(
-      basePath ? (
-        <ShopperContext basePath={basePath}>{tree}</ShopperContext>
-      ) : (
-        tree
-      )
     );
     return ref;
   }
@@ -443,21 +435,21 @@ describe("EPAccountLoginFormProvider", () => {
     });
   });
 
-  it("posts login through the ShopperContext basePath", async () => {
+  it("posts login to the auth handler's own mount path", async () => {
     const { fetchImpl } = installFetch();
-    const ref = renderForm("/api/store");
+    const ref = renderForm();
     fireEvent.click(screen.getByTestId("fill"));
     await act(async () => {
       await ref.current!.submit();
     });
     expect(String(loginCalls(fetchImpl)[0][0])).toBe(
-      "/api/store/ep/account/login"
+      "/api/ep/ep/account/login"
     );
     expect(
       fetchImpl.mock.calls
         .map(([url]) => String(url))
         .filter((url) => url.endsWith("/get-session"))
-        .every((url) => url.startsWith("/api/store/"))
+        .every((url) => url.startsWith("/api/ep/"))
     ).toBe(true);
   });
 

@@ -720,35 +720,6 @@ describe("a second shopper signing in on the same browser", () => {
 });
 
 describe("paths this change touched but the cases above do not reach", () => {
-  it("resolves the cart for the older client-supplied-token login too", async () => {
-    store.accounts = [NORTH];
-    store.carts = [
-      cart("cart-guest-legacy"),
-      cart("cart-saved-legacy", { accountIds: [NORTH.id] }),
-    ];
-    const auth = buildAuth();
-    let cookies = await anonymous(auth);
-    cookies = await setCart(auth, cookies, "cart-guest-legacy");
-
-    const res = await (auth.api as any).epAccountLogin({
-      body: {
-        epMemberId: "member-1",
-        epAccountId: NORTH.id,
-        epAccountToken: accountTokenFor(NORTH.id),
-        epAccountExpires: isoIn(86400),
-      },
-      headers: new Headers({ cookie: cookies }),
-      asResponse: true,
-    });
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(body.session.epCartId).toBe("cart-guest-legacy");
-    expect(
-      setCookieHeaders(res).filter((c) => c.startsWith("ep_checkout_session="))
-    ).toHaveLength(1);
-  });
-
   it("leaves the cart alone when the account credential merely rolls", async () => {
     store.accounts = [NORTH];
     store.carts = [cart("cart-rolling")];

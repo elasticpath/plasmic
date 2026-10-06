@@ -1,12 +1,15 @@
 /**
  * EP Fork Integrity Tests
  *
- * These tests verify that Elastic Path-specific customizations survive
- * upstream merges from plasmicapp/plasmic. They run as part of the WAB
- * test suite in CI and catch dropped dependencies, missing files, or
- * removed code before deployment.
+ * Two jobs, both filesystem assertions from the repository root.
  *
- * When adding a new EP customization, add a corresponding test here.
+ * Presence: Elastic Path customizations survive upstream merges from
+ * plasmicapp/plasmic. When adding a new EP customization, add a test here.
+ *
+ * Absence: what the token-architecture work removed stays removed. A browser
+ * Elastic Path client, the parallel cart routes and the shopper-context
+ * request header are each one re-import away from coming back, and nothing
+ * else would notice.
  *
  * See: docs/internal/UPSTREAM_MERGE_RUNBOOK.md
  */
@@ -26,6 +29,32 @@ function fileExists(relativePath: string): boolean {
 
 function readJson(relativePath: string): any {
   return JSON.parse(readFile(relativePath));
+}
+
+const EP_PKG = "plasmicpkgs/commerce-providers/elastic-path";
+
+/** Every .ts/.tsx under `relativeDir`, tests excluded. */
+function sourceFiles(relativeDir: string): string[] {
+  const root = path.join(REPO_ROOT, relativeDir);
+  const out: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === "__tests__" || entry.name === "node_modules") {
+          continue;
+        }
+        walk(full);
+      } else if (
+        /\.tsx?$/.test(entry.name) &&
+        !/\.(test|spec)\.tsx?$/.test(entry.name)
+      ) {
+        out.push(path.relative(REPO_ROOT, full));
+      }
+    }
+  };
+  walk(root);
+  return out;
 }
 
 describe("EP Fork Integrity", () => {
@@ -447,6 +476,120 @@ describe("EP Fork Integrity", () => {
     it("CI builds and verifies the elastic-path package", () => {
       const workflow = readFile(".github/workflows/tests.yml");
       expect(workflow).toContain("pnpm verify:package");
+    });
+  });
+
+
+  // -------------------------------------------------------------------------
+  // Absence guards — elasticpath/plasmic#544. One token surface: the shopper
+  // envelope, held by the server.
+  // -------------------------------------------------------------------------
+
+  describe("the browser holds no Elastic Path credential", () => {
+    const removedModules = [
+      "src/client.ts",
+      "src/cart/server-routes.ts",
+      "src/shopper-context/useShopperFetch.ts",
+      "src/shopper-context/useShopperContext.ts",
+      "src/shopper-context/use-cart.ts",
+      "src/shopper-context/use-add-item.ts",
+      "src/shopper-context/use-update-item.ts",
+      "src/shopper-context/use-remove-item.ts",
+      "src/shopper-context/server/resolve-cart-id.ts",
+      "src/shopper-context/server/cart-cookie.ts",
+    ];
+
+    for (const module of removedModules) {
+      it(`${module} stays deleted`, () => {
+        expect(fileExists(`${EP_PKG}/${module}`)).toBe(false);
+      });
+    }
+
+    const removedExports = [
+      "createCartRoutes",
+      "resolveCartId",
+      "parseShopperHeader",
+      "useShopperFetch",
+      "useShopperContext",
+      "useCart",
+      "useAddItem",
+      "useUpdateItem",
+      "useRemoveItem",
+      "ShopperOverrides",
+      "buildCartCookieHeader",
+    ];
+
+    for (const name of removedExports) {
+      it(`neither entry point exports ${name}`, () => {
+        const declared = new RegExp(`\\b${name}\\b`);
+        expect(readFile(`${EP_PKG}/api/index.api.md`)).not.toMatch(declared);
+        expect(readFile(`${EP_PKG}/api/server.api.md`)).not.toMatch(declared);
+      });
+    }
+
+    it("no header can assert which shopper a request is for", () => {
+      for (const file of sourceFiles(EP_PKG + "/src")) {
+        expect(readFile(file).toLowerCase()).not.toContain("x-shopper-context");
+      }
+    });
+
+    it("the parallel cart route contract is gone", () => {
+      expect(
+        fileExists("examples/ep-commerce-app-router/app/api/ep/cart")
+      ).toBe(false);
+    });
+
+    it("only server modules build an Elastic Path client", () => {
+      const allowed = [
+        `${EP_PKG}/src/api/endpoints/`,
+        `${EP_PKG}/src/checkout/session/`,
+        `${EP_PKG}/src/ep-server-functions/`,
+      ];
+      const builders = sourceFiles(EP_PKG + "/src").filter((file) =>
+        readFile(file).includes("createShopperClient")
+      );
+      expect(builders.length).toBeGreaterThan(0);
+      expect(
+        builders.filter(
+          (file) => !allowed.some((prefix) => file.startsWith(prefix))
+        )
+      ).toEqual([]);
+    });
+
+    it("a shopper cannot write a discount to their own basket", () => {
+      const promoInput = readFile(
+        `${EP_PKG}/src/checkout/composable/EPPromoCodeInput.tsx`
+      );
+      expect(promoInput).toContain("epApplyPromoCode");
+      expect(promoInput).not.toMatch(/custom_discount|amount:\s*-/);
+    });
+  });
+
+  describe("registrations that cannot be removed are inert", () => {
+    it("EP Shopper Context says so in its display name", () => {
+      expect(
+        readFile(`${EP_PKG}/src/shopper-context/registerShopperContext.ts`)
+      ).toContain('displayName: "EP Shopper Context (deprecated)"');
+    });
+
+    it("EP Shopper Context provides no context of its own", () => {
+      const source = readFile(
+        `${EP_PKG}/src/shopper-context/ShopperContext.tsx`
+      );
+      expect(source).not.toContain("createContext");
+      expect(source).toContain("return <>{children}</>");
+    });
+
+    it("every deprecated prop description leads with the same words", () => {
+      const sources = [
+        "src/shopper-context/registerShopperContext.ts",
+        "src/registerCommerceProvider.tsx",
+        "src/checkout/composable/EPPromoCodeInput.tsx",
+      ].map((file) => readFile(`${EP_PKG}/${file}`));
+      for (const source of sources) {
+        expect(source).toContain("Deprecated — ignored.");
+        expect(source).not.toContain("Retired.");
+      }
     });
   });
 
