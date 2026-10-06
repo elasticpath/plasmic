@@ -8,7 +8,7 @@
  * is housekeeping.
  */
 import { deleteACart } from "@epcc-sdk/sdks-shopper";
-import { buildFixedTokenEpClient } from "../../utils/fixed-token-ep-client";
+import { buildFixedTokenEpClient } from "../../ep-server-functions/fixed-token-ep-client";
 import { createLogger } from "../../utils/logger";
 
 const log = createLogger("CartCleanup");

@@ -1,7 +1,7 @@
 import type { Client } from "@epcc-sdk/sdks-shopper";
 import type { EpServerAuth } from "./types";
 import { epShopperHeaders } from "../utils/ep-shopper-headers";
-import { buildFixedTokenEpClient } from "../utils/fixed-token-ep-client";
+import { buildFixedTokenEpClient } from "./fixed-token-ep-client";
 
 /**
  * Shared client-builder for the EP server functions.

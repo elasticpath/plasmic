@@ -1,6 +1,6 @@
 import type { Client } from "@epcc-sdk/sdks-shopper";
 import { accountTokenHeaders } from "../../auth/ep-plugin/envelope";
-import { buildFixedTokenEpClient } from "../../utils/fixed-token-ep-client";
+import { buildFixedTokenEpClient } from "../../ep-server-functions/fixed-token-ep-client";
 import type { SessionHandlerContext } from "./types";
 
 /**

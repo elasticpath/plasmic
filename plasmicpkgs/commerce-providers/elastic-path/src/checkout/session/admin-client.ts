@@ -10,7 +10,7 @@
  * re-deriving it.
  */
 import type { Client } from "@epcc-sdk/sdks-shopper";
-import { buildFixedTokenEpClient } from "../../utils/fixed-token-ep-client";
+import { buildFixedTokenEpClient } from "../../ep-server-functions/fixed-token-ep-client";
 import type { SessionHandlerContext } from "./types";
 
 export async function buildAdminEpClient(
