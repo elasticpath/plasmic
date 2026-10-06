@@ -38,6 +38,7 @@ interface StoreShape {
   carts: CartRecord[];
   /** When set, `GET /v2/carts` answers with this status instead of a list. */
   cartListStatus: number | null;
+  accountTokenTtlSeconds: number;
 }
 
 let store: StoreShape;
@@ -118,7 +119,7 @@ function installFetch() {
             account_name: account.name,
             token: accountTokenFor(account.id),
             type: "account_management_authentication_token",
-            expires: isoIn(86400),
+            expires: isoIn(store.accountTokenTtlSeconds),
           })),
         },
         201
@@ -170,13 +171,20 @@ function installFetch() {
 
 beforeEach(() => {
   originalFetch = globalThis.fetch;
-  store = { accounts: [NORTH], memberId: "member-1", carts: [], cartListStatus: null };
+  store = {
+    accounts: [NORTH],
+    memberId: "member-1",
+    carts: [],
+    cartListStatus: null,
+    accountTokenTtlSeconds: 86400,
+  };
   installFetch();
 });
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 function buildAuth(options: { sessionCartResolver?: EpSessionCartResolver } = {}) {
@@ -258,6 +266,24 @@ async function select(auth: any, cookies: string, accountId: string | null) {
     asResponse: true,
   });
   return { res, cookies: mergeCookies(cookies, res) };
+}
+
+async function refresh(auth: any, cookies: string) {
+  const res = await auth.api.epRefresh({
+    body: {},
+    headers: new Headers({ cookie: cookies }),
+    asResponse: true,
+  });
+  return { res, cookies: mergeCookies(cookies, res) };
+}
+
+async function signInThenLapse(auth: any, cookies: string) {
+  store.accountTokenTtlSeconds = 60;
+  const signedIn = await signIn(auth, cookies);
+  store.accountTokenTtlSeconds = 86400;
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(Date.now() + 120_000);
+  return signedIn;
 }
 
 describe("the cart a shopper keeps when they sign in", () => {
@@ -787,5 +813,277 @@ describe("signing out", () => {
     const body = await res.json();
 
     expect(body.session.epCartId).toBeUndefined();
+  });
+});
+
+describe("deselecting an organisation", () => {
+  async function selectedWithCart(auth: any) {
+    store.accounts = [NORTH];
+    store.carts = [cart("cart-north", { accountIds: [NORTH.id] })];
+    const cookies = await anonymous(auth);
+    const signedIn = await signIn(auth, cookies);
+    expect((await signedIn.res.json()).session.epCartId).toBe("cart-north");
+    return signedIn.cookies;
+  }
+
+  it("clears the session cart without consulting the resolver", async () => {
+    let asked = 0;
+    const auth = buildAuth({
+      sessionCartResolver: (input) => {
+        asked += 1;
+        return { keep: input.guestCartId ?? input.accountCarts[0].id };
+      },
+    });
+    const cookies = await selectedWithCart(auth);
+    const askedBefore = asked;
+
+    const off = await select(auth, cookies, null);
+    const body = await off.res.json();
+
+    expect(off.res.status).toBe(200);
+    expect(body.session.epAccount).toBeUndefined();
+    expect(body.session.epCartId).toBeUndefined();
+    expect(asked).toBe(askedBefore);
+  });
+
+  it("deletes nothing: the basket stays with the organisation", async () => {
+    const auth = buildAuth();
+    const cookies = await selectedWithCart(auth);
+
+    await select(auth, cookies, null);
+
+    expect(epCalls.filter((c) => c.method === "DELETE")).toEqual([]);
+    expect(store.carts.find((c) => c.id === "cart-north")?.accountIds).toEqual([
+      NORTH.id,
+    ]);
+  });
+
+  it("re-adopts the basket when the same organisation is selected again", async () => {
+    const auth = buildAuth();
+    const cookies = await selectedWithCart(auth);
+    store.carts.push(
+      cart("cart-north-older", { accountIds: [NORTH.id], updatedAt: isoIn(-86400) })
+    );
+    const off = await select(auth, cookies, null);
+
+    const back = await select(auth, off.cookies, NORTH.id);
+    const body = await back.res.json();
+
+    expect(body.session.epCartId).toBe("cart-north");
+  });
+
+  it("reports picking the organisation up again as an arrival, not a switch", async () => {
+    const seen: any[] = [];
+    const auth = buildAuth({
+      sessionCartResolver: (input) => {
+        seen.push(input);
+        return { keep: input.accountCarts[0].id };
+      },
+    });
+    const cookies = await selectedWithCart(auth);
+    const off = await select(auth, cookies, null);
+
+    await select(auth, off.cookies, NORTH.id);
+
+    const last = seen[seen.length - 1];
+    expect(last.trigger).toBe("login");
+    expect(last.guestCartId).toBeNull();
+    expect(last.accountCarts.map((c: any) => c.id)).toEqual(["cart-north"]);
+  });
+});
+
+describe("an account credential that lapses", () => {
+  it("clears the session cart when the lapse is recognised, without consulting the resolver", async () => {
+    store.carts = [cart("cart-north", { accountIds: [NORTH.id] })];
+    let asked = 0;
+    const auth = buildAuth({
+      sessionCartResolver: (input) => {
+        asked += 1;
+        return { keep: input.guestCartId ?? input.accountCarts[0].id };
+      },
+    });
+    const signedIn = await signInThenLapse(auth, await anonymous(auth));
+    const askedBefore = asked;
+
+    const { res } = await refresh(auth, signedIn.cookies);
+    const body = await res.json();
+
+    expect(body.session.epLapsedAccount).toEqual({
+      id: NORTH.id,
+      name: NORTH.name,
+    });
+    expect(body.session.epCartId).toBeUndefined();
+    expect(asked).toBe(askedBefore);
+  });
+
+  it("clears it once: a basket built afterwards stays", async () => {
+    store.carts = [cart("cart-north", { accountIds: [NORTH.id] })];
+    const auth = buildAuth();
+    const signedIn = await signInThenLapse(auth, await anonymous(auth));
+    let cookies = (await refresh(auth, signedIn.cookies)).cookies;
+    cookies = await setCart(auth, cookies, "cart-after-lapse");
+
+    const { res } = await refresh(auth, cookies);
+    const body = await res.json();
+
+    expect(body.session.epCartId).toBe("cart-after-lapse");
+  });
+
+  it("deletes nothing: the basket held before it stays with the organisation", async () => {
+    store.carts = [cart("cart-north", { accountIds: [NORTH.id] })];
+    const auth = buildAuth();
+    const signedIn = await signInThenLapse(auth, await anonymous(auth));
+
+    await refresh(auth, signedIn.cookies);
+
+    expect(epCalls.filter((c) => c.method === "DELETE")).toEqual([]);
+    expect(store.carts.find((c) => c.id === "cart-north")?.accountIds).toEqual([
+      NORTH.id,
+    ]);
+  });
+
+  it("returns the shopper to the basket held before it when they sign back in", async () => {
+    store.carts = [cart("cart-north", { accountIds: [NORTH.id] })];
+    const auth = buildAuth();
+    const signedIn = await signInThenLapse(auth, await anonymous(auth));
+    const lapsed = await refresh(auth, signedIn.cookies);
+
+    const { res } = await signIn(auth, lapsed.cookies);
+    const body = await res.json();
+
+    expect(body.session.epCartId).toBe("cart-north");
+  });
+
+  describe.each([
+    ["once the lapse is persisted", true],
+    ["before anything has persisted the lapse", false],
+  ])("%s", (_label, persisted) => {
+    async function lapsedCookies(auth: any) {
+      const signedIn = await signInThenLapse(auth, await anonymous(auth));
+      return persisted
+        ? (await refresh(auth, signedIn.cookies)).cookies
+        : signedIn.cookies;
+    }
+
+    it("keeps a basket built after it through the next sign-in, offered as the guest cart", async () => {
+      store.carts = [
+        cart("cart-north", { accountIds: [NORTH.id] }),
+        cart("cart-after-lapse"),
+      ];
+      const seen: any[] = [];
+      const auth = buildAuth({
+        sessionCartResolver: (input) => {
+          seen.push(input);
+          return { keep: input.guestCartId ?? input.accountCarts[0].id };
+        },
+      });
+      let cookies = await lapsedCookies(auth);
+      cookies = await setCart(auth, cookies, "cart-after-lapse");
+
+      const { res } = await signIn(auth, cookies);
+      const body = await res.json();
+
+      const last = seen[seen.length - 1];
+      expect(last.trigger).toBe("login");
+      expect(last.accountId).toBe(NORTH.id);
+      expect(last.guestCartId).toBe("cart-after-lapse");
+      expect(body.session.epCartId).toBe("cart-after-lapse");
+    });
+
+    it("keeps that basket by default", async () => {
+      store.carts = [
+        cart("cart-north", { accountIds: [NORTH.id], updatedAt: isoIn(-60) }),
+        cart("cart-after-lapse"),
+      ];
+      const auth = buildAuth();
+      let cookies = await lapsedCookies(auth);
+      cookies = await setCart(auth, cookies, "cart-after-lapse");
+
+      const { res } = await signIn(auth, cookies);
+      const body = await res.json();
+
+      expect(body.session.epCartId).toBe("cart-after-lapse");
+    });
+
+    it("never offers the basket held before it to a different organisation", async () => {
+      store.carts = [
+        cart("cart-north", { accountIds: [NORTH.id] }),
+        cart("cart-south", { accountIds: [SOUTH.id] }),
+      ];
+      const offered: (string | null)[] = [];
+      const auth = buildAuth({
+        sessionCartResolver: (input) => {
+          offered.push(input.guestCartId);
+          return { keep: input.guestCartId ?? input.accountCarts[0].id };
+        },
+      });
+      const cookies = await lapsedCookies(auth);
+      offered.length = 0;
+      store.accounts = [SOUTH];
+
+      const { res } = await signIn(auth, cookies);
+      const body = await res.json();
+
+      expect(offered).toEqual([null]);
+      expect(body.session.epCartId).toBe("cart-south");
+      expect(
+        store.carts.find((c) => c.id === "cart-north")?.accountIds
+      ).toEqual([NORTH.id]);
+    });
+
+    it("never offers the basket held before it at the next selection either", async () => {
+      store.carts = [
+        cart("cart-north", { accountIds: [NORTH.id] }),
+        cart("cart-south", { accountIds: [SOUTH.id] }),
+      ];
+      const offered: (string | null)[] = [];
+      const auth = buildAuth({
+        sessionCartResolver: (input) => {
+          offered.push(input.guestCartId);
+          return { keep: input.guestCartId ?? input.accountCarts[0].id };
+        },
+      });
+      const cookies = await lapsedCookies(auth);
+      offered.length = 0;
+      store.accounts = [NORTH, SOUTH];
+      const signedIn = await signIn(auth, cookies);
+      expect((await signedIn.res.json()).session.epCartId).toBeUndefined();
+
+      const { res } = await select(auth, signedIn.cookies, SOUTH.id);
+      const body = await res.json();
+
+      expect(offered).toEqual([null]);
+      expect(body.session.epCartId).toBe("cart-south");
+      expect(
+        store.carts.find((c) => c.id === "cart-north")?.accountIds
+      ).toEqual([NORTH.id]);
+    });
+
+    it("hands a different member signing in nothing the first one built", async () => {
+      store.carts = [
+        cart("cart-north", { accountIds: [NORTH.id] }),
+        cart("cart-after-lapse"),
+      ];
+      const offered: (string | null)[] = [];
+      const auth = buildAuth({
+        sessionCartResolver: (input) => {
+          offered.push(input.guestCartId);
+          return { keep: input.guestCartId ?? input.accountCarts[0].id };
+        },
+      });
+      let cookies = await lapsedCookies(auth);
+      cookies = await setCart(auth, cookies, "cart-after-lapse");
+      offered.length = 0;
+      store.memberId = "member-2";
+
+      const { res } = await signIn(auth, cookies);
+      const body = await res.json();
+
+      expect(offered).toEqual([null]);
+      expect(body.session.epCartId).toBe("cart-north");
+      expect(
+        store.carts.find((c) => c.id === "cart-after-lapse")?.accountIds
+      ).toEqual([]);
+    });
   });
 });

@@ -619,6 +619,18 @@ timeout; your platform's request timeout is the bound. A partial write is
 yours to avoid — decide first and write last, or make the writes safe to
 repeat.
 
+**A shopper who loses their organisation loses their session cart, whether
+they chose to or not.** Deselecting an organisation clears the cart pointer. A
+lapsed account credential clears it too, once, when the lapse is recognised.
+Neither deletes the basket: it stays with the organisation, and selecting that
+organisation again adopts it as the most recently updated account cart. The
+hook is not called at either moment, because neither ends with an organisation
+selected. Elastic Path prices a line when it is added and never re-prices it,
+at checkout included, so a basket that followed the shopper would charge them
+an organisation's prices they are no longer entitled to. What a shopper builds
+after a lapse is their own guest cart, and their next sign-in offers it like
+any other.
+
 Signing out clears the cart pointer, so the next person on that browser does
 not inherit the previous shopper's cart. Signing in, like switching
 organisation, tears down any checkout session in flight: it was priced and

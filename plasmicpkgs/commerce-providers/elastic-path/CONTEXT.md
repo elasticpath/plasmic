@@ -176,12 +176,14 @@ envelope already holds. Anchor tokens are not rolled: an unselected session
 makes no account-scoped call to hang a roll on.
 
 **Lapsed account**:
-The envelope is alive and still holds the cart, but the account token has
-expired and cannot be rolled; scope falls back to anonymous until the shopper
-re-authenticates. Surfaced as a positive fact, never inferred from a
+The envelope is alive, but the account token has expired and cannot be
+rolled; scope falls back to anonymous until the shopper re-authenticates. The
+cart id goes with the scope, once, when the lapse is recognised, so a cart the
+shopper builds afterwards is their own **guest cart**. The basket itself stays
+with the account. Surfaced as a positive fact, never inferred from a
 timestamp.
-_Avoid_: logged out (the shopper is not — envelope and basket persist),
-expired session (precisely what this is not)
+_Avoid_: logged out (the shopper is not — the envelope persists, and so does
+the basket in Elastic Path), expired session (precisely what this is not)
 
 **Identity transition**:
 The moment the envelope's Elastic Path identity changes — a login or an

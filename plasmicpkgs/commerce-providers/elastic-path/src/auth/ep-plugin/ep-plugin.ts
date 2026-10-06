@@ -263,7 +263,7 @@ function heldAnAccountBefore(priorSession: any): boolean {
 /**
  * Whether the cart in hand belongs to an identity that is not the one now
  * signing in. A cart built before anyone signed in belongs to whoever is
- * signing in; a cart held under any account, or by a different member, does
+ * signing in; a cart held under an account, or by a different member, does
  * not — including a member of no organisation at all, who still holds a cart
  * nobody else may inherit.
  */
@@ -271,7 +271,7 @@ function cartBelongsToSomeoneElse(
   priorSession: any,
   memberId: string
 ): boolean {
-  if (heldAnAccountBefore(priorSession)) return true;
+  if (priorSession?.epAccount) return true;
   const priorMember = priorSession?.epMemberId;
   return typeof priorMember === "string" && priorMember !== memberId;
 }
@@ -464,6 +464,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
         async (ctx) => {
           const existing = await readExistingSession(ctx);
           if (!existing?.user || !existing?.session) return noSessionError();
+          const prior = sessionWithLapseApplied(existing.session);
 
           const body = ((ctx.body as any) ?? {}) as Partial<EpAccountLoginRequest>;
           const { username, password } = body;
@@ -471,8 +472,8 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
           // The package signs the member in itself, so no Elastic Path
           // credential passes through the browser in either direction.
           if (typeof username === "string" && typeof password === "string") {
-            const host = existing.session.epHost;
-            const implicitToken = existing.session.epAccessToken;
+            const host = prior.epHost;
+            const implicitToken = prior.epAccessToken;
             let minted;
             try {
               minted = await mintAccountTokens({
@@ -502,7 +503,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             tearDownCheckoutSession(ctx);
 
             let session: any = applyLoginOutcome(
-              { ...existing.session, updatedAt: new Date() },
+              { ...prior, updatedAt: new Date() },
               minted
             );
             // Only a selection reaches the resolver: with no account there is
@@ -510,13 +511,13 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             // hand it.
             if (session.epAccount) {
               session = await applySessionCart(session, {
-                priorSession: existing.session,
+                priorSession: prior,
                 account: session.epAccount,
                 memberId: minted.memberId,
                 reauthenticated: true,
               });
             } else if (
-              cartBelongsToSomeoneElse(existing.session, minted.memberId)
+              cartBelongsToSomeoneElse(prior, minted.memberId)
             ) {
               // Nothing to resolve, but the cart in hand is not this
               // shopper's. Leaving it would hand the next member to sign in
@@ -794,7 +795,10 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
           }
 
           const session = setSessionCart(
-            { ...existing.session, updatedAt: new Date() },
+            sessionWithLapseApplied({
+              ...existing.session,
+              updatedAt: new Date(),
+            }),
             cartId
           );
           const snap = { user: existing.user, session };

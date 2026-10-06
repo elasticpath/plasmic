@@ -124,7 +124,7 @@ export function applyAccountLapse<T extends object>(
   const current = session as WithAccountFields<T>;
   const account = current.epAccount;
   if (account && account.expires <= nowSeconds) {
-    const next = withoutAccountSlots(session);
+    const next = clearSessionCart(withoutAccountSlots(session));
     next.epLapsedAccount = { id: account.id, name: account.name };
     return next;
   }
