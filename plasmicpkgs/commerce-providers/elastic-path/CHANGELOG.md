@@ -4,29 +4,19 @@
 
 ### Breaking
 
-The browser's Elastic Path client is gone, and with it everything built on it.
-Every Elastic Path credential now lives on the storefront's server, and a
-browser-originated call reaches Elastic Path by asking the storefront's own
-origin to fetch. Upgrade in one step: there is no release where both paths
-work.
+This release reverses the design 0.3.0 documented. 0.3.0 moved the shopper's
+token to the server but kept a second Elastic Path client in the browser, which
+minted its own anonymous token from the public `clientId`. The README then
+described keeping that token in browser memory as a security property. **That
+claim is retired.** It protected nothing: anyone holding the `clientId` can mint
+the same token, and the token can write to `/carts` and `/checkout`.
 
-| Removed | Replacement |
-| --- | --- |
-| `useEpCommerce().client`, `EpCommerce.client` | None. Call an `ep.*` server function; it resolves the session the server holds. |
-| `createCartRoutes`, the `/api/ep/cart/*` routes | `createEpProxyRoutes`, already mounted at `/api/ep/proxy/[fn]`. Delete the cart route file. |
-| `useCart`, `useAddItem`, `useUpdateItem`, `useRemoveItem` | `useEpCart`, and `epAddCartItem` / `epUpdateCartItem` / `epRemoveCartItem`. |
-| `useShopperFetch`, `useShopperContext`, `ShopperOverrides` | None. Nothing in the page carries shopper identity. |
-| `X-Shopper-Context`, `resolveCartId`, `parseShopperHeader` | None. The shopper envelope is the only identity input. |
-| `buildCartCookieHeader`, `buildClearCartCookieHeader`, the `ep_cart` cookie | The envelope's own cart pointer, written by `setCart`. |
-| `ShopperContext`'s `basePath` | `createEpIdentityClient({ basePath })` for a handler mounted elsewhere. |
-| `cartMergeStrategy` on `createEpAuth` | `sessionCartResolver`. |
-| `/ep/account/login` with `{ epMemberId, epAccountId, epAccountToken, epAccountExpires }` | `{ username, password }`. The package mints the account credential itself, so there is nothing left to verify. |
-
-Two registrations could not be removed — hostless publishing rejects a removed
-component or a removed published prop — so they are empty instead. **EP Shopper
-Context** renders its children and nothing else; its four props are hidden and
-ignored. **EP Promo Code Input**'s `Use Server Routes` is hidden and ignored.
-Remove EP Shopper Context from your project; nothing reads it.
+The package now has one Elastic Path identity. The shopper envelope, the
+encrypted `better-auth.session_data` cookie, is the only input to it, no Elastic Path credential of any kind reaches the
+browser, and every browser call that carries identity goes through the
+storefront's own origin.
+[ADR-0003](docs/adr/0003-one-session-for-elastic-path-identity.md) records the
+decision. Upgrade in one step: no release supports both designs.
 
 The package needs Node 22.12 or later, and says so in `engines`. The CommonJS
 build `require`s better-auth, which ships only as ES modules.
@@ -41,7 +31,49 @@ example does, resolves as before.
 | one `.d.ts` per source file under `dist/` | one rolled-up `dist/index.d.ts`, `dist/server.d.ts` and `dist/server.d.mts` |
 | `/server` types under a single `types` condition | `import` resolves `server.d.mts`, `require` resolves `server.d.ts` |
 
+### Removed
+
+| Removed | Replacement |
+| --- | --- |
+| `useEpCommerce().client`, `EpCommerce.client` | None. Call an `ep.*` server function; it resolves the session the server holds. |
+| `createCartRoutes`, the `/api/ep/cart/*` routes | `createEpProxyRoutes`, already mounted at `/api/ep/proxy/[fn]`. Delete the cart route file. |
+| `useCart`, `useAddItem`, `useUpdateItem`, `useRemoveItem` | `useEpCart` to read. To write from the browser, use the cart components or the Elastic Path Provider's cart global actions; `epAddCartItem` / `epUpdateCartItem` / `epRemoveCartItem` are on `/server` for server code. |
+| `useShopperFetch`, `useShopperContext`, `ShopperOverrides` | None. Nothing in the page carries shopper identity. |
+| `X-Shopper-Context`, `resolveCartId`, `parseShopperHeader` | None. The shopper envelope is the only identity input. |
+| `buildCartCookieHeader`, `buildClearCartCookieHeader`, the `ep_cart` cookie | The envelope's own cart pointer, written by `setCart`. |
+| `ShopperContext`'s `basePath` | `createEpIdentityClient({ basePath })` for a handler mounted elsewhere. |
+| `cartMergeStrategy` on `createEpAuth` | `sessionCartResolver`. |
+| `/ep/account/login` with `{ epMemberId, epAccountId, epAccountToken, epAccountExpires }` | `{ username, password }`. The package mints the account credential itself, so there is nothing left to verify. |
+
+Two capabilities go with them, not only their configuration:
+
+- **Previewing a chosen cart in Studio.** EP Shopper Context's Cart ID let a
+  designer paste a cart id and see that cart on the canvas. Nothing replaces
+  it. A cart id is the whole access boundary on a cart, so any route that
+  accepted one from the page would hand that cart to whoever sent it.
+- **Overriding the shopper from the page.** `X-Shopper-Context` and EP Shopper
+  Context could set the cart, account, locale and currency for a request. The
+  session the server holds is now the only source; set locale and currency on
+  the Elastic Path Provider.
+
+### Deprecated
+
+Two registrations could not be removed, because hostless publishing rejects a
+removed component or a removed published prop. Both are empty instead.
+
+- **EP Shopper Context** renders its children and nothing else. Its four props
+  are hidden and ignored. Remove it from your project; nothing reads it.
+- **EP Promo Code Input**'s `Use Server Routes` is hidden and ignored.
+
 ### Added
+
+`createEpDesignRoutes` serves Studio design time. It answers four catalog
+reads, `getProduct`, `getProductList`, `getProductPage` and
+`getRelatedProducts`, under the store's public credential, and refuses every
+other name. It reads no shopper session, so it works inside Studio's editing
+frame, where the browser never sends the shopper envelope. Mount it at
+`app/api/ep/design/[fn]/route.ts`. Without it, the canvas shows labelled
+`"Sample"` fixtures and the console says once which route is missing.
 
 Login is composable rather than a single form component.
 `EPAccountLoginFormProvider` owns the username and password internally and
@@ -69,6 +101,22 @@ stay closed, and the previous organisation is not published as the current
 one. The initial load, login reload, and logout reload publish an empty roster.
 
 ### Changed
+
+A shopper's cart at sign-in is not merged with the account's. 0.8.0 replaced
+the documented `cartMergeStrategy: "merge"` default with keep-the-guest-cart,
+and with no guest cart, adopt the account's most recently updated cart. This
+release removes the option that described the old default. Configure
+`sessionCartResolver` for any other rule.
+
+On a Studio canvas, the catalog components read through the design-time route
+at the relative path `/api/ep/design/<fn>`. The path resolves against whatever
+document serves the artboard. With an app host configured, that is your
+storefront, and EP Product Provider shows your own catalog. With no app host,
+it is Studio's renderer, which has no such route, so the read fails and the
+canvas shows the labelled `"Sample"` fixtures. To see real catalog data at
+design time, configure an app host and mount `createEpDesignRoutes`. EP Product
+List Provider and EP Related Products Provider still show fixtures on the
+canvas either way; their data-query Configure panel reads the real catalog.
 
 A shopper whose account credential lapses now keeps the cart they build after
 the lapse. The package clears the session cart once, at the moment it sees the

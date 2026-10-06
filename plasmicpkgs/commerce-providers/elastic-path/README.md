@@ -2,7 +2,7 @@
 
 Elastic Path commerce components for Plasmic. Server-side auth, SSR product data, cart operations — all wired through a Better Auth-aligned session pattern.
 
-## Quick Start (4 files)
+## Quick Start
 
 ### 1. Create the auth instance
 
@@ -15,6 +15,10 @@ export const epAuth = createEpAuth({
   clientId: "your-ep-client-id",
   host: "https://useast.api.elasticpath.com",
 
+  // The storefront's own origin. Unset, it is http://localhost, and the auth
+  // handler refuses calls from your real origin as "Invalid origin".
+  baseURL: process.env.NEXT_PUBLIC_BASE_URL,
+
   // Session cookie secret. Read it straight from the environment — no `!`
   // and no fallback: a missing value must fail loudly in production, not
   // silently become a guessable key.
@@ -26,12 +30,9 @@ export const epAuth = createEpAuth({
   // Optional: payment adapters
   adapters: { stripe: { secretKey: process.env.STRIPE_SECRET_KEY! } },
 
-  // Optional: custom API route prefix (default: /api/ep)
+  // Optional: auth handler prefix (default: /api/ep). The components and
+  // epAuthMiddleware only call /api/ep, so leave it unless you use neither.
   // basePath: "/api/store",
-
-  // Dead config, read by no code. `sessionCartResolver` replaces it, and it
-  // is removed in the breaking release.
-  // cartMergeStrategy: "replace",
 
   // Optional: choose the shopper's cart when they sign in or switch
   // organisation. See "Which cart wins at sign-in" below.
@@ -96,27 +97,64 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 }
 ```
 
+Mount the proxy and design-time routes too — the components call them. See
+[The two browser routes](#the-two-browser-routes). Those recipes are App Router
+route handlers; under the Pages Router, adapt each one the way the auth
+handler is adapted above.
+
 ### 3. Wire the page with session
 
 **App Router:**
 
+A server component cannot write cookies, so a middleware mints the session
+before the page renders. The page then reads it, and runs Studio Server
+Queries inside it.
+
+```ts
+// middleware.ts
+import { epAuthMiddleware } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
+import { epAuth } from "@/lib/ep-auth";
+
+export const middleware = epAuthMiddleware(epAuth);
+
+export const config = {
+  // better-auth and AsyncLocalStorage need Node, not the Edge runtime.
+  runtime: "nodejs",
+  // Skip Next assets, the auth handler itself, and files.
+  matcher: ["/((?!_next|api/ep|.*\\..*).*)"],
+};
+```
+
 ```tsx
 // app/[[...catchall]]/page.tsx
-import { epAuth } from "@/lib/ep-auth";
-import {
-  PlasmicRootProvider,
-  PlasmicComponent,
-  extractPlasmicQueryData,
-} from "@plasmicapp/loader-nextjs";
 import { PLASMIC } from "@/plasmic-init";
+import { PlasmicClientRootProvider } from "@/plasmic-init-client";
+import { PlasmicComponent } from "@plasmicapp/loader-nextjs";
+import {
+  buildEpCtx,
+  withEpSession,
+} from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
+import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
+import { epAuth } from "@/lib/ep-auth";
 
-export default async function Page({ params }: { params: { catchall?: string[] } }) {
-  const pagePath = "/" + (params.catchall?.join("/") ?? "");
-  const plasmicData = await PLASMIC.fetchComponentData(pagePath);
-  if (!plasmicData) return <div>Not found</div>;
+export default async function PlasmicLoaderPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ catchall?: string[] }>;
+  searchParams?: Promise<Record<string, string | string[]>>;
+}) {
+  const { catchall } = await params;
+  const query = (await searchParams) ?? {};
+  const plasmicPath = catchall ? `/${catchall.join("/")}` : "/";
 
-  // Resolve EP session from cookies (returning visitor) or OAuth (first visit)
+  const prefetchedData = await PLASMIC.maybeFetchComponentData(plasmicPath);
+  if (!prefetchedData || prefetchedData.entryCompMetas.length === 0) {
+    notFound();
+  }
+  const pageMeta = prefetchedData.entryCompMetas[0];
+
   const cookieStore = await cookies();
   const session = await epAuth.api.getSession({
     cookies: Object.fromEntries(
@@ -124,38 +162,41 @@ export default async function Page({ params }: { params: { catchall?: string[] }
     ),
   });
 
-  // SSR: extract query data. The session stays server-side — it is never
-  // handed to globalContextsProps, which Plasmic serializes into the HTML.
-  const queryData = await extractPlasmicQueryData(
-    <PlasmicRootProvider loader={PLASMIC} prefetchedData={plasmicData}>
-      <PlasmicComponent component={pagePath} />
-    </PlasmicRootProvider>
+  // Each ep.* function reads the session from this scope.
+  const prefetchedQueryData = await withEpSession(buildEpCtx(session), () =>
+    PLASMIC.unstable__getServerQueriesData(prefetchedData, {
+      pageRoute: pageMeta.path,
+      pagePath: plasmicPath,
+      params: pageMeta.params ?? {},
+      query,
+    })
   );
 
-  // Set ep_token cookie for subsequent visits (no-op if token came from cookie)
-  session.commitCookies({
-    appendHeader(name, value) {
-      cookieStore.set(name, value);
-    },
-  });
-
   return (
-    <PlasmicRootProvider
-      loader={PLASMIC}
-      prefetchedData={plasmicData}
-      prefetchedQueryData={queryData}
+    <PlasmicClientRootProvider
+      prefetchedData={prefetchedData}
+      prefetchedQueryData={prefetchedQueryData}
+      pageParams={pageMeta.params}
+      pageQuery={query}
     >
-      <PlasmicComponent component={pagePath} />
-    </PlasmicRootProvider>
+      <PlasmicComponent component={pageMeta.displayName} />
+    </PlasmicClientRootProvider>
   );
 }
 ```
+
+Reading the session makes the page dynamic, so `export const revalidate` has
+no effect on it.
 
 **Pages Router:**
 
 ```tsx
 // pages/[[...catchall]].tsx
 import type { GetServerSideProps } from "next";
+import {
+  buildEpCtx,
+  withEpSession,
+} from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
 import { epAuth } from "@/lib/ep-auth";
 import {
   PlasmicRootProvider,
@@ -175,15 +216,18 @@ export const getServerSideProps: GetServerSideProps = async ({ req, res, params 
     cookies: req.cookies as Record<string, string>,
   });
 
-  // SSR: extract query data. The session stays server-side — it is never
-  // handed to globalContextsProps, which Plasmic serializes into the HTML.
-  const queryData = await extractPlasmicQueryData(
-    <PlasmicRootProvider loader={PLASMIC} prefetchedData={plasmicData}>
-      <PlasmicComponent component={pagePath} />
-    </PlasmicRootProvider>
+  // Each ep.* function reads the session from this scope. The session stays
+  // server-side: never hand it to globalContextsProps, which Plasmic
+  // serializes into the HTML.
+  const queryData = await withEpSession(buildEpCtx(session), () =>
+    extractPlasmicQueryData(
+      <PlasmicRootProvider loader={PLASMIC} prefetchedData={plasmicData}>
+        <PlasmicComponent component={pagePath} />
+      </PlasmicRootProvider>
+    )
   );
 
-  // Set ep_token cookie for subsequent visits (no-op if token came from cookie)
+  // Write the auth cookies for the next request (no-op if nothing changed)
   session.commitCookies({
     appendHeader(name: string, value: string) {
       res.appendHeader(name, value);
@@ -243,7 +287,7 @@ Two options tighten the deployment further:
 
 | Option | Default | Use when |
 | --- | --- | --- |
-| `trustedOrigins` | the app's own origin | another origin must act as the shopper (e.g. Studio preview) |
+| `trustedOrigins` | `baseURL`, its `localhost` / `127.0.0.1` twin, and `BETTER_AUTH_TRUSTED_ORIGINS` | another origin must act as the shopper (e.g. Studio preview) |
 | `hostAllowlist` | Elastic Path Composable Commerce regions, `*.epcloudops.com`, the integration host, and loopback outside production | this store's Elastic Path API is served from a custom domain |
 
 The EP API host named in the Plasmic bundle is checked against the **EP host
@@ -256,69 +300,68 @@ session falls back to the `host` passed to `createEpAuth` (ADR-0006).
 
 ## Architecture
 
-### Token Lifecycle
+### Security model
+
+The shopper has one Elastic Path identity, and it lives on the server.
+
+- **One encrypted cookie holds the credentials.** `better-auth.session_data`,
+  the shopper envelope, is an encrypted (JWE), `HttpOnly` cookie. Beside it,
+  better-auth's signed `session_token` cookie carries only a session id. The
+  envelope holds the shopper's Elastic Path access token, the
+  signed-in account member, the selected organisation's account credential and
+  the cart id. Page scripts cannot read it.
+- **No Elastic Path credential in the browser.** The browser holds no access
+  token, no account credential and no Elastic Path client. `get-session`
+  answers with an allowlist of fields, and no credential is on it.
+- **Identity goes through your own origin.** A browser call that acts as the
+  shopper goes to the storefront, and the server attaches the credential. The
+  proxy route runs named `ep.*` functions, so the server supplies the ids that
+  decide access, not the browser. The auth handler runs the identity
+  operations. The design-time route reads no session and serves public catalog
+  data only.
 
 ```
 First visit:
-  page.tsx → epAuth.api.getSession() → OAuth with clientId → access token
-  → buildEpCtx() → withEpSession() → Server Queries SSR product data
-  → commitCookies() → httpOnly ep_token cookie set
+  middleware (App Router) or getSession() + commitCookies() (Pages Router)
+  → no cookie → mint an access token → better-auth.session_data set
+  → page → buildEpCtx() → withEpSession() → Server Queries render product data
 
 Returning visit:
-  page.tsx → epAuth.api.getSession() → reads ep_token cookie → access token
-  → buildEpCtx() → withEpSession() → Server Queries SSR → zero OAuth calls
+  page → epAuth.api.getSession() → read better-auth.session_data
+  → re-mint the access token if it is about to expire
+  → re-mint the account credential if it has under an hour left
+  → buildEpCtx() → withEpSession() → Server Queries render product data
 ```
 
-The session's access token stays on the server:
-1. `getSession()` reads or mints it, then writes it to an httpOnly cookie
-2. `buildEpCtx()` puts it on an `EpCtx`, which `withEpSession()` publishes
-   through AsyncLocalStorage
-3. Server Queries and the `/api/ep` proxy routes read it via
-   `getCurrentEpSession()` and call Elastic Path directly
+[ADR-0003](docs/adr/0003-one-session-for-elastic-path-identity.md) records the
+decision and the platform facts behind it. Three of those facts shape what you
+can rely on:
 
-`providerProps()` returns `{}`. Whatever it returned would be handed to
-`globalContextsProps` and serialized into the page HTML, so it never carries
-a credential.
-
-### Two token surfaces today, one from ADR-0003
-
-Browser-originated catalog reads currently go through the Elastic Path SDK
-client, which mints its **own** anonymous token from the public `clientId` and
-holds it in the JS heap. So the storefront has two Elastic Path identities: the
-session's on the server, an anonymous one in the browser.
-
-Earlier releases described the browser token's in-memory custody as a security
-property. It is not one, and that claim is retired. An Elastic Path implicit
-token is public by construction — anyone holding the `client_id` can mint one —
-so where it is kept protects nothing. It is also not read-only: it can write to
-`/carts` and `/checkout`.
-
-What is worth protecting is the **account token**, which carries shopper identity
-and unlocks order history, account and member records, and addresses. This
-package keeps that server-side and never hands it to the browser.
-
-[ADR-0003](docs/adr/0003-one-session-for-elastic-path-identity.md) decides the
-direction: one session, no Elastic Path credential in the browser at all, and
-every browser-originated call carrying identity routed through the storefront's
-own origin. The browser client is removed as part of that work; the ADR is the
-reference for what the surface becomes and why.
-
-Two platform facts to design against in the meantime:
-
+- **The anonymous access token is public by construction.** Anyone holding the
+  store's `client_id` can mint one, and it can write to `/carts` and
+  `/checkout`. Where it is kept protects nothing. Earlier releases called its
+  in-memory custody a security property; that claim is retired.
 - **A cart id is the entire access boundary on a cart.** `GET /v2/carts/{id}`
-  succeeds for any known id under any token, and an unknown id creates rather
-  than 404s. Keep cart ids in server custody; storefront-side verification is the
-  whole defence, not a second layer.
+  succeeds for any known id under any token, and an unknown id creates a cart
+  rather than returning 404. Whoever holds a cart id holds the cart.
 - **Account association is discoverability, not access control.** The
   relationship is an appendable set, so any account that learns a cart id can
-  attach itself and thereafter enumerate that cart.
+  attach itself and then list that cart.
 
-**`next dev` is an exception.** Next's RSC debug instrumentation serializes a
-server component's local variables — including the EP session — into the flight
-payload, so the access token is readable in the page source under `next dev`.
-It is absent from `next build` output, and nothing this package does can
-suppress it. Treat a dev server as carrying a live shopper credential: don't
-run one on a shared host or against production Elastic Path credentials.
+**The cart id still reaches page scripts.** `get-session` returns `epCartId`,
+because EP Checkout Provider reads it to drive checkout. Treat it as a
+credential for that one cart: do not log it, put it in a URL, or send it to a
+third-party script.
+
+**`next dev` exposes the session.** Next's React Server Components debug
+instrumentation serializes a server component's local variables into the page
+payload, and the session is one of them. Under `next dev`, the page source
+contains the shopper's access token and, once a member selects an
+organisation, that organisation's account credential. The account credential
+unlocks the organisation's order history, account and member records, and
+addresses. Neither is in `next build` output, and nothing this package does
+can suppress it. Treat a dev server as holding a live shopper credential:
+never run one on a shared host or against a production store.
 
 ### API Routes
 
@@ -414,7 +457,7 @@ function SignIn() {
 | `refresh()` | — | the session |
 | `setCart({ cartId })` | cart id | the session |
 | `login({ username, password, name? })` | credentials | the session, plus the member's organisations |
-| `roster({ limit?, offset? })` | paging | one page of organisations |
+| `roster({ limit?, offset? })` | paging | every organisation, or one page when `limit` or `offset` is set |
 | `selectAccount({ accountId })` | organisation id, or `null` to deselect | the session |
 | `rollAccount()` | — | the session |
 | `logout()` | — | the session |
@@ -444,20 +487,12 @@ try {
 **Outside React**, `createEpIdentityClient({ basePath })` builds the same
 client.
 
-**If you mounted the handler somewhere other than `/api/ep`**, hand the page
-the mount path once and the client finds it — `providerProps()` carries it,
-and the shopper context is where the client reads it from:
-
-```tsx
-<PlasmicRootProvider
-  loader={PLASMIC}
-  prefetchedData={plasmicData}
-  globalContextsProps={{ shopperContextProps: session.providerProps() }}
->
-```
-
-`providerProps()` is serialized into the page HTML, so it carries the mount
-path and nothing else.
+**Mount the routes at `/api/ep`.** The registered components,
+`useEpIdentity()` and `epAuthMiddleware` call `/api/ep`, `/api/ep/proxy` and
+`/api/ep/design`, and nothing tells them otherwise. `basePath` on `createEpAuth` moves the auth
+handler, and only a client you build with
+`createEpIdentityClient({ basePath })` can reach it there.
+`providerProps()` returns that mount path; no component reads it.
 
 **In the Studio canvas** the client stays relative, which resolves against the
 document serving the artboard — the consumer's own app, holding the shopper's
@@ -471,8 +506,7 @@ The session holds the authenticated **account member** and the **selected
 account** — the organisation they are buying for — as two separate facts.
 `isAuthenticated` reports the member, so a member who belongs to no
 organisation reads as signed in. While an account is selected, every `ep.*`
-server function and every cart route carries
-`EP-Account-Management-Authentication-Token`. The checkout-session handlers
+server function carries `EP-Account-Management-Authentication-Token`. The checkout-session handlers
 do not yet — they take their own shopper token on `SessionHandlerContext`.
 
 `POST /ep/account/login` takes `{ username, password }`. The server calls
@@ -485,15 +519,17 @@ Selection follows from the count. Exactly one account and the member is placed
 in it; several and **none** is chosen for them; none at all and the member is
 signed in anyway, authenticated but permanently unscoped.
 
-`POST /ep/account/roster` reads the same list later in the session, taking
-`{ limit?, offset? }`. Elastic Path caps a page at 100 and this forwards that
-cap rather than imposing a smaller one, so a member in more accounts than one
-page holds can still reach any of them. `total` is Elastic Path's own count.
+`POST /ep/account/roster` reads the same list later in the session. With no
+body it reads every page on the server and answers the whole list. With
+`{ limit?, offset? }` it answers that one page; Elastic Path caps a page at
+100. `total` is Elastic Path's own count.
 
 `POST /ep/account/select` takes `{ accountId }`, or `{ accountId: null }` to
 deselect. It re-mints the account credential first, then tears down any
-checkout session and clears the cart pointer, and writes the new account last —
-so a switch that fails leaves the previous selection exactly as it was.
+checkout session, chooses the session cart (see
+[Which cart wins at sign-in](#which-cart-wins-at-sign-in)), and writes the new
+account last — so a switch that fails leaves the previous selection exactly as
+it was. Deselecting clears the session cart.
 Selecting the account already selected does nothing at all. No password is
 needed: re-minting runs off the credential the session already holds.
 
@@ -507,31 +543,22 @@ reported as lapsed rather than quietly returned to list prices, and roster and
 select answer `account_lapsed` rather than presenting a dead credential to
 Elastic Path.
 
-The older `{ epMemberId, epAccountId, epAccountToken, epAccountExpires }` body
-still works and still verifies the supplied token against Elastic Path. It is
-removed in the breaking release.
-
 **A store whose authentication realm carries more than one password profile
 must pass `passwordProfileId` to `createEpAuth`.** Nothing in a profile record
 marks a default, and signing in against the wrong one fails with Elastic Path's
 own `authentication failed`, which says nothing about profiles. With one
 profile the package finds it.
 
-`get-session` releases `epMemberId`, `epAccount.{id,name}` and
+`get-session` releases `id`, `userId`, `expiresAt`, `createdAt`,
+`updatedAt`, `epCartId`, `epExpires`, `epMemberId`, `epAccount.{id,name}` and
 `epLapsedAccount.{id,name}`. The account credential and its expiry are
 withheld: the response is filtered to an allowlist of **paths**, so a field
 added inside `epAccount` later is withheld by default. `epLapsedAccount`
 states that a selection's credential ran out, rather than reverting the
 shopper to list prices with no signal.
 
-`createCartRoutes(epAuth)` mounts the cart routes:
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `{basePath}/cart` | Get cart contents |
-| POST | `{basePath}/cart/items` | Add item to cart |
-| PUT | `{basePath}/cart/items/:id` | Update item quantity |
-| DELETE | `{basePath}/cart/items/:id` | Remove item from cart |
+Cart reads and writes go through the proxy route as `getCart`, `addCartItem`,
+`updateCartItem` and `removeCartItem`. There are no separate cart routes.
 
 Mount the auth handler through `createEpAuthRoutes`, never better-auth's
 `toNextJsHandler` directly: better-auth's `/get-session` returns the whole
@@ -587,10 +614,10 @@ export const epAuth = createEpAuth({
     // switch. `accountCarts` carries { id, name, createdAt, updatedAt } —
     // no line items; read them yourself if your rule needs them.
     // `accountCarts` is newest-first, and may be empty.
-    if (!guestCartId) {
-      return { keep: accountCarts[0].id };
-    }
-    return { keep: guestCartId };
+    if (guestCartId) return { keep: guestCartId };
+    // `accountCarts` can be empty. Naming no cart logs an error and keeps
+    // the default, which is then no cart at all.
+    return { keep: accountCarts[0]?.id ?? "" };
   },
 });
 ```
@@ -649,7 +676,7 @@ inside it name the cart they mean rather than defaulting to one.
 | `better-auth.session_token` | Signed session id | Session identity |
 | `better-auth.session_data` | JWE — EP access token, client id, host, cart id | Everything the server needs to act as the shopper |
 
-Both are `HttpOnly; SameSite=Lax; Path=/`, `Secure` in production. The EP
+Both are `HttpOnly; SameSite=Lax; Path=/`. Over HTTPS they are `Secure`, and better-auth prefixes both names with `__Secure-`. The EP
 access token, the account fields and the cart id all live inside the encrypted
 `session_data` payload — there is no separate `ep_token`, `ep_account` or
 `ep_cart` cookie.
@@ -705,12 +732,12 @@ import { registerEpCustomFunctions } from "@elasticpath/plasmic-ep-commerce-elas
 registerEpCustomFunctions(PLASMIC);
 ```
 
-This registers the read functions in the `ep` namespace, callable from Studio's Server Query builder:
+This registers the catalog reads below, and the cart writes `addCartItem`, `updateCartItem`, `removeCartItem` and `applyCartAdjustment`, in the `ep` namespace, callable from Studio's Server Query builder:
 
 - `ep.getProduct({ id })` — single product by **product reference**: the product's slug, or its ID when it has none. Bind `id` to `$ctx.params.slug`; the links EP Search Hits builds carry exactly that value. A reference that names no product returns `null`.
 - `ep.getCart()` — current cart contents.
-- `ep.getProductList({ limit?, search?, categoryId?, sort? })` — a flat array of products. `categoryId` is a hierarchy **node** ID; it reads that node's products rather than filtering the whole catalog.
-- `ep.getProductPage({ limit?, offset?, search?, categoryId?, sort? })` — one page of products **with the total count**, in Elastic Path's envelope: `data`, plus `meta.results.total` and `meta.page`. Bind it to EP Product List Provider's **Products (pre-fetched)** prop to server-render a listing. Prefer this over `getProductList` whenever the page has pagination controls — the flat array carries no total, so ranges and next/previous cannot be computed.
+- `ep.getProductList({ limit?, search?, categoryId? })` — a flat array of products. `categoryId` is a hierarchy **node** ID; it reads that node's products rather than filtering the whole catalog.
+- `ep.getProductPage({ limit?, offset?, search?, categoryId? })` — one page of products **with the total count**, in Elastic Path's envelope: `data`, plus `meta.results.total` and `meta.page`. Bind it to EP Product List Provider's **Products (pre-fetched)** prop to server-render a listing. Prefer this over `getProductList` whenever the page has pagination controls — the flat array carries no total, so ranges and next/previous cannot be computed.
 - `ep.getRelatedProducts({ productId, relationshipSlug, limit? })` — products linked by an EP custom relationship.
 - `ep.getStock({ productIds, locationIds? })` — multi-location stock, keyed by product ID. Each location's `attributes.name` comes from the locations list, or is its slug when the list lacks it. Counts are plain numbers, because the value crosses `JSON.stringify` twice. A product whose stock is unreadable comes back with zero counts rather than failing the batch.
 - `ep.getLocations()` — every inventory location. A `type` input is ignored, because a location has no type.
@@ -723,58 +750,14 @@ Auth is **not** an argument. The session (`accessToken`, `clientId`, `host`, `ca
 
 ### 3. Wrap Server Queries in `withEpSession`
 
-```ts
-// app/[[...catchall]]/page.tsx
-import { PLASMIC } from "@/plasmic-init";
-import { PlasmicClientRootProvider } from "@/plasmic-init-client";
-import { PlasmicComponent } from "@plasmicapp/loader-nextjs";
-import {
-  buildEpCtx,
-  withEpSession,
-} from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
-import { epAuth } from "@/lib/ep-auth";
-import { cookies } from "next/headers";
-
-export default async function PlasmicLoaderPage({ params, searchParams }) {
-  const resolvedParams = await params;
-  const plasmicPath = resolvedParams.catchall ? `/${resolvedParams.catchall.join("/")}` : "/";
-  const prefetchedData = await PLASMIC.maybeFetchComponentData(plasmicPath);
-  if (!prefetchedData) return null;
-  const pageMeta = prefetchedData.entryCompMetas[0];
-
-  // Resolve session (anonymous OAuth on first visit, cookie on return).
-  const cookieStore = await cookies();
-  const session = await epAuth.api.getSession({
-    cookies: Object.fromEntries(cookieStore.getAll().map((c) => [c.name, c.value])),
-  });
-
-  // Compose the EP session — auth + cart context for server-side EP calls.
-  const epCtx = buildEpCtx(session);
-
-  // Run Studio Server Queries inside an EP session scope. Each `ep.*`
-  // function reads the active session via AsyncLocalStorage — no `auth`
-  // binding required in Studio, no `<DataProvider name="ep">` wrap on
-  // the client side.
-  const prefetchedQueryData = await withEpSession(epCtx, () =>
-    PLASMIC.unstable__getServerQueriesData(prefetchedData, {
-      pageRoute: pageMeta.path,
-      pagePath: plasmicPath,
-      params: pageMeta.params ?? {},
-      query: (await searchParams) ?? {},
-    })
-  );
-
-  return (
-    <PlasmicClientRootProvider
-      prefetchedData={prefetchedData}
-      prefetchedQueryData={prefetchedQueryData}
-      pageParams={pageMeta.params}
-    >
-      <PlasmicComponent component={pageMeta.displayName} />
-    </PlasmicClientRootProvider>
-  );
-}
-```
+The quick start's page already does this: it reads the session, builds an
+Elastic Path context with `buildEpCtx(session)`, and runs
+`PLASMIC.unstable__getServerQueriesData` inside `withEpSession`. Each `ep.*`
+function reads the active session from that scope through
+`AsyncLocalStorage`, so a query in Studio needs no `auth` binding and the page
+needs no `<DataProvider name="ep">`. On the server, outside any
+`withEpSession` scope, the functions return `null` or `[]` without calling
+Elastic Path.
 
 ### 4. Bind the queries in Studio
 
@@ -804,11 +787,11 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 
 ### Core
 - **EP Provider** — Global context: `clientId`, `host`, `locale`, `currency`
-- **Shopper Context** — Global context: `cartId`, `accountId`, `basePath` overrides
+- **EP Shopper Context (deprecated)** — Does nothing and renders its children. Remove it from your project
 
 ### Product Display
 - **EPProductProvider** — Single product data. **Product ID or slug** (`productId`) takes a product reference — usually `$ctx.params.slug`. A reference that names no product renders **Empty Content**, at runtime and on the canvas; a read that fails renders **Error Content** at runtime and the sample product on the canvas
-- **EPProductListProvider** — Paginated product listing. **Products (pre-fetched)** (`initialPage`, advanced) seeds the first page from an `ep.getProductPage` Server Query result, and that query's `page[limit]` overrides **Page Size**; paging discards the seed and falls back to client fetching. Offers no sort — Elastic Path's catalog product endpoints take no `sort` parameter, so use `EPCatalogSearchProvider` with `EPSearchSortBy` for a sortable listing
+- **EPProductListProvider** — Paginated product listing. **Products (pre-fetched)** (`initialPage`, advanced) seeds the first page from an `ep.getProductPage` Server Query result, and that query's `page[limit]` overrides **Page Size**; paging discards the seed and falls back to client fetching. To choose between this and catalog search, see [Choosing a listing path](COMPONENTS.md#3-choosing-a-listing-path)
 - **EPRelatedProductsProvider** — Related products
 - **EPProductGrid** — Repeater for product list items
 
@@ -828,7 +811,8 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 - **EPCustomerInfoFields** / **EPShippingAddressFields** / **EPBillingAddressFields** — Form fields
 - **EPShippingMethodSelector** — Shipping options
 - **EPPaymentElements** — Payment form
-- **EPCheckoutButton** — Place order
+- **EPCheckoutButton** — Step-aware button: continue to shipping, continue to payment, place order. Outside a checkout provider it links to `checkoutUrl`
+- **EPPlaceOrderButton** — Places the order
 - **EPOrderTotalsBreakdown** — Order summary
 - **EPCheckoutCartSummary** / **EPCheckoutCartItemList** — Cart in checkout
 - **EPPromoCodeInput** — Promo codes
@@ -862,7 +846,7 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 - **EPStockField** — Stock level display
 
 ### Catalog Search
-- **EPCatalogSearchProvider** — Algolia InstantSearch wrapper
+- **EPCatalogSearchProvider** — InstantSearch over the store's Catalog Search index. See [Choosing a listing path](COMPONENTS.md#3-choosing-a-listing-path)
 - **EPSearchBox** / **EPSearchHits** / **EPSearchPagination** — Search UI
 - **EPRefinementList** / **EPHierarchicalMenu** / **EPRangeFilter** — Faceted filtering
 - **EPSearchStats** / **EPSearchSortBy** — Search metadata
@@ -911,8 +895,8 @@ The contract that every catalog-search component honours:
 ### Structural CSS via `:where()`
 
 The components do need a small amount of structural CSS — for example,
-`position: relative` on the EPSearchBox wrapper so its absolute-positioned
-clear button can anchor. We ship that CSS once per page from
+`position: relative` on the autocomplete root, so its absolute-positioned
+panel can anchor. We ship that CSS once per page from
 `headless-styling.ts`, scoped via `:where()` so every selector has zero
 specificity and any designer class always wins.
 
@@ -927,7 +911,7 @@ export function EPNewSearchComponent({ className, ...props }) {
 }
 ```
 
-Then add a contract test alongside the existing nine in
+Then add a contract test alongside the existing ones in
 `__tests__/catalog-search-components.test.tsx` via `describeHeadlessStylingContract`.
 The helper asserts (a) the className lands on the documented leaf, (b) no
 inline appearance styles are set anywhere in the rendered tree, and (c) the
