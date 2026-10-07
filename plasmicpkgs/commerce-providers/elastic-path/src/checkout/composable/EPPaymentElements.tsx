@@ -16,6 +16,12 @@ import {
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
+import {
+  Elements,
+  PaymentElement,
+  useElements,
+} from "@stripe/react-stripe-js";
+import { loadStripe } from "@stripe/stripe-js/pure";
 import React, {
   useCallback,
   useEffect,
@@ -203,18 +209,12 @@ function EPPaymentElementsRuntime(props: RuntimeProps) {
   const [error, setError] = useState<string | null>(null);
   const [paymentMethodType, setPaymentMethodType] = useState("card");
 
-  // Stripe instances loaded lazily
   const [stripeInstance, setStripeInstance] = useState<any>(null);
-  const [StripeComponents, setStripeComponents] = useState<{
-    Elements: any;
-    PaymentElement: any;
-  } | null>(null);
 
   // Elements instance to expose back to CheckoutInternalContext
   const elementsRef = useRef<any>(null);
   const mountedRef = useRef(true);
 
-  // Lazy-load Stripe SDK
   useEffect(() => {
     mountedRef.current = true;
     let cancelled = false;
@@ -224,18 +224,7 @@ function EPPaymentElementsRuntime(props: RuntimeProps) {
       return;
     }
 
-    Promise.all([
-      import("@stripe/stripe-js").then((m) => m.loadStripe),
-      import("@stripe/react-stripe-js"),
-    ])
-      .then(([loadStripe, reactStripe]) => {
-        if (cancelled) return;
-        setStripeComponents({
-          Elements: reactStripe.Elements,
-          PaymentElement: reactStripe.PaymentElement,
-        });
-        return loadStripe(stripePublishableKey);
-      })
+    loadStripe(stripePublishableKey)
       .then((stripe) => {
         if (cancelled || !stripe) return;
         setStripeInstance(stripe);
@@ -297,7 +286,7 @@ function EPPaymentElementsRuntime(props: RuntimeProps) {
   );
 
   // Stripe not loaded yet
-  if (!stripeInstance || !StripeComponents) {
+  if (!stripeInstance) {
     return (
       <div className={className} data-ep-payment-elements="">
         <DataProvider
@@ -329,9 +318,6 @@ function EPPaymentElementsRuntime(props: RuntimeProps) {
     );
   }
 
-  // Render Stripe Elements + PaymentElement
-  const { Elements, PaymentElement } = StripeComponents;
-
   const elementsOptions = {
     clientSecret,
     appearance: {
@@ -362,33 +348,6 @@ function EPPaymentElementsRuntime(props: RuntimeProps) {
 // Capture Elements instance from Stripe context
 // ---------------------------------------------------------------------------
 function ElementsCapture({ onElements }: { onElements: (e: any) => void }) {
-  const [useElementsHook, setUseElementsHook] = useState<
-    (() => any) | null
-  >(null);
-
-  useEffect(() => {
-    import("@stripe/react-stripe-js").then((mod) => {
-      setUseElementsHook(() => mod.useElements);
-    });
-  }, []);
-
-  if (!useElementsHook) return null;
-
-  return (
-    <ElementsCaptureInner
-      useElements={useElementsHook}
-      onElements={onElements}
-    />
-  );
-}
-
-function ElementsCaptureInner({
-  useElements,
-  onElements,
-}: {
-  useElements: () => any;
-  onElements: (e: any) => void;
-}) {
   const elements = useElements();
   useEffect(() => {
     if (elements) {

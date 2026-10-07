@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { loadStripe, Stripe, StripeElements } from '@stripe/stripe-js';
+import type { Stripe, StripeElements } from '@stripe/stripe-js';
+import { loadStripe } from '@stripe/stripe-js/pure';
 
 /**
  * Configuration options for the Stripe payment hook

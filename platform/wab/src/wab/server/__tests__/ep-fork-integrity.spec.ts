@@ -565,6 +565,24 @@ describe("EP Fork Integrity", () => {
     });
   });
 
+  describe("Stripe loads in a hostless storefront", () => {
+    it("no module loads @stripe/* with a dynamic import()", () => {
+      const offenders = sourceFiles(EP_PKG + "/src").filter((file) =>
+        /import\(\s*["'`]@stripe\//.test(readFile(file))
+      );
+      expect(offenders).toEqual([]);
+    });
+
+    it("loadStripe comes from @stripe/stripe-js/pure, so js.stripe.com waits for a call", () => {
+      const eager =
+        /(?:^|\n)\s*import\s+(?!type\b)(?:(?!\bimport\b)[^;])*?from\s+["']@stripe\/stripe-js["']|require\(\s*["']@stripe\/stripe-js["']\s*\)/;
+      const offenders = sourceFiles(EP_PKG + "/src").filter((file) =>
+        eager.test(readFile(file))
+      );
+      expect(offenders).toEqual([]);
+    });
+  });
+
   describe("registrations that cannot be removed are inert", () => {
     it("EP Shopper Context says so in its display name", () => {
       expect(

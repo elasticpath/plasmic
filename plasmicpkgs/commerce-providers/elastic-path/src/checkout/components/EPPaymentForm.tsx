@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
-import { loadStripe } from '@stripe/stripe-js';
+import { loadStripe } from '@stripe/stripe-js/pure';
 import { formatCurrencyFromCents } from '../../utils/formatCurrency';
 import { useStripePayment } from '../hooks/use-stripe-payment';
 import { useCheckout } from '../hooks/use-checkout';

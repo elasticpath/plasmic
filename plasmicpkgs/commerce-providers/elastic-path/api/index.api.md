@@ -14,8 +14,8 @@ import type { Product as Product_2 } from '@epcc-sdk/sdks-shopper';
 import { default as React_2 } from 'react';
 import registerComponent from '@plasmicapp/host/registerComponent';
 import registerGlobalContext from '@plasmicapp/host/registerGlobalContext';
-import { Stripe } from '@stripe/stripe-js';
-import { StripeElements } from '@stripe/stripe-js';
+import type { Stripe } from '@stripe/stripe-js';
+import type { StripeElements } from '@stripe/stripe-js';
 
 // @public (undocumented)
 export type AccountContext = {

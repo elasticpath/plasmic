@@ -11,24 +11,28 @@
  * mocked module reference so interception works regardless of import order.
  */
 
-// Mock @stripe/stripe-js
-jest.mock("@stripe/stripe-js", () => ({
+const mockStripe = {
+  confirmPayment: jest.fn(),
+  handleNextAction: jest.fn(),
+  createConfirmationToken: jest.fn(),
+};
+jest.mock("@stripe/stripe-js/pure", () => ({
   __esModule: true,
-  loadStripe: jest.fn().mockResolvedValue({
-    confirmPayment: jest.fn(),
-    handleNextAction: jest.fn(),
-    createConfirmationToken: jest.fn(),
-  }),
+  loadStripe: jest.fn(() => Promise.resolve(mockStripe)),
 }));
 
-// Mock @stripe/react-stripe-js
+const mockElements = { submit: jest.fn() };
 jest.mock("@stripe/react-stripe-js", () => ({
-  Elements: ({ children }: any) => <div data-testid="stripe-elements">{children}</div>,
+  Elements: ({ children, options }: any) => (
+    <div data-testid="stripe-elements" data-options={JSON.stringify(options)}>
+      {children}
+    </div>
+  ),
   PaymentElement: (props: any) => {
     if (props.onReady) setTimeout(() => props.onReady(), 0);
     return <div data-testid="stripe-payment-element" />;
   },
-  useElements: jest.fn().mockReturnValue(null),
+  useElements: jest.fn(() => mockElements),
 }));
 
 // Mock useCheckoutSession (avoids SWR internals)
@@ -68,7 +72,8 @@ jest.mock("@plasmicapp/host/registerComponent", () => {
 });
 
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
+import { PaymentRegistrationContext } from "../payment-registration-context";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
@@ -193,6 +198,94 @@ describe("EPStripePayment", () => {
     expect(epStripePaymentMeta.props.layout).toBeDefined();
     expect(epStripePaymentMeta.props.previewState).toBeDefined();
     expect(epStripePaymentMeta.refActions.submitPayment).toBeDefined();
+  });
+});
+
+describe("EPStripePayment at runtime with a payable cart", () => {
+  const { useCheckoutSession } = require("../use-checkout-session");
+  const { loadStripe } = require("@stripe/stripe-js/pure");
+  const payableSession = {
+    status: "open",
+    totals: { total: 4200, currency: "USD" },
+  };
+
+  const withSession = (session: unknown) =>
+    useCheckoutSession.mockReturnValue({
+      session,
+      resumePayment: jest.fn(),
+      abandonPayment: jest.fn(),
+    });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    withSession(payableSession);
+  });
+
+  afterAll(() => withSession(null));
+
+  it("loads Stripe for the connected account and renders the card form", async () => {
+    render(
+      <EPStripePayment publishableKey="pk_test_123" stripeAccount="acct_9">
+        <span>content</span>
+      </EPStripePayment>
+    );
+
+    expect(await screen.findByTestId("stripe-payment-element")).toBeTruthy();
+    expect(loadStripe).toHaveBeenCalledWith("pk_test_123", {
+      stripeAccount: "acct_9",
+    });
+    const options = JSON.parse(
+      screen.getByTestId("stripe-elements").getAttribute("data-options") || "{}"
+    );
+    expect(options).toMatchObject({
+      mode: "payment",
+      amount: 4200,
+      currency: "usd",
+    });
+  });
+
+  it("registers a gateway that mints a confirmation token", async () => {
+    mockElements.submit.mockResolvedValue({});
+    mockStripe.createConfirmationToken.mockResolvedValue({
+      confirmationToken: { id: "ctoken_1" },
+    });
+    let confirm: (() => Promise<Record<string, unknown>>) | undefined;
+    const registry = {
+      registerGateway: (_name: string, fn: any) => {
+        confirm = fn;
+      },
+      getRegisteredGateway: () => null,
+    };
+
+    render(
+      <PaymentRegistrationContext.Provider value={registry}>
+        <EPStripePayment publishableKey="pk_test_123">
+          <span>content</span>
+        </EPStripePayment>
+      </PaymentRegistrationContext.Provider>
+    );
+    await screen.findByTestId("stripe-payment-element");
+
+    let result: Record<string, unknown> | undefined;
+    await act(async () => {
+      result = await confirm!();
+    });
+    expect(result).toEqual({ confirmation_token: "ctoken_1" });
+    expect(mockStripe.createConfirmationToken).toHaveBeenCalledWith({
+      elements: mockElements,
+    });
+  });
+
+  it("renders the slot without Stripe for a free cart", () => {
+    withSession({ status: "open", totals: { total: 0, currency: "USD" } });
+    const { container } = render(
+      <EPStripePayment publishableKey="pk_test_123">
+        <span data-testid="free-child">content</span>
+      </EPStripePayment>
+    );
+    expect(screen.getByTestId("free-child")).toBeTruthy();
+    expect(container.querySelector("[data-ep-payment-free]")).toBeTruthy();
+    expect(screen.queryByTestId("stripe-elements")).toBeNull();
   });
 });
 

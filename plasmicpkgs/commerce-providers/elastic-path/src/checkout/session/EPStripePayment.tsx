@@ -28,6 +28,12 @@ import {
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
+import {
+  Elements,
+  PaymentElement,
+  useElements,
+} from "@stripe/react-stripe-js";
+import { loadStripe } from "@stripe/stripe-js/pure";
 import React, {
   useCallback,
   useEffect,
@@ -337,7 +343,7 @@ const EPStripePaymentRuntime = React.forwardRef<
     publishableKey: string | null;
     stripeAccount: string | null;
     appearance: Record<string, any>;
-    layout: string;
+    layout: "tabs" | "accordion";
     className?: string;
     apiBaseUrl: string;
     children?: React.ReactNode;
@@ -360,13 +366,6 @@ const EPStripePaymentRuntime = React.forwardRef<
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stripeInstance, setStripeInstance] = useState<any>(null);
-  const [StripeComponents, setStripeComponents] = useState<{
-    Elements: any;
-    PaymentElement: any;
-    AddressElement: any;
-    useElements: any;
-    useStripe: any;
-  } | null>(null);
 
   const stripeRef = useRef<any>(null);
   const elementsRef = useRef<any>(null);
@@ -377,7 +376,6 @@ const EPStripePaymentRuntime = React.forwardRef<
   const abandonPaymentRef = useRef(abandonPayment);
   abandonPaymentRef.current = abandonPayment;
 
-  // Lazy-load Stripe SDK
   useEffect(() => {
     mountedRef.current = true;
     let cancelled = false;
@@ -385,31 +383,10 @@ const EPStripePaymentRuntime = React.forwardRef<
       setError("Stripe publishable key is required");
       return;
     }
-    Promise.all([
-      import("@stripe/stripe-js"),
-      import("@stripe/react-stripe-js"),
-    ])
-      .then(([stripeJs, reactStripe]) => {
-        if (cancelled) return;
-        const loadStripe =
-          stripeJs.loadStripe ??
-          stripeJs.default?.loadStripe ??
-          stripeJs.default;
-        setStripeComponents({
-          Elements: reactStripe.Elements,
-          PaymentElement: reactStripe.PaymentElement,
-          AddressElement: reactStripe.AddressElement,
-          useElements: reactStripe.useElements,
-          useStripe: reactStripe.useStripe,
-        });
-        // For connected-account gateways (EP-native Stripe / Connect), the
-        // ConfirmationToken must be minted in the connected account's context
-        // so the server can confirm it on that account.
-        return loadStripe(
-          publishableKey,
-          stripeAccount ? { stripeAccount } : undefined
-        );
-      })
+    // For connected-account gateways (EP-native Stripe / Connect), the
+    // ConfirmationToken must be minted in the connected account's context
+    // so the server can confirm it on that account.
+    loadStripe(publishableKey, stripeAccount ? { stripeAccount } : undefined)
       .then((stripe) => {
         if (cancelled || !stripe) return;
         stripeRef.current = stripe;
@@ -562,7 +539,7 @@ const EPStripePaymentRuntime = React.forwardRef<
     );
   }
 
-  if (!stripeInstance || !StripeComponents) {
+  if (!stripeInstance) {
     return (
       <div className={className} data-ep-stripe-payment="">
         <DataProvider
@@ -580,8 +557,6 @@ const EPStripePaymentRuntime = React.forwardRef<
     );
   }
 
-  const { Elements, PaymentElement } = StripeComponents;
-
   // Deferred PaymentIntent: amount + currency declared upfront. On submit,
   // EP creates the PaymentIntent server-side via createCartPaymentIntent.
   const elementsOptions = {
@@ -597,7 +572,6 @@ const EPStripePaymentRuntime = React.forwardRef<
       <div className={className} data-ep-stripe-payment="">
         <DataProvider name="stripePaymentData" data={paymentData}>
           <ElementsCapture
-            useElements={StripeComponents.useElements}
             onElements={(el: any) => {
               elementsRef.current = el;
             }}
@@ -618,13 +592,7 @@ const EPStripePaymentRuntime = React.forwardRef<
   );
 });
 
-function ElementsCapture({
-  useElements,
-  onElements,
-}: {
-  useElements: () => any;
-  onElements: (e: any) => void;
-}) {
+function ElementsCapture({ onElements }: { onElements: (e: any) => void }) {
   const elements = useElements();
   useEffect(() => {
     if (elements) onElements(elements);

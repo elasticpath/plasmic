@@ -33,8 +33,25 @@ jest.mock("@plasmicapp/host/registerComponent", () => {
   return fn;
 });
 
+const mockStripe = { createConfirmationToken: jest.fn() };
+jest.mock("@stripe/stripe-js/pure", () => ({
+  __esModule: true,
+  loadStripe: jest.fn(() => Promise.resolve(mockStripe)),
+}));
+
+const mockElements = { submit: jest.fn() };
+jest.mock("@stripe/react-stripe-js", () => ({
+  Elements: ({ children, options }: any) => (
+    <div data-testid="stripe-elements" data-options={JSON.stringify(options)}>
+      {children}
+    </div>
+  ),
+  PaymentElement: () => <div data-testid="stripe-payment-element" />,
+  useElements: jest.fn(() => mockElements),
+}));
+
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
@@ -127,6 +144,44 @@ describe("EPPaymentElements", () => {
 
     const root = container.querySelector("[data-ep-payment-elements]");
     expect(root?.className).toContain("my-payment");
+  });
+
+  describe("runtime", () => {
+    const { loadStripe } = require("@stripe/stripe-js/pure");
+
+    it("renders the card form for the client secret and hands elements to the provider", async () => {
+      mockCheckoutInternalValue.clientSecret = "pi_1_secret_2";
+
+      render(
+        <EPPaymentElements stripePublishableKey="pk_test_123">
+          <span>Payment</span>
+        </EPPaymentElements>
+      );
+
+      expect(await screen.findByTestId("stripe-payment-element")).toBeTruthy();
+      expect(loadStripe).toHaveBeenCalledWith("pk_test_123");
+      const options = JSON.parse(
+        screen.getByTestId("stripe-elements").getAttribute("data-options")!
+      );
+      expect(options.clientSecret).toBe("pi_1_secret_2");
+      await waitFor(() =>
+        expect(mockCheckoutInternalValue.setElements).toHaveBeenCalledWith(
+          mockElements
+        )
+      );
+    });
+
+    it("waits for a client secret before rendering Stripe Elements", async () => {
+      render(
+        <EPPaymentElements stripePublishableKey="pk_test_123">
+          <span data-testid="child">Payment</span>
+        </EPPaymentElements>
+      );
+
+      await waitFor(() => expect(loadStripe).toHaveBeenCalled());
+      expect(screen.getByTestId("child")).toBeTruthy();
+      expect(screen.queryByTestId("stripe-elements")).toBeNull();
+    });
   });
 
   describe("registration", () => {
