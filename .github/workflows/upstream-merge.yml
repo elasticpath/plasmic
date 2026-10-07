@@ -51,12 +51,19 @@ jobs:
         if: steps.check.outputs.has_changes == 'true'
         id: merge
         run: |
-          if git merge upstream/master --no-edit; then
+          git merge upstream/master --no-commit --no-ff || true
+
+          # The fork owns .github/workflows/. GITHUB_TOKEN can never push
+          # workflow changes, so upstream's must not reach merge/upstream.
+          git restore --source=HEAD --staged --worktree -- .github/workflows
+
+          CONFLICTED=$(git diff --name-only --diff-filter=U)
+          if [ -z "$CONFLICTED" ]; then
+            git commit --no-edit
             echo "Merge succeeded — no conflicts."
             echo "has_conflicts=false" >> $GITHUB_OUTPUT
           else
             echo "Merge has conflicts."
-            CONFLICTED=$(git diff --name-only --diff-filter=U 2>/dev/null)
             echo "conflicted_files<<EOF" >> $GITHUB_OUTPUT
             echo "$CONFLICTED" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
