@@ -1,6 +1,27 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Stripe, StripeElements } from '@stripe/stripe-js';
 import { loadStripeJs } from '../stripe/load-stripe-js';
+
+/**
+ * The parts of a Stripe.js Elements group this hook uses.
+ */
+interface StripePaymentElements {
+  getElement(type: 'payment'): unknown;
+}
+
+/**
+ * The parts of a Stripe.js instance this hook uses.
+ */
+interface StripePaymentClient {
+  elements(options: object): StripePaymentElements;
+  confirmPayment(options: {
+    elements: StripePaymentElements;
+    confirmParams: object;
+    redirect: 'if_required';
+  }): Promise<{
+    error?: { message?: string };
+    paymentIntent?: { id: string; status: string };
+  }>;
+}
 
 /**
  * Configuration options for the Stripe payment hook
@@ -31,8 +52,8 @@ type PaymentMethodType = 'card' | 'ideal' | 'sepa_debit' | 'sofort' | 'bancontac
  */
 interface UseStripePaymentReturn {
   // Stripe instances
-  stripe: Stripe | null;
-  elements: StripeElements | null;
+  stripe: StripePaymentClient | null;
+  elements: StripePaymentElements | null;
   
   // State
   isLoading: boolean;
@@ -65,8 +86,8 @@ export function useStripePayment(options: UseStripePaymentOptions): UseStripePay
   } = options;
 
   // State
-  const [stripe, setStripe] = useState<Stripe | null>(null);
-  const [elements, setElements] = useState<StripeElements | null>(null);
+  const [stripe, setStripe] = useState<StripePaymentClient | null>(null);
+  const [elements, setElements] = useState<StripePaymentElements | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -85,7 +106,10 @@ export function useStripePayment(options: UseStripePaymentOptions): UseStripePay
     const initializeStripe = async () => {
       try {
         const StripeJs = await loadStripeJs();
-        const stripeInstance = StripeJs(stripePublishableKey);
+        // Its elements() result is the only Elements passed back to confirmPayment.
+        const stripeInstance = StripeJs(
+          stripePublishableKey
+        ) as unknown as StripePaymentClient;
         
         if (isMounted) {
           if (!stripeInstance) {

@@ -574,6 +574,11 @@ describe("EP Fork Integrity", () => {
       expect(offenders).toEqual([]);
     });
 
+    it("no public declaration needs a Stripe library to type-check", () => {
+      expect(readFile(`${EP_PKG}/api/index.api.md`)).not.toContain("@stripe/");
+      expect(readFile(`${EP_PKG}/api/server.api.md`)).not.toContain("@stripe/");
+    });
+
     it("the package installs no Stripe library at runtime", () => {
       const pkgJson = readJson(`${EP_PKG}/package.json`);
       const runtime = Object.keys({
