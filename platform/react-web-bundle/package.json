@@ -2,8 +2,8 @@
   "name": "react-web-bundle",
   "packageManager": "yarn@1.22.22",
   "dependencies": {
-    "@plasmicapp/data-sources-context": "^0.1.25",
-    "@plasmicapp/react-web": "^1.0.29"
+    "@plasmicapp/data-sources-context": "^0.1.26",
+    "@plasmicapp/react-web": "^1.0.39"
   },
   "scripts": {
     "build": "NODE_ENV=production rollup -c rollup.config.js",
@@ -25,5 +25,6 @@
     "rollup-plugin-string": "^3.0.0",
     "rollup-plugin-terser": "^6.1.0",
     "typescript": "6.0.3"
-  }
+  },
+  "packageManager": "pnpm@11.10.0"
 }

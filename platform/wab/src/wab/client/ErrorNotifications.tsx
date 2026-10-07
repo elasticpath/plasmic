@@ -1,24 +1,26 @@
 import { analytics } from "@/wab/client/observability";
+import type { StudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
+import { UserError } from "@/wab/shared/UserError";
 import {
   AssertionError,
   FalsyValueError,
   HarmlessError,
   NullOrUndefinedValueError,
+  mkUuid,
   shallowJson,
+  spawn,
   stampObjectUuid,
 } from "@/wab/shared/common";
+import { tryGetTplOwnerComponent } from "@/wab/shared/core/tpls";
 import { DEVFLAGS } from "@/wab/shared/devflags";
 import { isStampedIgnoreError } from "@/wab/shared/error-handling";
-import { UserError } from "@/wab/shared/UserError";
+import { TplNode } from "@/wab/shared/model/classes";
 import * as Sentry from "@sentry/browser";
 import { notification } from "antd";
-import { IconType } from "antd/lib/notification";
+import { IconType } from "antd/lib/notification/interface";
+import React from "react";
 
 const errorMessageCounters = new Map<string, number>();
-
-function mungeErrorMsg(msg: string) {
-  return DEVFLAGS.mungeErrorMessages[msg] ?? msg;
-}
 
 // Note that sometimes you will see double errors, due to React rethrowing
 // errors and/or mobx rethrowing errors.  I don't fully understand the mechanics
@@ -30,7 +32,7 @@ export function showError(
     title?: string;
     description?: string;
     type?: IconType;
-  }
+  },
 ) {
   const { title = "Unexpected error", description, type } = opts ?? {};
   const deriveErrorInfo = () => {
@@ -60,7 +62,7 @@ export function showError(
     type: info.type,
     key: info.title,
     message: info.title + occurrences,
-    description: description ?? mungeErrorMsg(info.description),
+    description: description ?? info.description,
     duration: info.type === "warning" ? 10 : 0,
     onClose: () => {
       errorMessageCounters.delete(title);
@@ -186,11 +188,44 @@ export function reportError(error: Error, eventName?: string) {
 
 export function reportSilentErrorMessage(
   msg: string,
-  eventName = "Silent Error"
+  eventName = "Silent Error",
 ) {
   Sentry.captureMessage(msg);
   analytics().track(eventName, {
     message: msg,
+  });
+}
+
+export function notifyReferencingNode(
+  title: string,
+  message: string,
+  referencingNode: TplNode | null | undefined,
+  studioCtx: StudioCtx,
+) {
+  const owningComponent = referencingNode
+    ? tryGetTplOwnerComponent(referencingNode)
+    : undefined;
+  const key = mkUuid();
+  notification.error({
+    key,
+    message: title,
+    description: (
+      <>
+        {message}{" "}
+        {referencingNode && owningComponent ? (
+          <a
+            onClick={() => {
+              spawn(
+                studioCtx.setStudioFocusOnTpl(owningComponent, referencingNode),
+              );
+              notification.destroy(key);
+            }}
+          >
+            [Go to reference]
+          </a>
+        ) : null}
+      </>
+    ),
   });
 }
 
@@ -200,14 +235,14 @@ export function normalizeError(error: any) {
   return isStampedIgnoreError(error)
     ? error
     : error instanceof Error
-    ? error
-    : error && error.error
-    ? (error.error as Error)
-    : typeof error === "string"
-    ? new Error(error)
-    : new Error(
-        `Unknown error: ${
-          typeof error === "object" ? JSON.stringify(error) : error
-        }`
-      );
+      ? error
+      : error && error.error
+        ? (error.error as Error)
+        : typeof error === "string"
+          ? new Error(error)
+          : new Error(
+              `Unknown error: ${
+                typeof error === "object" ? JSON.stringify(error) : error
+              }`,
+            );
 }

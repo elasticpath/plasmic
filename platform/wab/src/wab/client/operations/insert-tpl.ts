@@ -1,4 +1,6 @@
 import type { CantAddToSlotOutOfContext } from "@/wab/client/messages/parenting-msgs";
+import { validateTplRemoval } from "@/wab/client/operations/utils/validate-tpl-removal";
+import { canSetDisplayNone } from "@/wab/client/utils/tpl-client-utils";
 import { RSH, hasTypography } from "@/wab/shared/RuleSetHelpers";
 import {
   getAncestorTplSlot,
@@ -11,13 +13,24 @@ import {
   VariantCombo,
   isBaseVariant,
   isPrivateStyleVariant,
+  toVariantKey,
+  tryGetBaseVariantSetting,
+  tryGetPrivateStyleVariant,
 } from "@/wab/shared/Variants";
+import { CodeComponentsRegistry } from "@/wab/shared/code-components/code-components";
 import { arrayRemove } from "@/wab/shared/collections";
 import { redistributeColumnsSizes } from "@/wab/shared/columns-utils";
-import { ensure, maybe } from "@/wab/shared/common";
+import { assert, ensure, ensureInstance, maybe } from "@/wab/shared/common";
+import {
+  attachNewSlotParamsToComponent,
+  cloneVariant,
+  findVarRefs,
+} from "@/wab/shared/core/components";
+import { codeLit } from "@/wab/shared/core/exprs";
 import { SlotSelection } from "@/wab/shared/core/slots";
 import {
   CONTENT_LAYOUT_WIDTH_OPTIONS,
+  WRAP_AS_PARENT_PROPS,
   contentLayoutChildProps,
   flexChildProps,
   getAllDefinedStyles,
@@ -39,6 +52,8 @@ import {
   getRshPositionType,
 } from "@/wab/shared/layoututils";
 import {
+  Component,
+  Site,
   TplComponent,
   TplNode,
   TplSlot,
@@ -49,6 +64,7 @@ import {
 import {
   CantAddChildMsg,
   CantAddSiblingMsg,
+  canAddChildren,
   canAddChildrenAndWhy,
   canAddSiblingsAndWhy,
 } from "@/wab/shared/parenting";
@@ -57,8 +73,10 @@ import {
   clearTplVisibility,
   getTplVisibilityAsDescendant,
   getVariantSettingVisibility,
+  setTplVisibility,
 } from "@/wab/shared/visibility-utils";
 import { merge } from "lodash";
+import { Result, err, ok } from "neverthrow";
 
 /**
  * Context for the pure tpl-insertion operation.
@@ -92,15 +110,28 @@ export type CantInsertTplReason =
   | { type: "CantAddColumnToNonColumns" }
   | { type: "CantAddNonColumnSiblingToColumn" }
   | { type: "ComponentCycle" }
-  | { type: "NestedSlots" };
+  | { type: "NestedSlots" }
+  | { type: "CantWrapWith" }
+  | { type: "CantWrapColumn" }
+  | { type: "CantReplaceSlot" }
+  | { type: "CantReplaceRootInVariant" }
+  | { type: "CantReplaceRootWithMany" }
+  | { type: "CantRemoveTpl"; message: string };
 
-export type InsertTplResult =
-  | { result: "success" }
-  | { result: "error"; reason: CantInsertTplReason };
+export type InsertTplResult = Result<void, CantInsertTplReason>;
 
-/** Insertion positions supported by the pure operation (wrap/replace are
- * ViewOps compositions on top of these). */
+/** Insertion positions as a sibling or child of the target. */
 export type InsertTplLoc = "before" | "after" | "prepend" | "append";
+
+/** Insertion positions for a new tpl, which can also wrap or replace the target. */
+export type PasteTplLoc = InsertTplLoc | "wrap" | "replace";
+
+export interface PasteTplCtx extends InsertTplCtx {
+  site: Site;
+  /** The component that receives the new tpl. */
+  component: Component;
+  ccRegistry: CodeComponentsRegistry;
+}
 
 export interface InsertTplAsChildOpts {
   parentOffset?: Pt;
@@ -114,7 +145,7 @@ export interface InsertTplAsChildOpts {
 export function canInsertTplAsChild(
   newItem: TplNode,
   targetTplOrSlotSelection: TplNode | SlotSelection,
-  ctx: InsertTplCtx
+  ctx: InsertTplCtx,
 ): true | CantInsertTplReason {
   const canAdd = canAddChildrenAndWhy(targetTplOrSlotSelection, newItem);
   if (canAdd !== true) {
@@ -167,7 +198,7 @@ export function canInsertTplAsChild(
 export function canInsertTplAsSibling(
   newItem: TplNode,
   target: TplNode | SlotSelection,
-  ctx: InsertTplCtx
+  ctx: InsertTplCtx,
 ): true | CantInsertTplReason {
   const canAdd = canAddSiblingsAndWhy(target, newItem);
   if (canAdd !== true) {
@@ -195,16 +226,16 @@ export function canInsertTplAsSibling(
 
   const targetParent = ensure(
     getParentOrSlotSelection(target),
-    "Unexpected undefined value of parent/slotSelection for target"
+    "Unexpected undefined value of parent/slotSelection for target",
   );
   return canInsertTplAsChild(newItem, targetParent, ctx);
 }
 
 export function canInsertTplAt(
   newItem: TplNode,
-  target: TplNode,
+  target: TplNode | SlotSelection,
   loc: InsertTplLoc,
-  ctx: InsertTplCtx
+  ctx: InsertTplCtx,
 ): true | CantInsertTplReason {
   return loc === "before" || loc === "after"
     ? canInsertTplAsSibling(newItem, target, ctx)
@@ -221,21 +252,21 @@ export function insertTplAsSibling(
   newNode: TplNode,
   targetNode: TplNode,
   loc: "before" | "after",
-  ctx: InsertTplCtx
+  ctx: InsertTplCtx,
 ): InsertTplResult {
   const reason = canInsertTplAsSibling(newNode, targetNode, ctx);
   if (reason !== true) {
-    return { result: "error", reason };
+    return err(reason);
   }
   const targetParent = ensure(
     getParentOrSlotSelection(targetNode),
-    "targetNode should have a targetParent to be used for inserting newNode"
+    "targetNode should have a targetParent to be used for inserting newNode",
   );
   return insertTplAsChild(
     newNode,
     targetParent,
     ctx,
-    loc === "before" ? { beforeNode: targetNode } : { afterNode: targetNode }
+    loc === "before" ? { beforeNode: targetNode } : { afterNode: targetNode },
   );
 }
 
@@ -258,12 +289,12 @@ export function insertTplAsChild(
   newNode: TplNode,
   newParent: TplNode | SlotSelection,
   ctx: InsertTplCtx,
-  opts: InsertTplAsChildOpts = {}
+  opts: InsertTplAsChildOpts = {},
 ): InsertTplResult {
   opts = merge({ keepFree: true }, opts);
   const reason = canInsertTplAsChild(newNode, newParent, ctx);
   if (reason !== true) {
-    return { result: "error", reason };
+    return err(reason);
   }
   const existingParent = newNode.parent;
   const isNewNode = !existingParent;
@@ -271,7 +302,7 @@ export function insertTplAsChild(
     // Break up text block into a container and text, so we can insert more content
     newParent = ensure(
       convertTextBlockToContainer(newParent, ctx),
-      "Unexpected undefined tpl after converting text to container"
+      "Unexpected undefined tpl after converting text to container",
     );
   }
   if (
@@ -311,14 +342,14 @@ export function insertTplAsChild(
   }
 
   postInsertAsChildUpdates(newNode, newParent, isNewNode, ctx);
-  return { result: "success" };
+  return ok(undefined);
 }
 
 export function insertTplAt(
   newNode: TplNode,
   target: TplNode,
   loc: InsertTplLoc,
-  ctx: InsertTplCtx
+  ctx: InsertTplCtx,
 ): InsertTplResult {
   switch (loc) {
     case "before":
@@ -331,11 +362,402 @@ export function insertTplAt(
   }
 }
 
+export function canInsertTplAsParent(
+  newNode: TplNode | SlotSelection,
+  target: TplNode | SlotSelection,
+): true | CantInsertTplReason {
+  // This better be a new node.
+  const tpl =
+    newNode instanceof SlotSelection
+      ? newNode.toTplSlotSelection().tpl
+      : newNode;
+  if (!tpl) {
+    return { type: "CantWrapWith" };
+  }
+  assert(!tpl.parent, "Unexpected tpl with parent");
+
+  // If we are dealing with a node element being wrapped, then we need to check that the relationship
+  // between the parent and the child is still valid after the wrap. So we need to check if the parent
+  // of the target can accept the new node as a child.
+  if (isKnownTplNode(target)) {
+    const parentOrSlotSelection = getParentOrSlotSelection(target);
+
+    // We may be wrapping the root node, in which case the parent won't exist
+    if (parentOrSlotSelection) {
+      const canAddToParent = canAddChildrenAndWhy(parentOrSlotSelection, tpl);
+      if (canAddToParent !== true) {
+        return canAddToParent;
+      }
+    }
+  }
+
+  if (isKnownTplNode(target) && Tpls.isTplColumn(target)) {
+    return { type: "CantWrapColumn" };
+  }
+
+  if (
+    !(
+      Tpls.isTplTag(newNode) ||
+      Tpls.isTplComponent(newNode) ||
+      newNode instanceof SlotSelection
+    ) ||
+    !canAddChildren(newNode)
+  ) {
+    return { type: "CantWrapWith" };
+  }
+
+  return true;
+}
+
+/**
+ * Inserts the argument `newNode` as a wrapping parent for the argument
+ * `child`. The `newNode` will adopt the positioning styles of the `child`,
+ * and the `child` will be converted to relatively-positioned within the
+ * parent.
+ */
+export function insertTplAsParent(
+  newNode: TplTag | TplComponent | SlotSelection,
+  child: TplTag | TplComponent | TplSlot,
+  ctx: InsertTplCtx,
+): InsertTplResult {
+  const reason = canInsertTplAsParent(newNode, child);
+  if (reason !== true) {
+    return err(reason);
+  }
+
+  const tplNewNode =
+    newNode instanceof SlotSelection
+      ? ensure(
+          newNode.toTplSlotSelection().tpl,
+          "Unexpected TplSlotSelection without tpl",
+        )
+      : newNode;
+
+  const vtm = ctx.vtm;
+
+  if (Tpls.isTplTag(tplNewNode) && tplNewNode.type !== "other") {
+    tplNewNode.type = "other";
+    RSH(vtm.ensureBaseVariantSetting(tplNewNode).rs, tplNewNode).set(
+      "display",
+      "flex",
+    );
+  }
+
+  if (Tpls.isComponentRoot(child) && Tpls.isTplVariantable(tplNewNode)) {
+    // If the child is a component root, then the newNode will become the
+    // new component root.  There are some invariants on what VariantSettings
+    // must exist for the root element; we carry that invariant here.
+    child.vsettings.forEach((vs) =>
+      vtm.ensureVariantSetting(tplNewNode, vs.variants),
+    );
+  }
+
+  if (Tpls.isTplSlot(child)) {
+    $$$(child).wrap(tplNewNode);
+    return ok(undefined);
+  }
+
+  $$$(child).wrap(newNode);
+
+  if (Tpls.isTplTag(tplNewNode)) {
+    // Transfer all the positioning styles from the child to parent
+    transferStyleProps(child, tplNewNode, ctx, WRAP_AS_PARENT_PROPS, undefined);
+    // By default, the new wrapping parent should be a flex container
+    const baseParentExp = RSH(
+      vtm.ensureBaseVariantSetting(tplNewNode).rs,
+      tplNewNode,
+    );
+    if (!baseParentExp.has("display")) {
+      baseParentExp.set("display", "flex");
+    }
+    const variantCombos = child.vsettings.map((vs) => vs.variants);
+    for (const variantCombo of variantCombos) {
+      adoptParentContainerStyleForVariant(
+        child,
+        tplNewNode,
+        variantCombo,
+        {
+          parentOffset: new Pt(0, 0),
+        },
+        ctx,
+      );
+    }
+  }
+  return ok(undefined);
+}
+
+export function canPasteTplAt(
+  newItem: TplNode,
+  target: TplNode | SlotSelection,
+  loc: PasteTplLoc,
+  ctx: PasteTplCtx,
+): true | CantInsertTplReason {
+  switch (loc) {
+    case "before":
+    case "after":
+    case "prepend":
+    case "append":
+      return canInsertTplAt(newItem, target, loc, ctx);
+    case "wrap":
+      if (
+        !Tpls.isTplTag(newItem) &&
+        (!Tpls.isTplComponent(newItem) || !Tpls.hasChildrenSlot(newItem))
+      ) {
+        return { type: "CantWrapWith" };
+      }
+      return canInsertTplAsParent(newItem, target);
+    case "replace": {
+      if (target instanceof SlotSelection) {
+        return { type: "CantReplaceSlot" };
+      }
+
+      const isNonBaseVariant = !isBaseVariant(ctx.vtm.getCurrentVariantCombo());
+      // A non-base replace only takes the hide path when the target is
+      // variantable; otherwise it falls through to the destructive path.
+      const shouldHideInVariant =
+        isNonBaseVariant && Tpls.isTplVariantable(target);
+
+      // The component root is the same node in every variant, so we should
+      // not replace it in non-base variant.
+      if (target.parent == null && isNonBaseVariant) {
+        return { type: "CantReplaceRootInVariant" };
+      }
+
+      // Only check TplRef and implicit-state references when target is expected to be removed,
+      // because a non-base replace hides the target in the active variant
+      // instead of removing it from the tree, so its references can stay valid.
+      if (!shouldHideInVariant) {
+        const owningComponent = $$$(target).tryGetOwningComponent();
+        const removalErr =
+          owningComponent &&
+          validateTplRemoval([target], owningComponent, ctx.site);
+        if (removalErr) {
+          return { type: "CantRemoveTpl", message: removalErr.message };
+        }
+      }
+      // Replacing the root: no parent, so no sibling rules to check.
+      // Component cycle detection check is already handled in the TplQuery
+      // within the replace operation.
+      if (target.parent == null) {
+        return true;
+      }
+
+      return canInsertTplAsSibling(newItem, target, ctx);
+    }
+  }
+}
+
+/**
+ * Inserts `newItem`, which the caller has fixed up for the target component,
+ * at `loc` relative to `target`. `parentOffset` places an as-child insert in a
+ * free container.
+ */
+export function insertPastedTplAt(
+  newItem: TplNode,
+  target: TplNode | SlotSelection,
+  loc: PasteTplLoc,
+  ctx: PasteTplCtx,
+  parentOffset?: Pt,
+): InsertTplResult {
+  const reason = canPasteTplAt(newItem, target, loc, ctx);
+  if (reason !== true) {
+    return err(reason);
+  }
+
+  if (target instanceof SlotSelection) {
+    assert(
+      loc === "prepend" || loc === "append",
+      "Unexpected loc type for inserting at SlotSelection",
+    );
+    return insertTplAsChild(newItem, target, ctx);
+  }
+
+  switch (loc) {
+    case "prepend":
+    case "append":
+      return insertTplAsChild(newItem, target, ctx, {
+        parentOffset,
+        prepend: loc === "prepend",
+      });
+    case "before":
+    case "after":
+      return insertTplAsSibling(newItem, target, loc, ctx);
+    case "wrap":
+      return insertTplAsParent(
+        ensureInstance($$$(newItem).clear().one(), TplTag, TplComponent),
+        ensureInstance(target, TplTag, TplComponent, TplSlot),
+        ctx,
+      );
+    case "replace": {
+      if (target.parent == null) {
+        // Root: no parent to anchor a sibling insert against. replaceWith
+        // handles the null-parent branch (and runs checkComponentCycles).
+        $$$(target).replaceWith(newItem);
+        return ok(undefined);
+      }
+      // Non-root: delegate to the sibling-insert path so we inherit
+      // the full insertAsChild fix-up chain.
+      const targetParent = target.parent;
+      const result = insertTplAsSibling(newItem, target, "before", ctx);
+      if (result.isErr()) {
+        return result;
+      }
+
+      const currentCombo = ctx.vtm.getCurrentVariantCombo();
+      if (Tpls.isTplVariantable(target) && !isBaseVariant(currentCombo)) {
+        // variant-scoped replace hides the target in the active combo
+        // rather than deleting it from the tree, so base and other
+        // variants still see the original element.
+        setTplVisibility(
+          target,
+          currentCombo,
+          canSetDisplayNone(ctx.ccRegistry, target)
+            ? TplVisibility.DisplayNone
+            : TplVisibility.NotRendered,
+        );
+      } else {
+        $$$(target).remove({ deep: true });
+        // Column count could change during remove; rebalance the remaining columns.
+        if (Tpls.isTplColumns(targetParent)) {
+          redistributeColumnsSizes(targetParent, ctx.vtm);
+        }
+      }
+      return ok(undefined);
+    }
+  }
+}
+
+/**
+ * Pastes new tpls as siblings: the first at `loc` relative to `target`, and
+ * each next one after the previously pasted one. Returns the pasted tpls and
+ * why the others could not be pasted.
+ */
+export function pasteTpls(
+  newItems: TplNode[],
+  target: TplNode | SlotSelection,
+  loc: PasteTplLoc,
+  ctx: PasteTplCtx,
+  parentOffset?: Pt,
+): { pasted: TplNode[]; errors: CantInsertTplReason[] } {
+  // Replacing the root with multiple nodes would only replace the first and
+  // the rest of the nodes are inserted as siblings, but the root has no siblings.
+  if (
+    loc === "replace" &&
+    newItems.length > 1 &&
+    isKnownTplNode(target) &&
+    target.parent == null
+  ) {
+    return { pasted: [], errors: [{ type: "CantReplaceRootWithMany" }] };
+  }
+
+  const pasted: TplNode[] = [];
+  const errors: CantInsertTplReason[] = [];
+  let curTarget = target;
+  let curLoc = loc;
+  for (const newItem of newItems) {
+    if (curLoc === "wrap") {
+      // Wrap drops the children, so they must not be fixed up into the component.
+      $$$(newItem).clear();
+    }
+    const reason = canPasteTplAt(newItem, curTarget, curLoc, ctx);
+    if (reason !== true) {
+      errors.push(reason);
+      continue;
+    }
+    fixupPastedTpl(newItem, ctx);
+    const result = insertPastedTplAt(
+      newItem,
+      curTarget,
+      curLoc,
+      ctx,
+      parentOffset,
+    );
+    assert(result.isOk(), "Must be able to insert newItem at target");
+    pasted.push(newItem);
+    curTarget = newItem;
+    curLoc = "after";
+  }
+  return { pasted, errors };
+}
+
+function fixupPastedTpl(newItem: TplNode, ctx: PasteTplCtx) {
+  const { component, vtm } = ctx;
+  const newTplSlots: TplSlot[] = [];
+
+  for (const newNode of Tpls.flattenTpls(newItem)) {
+    if (Tpls.isTplSlot(newNode)) {
+      newTplSlots.push(newNode);
+    }
+
+    if (Tpls.isTplVariantable(newNode)) {
+      // Assert that this new node has variant settings that are compatible with the current
+      // component's, by checking that its base variant is the same as the current component's.
+      // It is the caller's responsibility to make sure this is the case.
+      const base = tryGetBaseVariantSetting(newNode);
+      assert(
+        !!base && base.variants[0] === component.variants[0],
+        "New node must target the component's base variant",
+      );
+
+      // fix private style variant by cloning.
+      const clonedPrivateStyleVariants = new Map<string, Variant>();
+      newNode.vsettings.forEach((vs) => {
+        const privateSV = tryGetPrivateStyleVariant(vs.variants);
+        if (privateSV) {
+          const index = vs.variants.indexOf(privateSV);
+          assert(
+            index !== -1,
+            "Unexpected not found privateSV in variant list",
+          );
+          const privateSVKey = toVariantKey(privateSV);
+          // Reuse the cloned version if it already exists.
+          const variant = clonedPrivateStyleVariants.get(privateSVKey);
+          if (variant) {
+            vs.variants[index] = variant;
+            return;
+          }
+          if (privateSV.forTpl !== newNode) {
+            const clonedPrivateSV = cloneVariant(privateSV);
+            clonedPrivateSV.forTpl = newNode;
+            component.variants.push(clonedPrivateSV);
+            clonedPrivateStyleVariants.set(privateSVKey, clonedPrivateSV);
+            vs.variants[index] = clonedPrivateSV;
+          }
+        }
+      });
+    }
+  }
+  // Remove all VarRefs that do not exist in the current context.
+  const componentVars = new Set(component.params.map((p) => p.variable));
+  const varRefs = Array.from(findVarRefs(newItem));
+  varRefs.forEach((varRef) => {
+    if (!componentVars.has(varRef.var)) {
+      varRef.remove();
+    }
+  });
+
+  // If this newItem is being pasted into a non-base context, then set the base variant setting
+  // to invisible, just as we do when drawing a new node in a non-base context.
+  if (
+    Tpls.isTplVariantable(newItem) &&
+    !isBaseVariant(vtm.getTargetVariantComboForNode(newItem))
+  ) {
+    vtm.ensureBaseVariantSetting(newItem).dataCond = codeLit(false);
+    vtm.ensureCurrentVariantSetting(newItem, component).dataCond =
+      codeLit(true);
+  }
+
+  // If we pasted new TplSlots, then we create new corresponding params
+  if (newTplSlots.length > 0) {
+    attachNewSlotParamsToComponent(ctx.site, component, newTplSlots);
+  }
+}
+
 function postInsertAsChildUpdates(
   newNode: TplNode,
   newParent: TplNode | SlotSelection,
   isNewNode: boolean,
-  ctx: InsertTplCtx
+  ctx: InsertTplCtx,
 ) {
   if (
     isKnownTplNode(newParent) &&
@@ -382,7 +804,7 @@ function fixupNewlyInsertedNode(newNode: TplNode, ctx: InsertTplCtx) {
 export function copyMixins(
   fromNode: TplNode,
   toNode: TplNode,
-  ctx: InsertTplCtx
+  ctx: InsertTplCtx,
 ) {
   const vtm = ctx.vtm;
   for (const fromVs of fromNode.vsettings) {
@@ -400,7 +822,7 @@ export function transferStyleProps(
   toNode: TplNode,
   ctx: InsertTplCtx,
   props?: string[],
-  clearProps?: string[]
+  clearProps?: string[],
 ) {
   const vtm = ctx.vtm;
   for (const fromVs of fromNode.vsettings) {
@@ -413,7 +835,7 @@ export function transferStyleProps(
       if (fromExp.has(prop)) {
         RSH(vtm.ensureVariantSetting(toNode, fromVs.variants).rs, toNode).set(
           prop,
-          fromExp.get(prop)
+          fromExp.get(prop),
         );
         if (!clearProps || clearProps.includes(prop)) {
           fromExp.clear(prop);
@@ -435,7 +857,7 @@ function adoptLayoutParentContainerStyle(
   child: TplNode,
   parent: TplNode | SlotSelection,
   opts: { parentOffset?: Pt; forceFree?: boolean; keepFree?: boolean },
-  ctx: InsertTplCtx
+  ctx: InsertTplCtx,
 ) {
   const layoutParent = $$$(parent)
     .layoutParent({ includeSelf: true })
@@ -474,7 +896,7 @@ export function adoptParentContainerStyle(
   layoutChild: TplNode,
   layoutParent: TplTag,
   opts: { parentOffset?: Pt; forceFree?: boolean; keepFree?: boolean },
-  ctx: InsertTplCtx
+  ctx: InsertTplCtx,
 ) {
   if (!Tpls.isTplTagOrComponent(layoutChild)) {
     return;
@@ -502,7 +924,7 @@ export function adoptParentContainerStyle(
       layoutParent,
       variantCombo,
       opts,
-      ctx
+      ctx,
     );
   }
 }
@@ -510,7 +932,7 @@ export function adoptParentContainerStyle(
 function convertToSlotContent(
   child: TplNode,
   ctx: InsertTplCtx,
-  variantCombo?: VariantCombo
+  variantCombo?: VariantCombo,
 ) {
   const vtm = ctx.vtm;
   const combos = variantCombo
@@ -526,7 +948,7 @@ function convertToSlotContent(
     ) {
       convertExpToSlotContent(
         effectiveExp,
-        RSH(vtm.ensureVariantSetting(child, combo).rs, child)
+        RSH(vtm.ensureVariantSetting(child, combo).rs, child),
       );
     }
   }
@@ -540,7 +962,7 @@ export function adoptParentContainerStyleForVariant(
   layoutParent: TplTag,
   variantCombo: VariantCombo,
   opts: { parentOffset?: Pt; forceFree?: boolean; keepFree?: boolean },
-  ctx: InsertTplCtx
+  ctx: InsertTplCtx,
 ) {
   if (!Tpls.isTplTagOrComponent(layoutChild)) {
     return;
@@ -559,7 +981,7 @@ export function adoptParentContainerStyleForVariant(
   // being a child of a different layout
   const exp = RSH(
     vtm.ensureVariantSetting(layoutChild, variantCombo).rs,
-    layoutChild
+    layoutChild,
   );
   if (parentContainerType !== ContainerLayoutType.contentLayout) {
     exp.clearAll(contentLayoutChildProps);
@@ -589,7 +1011,10 @@ export function adoptParentContainerStyleForVariant(
 
   const newChildPosType =
     opts.forceFree ||
-    parentContainerType === ContainerLayoutType.free ||
+    // List items use normal block flow, even though their display value is
+    // classified as a free container. Keep inserted children in that flow.
+    (parentContainerType === ContainerLayoutType.free &&
+      effectiveParentExp.get("display") !== "list-item") ||
     (opts.keepFree && childPositionType === PositionLayoutType.free)
       ? "free"
       : "auto";
@@ -634,7 +1059,7 @@ export function adoptFreePositionType(
   node: TplTag | TplComponent,
   variants: Variant[],
   ctx: InsertTplCtx,
-  parentOffset?: Pt | "current"
+  parentOffset?: Pt | "current",
 ) {
   const vtm = ctx.vtm;
   const effectiveExp = vtm.effectiveVariantSetting(node, variants).rsh();
@@ -685,7 +1110,7 @@ export function adoptFreePositionType(
 export function adoptRelativePositionType(
   node: TplTag | TplComponent,
   variantCombo: VariantCombo,
-  ctx: InsertTplCtx
+  ctx: InsertTplCtx,
 ) {
   const vtm = ctx.vtm;
   const effectiveExp = vtm.effectiveVariantSetting(node, variantCombo).rsh();
@@ -707,7 +1132,7 @@ export function adoptRelativePositionType(
 export function adoptFixedPositionType(
   node: TplTag | TplComponent,
   variantCombo: VariantCombo,
-  ctx: InsertTplCtx
+  ctx: InsertTplCtx,
 ) {
   const vtm = ctx.vtm;
   const effectiveExp = vtm.effectiveVariantSetting(node, variantCombo).rsh();
@@ -736,7 +1161,7 @@ export function adoptFixedPositionType(
 export function adoptStickyPositionType(
   node: TplTag | TplComponent,
   variantCombo: VariantCombo,
-  ctx: InsertTplCtx
+  ctx: InsertTplCtx,
 ) {
   const vtm = ctx.vtm;
   const effectiveExp = vtm.effectiveVariantSetting(node, variantCombo).rsh();
@@ -779,7 +1204,7 @@ export function adoptStickyPositionType(
 export function convertTextBlockToContainer(
   tpl: Tpls.TplTextTag,
   ctx: InsertTplCtx,
-  inferFlexStyleFromChild = false
+  inferFlexStyleFromChild = false,
 ): TplTag | undefined {
   if (Tpls.hasTextAncestor(tpl)) {
     return undefined;
@@ -791,7 +1216,7 @@ export function convertTextBlockToContainer(
     "div",
     { type: Tpls.TplTagType.Text },
     undefined,
-    true
+    true,
   );
   textChildNode.children = container.children;
   container.children = [];
@@ -803,14 +1228,14 @@ export function convertTextBlockToContainer(
       if (privateStyleVariantsMap.has(v)) {
         return ensure(
           privateStyleVariantsMap.get(v),
-          "Should check if privateStyleVariantsMap contains variant"
+          "Should check if privateStyleVariantsMap contains variant",
         );
       }
       if (isPrivateStyleVariant(v) && owningComponent) {
         const newVariant = ctx.tplMgr.createPrivateStyleVariant(
           owningComponent,
           textChildNode,
-          maybe(v.selectors, (s) => [...s])
+          maybe(v.selectors, (s) => [...s]),
         );
         privateStyleVariantsMap.set(v, newVariant);
         return newVariant;
@@ -820,7 +1245,7 @@ export function convertTextBlockToContainer(
     const childVs = vtm.ensureVariantSetting(
       textChildNode,
       variantCombo,
-      vtm.getOwningComponentForNewNode()
+      vtm.getOwningComponentForNewNode(),
     );
     // Move the text and typography styling from parent to child vs
     childVs.text = vs.text;
@@ -882,7 +1307,7 @@ export function convertTextBlockToContainer(
     container,
     baseVs.variants,
     {},
-    ctx
+    ctx,
   );
   return container;
 }

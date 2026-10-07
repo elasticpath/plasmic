@@ -1,6 +1,6 @@
 {
   "name": "@plasmicpkgs/plasmic-strapi",
-  "version": "0.1.215",
+  "version": "0.1.222",
   "description": "Plasmic code components for fetching and rendering Strapi content.",
   "homepage": "https://www.plasmic.app",
   "repository": {
@@ -48,17 +48,17 @@
     }
   ],
   "dependencies": {
-    "@plasmicpkgs/strapi": "0.0.34",
+    "@plasmicpkgs/strapi": "workspace:*",
     "change-case": "^4.1.2"
   },
   "devDependencies": {
-    "@plasmicapp/host": "2.0.15",
-    "@plasmicapp/query": "0.1.87",
-    "@types/dlv": "^1.1.5",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
+    "@plasmicapp/host": "workspace:*",
+    "@plasmicapp/query": "workspace:*",
+    "@types/dlv": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "typescript": "^5.2.2"
+    "typescript": "catalog:"
   }
 }

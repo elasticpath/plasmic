@@ -1,6 +1,6 @@
 {
   "name": "@plasmicpkgs/plasmic-rich-components",
-  "version": "1.0.268",
+  "version": "1.0.275",
   "description": "Rich batteries-included general purpose components for business apps, admin panels, etc.",
   "homepage": "https://www.plasmic.app",
   "repository": {
@@ -51,20 +51,20 @@
   "devDependencies": {
     "@ant-design/icons": "^5.0.1",
     "@ant-design/pro-components": "2.6.4",
-    "@plasmicapp/data-sources": "1.0.24",
-    "@plasmicapp/host": "2.0.15",
+    "@plasmicapp/data-sources": "workspace:*",
+    "@plasmicapp/host": "workspace:*",
     "@rollup/plugin-commonjs": "^25.0.2",
     "@rollup/plugin-json": "^6.0.0",
     "@rollup/plugin-node-resolve": "^15.1.0",
-    "@types/lodash": "^4.17.24",
+    "@types/lodash": "catalog:",
     "@types/node": "^20.19.43",
-    "@types/react": "^18",
+    "@types/react": "catalog:",
     "antd": "^5.4.0",
     "glob": "^8.1.0",
     "rollup": "^3.26.2",
-    "rollup-plugin-esbuild": "^5.0.0",
-    "tslib": "^2.2.0",
-    "typescript": "^5.2.2"
+    "rollup-plugin-esbuild": "catalog:",
+    "tslib": "catalog:",
+    "typescript": "catalog:"
   },
   "peerDependencies": {
     "@ant-design/icons": ">=5.0.0",
@@ -83,7 +83,7 @@
     "@plasmicpkgs/luxon-parser": "^3.4.4",
     "classnames": "^2.3.2",
     "csv-writer-browser": "^1.0.0",
-    "dayjs": "^1.11.10",
+    "dayjs": "^1.11.23",
     "fast-stringify": "^2.0.0",
     "lodash": "^4.17.21"
   }

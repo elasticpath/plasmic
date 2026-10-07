@@ -8,10 +8,12 @@ import { DbMgr, SUPER_USER } from "@/wab/server/db/DbMgr";
 import { TraceCarrier, withSpan } from "@/wab/server/util/apm-util";
 import { md5 } from "@/wab/server/util/hash";
 import { getHostlessPackageNpmVersion } from "@/wab/server/util/hostless-pkg-util";
+import { makeS3Client } from "@/wab/server/util/s3-util";
 import { ensureDevFlags } from "@/wab/server/workers/worker-utils";
+import { BadRequestError } from "@/wab/shared/ApiErrors/errors";
 import { ProjectId } from "@/wab/shared/ApiSchema";
 import { Bundler } from "@/wab/shared/bundler";
-import { componentToReferenced } from "@/wab/shared/cached-selectors";
+import { SiteGenHelper } from "@/wab/shared/codegen/codegen-helpers";
 import {
   IconAssetExport,
   PictureAssetExport,
@@ -22,7 +24,11 @@ import {
   exportProjectConfig,
   exportStyleConfig,
 } from "@/wab/shared/codegen/react-p";
-import { exportSiteComponents } from "@/wab/shared/codegen/react-p/gen-site-bundle";
+import {
+  exportSiteComponents,
+  getCodeComponentsUsedByExport,
+  getSiteComponentsToExport,
+} from "@/wab/shared/codegen/react-p/gen-site-bundle";
 import {
   ActiveSplit,
   exportActiveSplitsConfig,
@@ -41,6 +47,9 @@ import { GlobalVariantConfig } from "@/wab/shared/codegen/variants";
 import { UnexpectedTypeError, ensure, withoutNils } from "@/wab/shared/common";
 import {
   CodeComponentConfig,
+  getCodeComponentExportName,
+  getComponentDisplayName,
+  isCodeComponent,
   isPageComponent,
 } from "@/wab/shared/core/components";
 import { ImageAssetType } from "@/wab/shared/core/image-asset-type";
@@ -51,8 +60,9 @@ import { asDataUrl } from "@/wab/shared/data-urls";
 import { isAdminTeamEmail } from "@/wab/shared/devflag-utils";
 import { DEVFLAGS, getProjectFlags } from "@/wab/shared/devflags";
 import { Site } from "@/wab/shared/model/classes";
+import { isValidJsIdentifier } from "@/wab/shared/utils/regex-js-identifier";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { context, propagation } from "@opentelemetry/api";
-import S3 from "aws-sdk/clients/s3";
 import fs from "fs";
 import type { OverrideProperties, SetOptional } from "type-fest";
 import { ConnectionOptions } from "typeorm";
@@ -123,7 +133,7 @@ interface CodegenOpts {
 
 export async function workerGenCode(
   opts: CodegenOpts,
-  traceCarrier?: TraceCarrier
+  traceCarrier?: TraceCarrier,
 ) {
   const ctx = traceCarrier
     ? propagation.extract(context.active(), traceCarrier)
@@ -153,7 +163,7 @@ export async function workerGenCode(
 
 export async function doGenCode(
   mgr: DbMgr,
-  opts: Omit<CodegenOpts, "connectionOptions">
+  opts: Omit<CodegenOpts, "connectionOptions">,
 ) {
   const {
     projectId,
@@ -168,17 +178,45 @@ export async function doGenCode(
     await mgr.tryGetPkgVersionByProjectVersionOrTag(
       bundler,
       projectId,
-      maybeVersionOrTag
+      maybeVersionOrTag,
     );
 
   // TODO: We need to populate some weak maps in tpls.ts mapping component
   // root to components, so that things like getTplOwnerComponent() will work.
   deepTrackComponents(site);
 
+  if (exportOpts.targetEnv === "codegen") {
+    // CLI codegen imports the exact symbol exported by the user's module.
+    // Loader targets use generated stubs and component substitution, so they
+    // can normalize their internal bindings instead.
+    const codeComponents = componentIdOrNames
+      ? getCodeComponentsUsedByExport(
+          site,
+          getSiteComponentsToExport(site, {
+            componentIdOrNames,
+            componentExportOpts: exportOpts,
+            includePages: !indirect,
+          }),
+        )
+      : site.components.filter(isCodeComponent);
+    const invalidNames = codeComponents
+      // Empty paths use component substitution rather than an external export.
+      .filter((c) => c.codeComponentMeta.importPath.length > 0)
+      .filter((c) => !isValidJsIdentifier(getCodeComponentExportName(c)))
+      .map(getComponentDisplayName);
+    if (invalidNames.length > 0) {
+      throw new BadRequestError(
+        `These code components have names that are invalid JavaScript identifiers: ${invalidNames.join(
+          ", ",
+        )}. Set a valid meta.name or meta.importName for them.`,
+      );
+    }
+  }
+
   const s3ImageLinks = Object.fromEntries(
     site.imageAssets
       .filter((asset) => asset.dataUri && asset.dataUri.startsWith("http"))
-      .map((asset) => [asset.uuid, asset.dataUri as string])
+      .map((asset) => [asset.uuid, asset.dataUri as string]),
   );
 
   // Just using the default DEVFLAGS here
@@ -189,7 +227,7 @@ export async function doGenCode(
   // We compute them beforehand to avoid downloading from S3
   const imageAssetChecksums: Array<[string, string]> = [];
   const existingImageChecksums = new Map(
-    opts.existingChecksums?.imageChecksums ?? []
+    opts.existingChecksums?.imageChecksums ?? [],
   );
   const imagesToFilter = new Set<string>();
 
@@ -230,6 +268,8 @@ export async function doGenCode(
     // we send down urls to the cli, and let cli do the fetching.
   }
 
+  const siteGenHelper = new SiteGenHelper(site, false);
+
   const projectConfig = await withSpan(
     "loader-export-project-config",
     async () =>
@@ -242,8 +282,10 @@ export async function doGenCode(
         version,
         exportOpts,
         indirect,
-        opts.scheme
+        opts.scheme,
+        siteGenHelper,
       ),
+<<<<<<< HEAD
     undefined,
     {
       project_id: projectId,
@@ -251,6 +293,9 @@ export async function doGenCode(
       revision_number: revisionNumber,
       revision_id: revisionId,
     }
+=======
+    `Project ${projectId}`,
+>>>>>>> upstream/master
   );
 
   if (project.workspace?.teamId) {
@@ -293,6 +338,7 @@ export async function doGenCode(
       isPlasmicHosted,
       forceAllCsr,
       appAuthProvider,
+      siteGenHelper,
     });
 
     // Register that project has been synced
@@ -300,7 +346,7 @@ export async function doGenCode(
       mgr,
       projectId,
       projectConfig.revision,
-      projectConfig.projectRevId
+      projectConfig.projectRevId,
     );
 
     // TODO: remove iconAssets from return value. CLI is already configured to explicitly retrieve icons after sync resolution
@@ -327,7 +373,7 @@ export async function doGenCode(
         output,
         existingChecksums,
         newChecksums,
-        imagesToFilter
+        imagesToFilter,
       );
     }
 
@@ -341,9 +387,8 @@ export async function doGenCode(
     });
     return {
       output,
-      site,
       checksums: newChecksums,
-      componentDeps: getComponentDeps(site, appAuthProvider),
+      componentDeps: getComponentDeps(site, siteGenHelper, appAuthProvider),
       componentRefs,
     };
   } catch (error) {
@@ -357,12 +402,12 @@ export async function doGenCode(
         bundler,
         projectId,
         maybeVersionOrTag,
-        true
+        true,
       );
       if (model) {
         fs.writeFileSync(
           `/tmp/corrupt-unbundle-${projectId}--${unbundledAs}.json`,
-          JSON.stringify(JSON.parse(model), undefined, 2)
+          JSON.stringify(JSON.parse(model), undefined, 2),
         );
       }
     }
@@ -370,10 +415,14 @@ export async function doGenCode(
   }
 }
 
-function getComponentDeps(site: Site, appAuthProvider?: string) {
+function getComponentDeps(
+  site: Site,
+  siteGenHelper: SiteGenHelper,
+  appAuthProvider?: string,
+) {
   const componentDeps: Record<string, string[]> = Object.fromEntries(
     allComponents(site).map((c) => {
-      let depComps = componentToReferenced(c);
+      let depComps = siteGenHelper.componentToReferenced(c);
 
       // A super component always references its subcomponents,
       // so say a Select always pulls in Select.Option, even if
@@ -390,7 +439,7 @@ function getComponentDeps(site: Site, appAuthProvider?: string) {
         depComps = [...depComps, site.defaultComponents.unauthorized];
       }
       return [c.uuid, depComps.map((d) => d.uuid)];
-    })
+    }),
   );
   return componentDeps;
 }
@@ -399,18 +448,18 @@ async function tryCreateEmptyProjectSyncMetadata(
   mgr: DbMgr,
   projectId: string,
   revision: number,
-  projectRevId: string
+  projectRevId: string,
 ) {
   const projectSyncMetadata = await mgr.tryGetProjectSyncMetadata(
     projectId,
-    revision
+    revision,
   );
   if (!projectSyncMetadata) {
     await mgr.createProjectSyncMetadata(
       projectId,
       revision,
       projectRevId,
-      "[]"
+      "[]",
     );
   }
 }
@@ -419,15 +468,15 @@ function filterAndUpdateChecksums(
   output: CodegenOutputBundle,
   previousChecksums: ChecksumBundle,
   currentChecksums: ChecksumBundle,
-  imagesToFilter: Set<string>
+  imagesToFilter: Set<string>,
 ) {
   const renderModuleChecksums = new Map(
-    previousChecksums.renderModuleChecksums
+    previousChecksums.renderModuleChecksums,
   );
   const cssRulesChecksums = new Map(previousChecksums.cssRulesChecksums);
   const iconChecksums = new Map(previousChecksums.iconChecksums);
   const globalVariantChecksums = new Map(
-    previousChecksums.globalVariantChecksums
+    previousChecksums.globalVariantChecksums,
   );
 
   output.components = withoutNils(
@@ -449,7 +498,7 @@ function filterAndUpdateChecksums(
         return undefined;
       }
       return c;
-    })
+    }),
   );
 
   output.iconAssets = withoutNils(
@@ -460,11 +509,11 @@ function filterAndUpdateChecksums(
         return undefined;
       }
       return i;
-    })
+    }),
   );
 
   output.imageAssets = output.imageAssets.filter(
-    (i) => !imagesToFilter.has(i.id)
+    (i) => !imagesToFilter.has(i.id),
   );
 
   output.globalVariants = withoutNils(
@@ -475,7 +524,7 @@ function filterAndUpdateChecksums(
         return undefined;
       }
       return gv;
-    })
+    }),
   );
 
   const cssChecksum = md5(output.projectConfig.cssRules);
@@ -489,7 +538,7 @@ function filterAndUpdateChecksums(
 
   if (output.projectConfig.projectModuleBundle) {
     const projectModuleChecksum = md5(
-      output.projectConfig.projectModuleBundle.module
+      output.projectConfig.projectModuleBundle.module,
     );
     if (previousChecksums.projectModuleChecksum === projectModuleChecksum) {
       // TODO: handle checksum equal on CLI
@@ -500,7 +549,7 @@ function filterAndUpdateChecksums(
 
   if (output.projectConfig.styleTokensProviderBundle) {
     const styleTokensProviderChecksum = md5(
-      output.projectConfig.styleTokensProviderBundle.module
+      output.projectConfig.styleTokensProviderBundle.module,
     );
     if (
       previousChecksums.styleTokensProviderChecksum ===
@@ -514,7 +563,7 @@ function filterAndUpdateChecksums(
 
   if (output.projectConfig.dataTokensBundle) {
     const dataTokensChecksum = md5(
-      output.projectConfig.dataTokensBundle.module
+      output.projectConfig.dataTokensBundle.module,
     );
     if (previousChecksums.dataTokensChecksum === dataTokensChecksum) {
       // TODO: handle checksum equal on CLI
@@ -525,7 +574,7 @@ function filterAndUpdateChecksums(
 
   if (output.projectConfig.globalContextBundle) {
     const globalContextsChecksum = md5(
-      output.projectConfig.globalContextBundle.contextModule
+      output.projectConfig.globalContextBundle.contextModule,
     );
     if (previousChecksums.globalContextsChecksum === globalContextsChecksum) {
       output.projectConfig.globalContextBundle = undefined;
@@ -535,7 +584,7 @@ function filterAndUpdateChecksums(
 
   if (output.projectConfig.splitsProviderBundle) {
     const splitsProviderChecksum = md5(
-      output.projectConfig.splitsProviderBundle.module
+      output.projectConfig.splitsProviderBundle.module,
     );
     if (previousChecksums.splitsProviderChecksum === splitsProviderChecksum) {
       output.projectConfig.splitsProviderBundle = undefined;
@@ -550,12 +599,12 @@ async function ensureImageAssetsOnS3(site: Site) {
       .filter((x) => x.type === "picture" && x.dataUri)
       .map(async (asset) => {
         const res = await uploadDataUriToS3(
-          ensure(asset.dataUri, "Data URI must not be nullish")
+          ensure(asset.dataUri, "Data URI must not be nullish"),
         );
         if (!res.isErr()) {
           asset.dataUri = res.value;
         }
-      })
+      }),
   );
 }
 
@@ -568,7 +617,7 @@ async function fetchImageAssetsFromS3(site: Site) {
   const usedAssets = extractUsedPictureAssetsForComponents(
     site,
     site.components,
-    { includeRuleSets: true, expandMixins: true }
+    { includeRuleSets: true, expandMixins: true },
   );
   await Promise.all(
     Array.from(usedAssets).map(async (i) => {
@@ -576,19 +625,20 @@ async function fetchImageAssetsFromS3(site: Site) {
         return;
       }
       const storagePath = new URL(i.dataUri).pathname.replace(/^\//, "");
-      const res = await new S3({ endpoint: process.env.S3_ENDPOINT })
-        .getObject({
+      const res = await makeS3Client().send(
+        new GetObjectCommand({
           Bucket: siteAssetsBucket,
           Key: storagePath,
-        })
-        .promise();
-      i.dataUri = asDataUrl(
-        Buffer.from(
-          ensure(res.Body, "Unexpected null body response") as string
-        ),
-        ensure(res.ContentType, "Unexpected response with no contentType")
+        }),
       );
-    })
+      i.dataUri = asDataUrl(
+        await ensure(
+          res.Body,
+          "Unexpected null body response",
+        ).transformToByteArray(),
+        ensure(res.ContentType, "Unexpected response with no contentType"),
+      );
+    }),
   );
 }
 

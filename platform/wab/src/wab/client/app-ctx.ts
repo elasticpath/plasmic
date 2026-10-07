@@ -1,8 +1,7 @@
-import { Api, setUser } from "@/wab/client/api";
-import { isHostFrame, Router } from "@/wab/client/cli-routes";
-import { getClientDevFlagOverrides } from "@/wab/client/client-dev-flags";
 import { loadCacheKey } from "@/wab/client/LocalStorageKey";
-import { maybeShowPaywall } from "@/wab/client/components/modals/PricingModal";
+import { Api, setUser } from "@/wab/client/api";
+import { Router, isHostFrame } from "@/wab/client/cli-routes";
+import { getClientDevFlagOverrides } from "@/wab/client/client-dev-flags";
 import { StarterGroupProps } from "@/wab/client/components/StarterGroup";
 import { App } from "@/wab/client/components/top-view";
 import { TopFrameApi } from "@/wab/client/frame-ctx/top-frame-api";
@@ -20,14 +19,13 @@ import { parseBundle } from "@/wab/shared/bundles";
 import { ensure, swallowAsync } from "@/wab/shared/common";
 import { isAdminTeamEmail } from "@/wab/shared/devflag-utils";
 import {
+  DEVFLAGS,
+  DevFlagsType,
   applyDevFlagOverrides,
   applyDevFlagOverridesToTarget,
   applyPlasmicUserDevFlagOverrides,
-  DEVFLAGS,
-  DevFlagsType,
 } from "@/wab/shared/devflags";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
 import { notification } from "antd";
 import { History } from "history";
 import $ from "jquery";
@@ -60,14 +58,14 @@ export class NonAuthCtx {
         "router",
         "change",
         "bundler",
-        "lastBundleVersion"
-      )
+        "lastBundleVersion",
+      ),
     );
   }
 }
 
 export const NonAuthCtxContext = React.createContext<NonAuthCtx | undefined>(
-  undefined
+  undefined,
 );
 
 export const useNonAuthCtx = () =>
@@ -79,7 +77,7 @@ export interface NonAuthComponentProps {
 
 export abstract class NonAuthComponentBase<
   P = {},
-  S = {}
+  S = {},
 > extends React.Component<P, S> {
   abstract nonAuthCtx(): NonAuthCtx;
   api() {
@@ -104,7 +102,7 @@ export abstract class NonAuthComponentBase<
 
 export class NonAuthComponent<
   P extends NonAuthComponentProps = NonAuthComponentProps,
-  S = {}
+  S = {},
 > extends NonAuthComponentBase<P, S> {
   nonAuthCtx() {
     return this.props.nonAuthCtx;
@@ -179,9 +177,9 @@ export class AppCtx {
     return L.sortBy(
       L.uniqBy(
         [...this.teams, ...this.workspaces.map((w) => w.team)],
-        (t) => t.id
+        (t) => t.id,
       ),
-      (t) => t.name
+      (t) => t.name,
     ).filter((it) => !it.personalTeamOwnerId);
   }
 
@@ -201,7 +199,7 @@ export class AppCtx {
     // Explicitly setting window.location.href, instead of
     // using router, to make sure we completely clear in-page
     // js state
-    window.location.href = fillRoute(APP_ROUTES.login, {});
+    window.location.href = APP_ROUTES.login.fill({});
   }
 
   isWhiteLabelUser() {
@@ -216,7 +214,7 @@ interface AppComponentProps {
 
 export class AppComponent<
   P extends AppComponentProps = AppComponentProps,
-  S = {}
+  S = {},
 > extends React.Component<P, S> {
   appCtx() {
     return this.props.appCtx;
@@ -255,9 +253,12 @@ export class AppComponent<
 
 export class AppOps extends AppComponent {
   async renameSite(siteId: string, name: string) {
+    // Lazy since PricingModal reaches the whole pricing UI, and this the only use in app-ctx.
+    const { maybeShowPaywall } =
+      await import("@/wab/client/components/modals/PricingModal");
     await maybeShowPaywall(
       this.appCtx(),
-      async () => await this.api().setSiteInfo(siteId, { name })
+      async () => await this.api().setSiteInfo(siteId, { name }),
     );
     await this.reloadAll();
   }
@@ -302,7 +303,7 @@ export class AppOps extends AppComponent {
       ],
       {
         type: "text/plain;charset=utf-8",
-      }
+      },
     );
 
     if (this.lastDownloadUrl) {
@@ -337,7 +338,7 @@ export class AppOps extends AppComponent {
     $link.attr("href", this.lastDownloadUrl);
     $link.attr(
       "download",
-      `${L.kebabCase(data.project.name)}_${new Date().toISOString()}.json`
+      `${L.kebabCase(data.project.name)}_${new Date().toISOString()}.json`,
     );
     $link[0].click();
   }
@@ -350,18 +351,16 @@ const DEFAULT_APP_TAG = "app";
 
 interface Starters {
   templateAndExampleSections: StarterGroupProps[];
-  tutorialSections: StarterGroupProps[];
   appSections: StarterGroupProps[];
 }
 
 export function loadStarters(
   api: PromisifyMethods<Api>,
   user: ApiUser | null,
-  appConfig: DevFlagsType
+  appConfig: DevFlagsType,
 ): Starters {
   if (isHostFrame() || !user) {
     return {
-      tutorialSections: [],
       templateAndExampleSections: [],
       appSections: [],
     };
@@ -369,13 +368,6 @@ export function loadStarters(
 
   const showAdminTeamOnlySections = isAdminTeamEmail(user.email, appConfig);
 
-  const filteredSections = appConfig.starterSections.filter(
-    (s) =>
-      s.tag === DEFAULT_STARTER_TAG &&
-      (!s.isPlasmicOnly || showAdminTeamOnlySections)
-  );
-
-  const tutorialSections = filteredSections.slice(0, 1) ?? [];
   const blankProjectSection: StarterGroupProps = {
     title: "Blank",
     // An undefined project will be interpreted as a blank project.  This is only
@@ -386,6 +378,7 @@ export function loadStarters(
         name: "Blank project",
         tag: "",
         description: "",
+        withImage: true,
       },
     ],
     tag: "",
@@ -393,15 +386,19 @@ export function loadStarters(
 
   const templateAndExampleSections = [
     ...(appConfig.hideBlankStarter ? [] : [blankProjectSection]),
-    ...(filteredSections.slice(1) ?? []),
+    ...appConfig.starterSections.filter(
+      (s) =>
+        s.tag === DEFAULT_STARTER_TAG &&
+        s.title !== "" && // TODO: remove after prod devflag update
+        (!s.isPlasmicOnly || showAdminTeamOnlySections),
+    ),
   ];
 
   const appSections = appConfig.starterSections.filter(
-    (s) => s.tag === DEFAULT_APP_TAG
+    (s) => s.tag === DEFAULT_APP_TAG,
   );
 
   return {
-    tutorialSections,
     templateAndExampleSections,
     appSections,
   };
@@ -411,7 +408,7 @@ export async function withHostFrameCache<T>(
   key: string,
   useCaching: boolean,
   baseApi: PromisifyMethods<Api>,
-  f: () => Promise<T>
+  f: () => Promise<T>,
 ): Promise<T> {
   const realKey = loadCacheKey(key);
   if (isHostFrame()) {
@@ -433,14 +430,14 @@ export async function withHostFrameCache<T>(
 
 export async function loadAppCtx(
   nonAuthCtx: NonAuthCtx,
-  useCaching: boolean = false
+  useCaching: boolean = false,
 ) {
   const baseApi = nonAuthCtx.api;
 
   async function getAppCtx(): Promise<AppCtxResponse> {
     if (isHostFrame()) {
       // We fetch the current team from the top frame so that
-      // feature checks like uiCopilotEnabled() can access team from appCtx.
+      // feature checks like chatCopilotEnabled() can access team from appCtx.
       const team = await nonAuthCtx.topFrameApi?.getCurrentTeam();
       return { workspaces: [], teams: team ? [team] : [], perms: [] };
     }
@@ -455,10 +452,10 @@ export async function loadAppCtx(
       { teams, workspaces, perms },
     ] = await Promise.all([
       withHostFrameCache("selfInfo", useCaching, baseApi, () =>
-        swallowAsync(baseApi.getSelfInfo())
+        swallowAsync(baseApi.getSelfInfo()),
       ),
       withHostFrameCache("appConfig", useCaching, baseApi, () =>
-        baseApi.getAppConfig()
+        baseApi.getAppConfig(),
       ),
       getAppCtx(),
     ]);

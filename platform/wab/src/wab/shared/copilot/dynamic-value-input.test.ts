@@ -1,0 +1,571 @@
+import { TplMgr } from "@/wab/shared/TplMgr";
+import {
+  codeToDynExpr,
+  exprToDataQueryArg,
+  exprToInterpolatedString,
+  interpolatedStringToCodeExpr,
+  interpolatedStringToExpr,
+  interpolatedStringToHrefExpr,
+  interpolatedStringToRichText,
+  interpolatedStringToTemplatedString,
+  objectLiteralToExpr,
+  parseInterpolatedString,
+} from "@/wab/shared/copilot/dynamic-value-input";
+import { ComponentType } from "@/wab/shared/core/components";
+import {
+  codeLit,
+  customCode,
+  serCompositeExprMaybe,
+  tryExtractJson,
+} from "@/wab/shared/core/exprs";
+import { mkVar } from "@/wab/shared/core/lang";
+import { createSite } from "@/wab/shared/core/sites";
+import { EvaluationError } from "@/wab/shared/eval/expression-parser";
+import {
+  Component,
+  CustomCode,
+  EventHandler,
+  Expr,
+  ObjectPath,
+  PageHref,
+  TemplatedString,
+  VarRef,
+  ensureKnownCompositeExpr,
+  ensureKnownExprText,
+  ensureKnownPageHref,
+  ensureKnownRawText,
+  isKnownCompositeExpr,
+  isKnownExprText,
+  isKnownRawText,
+  isKnownTemplatedString,
+} from "@/wab/shared/model/classes";
+
+describe("parseInterpolatedString", () => {
+  it("keeps plain text a string", () => {
+    expect(parseInterpolatedString("My nice title")).toEqual("My nice title");
+  });
+
+  it("preserves leading/trailing whitespace in plain text", () => {
+    expect(parseInterpolatedString(" Hello ")).toEqual(" Hello ");
+  });
+
+  it("throws an EvaluationError on a malformed {{ }} body", () => {
+    expect(() => parseInterpolatedString("{{ ?? }}")).toThrow(EvaluationError);
+  });
+});
+
+describe("codeToDynExpr", () => {
+  it("returns an ObjectPath for a pure member-access chain", () => {
+    const expr = codeToDynExpr("$ctx.foo.bar");
+    expect(expr).toBeInstanceOf(ObjectPath);
+    expect((expr as ObjectPath).path).toEqual(["$ctx", "foo", "bar"]);
+  });
+
+  it("returns a CustomCode for an operator expression", () => {
+    const expr = codeToDynExpr('$ctx.foo ?? "x"');
+    expect(expr).toBeInstanceOf(CustomCode);
+    expect((expr as CustomCode).code).toEqual('($ctx.foo ?? "x")');
+  });
+});
+
+describe("interpolatedStringToTemplatedString", () => {
+  it("classifies {{ $ctx.foo }} as ObjectPath", () => {
+    const ts = interpolatedStringToTemplatedString("Hello {{ $ctx.foo }}!");
+    expect(ts.text[0]).toEqual("Hello ");
+    expect(ts.text[1]).toBeInstanceOf(ObjectPath);
+    expect((ts.text[1] as ObjectPath).path).toEqual(["$ctx", "foo"]);
+    expect(ts.text[2]).toEqual("!");
+  });
+
+  it("classifies complex JS as CustomCode", () => {
+    const ts = interpolatedStringToTemplatedString(
+      "prefix {{ $ctx.first + ' ' + $ctx.second }}",
+    );
+    expect(ts.text[0]).toEqual("prefix ");
+    expect(ts.text[1]).toBeInstanceOf(CustomCode);
+  });
+
+  it("preserves whitespace around dynamic parts", () => {
+    const ts = interpolatedStringToTemplatedString(" Hi {{ $ctx.name }} ");
+    expect(ts.text[0]).toEqual(" Hi ");
+    expect(ts.text[1]).toBeInstanceOf(ObjectPath);
+    expect(ts.text[2]).toEqual(" ");
+    expect(exprToInterpolatedString(ts)).toEqual(" Hi {{ $ctx.name }} ");
+  });
+});
+
+describe("interpolatedStringToExpr", () => {
+  it("keeps plain markup static (codeLit)", () => {
+    const expr = interpolatedStringToExpr("/checkout");
+    expect((expr as CustomCode).code).toEqual('"/checkout"');
+  });
+
+  it("collapses a single {{ }} path to an ObjectPath", () => {
+    const expr = interpolatedStringToExpr("{{ currentItem.sprite }}");
+    expect(expr).toBeInstanceOf(ObjectPath);
+    expect((expr as ObjectPath).path).toEqual(["currentItem", "sprite"]);
+  });
+
+  it("produces a TemplatedString when static and dynamic parts mix", () => {
+    const expr = interpolatedStringToExpr("/pokemon/{{ currentItem.id }}");
+    expect(isKnownTemplatedString(expr)).toBe(true);
+    const ts = expr as TemplatedString;
+    expect(ts.text[0]).toEqual("/pokemon/");
+    expect(ts.text[1]).toBeInstanceOf(ObjectPath);
+  });
+});
+
+describe("objectLiteralToExpr", () => {
+  it("stores a fully-static object as codeLit JSON", () => {
+    const expr = objectLiteralToExpr(
+      '{ "url": "https://x", "method": "GET" }',
+    )!;
+    expect(isKnownCompositeExpr(expr)).toBe(false);
+    expect(expr).toBeInstanceOf(CustomCode);
+    expect(tryExtractJson(expr)).toEqual({ url: "https://x", method: "GET" });
+  });
+
+  it("hoists a {{ }} leaf into a CompositeExpr substitution", () => {
+    const composite = ensureKnownCompositeExpr(
+      objectLiteralToExpr(
+        '{ "url": "{{ $ctx.params.api }}", "method": "GET" }',
+      )!,
+    );
+    expect(JSON.parse(composite.hostLiteral)).toEqual({
+      url: null,
+      method: "GET",
+    });
+    expect(Object.keys(composite.substitutions)).toEqual(['["url"]']);
+    const sub = composite.substitutions['["url"]'];
+    expect(sub).toBeInstanceOf(ObjectPath);
+    expect((sub as ObjectPath).path).toEqual(["$ctx", "params", "api"]);
+  });
+
+  it("hoists a nested dynamic leaf at its bracket path", () => {
+    const composite = ensureKnownCompositeExpr(
+      objectLiteralToExpr(
+        '{ "headers": { "Authorization": "{{ $ctx.token }}" } }',
+      )!,
+    );
+    expect(JSON.parse(composite.hostLiteral)).toEqual({
+      headers: { Authorization: null },
+    });
+    expect(Object.keys(composite.substitutions)).toEqual([
+      '["headers"]["Authorization"]',
+    ]);
+  });
+
+  it("wraps a {{ }} non-string literal leaf as a CustomCode substitution", () => {
+    const composite = ensureKnownCompositeExpr(
+      objectLiteralToExpr('{ "limit": "{{ 5 }}" }')!,
+    );
+    expect(JSON.parse(composite.hostLiteral)).toEqual({ limit: null });
+    const sub = composite.substitutions['["limit"]'];
+    expect(sub).toBeInstanceOf(CustomCode);
+    expect((sub as CustomCode).code).toEqual("(5)");
+  });
+
+  it("handles a fully-static array as codeLit JSON", () => {
+    const expr = objectLiteralToExpr("[1, 2, 3]")!;
+    expect(isKnownCompositeExpr(expr)).toBe(false);
+    expect(tryExtractJson(expr)).toEqual([1, 2, 3]);
+  });
+
+  it("accepts a parens-wrapped literal", () => {
+    expect(tryExtractJson(objectLiteralToExpr('({ "a": 1 })')!)).toEqual({
+      a: 1,
+    });
+  });
+
+  it("throws for a bare-JS leaf (must wrap in {{ }})", () => {
+    expect(() => objectLiteralToExpr('{ "url": $ctx.params.api }')).toThrow(
+      EvaluationError,
+    );
+  });
+
+  it("throws for a spread in the object", () => {
+    expect(() =>
+      objectLiteralToExpr('{ ...$ctx.base, "method": "GET" }'),
+    ).toThrow(EvaluationError);
+  });
+
+  it("throws for non-JSON (unquoted keys)", () => {
+    expect(() => objectLiteralToExpr('{ url: "https://x" }')).toThrow(
+      EvaluationError,
+    );
+  });
+
+  it("returns undefined for a scalar (falls back to interpolation)", () => {
+    expect(objectLiteralToExpr("active")).toBeUndefined();
+    expect(objectLiteralToExpr("{{ $ctx.params.api }}")).toBeUndefined();
+  });
+});
+
+describe("interpolatedStringToCodeExpr", () => {
+  it("returns an ObjectPath for a {{ }} path", () => {
+    const expr = interpolatedStringToCodeExpr("{{ $q.pokedex.data }}");
+    expect(expr).toBeInstanceOf(ObjectPath);
+    expect((expr as ObjectPath).path).toEqual(["$q", "pokedex", "data"]);
+  });
+
+  it("throws for a bare expression without the {{ }} wrapper", () => {
+    expect(() => interpolatedStringToCodeExpr("$q.pokedex.data")).toThrow(
+      EvaluationError,
+    );
+  });
+
+  it("returns a CustomCode for a comparison expression", () => {
+    const expr = interpolatedStringToCodeExpr("{{ $q.users.data.length > 0 }}");
+    expect(expr).toBeInstanceOf(CustomCode);
+    expect((expr as CustomCode).code).toContain("$q.users.data.length > 0");
+  });
+
+  it("throws for a quoted static string", () => {
+    expect(() => interpolatedStringToCodeExpr('"notAnArray"')).toThrow(
+      EvaluationError,
+    );
+  });
+
+  it("throws for a bare single-word identifier (footgun guard)", () => {
+    expect(() => interpolatedStringToCodeExpr("pokemonList")).toThrow(
+      EvaluationError,
+    );
+  });
+
+  it("throws for a mixed templated string (static + dynamic)", () => {
+    expect(() =>
+      interpolatedStringToCodeExpr("items: {{ $q.x.data }}"),
+    ).toThrow(EvaluationError);
+  });
+
+  it("throws for malformed input", () => {
+    expect(() => interpolatedStringToCodeExpr("{{ ?? }}")).toThrow(
+      EvaluationError,
+    );
+  });
+});
+
+describe("interpolatedStringToRichText", () => {
+  it("returns RawText for plain text", () => {
+    const rich = interpolatedStringToRichText("Hello world");
+    expect(isKnownRawText(rich)).toBe(true);
+    expect(ensureKnownRawText(rich).text).toEqual("Hello world");
+  });
+
+  it("preserves leading/trailing whitespace in plain text", () => {
+    const rich = interpolatedStringToRichText(" Hello ");
+    expect(ensureKnownRawText(rich).text).toEqual(" Hello ");
+  });
+
+  it("returns ExprText for an interpolated string", () => {
+    const rich = interpolatedStringToRichText("Posts in {{ $ctx.category }}");
+    expect(isKnownExprText(rich)).toBe(true);
+    expect(ensureKnownExprText(rich).html).toBe(false);
+    expect(ensureKnownExprText(rich).expr).toBeInstanceOf(TemplatedString);
+  });
+
+  it("collapses a pure {{ }} interpolation to an ExprText with ObjectPath", () => {
+    const rich = interpolatedStringToRichText("{{ $props.title }}");
+    expect(isKnownExprText(rich)).toBe(true);
+    expect(ensureKnownExprText(rich).expr).toBeInstanceOf(ObjectPath);
+  });
+});
+
+describe("exprToInterpolatedString", () => {
+  it("renders a static codeLit string as raw text", () => {
+    expect(exprToInterpolatedString(codeLit("Hello"))).toEqual("Hello");
+  });
+
+  it("renders an ObjectPath as a {{ }} interpolation", () => {
+    const expr = codeToDynExpr("currentItem.sprite");
+    expect(exprToInterpolatedString(expr)).toEqual("{{ currentItem.sprite }}");
+  });
+
+  it("renders an ObjectPath with numeric index", () => {
+    const expr = codeToDynExpr("$q.pokedex.data[0].name");
+    expect(exprToInterpolatedString(expr)).toEqual(
+      "{{ $q.pokedex.data[0].name }}",
+    );
+  });
+
+  it("renders a real CustomCode with parens stripped", () => {
+    const expr = customCode('$props.title ?? "Guest"');
+    expect(exprToInterpolatedString(expr)).toEqual(
+      '{{ $props.title ?? "Guest" }}',
+    );
+  });
+
+  it("renders a TemplatedString with mixed static and dynamic parts", () => {
+    const expr = interpolatedStringToTemplatedString("Hi {{ $ctx.name }}!");
+    expect(exprToInterpolatedString(expr)).toEqual("Hi {{ $ctx.name }}!");
+  });
+
+  it("omits an ObjectPath fallback", () => {
+    const expr = new ObjectPath({
+      path: ["$props", "title"],
+      fallback: codeLit("Untitled"),
+    });
+    expect(exprToInterpolatedString(expr)).toEqual("{{ $props.title }}");
+  });
+
+  it("returns undefined for expr kinds with no inline form", () => {
+    expect(
+      exprToInterpolatedString(new EventHandler({ interactions: [] })),
+    ).toBeUndefined();
+  });
+
+  it("renders a VarRef as its $props canvas form", () => {
+    const expr = new VarRef({ variable: mkVar("my prop") });
+    expect(exprToInterpolatedString(expr)).toEqual("{{ $props.myProp }}");
+  });
+
+  function mkPageHref(props: {
+    path: string;
+    params?: Record<string, TemplatedString | CustomCode | ObjectPath | VarRef>;
+    query?: Record<string, TemplatedString | CustomCode | ObjectPath | VarRef>;
+    fragment?: TemplatedString | CustomCode | ObjectPath | VarRef;
+    encode?: boolean;
+  }) {
+    return new PageHref({
+      page: { pageMeta: { path: props.path, params: {} } } as Component,
+      params: props.params ?? {},
+      query: props.query ?? {},
+      fragment: props.fragment,
+      encode: props.encode ?? true,
+    });
+  }
+
+  it("renders a static PageHref as its raw path", () => {
+    expect(exprToInterpolatedString(mkPageHref({ path: "/about" }))).toEqual(
+      "/about",
+    );
+  });
+
+  it("renders a PageHref with dynamic params/query/fragment inlined", () => {
+    const expr = mkPageHref({
+      path: "/products/[slug]",
+      params: { slug: codeToDynExpr("$state.slug") },
+      query: {
+        ref: codeToDynExpr("$props.ref"),
+        sort: interpolatedStringToTemplatedString("price"),
+      },
+      fragment: new VarRef({ variable: mkVar("section") }),
+    });
+    expect(exprToInterpolatedString(expr)).toEqual(
+      "/products/{{ $state.slug }}?ref={{ $props.ref }}&sort=price#{{ $props.section }}",
+    );
+  });
+
+  it("renders a catchall param with mixed static and dynamic parts", () => {
+    const expr = mkPageHref({
+      path: "/blog/[...slug]",
+      params: {
+        "...slug": interpolatedStringToTemplatedString(
+          "cats & dogs/50% off/{{ $state.rest }}",
+        ),
+      },
+    });
+    expect(exprToInterpolatedString(expr)).toEqual(
+      "/blog/cats & dogs/50% off/{{ $state.rest }}",
+    );
+  });
+
+  it("renders values raw regardless of encode", () => {
+    // `encode` is intentionally not reflected in the interpolated form.
+    const props = {
+      path: "/products/[slug]",
+      params: { slug: codeToDynExpr("$state.slug") },
+      query: { s: interpolatedStringToTemplatedString("Cats & Dogs") },
+    };
+    const expected = "/products/{{ $state.slug }}?s=Cats & Dogs";
+    expect(
+      exprToInterpolatedString(mkPageHref({ ...props, encode: true })),
+    ).toEqual(expected);
+    expect(
+      exprToInterpolatedString(mkPageHref({ ...props, encode: false })),
+    ).toEqual(expected);
+  });
+
+  it("keeps the placeholder for a PageHref param with no value", () => {
+    expect(
+      exprToInterpolatedString(mkPageHref({ path: "/blog/[slug]" })),
+    ).toEqual("/blog/[slug]");
+  });
+
+  it("returns undefined for a PageHref with a dangling page ref", () => {
+    const expr = new PageHref({
+      page: undefined as unknown as Component,
+      params: {},
+      query: {},
+      fragment: undefined,
+      encode: true,
+    });
+    expect(exprToInterpolatedString(expr)).toBeUndefined();
+  });
+});
+
+describe("interpolatedStringToHrefExpr", () => {
+  const site = createSite();
+  const tplMgr = new TplMgr({ site });
+  const mkPage = (path: string) =>
+    tplMgr.addComponent({
+      name: path,
+      type: ComponentType.Page,
+      pageMeta: { path },
+    });
+  const planPage = mkPage("/plans/[id]");
+  const newPlanPage = mkPage("/plans/new");
+
+  it("links a path to the page it matches, with dynamic parts as params/query/fragment", () => {
+    const href =
+      "/plans/{{ currentItem.id }}?ref={{ $ctx.query.ref }}#{{ $state.tab }}";
+    const expr = ensureKnownPageHref(interpolatedStringToHrefExpr(site, href));
+    expect(expr.page).toBe(planPage);
+    expect(exprToInterpolatedString(expr)).toEqual(href);
+  });
+
+  it("prefers the page with the fewest params", () => {
+    const expr = ensureKnownPageHref(
+      interpolatedStringToHrefExpr(site, "/plans/new"),
+    );
+    expect(expr.page).toBe(newPlanPage);
+  });
+
+  it("keeps other hrefs as plain values", () => {
+    for (const href of [
+      "#top",
+      "https://x.com/plans/1",
+      "{{ currentItem.url }}",
+    ]) {
+      const expr = interpolatedStringToHrefExpr(site, href);
+      expect(expr).not.toBeInstanceOf(PageHref);
+      expect(exprToInterpolatedString(expr)).toEqual(href);
+    }
+  });
+
+  it("throws an EvaluationError for a path that matches no page", () => {
+    expect(() => interpolatedStringToHrefExpr(site, "/recipes/1")).toThrow(
+      EvaluationError,
+    );
+  });
+});
+
+describe("exprToDataQueryArg", () => {
+  it("serializes a static string as an InterpolatedString arg", () => {
+    expect(exprToDataQueryArg("filter", codeLit("active"))).toEqual({
+      __type: "InterpolatedString",
+      name: "filter",
+      value: "active",
+    });
+  });
+
+  it("serializes an ObjectPath as an InterpolatedString {{ }} arg", () => {
+    expect(exprToDataQueryArg("url", codeToDynExpr("$ctx.params.api"))).toEqual(
+      {
+        __type: "InterpolatedString",
+        name: "url",
+        value: "{{ $ctx.params.api }}",
+      },
+    );
+  });
+
+  it("serializes a static object codeLit as a CompositeExpr JSON literal", () => {
+    const expr = objectLiteralToExpr(
+      '{ "url": "https://x", "method": "GET" }',
+    )!;
+    expect(exprToDataQueryArg("opts", expr)).toEqual({
+      __type: "CompositeExpr",
+      name: "opts",
+      value: '{"url":"https://x","method":"GET"}',
+    });
+  });
+
+  it("serializes a CompositeExpr with dynamic leaves back to inline {{ }}", () => {
+    const expr = objectLiteralToExpr(
+      '{ "url": "{{ $ctx.params.api }}", "method": "GET" }',
+    )!;
+    expect(exprToDataQueryArg("opts", expr)).toEqual({
+      __type: "CompositeExpr",
+      name: "opts",
+      value: '{"url":"{{ $ctx.params.api }}","method":"GET"}',
+    });
+  });
+
+  it("round-trips a CompositeExpr value through objectLiteralToExpr", () => {
+    const raw = '{ "headers": { "Authorization": "{{ $ctx.token }}" } }';
+    const arg = exprToDataQueryArg("opts", objectLiteralToExpr(raw)!)!;
+    expect(exprToDataQueryArg("opts", objectLiteralToExpr(arg.value)!)).toEqual(
+      arg,
+    );
+  });
+
+  it("drops an arg whose expr has no inline form", () => {
+    expect(
+      exprToDataQueryArg("onDone", new EventHandler({ interactions: [] })),
+    ).toBeUndefined();
+  });
+
+  it("nulls out leaves with no inline form inside a composite", () => {
+    const expr = serCompositeExprMaybe({
+      url: "https://x",
+      onDone: new EventHandler({ interactions: [] }),
+    });
+    expect(exprToDataQueryArg("opts", expr)).toEqual({
+      __type: "CompositeExpr",
+      name: "opts",
+      value: '{"url":"https://x","onDone":null}',
+    });
+  });
+});
+
+describe("dynamic-value round trip (insertHtml <-> read)", () => {
+  function exprEqual(a: Expr, b: Expr) {
+    // Compare by serialized interpolated form, which is the round-trip contract.
+    expect(exprToInterpolatedString(a)).toEqual(exprToInterpolatedString(b));
+  }
+
+  const cases: { name: string; expr: Expr }[] = [
+    {
+      name: "ObjectPath",
+      expr: codeToDynExpr("currentItem.id"),
+    },
+    {
+      name: "CustomCode",
+      expr: customCode("$q.users.data.length > 0"),
+    },
+    {
+      name: "TemplatedString",
+      expr: interpolatedStringToTemplatedString("/p/{{ currentItem.slug }}/x"),
+    },
+    {
+      name: "VarRef",
+      expr: new VarRef({ variable: mkVar("current user") }),
+    },
+    {
+      name: "PageHref",
+      expr: new PageHref({
+        page: { pageMeta: { path: "/p/[slug]" } } as Component,
+        params: { slug: codeToDynExpr("currentItem.slug") },
+        query: {},
+        fragment: undefined,
+        encode: true,
+      }),
+    },
+  ];
+
+  for (const { name, expr } of cases) {
+    it(`round-trips a ${name} through exprToInterpolatedString -> interpolatedStringToExpr`, () => {
+      const serialized = exprToInterpolatedString(expr)!;
+      const reparsed = interpolatedStringToExpr(serialized);
+      exprEqual(reparsed, expr);
+    });
+  }
+
+  it("round-trips a static string", () => {
+    const serialized = exprToInterpolatedString(codeLit("/home"))!;
+    expect(serialized).toEqual("/home");
+    expect((interpolatedStringToExpr(serialized) as CustomCode).code).toEqual(
+      codeLit("/home").code,
+    );
+  });
+});

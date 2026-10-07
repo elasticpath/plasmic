@@ -57,7 +57,7 @@ export function makeTplTextOps(viewCtx: ViewCtx, tpl: TplTag): TplTextOps {
     viewCtx.site,
     viewCtx.currentComponent(),
     effectiveVs.getTextSource(viewCtx),
-    targetVariants
+    targetVariants,
   );
   const { isDisabled, disabledTooltip } = shouldBeDisabled({
     props: {},
@@ -67,8 +67,7 @@ export function makeTplTextOps(viewCtx: ViewCtx, tpl: TplTag): TplTextOps {
 
   let actions: TplTextOps["actions"] = {};
   if (!isDisabled && targetVs) {
-    const canUseDataTokens =
-      isKnownRawText(targetVsText) && viewCtx.studioCtx.showDataTokens();
+    const canUseDataTokens = isKnownRawText(targetVsText);
     actions = {
       edit: () => {
         viewCtx.change(() => {
@@ -154,7 +153,7 @@ export function makeTplTextMenu(ops: TplTextOps, viewCtx: ViewCtx) {
         <MenuItemContent shortcut={getComboForAction("NAV_CHILD")}>
           Edit text
         </MenuItemContent>
-      </Menu.Item>
+      </Menu.Item>,
     );
   }
   const { bindDataToken, createDataToken } = ops.actions;
@@ -176,7 +175,7 @@ export function makeTplTextMenu(ops: TplTextOps, viewCtx: ViewCtx) {
         onClick={ops.actions.convertToDynamicValue}
       >
         Use dynamic value
-      </Menu.Item>
+      </Menu.Item>,
     );
   }
   if (ops.actions.removeVariantSetting) {
@@ -186,14 +185,14 @@ export function makeTplTextMenu(ops: TplTextOps, viewCtx: ViewCtx) {
         onClick={ops.actions.removeVariantSetting}
       >
         Remove text override
-      </Menu.Item>
+      </Menu.Item>,
     );
   }
   if (ops.actions.clear) {
     menuItems.push(
       <Menu.Item key="clear-text" onClick={ops.actions.clear}>
         Clear text
-      </Menu.Item>
+      </Menu.Item>,
     );
   }
   return menuItems;

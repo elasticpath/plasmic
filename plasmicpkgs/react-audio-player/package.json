@@ -1,6 +1,6 @@
 {
   "name": "@plasmicpkgs/react-audio-player",
-  "version": "0.0.85",
+  "version": "0.0.89",
   "description": "React Audio Player components.",
   "homepage": "https://www.plasmic.app",
   "repository": {
@@ -39,15 +39,14 @@
     }
   ],
   "devDependencies": {
-    "@plasmicapp/host": "2.0.15",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
-    "husky": "^7.0.4",
+    "@plasmicapp/host": "workspace:*",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "tslib": "^2.3.1",
-    "tsup": "^7.2.0",
-    "typescript": "^5.2.2"
+    "tslib": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:"
   },
   "dependencies": {
     "change-case": "^4.1.2",

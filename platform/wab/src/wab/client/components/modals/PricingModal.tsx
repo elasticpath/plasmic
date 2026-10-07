@@ -1,6 +1,5 @@
 import { AppCtx } from "@/wab/client/app-ctx";
 import { isHostFrame } from "@/wab/client/cli-routes";
-import TeamPicker from "@/wab/client/components/modals/TeamPicker";
 import UpsellCheckout from "@/wab/client/components/modals/UpsellCheckout";
 import UpsellConfirm from "@/wab/client/components/modals/UpsellConfirm";
 import PriceTierPicker from "@/wab/client/components/pricing/PriceTierPicker";
@@ -28,7 +27,6 @@ import {
   isUpgradableTier,
 } from "@/wab/shared/pricing/pricing-utils";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
 import {
   CardNumberElement,
   Elements,
@@ -47,12 +45,14 @@ export const canIEditTeam = (appCtx: AppCtx, t: ApiTeam) =>
     appCtx.perms.find(
       (p) =>
         p.teamId === t.id &&
-        p.userId === ensure(appCtx.selfInfo, "User must be authenticated").id
-    )?.accessLevel || "blocked"
+        p.userId === ensure(appCtx.selfInfo, "User must be authenticated").id,
+    )?.accessLevel || "blocked",
   ) >= accessLevelRank("editor");
 
 export const canUpgradeTeam = (appCtx: AppCtx, t: ApiTeam) =>
-  canIEditTeam(appCtx, t) && (isUpgradableTier(t.featureTier) || t.onTrial);
+  !t.personalTeamOwnerId &&
+  canIEditTeam(appCtx, t) &&
+  (isUpgradableTier(t.featureTier) || t.onTrial);
 
 type ErrorMsg = MakeADT<
   "type",
@@ -75,9 +75,11 @@ export interface PromptBillingArgs {
   description?: string;
   // Subset of feature tiers that are compatible with your needs
   availableTiers: ApiFeatureTier[];
+  // Offer the free trial to eligible teams. Off for features a trial doesn't cover.
+  allowFreeTrial?: boolean;
   target: {
     // Team to upgrade/downgrade
-    team?: ApiTeam;
+    team: ApiTeam;
     // The tier the user wants to upgrade/downgrade to
     // If undefined, then ask the user
     initialTier?: ApiFeatureTier;
@@ -104,7 +106,7 @@ export type PromptBillingResponse = MakeADT<
  * Load the upsell modal to handle upgrades/downgrades to a new team plan
  */
 export async function promptBilling(
-  props: PromptBillingArgs
+  props: PromptBillingArgs,
 ): Promise<PromptBillingResponse | undefined> {
   return showTemporaryPrompt<PromptBillingResponse>((onSubmit, onCancel) => (
     // @ts-ignore
@@ -114,20 +116,31 @@ export async function promptBilling(
   ));
 }
 
-export async function getTiersAndPromptBilling(appCtx: AppCtx, team: ApiTeam) {
+export type PromptTeamUpgradeOpts = Pick<
+  PromptBillingArgs,
+  "title" | "allowFreeTrial"
+>;
+
+/** Returns whether the team ended up on a new plan. */
+export async function promptTeamUpgrade(
+  appCtx: AppCtx,
+  team: ApiTeam,
+  opts: PromptTeamUpgradeOpts = { title: "" },
+): Promise<boolean> {
   const { tiers } = await appCtx.api.listCurrentFeatureTiers();
-  await promptBilling({
+  const billing = await promptBilling({
     appCtx,
-    title: "",
+    ...opts,
     target: {
       team,
     },
     availableTiers: tiers,
   });
+  return billing?.type === "success";
 }
 
 export async function showUpsellConfirm(
-  teamSettingsUrl: string
+  teamSettingsUrl: string,
 ): Promise<void> {
   return showTemporaryInfo({
     title: "Payment confirmation",
@@ -139,7 +152,7 @@ function UpsellForm(
   props: PromptBillingArgs & {
     onSubmit: (v: PromptBillingResponse) => void;
     onCancel: () => void;
-  }
+  },
 ) {
   const {
     appCtx,
@@ -147,6 +160,7 @@ function UpsellForm(
     description,
     target,
     availableTiers,
+    allowFreeTrial = true,
     onSubmit,
     onCancel,
   } = props;
@@ -162,28 +176,28 @@ function UpsellForm(
   const resetErrorMsg = () => setErrorMsg(initErrorMsg());
 
   // The team we want to upsell
-  const [team, rawSetTeam] = React.useState(target.team);
+  const team = target.team;
   const [teamMeta, setTeamMeta] = React.useState<ApiTeamMeta | undefined>(
-    undefined
+    undefined,
   );
   // The tier we want to upgrade/downgrade to
   const [tier, rawSetTier] = React.useState(target.initialTier);
   // monthly or annual billing
   const [billingFreq, setBillingFreq] = React.useState<BillingFrequency>(
-    target.team?.billingFrequency ??
+    target.team.billingFrequency ??
       target.initialBillingFreq ??
-      DEFAULT_BILLING_FREQUENCY
+      DEFAULT_BILLING_FREQUENCY,
   );
   // The total number of seats in our subscription
   const [seats, setSeats] = React.useState(
     Math.min(
       tier?.maxUsers ?? Infinity,
       Math.max(
-        team?.seats ?? 1,
+        team.seats ?? 1,
         teamMeta?.memberCount ?? 1,
-        tier?.minUsers ?? 1
-      )
-    )
+        tier?.minUsers ?? 1,
+      ),
+    ),
   );
 
   React.useEffect(() => {
@@ -213,22 +227,10 @@ function UpsellForm(
     }
   };
 
-  const setTeam = (t: ApiTeam, meta: ApiTeamMeta) => {
-    resetErrorMsg();
-    rawSetTeam(t);
-    setTeamMeta(meta);
-    const teamSeats = t.seats ?? 1;
-    const teamMemberCount = meta.memberCount;
-    const minUsers = tier?.minUsers ?? 1;
-    safeSetSeats(Math.max(seats, teamSeats, teamMemberCount, minUsers));
-    if (t.billingFrequency) {
-      setBillingFreq(t.billingFrequency);
-    }
-  };
   const setTier = (t?: ApiFeatureTier) => {
     resetErrorMsg();
     safeSetSeats(
-      Math.min(t?.maxUsers ?? Infinity, Math.max(seats, t?.minUsers ?? 1))
+      Math.min(t?.maxUsers ?? Infinity, Math.max(seats, t?.minUsers ?? 1)),
     );
     rawSetTier(t);
   };
@@ -239,7 +241,7 @@ function UpsellForm(
   const elements = useElements();
 
   useAsyncStrict(async () => {
-    if (teamMeta || !target.team) {
+    if (teamMeta) {
       return;
     }
 
@@ -257,7 +259,15 @@ function UpsellForm(
   // - If false, then we should ask for a new credit card
   // Note: the server will make sure this field is undefined if Stripe says the subscription is invalid
   const hasActiveSubscription =
-    !!team?.featureTierId && !!team?.stripeSubscriptionId;
+    !!team.featureTierId && !!team.stripeSubscriptionId;
+
+  // Prevent submitting an unchanged subscription (allow changing seats or converting trial)
+  const isCurrentSubscription =
+    hasActiveSubscription &&
+    !team?.onTrial &&
+    tier?.id === team?.featureTierId &&
+    seats === team?.seats &&
+    billingFreq === team?.billingFrequency;
 
   /**
    * Change the subscription on the server.
@@ -268,7 +278,7 @@ function UpsellForm(
    */
   const changeExistingSubscription = async (
     targetTeam: ApiTeam,
-    targetTier: ApiFeatureTier
+    targetTier: ApiFeatureTier,
   ) => {
     const changeResp = await appCtx.api.changeSubscription({
       teamId: targetTeam.id,
@@ -294,41 +304,37 @@ function UpsellForm(
   };
 
   const startFreeTrial = async () => {
-    if (!team) {
-      return;
-    }
-    await appCtx.api.startFreeTrial(team?.id);
+    await appCtx.api.startFreeTrial(team.id);
     await appCtx.reloadAppCtx();
     return onSubmit({
       type: "success",
       team: team,
       tier: ensure(
         availableTiers.find((t) => t.name === DEVFLAGS.freeTrialTierName),
-        "Free trial tier should be one of the available"
+        "Free trial tier should be one of the available",
       ),
     });
   };
 
   const confirmBill = async () => {
+    if (isCurrentSubscription) {
+      return;
+    }
     setWaiting(true);
     try {
-      const ensureTeam = ensure(
-        team,
-        `You must first select an ${ORGANIZATION_LOWER}`
-      );
       const ensureTier = ensure(tier, "You must first select a tier");
 
       assert(
         !ensureTier.maxUsers || seats <= ensureTier.maxUsers,
-        `Exceeded maximum seats for this tier, if you want more seats, please go to your ${ORGANIZATION_LOWER} settings and upgrade to a higher plan tier.`
+        `Exceeded maximum seats for this tier, if you want more seats, please go to your ${ORGANIZATION_LOWER} settings and upgrade to a higher plan tier.`,
       );
 
       if (hasActiveSubscription) {
-        return changeExistingSubscription(ensureTeam, ensureTier);
+        return changeExistingSubscription(team, ensureTier);
       }
 
       const createResp = await appCtx.api.createSubscription({
-        teamId: ensureTeam.id,
+        teamId: team.id,
         featureTierId: ensureTier.id,
         billingFrequency: billingFreq,
         seats,
@@ -336,20 +342,20 @@ function UpsellForm(
 
       // Subscription already exists. Let's try to change it
       if (createResp.type === "alreadyExists") {
-        return changeExistingSubscription(ensureTeam, ensureTier);
+        return changeExistingSubscription(team, ensureTier);
       }
 
       // This is a new subscription. Let's try to confirm it with the credit card.
       const { clientSecret } = createResp;
       const ensureClientSecret = ensure(
         clientSecret,
-        "Missing client secret from server"
+        "Missing client secret from server",
       );
       const ensureStripe = ensure(stripe, "Stripe not loaded yet");
       const ensureElements = ensure(elements, "Stripe not loaded yet");
       const card = ensure(
         ensureElements.getElement(CardNumberElement),
-        "Issue getting CC info from form"
+        "Issue getting CC info from form",
       );
       const result =
         createResp.type === "success"
@@ -371,7 +377,7 @@ function UpsellForm(
         createResp.type === "success"
           ? (result as SetupIntentResult).setupIntent
           : (result as PaymentIntentResult).paymentIntent,
-        "intent must exist if didnt throw error"
+        "intent must exist if didnt throw error",
       );
       if (intent.status !== "succeeded") {
         return onSubmit({
@@ -381,13 +387,15 @@ function UpsellForm(
       }
 
       // Save as default payment method for all future upgrades
-      const paymentMethodId = intent.payment_method;
+      const paymentMethod = intent.payment_method;
+      const paymentMethodId =
+        typeof paymentMethod === "string" ? paymentMethod : paymentMethod?.id;
       if (paymentMethodId) {
-        await appCtx.api.updatePaymentMethod(ensureTeam.id, paymentMethodId);
+        await appCtx.api.updatePaymentMethod(team.id, paymentMethodId);
       }
       return onSubmit({
         type: "success",
-        team: ensureTeam,
+        team,
         tier: ensureTier,
       });
     } finally {
@@ -395,8 +403,7 @@ function UpsellForm(
     }
   };
 
-  // If I just created the team, assume I can edit it
-  const canUpdateBilling = !team ? true : canIEditTeam(appCtx, team);
+  const canUpdateBilling = canIEditTeam(appCtx, team);
 
   return (
     <Modal
@@ -413,22 +420,7 @@ function UpsellForm(
           </div>
         )}
         {description && <p>{description}</p>}
-        {errorMsg.type !== "fatal" && !team && (
-          <TeamPicker
-            appCtx={appCtx}
-            onSelect={async (t: ApiTeam) => {
-              setWaiting(true);
-              // Needed to reload appCtx.perms
-              await appCtx.reloadAppCtx();
-              const { meta } = await appCtx.api.getTeamMeta(t.id);
-              setTeam(t, meta);
-              setWaiting(false);
-            }}
-            teamFilter={(t) => canUpgradeTeam(appCtx, t)}
-            disabled={waiting}
-          />
-        )}
-        {errorMsg.type !== "fatal" && team && !tier && (
+        {errorMsg.type !== "fatal" && !tier && (
           // Haven't chosen a tier yet
           <PriceTierPicker
             // Only show tiers that support this many seats
@@ -437,7 +429,7 @@ function UpsellForm(
               (t) =>
                 !t.maxUsers ||
                 !teamMeta?.memberCount ||
-                teamMeta.memberCount <= t.maxUsers
+                teamMeta.memberCount <= t.maxUsers,
             )}
             billingFrequency={billingFreq}
             showBillingFrequencyToggle={{
@@ -449,9 +441,14 @@ function UpsellForm(
             onSelectFeatureTier={async (newTier: ApiFeatureTier) =>
               setTier(newTier)
             }
-            canStartFreeTrial={!team.trialStartDate}
+            onManageSeats={
+              hasActiveSubscription && team.featureTier
+                ? async () => setTier(ensure(team.featureTier))
+                : undefined
+            }
+            canStartFreeTrial={allowFreeTrial && !!teamMeta?.canStartFreeTrial}
             onStartFreeTrial={startFreeTrial}
-            isFreeTrialTeam={team?.onTrial}
+            isFreeTrialTeam={team.onTrial}
             hideLegacyTier={true}
             titleBar={{
               show: true,
@@ -459,26 +456,26 @@ function UpsellForm(
             }}
           />
         )}
-        {errorMsg.type !== "fatal" && team && tier && (
+        {errorMsg.type !== "fatal" && tier && (
           // Chose a tier to upgrade/downgrade to
           <Form>
             <UpsellCheckout
               appCtx={appCtx}
               disabled={waiting || !canUpdateBilling}
+              isCurrentSubscription={isCurrentSubscription}
               hasActiveSubscription={hasActiveSubscription}
-              onFreeTrial={team?.onTrial}
+              onFreeTrial={team.onTrial}
               teamName={team.name}
               currentTier={team.featureTier}
               tier={tier}
               seats={seats}
               onSetSeats={(s) => {
                 if (
-                  !team ||
                   s <
-                    ensure(
-                      teamMeta?.memberCount,
-                      "teamMeta needs to be populated"
-                    )
+                  ensure(
+                    teamMeta?.memberCount,
+                    "teamMeta needs to be populated",
+                  )
                 ) {
                   return;
                 }
@@ -496,7 +493,7 @@ function UpsellForm(
           </Form>
         )}
       </div>
-      {errorMsg.type !== "fatal" && team && !canUpdateBilling && (
+      {errorMsg.type !== "fatal" && !canUpdateBilling && (
         <Alert
           message={`You have no permission to update billing for this ${ORGANIZATION_LOWER}. Please ask an ${ORGANIZATION_LOWER} administrator to do it.`}
           type="warning"
@@ -510,7 +507,7 @@ export class PaywallError extends Error {
   constructor(
     public type: "requireTeam" | "billing",
     msg: string,
-    public feature?: string
+    public feature?: string,
   ) {
     super(msg);
   }
@@ -518,7 +515,7 @@ export class PaywallError extends Error {
 
 function getPaywallProperDescription(description: string) {
   const freeTrialName = getExternalPriceTier(
-    getNewPriceTierType(DEVFLAGS.freeTrialTierName)
+    getNewPriceTierType(DEVFLAGS.freeTrialTierName),
   );
   switch (description) {
     case "splitContentAccess":
@@ -537,7 +534,7 @@ export async function maybeShowPaywall<T>(
     title: "Upgrade to perform this action",
     description: "Select a new plan to upgrade.",
   },
-  useTopFrame = false
+  useTopFrame = false,
 ): Promise<T> {
   const res = await action();
   if (res.paywall === "pass") {
@@ -548,7 +545,7 @@ export async function maybeShowPaywall<T>(
     throw new PaywallError(
       "requireTeam",
       `This action requires an ${ORGANIZATION_LOWER}.`,
-      res.description
+      res.description,
     );
   }
 
@@ -566,27 +563,17 @@ export async function maybeShowPaywall<T>(
       target: {
         team: res.team,
         initialTier:
-          res.team?.featureTier &&
+          res.team.featureTier &&
           res.features.map((f) => f.name).includes(res.team.featureTier.name)
             ? res.team.featureTier
             : undefined,
       },
     });
 
-    const teamId = res.team?.id;
-
-    // `"requireTeam"` should capture this case
     // We throw an error here since we gave the modal to the top frame
-    if (!teamId) {
-      throw new PaywallError(
-        "billing",
-        `You need to create an ${ORGANIZATION_LOWER} to perform this action.`
-      );
-    }
-
     throw new PaywallError(
       "billing",
-      "Billing is required to perform this action"
+      "Billing is required to perform this action",
     );
   }
 
@@ -597,7 +584,7 @@ export async function maybeShowPaywall<T>(
     target: {
       team: res.team,
       initialTier:
-        res.team?.featureTier &&
+        res.team.featureTier &&
         res.features.map((f) => f.name).includes(res.team.featureTier.name)
           ? res.team.featureTier
           : undefined,
@@ -607,17 +594,17 @@ export async function maybeShowPaywall<T>(
   if (!billing) {
     throw new PaywallError(
       "billing",
-      "Unable to perform action. It requires a plan upgrade."
+      "Unable to perform action. It requires a plan upgrade.",
     );
   } else if (billing.type === "fail") {
     throw new PaywallError(
       "billing",
       billing.errorMsg ||
-        "Unable to upgrade plan. Please try again or contact team@plasmic.app."
+        "Unable to upgrade plan. Please try again or contact team@plasmic.app.",
     );
   }
   await showUpsellConfirm(
-    fillRoute(APP_ROUTES.orgSettings, { teamId: billing.team.id })
+    APP_ROUTES.orgSettings.fill({ teamId: billing.team.id }),
   );
 
   return maybeShowPaywall(appCtx, action, args);

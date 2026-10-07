@@ -1,4 +1,8 @@
 import { handleError, normalizeError } from "@/wab/client/ErrorNotifications";
+import {
+  AntdConfigProvider,
+  configureAntdStatics,
+} from "@/wab/client/antd-theme";
 import { isProjectPath, isTopFrame } from "@/wab/client/cli-routes";
 import { initClientFlags } from "@/wab/client/client-dev-flags";
 import { Root } from "@/wab/client/components/root-view";
@@ -9,6 +13,7 @@ import {
   useHostFrameCtxIfHostFrame,
 } from "@/wab/client/frame-ctx/host-frame-ctx";
 import { initObservability } from "@/wab/client/observability";
+import { HistoryProvider } from "@/wab/client/route/HistoryProvider";
 import { isLiteralObject, swallow, tuple } from "@/wab/shared/common";
 import { DEVFLAGS, applyDevFlagOverrides } from "@/wab/shared/devflags";
 import * as Sentry from "@sentry/browser";
@@ -16,7 +21,6 @@ import { createBrowserHistory } from "history";
 import * as React from "react";
 import { OverlayProvider } from "react-aria";
 import * as ReactDOM from "react-dom";
-import { Router } from "react-router-dom";
 
 const localStoragePrefixesThatAreSafeToRemove = ["__mpq_"];
 
@@ -39,12 +43,12 @@ function reportAndFixOversizedLocalStorage() {
     .filter(([_key, len]) => len > 500000);
   if (report.length > 0) {
     Sentry.captureMessage(
-      `Found oversized localStorage: ${JSON.stringify(report)}`
+      `Found oversized localStorage: ${JSON.stringify(report)}`,
     );
     for (const [key, _len] of report) {
       if (
         localStoragePrefixesThatAreSafeToRemove.some((prefix) =>
-          key.startsWith(prefix)
+          key.startsWith(prefix),
         )
       ) {
         localStorage.removeItem(key);
@@ -73,7 +77,7 @@ export function main() {
       source?: string,
       lineno?: number,
       colno?: number,
-      error?: Error
+      error?: Error,
     ) => {
       // We check `source` to weed out errors that come from
       // the console.
@@ -84,6 +88,8 @@ export function main() {
   }
 
   applyDevFlagOverrides(initClientFlags(DEVFLAGS));
+
+  configureAntdStatics();
 
   initObservability();
 
@@ -128,7 +134,7 @@ export function main() {
       <HostFrameCtxProvider>
         <Shell />
       </HostFrameCtxProvider>,
-      appContainerElement
+      appContainerElement,
     );
   }
 
@@ -137,10 +143,12 @@ export function main() {
 
 export function Shell() {
   const hostFrameCtx = useHostFrameCtxIfHostFrame();
-  const history = hostFrameCtx ? hostFrameCtx.history : createBrowserHistory();
+  const [history] = React.useState(() =>
+    hostFrameCtx ? hostFrameCtx.history : createBrowserHistory(),
+  );
 
   const isProjectPathRef = React.useRef(
-    isProjectPath(history.location.pathname)
+    isProjectPath(history.location.pathname),
   );
 
   React.useEffect(() => {
@@ -148,9 +156,9 @@ export function Shell() {
       return;
     }
 
-    const onHistoryChange = ({ pathname }) => {
+    return history.listen(({ location }) => {
       const studioPlaceholder = getStudioPlaceholderElement();
-      const _isProjectPath = isProjectPath(pathname);
+      const _isProjectPath = isProjectPath(location.pathname);
 
       if (_isProjectPath && !isProjectPathRef.current) {
         isProjectPathRef.current = true;
@@ -161,18 +169,17 @@ export function Shell() {
         studioPlaceholder.classList.remove("visible");
         studioPlaceholder.classList.remove("fadeOut");
       }
-    };
-
-    history.listen(onHistoryChange);
+    });
   }, []);
 
   return (
-    // @ts-ignore
-    <Router history={history}>
-      <OverlayProvider style={{ width: "100%", height: "100%" }}>
-        <Root />
-      </OverlayProvider>
-    </Router>
+    <HistoryProvider history={history}>
+      <AntdConfigProvider>
+        <OverlayProvider style={{ width: "100%", height: "100%" }}>
+          <Root />
+        </OverlayProvider>
+      </AntdConfigProvider>
+    </HistoryProvider>
   );
 }
 
@@ -183,7 +190,7 @@ function monkeyPatchConsoleLog() {
   let finalConsoleLog = console.log;
   let innerConsoleLog = false;
   const monkeyPatchConsoleLogValue = (
-    previousConsoleLog: typeof console.log
+    previousConsoleLog: typeof console.log,
   ) => {
     finalConsoleLog = (...args: any[]) => {
       if (innerConsoleLog) {
@@ -209,10 +216,11 @@ function monkeyPatchConsoleLog() {
               const filtered = Array.isArray(arg)
                 ? "[ Array ]"
                 : isLiteralObject(arg)
-                ? "[ Object ]"
-                : `[ ${
-                    swallow(() => arg.typeTag as string) || arg.constructor.name
-                  } ]`;
+                  ? "[ Object ]"
+                  : `[ ${
+                      swallow(() => arg.typeTag as string) ||
+                      arg.constructor.name
+                    } ]`;
               visitedObjects.set(arg, filtered);
               return filtered;
             } else {
@@ -223,7 +231,7 @@ function monkeyPatchConsoleLog() {
                   ...(arg.length > MAX_WIDTH
                     ? [...arg.slice(0, MAX_WIDTH), "..."]
                     : arg
-                  ).map((subArg) => sanitizeLogArg(subArg, depth + 1))
+                  ).map((subArg) => sanitizeLogArg(subArg, depth + 1)),
                 );
                 return filtered;
               } else {
@@ -247,7 +255,7 @@ function monkeyPatchConsoleLog() {
                               arg.constructor.name,
                           ],
                         ]),
-                  ])
+                  ]),
                 );
                 return filtered;
               }

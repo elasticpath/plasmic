@@ -108,11 +108,11 @@ class SizeSection_ extends StyleComponent<
       makeVariantedStylesHelperFromCurrentCtx(this.studioCtx());
 
     const isMinMaxWidthSet = isSetOrInherited(
-      getValueSetState(...this.definedIndicators("min-width", "max-width"))
+      getValueSetState(...this.definedIndicators("min-width", "max-width")),
     );
 
     const isMinMaxHeightSet = isSetOrInherited(
-      getValueSetState(...this.definedIndicators("min-width", "max-width"))
+      getValueSetState(...this.definedIndicators("min-width", "max-width")),
     );
 
     const tpl =
@@ -175,7 +175,7 @@ class SizeSection_ extends StyleComponent<
               },
               {
                 collapsible: !isSetOrInherited(
-                  getValueSetState(...this.definedIndicators("min-width"))
+                  getValueSetState(...this.definedIndicators("min-width")),
                 ),
                 content: (
                   <FullRow>
@@ -195,7 +195,7 @@ class SizeSection_ extends StyleComponent<
               },
               {
                 collapsible: !isSetOrInherited(
-                  getValueSetState(...this.definedIndicators("max-width"))
+                  getValueSetState(...this.definedIndicators("max-width")),
                 ),
                 content: (
                   <FullRow>
@@ -230,7 +230,7 @@ class SizeSection_ extends StyleComponent<
               },
               {
                 collapsible: !isSetOrInherited(
-                  getValueSetState(...this.definedIndicators("min-height"))
+                  getValueSetState(...this.definedIndicators("min-height")),
                 ),
                 content: (
                   <FullRow>
@@ -250,7 +250,7 @@ class SizeSection_ extends StyleComponent<
               },
               {
                 collapsible: !isSetOrInherited(
-                  getValueSetState(...this.definedIndicators("max-height"))
+                  getValueSetState(...this.definedIndicators("max-height")),
                 ),
                 content: (
                   <FullRow>
@@ -270,7 +270,7 @@ class SizeSection_ extends StyleComponent<
               },
               {
                 collapsible: !isSetOrInherited(
-                  getValueSetState(...this.definedIndicators("aspect-ratio"))
+                  getValueSetState(...this.definedIndicators("aspect-ratio")),
                 ),
                 content: (
                   <FullRow>
@@ -311,19 +311,19 @@ class SizeSection_ extends StyleComponent<
                 collapsible:
                   !isSetOrInherited(
                     getValueSetState(
-                      ...this.definedIndicators("flex-grow", "flex-shrink")
-                    )
+                      ...this.definedIndicators("flex-grow", "flex-shrink"),
+                    ),
                   ) &&
                   !isSetOrInherited(
-                    getValueSetState(...this.definedIndicators("flex-basis"))
+                    getValueSetState(...this.definedIndicators("flex-basis")),
                   ),
                 content: <SectionSeparator className="mv-m" />,
               },
               {
                 collapsible: !isSetOrInherited(
                   getValueSetState(
-                    ...this.definedIndicators("flex-grow", "flex-shrink")
-                  )
+                    ...this.definedIndicators("flex-grow", "flex-shrink"),
+                  ),
                 ),
                 content: (
                   <FlexGrowControls expsProvider={this.props.expsProvider} />
@@ -331,7 +331,7 @@ class SizeSection_ extends StyleComponent<
               },
               {
                 collapsible: !isSetOrInherited(
-                  getValueSetState(...this.definedIndicators("flex-basis"))
+                  getValueSetState(...this.definedIndicators("flex-basis")),
                 ),
                 content: (
                   <LabeledStyleDimItemRow
@@ -358,7 +358,7 @@ class SizeSection_ extends StyleComponent<
 export const SizeSection = observer(SizeSection_);
 
 export const SizeWidthOnlySection = observer(function SizeWidthOnlySection(
-  props: StyleComponentProps
+  props: StyleComponentProps,
 ) {
   const { expsProvider } = props;
   const studioCtx = expsProvider.studioCtx;
@@ -512,7 +512,7 @@ const SizeControl = observer(function SizeRow(props: {
             exp.set("justify-self", "flex-start");
           }
         }
-      })
+      }),
     );
   };
 
@@ -526,7 +526,7 @@ const SizeControl = observer(function SizeRow(props: {
           expsProvider.studioCtx,
           expsProvider.forDom(),
           expsProvider.mergedExp,
-          prop
+          prop,
         ).renderConvertMenuItems()
       }
       disabledTooltip={disabledTooltip}
@@ -661,7 +661,7 @@ const FlexGrowControls = observer(function FlexGrowControls(props: {
   const renderSizing = (
     prop: "flex-grow" | "flex-shrink",
     title: string,
-    tooltip: string
+    tooltip: string,
   ) => {
     const val = prop == "flex-grow" ? exp().get(prop) : getFlexShrinkVal(prop);
     const isNonzero = +val > 0;
@@ -681,7 +681,7 @@ const FlexGrowControls = observer(function FlexGrowControls(props: {
           spawn(
             expsProvider.studioCtx.changeUnsafe(() => {
               exp().set(prop, checked ? "1" : "0");
-            })
+            }),
           );
         }}
         valueSlot={
@@ -693,7 +693,7 @@ const FlexGrowControls = observer(function FlexGrowControls(props: {
                   { dimfg: +val === 0 || +val === 1 },
                   "code",
                   "pointer",
-                  className
+                  className,
                 )}
                 {...restProps}
               />
@@ -708,7 +708,7 @@ const FlexGrowControls = observer(function FlexGrowControls(props: {
                 spawn(
                   expsProvider.studioCtx.changeUnsafe(() => {
                     exp().set(prop, String(num));
-                  })
+                  }),
                 );
                 return true;
               }
@@ -769,13 +769,13 @@ export const PageSizePanelSection = observer(
     const { expsProvider } = props;
     assert(
       expsProvider instanceof TplExpsProvider,
-      "ExpsProvider should be TplExpsProvider"
+      "ExpsProvider should be TplExpsProvider",
     );
     const component = expsProvider.viewCtx.currentComponent();
     const arenaFrame = expsProvider.viewCtx.arenaFrame();
     assert(
       isPageComponent(component),
-      "Section should only be shown to Page Components"
+      "Section should only be shown to Page Components",
     );
     const sizeType = getPageFrameSizeType(arenaFrame);
     return (
@@ -844,7 +844,7 @@ export const PageSizePanelSection = observer(
         )}
       </SidebarSection>
     );
-  }
+  },
 );
 
 export const StretchyComponentSizePanelSection = observer(
@@ -854,7 +854,7 @@ export const StretchyComponentSizePanelSection = observer(
     const { expsProvider } = props;
     assert(
       expsProvider instanceof TplExpsProvider,
-      "ExpsProvider should be TplExpsProvider"
+      "ExpsProvider should be TplExpsProvider",
     );
 
     return (
@@ -873,7 +873,7 @@ export const StretchyComponentSizePanelSection = observer(
         </FullRow>
       </SidebarSection>
     );
-  }
+  },
 );
 
 function isSvg(expsProvider: ExpsProvider) {

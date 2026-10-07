@@ -27,7 +27,7 @@ const TRACE_CARRIER_KEYS = ["traceparent", "tracestate", "baggage"] as const;
  * without leaking the rest of the environment into the carrier.
  */
 export function pickTraceCarrier(
-  source: Record<string, string | undefined>
+  source: Record<string, string | undefined>,
 ): TraceCarrier {
   const carrier: TraceCarrier = {};
   for (const key of TRACE_CARRIER_KEYS) {
@@ -43,7 +43,10 @@ export async function withSpan<T>(
   name: string,
   f: () => Promise<T>,
   msg?: string,
+<<<<<<< HEAD
   payload?: Properties
+=======
+>>>>>>> upstream/master
 ) {
   const suffix = msg ? `: ${msg}` : "";
 
@@ -55,16 +58,22 @@ export async function withSpan<T>(
   return tracer.startActiveSpan(name, async (span) => {
     try {
       const result = await f();
+<<<<<<< HEAD
       const durationMs = new Date().getTime() - start;
       logger().info(`${name} took ${durationMs}ms${suffix}`, {
         operation_name: name,
         duration_ms: durationMs,
         ...payload,
       });
+=======
+      logger().info(
+        `span "${name}" finished in ${new Date().getTime() - start}ms${suffix}`,
+      );
+>>>>>>> upstream/master
       return result;
     } catch (err) {
       logger().error(
-        `span "${name}" failed in ${new Date().getTime() - start}ms${suffix}`
+        `span "${name}" failed in ${new Date().getTime() - start}ms${suffix}`,
       );
       throw err;
     } finally {

@@ -989,7 +989,11 @@
         }
       },
       "deps": [],
+<<<<<<< HEAD
       "version": "259-repoint-ep-commerce-bindings"
+=======
+      "version": "258-add-page-href-encode"
+>>>>>>> upstream/master
     }
   ],
   [
@@ -3032,7 +3036,8 @@
           "page": { "__ref": "BL17cGxoAT6A" },
           "params": { "slug": { "__ref": "znywGnX6gzgg" } },
           "query": {},
-          "fragment": null
+          "fragment": null,
+          "encode": false
         },
         "znywGnX6gzgg": {
           "__type": "TemplatedString",
@@ -3304,7 +3309,11 @@
         }
       },
       "deps": ["b7175497-daf3-4b57-bd37-ec3cbe13be6c"],
+<<<<<<< HEAD
       "version": "259-repoint-ep-commerce-bindings"
+=======
+      "version": "258-add-page-href-encode"
+>>>>>>> upstream/master
     }
   ]
 ]

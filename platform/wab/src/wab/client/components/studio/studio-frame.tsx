@@ -1,21 +1,21 @@
+import { reportError } from "@/wab/client/ErrorNotifications";
 import {
   getLoginRouteWithContinuation,
   parseProjectLocation,
 } from "@/wab/client/cli-routes";
 import HostUrlInput from "@/wab/client/components/HostUrlInput";
 import { PublicLink } from "@/wab/client/components/PublicLink";
-import { TopFrameCopilotToolsBridge } from "@/wab/client/components/studio/TopFrameCopilotToolsBridge";
 import { HostLoadTimeoutPrompt } from "@/wab/client/components/TopFrame/HostLoadTimeoutPrompt";
 import {
   TopFrameChrome,
   useTopFrameState,
 } from "@/wab/client/components/TopFrame/TopFrameChrome";
+import { TopFrameCopilotToolsBridge } from "@/wab/client/components/studio/TopFrameCopilotToolsBridge";
 import { useAppCtx } from "@/wab/client/contexts/AppContexts";
-import { reportError } from "@/wab/client/ErrorNotifications";
 import { buildPlasmicStudioArgsHash } from "@/wab/client/frame-ctx/plasmic-studio-args";
 import {
-  handleIframeLoad,
   TopFrameCtxProvider,
+  handleIframeLoad,
 } from "@/wab/client/frame-ctx/top-frame-ctx";
 import { usePreventDefaultBrowserPinchToZoomBehavior } from "@/wab/client/hooks/usePreventDefaultBrowserPinchToZoomBehavior";
 import { useForceUpdate } from "@/wab/client/useForceUpdate";
@@ -29,12 +29,11 @@ import {
   MainBranchId,
   ProjectId,
 } from "@/wab/shared/ApiSchema";
+import { accessLevelRank, isUnownedProject } from "@/wab/shared/EntUtil";
 import { maybeOne, spawn } from "@/wab/shared/common";
 import { DEVFLAGS } from "@/wab/shared/devflags";
-import { accessLevelRank } from "@/wab/shared/EntUtil";
 import { getAccessLevelToResource } from "@/wab/shared/perms";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
 import { notification } from "antd";
 import Modal from "antd/lib/modal/Modal";
 import { Location } from "history";
@@ -67,14 +66,18 @@ export function StudioFrame({
     React.useState(false);
   const refreshProjectAndPerms = React.useCallback(
     () => setFetchProjectCount(fetchProjectCount + 1),
-    [fetchProjectCount]
+    [fetchProjectCount],
   );
-  const toggleAdminMode = React.useCallback(async (newMode: boolean) => {
-    await appCtx.api.updateSelfAdminMode({
-      adminModeDisabled: newMode,
-    });
-    await refreshStudio();
-  }, []);
+  const toggleAdminMode = React.useCallback(
+    async (newMode: boolean) => {
+      await appCtx.api.updateSelfAdminMode({
+        adminModeDisabled: newMode,
+      });
+      await appCtx.reloadAll();
+      await refreshStudio();
+    },
+    [appCtx, refreshStudio],
+  );
 
   const fetchBranches = React.useCallback(
     moize(
@@ -83,23 +86,21 @@ export function StudioFrame({
         isPromise: true,
         maxAge: 5 * 60 * 1000,
         maxArgs: 0,
-      }
+      },
     ),
-    [appCtx, projectId]
+    [appCtx, projectId],
   );
 
   const refreshBranchData = React.useCallback(
     () => [...fetchBranches.keys()].forEach((key) => fetchBranches.remove(key)),
-    [fetchBranches]
+    [fetchBranches],
   );
 
-  const previousLocation = React.useRef<Location<unknown>>(
-    appCtx.history.location
-  );
+  const previousLocation = React.useRef<Location>(appCtx.history.location);
   React.useEffect(() => {
-    const dispose = appCtx.history.listen((newLocation) => {
+    const dispose = appCtx.history.listen(({ location: newLocation }) => {
       const oldBranchName = parseProjectLocation(
-        previousLocation.current
+        previousLocation.current,
       )?.branchName;
       const newBranchName = parseProjectLocation(newLocation)?.branchName;
       if (project && oldBranchName !== newBranchName) {
@@ -114,7 +115,7 @@ export function StudioFrame({
             ) {
               await refreshStudio();
             }
-          })()
+          })(),
         );
       }
       previousLocation.current = newLocation;
@@ -142,11 +143,11 @@ export function StudioFrame({
         }
         let maybeBranch: ApiBranch | undefined = undefined;
         const branchName = parseProjectLocation(
-          appCtx.history.location
+          appCtx.history.location,
         )?.branchName;
         if (branchName && branchName !== MainBranchId) {
           maybeBranch = (await fetchBranches()).find(
-            (b) => b.name === branchName
+            (b) => b.name === branchName,
           );
         }
         const hostUrl = getHostUrl(proj, maybeBranch, appCtx.appConfig);
@@ -181,7 +182,7 @@ export function StudioFrame({
           ? getAccessLevelToResource(
               { type: "project", resource: proj },
               appCtx.selfInfo,
-              permissions
+              permissions,
             )
           : "blocked";
         setPerms(permissions);
@@ -190,8 +191,10 @@ export function StudioFrame({
           accessLevelRank(proj.defaultAccessLevel)
             ? userAccessLevel
             : proj.defaultAccessLevel;
+        // An unowned project is editable by anyone, matching the server's permission check.
         setEditorPerm(
-          accessLevelRank(accessLevel) >= accessLevelRank("content")
+          accessLevelRank(accessLevel) >= accessLevelRank("content") ||
+            isUnownedProject(proj),
         );
         setProject(proj);
         if (appCtx.appConfig.defaultHostUrl !== DEVFLAGS.defaultHostUrl) {
@@ -251,7 +254,7 @@ export function StudioFrame({
         <br />
         <br />
         Enter the domain <code>{hostOrigin}</code> to add it to your{" "}
-        <PublicLink href={fillRoute(APP_ROUTES.settings, {})}>
+        <PublicLink href={APP_ROUTES.settings.fill({})}>
           trusted list
         </PublicLink>
         .

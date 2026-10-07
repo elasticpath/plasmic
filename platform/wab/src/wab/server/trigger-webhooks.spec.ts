@@ -1,8 +1,8 @@
-/** @jest-environment node */
+/** @vitest-environment node */
 import {
   setupSsrfTestServers,
   SsrfTestServers,
-} from "@/wab/server/testonly/test-server";
+} from "@/wab/server/__testonly__/test-server";
 import { triggerWebhookOnly } from "@/wab/server/trigger-webhooks";
 
 describe("triggerWebhookOnly", () => {

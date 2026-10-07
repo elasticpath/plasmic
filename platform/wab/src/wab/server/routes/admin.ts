@@ -24,16 +24,11 @@ import {
   superDbMgr,
   userDbMgr,
 } from "@/wab/server/routes/util";
-import {
-  TutorialType,
-  resetTutorialDb as doResetTutorialDb,
-} from "@/wab/server/tutorialdb/tutorialdb-utils";
 import { BadRequestError, NotFoundError } from "@/wab/shared/ApiErrors/errors";
 import {
   ApiFeatureTier,
   ApiTeamDiscourseInfo,
   BranchId,
-  DataSourceId,
   FeatureTierId,
   ListFeatureTiersResponse,
   ListUsersResponse,
@@ -42,13 +37,11 @@ import {
   ProjectId,
   SendEmailsResponse,
   TeamId,
-  TutorialDbId,
   UpdateSelfAdminModeRequest,
   UserId,
 } from "@/wab/shared/ApiSchema";
 import { Bundle } from "@/wab/shared/bundler";
 import {
-  assert,
   ensure,
   ensureType,
   uncheckedCast,
@@ -94,8 +87,13 @@ export async function changeTeamOwner(req: Request, res: Response) {
   const mgr = superDbMgr(req);
   const teamId = req.body.teamId;
   const newOwner = req.body.newOwner;
+  const allowUnpaidTransfer = req.body.allowUnpaidTransfer === true;
 
-  await (teamId && newOwner && mgr.changeTeamOwner(teamId, newOwner));
+  await (teamId &&
+    newOwner &&
+    mgr.changeTeamOwner(teamId, newOwner, {
+      allowUnpaidTransfer,
+    }));
   res.json({});
 }
 
@@ -122,7 +120,7 @@ export async function listTeams(req: Request, res: Response) {
     throw new BadRequestError("must filter by userId or featureTierIds");
   } else if (userId && featureTierIds) {
     throw new BadRequestError(
-      "cannot filter by both userId and featureTierIds"
+      "cannot filter by both userId and featureTierIds",
     );
   }
 
@@ -224,7 +222,7 @@ export async function adminLoginAs(req: Request, res: Response) {
   const email = req.body.email;
   const user = ensure(
     await mgr.tryGetUserByEmail(email),
-    () => `User not found`
+    () => `User not found`,
   );
   await new Promise<void>((resolve, reject) => {
     doLogin(req, user, (err) => {
@@ -297,7 +295,7 @@ export async function saveProjectRevisionData(req: Request, res: Response) {
 
     if (rev.revision !== req.body.revision) {
       throw new BadRequestError(
-        `Revision has since been updated from ${req.body.revision} to ${rev.revision}`
+        `Revision has since been updated from ${req.body.revision} to ${rev.revision}`,
       );
     }
 
@@ -332,12 +330,12 @@ export async function getPkgVersion(req: Request, res: Response) {
   let pkgVersion: PkgVersion;
   if (req.query.pkgVersionId) {
     pkgVersion = await mgr.getPkgVersionById(
-      req.query.pkgVersionId as PkgVersionId
+      req.query.pkgVersionId as PkgVersionId,
     );
   } else if (req.query.pkgId) {
     pkgVersion = await mgr.getPkgVersion(
       req.query.pkgId as string,
-      req.query.version as string | undefined
+      req.query.version as string | undefined,
     );
   } else {
     throw new BadRequestError("Must specify either PkgVersion ID or Pkg ID");
@@ -415,25 +413,6 @@ export async function getSsoByTeam(req: Request, res: Response) {
   res.json(sso ?? null);
 }
 
-export async function createTutorialDb(req: Request, res: Response) {
-  logger().info(`Creating tutorialDB of type ${req.body.type}`);
-  const mgr = superDbMgr(req);
-  const type = req.body.type as TutorialType;
-  const result = await mgr.createTutorialDb(type);
-  res.json({ id: result.id, ...result.info });
-}
-
-export async function resetTutorialDb(req: Request, res: Response) {
-  const mgr = superDbMgr(req);
-  const sourceId = req.body.sourceId as DataSourceId;
-  const source = await mgr.getDataSourceById(sourceId);
-  assert(source.source === "tutorialdb", "Can only reset tutorialdb");
-  const tutorialDbId = source.credentials.tutorialDbId as TutorialDbId;
-  const tutorialDb = await mgr.getTutorialDb(tutorialDbId);
-  await doResetTutorialDb(tutorialDb.info);
-  res.json({});
-}
-
 export async function getTeamByWhiteLabelName(req: Request, res: Response) {
   const mgr = superDbMgr(req);
   const team = await mgr.getTeamByWhiteLabelName(req.query.name as string);
@@ -446,7 +425,7 @@ export async function updateTeamWhiteLabelInfo(req: Request, res: Response) {
   const team = await mgr.getTeamById(req.body.id as TeamId);
   const team2 = await mgr.updateTeamWhiteLabelInfo(
     team.id,
-    req.body.whiteLabelInfo
+    req.body.whiteLabelInfo,
   );
   res.json({ team: team2 });
 }
@@ -455,7 +434,7 @@ export async function updateTeamWhiteLabelName(req: Request, res: Response) {
   const mgr = superDbMgr(req);
   const team = await mgr.updateTeamWhiteLabelName(
     req.body.id as TeamId,
-    req.body.whiteLabelName
+    req.body.whiteLabelName,
   );
   res.json({ team: team });
 }
@@ -463,7 +442,7 @@ export async function updateTeamWhiteLabelName(req: Request, res: Response) {
 export async function updateSelfAdminMode(req: Request, res: Response) {
   const mgr = superDbMgr(req);
   const disabled = uncheckedCast<UpdateSelfAdminModeRequest>(
-    req.body
+    req.body,
   ).adminModeDisabled;
   await mgr.updateAdminMode({
     id: getUser(req).id,
@@ -484,7 +463,7 @@ export async function getAppAuthMetrics(req: Request, res: Response) {
   const { recency, threshold } = req.query;
   const metrics = await mgr.getAppAuthMetrics(
     recency ? parseInt(recency as string) : undefined,
-    threshold ? parseInt(threshold as string) : undefined
+    threshold ? parseInt(threshold as string) : undefined,
   );
   res.json({ metrics });
 }
@@ -509,7 +488,7 @@ export async function getProjectAppMeta(req: Request, res: Response) {
   }
 
   const dataSources = await Promise.all(
-    uniq(sourceIds).map((id) => mgr.getDataSourceById(id))
+    uniq(sourceIds).map((id) => mgr.getDataSourceById(id)),
   );
 
   const meta = {
@@ -530,7 +509,7 @@ export async function getTeamDiscourseInfo(req: Request, res: Response) {
   const teamId = req.params.teamId as TeamId;
   const info: ApiTeamDiscourseInfo | undefined = await doGetTeamDiscourseInfo(
     mgr,
-    teamId
+    teamId,
   );
   if (info) {
     res.json(info);
@@ -546,8 +525,8 @@ export async function syncTeamDiscourseInfo(req: Request, res: Response) {
   const name = req.body.name;
   res.json(
     uncheckedCast<ApiTeamDiscourseInfo>(
-      await doSyncTeamDiscourseInfo(mgr, teamId, slug, name)
-    )
+      await doSyncTeamDiscourseInfo(mgr, teamId, slug, name),
+    ),
   );
 }
 
@@ -555,8 +534,8 @@ export async function sendTeamSupportWelcomeEmail(req: Request, res: Response) {
   const teamId = req.params.teamId as TeamId;
   res.json(
     uncheckedCast<SendEmailsResponse>(
-      await doSendTeamSupportWelcomeEmail(req, teamId)
-    )
+      await doSendTeamSupportWelcomeEmail(req, teamId),
+    ),
   );
 }
 
@@ -566,7 +545,7 @@ export async function getProjectBranchesMetadata(req: Request, res: Response) {
   const branches = await mgr.listBranchesForProject(projectId, true);
   const pkg = ensure(
     await mgr.getPkgByProjectId(projectId),
-    `No pkg for project ${projectId}`
+    `No pkg for project ${projectId}`,
   );
   const pkgVersions = await mgr.listPkgVersions(pkg.id, {
     includeData: false,

@@ -3,6 +3,7 @@ import {
   customTeamApiUserAuth,
 } from "@/wab/server/auth/custom-api-auth";
 import { extractSsoConfig } from "@/wab/server/auth/passport-cfg";
+import { hasBlockedEmailDomain } from "@/wab/server/auth/signup-policy";
 import { doLogin, doLogout } from "@/wab/server/auth/util";
 import {
   DbMgr,
@@ -49,13 +50,9 @@ import {
   UpdatePasswordResponse,
   UpdateSelfRequest,
 } from "@/wab/shared/ApiSchema";
-import {
-  ensureType,
-  extractDomainFromEmail,
-  isValidEmail,
-  uncheckedCast,
-} from "@/wab/shared/common";
+import { ensureType, uncheckedCast } from "@/wab/shared/common";
 import { isGoogleAuthRequiredEmailDomain } from "@/wab/shared/devflag-utils";
+import { parseEmailAddress } from "@/wab/shared/email-address";
 import { getPublicUrl } from "@/wab/shared/urls";
 import { captureException } from "@/wab/server/observability/datadog";
 import { NextFunction, Request, Response } from "express-serve-static-core";
@@ -80,7 +77,7 @@ export async function login(req: Request, res: Response, next: NextFunction) {
               ensureType<LoginResponse>({
                 status: false,
                 reason: "IncorrectLoginError",
-              })
+              }),
             );
           } else {
             doLogin(req, user, (err2) => {
@@ -90,13 +87,13 @@ export async function login(req: Request, res: Response, next: NextFunction) {
               logger().info(
                 `logged in as ${
                   getUser(req, { allowUnverifiedEmail: true }).email
-                }`
+                }`,
               );
               res.json(ensureType<LoginResponse>({ status: true, user }));
             });
           }
-        })().then(() => resolve())
-    )(req, res, next)
+        })().then(() => resolve()),
+    )(req, res, next),
   );
 }
 
@@ -124,20 +121,19 @@ export async function createUserFull({
     authorizationPath: string;
   };
 }): Promise<User> {
-  const domain = extractDomainFromEmail(email).toLowerCase();
-  const blockedDomains = req.devflags.blockedSignupDomains.map((d) =>
-    d.toLowerCase()
-  );
-  const blocked = blockedDomains.some(
-    (blockedDomain) =>
-      domain === blockedDomain || domain.endsWith("." + blockedDomain)
-  );
-  if (blocked) {
+  const parsedEmail = parseEmailAddress(email);
+  if (!parsedEmail) {
+    throw new BadRequestError();
+  }
+  if (hasBlockedEmailDomain(parsedEmail)) {
+    logger().info(
+      `Blocked signup from email domain ${parsedEmail.normalizedDomain}`,
+    );
     throw new BadRequestError();
   }
   const signUpPromotionCode = getPromotionCodeCookie(req);
   const user = await mgr.createUser({
-    email,
+    email: parsedEmail,
     password,
     firstName,
     lastName,
@@ -147,8 +143,7 @@ export async function createUserFull({
           needsSurvey: !noWelcomeEmailAndSurvey,
         }
       : {}),
-    needsTeamCreationPrompt:
-      !noWelcomeEmailAndSurvey && req.devflags.createTeamPrompt,
+    needsTeamCreationPrompt: !noWelcomeEmailAndSurvey,
   });
 
   const emailVerificationToken = password
@@ -157,16 +152,21 @@ export async function createUserFull({
 
   if (!noWelcomeEmailAndSurvey) {
     if (!appInfo) {
-      await sendWelcomeEmail(req, email, emailVerificationToken, nextPath);
+      await sendWelcomeEmail(
+        req,
+        parsedEmail.normalized,
+        emailVerificationToken,
+        nextPath,
+      );
     } else {
       // If we are dealing with an app, we don't want to send the welcome email.
       // Just a verification email.
       await sendEmailVerificationToUser(
         req,
-        email,
+        parsedEmail.normalized,
         emailVerificationToken ?? "",
         appInfo.authorizationPath,
-        appInfo.appName
+        appInfo.appName,
       );
     }
   }
@@ -204,7 +204,7 @@ export async function signUp(req: Request, res: Response, next: NextFunction) {
       ensureType<SignUpResponse>({
         status: false,
         reason: "BadEmailError",
-      })
+      }),
     );
     return;
   }
@@ -221,13 +221,13 @@ export async function signUp(req: Request, res: Response, next: NextFunction) {
             appName: appInfo.appName,
             nextPath: appInfo.authorizationPath,
           }
-        : undefined
+        : undefined,
     );
     res.json(
       ensureType<SignUpResponse>({
         status: false,
         reason: "EmailSent",
-      })
+      }),
     );
     return;
   }
@@ -237,17 +237,17 @@ export async function signUp(req: Request, res: Response, next: NextFunction) {
       ensureType<SignUpResponse>({
         status: false,
         reason: "MissingFieldsError",
-      })
+      }),
     );
     return;
   }
 
-  if (!isValidEmail(email)) {
+  if (!parseEmailAddress(email)) {
     res.json(
       ensureType<SignUpResponse>({
         status: false,
         reason: "BadEmailError",
-      })
+      }),
     );
     return;
   }
@@ -279,21 +279,21 @@ export async function signUp(req: Request, res: Response, next: NextFunction) {
         ensureType<SignUpResponse>({
           status: false,
           reason: "WeakPasswordError",
-        })
+        }),
       );
     } else if (error instanceof PwnedPasswordError) {
       res.json(
         ensureType<SignUpResponse>({
           status: false,
           reason: "PwnedPasswordError",
-        })
+        }),
       );
     } else if (error instanceof PasswordTooLongError) {
       res.json(
         ensureType<SignUpResponse>({
           status: false,
           reason: "PasswordTooLongError",
-        })
+        }),
       );
     } else {
       throw error;
@@ -303,7 +303,7 @@ export async function signUp(req: Request, res: Response, next: NextFunction) {
 
 export async function logout(req: Request, res: Response) {
   logger().info(
-    `logging out as ${getUser(req, { allowUnverifiedEmail: true }).email}`
+    `logging out as ${getUser(req, { allowUnverifiedEmail: true }).email}`,
   );
   await doLogout(req, res);
   res.json({});
@@ -319,7 +319,7 @@ export async function self(req: Request, res: Response) {
       user,
       usesOauth,
       observer: req.cookies?.["plasmic-observer"] === "true",
-    })
+    }),
   );
 }
 
@@ -351,7 +351,7 @@ export async function updateSelfPassword(req: Request, res: Response) {
         ensureType<UpdatePasswordResponse>({
           status: false,
           reason: error.name,
-        })
+        }),
       );
       return;
     } else {
@@ -363,7 +363,7 @@ export async function updateSelfPassword(req: Request, res: Response) {
   res.json(
     ensureType<UpdatePasswordResponse>({
       status: true,
-    })
+    }),
   );
 }
 
@@ -373,7 +373,7 @@ export async function deleteSelf(req: Request, res: Response) {
   const teams = await mgr.getSolelyOwnedTeams();
   if (teams.length > 0) {
     throw new PreconditionFailedError(
-      "Please transfer or delete organizations you own before deleting your account."
+      "Please transfer or delete organizations you own before deleting your account.",
     );
   }
   await mgr.deleteUser(user, false);
@@ -397,7 +397,7 @@ export async function forgotPassword(req: Request, res: Response) {
             appName,
             nextPath,
           }
-        : undefined
+        : undefined,
     );
   }
 
@@ -420,7 +420,7 @@ export async function resetPassword(req: Request, res: Response) {
       ensureType<ResetPasswordResponse>({
         status: false,
         reason: "InvalidToken",
-      })
+      }),
     );
     return;
   }
@@ -431,7 +431,7 @@ export async function resetPassword(req: Request, res: Response) {
       ensureType<ResetPasswordResponse>({
         status: false,
         reason: "InvalidToken",
-      })
+      }),
     );
     return;
   }
@@ -443,7 +443,7 @@ export async function resetPassword(req: Request, res: Response) {
       ensureType<ResetPasswordResponse>({
         status: false,
         reason: "InvalidToken",
-      })
+      }),
     );
     return;
   }
@@ -456,7 +456,7 @@ export async function resetPassword(req: Request, res: Response) {
         ensureType<ResetPasswordResponse>({
           status: false,
           reason: "WeakPasswordError",
-        })
+        }),
       );
       return;
     }
@@ -465,7 +465,7 @@ export async function resetPassword(req: Request, res: Response) {
         ensureType<ResetPasswordResponse>({
           status: false,
           reason: "PwnedPasswordError",
-        })
+        }),
       );
       return;
     }
@@ -474,7 +474,7 @@ export async function resetPassword(req: Request, res: Response) {
         ensureType<ResetPasswordResponse>({
           status: false,
           reason: "PasswordTooLongError",
-        })
+        }),
       );
       return;
     }
@@ -498,21 +498,21 @@ export async function confirmEmail(req: Request, res: Response) {
       ensureType<ConfirmEmailResponse>({
         status: false,
         reason: "InvalidToken",
-      })
+      }),
     );
     return;
   }
 
   const emailVerificationRequest = await mgr.compareEmailVerificationToken(
     user,
-    token
+    token,
   );
   if (!emailVerificationRequest) {
     res.json(
       ensureType<ConfirmEmailResponse>({
         status: false,
         reason: "InvalidToken",
-      })
+      }),
     );
     return;
   }
@@ -555,14 +555,14 @@ export async function getEmailVerificationToken(req: Request, res: Response) {
     ensureType<GetEmailVerificationTokenResponse>({
       status: true,
       token: token,
-    })
+    }),
   );
 }
 
 export async function googleLogin(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   const prompt = req.query.force ? { prompt: "consent" } : {};
   await new Promise<void>((resolve) =>
@@ -573,8 +573,8 @@ export async function googleLogin(
         accessType: "offline",
         scope: ["email", "profile", "openid"],
       } as AuthenticateOptionsGoogle,
-      () => resolve()
-    )(req, res, next)
+      () => resolve(),
+    )(req, res, next),
   );
 }
 
@@ -594,7 +594,7 @@ async function handleOauthCallback(
      */
     beforeLogin?: (user: User) => Promise<boolean>;
     ssoConfig?: SsoConfig;
-  }
+  },
 ) {
   const strategy = ssoConfig ? "sso" : "google";
   const provider = ssoConfig ? ssoConfig.provider : "google";
@@ -607,8 +607,13 @@ async function handleOauthCallback(
           logger().info(`${logPrefix} AUTH CALLBACK`, { err, user, info });
           if (err || !user) {
             const errName = `${err}`;
+<<<<<<< HEAD
             logger().warn(
               `${logPrefix} could not auth due to error: ${errName}`
+=======
+            logger().error(
+              `${logPrefix} could not auth due to error: ${errName}`,
+>>>>>>> upstream/master
             );
             captureException(err);
             res.send(callbackHtml(errName));
@@ -637,15 +642,15 @@ async function handleOauthCallback(
             }
             res.send(callbackHtml("Success"));
           });
-        })().then(() => resolve())
-    )(req, res, next)
+        })().then(() => resolve()),
+    )(req, res, next),
   );
 }
 
 export async function googleCallback(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   await handleOauthCallback(req, res, next, {
     beforeLogin: async (user: User) => {
@@ -698,7 +703,7 @@ async function extractApiTeam(req: Request) {
 export async function teamApiAuth(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   await extractApiTeam(req);
   await customTeamApiAuth(req, res, next);
@@ -711,7 +716,7 @@ export async function teamApiAuth(
 export async function teamApiUserAuth(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   const team = await extractApiTeam(req);
   if (team) {
@@ -747,14 +752,13 @@ export function isPublicApiRequest(req: Request) {
 }
 
 export async function isValidSsoEmail(req: Request, res: Response) {
-  if (
-    req.query.email &&
-    typeof req.query.email === "string" &&
-    isValidEmail(req.query.email)
-  ) {
-    const domain = extractDomainFromEmail(req.query.email);
+  const parsedEmail =
+    typeof req.query.email === "string"
+      ? parseEmailAddress(req.query.email)
+      : null;
+  if (parsedEmail) {
     const db = userDbMgr(req);
-    const config = await db.getSsoConfigByDomain(domain);
+    const config = await db.getSsoConfigByDomain(parsedEmail.normalizedDomain);
     if (config) {
       res.json({ valid: true, tenantId: config.tenantId });
       return;
@@ -766,17 +770,17 @@ export async function isValidSsoEmail(req: Request, res: Response) {
 export async function ssoLogin(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   await new Promise<void>((resolve) =>
-    passport.authenticate("sso", {}, () => resolve())(req, res, next)
+    passport.authenticate("sso", {}, () => resolve())(req, res, next),
   );
 }
 
 export async function ssoCallback(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   const ssoConfig = await extractSsoConfig(req);
   await handleOauthCallback(req, res, next, {
@@ -794,14 +798,14 @@ function callbackHtml(_authStatus: string) {
   return eval(
     "`" +
       fs.readFileSync(__dirname + "/callback.html", { encoding: "utf8" }) +
-      "`"
+      "`",
   );
 }
 
 export async function authApiTokenMiddleware(
   req: Request,
   res: Response | null,
-  next: NextFunction
+  next: NextFunction,
 ) {
   const email = req.headers["x-plasmic-api-user"];
   const token = req.headers["x-plasmic-api-token"];
@@ -828,7 +832,7 @@ export async function authApiTokenMiddleware(
   const { apiToken, user } = await getApiTokenUser(
     mgr,
     email as string,
-    token as string
+    token as string,
   );
   if (!apiToken) {
     throw new UnauthorizedError("Invalid API token");
@@ -838,7 +842,7 @@ export async function authApiTokenMiddleware(
     throw new UnauthorizedError(
       `Error - the email in plasmic.json (${email}) must match the email of the API token (${
         apiToken.user?.email || "<unknown>"
-      }), which is the email you use to sign into Plasmic.`
+      }), which is the email you use to sign into Plasmic.`,
     );
   }
   req.user = user;
@@ -848,7 +852,7 @@ export async function authApiTokenMiddleware(
 export function apiAuth(
   req: Request,
   res: Response | null,
-  next: NextFunction
+  next: NextFunction,
 ) {
   // Simply having a projectIdsAndTokens (even if it's empty/invalid) in the
   // body means we don't have to provide more user friendly checks. The actual
@@ -872,12 +876,12 @@ export function apiAuth(
   if (!req.headers["x-plasmic-api-token"]) {
     // not a API token requests
     throw new UnauthorizedError(
-      "Missing API token - make sure your plasmic.auth have the 'token' field."
+      "Missing API token - make sure your plasmic.auth have the 'token' field.",
     );
   }
   if (!req.headers["x-plasmic-api-user"]) {
     throw new UnauthorizedError(
-      "Missing API user - make sure your plasmic.auth have the 'user' field."
+      "Missing API user - make sure your plasmic.auth have the 'user' field.",
     );
   }
 
@@ -887,7 +891,7 @@ export function apiAuth(
 export async function getApiTokenUser(
   mgr: DbMgr,
   email: string,
-  token: string
+  token: string,
 ) {
   const apiToken = await mgr.getPersonalApiToken(token as string);
   if (!apiToken) {
@@ -909,17 +913,17 @@ export async function getApiTokenUser(
 export async function airtableLogin(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   await new Promise<void>((resolve) =>
-    passport.authenticate("airtable", {}, () => resolve())(req, res, next)
+    passport.authenticate("airtable", {}, () => resolve())(req, res, next),
   );
 }
 
 export async function airtableCallback(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   await new Promise<void>((resolve) =>
     passport.authenticate(
@@ -935,15 +939,15 @@ export async function airtableCallback(
             return;
           }
           res.send(callbackHtml(`Success`));
-        })().then(() => resolve())
-    )(req, res, next)
+        })().then(() => resolve()),
+    )(req, res, next),
   );
 }
 
 export async function googleSheetsLogin(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   const prompt = req.query.force ? { prompt: "consent" } : {};
   await new Promise<void>((resolve) =>
@@ -959,15 +963,15 @@ export async function googleSheetsLogin(
           "https://www.googleapis.com/auth/spreadsheets",
         ],
       } as AuthenticateOptionsGoogle,
-      () => resolve()
-    )(req, res, next)
+      () => resolve(),
+    )(req, res, next),
   );
 }
 
 export async function googleSheetsCallback(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   await new Promise<void>((resolve) =>
     passport.authenticate(
@@ -984,8 +988,8 @@ export async function googleSheetsCallback(
           }
 
           res.send(callbackHtml(`Success`));
-        })().then(() => resolve())
-    )(req, res, next)
+        })().then(() => resolve()),
+    )(req, res, next),
   );
 }
 

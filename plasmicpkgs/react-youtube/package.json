@@ -1,6 +1,6 @@
 {
   "name": "@plasmicpkgs/react-youtube",
-  "version": "7.13.262",
+  "version": "7.13.266",
   "description": "Plasmic registration call for react-youtube",
   "homepage": "https://www.plasmic.app",
   "repository": {
@@ -35,12 +35,12 @@
     "analyze": "size-limit --why"
   },
   "devDependencies": {
-    "@plasmicapp/host": "2.0.15",
+    "@plasmicapp/host": "workspace:*",
     "@types/node": "^14.18.63",
-    "@types/react": "^18",
+    "@types/react": "catalog:",
     "@types/youtube-player": "^5.5.6",
-    "tsdx": "^0.14.1",
-    "tslib": "^2.2.0"
+    "tsdx": "catalog:",
+    "tslib": "catalog:"
   },
   "dependencies": {
     "react-youtube": "9.0.2"

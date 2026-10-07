@@ -1,9 +1,16 @@
 import { logger } from "@/wab/server/observability";
 import { md5 } from "@/wab/server/util/hash";
+import { makeS3Client } from "@/wab/server/util/s3-util";
+import { ensure } from "@/wab/shared/common";
 import { parseDataUrl } from "@/wab/shared/data-urls";
 import { isSVG } from "@/wab/shared/svg-utils";
+<<<<<<< HEAD
 import { captureMessage } from "@/wab/server/observability/datadog";
 import S3 from "aws-sdk/clients/s3";
+=======
+import { Upload } from "@aws-sdk/lib-storage";
+import * as Sentry from "@sentry/node";
+>>>>>>> upstream/master
 import FileType from "file-type";
 import { extension } from "mime-types";
 import { err, ok, Result } from "neverthrow";
@@ -25,7 +32,7 @@ async function getFileType(buffer: Buffer | ArrayBuffer) {
 
 export async function uploadDataUriToS3(
   dataUri: string,
-  opts?: { imageOnly?: boolean }
+  opts?: { imageOnly?: boolean },
 ): Promise<Result<string, Error>> {
   if (!dataUri.startsWith("data:")) {
     // Already on S3
@@ -36,13 +43,13 @@ export async function uploadDataUriToS3(
   const fileBuffer = parsed.toBuffer();
 
   return (await uploadFileToS3(fileBuffer, { ...opts, contentType })).map(
-    (res) => res.url
+    (res) => res.url,
   );
 }
 
 export async function uploadFileToS3(
   fileBuffer: Buffer,
-  opts?: { imageOnly?: boolean; contentType?: string }
+  opts?: { imageOnly?: boolean; contentType?: string },
 ): Promise<Result<{ url: string; mimeType: string | undefined }, Error>> {
   const imageOnly = opts?.imageOnly ?? true;
 
@@ -66,24 +73,25 @@ export async function uploadFileToS3(
   const storagePath = `${fileHash}.${ext}`;
 
   try {
-    const { Location } = await new S3({
-      endpoint: process.env.S3_ENDPOINT,
-    })
-      .upload({
+    const { Location } = await new Upload({
+      client: makeS3Client(),
+      params: {
         Bucket: siteAssetsBucket,
         Key: storagePath,
         Body: optimizedBuffer,
         ContentType: mime,
         ACL: !process.env.S3_ENDPOINT ? "public-read" : undefined, // TODO: Remove this when we migrate to GCS,
         CacheControl: `max-age=3600, s-maxage=31536000`,
-      })
-      .promise();
+      },
+    }).done();
 
     // Replace dataUri by the URL of the just uploaded asset.
     // The value of siteAssetBaseUrl is expected to be the CDN base URL,
     // but if it's not available, we simply use the plain S3 URL.
     return ok({
-      url: siteAssetsBaseUrl ? `${siteAssetsBaseUrl}${storagePath}` : Location,
+      url: siteAssetsBaseUrl
+        ? `${siteAssetsBaseUrl}${storagePath}`
+        : ensure(Location, "Upload reported no Location for the asset"),
       mimeType: mime,
     });
   } catch (e) {

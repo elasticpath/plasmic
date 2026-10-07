@@ -78,7 +78,11 @@ import {
   extractValueSavedFromDataPicker,
 } from "@/wab/shared/core/exprs";
 import { ComponentPropOrigin } from "@/wab/shared/core/lang";
-import { StateVariableType, getStateVarName } from "@/wab/shared/core/states";
+import {
+  StateVariableType,
+  getStateVarName,
+  validateInteractionCode,
+} from "@/wab/shared/core/states";
 import {
   EventHandlerKeyType,
   getDisplayNameOfEventHandlerKey,
@@ -112,7 +116,6 @@ import {
   isKnownFunctionType,
 } from "@/wab/shared/model/classes";
 import { wabToTsType } from "@/wab/shared/model/model-util";
-import { isValidJavaScriptCode } from "@/wab/shared/parser-utils";
 import { getPlumeEditorPlugin } from "@/wab/shared/plume/plume-registry";
 import { Dropdown, Input, Menu, Tooltip, notification } from "antd";
 import L, { defer, isArray, sortBy } from "lodash";
@@ -133,7 +136,7 @@ function isParamAdvanced(param: Param, ctx: TplComponentPropCtx): boolean {
     viewCtx.studioCtx,
     viewCtx,
     tpl,
-    param
+    param,
   );
   const isSet = !!expsProvider
     .effectiveVs()
@@ -143,7 +146,7 @@ function isParamAdvanced(param: Param, ctx: TplComponentPropCtx): boolean {
 
 function hasNonAdvancedProps(
   node: PropTreeNode,
-  ctx: TplComponentPropCtx
+  ctx: TplComponentPropCtx,
 ): boolean {
   if (node.kind === "param") {
     return !isParamAdvanced(node.param, ctx);
@@ -153,7 +156,7 @@ function hasNonAdvancedProps(
 
 function collectAdvancedParams(
   node: PropTreeNode,
-  ctx: TplComponentPropCtx
+  ctx: TplComponentPropCtx,
 ): Param[] {
   if (node.kind === "param") {
     return isParamAdvanced(node.param, ctx) ? [node.param] : [];
@@ -203,7 +206,7 @@ const PropFolder = observer(function PropFolder(props: {
   const { name, children } = node;
   const { isExpanded } = useSidebarSection();
   const visibleChildren = children.filter(
-    (c) => isExpanded || hasNonAdvancedProps(c, ctx)
+    (c) => isExpanded || hasNonAdvancedProps(c, ctx),
   );
   return (
     <div className="mv-m">
@@ -238,12 +241,12 @@ export const ComponentPropsSection = observer(
     // For foreign components, we list all slot parameters too so that they can
     // type in raw string nodes.
     let params = getRealParams(component, { includeVariants }).filter(
-      (param) => param.origin !== ComponentPropOrigin.ReactHTMLAttributes
+      (param) => param.origin !== ComponentPropOrigin.ReactHTMLAttributes,
     );
     const plumePlugin = getPlumeEditorPlugin(component);
     if (plumePlugin) {
       params = params.filter(
-        (p) => plumePlugin.shouldShowInstanceProp?.(tpl, p) ?? true
+        (p) => plumePlugin.shouldShowInstanceProp?.(tpl, p) ?? true,
       );
     }
 
@@ -263,7 +266,7 @@ export const ComponentPropsSection = observer(
       params = params.filter((param) => {
         const propType = ensure(
           propTypes,
-          `didn't find a propType for the prop "${param.variable.name}" in "${component.name}" component`
+          `didn't find a propType for the prop "${param.variable.name}" in "${component.name}" component`,
         )[param.variable.name];
         return isPropShown(propType, componentPropValues, ccContextData, {
           path: [param.variable.name],
@@ -271,14 +274,14 @@ export const ComponentPropsSection = observer(
       });
       // Keep the same ordering as the object keys in the props
       const paramNameToIndex = Object.fromEntries(
-        Object.keys(propTypes ?? {}).map((key, index) => [key, index])
+        Object.keys(propTypes ?? {}).map((key, index) => [key, index]),
       );
       params = sortBy(
         params,
         (param) =>
           paramNameToIndex[
             paramToVarName(component, param, { useControlledProp: true })
-          ] ?? param.variable.name
+          ] ?? param.variable.name,
       );
     }
 
@@ -289,12 +292,12 @@ export const ComponentPropsSection = observer(
       return null;
     }
     const mainProps = params.filter(
-      (param) => !isKnownFunctionType(param.type)
+      (param) => !isKnownFunctionType(param.type),
     );
 
     const tree = buildPropTree(tpl.component, mainProps);
     const advancedParams = tree.flatMap((node) =>
-      collectAdvancedParams(node, tplCtx)
+      collectAdvancedParams(node, tplCtx),
     );
 
     return (
@@ -333,7 +336,7 @@ export const ComponentPropsSection = observer(
         )}
       </>
     );
-  }
+  },
 );
 
 export const InteractionPropEditor = observer(
@@ -414,7 +417,7 @@ export const InteractionPropEditor = observer(
         component={component}
       />
     );
-  }
+  },
 );
 
 export function VariableEditor(props: {
@@ -439,7 +442,7 @@ export function VariableEditor(props: {
   } = props;
 
   const [justAddedState, setJustAddedState] = React.useState<State | undefined>(
-    undefined
+    undefined,
   );
   const [isDataPickerVisible, setIsDataPickerVisible] = React.useState(false);
 
@@ -451,7 +454,7 @@ export function VariableEditor(props: {
       viewCtx.canvasCtx.Sub.reactWeb.getStateCellsInPlasmicProxy(val);
     for (const { path, realPath } of stateCells) {
       const state = component.states.find(
-        (istate) => getStateVarName(istate) === path
+        (istate) => getStateVarName(istate) === path,
       );
       if (!state) {
         continue;
@@ -518,8 +521,8 @@ export function VariableEditor(props: {
               {},
               {
                 component,
-              }
-            )
+              },
+            ),
           );
 
           setJustAddedState(newState);
@@ -528,7 +531,7 @@ export function VariableEditor(props: {
             new ObjectPath({
               path: ["$state", getStateVarName(newState)],
               fallback: null,
-            })
+            }),
           );
         }}
         context={`Set value for prop ${attr} of React component "${
@@ -577,7 +580,7 @@ export function InteractionExprEditor(props: {
     tpl,
     undefined,
     currentInteraction,
-    eventHandlerKey
+    eventHandlerKey,
   );
 
   const schema = {
@@ -585,17 +588,17 @@ export function InteractionExprEditor(props: {
     ...(isEventHandlerKeyForParam(eventHandlerKey)
       ? Object.fromEntries(
           ensureKnownFunctionType(eventHandlerKey.param.type).params.map(
-            (p) => [p.argName, wabToTsType(p.type)]
-          )
+            (p) => [p.argName, wabToTsType(p.type)],
+          ),
         )
       : isEventHandlerKeyForAttr(eventHandlerKey)
-      ? { event: getReactEventHandlerTsType(tpl, eventHandlerKey.attr) }
-      : Object.fromEntries(
-          eventHandlerKey.funcType.params.map((p) => [
-            p.argName,
-            wabToTsType(p.type),
-          ])
-        )),
+        ? { event: getReactEventHandlerTsType(tpl, eventHandlerKey.attr) }
+        : Object.fromEntries(
+            eventHandlerKey.funcType.params.map((p) => [
+              p.argName,
+              wabToTsType(p.type),
+            ]),
+          )),
   };
   const exprCtx: ExprCtx = {
     projectFlags: viewCtx.projectFlags(),
@@ -629,12 +632,13 @@ export function InteractionExprEditor(props: {
         onRunClick={async (runValue) => {
           assert(
             currentInteraction,
-            "should have an interaction to execute a run code action"
+            "should have an interaction to execute a run code action",
           );
-          if (!isValidJavaScriptCode(runValue)) {
+          const invalidCodeMessage = validateInteractionCode(runValue);
+          if (invalidCodeMessage) {
             notification.error({
-              message: "Invalid JavaScript code",
-              description: "Please check your code and try again.",
+              message: "Invalid run code",
+              description: invalidCodeMessage,
             });
             return;
           }
@@ -643,7 +647,7 @@ export function InteractionExprEditor(props: {
               runValue,
               currentInteraction,
               exprCtx,
-              viewCtx.studioCtx
+              viewCtx.studioCtx,
             )
           ) {
             notification.error({
@@ -654,7 +658,7 @@ export function InteractionExprEditor(props: {
           const expr = createExprForDataPickerValue(runValue, null, true);
           try {
             setStepValue(
-              await runCodeInDataPicker(expr, currentInteraction, viewCtx, tpl)
+              await runCodeInDataPicker(expr, currentInteraction, viewCtx, tpl),
             );
             setHidePreview(false);
           } catch (err) {
@@ -722,7 +726,7 @@ export function ExprEditor(props: {
           val,
           undefined,
           isBodyFunction,
-          functionArgNames
+          functionArgNames,
         );
         onChange(newExpr);
       }}
@@ -767,7 +771,7 @@ export const TplRefEditor = observer(function TplRefEditor(props: {
     .filter(isTplNamable)
     .filter((tpl) => !!tpl.name && tplHasRef(tpl));
   const uuidToTpl = Object.fromEntries(
-    reffableTpls.map((tpl) => [tpl.uuid, tpl])
+    reffableTpls.map((tpl) => [tpl.uuid, tpl]),
   );
   return (
     <StyleSelect
@@ -1044,11 +1048,11 @@ export const AUTOCOMPLETE_OPTIONS = [
 
 export async function promptForParamName(
   tplMgr: TplMgr,
-  component: Component
+  component: Component,
 ): Promise<string | undefined> {
   let name = await reactPrompt({
     message: `Enter name for a new prop for "${getComponentDisplayName(
-      component
+      component,
     )}":`,
     placeholder: "Prop name",
     actionText: "Confirm",
@@ -1121,12 +1125,12 @@ function TplComponentNameSection_(props: {
             {
               name,
             },
-            { tpl, viewCtx }
+            { tpl, viewCtx },
           )
         }
         placeholder={summarizeUnnamedTpl(
           tpl,
-          viewCtx.effectiveCurrentVariantSetting(tpl).rsh()
+          viewCtx.effectiveCurrentVariantSetting(tpl).rsh(),
         )}
         subtitle={subtitle}
         description={tpl.component.codeComponentMeta?.description ?? undefined}
@@ -1160,7 +1164,7 @@ function TplTagNameSection_(props: {
             {
               name,
             },
-            { tpl, viewCtx }
+            { tpl, viewCtx },
           )
         }
         placeholder={summarizeUnnamedTpl(tpl, effectiveVs.rsh())}

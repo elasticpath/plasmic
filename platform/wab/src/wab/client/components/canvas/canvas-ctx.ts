@@ -17,7 +17,6 @@ import { NodeAndOffset } from "@/wab/client/dom";
 import { scriptExec, upsertJQSelector } from "@/wab/client/dom-utils";
 import { ENV } from "@/wab/client/env";
 import { PlasmicWindowInternals } from "@/wab/client/frame-ctx/windows";
-import { reduceImageSize } from "@/wab/client/image/transform";
 import { StudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
 import {
@@ -59,8 +58,6 @@ let gCanvasCtxIndex = 0;
  * We are generous here because we don't want to timeout too early
  */
 const CANVAS_CTX_TIMEOUT_PERIOD = 3 * 60 * 1000; // 3 minutes
-
-const MAX_THUMBNAIL_SIZE = 120;
 
 export class CanvasCtx {
   /**
@@ -106,27 +103,6 @@ export class CanvasCtx {
     this._keyAdjustment = null;
   }
 
-  async getThumbnail(): Promise<string> {
-    const domNode = this.$eltForTplRoot()[0];
-    if (!domNode) {
-      return "";
-    }
-    const { width, height } = reduceImageSize(
-      domNode.clientWidth,
-      domNode.clientHeight,
-      MAX_THUMBNAIL_SIZE,
-      MAX_THUMBNAIL_SIZE
-    );
-    return this.Sub.createThumbnail(domNode, {
-      filter: (node) =>
-        node.tagName !== "SOURCE" &&
-        !node.classList?.contains("__wab_placeholder"),
-      includeQueryParams: true,
-      canvasWidth: width,
-      canvasHeight: height,
-    });
-  }
-
   private _updatingCcRegistryCount = observable.box(0);
   set updatingCcRegistryCount(v: number) {
     this._updatingCcRegistryCount.set(v);
@@ -143,7 +119,7 @@ export class CanvasCtx {
         await previousFetch;
         const pkgsData = await getSortedHostLessPkgs(
           pkgs,
-          getVersionForCanvasPackages(this._win)
+          getVersionForCanvasPackages(this._win),
         );
         runInAction(() => {
           // We run in action because `installedHostLessPkgs` is observable
@@ -160,7 +136,7 @@ export class CanvasCtx {
           this.updatingCcRegistryCount--;
         });
         resolve();
-      })
+      }),
     );
     await this._hostLessPkgsLock;
   }
@@ -199,7 +175,7 @@ export class CanvasCtx {
       $("<div />").attr({
         class: "__wab_canvas_overlay __wab_canvas_overlay_top_left",
         "data-frame-uid": arenaFrame.uid,
-      })
+      }),
     );
   }
 
@@ -222,34 +198,34 @@ export class CanvasCtx {
       .find(".__wab_canvas_overlay_top_left")
       .css(
         "clip-path",
-        `polygon(0 0, 100% 0, 100% ${top}px, ${left}px ${top}px, ${left}px 100%, 0 100%)`
+        `polygon(0 0, 100% 0, 100% ${top}px, ${left}px ${top}px, ${left}px 100%, 0 100%)`,
       );
     // the other that covers the area to the bottom and right of the excluded rect
     this._$body
       .find(".__wab_canvas_overlay_bottom_right")
       .css(
         "clip-path",
-        `polygon(100% ${top}px, ${right}px ${top}px, ${right}px ${bottom}px, ${left}px ${bottom}px, ${left}px 100%, 100% 100%)`
+        `polygon(100% ${top}px, ${right}px ${top}px, ${right}px ${bottom}px, ${left}px ${bottom}px, ${left}px 100%, 100% 100%)`,
       );
   }
 
   async *initViewPort(
     $viewport: JQuery<HTMLIFrameElement>,
     arenaFrame: ArenaFrame,
-    sc: StudioCtx
+    sc: StudioCtx,
   ) {
     this.installedHostLessPkgs.clear();
     this._$viewport = $viewport;
     this._win = ensure(
       $viewport.get(0).contentWindow as typeof window,
-      "Failed to get contentWindow from canvas viewport"
+      "Failed to get contentWindow from canvas viewport",
     );
     this._win.addEventListener("error", (e: ErrorEvent) =>
-      handleCanvasError(e.error)
+      handleCanvasError(e.error),
     );
     this._win.addEventListener(
       "unhandledrejection",
-      (e: PromiseRejectionEvent) => handleCanvasError(e.reason)
+      (e: PromiseRejectionEvent) => handleCanvasError(e.reason),
     );
     const doc = this._win.document;
     const $doc = (this._$doc = $(doc) as JQuery<HTMLDocument>);
@@ -259,7 +235,7 @@ export class CanvasCtx {
     this._controlStyleNode = upsertJQSelector(
       "style#controlStyles",
       () => this._$head.append($("<style />").attr({ id: "controlStyles" })),
-      this._$head
+      this._$head,
     )[0] as HTMLStyleElement;
     upsertJQSelector(
       `link[href='${getStaticBaseUrl()}/styles/canvas/canvas.${
@@ -274,9 +250,9 @@ export class CanvasCtx {
               ENV.COMMITHASH
             }.css`,
             crossOrigin: "anonymous",
-          })
+          }),
         ),
-      this._$head
+      this._$head,
     );
     this._$body = this._$html.find("body").first();
     this.createCanvasOverlay(arenaFrame);
@@ -284,7 +260,7 @@ export class CanvasCtx {
     this._$userBody = await withTimeout(
       this.waitForUserBody(),
       "Couldn't get userBody",
-      CANVAS_CTX_TIMEOUT_PERIOD
+      CANVAS_CTX_TIMEOUT_PERIOD,
     );
     // We reinsert things because some frameworks (Remix Hydrogen dev server) blow away the entire document.
     // We also do it earlier so that we can intercept clicks as much as possible, rather than waiting for __wab_user_body first.
@@ -306,9 +282,9 @@ export class CanvasCtx {
               ENV.COMMITHASH
             }.css`,
             crossOrigin: "anonymous",
-          })
+          }),
         ),
-      this._$head
+      this._$head,
     );
     if (!this._$body.find(".__wab_canvas_overlay").length) {
       this.createCanvasOverlay(arenaFrame);
@@ -319,16 +295,16 @@ export class CanvasCtx {
       await withTimeout(
         getCanvasPkgs(),
         "Couldn't get canvasPkgs.",
-        CANVAS_CTX_TIMEOUT_PERIOD
-      )
+        CANVAS_CTX_TIMEOUT_PERIOD,
+      ),
     );
     scriptExec(
       this._win,
       await withTimeout(
         getReactWebBundle(),
         "Couldn't get reactWebBundle.",
-        CANVAS_CTX_TIMEOUT_PERIOD
-      )
+        CANVAS_CTX_TIMEOUT_PERIOD,
+      ),
     );
 
     (this._win as any).__PLASMIC__ = {
@@ -348,13 +324,13 @@ export class CanvasCtx {
       this.usedPkgsDispose();
     }
     this.usedPkgsDispose = autorun(() =>
-      this.updatePkgsList(usedHostLessPkgs(sc.site))
+      this.updatePkgsList(usedHostLessPkgs(sc.site)),
     );
     yield "hostless-wait";
     await withTimeout(
       this.hostLessPkgsLock,
       "Couldn't acquire hostLessPkgsLock.",
-      CANVAS_CTX_TIMEOUT_PERIOD
+      CANVAS_CTX_TIMEOUT_PERIOD,
     );
 
     const hostWin = (DEVFLAGS.artboardEval ? this._win : window) as any;
@@ -390,7 +366,7 @@ export class CanvasCtx {
 
     this.ccRegistry = new CodeComponentsRegistry(
       this._win,
-      getBuiltinComponentRegistrations(this.Sub)
+      getBuiltinComponentRegistrations(this.Sub),
     );
 
     // Keep track of the changeCounter during latest resize
@@ -426,7 +402,7 @@ export class CanvasCtx {
               // If no changes happened, and we resized a bunch of times anyway,
               // then there's probably a code component messing with our height (e.g. 100vh)
               // See https://app.shortcut.com/plasmic/story/23759/high-pri-infinitely-expanding-canvas-when-css-overflows-vertically
-              notification.warn({
+              notification.warning({
                 message: `Incompatible height in ${sc
                   .tplMgr()
                   .describeArenaFrame(arenaFrame)}`,
@@ -439,7 +415,7 @@ export class CanvasCtx {
         }
       },
       200,
-      { maxWait: 500 }
+      { maxWait: 500 },
     );
 
     spawn(
@@ -452,7 +428,7 @@ export class CanvasCtx {
 
         this._resizeObserver = new ResizeObserver(resizeObserverCallback);
         this._resizeObserver.observe($userBody[0]);
-      })
+      }),
     );
 
     yield "done";
@@ -590,7 +566,7 @@ export class CanvasCtx {
   viewportContainer() {
     return ensure(
       this.viewport().parentElement,
-      "Failed to get parentElement from viewport"
+      "Failed to get parentElement from viewport",
     );
   }
   viewport() {
@@ -707,7 +683,7 @@ export class CanvasCtx {
       height: frame.height,
       isHeightAutoDerived: isHeightAutoDerived(frame),
       bgColor: frame.bgColor
-        ? makeTokenRefResolver(viewCtx.site)(frame.bgColor) ?? frame.bgColor
+        ? (makeTokenRefResolver(viewCtx.site)(frame.bgColor) ?? frame.bgColor)
         : undefined,
     });
 
@@ -721,7 +697,7 @@ export class CanvasCtx {
       () => {
         frameInfo.set(makeFrameInfo());
       },
-      { name: "autorun(CanvasCtx.frameInfo)" }
+      { name: "autorun(CanvasCtx.frameInfo)" },
     );
 
     const r = this.Sub.React.createElement;
@@ -731,7 +707,7 @@ export class CanvasCtx {
       {
         frameInfo,
       },
-      children
+      children,
     );
 
     this.Sub.hostUtils.setPlasmicRootNode(node);

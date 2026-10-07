@@ -1,8 +1,7 @@
-import { DbMgr, normalActor, SUPER_USER } from "@/wab/server/db/DbMgr";
 import {
   createDatabase,
   getTeamAndWorkspace,
-} from "@/wab/server/test/backend-util";
+} from "@/wab/server/__testonly__/backend-util";
 import {
   basicSite,
   bundler,
@@ -12,7 +11,13 @@ import {
   setupMainAndBranch,
   withBranch,
   withTokens,
-} from "@/wab/server/test/branching-utils";
+} from "@/wab/server/__testonly__/branching-utils";
+import {
+  DbMgr,
+  NotFoundError,
+  SUPER_USER,
+  normalActor,
+} from "@/wab/server/db/DbMgr";
 import {
   BranchId,
   MainBranchId,
@@ -35,7 +40,7 @@ describe("branching", () => {
         sudo,
         [user1],
         [db1],
-        project
+        project,
       ) => {
         const branchId = branch.id;
         const projectId = project.id;
@@ -58,7 +63,7 @@ describe("branching", () => {
         const partials = await db1().getPartialRevsFromRevisionNumber(
           projectId,
           branchHelpers.revisionNum - 2,
-          branchId
+          branchId,
         );
         expect(partials.length).toBe(1);
         expect(JSON.parse(partials[0].data)).toMatchObject({
@@ -70,8 +75,8 @@ describe("branching", () => {
           await db1().getPartialRevsFromRevisionNumber(
             projectId,
             branchHelpers.revisionNum - 2,
-            branchId
-          )
+            branchId,
+          ),
         ).toBeEmpty();
 
         // Clone branch
@@ -97,17 +102,17 @@ describe("branching", () => {
         // Delete - everything after should fail
         await db1().deleteBranch(branchId);
         await expect(
-          db1().updateBranch(branchId, { name: "my-branch-renamed-again" })
+          db1().updateBranch(branchId, { name: "my-branch-renamed-again" }),
         ).toReject();
         await expect(db1().getBranchById(branchId)).toReject();
         await expect(branchHelpers.save(basicSite({ x: 2 }))).toReject();
         await expect(
           db1().getLatestProjectRev(projectId, {
             branchId,
-          })
+          }),
         ).toReject();
         await expect(db1().deleteBranch(branchId)).toReject();
-      }
+      },
     ));
 
   it("enforces naming rules", () =>
@@ -117,7 +122,7 @@ describe("branching", () => {
         await expect(
           db1().createBranchFromLatestPkgVersion(project.id, {
             name,
-          })
+          }),
         ).toReject();
       }
 
@@ -126,7 +131,7 @@ describe("branching", () => {
         await expect(
           db1().createBranchFromLatestPkgVersion(project.id, {
             name,
-          })
+          }),
         ).toResolve();
       }
 
@@ -134,12 +139,12 @@ describe("branching", () => {
       await expect(
         db1().createBranchFromLatestPkgVersion(project.id, {
           name: "feat-1",
-        })
+        }),
       ).toReject();
       await expect(
         db1().updateBranch(branch.id, {
           name: "feat-1",
-        })
+        }),
       ).toReject();
     }));
 
@@ -154,21 +159,21 @@ describe("branching", () => {
         ensure(await db1().getPkgByProjectId(project.id), "").id,
         {
           includeData: true,
-        }
+        },
       );
       expect(
         withoutUids(
-          bundler.unbundle(JSON.parse(latestBranchRev.data), project.id)
-        ) as Site
+          bundler.unbundle(JSON.parse(latestBranchRev.data), project.id),
+        ) as Site,
       ).toEqual(
         withoutUids(
           (
             bundler.unbundle(
               JSON.parse(basePkgVersion.model),
-              basePkgVersion.id
+              basePkgVersion.id,
             ) as ProjectDependency
-          ).site
-        )
+          ).site,
+        ),
       );
     }));
 
@@ -189,7 +194,7 @@ describe("branching", () => {
         "First branch commit",
         undefined,
         undefined,
-        branchId
+        branchId,
       );
       await helpers[1].save(basicSite({ x: 3 }));
       await db1().publishProject(
@@ -199,7 +204,7 @@ describe("branching", () => {
         "Second branch commit",
         undefined,
         undefined,
-        branchId
+        branchId,
       );
 
       // Can still list all the original main branch commits
@@ -241,7 +246,7 @@ describe("branching", () => {
         undefined,
         {
           branchId,
-        }
+        },
       );
       expect(latestBranchCommit).toMatchObject({
         version: "1.1.0",
@@ -250,6 +255,12 @@ describe("branching", () => {
       expect(latestMainCommit).toMatchObject({
         version: "1.0.0",
       });
+      expect(await db1().getLatestPkgVersionNumber(pkg.id, undefined)).toBe(
+        latestMainCommit.version,
+      );
+      expect(await db1().getLatestPkgVersionNumber(pkg.id, branch.name)).toBe(
+        latestBranchCommit.version,
+      );
     }));
 
   it("shares the same permissions as the main branch", () =>
@@ -265,13 +276,13 @@ describe("branching", () => {
 
         // Read access to branch requires read access to project
         await expect(
-          db2().getLatestProjectRev(projectId, { branchId })
+          db2().getLatestProjectRev(projectId, { branchId }),
         ).toReject();
         await expect(db2().listPkgVersions(projectId, { branchId })).toReject();
         await db1().grantProjectPermissionByEmail(
           projectId,
           user2.email,
-          "commenter"
+          "commenter",
         );
         await db2().getLatestProjectRev(projectId, { branchId });
         // await db2().listPkgVersions(projectId, { branchId });
@@ -281,10 +292,10 @@ describe("branching", () => {
         await db1().grantProjectPermissionByEmail(
           projectId,
           user2.email,
-          "editor"
+          "editor",
         );
         await helpers[1].save(basicSite({ x: 1 }), db2());
-      }
+      },
     ));
 
   it("e2e test sketch", () => {
@@ -308,7 +319,7 @@ describe("branching", () => {
     const breakBranchEntry = async (
       sudo: DbMgr,
       projectId: ProjectId,
-      branchId: BranchId | MainBranchId
+      branchId: BranchId | MainBranchId,
     ) => {
       const fresh = await sudo.getProjectById(projectId);
       const extraData = JSON.parse(JSON.stringify(fresh.extraData ?? {}));
@@ -327,8 +338,11 @@ describe("branching", () => {
         expect(
           await db1().tryGetPkgVersion(pkg.id, undefined, undefined, {
             branchId: branch.id as BranchId,
-          })
+          }),
         ).toBeUndefined();
+        await expect(
+          db1().getLatestPkgVersionNumber(pkg.id, branch.name),
+        ).rejects.toThrow(NotFoundError);
 
         // /revs/unpublished: listProjectRevisions still returns the saved revisions.
         const revisions = await db1().listProjectRevisions(project.id, {
@@ -357,7 +371,7 @@ describe("branching", () => {
           "branch publish",
           undefined,
           undefined,
-          branch.id as BranchId
+          branch.id as BranchId,
         );
         await helpers[1].save(basicSite({ x: 2 }));
         await breakBranchEntry(sudo, project.id, branch.id);
@@ -370,14 +384,17 @@ describe("branching", () => {
           pkg.id,
           undefined,
           undefined,
-          { branchId: branch.id as BranchId }
+          { branchId: branch.id as BranchId },
         );
         expect(latest?.id).toBe(branchPkg.id);
+        expect(await db1().getLatestPkgVersionNumber(pkg.id, branch.name)).toBe(
+          branchPkg.version,
+        );
 
         // Confirm the recreated graph persisted to extraData.
         const repaired = await sudo.getProjectById(project.id);
         expect(repaired.extraData?.commitGraph?.branches[branch.id]).toBe(
-          branchPkg.id
+          branchPkg.id,
         );
 
         const data = await db1().getProjectAndBranchesByIdOrNames(project.id, [
@@ -394,7 +411,7 @@ describe("branching", () => {
         const before = await sudo.getProjectById(project.id);
         const branchHead = ensure(
           before.extraData?.commitGraph?.branches[branch.id],
-          "branch must have a head"
+          "branch must have a head",
         );
         await breakBranchEntry(sudo, project.id, MainBranchId);
 
@@ -403,7 +420,7 @@ describe("branching", () => {
         // which cannot be derived from the branch's own (empty) pkgVersions.
         const graph = await db1().getCommitGraphForProject(
           project.id as ProjectId,
-          [MainBranchId]
+          [MainBranchId],
         );
         expect(graph.branches[MainBranchId]).toBe(branchHead);
         expect(graph.branches[branch.id]).toBe(branchHead);
@@ -428,7 +445,7 @@ describe("merging", () => {
         await db1().previewMergeBranch({
           fromBranchId: branchId,
           toBranchId: MainBranchId,
-        })
+        }),
       ).toMatchObject({
         status: "uncommitted changes on destination branch",
       });
@@ -436,7 +453,7 @@ describe("merging", () => {
         await db1().tryMergeBranch({
           toBranchId: MainBranchId,
           fromBranchId: branchId,
-        })
+        }),
       ).toMatchObject({
         status: "uncommitted changes on destination branch",
       });
@@ -449,7 +466,7 @@ describe("merging", () => {
         await db1().tryMergeBranch({
           toBranchId: MainBranchId,
           fromBranchId: branchId,
-        })
+        }),
       ).toMatchObject({
         status: "can be merged",
       });
@@ -466,7 +483,7 @@ describe("merging", () => {
         await db1().tryMergeBranch({
           toBranchId: MainBranchId,
           fromBranchId: branch.id,
-        })
+        }),
       ).toMatchObject({
         status: "can be merged",
       });
@@ -477,7 +494,7 @@ describe("merging", () => {
         pkg.id,
         {
           includeData: true,
-        }
+        },
       );
       const [preMergeOnBranch] = await db1().listPkgVersions(pkg.id, {
         includeData: true,
@@ -506,12 +523,12 @@ describe("merging", () => {
       });
 
       expect(
-        extractTokensRev(await db1().getLatestProjectRev(project.id))
+        extractTokensRev(await db1().getLatestProjectRev(project.id)),
       ).toEqual({ x: 1, y: 1, z: 1 });
       expect(
         extractTokensRev(
-          await db1().getLatestProjectRev(project.id, { branchId: branch.id })
-        )
+          await db1().getLatestProjectRev(project.id, { branchId: branch.id }),
+        ),
       ).toEqual({ x: 1, y: 0, z: 1 });
     }));
 
@@ -528,7 +545,7 @@ describe("merging", () => {
           toBranchId: MainBranchId,
           fromBranchId: branch.id,
           autoCommitOnToBranch: true,
-        })
+        }),
       ).toMatchObject({
         status: "can be merged",
       });
@@ -539,7 +556,7 @@ describe("merging", () => {
         pkg.id,
         {
           includeData: true,
-        }
+        },
       );
       const [preMergeOnBranch] = await db1().listPkgVersions(pkg.id, {
         includeData: true,
@@ -598,7 +615,7 @@ describe("merging", () => {
       // Merge works now
       const mergeStep = ensure(
         mergeResult.mergeStep,
-        "mergeStep expected to be present"
+        "mergeStep expected to be present",
       );
       expect(
         await db1().tryMergeBranch({
@@ -610,16 +627,16 @@ describe("merging", () => {
                 ? mergeStep.genericDirectConflicts.flatMap((cf) =>
                     cf.conflictType === "generic"
                       ? cf.conflictDetails.map((dt) =>
-                          tuple(dt.pathStr, "left" as BranchSide)
+                          tuple(dt.pathStr, "left" as BranchSide),
                         )
-                      : []
+                      : [],
                   )
-                : []
+                : [],
             ),
             expectedToRevisionNum: mergeResult.toRevisionNum,
             expectedFromRevisionNum: mergeResult.fromRevisionNum,
           },
-        })
+        }),
       ).toMatchObject({
         status: "resolution accepted",
       });
@@ -668,7 +685,7 @@ describe("merging", () => {
             expectedToRevisionNum: mergeResult.toRevisionNum,
             expectedFromRevisionNum: mergeResult.fromRevisionNum,
           },
-        })
+        }),
       ).toMatchObject({
         status: "concurrent source branch changes during merge",
       });
@@ -693,7 +710,7 @@ describe("merging", () => {
             expectedToRevisionNum: mergeResult2.toRevisionNum,
             expectedFromRevisionNum: mergeResult2.fromRevisionNum,
           },
-        })
+        }),
       ).toMatchObject({
         status: "concurrent destination branch changes during merge",
       });
@@ -716,7 +733,7 @@ describe("merging", () => {
             expectedToRevisionNum: mergeResult3.toRevisionNum,
             expectedFromRevisionNum: mergeResult3.fromRevisionNum,
           },
-        })
+        }),
       ).toMatchObject({
         status: "resolution accepted",
       });
@@ -735,7 +752,7 @@ describe("merging", () => {
       expect(
         await db1().listPkgVersions(pkg.id, {
           branchId: branch.id,
-        })
+        }),
       ).toBeEmpty();
 
       // Pull latest from main - ancestor should be initial commit on main
@@ -744,7 +761,7 @@ describe("merging", () => {
           fromBranchId: MainBranchId,
           toBranchId: branch.id,
           autoCommitOnToBranch: true,
-        })
+        }),
       ).toMatchObject({
         status: "can be merged",
         ancestorPkgVersionId: init.id,
@@ -755,7 +772,7 @@ describe("merging", () => {
         pkg.id,
         {
           branchId: branch.id,
-        }
+        },
       );
 
       // Now push to main - ancestor should be merge commit on branch
@@ -763,7 +780,7 @@ describe("merging", () => {
         await db1().tryMergeBranch({
           toBranchId: MainBranchId,
           fromBranchId: branch.id,
-        })
+        }),
       ).toMatchObject({
         status: "can be merged",
         ancestorPkgVersionId: commitOnMain.id,
@@ -777,11 +794,11 @@ describe("merging", () => {
           await db1().listPkgVersions(pkg.id, {
             branchId: branch.id,
           })
-        ).map((pkgVersion) => omit(pkgVersion, "branch"))
+        ).map((pkgVersion) => omit(pkgVersion, "branch")),
       ).toEqual(
         [postMerge, preMergeOnBranch].map((pkgVersion) =>
-          omit(pkgVersion, "branch")
-        )
+          omit(pkgVersion, "branch"),
+        ),
       );
     }));
 });
@@ -819,30 +836,31 @@ describe("updateCommitGraphForProject concurrency (PLA-13087)", () => {
     con = dbCon;
     cleanupDb = cleanup;
 
-    // Create a project using a non-transactional EntityManager, so the starting state is
-    // visible to the concurrent transactions below.
-    const setupDb = new DbMgr(con.createEntityManager(), SUPER_USER);
-    const user = await setupDb.createUser({
-      email: "commitgraph-race@test.com",
-      firstName: "Race",
-      lastName: "Test",
-      password: "!53kr3tz!",
-      needsIntroSplash: false,
-      needsSurvey: false,
-      needsTeamCreationPrompt: false,
-    });
-    await setupDb.markEmailAsVerified(user);
-    const userDb = new DbMgr(con.createEntityManager(), normalActor(user.id));
-    const { workspace } = await getTeamAndWorkspace(userDb);
-    const { project } = await userDb.createProject({
-      name: "commitgraph race project",
-      workspaceId: workspace.id,
-    });
-    projectId = project.id as ProjectId;
+    // Commit the fixtures before the concurrent transactions read them.
+    await con.transaction(async (em) => {
+      const setupDb = new DbMgr(em, SUPER_USER);
+      const user = await setupDb.createUser({
+        email: "commitgraph-race@test.com",
+        firstName: "Race",
+        lastName: "Test",
+        password: "!53kr3tz!",
+        needsIntroSplash: false,
+        needsSurvey: false,
+        needsTeamCreationPrompt: false,
+      });
+      await setupDb.markEmailAsVerified(user);
+      const userDb = new DbMgr(em, normalActor(user.id));
+      const { workspace } = await getTeamAndWorkspace(userDb);
+      const { project } = await userDb.createProject({
+        name: "commitgraph race project",
+        workspaceId: workspace.id,
+      });
+      projectId = project.id as ProjectId;
 
-    // Initialize the commit graph up so concurrent updates below use the read-modify-write
-    // path, not than the initial create path (which takes its own locks).
-    await setupDb.getCommitGraphForProject(projectId);
+      // Initialize the commit graph up so concurrent updates below use the read-modify-write
+      // path, not than the initial create path (which takes its own locks).
+      await setupDb.getCommitGraphForProject(projectId);
+    });
   });
 
   afterAll(async () => {
@@ -864,7 +882,7 @@ describe("updateCommitGraphForProject concurrency (PLA-13087)", () => {
   const runConcurrentHeadWrites = async (
     useLock: boolean,
     keyA: BranchId,
-    keyB: BranchId
+    keyB: BranchId,
   ) => {
     const readA = deferred();
     const readB = deferred();
@@ -872,7 +890,7 @@ describe("updateCommitGraphForProject concurrency (PLA-13087)", () => {
     const update = (
       branchKey: BranchId,
       signalRead: () => void,
-      waitForOther: () => Promise<void>
+      waitForOther: () => Promise<void>,
     ) =>
       con.transaction(async (txEm) => {
         const db = new DbMgr(txEm, SUPER_USER);
@@ -896,7 +914,7 @@ describe("updateCommitGraphForProject concurrency (PLA-13087)", () => {
           // Bypass the public API to demonstrate the unguarded race.
           await (db as any).maybeUpdateCommitGraphForProject(
             projectId,
-            updater
+            updater,
           );
         }
       });
@@ -905,12 +923,12 @@ describe("updateCommitGraphForProject concurrency (PLA-13087)", () => {
       update(
         keyA,
         () => readA.resolve(),
-        () => readB.promise
+        () => readB.promise,
       ),
       update(
         keyB,
         () => readB.resolve(),
-        () => readA.promise
+        () => readA.promise,
       ),
     ]);
 
@@ -926,7 +944,7 @@ describe("updateCommitGraphForProject concurrency (PLA-13087)", () => {
     const keyB = "unlocked-branch-B" as BranchId;
     const graph = await runConcurrentHeadWrites(false, keyA, keyB);
     const survivors = [keyA, keyB].filter(
-      (key) => graph.branches[key] === headPkgVersionId
+      (key) => graph.branches[key] === headPkgVersionId,
     );
     expect(survivors).toHaveLength(1);
   });

@@ -8402,7 +8402,8 @@
           "params": {},
           "__type": "PageHref",
           "query": {},
-          "fragment": null
+          "fragment": null,
+          "encode": false
         },
         "61957133": {
           "name": null,
@@ -8590,7 +8591,8 @@
           "params": {},
           "__type": "PageHref",
           "query": {},
-          "fragment": null
+          "fragment": null,
+          "encode": false
         },
         "61957168": { "markers": [], "text": "Go back", "__type": "RawText" },
         "61957169": {
@@ -21461,7 +21463,11 @@
         }
       },
       "deps": [],
+<<<<<<< HEAD
       "version": "259-repoint-ep-commerce-bindings"
+=======
+      "version": "258-add-page-href-encode"
+>>>>>>> upstream/master
     }
   ]
 ]

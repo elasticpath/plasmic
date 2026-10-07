@@ -40,10 +40,8 @@ export interface StarterProjectConfig {
   description: string; // description in card (name auto-retrieved from server)
   author?: string; // for template attribution
   authorLink?: string; // link to author
-  iconName?: string; // name of icon component to display next to title - resolved in StarterGroup
   imageUrl?: string; // Preview image URL (e.g. on S3)
-  highlightType?: "first" | "second" | "third"; // for coloring the cards
-  href?: string; // if it's just a link (Developer Quickstart should be the only such thing)
+  withImage?: boolean; // show the image area even without an imageUrl (default image)
   publishWizard?: boolean; // true if should show the publish wizard on the first open
   showPreview?: boolean; // true if this starter can be previewed in /templates/${tag}
   // show notification for users when the global context values aren't modified
@@ -219,24 +217,25 @@ export interface PreInstallFunctionInfo {
   functionId: string;
   displayName: string;
   description?: string;
+  isMutation?: boolean;
 }
 
 type InsertableByTypeString<T extends InsertableTemplatesSelectable["type"]> =
   T extends "insertable-templates-item"
     ? InsertableTemplatesItem
     : T extends "insertable-templates-component"
-    ? InsertableTemplatesComponent
-    : T extends "insertable-templates-group"
-    ? InsertableTemplatesGroup
-    : T extends "insertable-icons-group"
-    ? InsertableIconsGroup
-    : never;
+      ? InsertableTemplatesComponent
+      : T extends "insertable-templates-group"
+        ? InsertableTemplatesGroup
+        : T extends "insertable-icons-group"
+          ? InsertableIconsGroup
+          : never;
 
 export function flattenInsertableTemplatesByType<
-  T extends InsertableTemplatesSelectable["type"]
+  T extends InsertableTemplatesSelectable["type"],
 >(
   item: InsertableTemplatesSelectable | undefined,
-  type: T
+  type: T,
 ): InsertableByTypeString<T>[] {
   if (!item) {
     return [];
@@ -250,7 +249,7 @@ export function flattenInsertableTemplatesByType<
 }
 
 export function flattenInsertableTemplates(
-  item?: InsertableTemplatesSelectable
+  item?: InsertableTemplatesSelectable,
 ): InsertableTemplatesItem[] {
   if (!item || item.type === "insertable-icons-group") {
     return [];
@@ -265,13 +264,13 @@ export function flattenInsertableTemplates(
       false,
       "Not expected insertable template type: " + typeof item === "object"
         ? JSON.stringify(item)
-        : item
+        : item,
     );
   }
 }
 
 export function flattenInsertableIconGroups(
-  item?: InsertableTemplatesSelectable
+  item?: InsertableTemplatesSelectable,
 ): InsertableIconsGroup[] {
   if (!item || item.type === "insertable-templates-item") {
     return [];
@@ -286,7 +285,7 @@ export function flattenInsertableIconGroups(
       false,
       "Not expected insertable template type: " + typeof item === "object"
         ? JSON.stringify(item)
-        : item
+        : item,
     );
   }
 }
@@ -312,7 +311,6 @@ const DEFAULT_DEVFLAGS = {
   },
   content: true,
   contentEditorMode: false,
-  codegenHost: process.env.CODEGEN_HOST || "https://codegen.plasmic.app",
   codegenOriginHost:
     process.env.CODEGEN_ORIGIN_HOST ||
     process.env.CODEGEN_HOST ||
@@ -321,7 +319,6 @@ const DEFAULT_DEVFLAGS = {
   defaultHostUrl:
     process.env.REACT_APP_DEFAULT_HOST_URL ||
     "https://host.plasmicdev.com/static/host.html",
-  dynamicPages: true,
   enablePlasmicHosting: true,
   // Used to invalidate etag cacheing mechanism altogether
   disableETagCaching: false,
@@ -363,11 +360,12 @@ const DEFAULT_DEVFLAGS = {
     analytics: false,
     monthlyViews: 50000,
   }),
+  // Whether new teams automatically start a free trial of freeTrialTierName.
+  // Requires that feature tier to exist in the database.
   freeTrial: false,
   freeTrialTierName: "Team",
   freeTrialDays: 15,
   freeTrialPromoDays: 60,
-  createTeamPrompt: true,
   insertPanelContent: ensureType<InsertPanelConfig>({
     componentsLabel: "Custom components",
     aliases: {},
@@ -376,7 +374,7 @@ const DEFAULT_DEVFLAGS = {
     overrideSections: {},
   }),
   insertableTemplates: ensureType<InsertableTemplatesGroup | undefined>(
-    undefined
+    undefined,
   ),
   installables: ensureType<Installable[]>([]),
   hostLessComponents: ensureType<HostLessPackageInfo[] | undefined>([
@@ -424,30 +422,22 @@ const DEFAULT_DEVFLAGS = {
   // Turns on PlasmicImg for all
   usePlasmicImg: false,
   usePlasmicTranslation: false,
-  showPlasmicImgModal: false,
   imgOptimizerHost: "https://img.plasmic.app",
-  introYoutubeId: "K_YzFBd7b2I",
-  noFlipTags: true,
   revisionNum: undefined,
-  richtext2: true,
   secretApiTokenTeams: ["teamId"],
-  selectInserted: true,
   showFullPreviewWarning: true,
   starterSections: [] as StarterSectionConfig[],
+  tutorials: undefined as
+    | {
+        portfolio: string;
+        game: string;
+        codegenQuickstart: string;
+      }
+    | undefined,
   hiddenQuickstartPlatforms: ensureType<string[]>([]),
-  mungeErrorMessages: {
-    "AuthError: CSRF token mismatch":
-      "Your login session has expired. Please reload to log in again.",
-  },
   showCopilot: true,
-  allowHtmlPaste: false,
-  enableUiCopilot: false,
   enableChatCopilot: false,
-  uiCopilotModelProviderOpts: {
-    provider: "VertexAnthropic",
-    modelName: "claude-haiku-4-5",
-    maxTokens: 32000,
-  } as ModelProviderOpts,
+  enableQueryMigrationCopilot: false,
   chatCopilotModelProviderOpts: {
     provider: "VertexAnthropic",
     modelName: "claude-sonnet-5",
@@ -468,20 +458,9 @@ const DEFAULT_DEVFLAGS = {
   writeApiSizeLimit: 70000000, // 70MB
   writeApiExcludedProjectIds: [] as string[],
 
-  // Disabled by default
-  posthog: true,
-  copilotClaude: false,
   codePreview: false,
   demo: false,
-  enableReactDevTools: false, // used in studio.js
   hideBlankStarter: false,
-  hideSyncStatusIndicator: false,
-  interactiveCanvas: true,
-  importedTokenOverrides: false,
-  insert2022Q4: true,
-  sso: false,
-  paywalls: false,
-  showIntroSplash: false,
   skipInvariants: false,
   uncatchErrors: false,
   // Prefers loading state over expression fallback
@@ -489,34 +468,17 @@ const DEFAULT_DEVFLAGS = {
   showHiddenHostLessComponents: false,
   ccStubs: false,
   fnStubs: false,
-  workspaces: false,
   noObserve: false,
   plexus: false,
-  incrementalObservables: false,
-  spacing: true,
-  spacingArea: true,
   setHostLessProject: false,
   plasmicHostingSubdomainSuffix: "plasmic.run",
-  splits: true,
-  refActions: false,
-  multiSelect: false,
-  pageLayout: false,
-  mainContentSlots: false,
   insertTemplatesIntoMainContentSlots: false,
-  simplifiedScreenVariants: false,
   hostUrl: "",
   globalTrustedHosts: ["https://example123.fake"],
-  warningsInCanvas: false,
   previewSteps: false,
 
   // Permanently disabled, just internal tools/scripts.
   allowPlasmicTeamEdits: false,
-
-  // variant experiments
-  variants: false,
-  unconditionalEdits: false,
-  ephemeralRecording: false,
-  framerTargeting: true,
 
   // debugging user projects
   debug: false, // turns on other debug flags in `normalizeDevFlags`
@@ -527,26 +489,17 @@ const DEFAULT_DEVFLAGS = {
   githubClientId: "Iv1.8a4a47b0b0d4bf88",
   githubAppName: "plasmic-app",
 
-  // change simplified defaults
+  // Apply default styles (padding, sizing, stack layout) to inserted elements
+  // and new component/page roots, and give new page roots a content layout.
+  // On in prod; the e2e suite still encodes the off behavior, so this stays a
+  // flag until those specs are updated.
   simplifiedLayout: false,
 
-  imageControls: false,
-
-  componentThumbnails: false,
-
-  // Enables the margin and padding spacing visualizer improvements
-  spacingVisualizer202209: true,
-  gapControls: false,
-  contentOnly: false,
-  ancestorsBoxes: true,
   branching: false,
   disableBranching: false,
   branchingTeamIds: [] as TeamId[],
   commitsOnBranches: false,
   serverPublishProjectIds: [] as ProjectId[],
-  focusable: false,
-  envPanel: false,
-  linting: false,
 
   // Number of arenas to keep in memory
   liveArenas: 6,
@@ -588,13 +541,11 @@ const DEFAULT_DEVFLAGS = {
 
   googleAuthRequiredEmailDomains: ["plasmic.app"],
 
-  // List of email domains that are forbidden from creating new accounts.
-  // Existing users from these domains can still log in; this only blocks signup.
-  blockedSignupDomains: [] as string[],
+  recaptchaSiteKey: "",
+  recaptchaMinScore: 0.5,
+  recaptchaEnforce: false,
 
   newProjectModal: false,
-
-  authUsersTab: false,
 
   /*
   Template tours should map projectId to tourId, this way when a user creates a new project
@@ -602,27 +553,24 @@ const DEFAULT_DEVFLAGS = {
   */
   templateTours: {} as Record<string, string>,
 
-  autoOpen: false,
-  autoOpen2: false,
   cmsUniqueFields: false,
-  // Enable new data queries.
-  serverQueries: false,
-  // Disable auth and backend integrations for new projects
-  rscRelease: false,
-  // Overrides rscRelease to allow using integrations in a project.
+  // Allows using auth and backend integrations in a project.
   enableDataQueries: false,
   // Disable the public copilot interaction
   disablePublicCopilot: false,
-  // Show Animation sequences tab and animation section in Design tab
-  showAnimations: false,
   // Preset animations importable project id
   presetAnimationsProjectId: "",
+<<<<<<< HEAD
   // Show Data Tokens tab in Left Pane
   dataTokens: false,
   // EP Studio lockdown: redirect dashboard/auth routes to Commerce Manager
   hideDashboardViews: false,
   dashboardRedirectUrl: "",
   adminDashboardOverrideParam: "adminDashboard",
+=======
+  // True only on a request carrying the e2e devflags cookie; see e2e-devflags.ts
+  e2eDevFlagsApplied: false,
+>>>>>>> upstream/master
 };
 
 Object.assign(DEFAULT_DEVFLAGS, DEFAULT_DEVFLAG_OVERRIDES);
@@ -631,17 +579,11 @@ export type DevFlagsType = typeof DEFAULT_DEVFLAGS;
 export const DEVFLAGS = cloneDeep(DEFAULT_DEVFLAGS);
 
 function normalizeDevFlags(flags: DevFlagsType) {
-  if (flags.variants) {
-    flags.unconditionalEdits = true;
-    flags.ephemeralRecording = true;
-  }
-
   if (flags.debug) {
     flags.autoSave = false;
     flags.ccStubs = true;
     flags.fnStubs = true;
     flags.logToConsole = true;
-    flags.enableReactDevTools = true;
   }
 }
 
@@ -654,7 +596,7 @@ export function applyDevFlagOverrides(overrides: Partial<DevFlagsType>): void {
 
 /** Applies overrides to a copy of the default devflags and returns it. */
 export function applyDevFlagOverridesToDefaults(
-  overrides: Partial<DevFlagsType>
+  overrides: Partial<DevFlagsType>,
 ): DevFlagsType {
   const devflags = cloneDeep(DEFAULT_DEVFLAGS);
   applyDevFlagOverridesToTarget(devflags, overrides);
@@ -664,7 +606,7 @@ export function applyDevFlagOverridesToDefaults(
 /** Applies overrides to a target. */
 export function applyDevFlagOverridesToTarget(
   target: DevFlagsType,
-  overrides: Partial<DevFlagsType>
+  overrides: Partial<DevFlagsType>,
 ): void {
   mergeSane(target, overrides);
   normalizeDevFlags(target);
@@ -672,23 +614,12 @@ export function applyDevFlagOverridesToTarget(
 
 export function applyPlasmicUserDevFlagOverrides(target: DevFlagsType) {
   mergeSane(target, {
-    ancestorsBoxes: true,
-    multiSelect: true,
-    insert2022Q4: true,
     plexus: true,
-    incrementalObservables: true,
     branching: true,
-    pageLayout: true,
-    refActions: true,
     logToConsole: true,
-    focusable: true,
-    envPanel: true,
-    interactiveCanvas: true,
-    importedTokenOverrides: true,
     hiddenDataSources: [] as string[],
-    serverQueries: true,
-    mainContentSlots: true,
     insertTemplatesIntoMainContentSlots: true,
+<<<<<<< HEAD
     simplifiedScreenVariants: true,
     onboardingTours: true,
     posthog: true,
@@ -696,15 +627,12 @@ export function applyPlasmicUserDevFlagOverrides(target: DevFlagsType) {
     componentThumbnails: false,
     authUsersTab: true,
     warningsInCanvas: true,
+=======
+>>>>>>> upstream/master
     previewSteps: true,
-    autoOpen: true,
-    autoOpen2: true,
-    allowHtmlPaste: true,
-    enableUiCopilot: true,
     enableChatCopilot: true,
+    enableQueryMigrationCopilot: true,
     cmsUniqueFields: true,
-    showAnimations: true,
-    dataTokens: true,
   } as Partial<DevFlagsType>);
 }
 
@@ -719,10 +647,10 @@ export function getProjectFlags(
   site: {
     flags: { [f: string]: string | number | boolean | null | undefined };
   },
-  target = DEVFLAGS
+  target = DEVFLAGS,
 ): DevFlagsType {
   return Object.assign(
     JSON.parse(JSON.stringify(target)),
-    pick(site.flags, perProjectFlags)
+    pick(site.flags, perProjectFlags),
   );
 }

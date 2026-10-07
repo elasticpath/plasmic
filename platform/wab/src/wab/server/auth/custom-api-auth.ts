@@ -15,7 +15,7 @@ import { getManager } from "typeorm";
 export async function customTeamApiUserAuth(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   next();
 }
@@ -27,7 +27,7 @@ export async function customTeamApiUserAuth(
 export async function customTeamApiAuth(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   next();
 }

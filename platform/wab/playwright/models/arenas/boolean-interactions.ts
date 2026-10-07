@@ -1,4 +1,4 @@
-import { FrameLocator, Locator, Page } from "playwright/test";
+import { FrameLocator, Locator, Page } from "@playwright/test";
 import { BaseModel } from "../BaseModel";
 
 export class BooleanInteractionsArena extends BaseModel {
@@ -8,7 +8,7 @@ export class BooleanInteractionsArena extends BaseModel {
     readonly setToTrueButton: Locator,
     readonly setToFalseButton: Locator,
     readonly toggleButton: Locator,
-    readonly clearButton: Locator
+    readonly clearButton: Locator,
   ) {
     super(page);
   }
@@ -39,7 +39,7 @@ export class BooleanInteractionsArena extends BaseModel {
       setToTrueButton,
       setToFalseButton,
       toggleButton,
-      clearButton
+      clearButton,
     );
     return instance;
   }

@@ -52,7 +52,7 @@ export const CopilotCodePrompt = observer(function CopilotCodePrompt({
         },
         wrap: (elt) => (
           <>
-            <Tooltip title={"Open Copilot"} mouseEnterDelay={0.5}>
+            <Tooltip title={"Open Plasmic AI"} mouseEnterDelay={0.5}>
               {elt}
             </Tooltip>
             <CopilotPromptDialog<string>
@@ -70,7 +70,7 @@ export const CopilotCodePrompt = observer(function CopilotCodePrompt({
                           type: "code-sql",
                           schema: ensure(
                             dataSourceSchema,
-                            () => `Missing schema`
+                            () => `Missing schema`,
                           ),
                           currentCode: processCurrentCode(currentValue),
                           data: processData(data),
@@ -83,9 +83,6 @@ export const CopilotCodePrompt = observer(function CopilotCodePrompt({
                         }),
                     projectId: studioCtx.siteInfo.id,
                     goal: prompt,
-                    ...(studioCtx.appCtx.appConfig.copilotClaude
-                      ? { useClaude: true }
-                      : {}),
                   })
                   .then((x) => {
                     const res: CopilotResponseData = JSON.parse(x.response);
@@ -135,7 +132,7 @@ function processData(data: Record<string, any>) {
       }
       if (Array.isArray(v)) {
         return (v.length > 3 ? [...v.slice(0, 3), "... (long array"] : v).map(
-          (val, i) => rec(val, depth + 1, [...path, i])
+          (val, i) => rec(val, depth + 1, [...path, i]),
         );
       } else {
         return Object.fromEntries(
@@ -147,10 +144,10 @@ function processData(data: Record<string, any>) {
                   showAdvancedFields: true,
                 })
                   ? null
-                  : ([key, rec(v[key], depth + 1, [...path, key])] as const)
-              )
-            )
-          ).slice(0, 50)
+                  : ([key, rec(v[key], depth + 1, [...path, key])] as const),
+              ),
+            ),
+          ).slice(0, 50),
         );
       }
     };

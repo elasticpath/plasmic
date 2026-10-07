@@ -17,6 +17,7 @@ import {
   ApiFeatureTier,
   ApiTeam,
   BillingFrequency,
+  Subscription,
   TeamMember,
 } from "@/wab/shared/ApiSchema";
 import {
@@ -29,18 +30,17 @@ import { DEVFLAGS } from "@/wab/shared/devflags";
 import { ORGANIZATION_CAP } from "@/wab/shared/Labels";
 import { isUpgradableTier } from "@/wab/shared/pricing/pricing-utils";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
 import { HTMLElementRefOf } from "@plasmicapp/react-web";
 import { notification } from "antd";
 import * as React from "react";
-import Stripe from "stripe";
 
 interface TeamBillingProps extends DefaultTeamBillingProps {
   appCtx: AppCtx;
   team: ApiTeam;
   members: TeamMember[];
   availFeatureTiers: ApiFeatureTier[];
-  subscription?: Stripe.Subscription;
+  subscription?: Subscription;
+  canStartFreeTrial: boolean;
   onChange: () => Promise<void>;
   disabled?: boolean;
 }
@@ -52,22 +52,21 @@ function TeamBilling_(props: TeamBillingProps, ref: HTMLElementRefOf<"div">) {
     members,
     availFeatureTiers,
     subscription,
+    canStartFreeTrial,
     onChange,
     disabled,
     ...rest
   } = props;
   const [billingEmail, setBillingEmail] = React.useState(team.billingEmail);
   const [billingFreq, setBillingFreq] = React.useState<BillingFrequency>(
-    team.billingFrequency ?? "year"
+    team.billingFrequency ?? "year",
   );
 
   // Figure out the current plan we're on
-  const subStatus = team
-    ? getSubscriptionStatus(team, availFeatureTiers, subscription)
-    : undefined;
+  const subStatus = getSubscriptionStatus(team, subscription);
 
   const billingError =
-    subStatus?.type === "invalid" ? subStatus.errorMsg : undefined;
+    subStatus.type === "invalid" ? subStatus.errorMsg : undefined;
 
   const currentBill = React.useMemo(() => {
     if (!team.featureTier || !team.seats || !team.billingFrequency) {
@@ -77,7 +76,7 @@ function TeamBilling_(props: TeamBillingProps, ref: HTMLElementRefOf<"div">) {
     const bill = calculateBill(
       team.featureTier,
       team.seats,
-      team.billingFrequency
+      team.billingFrequency,
     );
     return team.billingFrequency === "year"
       ? `$${bill.total}/year`
@@ -85,14 +84,10 @@ function TeamBilling_(props: TeamBillingProps, ref: HTMLElementRefOf<"div">) {
   }, [team.featureTier, team.seats, team.billingFrequency]);
 
   const seatsUsed = members.filter(
-    (m) => !isAdminTeamEmail(m.email, DEVFLAGS)
+    (m) => !isAdminTeamEmail(m.email, DEVFLAGS),
   ).length;
 
   const upsell = async (tier: ApiFeatureTier, title?: string) => {
-    if (!team) {
-      return;
-    }
-
     const { tiers } = await appCtx.api.listCurrentFeatureTiers();
 
     // Load the upsell modal to handle either an upgrade/downgrade or new subscription
@@ -114,14 +109,12 @@ function TeamBilling_(props: TeamBillingProps, ref: HTMLElementRefOf<"div">) {
       return;
     } else if (promptResult.type === "fail") {
       // Show errors
-      notification.warn({
+      notification.warning({
         message: `Issue with payment, please try again.`,
         description: promptResult.errorMsg,
       });
     } else if (promptResult.type === "success") {
-      await showUpsellConfirm(
-        fillRoute(APP_ROUTES.orgSettings, { teamId: team.id })
-      );
+      await showUpsellConfirm(APP_ROUTES.orgSettings.fill({ teamId: team.id }));
     }
 
     // Refresh the latest team data
@@ -129,10 +122,6 @@ function TeamBilling_(props: TeamBillingProps, ref: HTMLElementRefOf<"div">) {
   };
 
   const updateCreditCard = async () => {
-    if (!team) {
-      return;
-    }
-
     // Load the upsell modal to handle either an upgrade/downgrade or new subscription
     const promptResult = await promptUpdateCc({
       appCtx,
@@ -145,15 +134,13 @@ function TeamBilling_(props: TeamBillingProps, ref: HTMLElementRefOf<"div">) {
       return;
     } else if (promptResult.type === "fail") {
       // Show errors
-      notification.warn({
+      notification.warning({
         message: `Issue with updating payment method, please try again.`,
         description: promptResult.errorMsg,
       });
     } else if (promptResult.type === "success") {
       // TODO: custom confirm, currently using same as for upsell
-      await showUpsellConfirm(
-        fillRoute(APP_ROUTES.orgSettings, { teamId: team.id })
-      );
+      await showUpsellConfirm(APP_ROUTES.orgSettings.fill({ teamId: team.id }));
     }
 
     // Refresh the latest team data
@@ -161,11 +148,16 @@ function TeamBilling_(props: TeamBillingProps, ref: HTMLElementRefOf<"div">) {
   };
 
   const startFreeTrial = async () => {
-    if (!team) {
-      return;
-    }
     await appCtx.api.startFreeTrial(team.id);
     await onChange();
+  };
+
+  const manageSeats = async () => {
+    const tier = ensure(
+      team.featureTier,
+      "Feature tier should exist to change seats",
+    );
+    await upsell(tier, "Change seat count");
   };
 
   return (
@@ -176,7 +168,7 @@ function TeamBilling_(props: TeamBillingProps, ref: HTMLElementRefOf<"div">) {
       billingError={billingError}
       billingFrequencyToggle={{
         // Don't let users switch billingFreq if they already have a subscription
-        isDisabled: !(subStatus?.type === "valid" && subStatus.free),
+        isDisabled: !(subStatus.type === "valid" && subStatus.free),
         isChecked: billingFreq === "year",
         onChange: (checked) => {
           if (checked) {
@@ -192,9 +184,16 @@ function TeamBilling_(props: TeamBillingProps, ref: HTMLElementRefOf<"div">) {
         billingFrequency: billingFreq,
         availableTiers: availFeatureTiers,
         currentFeatureTier:
-          subStatus?.type === "valid" ? subStatus.tier : subStatus?.freeTier,
-        canStartFreeTrial: !team.trialStartDate,
+          subStatus.type === "valid" ? subStatus.tier : subStatus.freeTier,
+        canStartFreeTrial,
         onSelectFeatureTier: upsell,
+        onManageSeats:
+          subStatus.type === "valid" &&
+          !subStatus.free &&
+          !team.onTrial &&
+          !!team.stripeSubscriptionId
+            ? manageSeats
+            : undefined,
         onStartFreeTrial: startFreeTrial,
         isFreeTrialTeam: team.onTrial,
       }}
@@ -203,27 +202,16 @@ function TeamBilling_(props: TeamBillingProps, ref: HTMLElementRefOf<"div">) {
       }}
       // If we are on free or enterprise tiers, hide certain sections.
       tier={
-        subStatus?.type === "valid" && (subStatus.free || team.onTrial)
+        subStatus.type === "valid" && (subStatus.free || team.onTrial)
           ? "free"
-          : subStatus?.type === "valid" &&
-            subStatus.tier.name.includes("Enterprise")
-          ? "enterprise"
-          : undefined
+          : subStatus.type === "valid" &&
+              subStatus.tier.name.includes("Enterprise")
+            ? "enterprise"
+            : undefined
       }
       currentBill={currentBill}
       seatsUsed={`${seatsUsed}`}
       seatsPurchased={`${team.seats ?? appCtx.appConfig.freeTier.maxUsers}`}
-      changeSeatsButton={{
-        onClick: async () => {
-          // Skip straight to the Checkout where you change the number of seats
-          const tier = ensure(
-            team.featureTier,
-            "Feature tier should exist to change seats"
-          );
-          await upsell(tier, "Change seat count");
-        },
-        disabled: disabled,
-      }}
       changeCreditCardButton={{
         onClick: async () => {
           await updateCreditCard();
@@ -233,7 +221,7 @@ function TeamBilling_(props: TeamBillingProps, ref: HTMLElementRefOf<"div">) {
         onClick: async () => {
           // If the user is on not on a Upgradable tier,
           // ask they talk to us first before cancelling
-          if (team && team.featureTier && !isUpgradableTier(team.featureTier)) {
+          if (team.featureTier && !isUpgradableTier(team.featureTier)) {
             const confirmed = await reactConfirm({
               title: "Cancel your Plasmic plan",
               message:
@@ -272,7 +260,7 @@ function TeamBilling_(props: TeamBillingProps, ref: HTMLElementRefOf<"div">) {
           // Do the cancellation
           const teamId = ensure(
             team,
-            `${ORGANIZATION_CAP} should exist to change subscription`
+            `${ORGANIZATION_CAP} should exist to change subscription`,
           ).id;
           await appCtx.api.cancelSubscription(teamId, {
             reason: cancelReason,
@@ -293,7 +281,7 @@ function TeamBilling_(props: TeamBillingProps, ref: HTMLElementRefOf<"div">) {
           }
           const teamId = ensure(
             team,
-            `${ORGANIZATION_CAP} should exist to update billing email`
+            `${ORGANIZATION_CAP} should exist to update billing email`,
           ).id;
           await appCtx.api.updateTeam(teamId, {
             billingEmail,
@@ -305,7 +293,7 @@ function TeamBilling_(props: TeamBillingProps, ref: HTMLElementRefOf<"div">) {
         team.stripeCustomerId
           ? {
               props: {
-                href: fillRoute(APP_ROUTES.orgBilling, { teamId: team.id }),
+                href: APP_ROUTES.orgBilling.fill({ teamId: team.id }),
                 target: "_blank",
               },
             }

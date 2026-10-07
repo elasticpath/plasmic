@@ -21,6 +21,8 @@ import { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
 import {
   COMPONENT_PROP_LOWER,
   COMPONENT_PROP_PLURAL_CAP,
+  CONFIGURE_ACTION,
+  DELETE_ACTION,
 } from "@/wab/shared/Labels";
 import { getSlotParams } from "@/wab/shared/SlotUtils";
 import { toVarName } from "@/wab/shared/codegen/util";
@@ -79,15 +81,15 @@ export const ComponentPropsDefinitionSection = observer(
   }) {
     const { studioCtx, component, viewCtx } = props;
     const [newPropPrefix, setNewPropPrefix] = React.useState<string | null>(
-      null
+      null,
     );
     const [expandedFolders, setExpandedFolders] = React.useState(
-      new Set<string>()
+      new Set<string>(),
     );
 
     const expandAncestorsOf = (param: Param) => {
       const ancestors = getAncestorFolderPaths(
-        getParamDisplayName(component, param)
+        getParamDisplayName(component, param),
       );
       setExpandedFolders((prev) => new Set([...prev, ...ancestors]));
     };
@@ -104,7 +106,7 @@ export const ComponentPropsDefinitionSection = observer(
               expandAncestorsOf(param);
             }
           }
-        }
+        },
       );
       return dispose;
     }, [studioCtx, component]);
@@ -142,6 +144,7 @@ export const ComponentPropsDefinitionSection = observer(
           }
           zeroBodyPadding
           emptyBody={!slotParams.length && !realParams.length}
+          emptyDescription="Customize each instance of this component."
           data-test-id="props-section"
         >
           {realParams.length > 0 && (
@@ -170,7 +173,7 @@ export const ComponentPropsDefinitionSection = observer(
         )}
       </PropsTreeCtx.Provider>
     );
-  }
+  },
 );
 
 /**
@@ -238,7 +241,7 @@ const PropsLevel = observer(function PropsLevel(props: {
             node={node}
             draggable={draggable}
           />
-        )
+        ),
       )}
     </SimpleReorderableList>
   );
@@ -276,7 +279,7 @@ const PropFolderRow = observer(function PropFolderRow(props: {
               onClick={(e) => {
                 e.stopPropagation();
                 openNewPropModal(
-                  `${parseFolderSegments(node.path).join(" / ")} / `
+                  `${parseFolderSegments(node.path).join(" / ")} / `,
                 );
               }}
               data-test-id="add-prop-to-folder-btn"
@@ -343,7 +346,7 @@ const PropRow = observer(function ParamRow(props: {
             <div>
               <EditableLabel
                 value={getFolderDisplayName(
-                  getParamDisplayName(component, param)
+                  getParamDisplayName(component, param),
                 )}
                 onEdit={(val) =>
                   spawn(
@@ -351,7 +354,7 @@ const PropRow = observer(function ParamRow(props: {
                       if (val) {
                         const newName = renameFolderLeaf(
                           getParamDisplayName(component, param),
-                          val
+                          val,
                         );
                         studioCtx
                           .tplMgr()
@@ -359,7 +362,7 @@ const PropRow = observer(function ParamRow(props: {
                         expandAncestorsOf(param);
                       }
                       return ok();
-                    })
+                    }),
                   )
                 }
                 disabled={!canRename}
@@ -396,12 +399,12 @@ function makeParamMenu(
   studioCtx: StudioCtx,
   component: Component,
   param: Param,
-  opts: { onConfigureParam: () => void }
+  opts: { onConfigureParam: () => void },
 ) {
   return (
     <Menu>
       <Menu.Item onClick={() => opts.onConfigureParam()}>
-        Configure {COMPONENT_PROP_LOWER}
+        {CONFIGURE_ACTION}
       </Menu.Item>
       {canChangeParamExportType(component, param) && (
         <Menu.SubMenu title="Set code export type to">
@@ -448,7 +451,7 @@ function makeParamMenu(
             });
           }}
         >
-          Delete {COMPONENT_PROP_LOWER}
+          {DELETE_ACTION}
         </Menu.Item>
       )}
     </Menu>

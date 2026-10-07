@@ -1,9 +1,14 @@
 import { pickTraceCarrier } from "@/wab/server/util/apm-util";
+<<<<<<< HEAD
 import {
   getCodegenPublicUrl,
   getDataUrl,
   getLoaderInternalUrl,
 } from "@/wab/shared/urls";
+=======
+import { maybeStartGoogleCloudProfiler } from "@/wab/server/util/profiler";
+import { getCodegenOriginUrl, getCodegenUrl } from "@/wab/shared/urls";
+>>>>>>> upstream/master
 import { context, propagation } from "@opentelemetry/api";
 import {
   GlobalVariantSpec,
@@ -13,6 +18,7 @@ import {
 } from "@plasmicapp/loader-react";
 import React from "react";
 import ReactDOMServer from "react-dom/server";
+import { inspect } from "util";
 
 export async function genLoaderHtmlBundle(opts: {
   projectId: string;
@@ -71,7 +77,7 @@ export async function genLoaderHtmlBundle(opts: {
           prefetchedData: data,
           componentProps,
           globalVariants,
-        }
+        },
       )
     : undefined;
 
@@ -83,7 +89,7 @@ export async function genLoaderHtmlBundle(opts: {
       componentProps,
       globalVariants,
       prefetchedQueryData,
-    }
+    },
   );
 
   const outerElement = React.createElement(
@@ -109,7 +115,7 @@ export async function genLoaderHtmlBundle(opts: {
       React.createElement("script", {
         async: true,
         src: `${publicCodegenUrl}/static/js/loader-hydrate.js`,
-      })
+      }),
   );
 
   const outerHtml = ReactDOMServer.renderToStaticMarkup(outerElement);
@@ -126,17 +132,25 @@ async function main(argv = process.argv) {
     console.error = () => {};
     console.info = () => {};
     console.debug = () => {};
+    // Start the profiler before generation so it captures the work.
+    await maybeStartGoogleCloudProfiler("bwrap");
     const args = JSON.parse(argv[2]);
     const { html } = await context.with(
       propagation.extract(context.active(), pickTraceCarrier(process.env)),
-      () => genLoaderHtmlBundle(args)
+      () => genLoaderHtmlBundle(args),
     );
-    // Node will wait for the contents to finish writing before exiting, so we don't need to wait on a callback.
-    // This is actually safer and simpler than, say, using fs.writeSync(), which does a partial write and requires retrying.
-    process.stdout.write(html);
+    // The profiler keeps a long-poll open and can't be stopped, so force-exit
+    // once stdout is flushed to avoid leaving the subprocess alive.
+    process.stdout.write(html, () => process.exit(0));
   } catch (e) {
-    process.stderr.write("" + e.stack);
-    process.exit(1);
+    process.stderr.write(
+      inspect(e, {
+        depth: 5,
+        maxStringLength: 4096,
+        maxArrayLength: 50,
+      }).slice(0, 8192),
+      () => process.exit(1),
+    );
   }
 }
 

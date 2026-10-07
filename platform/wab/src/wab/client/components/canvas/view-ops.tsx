@@ -4,7 +4,10 @@ import {
   calcOffset,
   insertBySpec,
 } from "@/wab/client/Dnd";
-import { showError } from "@/wab/client/ErrorNotifications";
+import {
+  notifyReferencingNode,
+  showError,
+} from "@/wab/client/ErrorNotifications";
 import { readClipboardPlasmicData } from "@/wab/client/clipboard/common";
 import {
   AnimationClip,
@@ -12,6 +15,7 @@ import {
   PasteStyleProps,
   StyleClip,
   TplClip,
+  isEmptyStyleClip,
   isStyleClip,
   isTplClip,
   isTplsClip,
@@ -53,6 +57,7 @@ import {
 import {
   CantInsertTplReason,
   InsertTplCtx,
+  PasteTplCtx,
   adoptFixedPositionType as adoptFixedPositionTypeOp,
   adoptFreePositionType as adoptFreePositionTypeOp,
   adoptParentContainerStyleForVariant as adoptParentContainerStyleForVariantOp,
@@ -60,16 +65,20 @@ import {
   adoptRelativePositionType as adoptRelativePositionTypeOp,
   adoptStickyPositionType as adoptStickyPositionTypeOp,
   canInsertTplAsChild,
+  canInsertTplAsParent,
   canInsertTplAsSibling,
+  canPasteTplAt,
   clearAllStyles as clearAllStylesOp,
   convertTextBlockToContainer as convertTextBlockToContainerOp,
   copyMixins as copyMixinsOp,
+  insertPastedTplAt,
   insertTplAsChild,
+  insertTplAsParent,
+  pasteTpls,
   transferStyleProps as transferStylePropsOp,
 } from "@/wab/client/operations/insert-tpl";
 import { renameTpl } from "@/wab/client/operations/rename-tpl";
 import { validateComponentExtraction } from "@/wab/client/operations/utils/validate-component-extraction";
-import { validateTplRemoval } from "@/wab/client/operations/utils/validate-tpl-removal";
 import { promptComponentName, promptPageName } from "@/wab/client/prompts";
 import { getComboForAction } from "@/wab/client/shortcuts/studio/studio-shortcuts";
 import { ComponentCtx } from "@/wab/client/studio-ctx/component-ctx";
@@ -113,9 +122,6 @@ import {
   isBaseVariant,
   isGlobalVariant,
   isPrivateStyleVariant,
-  toVariantKey,
-  tryGetBaseVariantSetting,
-  tryGetPrivateStyleVariant,
 } from "@/wab/shared/Variants";
 import { AddItemKey, WrapItemKey } from "@/wab/shared/add-item-keys";
 import { toVarName } from "@/wab/shared/codegen/util";
@@ -135,24 +141,17 @@ import {
   omitNils,
   switchType,
   tuple,
-  unexpected,
   withoutNils,
 } from "@/wab/shared/common";
 import * as Components from "@/wab/shared/core/components";
 import {
   ComponentType,
-  cloneVariant,
   isCodeComponent,
   isFrameComponent,
   isPageComponent,
 } from "@/wab/shared/core/components";
 import * as exprs from "@/wab/shared/core/exprs";
-import { codeLit } from "@/wab/shared/core/exprs";
 import { mkImageAssetRef } from "@/wab/shared/core/image-assets";
-import {
-  isTagInline,
-  isTagListContainer,
-} from "@/wab/shared/core/rich-text-util";
 import {
   SQ,
   SelQuery,
@@ -163,6 +162,7 @@ import { siteFinalStyleTokensAllDeps } from "@/wab/shared/core/site-style-tokens
 import {
   allAnimationSequences,
   allGlobalVariants,
+  allMixins,
   isTplAttachedToSite,
 } from "@/wab/shared/core/sites";
 import { SlotSelection } from "@/wab/shared/core/slots";
@@ -194,10 +194,7 @@ import {
   isSelectableValNode,
   slotContentValNode,
 } from "@/wab/shared/core/val-nodes";
-import {
-  asTplOrSlotSelection,
-  equivTplOrSlotSelection,
-} from "@/wab/shared/core/vals";
+import { asTplOrSlotSelection } from "@/wab/shared/core/vals";
 import {
   getCssInitial,
   parseCssNumericNew,
@@ -208,7 +205,6 @@ import {
   computeDefinedIndicator,
   getTargetBlockingCombo,
 } from "@/wab/shared/defined-indicator";
-import { DEVFLAGS } from "@/wab/shared/devflags";
 import {
   EffectiveVariantSetting,
   adaptEffectiveVariantSetting,
@@ -221,6 +217,7 @@ import {
   isStandardSide,
   sideToOrient,
 } from "@/wab/shared/geom";
+import { isTagInline, isTagListContainer } from "@/wab/shared/html";
 import {
   ContainerLayoutType,
   ContainerType,
@@ -258,10 +255,8 @@ import {
 } from "@/wab/shared/model/classes";
 import {
   canAddChildren,
-  canAddChildrenAndWhy,
   canAddChildrenToSlotSelection,
   canAddSiblings,
-  canAddSiblingsAndWhy,
 } from "@/wab/shared/parenting";
 import {
   isSizeProp,
@@ -329,7 +324,7 @@ export class ViewOps {
    */
   deepFocusElement(
     target: JQuery | undefined | null,
-    trigger: "ctrl-click" | "dbl-click"
+    trigger: "ctrl-click" | "dbl-click",
   ) {
     if (!target) {
       return;
@@ -437,7 +432,7 @@ export class ViewOps {
       prop: string,
       selfValue: string | undefined,
       parentValue: string,
-      delta: number
+      delta: number,
     ) => {
       const alignOrder = ["flex-start", "center", "flex-end"];
       let curAlignSelf = selfValue;
@@ -517,7 +512,7 @@ export class ViewOps {
           "align-self",
           curExp.get("align-self"),
           parentExp.get("align-items"),
-          delta
+          delta,
         );
       };
       if (parentContainerType === ContainerLayoutType.flexRow) {
@@ -558,7 +553,7 @@ export class ViewOps {
           "justify-self",
           curExp.get("justify-self"),
           parentExp.get("justify-items"),
-          delta
+          delta,
         );
       };
       switch (dir) {
@@ -589,7 +584,7 @@ export class ViewOps {
       height: number;
       top: number;
       left: number;
-    }
+    },
   ) {
     // Even though the following styles will react to
     // changes made to frame's top and left props,
@@ -700,7 +695,7 @@ export class ViewOps {
       const delta = (large ? 10 : 1) * (grow ? 1 : -1);
       const curNum = ensure(
         this.viewCtx().focusedDomElt(),
-        "Unexpected undefined focusedDomElt when nudging size"
+        "Unexpected undefined focusedDomElt when nudging size",
       )[0].getBoundingClientRect()[dim];
       targetExp().set(dim, `${Math.max(0, curNum + delta)}px`);
     }
@@ -762,7 +757,7 @@ export class ViewOps {
 
   async wrapInContainer(
     type: ContainerType,
-    target?: TplNode | TplNode[]
+    target?: TplNode | TplNode[],
   ): Promise<void> {
     const targets = target
       ? ensureArray(target)
@@ -816,7 +811,7 @@ export class ViewOps {
     spec: AddTplItem<any>,
     tpls: TplNode[],
     moveRep: boolean,
-    extraInfo?: any
+    extraInfo?: any,
   ) {
     let newNode: TplNode | null = null;
     this.change(() => {
@@ -824,13 +819,13 @@ export class ViewOps {
         spec,
         InsertRelLoc.wrap,
         extraInfo,
-        tpls[0]
+        tpls[0],
       );
       if (newNode) {
         assert(
           Tpls.isTplTag(newNode) ||
             (Tpls.isTplComponent(newNode) && Tpls.hasChildrenSlot(newNode)),
-          "Container created by 'wrap in container' is expected to be TplTag or TplComponent with children slot"
+          "Container created by 'wrap in container' is expected to be TplTag or TplComponent with children slot",
         );
         for (let i = 1; i < tpls.length; i++) {
           $$$(tpls[i]).detach();
@@ -840,7 +835,7 @@ export class ViewOps {
         if (moveRep) {
           assert(
             Tpls.isTplVariantable(tpls[0]),
-            "moveRep should not be true if tpl is not variantable"
+            "moveRep should not be true if tpl is not variantable",
           );
           newNode.vsettings[0].dataRep = tpls[0].vsettings[0].dataRep;
           tpls[0].vsettings[0].dataRep = null;
@@ -915,7 +910,7 @@ export class ViewOps {
         ? this.viewCtx().focusedSelectable()
         : this.viewCtx().renderState.tpl2bestVal(
             tpl,
-            this.viewCtx().focusedCloneKey()
+            this.viewCtx().focusedCloneKey(),
           );
       const rsh = this.viewCtx()
         .variantTplMgr()
@@ -925,7 +920,7 @@ export class ViewOps {
         const { children } = this.getContainerRectAndChildren(selectable);
         const [_, reorderedChildren] = this.linearizeItems(
           children,
-          desiredDir
+          desiredDir,
         );
         doit(reorderedChildren);
       } else {
@@ -939,7 +934,7 @@ export class ViewOps {
       ? this.viewCtx().focusedSelectable()
       : this.viewCtx().renderState.tpl2bestVal(
           tpl,
-          this.viewCtx().focusedCloneKey()
+          this.viewCtx().focusedCloneKey(),
         );
     const rsh = this.viewCtx()
       .variantTplMgr()
@@ -986,7 +981,7 @@ export class ViewOps {
    */
   private linearizeItems(
     children: [TplNode, Rect][],
-    desiredDir?: ContainerType
+    desiredDir?: ContainerType,
   ): [ContainerType, TplNode[]] {
     const centerToValNode = new Map<Pt, TplNode>();
     const centers = children.map((child) => {
@@ -1000,9 +995,9 @@ export class ViewOps {
         L.sortBy(centers, getMetric).map((center) =>
           ensure(
             centerToValNode.get(center),
-            "All centers should be in centerToValNode map"
-          )
-        )
+            "All centers should be in centerToValNode map",
+          ),
+        ),
       );
     };
     return desiredDir === "flex-row" || (bbox && bbox.width() > bbox.height())
@@ -1012,7 +1007,7 @@ export class ViewOps {
 
   private doGuessAutoLayoutType(
     container: Rect | undefined,
-    children: Array<[TplNode, Rect]>
+    children: Array<[TplNode, Rect]>,
   ): [ContainerType, TplNode[] | undefined] {
     if (children.length < 2) {
       // If there aren't multiple children, then just default based on if the
@@ -1030,7 +1025,7 @@ export class ViewOps {
   }
 
   private guessAutoLayoutType(
-    selectable: ValTag
+    selectable: ValTag,
   ): [ContainerType, TplNode[] | undefined] {
     const { containerRect, children } =
       this.getContainerRectAndChildren(selectable);
@@ -1041,7 +1036,7 @@ export class ViewOps {
     const sq = SQ(selectable, this.valState(), false);
     const selectableDom = this.viewCtx().renderState.sel2dom(
       selectable,
-      this.canvasCtx()
+      this.canvasCtx(),
     );
     const containerRect = selectableDom
       ? getBoundingClientRect(...ensureArray(selectableDom))
@@ -1053,7 +1048,7 @@ export class ViewOps {
         .map((child) => {
           const doms = this.viewCtx().renderState.sel2dom(
             child,
-            this.canvasCtx()
+            this.canvasCtx(),
           );
           if (doms) {
             const domElts = ensureArray(doms);
@@ -1063,7 +1058,7 @@ export class ViewOps {
             }
           }
           return undefined;
-        })
+        }),
     );
     return { containerRect, children };
   }
@@ -1104,8 +1099,8 @@ export class ViewOps {
       component,
       tplMgr: this.tplMgr(),
     });
-    if (result.result === "error") {
-      notification.error({ message: result.message });
+    if (result.isErr()) {
+      notification.error({ message: result.error.message });
     }
   }
 
@@ -1126,12 +1121,12 @@ export class ViewOps {
       this.tplMgr(),
       this.valState(),
       this.viewCtx().currentComponentCtx(),
-      this.viewCtx().showDefaultSlotContents()
+      this.viewCtx().showDefaultSlotContents(),
     );
   }
 
   private getFocusObjForEditText(
-    focusObj = this.viewCtx().focusedSelectable()
+    focusObj = this.viewCtx().focusedSelectable(),
   ): ValNodes.ValTextTag | undefined {
     if (!focusObj) {
       return undefined;
@@ -1195,7 +1190,7 @@ export class ViewOps {
       }
 
       return this.viewCtx().renderState.tryGetUpdatedVal(
-        focusObj as ValNodes.ValTextTag
+        focusObj as ValNodes.ValTextTag,
       );
     }
 
@@ -1215,7 +1210,7 @@ export class ViewOps {
   private textEditingIsBlocked(textValNode: ValTag): JSX.Element | undefined {
     const vtm = this.viewCtx().variantTplMgr();
     const effectiveVs = this.viewCtx().effectiveCurrentVariantSetting(
-      textValNode.tpl
+      textValNode.tpl,
     );
     const source = effectiveVs.getTextSource(this.viewCtx());
     if (!source) {
@@ -1225,7 +1220,7 @@ export class ViewOps {
       this.site(),
       this.viewCtx().currentComponent(),
       source,
-      vtm.getTargetIndicatorComboForNode(textValNode.tpl)
+      vtm.getTargetIndicatorComboForNode(textValNode.tpl),
     );
     const targetBlockingCombo = getTargetBlockingCombo([indicator]);
     if (targetBlockingCombo) {
@@ -1244,7 +1239,7 @@ export class ViewOps {
   tryEditText(
     { focusObj } = {
       focusObj: this.viewCtx().focusedSelectable(),
-    }
+    },
   ) {
     const textValNode = this.getFocusObjForEditText(focusObj);
     if (!textValNode || this.viewCtx().isOutOfContext(textValNode.tpl)) {
@@ -1260,7 +1255,7 @@ export class ViewOps {
 
     const blockedText = this.textEditingIsBlocked(textValNode);
     if (blockedText !== undefined) {
-      notification.warn({ message: blockedText });
+      notification.warning({ message: blockedText });
       return;
     }
     if (Tpls.isExprText(textValNode.text)) {
@@ -1269,7 +1264,7 @@ export class ViewOps {
     }
     const editHandle = handle.enterEdit();
     if (editHandle !== undefined) {
-      notification.warn({ message: blockedText });
+      notification.warning({ message: blockedText });
       return;
     }
     const variantTplMgr = this.viewCtx().variantTplMgr();
@@ -1279,11 +1274,9 @@ export class ViewOps {
     }
     this.viewCtx().setEditingTextContext({
       val: textValNode,
-      targetVs: DEVFLAGS.unconditionalEdits
-        ? variantTplMgr.ensureBaseVariantSetting(textValNode.tpl)
-        : variantTplMgr.ensureCurrentVariantSetting(textValNode.tpl),
+      targetVs: variantTplMgr.ensureCurrentVariantSetting(textValNode.tpl),
       draftText: maybe(textValNode.text, (text) =>
-        ensureInstance(text, RawText, RawTextLike)
+        ensureInstance(text, RawText, RawTextLike),
       ),
       run: undefined,
       editor: undefined,
@@ -1307,7 +1300,7 @@ export class ViewOps {
       tpl: TplTag,
       targetVs: VariantSetting,
       newText: RichText | RawTextLike | undefined,
-      newChildren?: TplNode[]
+      newChildren?: TplNode[],
     ) {
       const uuidToTpl = new Map<string, TplNode>();
       for (const child of tpl.children) {
@@ -1371,7 +1364,7 @@ export class ViewOps {
         // TplTag of non-text type.
         assert(
           newChildren,
-          "newChildren cannot be undefined for non-text TplTag"
+          "newChildren cannot be undefined for non-text TplTag",
         );
         tpl.children = newChildren.map((c) => createOrUpdateTpl(c as TplTag));
       }
@@ -1385,7 +1378,7 @@ export class ViewOps {
       saveTextToTpl(
         editingTextContext.val.tpl,
         editingTextContext.targetVs,
-        editingTextContext.draftText
+        editingTextContext.draftText,
       );
     }
   }
@@ -1396,11 +1389,11 @@ export class ViewOps {
   tryEnterComponentContaining(
     focusObj: Selectable,
     trigger: "dbl-click" | "ctrl-click",
-    cloneKey?: string
+    cloneKey?: string,
   ) {
     const container =
       this.focusHeuristics().containingComponentWithinCurrentComponentCtx(
-        focusObj
+        focusObj,
       );
     if (container != null) {
       const containerCtx =
@@ -1414,11 +1407,11 @@ export class ViewOps {
         return false;
       }
       const codeComponent = isCodeComponent(
-        containerCtx.tplComponent().component
+        containerCtx.tplComponent().component,
       );
       const tplComponent = containerCtx.tplComponent().component;
       const ownedBySite = this.tplMgr().isOwnedBySite(
-        containerCtx.tplComponent().component
+        containerCtx.tplComponent().component,
       );
       if (
         codeComponent ||
@@ -1439,7 +1432,7 @@ export class ViewOps {
       });
       this.viewCtx().setStudioFocusBySelectable(
         subtarget.focusTarget,
-        cloneKey
+        cloneKey,
       );
       trackEvent("ComponentSpotlight", { trigger });
       return true;
@@ -1456,7 +1449,7 @@ export class ViewOps {
       anchorCloneKey?: string;
       appendToMultiSelection?: boolean;
       exact: boolean;
-    }
+    },
   ) {
     // This focus request may have happened while the ViewCtx is still
     // evaluating.  We do our best to look up the corresponding ValNode
@@ -1492,7 +1485,7 @@ export class ViewOps {
     return this.viewCtx().setStudioFocusBySelectable(
       focusTarget,
       opts?.anchorCloneKey,
-      opts
+      opts,
     );
   }
   tryHoverObj(
@@ -1501,7 +1494,7 @@ export class ViewOps {
       allowLocked?: boolean;
       anchorCloneKey?: string;
       exact: boolean;
-    }
+    },
   ) {
     if (this.studioCtx().showStackOfParents) {
       return;
@@ -1518,7 +1511,7 @@ export class ViewOps {
       if (focusTarget) {
         this.viewCtx().setViewCtxHoverBySelectable(
           focusTarget,
-          opts?.anchorCloneKey
+          opts?.anchorCloneKey,
         );
       }
     }
@@ -1526,7 +1519,7 @@ export class ViewOps {
 
   tryFocusDomElt(
     $elt: JQuery,
-    opts: { appendToMultiSelection?: boolean; exact: boolean }
+    opts: { appendToMultiSelection?: boolean; exact: boolean },
   ) {
     const focusable = this.viewCtx().dom2focusObj($elt);
     const cloneKey = this.viewCtx().sel2cloneKey(focusable);
@@ -1577,7 +1570,7 @@ export class ViewOps {
     }
     const { focusTarget } = this.focusHeuristics().bestFocusTarget(
       focusableSelectable,
-      { exact: true }
+      { exact: true },
     );
     return this.viewCtx().computeFocus(focusTarget, cloneKey);
   }
@@ -1585,7 +1578,7 @@ export class ViewOps {
   _tryMoveSelect(
     selector: (current: SelQuery) => SelQuery,
     canSelectHiddenElement: boolean,
-    currentSelected: Selectable | null
+    currentSelected: Selectable | null,
   ): Selectable | undefined {
     let candidate: Selectable | undefined;
 
@@ -1618,7 +1611,7 @@ export class ViewOps {
 
   _trySelect(
     selector: (current: SelQuery) => SelQuery,
-    canSelectHiddenElement: boolean
+    canSelectHiddenElement: boolean,
   ): Selectable | undefined {
     const selectable = this.viewCtx().focusedSelectable() as Selectable | null;
 
@@ -1641,13 +1634,13 @@ export class ViewOps {
     return this._trySelect(
       (sq: /*TWZ*/ SelQuery) =>
         sq.wrap(sq.parent().tryGet() || sq.parentFullstack().tryGet()),
-      false
+      false,
     );
   }
   tryNavChild() {
     const firstChild = this._trySelect(
       (sq: /*TWZ*/ SelQuery) => sq.firstChild(),
-      true
+      true,
     );
     if (!firstChild) {
       return undefined;
@@ -1702,7 +1695,7 @@ export class ViewOps {
     if (targets.some((t) => t instanceof SlotSelection)) {
       // Only support clearing one SlotSelection at a time
       if (targets.length > 1) {
-        notification.warn({
+        notification.warning({
           message:
             "Removing multi-selections with slots is not supported at the moment.",
         });
@@ -1716,8 +1709,8 @@ export class ViewOps {
     // selected, the descendant will be filtered out)
     const tpls = Tpls.prepareFocusedTpls(
       targets.flatMap((t) =>
-        t instanceof SlotSelection ? this.getSlotTplContent(t) ?? [] : t
-      )
+        t instanceof SlotSelection ? (this.getSlotTplContent(t) ?? []) : t,
+      ),
     );
 
     if (tpls.length === 0) {
@@ -1751,7 +1744,7 @@ export class ViewOps {
           if (isTplVariantable(tpl)) {
             const visibility = canSetDisplayNone(
               this.studioCtx().codeComponentsRegistry,
-              tpl
+              tpl,
             )
               ? TplVisibility.DisplayNone
               : TplVisibility.NotRendered;
@@ -1771,7 +1764,7 @@ export class ViewOps {
                       tpl: tpls,
                       forceDelete: true,
                     });
-                    notification.close(key);
+                    notification.destroy(key);
                   }}
                 >
                   Delete instead
@@ -1838,7 +1831,7 @@ export class ViewOps {
           vtm,
         });
 
-        if (deleteResult.result === "deleted" && nextFocus) {
+        if (deleteResult.isOk() && nextFocus) {
           if (nextFocus instanceof SlotSelection) {
             this.viewCtx().setStudioFocusBySelectable(nextFocus);
           } else {
@@ -1854,28 +1847,13 @@ export class ViewOps {
         }
       });
 
-      if (deleteResult?.result === "error") {
-        const key = common.mkUuid();
-        const refNode = deleteResult.referencingNode;
-        notification.error({
-          key,
-          message: "Cannot remove element",
-          description: (
-            <>
-              {deleteResult.message}{" "}
-              {refNode ? (
-                <a
-                  onClick={() => {
-                    this.viewCtx().setStudioFocusByTpl(refNode);
-                    notification.close(key);
-                  }}
-                >
-                  [Go to reference]
-                </a>
-              ) : null}
-            </>
-          ),
-        });
+      if (deleteResult?.isErr()) {
+        notifyReferencingNode(
+          "Cannot remove element",
+          deleteResult.error.message,
+          deleteResult.error.referencingNode,
+          this.studioCtx(),
+        );
       }
     }
   }
@@ -1885,7 +1863,7 @@ export class ViewOps {
     opts: {
       excludeTpls?: TplNode[];
       visibleInCombo?: VariantCombo;
-    }
+    },
   ) {
     const { excludeTpls = [], visibleInCombo } = opts;
 
@@ -1965,7 +1943,7 @@ export class ViewOps {
         if (isTokenRef(fontSize)) {
           fontSize = derefTokenRefs(
             siteFinalStyleTokensAllDeps(this.site()),
-            fontSize
+            fontSize,
           );
         }
 
@@ -2013,7 +1991,7 @@ export class ViewOps {
         }
 
         const idx = validWeights.findIndex(
-          (option) => option.value == fontWeight
+          (option) => option.value == fontWeight,
         );
 
         const newIdx = clamp(idx + dir, 0, validWeights.length - 1);
@@ -2060,8 +2038,7 @@ export class ViewOps {
       } else {
         await this.tryDelete({
           tpl: copied,
-          forceDelete: DEVFLAGS.unconditionalEdits,
-          skipCommentsConfirmation: !DEVFLAGS.unconditionalEdits,
+          skipCommentsConfirmation: true,
         });
       }
     }
@@ -2077,7 +2054,7 @@ export class ViewOps {
     const focusedObjs = this.viewCtx().focusedTplsOrSlotSelections();
     if (focusedObjs.length > 1) {
       if (focusedObjs.some((node) => node instanceof SlotSelection)) {
-        notification.warn({
+        notification.warning({
           message:
             "Copying multi-selections with slots is not supported at the moment.",
         });
@@ -2141,7 +2118,7 @@ export class ViewOps {
       | TplNode
       | null
       | undefined = this.viewCtx().studioCtx.focusedFrame() ||
-      this.viewCtx().focusedTpl()
+      this.viewCtx().focusedTpl(),
   ) {
     if (!item) {
       return;
@@ -2151,9 +2128,9 @@ export class ViewOps {
         isDuplicatableFrame(
           ensure(
             this.studioCtx().currentArena,
-            "Unexpected undefined currentArena when trying to duplicate an ArenaFrame"
+            "Unexpected undefined currentArena when trying to duplicate an ArenaFrame",
           ),
-          item
+          item,
         )
       ) {
         // Only duplicate custom frames
@@ -2191,12 +2168,24 @@ export class ViewOps {
     }
 
     const vs = this.viewCtx().variantTplMgr().effectiveVariantSetting(tpl);
-    const exp = vs.rshWithoutMixins();
-    // const vs2 = this.viewCtx().variantTplMgr().ensureCurrentVariantSetting(tpl);
+    const directExp = vs.rshWithoutMixins();
+    const ownExp = vs.rsh();
+    const inheritedExp = vs.rshWithParentStyleWithoutMixins();
 
     const styleProps = cssProps || defaultCopyableStyleNames;
+    // Copy the element's own styles, plus values inherited from ancestors, but only
+    // for props the element doesn't style directly or via its mixins.
     const props = Object.fromEntries(
-      common.withoutNilTuples(styleProps.map((p) => tuple(p, exp.getRaw(p))))
+      common.withoutNilTuples(
+        styleProps.map((p) =>
+          tuple(
+            p,
+            ownExp.getRaw(p) != null
+              ? directExp.getRaw(p)
+              : inheritedExp.getRaw(p),
+          ),
+        ),
+      ),
     );
     const mixinUuids = vs.rs.mixins.map((m) => m.uuid);
 
@@ -2211,7 +2200,7 @@ export class ViewOps {
         delay: anim.delay,
         fillMode: anim.fillMode,
         playState: anim.playState,
-      })
+      }),
     );
 
     return {
@@ -2227,14 +2216,26 @@ export class ViewOps {
     const clip = this.copyStyleHelper(tpl, cssProps);
 
     console.log("Copied styles", clip?.cssProps);
-    if (clip) {
-      this.clipboard().copy(clip);
+    if (!clip) {
+      notification.warning({
+        message: "Cannot copy styles from this element",
+      });
+      return;
+    }
+
+    this.clipboard().copy(clip);
+    // Warn the user if there was nothing to copy.
+    if (isEmptyStyleClip(clip)) {
+      notification.info({
+        message: "This element has no styles of its own to copy",
+        description: "Its appearance comes from the project theme.",
+      });
     }
   }
 
   async getPasteStylePropsFromClipboard(
     targetTpl?: TplNode,
-    cssProps?: string[]
+    cssProps?: string[],
   ): Promise<PasteStyleProps | undefined> {
     // First try to paste from system clipboard
     const data = await readClipboardPlasmicData();
@@ -2256,15 +2257,15 @@ export class ViewOps {
     const tplClip = isTplClip(clip)
       ? clip
       : isTplsClip(clip) && clip.length > 0
-      ? clip[0]
-      : undefined;
+        ? clip[0]
+        : undefined;
 
     if (isStyleClip(clip)) {
       styleClip = clip;
     } else if (tplClip) {
       styleClip = this.copyStyleHelper(tplClip.node);
       if (!styleClip) {
-        notification.warn({
+        notification.warning({
           message: "Cannot extract styles from this element",
         });
         return;
@@ -2288,7 +2289,7 @@ export class ViewOps {
       !Tpls.isTplTag(targetTpl) &&
       !(Tpls.isTplComponent(targetTpl) && isCodeComponent(targetTpl.component))
     ) {
-      notification.warn({
+      notification.warning({
         message: "Cannot paste styles - must select an element",
       });
       return false;
@@ -2303,31 +2304,39 @@ export class ViewOps {
       ? L.pick(clip.cssProps, cssProps)
       : clip.cssProps;
 
+    const site = this.viewCtx().site;
+
+    // Tracks whether the paste did anything, so we can warn the user instead
+    // of appearing to be broken.
+    let appliedCount = 0;
+
     const { valid } = validateStylesForTpl(
       propsToCopy,
       targetTpl,
       this.viewCtx().variantTplMgr().effectiveRsh(targetTpl),
-      this.viewCtx().studioCtx.codeComponentsRegistry
+      this.viewCtx().studioCtx.codeComponentsRegistry,
     );
     exp.merge(valid);
+    appliedCount += Object.keys(valid).length;
 
-    // Resolve UUIDs to Mixin instances
+    // Resolve UUIDs to Mixin instances from the site or direct dependencies.
     if (clip.mixinUuids?.length) {
-      const site = this.viewCtx().site;
+      const availableMixins = allMixins(site, { includeDeps: "direct" });
       const mixinsToAdd = clip.mixinUuids
-        .map((uuid) => site.mixins.find((m) => m.uuid === uuid))
+        .map((uuid) => availableMixins.find((m) => m.uuid === uuid))
         .filter((m): m is Mixin => m !== undefined);
 
       if (mixinsToAdd.length > 0) {
-        vs.rs.mixins = L.uniqBy(
+        const newMixins = L.uniqBy(
           [...vs.rs.mixins, ...mixinsToAdd],
-          (m) => m.name
+          (m) => m.name,
         );
+        appliedCount += newMixins.length - vs.rs.mixins.length;
+        vs.rs.mixins = newMixins;
       }
     }
 
     // Resolve animation sequence UUIDs and create Animation instances
-    const site = this.viewCtx().site;
     const allAnimSequences = allAnimationSequences(site, {
       includeDeps: "direct",
     });
@@ -2335,7 +2344,7 @@ export class ViewOps {
     const animationsToAdd = withoutNils(
       (clip.animations || []).map((animClip) => {
         const sequence = allAnimSequences.find(
-          (seq) => seq.uuid === animClip.sequenceUuid
+          (seq) => seq.uuid === animClip.sequenceUuid,
         );
         if (!sequence) {
           return undefined;
@@ -2350,15 +2359,26 @@ export class ViewOps {
           fillMode: animClip.fillMode,
           playState: animClip.playState,
         });
-      })
+      }),
     );
 
     if (animationsToAdd.length > 0) {
       // Merge new animations with existing ones, deduplicating by sequence
-      vs.rs.animations = L.uniqBy(
+      const newAnimations = L.uniqBy(
         [...(vs.rs.animations ?? []), ...animationsToAdd],
-        (a) => a.sequence.uuid
+        (a) => a.sequence.uuid,
       );
+      appliedCount += newAnimations.length - (vs.rs.animations?.length ?? 0);
+      vs.rs.animations = newAnimations;
+    }
+
+    if (appliedCount === 0) {
+      notification.warning({
+        message: "No styles were pasted",
+        description:
+          "The copied styles are empty, or none of them can be applied to this element.",
+      });
+      return false;
     }
 
     return true;
@@ -2385,7 +2405,7 @@ export class ViewOps {
     if (presetTpl && Tpls.isTplComponent(presetTpl)) {
       assert(
         Tpls.isTplVariantable(presetTpl),
-        "If presetTpl is TplComponent it is also a TplNode"
+        "If presetTpl is TplComponent it is also a TplNode",
       );
       const dom = this.viewCtx().focusedDomElt()?.get(0);
       if (this.studioCtx().prepareSavingPresets(!!dom)) {
@@ -2402,7 +2422,7 @@ export class ViewOps {
     node: TplNode,
     component: Component,
     activeVariants: VariantCombo,
-    targetVariants?: VariantCombo
+    targetVariants?: VariantCombo,
   ) => {
     if (!Tpls.isTplVariantable(node)) {
       return;
@@ -2414,13 +2434,13 @@ export class ViewOps {
     const allActiveVsettings = sortedVariantSettingStack(
       node.vsettings,
       activeVariants,
-      makeVariantComboSorter(this.site(), component)
+      makeVariantComboSorter(this.site(), component),
     );
     const effectiveVs = new EffectiveVariantSetting(
       node,
       allActiveVsettings,
       this.site(),
-      activeVariants
+      activeVariants,
     );
 
     // A cloned node carries ALL its variant settings, not just the
@@ -2460,14 +2480,14 @@ export class ViewOps {
         (v) =>
           isGlobalVariant(v) ||
           activeVariants.includes(v) ||
-          isPrivateStyleVariant(v)
-      )
+          isPrivateStyleVariant(v),
+      ),
     );
     preservedVSettings.forEach(
       (vs) =>
         (vs.variants = vs.variants.filter(
-          (v) => isGlobalVariant(v) || isPrivateStyleVariant(v)
-        ))
+          (v) => isGlobalVariant(v) || isPrivateStyleVariant(v),
+        )),
     );
     const effectiveVsMap = new Map<Variant[], EffectiveVariantSetting>();
     for (const vs of preservedVSettings) {
@@ -2478,10 +2498,10 @@ export class ViewOps {
       if (!effectiveVsMap.has(vs.variants)) {
         const activeVSettings = sortedVariantSettingStack(
           preservedVSettings.filter((_vs) =>
-            common.arrayEqIgnoreOrder(_vs.variants, vs.variants)
+            common.arrayEqIgnoreOrder(_vs.variants, vs.variants),
           ),
           vs.variants,
-          makeVariantComboSorter(this.site(), component)
+          makeVariantComboSorter(this.site(), component),
         );
         effectiveVsMap.set(
           vs.variants,
@@ -2489,8 +2509,8 @@ export class ViewOps {
             node,
             activeVSettings,
             this.site(),
-            vs.variants
-          )
+            vs.variants,
+          ),
         );
       }
     }
@@ -2529,21 +2549,21 @@ export class ViewOps {
     const pastedImplicitStates = new Set(
       findImplicitStatesOfNodesInTree(
         clip.component,
-        clip.origNode ?? clip.node
-      )
+        clip.origNode ?? clip.node,
+      ),
     );
     const externalStates = clip.component.states.filter(
-      (s) => !pastedImplicitStates.has(s)
+      (s) => !pastedImplicitStates.has(s),
     );
     for (const state of externalStates) {
       const refs = Tpls.findExprsInTree(clip.origNode ?? clip.node).filter(
-        ({ expr }) => isStateUsedInExpr(state, expr)
+        ({ expr }) => isStateUsedInExpr(state, expr),
       );
       if (refs.length > 0) {
         notification.error({
           message: "Cannot paste elements",
           description: `They contain a reference to "${getStateDisplayName(
-            state
+            state,
           )}".`,
         });
         return;
@@ -2553,7 +2573,7 @@ export class ViewOps {
     Tpls.fixTplRefEpxrs(
       newTpls,
       clip.origNode ? Tpls.flattenTplsBottomUp(clip.origNode) : [],
-      (referencedTpl) => this.notifyMissingTplRef(null, referencedTpl)
+      (referencedTpl) => this.notifyMissingTplRef(null, referencedTpl),
     );
 
     newTpls.forEach((child) =>
@@ -2562,10 +2582,10 @@ export class ViewOps {
         clip.component,
         ensure(
           clip.activeVariants,
-          "Unexpected undefined value for clip activeVariants"
+          "Unexpected undefined value for clip activeVariants",
         ),
-        targetVariants
-      )
+        targetVariants,
+      ),
     );
     return newTree;
   };
@@ -2594,7 +2614,7 @@ export class ViewOps {
           ...Components.allComponentVariants(clip.component),
         ]);
         node.vsettings = node.vsettings.filter((vs) =>
-          vs.variants.every((v) => existingVariants.has(v))
+          vs.variants.every((v) => existingVariants.has(v)),
         );
       }
       if (this.pasteNode(node, cursorClientPt, target, loc)) {
@@ -2663,7 +2683,9 @@ export class ViewOps {
   pasteNodes({
     nodes,
     cursorClientPt,
-    target,
+    target = this.viewCtx().focusedTplOrSlotSelection() ||
+      this.viewCtx().tplRoot() ||
+      undefined,
     loc,
   }: {
     nodes: TplNode[];
@@ -2671,34 +2693,77 @@ export class ViewOps {
     target?: TplNode | Selectable;
     loc?: InsertRelLoc;
   }) {
-    // Replacing the root with multiple nodes would only replace the first and
-    // the rest of the nodes are inserted as siblings, but the root has no siblings.
-    // So we reject replacing root with multiple elements.
-    if (
-      loc === InsertRelLoc.replace &&
-      nodes.length > 1 &&
-      isKnownTplNode(target) &&
-      target.parent == null
-    ) {
+    if (!target) {
       notification.error({
-        message: "Cannot replace component root with multiple elements",
+        message: "Choose where to paste",
         description:
-          "Wrap your replacement in a single container element instead.",
+          "You must first select an item.  Pasting will then paste into that item.",
+      });
+      return false;
+    }
+    if (nodes.length === 0) {
+      return false;
+    }
+
+    const targetTplOrSlotSelection = asTplOrSlotSelection(target);
+    const ctx = this.pasteTplCtx();
+    const insertLoc =
+      loc ??
+      getAutoInsertLoc(this.viewCtx(), nodes, targetTplOrSlotSelection, ctx);
+    if (!insertLoc) {
+      notification.error({
+        message: "Cannot paste here",
+        description:
+          "You cannot paste into or around the selected" +
+          " element. Try pasting elsewhere.",
       });
       return false;
     }
 
-    let curTarget = target;
-    let curLoc = loc;
-    let anyPasted = false;
-    for (const node of nodes) {
-      if (this.pasteNode(node, cursorClientPt, curTarget, curLoc)) {
-        anyPasted = true;
-        curTarget = node;
-        curLoc = InsertRelLoc.after;
+    this.maybeFocus(target);
+    const { pasted, errors } = pasteTpls(
+      nodes,
+      targetTplOrSlotSelection,
+      insertLoc,
+      ctx,
+      this.parentOffsetAt(cursorClientPt),
+    );
+    errors.forEach((reason) =>
+      this.notifyCantInsert("Cannot paste here", reason),
+    );
+
+    for (const tpl of pasted) {
+      if (isTplComponent(tpl)) {
+        trackInsertItem({
+          from: "copy-paste",
+          ...getEventDataForTplComponent(tpl),
+        });
       }
     }
-    return anyPasted;
+
+    const newTplSlots = pasted.flatMap((tpl) =>
+      Tpls.flattenTpls(tpl).filter(Tpls.isTplSlot),
+    );
+    if (newTplSlots.length > 0) {
+      notification.info({
+        message: `Auto-created ${pluralize("slot", newTplSlots.length)}`,
+        description: `You pasted ${
+          newTplSlots.length === 1 ? "a slot" : "some slots"
+        }, so ${
+          newTplSlots.length === 1 ? "a new slot was" : "new slots were"
+        } created in the "${ctx.component.name}" component.`,
+      });
+    }
+
+    const lastPasted = L.last(pasted);
+    if (lastPasted) {
+      this.viewCtx().selectNewTpl(
+        lastPasted,
+        false,
+        this.viewCtx().focusedSelectable(),
+      );
+    }
+    return !!lastPasted;
   }
 
   pasteFrameClip(clip: FrameClip, originalFrame?: ArenaFrame) {
@@ -2717,167 +2782,15 @@ export class ViewOps {
   pasteNode(
     newItem: TplNode,
     cursorClientPt?: Pt,
-    target:
-      | TplNode
-      | Selectable
-      | undefined = this.viewCtx().focusedTplOrSlotSelection() ||
-      this.viewCtx().tplRoot() ||
-      undefined,
-    location?: InsertRelLoc
+    target?: TplNode | Selectable,
+    location?: InsertRelLoc,
   ): boolean {
-    if (!target) {
-      notification.error({
-        message: "Choose where to paste",
-        description:
-          "You must first select an item.  Pasting will then paste into that item.",
-      });
-      return false;
-    }
-
-    const targetTplOrSlotSelection = asTplOrSlotSelection(target);
-
-    const getInsertLoc = () => {
-      const validLocs = this.getValidInsertLocsForItem(
-        newItem,
-        targetTplOrSlotSelection
-      );
-      const preferredLocs = getPreferredInsertLocs(
-        this.viewCtx(),
-        targetTplOrSlotSelection
-      );
-      return L.head(preferredLocs.filter((loc) => validLocs.includes(loc)));
-    };
-
-    const loc = location || getInsertLoc();
-    if (
-      !loc ||
-      !this.canInsertAt(newItem, targetTplOrSlotSelection, loc, false)
-    ) {
-      // If we are inserting as sibling, try to warn why it's not possible
-      if (loc === InsertRelLoc.after || loc === InsertRelLoc.before) {
-        const canAdd = canAddSiblingsAndWhy(targetTplOrSlotSelection);
-        if (canAdd !== true) {
-          notification.error({
-            message: "Cannot paste as sibling here",
-            description: renderCantAddMsg(canAdd),
-          });
-          return false;
-        }
-      }
-
-      notification.error({
-        message: "Cannot paste here",
-        description:
-          "You cannot paste into or around the selected" +
-          " element. Try pasting elsewhere.",
-      });
-      return false;
-    }
-
-    const focused = ensure(
-      this.maybeFocus(target),
-      "Unexpected undefined focus for target"
-    );
-    assert(
-      equivTplOrSlotSelection(targetTplOrSlotSelection, focused),
-      "Unexpected unequal values for targetTplOrSlotSelection and focused, should be the same"
-    );
-
-    // Fix up the new node before we paste!
-    const component = this.viewCtx().currentComponent();
-    const newTplSlots: TplSlot[] = [];
-
-    if (isTplComponent(newItem)) {
-      trackInsertItem({
-        from: "copy-paste",
-        ...getEventDataForTplComponent(newItem),
-      });
-    }
-
-    for (const newNode of Tpls.flattenTpls(newItem)) {
-      if (Tpls.isTplSlot(newNode)) {
-        newTplSlots.push(newNode);
-      }
-
-      if (Tpls.isTplVariantable(newNode)) {
-        // Assert that this new node has variant settings that are compatible with the current
-        // component's, by checking that its base variant is the same as the current component's.
-        // It is the caller's responsibility to make sure this is the case.
-        const base = tryGetBaseVariantSetting(newNode);
-        common.assert(!!base && base.variants[0] === component.variants[0]);
-
-        // fix private style variant by cloning.
-        const clonedPrivateStyleVariants = new Map<string, Variant>();
-        newNode.vsettings.forEach((vs) => {
-          const privateSV = tryGetPrivateStyleVariant(vs.variants);
-          if (privateSV) {
-            const index = vs.variants.indexOf(privateSV);
-            assert(
-              index !== -1,
-              "Unexpected not found privateSV in variant list"
-            );
-            const privateSVKey = toVariantKey(privateSV);
-            // Reuse the cloned version if it already exists.
-            const variant = clonedPrivateStyleVariants.get(privateSVKey)!;
-            if (variant) {
-              vs.variants[index] = variant;
-              return;
-            }
-            if (privateSV.forTpl !== newNode) {
-              const clonedPrivateSV = cloneVariant(privateSV);
-              clonedPrivateSV.forTpl = newNode;
-              component.variants.push(clonedPrivateSV);
-              clonedPrivateStyleVariants.set(
-                toVariantKey(privateSV),
-                clonedPrivateSV
-              );
-              vs.variants[index] = clonedPrivateSV;
-            }
-          }
-        });
-      }
-    }
-    // Remove all VarRefs that do not exist in the current context.
-    const componentVars = new Set(component.params.map((p) => p.variable));
-    const varRefs = Array.from(Components.findVarRefs(newItem));
-    varRefs.forEach((varRef) => {
-      if (!componentVars.has(varRef.var)) {
-        varRef.remove();
-      }
+    return this.pasteNodes({
+      nodes: [newItem],
+      cursorClientPt,
+      target,
+      loc: location,
     });
-
-    // If this newItem is being pasted into a non-base context, then set the base variant setting
-    // to invisible, just as we do when drawing a new node in a non-base context.
-    const vtm = this.viewCtx().variantTplMgr();
-    if (
-      Tpls.isTplVariantable(newItem) &&
-      !isBaseVariant(vtm.getTargetVariantComboForNode(newItem))
-    ) {
-      vtm.ensureBaseVariantSetting(newItem).dataCond = codeLit(false);
-      vtm.ensureCurrentVariantSetting(newItem, component).dataCond =
-        codeLit(true);
-    }
-
-    // If we pasted new TplSlots, then we create new corresponding params
-    if (newTplSlots.length > 0) {
-      Components.attachNewSlotParamsToComponent(
-        this.site(),
-        component,
-        newTplSlots
-      );
-      notification.info({
-        message: `Auto-created ${pluralize("slot", newTplSlots.length)}`,
-        description: `You pasted ${
-          newTplSlots.length === 1 ? "a slot" : "some slots"
-        }, so ${
-          newTplSlots.length === 1 ? "a new slot was" : "new slots were"
-        } created in the "${component.name}" component.`,
-      });
-    }
-
-    this.insertAt(newItem, cursorClientPt, loc, targetTplOrSlotSelection);
-
-    return true;
   }
 
   /**
@@ -2907,10 +2820,26 @@ export class ViewOps {
           Tpls.getTplOwnerComponent(slot) ===
             this.viewCtx().currentComponent() &&
           !this.viewCtx().showingDefaultSlotContentsFor(
-            this.viewCtx().currentTplComponent()
+            this.viewCtx().currentTplComponent(),
           )
         ),
     };
+  }
+
+  private pasteTplCtx(): PasteTplCtx {
+    return {
+      ...this.insertTplCtx(),
+      site: this.site(),
+      component: this.viewCtx().currentComponent(),
+      ccRegistry: this.studioCtx().codeComponentsRegistry,
+    };
+  }
+
+  private parentOffsetAt(cursorClientPt: Pt | undefined) {
+    const $targetElt = this.viewCtx().focusedDomElt();
+    return $targetElt && cursorClientPt
+      ? calcOffset($targetElt[0], cursorClientPt, this.viewCtx())
+      : undefined;
   }
 
   private notifyCantInsert(title: string, reason: CantInsertTplReason) {
@@ -2929,12 +2858,12 @@ export class ViewOps {
   canInsertAsChild(
     newItem: TplNode,
     targetTplOrSlotSelection: TplNode | SlotSelection,
-    showErrors: boolean
+    showErrors: boolean,
   ) {
     const reason = canInsertTplAsChild(
       newItem,
       targetTplOrSlotSelection,
-      this.insertTplCtx()
+      this.insertTplCtx(),
     );
     if (reason !== true) {
       if (showErrors) {
@@ -2948,7 +2877,7 @@ export class ViewOps {
   canInsertAsSibling(
     newItem: TplNode,
     target: TplNode | SlotSelection,
-    showErrors: boolean
+    showErrors: boolean,
   ) {
     const reason = canInsertTplAsSibling(newItem, target, this.insertTplCtx());
     if (reason !== true) {
@@ -2960,30 +2889,12 @@ export class ViewOps {
     return true;
   }
 
-  getValidInsertLocsForItem(newItem: TplNode, target: TplNode | SlotSelection) {
-    const validLocs: InsertRelLoc[] = [];
-
-    if (this.canInsertAsSibling(newItem, target, false)) {
-      validLocs.push(InsertRelLoc.after, InsertRelLoc.before);
-    }
-
-    if (this.canInsertAsChild(newItem, target, false)) {
-      validLocs.push(InsertRelLoc.append, InsertRelLoc.prepend);
-    }
-
-    if (this.canInsertAsParent(newItem, target, false)) {
-      validLocs.push(InsertRelLoc.wrap);
-    }
-
-    return validLocs;
-  }
-
   tryInsertAt(
     newItem: TplNode,
     cursorClientPt: Pt | undefined,
     loc: InsertRelLoc,
     target: TplNode | Selectable,
-    preserveCloneKey?: boolean
+    preserveCloneKey?: boolean,
   ): boolean {
     if (!this.canInsertAt(newItem, asTplOrSlotSelection(target), loc, true)) {
       return false;
@@ -2996,100 +2907,16 @@ export class ViewOps {
     newItem: TplNode,
     target: TplNode | SlotSelection,
     loc: InsertRelLoc,
-    showErrorNotification: boolean
+    showErrorNotification: boolean,
   ) {
-    switch (loc) {
-      case InsertRelLoc.before:
-      case InsertRelLoc.after:
-        if (target instanceof SlotSelection) {
-          if (showErrorNotification) {
-            notification.error({
-              message: "Cannot insert before/after a slot",
-            });
-          }
-          return false;
-        }
-        return this.canInsertAsSibling(newItem, target, showErrorNotification);
-      case InsertRelLoc.prepend:
-      case InsertRelLoc.append:
-        return this.canInsertAsChild(newItem, target, showErrorNotification);
-      case InsertRelLoc.wrap:
-        if (
-          !Tpls.isTplTag(newItem) &&
-          (!Tpls.isTplComponent(newItem) || !Tpls.hasChildrenSlot(newItem))
-        ) {
-          if (showErrorNotification) {
-            notification.error({
-              message:
-                "Can only wrap in basic elements or components with a children slot",
-            });
-          }
-          return false;
-        }
-        return this.canInsertAsParent(newItem, target, showErrorNotification);
-      case InsertRelLoc.replace: {
-        if (target instanceof SlotSelection) {
-          if (showErrorNotification) {
-            notification.error({ message: "Cannot replace a slot" });
-          }
-          return false;
-        }
-
-        const isNonBaseVariant = !isBaseVariant(
-          this.viewCtx().variantTplMgr().getCurrentVariantCombo()
-        );
-        // A non-base replace only takes the hide path when the target is
-        // variantable; otherwise it falls through to the destructive path.
-        const shouldHideInVariant =
-          isNonBaseVariant && Tpls.isTplVariantable(target);
-
-        // The component root is the same node in every variant, so we should
-        // not replace it in non-base variant.
-        if (target.parent == null && isNonBaseVariant) {
-          if (showErrorNotification) {
-            notification.error({
-              message: "Cannot replace the component root in a variant",
-              description:
-                "The component root is shared across variants. Edit it in base, or replace a child element instead.",
-            });
-          }
-          return false;
-        }
-
-        // Only check TplRef and implicit-state references when target is expected to be removed,
-        // because a non-base replace hides the target in the active variant
-        // instead of removing it from the tree, so its references can stay valid.
-        if (!shouldHideInVariant) {
-          const owningComponent = $$$(target).tryGetOwningComponent();
-          if (owningComponent) {
-            const removalErr = validateTplRemoval(
-              [target],
-              owningComponent,
-              this.site()
-            );
-            if (removalErr) {
-              if (showErrorNotification) {
-                notification.error({
-                  message: "Cannot replace element",
-                  description: removalErr.message,
-                });
-              }
-              return false;
-            }
-          }
-        }
-        // Replacing the root: no parent, so no sibling rules to check.
-        // Component cycle detection check is already handled in the TplQuery
-        // within the replace operation.
-        if (target.parent == null) {
-          return true;
-        }
-
-        return this.canInsertAsSibling(newItem, target, showErrorNotification);
+    const reason = canPasteTplAt(newItem, target, loc, this.pasteTplCtx());
+    if (reason !== true) {
+      if (showErrorNotification) {
+        this.notifyCantInsert("Cannot insert here", reason);
       }
-      default:
-        return unexpected();
+      return false;
     }
+    return true;
   }
 
   insertAt(
@@ -3097,115 +2924,26 @@ export class ViewOps {
     cursorClientPt: Pt | undefined,
     loc: InsertRelLoc,
     target: TplNode | Selectable,
-    preserveCloneKey?: boolean
+    preserveCloneKey?: boolean,
   ) {
-    assert(
-      this.canInsertAt(newItem, asTplOrSlotSelection(target), loc, false),
-      "Must be able to insert newItem at target"
-    );
-
     const targetTplOrSlotSelection = ensure(
       this.maybeFocus(target),
-      "Unexpected undefined focus for target of insertion"
+      "Unexpected undefined focus for target of insertion",
     );
-
-    const deriveParentOffset = () => {
-      const $targetElt = this.viewCtx().focusedDomElt();
-      return $targetElt && cursorClientPt
-        ? calcOffset($targetElt[0], cursorClientPt, this.viewCtx())
-        : undefined;
-    };
-
-    if (isKnownTplNode(targetTplOrSlotSelection)) {
-      switch (loc) {
-        case InsertRelLoc.prepend:
-        case InsertRelLoc.append:
-          this.insertAsChild(newItem, targetTplOrSlotSelection, {
-            parentOffset: deriveParentOffset(),
-            prepend: loc === InsertRelLoc.prepend,
-          });
-          break;
-        case InsertRelLoc.before:
-        case InsertRelLoc.after:
-          this.insertAsSibling(newItem, targetTplOrSlotSelection, loc);
-          break;
-        case InsertRelLoc.wrap: {
-          const newParent = ensureInstance(
-            $$$(newItem).clear().one(),
-            TplTag,
-            TplComponent
-          );
-          this.insertAsParent(
-            newParent,
-            ensureInstance(
-              targetTplOrSlotSelection,
-              TplTag,
-              TplComponent,
-              TplSlot
-            )
-          );
-          break;
-        }
-        case InsertRelLoc.replace: {
-          if (targetTplOrSlotSelection.parent == null) {
-            // Root: no parent to anchor a sibling insert against. replaceWith
-            // handles the null-parent branch (and runs checkComponentCycles).
-            $$$(targetTplOrSlotSelection).replaceWith(newItem);
-          } else {
-            // Non-root: delegate to the sibling-insert path so we inherit
-            // the full insertAsChild fix-up chain.
-            const targetParent = targetTplOrSlotSelection.parent;
-            this.insertAsSibling(newItem, targetTplOrSlotSelection, "before");
-
-            const vtm = this.viewCtx().variantTplMgr();
-            const currentCombo = vtm.getCurrentVariantCombo();
-            const shouldHideInVariant =
-              Tpls.isTplVariantable(targetTplOrSlotSelection) &&
-              !isBaseVariant(currentCombo);
-
-            if (shouldHideInVariant) {
-              // variant-scoped replace hides the target in the active combo
-              // rather than deleting it from the tree, so base and other
-              // variants still see the original element.
-              const visibility = canSetDisplayNone(
-                this.studioCtx().codeComponentsRegistry,
-                targetTplOrSlotSelection
-              )
-                ? TplVisibility.DisplayNone
-                : TplVisibility.NotRendered;
-              setTplVisibility(
-                targetTplOrSlotSelection,
-                currentCombo,
-                visibility
-              );
-            } else {
-              $$$(targetTplOrSlotSelection).remove({ deep: true });
-              // Column count could change during remove; rebalance the remaining columns.
-              if (targetParent && Tpls.isTplColumns(targetParent)) {
-                redistributeColumnsSizes(targetParent, vtm);
-              }
-            }
-          }
-          break;
-        }
-        default:
-          unexpected();
-      }
-    } else if (targetTplOrSlotSelection instanceof SlotSelection) {
-      assert(
-        loc === InsertRelLoc.prepend || loc === InsertRelLoc.append,
-        "Unexpected loc type for inserting at SlotSelection"
-      );
-      this.insertAsChild(newItem, targetTplOrSlotSelection);
-    } else {
-      unexpected();
-    }
+    const result = insertPastedTplAt(
+      newItem,
+      targetTplOrSlotSelection,
+      loc,
+      this.pasteTplCtx(),
+      this.parentOffsetAt(cursorClientPt),
+    );
+    assert(result.isOk(), "Must be able to insert newItem at target");
 
     this.viewCtx().selectNewTpl(
       newItem,
       false,
       this.viewCtx().focusedSelectable(),
-      preserveCloneKey
+      preserveCloneKey,
     );
   }
 
@@ -3214,14 +2952,14 @@ export class ViewOps {
       tplNode ||
       ensure(
         this.viewCtx().focusedTpl(),
-        "Should have focused tpl to be able to extract component"
+        "Should have focused tpl to be able to extract component",
       );
     const containingComponent = $$$(tpl).owningComponent();
 
     const validationError = validateComponentExtraction(
       tpl,
       containingComponent,
-      this.site()
+      this.site(),
     );
     if (validationError) {
       this.notifyCannotExtractComponent(validationError);
@@ -3229,7 +2967,7 @@ export class ViewOps {
     }
     assert(
       Tpls.isTplTagOrComponent(tpl),
-      "Extraction validation guarantees tpl is a tag or component"
+      "Extraction validation guarantees tpl is a tag or component",
     );
 
     const flattenedTpls = Tpls.flattenTpls(tpl);
@@ -3270,23 +3008,23 @@ export class ViewOps {
         resurfaceParams: true,
         tplMgr: this.tplMgr(),
         getCanvasEnvForTpl: this.viewCtx().getCanvasEnvForTpl.bind(
-          this.viewCtx()
+          this.viewCtx(),
         ),
       });
-      if (extractResult.result === "error") {
-        this.notifyCannotExtractComponent(extractResult);
+      if (extractResult.isErr()) {
+        this.notifyCannotExtractComponent(extractResult.error);
         return;
       }
-      const { tplComponent, warnings } = extractResult;
+      const { tplComponent, warnings } = extractResult.value;
       this.viewCtx().selectNewTpl(tplComponent, true);
       if (tplComponent.component.name !== resp.name) {
         this.studioCtx().maybeWarnComponentRenaming(
           resp.name,
-          tplComponent.component.name
+          tplComponent.component.name,
         );
       }
       for (const warning of warnings) {
-        notification.warn({
+        notification.warning({
           message: "Fallback omitted",
           description: warning,
           duration: 0,
@@ -3308,16 +3046,16 @@ export class ViewOps {
                         .siteOps()
                         .createNewFrameForMixedArena(
                           tplComponent.component,
-                          {}
+                          {},
                         );
                     } else {
                       this.studioCtx().switchToComponentArena(
-                        tplComponent.component
+                        tplComponent.component,
                       );
                     }
                   }
                 });
-                notification.close(key);
+                notification.destroy(key);
               }}
             >
               {isMixedArena(arena)
@@ -3330,11 +3068,11 @@ export class ViewOps {
       });
     });
 
-    if (extractResult?.result === "success") {
+    if (extractResult?.isOk()) {
       // Segment track
       trackEvent("Create component", {
         projectName: this.studioCtx().siteInfo.name,
-        componentName: extractResult.tplComponent.component.name,
+        componentName: extractResult.value.tplComponent.component.name,
         type: "component",
         action: "extract-tpl-to-component",
       });
@@ -3357,7 +3095,7 @@ export class ViewOps {
       elements.push(domNode);
     }
     const domVals = common.filterMapTruthy(elements, (e) =>
-      this.viewCtx().dom2val($(e))
+      this.viewCtx().dom2val($(e)),
     );
 
     for (const domVal of domVals) {
@@ -3376,16 +3114,16 @@ export class ViewOps {
     insertableSpec: AddTplItem,
     insertionSpec: InsertionSpec,
     place: Rect | Pt,
-    adoptees: Adoptee[]
+    adoptees: Adoptee[],
   ) {
     assert(
       insertionSpec.type !== "ErrorInsertion",
-      "insertionSpec type should not be ErrorInsertion"
+      "insertionSpec type should not be ErrorInsertion",
     );
     const insertableKey = ensureString(insertableSpec.key);
     const cmptTpl = insertableSpec.factory(
       this.viewCtx(),
-      place instanceof Pt ? undefined : place
+      place instanceof Pt ? undefined : place,
     );
     if (!cmptTpl || !Tpls.isTplTag(cmptTpl)) {
       return;
@@ -3404,10 +3142,10 @@ export class ViewOps {
         ...(isStack
           ? getSimplifiedStyles(
               insertableKey as AddItemKey,
-              this.site().activeTheme?.addItemPrefs as AddItemPrefs | undefined
+              this.site().activeTheme?.addItemPrefs as AddItemPrefs | undefined,
             )
           : {}),
-      })
+      }),
     );
 
     insertBySpec(this.viewCtx(), insertionSpec, cmptTpl, true);
@@ -3425,12 +3163,12 @@ export class ViewOps {
 
       if (["hstack", "vstack"].includes(insertableKey)) {
         uniqAdoptees = L.sortBy(uniqAdoptees, (item) =>
-          insertableKey === "hstack" ? item.domBox.left() : item.domBox.top()
+          insertableKey === "hstack" ? item.domBox.left() : item.domBox.top(),
         );
       } else if (insertableKey === "stack") {
         const [containerType, maybeReorderedTpl] = this.doGuessAutoLayoutType(
           parentRect,
-          uniqAdoptees.map((item) => tuple(item.val.tpl, item.domBox.rect()))
+          uniqAdoptees.map((item) => tuple(item.val.tpl, item.domBox.rect())),
         );
         ensureBaseRs(this.viewCtx(), cmptTpl, {
           flexDirection: containerType === "flex-row" ? "row" : "column",
@@ -3439,8 +3177,8 @@ export class ViewOps {
           uniqAdoptees = maybeReorderedTpl.map((tpl) =>
             ensure(
               uniqAdoptees.find((item) => item.val.tpl === tpl),
-              "Should find tpl in uniqAdoptees to reorder the array"
-            )
+              "Should find tpl in uniqAdoptees to reorder the array",
+            ),
           );
         }
       }
@@ -3461,7 +3199,7 @@ export class ViewOps {
   tryInsertAsSibling(
     newNode: TplNode,
     targetNode: TplNode,
-    loc: "before" | "after" | Side
+    loc: "before" | "after" | Side,
   ) {
     if (!this.canInsertAsSibling(newNode, targetNode, true)) {
       return false;
@@ -3479,15 +3217,15 @@ export class ViewOps {
   insertAsSibling(
     newNode: TplNode,
     targetNode: TplNode,
-    loc: "before" | "after" | Side
+    loc: "before" | "after" | Side,
   ) {
     assert(
       this.canInsertAsSibling(newNode, targetNode, false),
-      "Should be able to insert newNode as sibling of targetNode"
+      "Should be able to insert newNode as sibling of targetNode",
     );
     const targetParent = ensure(
       getParentOrSlotSelection(targetNode),
-      "targetNode should have a targetParent to be used for inserting newNode"
+      "targetNode should have a targetParent to be used for inserting newNode",
     );
     if (loc === "before" || loc === "after") {
       this.insertAsChild(
@@ -3495,12 +3233,12 @@ export class ViewOps {
         targetParent,
         loc === "before"
           ? { beforeNode: targetNode }
-          : { afterNode: targetNode }
+          : { afterNode: targetNode },
       );
     } else {
       assert(
         isStandardSide(loc),
-        "insertAsSibling: loc should be before | after | Side"
+        "insertAsSibling: loc should be before | after | Side",
       );
       const spec = WRAPPERS_MAP[
         sideToOrient(loc) === "horiz" ? WrapItemKey.hstack : WrapItemKey.vstack
@@ -3512,7 +3250,7 @@ export class ViewOps {
           newWrapper,
           loc === "left" || loc === "top"
             ? { beforeNode: targetNode }
-            : { afterNode: targetNode }
+            : { afterNode: targetNode },
         );
       }
     }
@@ -3527,7 +3265,7 @@ export class ViewOps {
       prepend?: boolean;
       beforeNode?: TplNode;
       afterNode?: TplNode;
-    } = {}
+    } = {},
   ) {
     if (!this.canInsertAsChild(newNode, newParent, true)) {
       return false;
@@ -3562,17 +3300,17 @@ export class ViewOps {
       prepend?: boolean;
       beforeNode?: TplNode;
       afterNode?: TplNode;
-    } = {}
+    } = {},
   ) {
     const result = insertTplAsChild(
       newNode,
       newParent,
       this.insertTplCtx(),
-      opts
+      opts,
     );
     assert(
-      result.result === "success",
-      "Should be able to insert newParent as parent of newNode"
+      result.isOk(),
+      "Should be able to insert newParent as parent of newNode",
     );
   }
 
@@ -3592,7 +3330,7 @@ export class ViewOps {
       const exp = new EffectiveVariantSetting(
         tpl,
         [vs],
-        this.viewCtx().site
+        this.viewCtx().site,
       ).rsh();
       const writer = new RuleSetHelpers(vs.rs, tag);
       for (const prop of props) {
@@ -3611,14 +3349,14 @@ export class ViewOps {
     fromNode: TplNode,
     toNode: TplNode,
     props?: string[],
-    clearProps?: string[]
+    clearProps?: string[],
   ) {
     transferStylePropsOp(
       fromNode,
       toNode,
       this.insertTplCtx(),
       props,
-      clearProps
+      clearProps,
     );
   }
 
@@ -3630,138 +3368,27 @@ export class ViewOps {
    */
   insertAsParent(
     newNode: TplTag | TplComponent | SlotSelection,
-    child: TplTag | TplComponent | TplSlot
+    child: TplTag | TplComponent | TplSlot,
   ) {
+    const result = insertTplAsParent(newNode, child, this.insertTplCtx());
     assert(
-      this.canInsertAsParent(newNode, child, false),
-      "Should be able to insert newNode as parent of child"
+      result.isOk(),
+      "Should be able to insert newNode as parent of child",
     );
-
-    const tplNewNode =
-      newNode instanceof SlotSelection
-        ? ensure(
-            newNode.toTplSlotSelection().tpl,
-            "Unexpected TplSlotSelection without tpl"
-          )
-        : newNode;
-
-    const vtm = this.viewCtx().variantTplMgr();
-
-    if (Tpls.isTplTag(tplNewNode) && tplNewNode.type !== "other") {
-      tplNewNode.type = "other";
-      RSH(ensureBaseRs(this.viewCtx(), tplNewNode), tplNewNode).set(
-        "display",
-        "flex"
-      );
-    }
-
-    if (Tpls.isComponentRoot(child) && Tpls.isTplVariantable(tplNewNode)) {
-      // If the child is a component root, then the newNode will become the
-      // new component root.  There are some invariants on what VariantSettings
-      // must exist for the root element; we carry that invariant here.
-      child.vsettings.forEach((vs) =>
-        vtm.ensureVariantSetting(tplNewNode, vs.variants)
-      );
-    }
-
-    if (Tpls.isTplSlot(child)) {
-      $$$(child).wrap(tplNewNode);
-      return;
-    }
-
-    $$$(child).wrap(newNode);
-
-    if (Tpls.isTplTag(tplNewNode)) {
-      // Transfer all the positioning styles from the child to parent
-      this.transferStyleProps(
-        child,
-        tplNewNode,
-        WRAP_AS_PARENT_PROPS,
-        undefined
-      );
-      // By default, the new wrapping parent should be a flex container
-      const baseParentExp = RSH(
-        vtm.ensureBaseVariantSetting(tplNewNode).rs,
-        tplNewNode
-      );
-      if (!baseParentExp.has("display")) {
-        baseParentExp.set("display", "flex");
-      }
-      const variantCombos = child.vsettings.map((vs) => vs.variants);
-      for (const variantCombo of variantCombos) {
-        this.adoptParentContainerStyleForVariant(
-          child,
-          tplNewNode,
-          variantCombo,
-          {
-            parentOffset: new Pt(0, 0),
-          }
-        );
-      }
-    }
   }
 
   canInsertAsParent(
     newNode: TplNode | SlotSelection,
     target: TplNode | SlotSelection,
-    showErrorNotification: boolean
+    showErrorNotification: boolean,
   ) {
-    // This better be a new node.
-    const tpl =
-      newNode instanceof SlotSelection
-        ? newNode.toTplSlotSelection().tpl
-        : newNode;
-    if (!tpl) {
-      return false;
-    }
-    assert(!tpl.parent, "Unexpected tpl with parent");
-
-    // If we are dealing with a node element being wrapped, then we need to check that the relationship
-    // between the parent and the child is still valid after the wrap. So we need to check if the parent
-    // of the target can accept the new node as a child.
-    if (isKnownTplNode(target)) {
-      const parentOrSlotSelection = getParentOrSlotSelection(target);
-
-      // We may be wrapping the root node, in which case the parent won't exist
-      if (parentOrSlotSelection) {
-        const canAddToParent = canAddChildrenAndWhy(parentOrSlotSelection, tpl);
-        if (canAddToParent !== true) {
-          if (showErrorNotification) {
-            notification.error({
-              message: "Cannot wrap in container",
-              description: renderCantAddMsg(canAddToParent),
-            });
-          }
-          return false;
-        }
-      }
-    }
-
-    if (isKnownTplNode(target) && Tpls.isTplColumn(target)) {
+    const reason = canInsertTplAsParent(newNode, target);
+    if (reason !== true) {
       if (showErrorNotification) {
-        notification.error({
-          message: "Cannot wrap Column elements",
-        });
+        this.notifyCantInsert("Cannot wrap in container", reason);
       }
       return false;
     }
-
-    if (
-      !(
-        Tpls.isTplTag(newNode) ||
-        Tpls.isTplComponent(newNode) ||
-        newNode instanceof SlotSelection
-      ) ||
-      !canAddChildren(newNode)
-    ) {
-      if (showErrorNotification) {
-        notification.error({
-          message: "Cannot wrap with this element",
-        });
-      }
-      return false;
-    }
-
     return true;
   }
 
@@ -3795,7 +3422,7 @@ export class ViewOps {
             This element already contains slots{" "}
             {joinReactNodes(
               containedSlots.map((s) => <code>{s.param.variable.name}</code>),
-              ", "
+              ", ",
             )}
             . You cannot nest slots.
           </>
@@ -3823,7 +3450,7 @@ export class ViewOps {
             This element contains elements linked to props{" "}
             {joinReactNodes(
               varRefs.map((r) => <code>{r.var.name}</code>),
-              ", "
+              ", ",
             )}
             .
           </>
@@ -3840,7 +3467,7 @@ export class ViewOps {
       // you probably intended to turn the button text into a slot, not the whole button element.
       tpl = ensure(
         this.convertTextBlockToContainer(tpl, true),
-        "Unexpected undefined tpl after converting text to container"
+        "Unexpected undefined tpl after converting text to container",
       );
       this.convertToSlot(tpl.children[0] as TplTag, true);
       return;
@@ -3850,7 +3477,7 @@ export class ViewOps {
     const slotParam = Components.addSlotParam(
       this.site(),
       component,
-      tpl.name || undefined
+      tpl.name || undefined,
     );
 
     if (Tpls.isTplComponent(tpl.parent)) {
@@ -3957,7 +3584,7 @@ export class ViewOps {
       const baseVs = vtm.ensureBaseVariantSetting(newContainer);
       const containerType = getContainerType(
         newContainer.parent,
-        this.viewCtx()
+        this.viewCtx(),
       );
       if (containerType && containerType !== "free") {
         convertSelfContainerType(RSH(baseVs.rs, newContainer), containerType);
@@ -3967,7 +3594,7 @@ export class ViewOps {
         tpl,
         newContainer as TplTag,
         Array.from(toCopyToParent),
-        [] // don't clear anything!
+        [], // don't clear anything!
       );
     } else {
       // Otherwise, there's no need for a new container, and we can just use the existing
@@ -3976,7 +3603,7 @@ export class ViewOps {
       insertIndex = switchType(newContainer)
         .when(TplTag, (tag) => tag.children.findIndex((c) => c === tpl))
         .when(TplSlot, (slot) =>
-          slot.defaultContents.findIndex((c) => c === tpl)
+          slot.defaultContents.findIndex((c) => c === tpl),
         )
         .elseUnsafe(() => -1);
       insertIndex = Math.max(0, insertIndex);
@@ -3985,7 +3612,7 @@ export class ViewOps {
     const defaultContent = Tpls.clone(tpl);
     this.ensureDefaultSetting(
       defaultContent,
-      isTplText ? undefined : toCopyToParent
+      isTplText ? undefined : toCopyToParent,
     );
 
     const slot = this.viewCtx()
@@ -4059,7 +3686,7 @@ export class ViewOps {
       this.viewCtx().variantTplMgr(),
       {
         forceEqual: true,
-      }
+      },
     );
   }
 
@@ -4079,13 +3706,13 @@ export class ViewOps {
   adoptParentContainerStyle(
     layoutChild: TplNode,
     layoutParent: TplTag,
-    opts: { parentOffset?: Pt; forceFree?: boolean; keepFree?: boolean }
+    opts: { parentOffset?: Pt; forceFree?: boolean; keepFree?: boolean },
   ) {
     adoptParentContainerStyleOp(
       layoutChild,
       layoutParent,
       opts,
-      this.insertTplCtx()
+      this.insertTplCtx(),
     );
   }
 
@@ -4096,14 +3723,14 @@ export class ViewOps {
     layoutChild: TplNode,
     layoutParent: TplTag,
     variantCombo: VariantCombo,
-    opts: { parentOffset?: Pt; forceFree?: boolean; keepFree?: boolean }
+    opts: { parentOffset?: Pt; forceFree?: boolean; keepFree?: boolean },
   ) {
     adoptParentContainerStyleForVariantOp(
       layoutChild,
       layoutParent,
       variantCombo,
       opts,
-      this.insertTplCtx()
+      this.insertTplCtx(),
     );
   }
 
@@ -4129,7 +3756,7 @@ export class ViewOps {
   adoptFreePositionType(
     node: TplTag | TplComponent,
     variants: Variant[],
-    parentOffset?: Pt | "current"
+    parentOffset?: Pt | "current",
   ) {
     adoptFreePositionTypeOp(node, variants, this.insertTplCtx(), parentOffset);
   }
@@ -4140,7 +3767,7 @@ export class ViewOps {
    */
   adoptRelativePositionType(
     node: TplTag | TplComponent,
-    variantCombo: VariantCombo
+    variantCombo: VariantCombo,
   ) {
     adoptRelativePositionTypeOp(node, variantCombo, this.insertTplCtx());
   }
@@ -4152,7 +3779,7 @@ export class ViewOps {
    */
   adoptFixedPositionType(
     node: TplTag | TplComponent,
-    variantCombo: VariantCombo
+    variantCombo: VariantCombo,
   ) {
     adoptFixedPositionTypeOp(node, variantCombo, this.insertTplCtx());
   }
@@ -4162,7 +3789,7 @@ export class ViewOps {
    */
   adoptStickyPositionType(
     node: TplTag | TplComponent,
-    variantCombo: VariantCombo
+    variantCombo: VariantCombo,
   ) {
     adoptStickyPositionTypeOp(node, variantCombo, this.insertTplCtx());
   }
@@ -4170,7 +3797,7 @@ export class ViewOps {
   convertContainerType(
     tpl: TplTag,
     type: ContainerType,
-    reorderedChildren: TplNode[] | undefined
+    reorderedChildren: TplNode[] | undefined,
   ) {
     const layoutChildren = $$$(tpl)
       .children()
@@ -4198,7 +3825,7 @@ export class ViewOps {
         // Else just do it for the current vs
         convertSelfContainerType(
           RSH(vtm.ensureCurrentVariantSetting(tpl).rs, tpl),
-          type
+          type,
         );
       }
 
@@ -4252,12 +3879,12 @@ export class ViewOps {
 
   convertTextBlockToContainer(
     tpl: Tpls.TplTextTag,
-    inferFlexStyleFromChild = false
+    inferFlexStyleFromChild = false,
   ) {
     const container = convertTextBlockToContainerOp(
       tpl,
       this.insertTplCtx(),
-      inferFlexStyleFromChild
+      inferFlexStyleFromChild,
     );
     if (!container) {
       notification.error({
@@ -4308,7 +3935,7 @@ export class ViewOps {
   getTplDom(node: TplNode) {
     const valNode = this.viewCtx().renderState.tpl2bestVal(
       node,
-      this.viewCtx().focusedCloneKey()
+      this.viewCtx().focusedCloneKey(),
     );
     // Even if we valNode is not undefined, it might not have a DOM element if it's
     // a component instance whose root node is not visible.
@@ -4361,7 +3988,7 @@ export class ViewOps {
             projectFlags: this.viewCtx().projectFlags(),
             component: valNode.valOwner?.tpl.component ?? null,
             inStudio: true,
-          }
+          },
         );
       })
       .when(SlotSelection, (slotSelection) => {
@@ -4412,7 +4039,7 @@ export class ViewOps {
     },
     loc: InsertRelLoc,
     extraInfo: T,
-    target?: TplNode | SlotSelection
+    target?: TplNode | SlotSelection,
   ): TplNode | null {
     let insertedTpl: TplNode | null = null;
     this.change(() => {
@@ -4457,7 +4084,7 @@ export class ViewOps {
       // Ensure the newly created wrapping container is visible in the base variant
       if (InsertRelLoc.wrap === loc && isKnownTplTag(cmptTpl)) {
         const baseVs = cmptTpl.vsettings.find((vs) =>
-          isBaseVariant(vs.variants)
+          isBaseVariant(vs.variants),
         );
         if (baseVs) {
           setTplVisibility(cmptTpl, baseVs.variants, TplVisibility.Visible);
@@ -4477,8 +4104,8 @@ export class ViewOps {
       window.requestAnimationFrame(() =>
         parentElement?.scrollTo(
           parentElement?.scrollWidth,
-          parentElement?.scrollHeight
-        )
+          parentElement?.scrollHeight,
+        ),
       );
     }
 
@@ -4559,7 +4186,7 @@ export class ViewOps {
 
   private notifyMissingTplRef(
     tplWithExpr: TplNode | null,
-    referencedTpl: TplNode
+    referencedTpl: TplNode,
   ) {
     const name = Tpls.isTplNamable(referencedTpl)
       ? referencedTpl.name
@@ -4577,7 +4204,7 @@ export class ViewOps {
             <a
               onClick={() => {
                 this.viewCtx().setStudioFocusByTpl(tplWithExpr);
-                notification.close(key);
+                notification.destroy(key);
               }}
             >
               [Go to reference]
@@ -4592,26 +4219,12 @@ export class ViewOps {
     message: string;
     referencingNode?: TplNode | null;
   }) {
-    const key = common.mkUuid();
-    notification.error({
-      key,
-      message: "Cannot extract component",
-      description: (
-        <>
-          {error.message}{" "}
-          {error.referencingNode ? (
-            <a
-              onClick={() => {
-                this.viewCtx().setStudioFocusByTpl(error.referencingNode!);
-                notification.close(key);
-              }}
-            >
-              [Go to reference]
-            </a>
-          ) : null}
-        </>
-      ),
-    });
+    notifyReferencingNode(
+      "Cannot extract component",
+      error.message,
+      error.referencingNode,
+      this.studioCtx(),
+    );
   }
 }
 
@@ -4633,7 +4246,7 @@ export function isAsChildRelLoc(loc: InsertRelLoc): loc is AsChildInsertRelLoc {
   return AS_CHILD_LOC.includes(loc);
 }
 export function isAsSiblingRelLoc(
-  loc: InsertRelLoc
+  loc: InsertRelLoc,
 ): loc is AsSiblingInsertRelLoc {
   return AS_SIBLING_LOC.includes(loc);
 }
@@ -4643,11 +4256,11 @@ export function isAsSiblingRelLoc(
  *
  * Note that for slots, we determine whether we're editing default slot
  * contents.  So it's not just a check of canAddChildren.  This is why we
- * require viewCtx.
+ * take viewCtx; without one, default slot contents are editable.
  */
 export function getValidInsertLocs(
-  viewCtx: ViewCtx,
-  target: TplNode | SlotSelection
+  viewCtx: ViewCtx | undefined,
+  target: TplNode | SlotSelection,
 ): Set<InsertRelLoc> {
   const validLocs = new Set<InsertRelLoc>();
 
@@ -4663,7 +4276,7 @@ export function getValidInsertLocs(
     if (canAddChildren(target)) {
       if (Tpls.isTplSlot(target)) {
         const owner = Tpls.getTplOwnerComponent(target);
-        if (viewCtx.showingDefaultSlotContentsForComponent(owner)) {
+        if (!viewCtx || viewCtx.showingDefaultSlotContentsForComponent(owner)) {
           // If we are focused on a ValSlot (so tpl is a TplSlot), and we are currently
           // showing the default slot contents for the owning TplComponent, then
           // we want to append to the slot as default content.
@@ -4697,8 +4310,8 @@ export function getValidInsertLocs(
  * them.
  */
 export function getPreferredInsertLocs(
-  viewCtx: ViewCtx,
-  target: TplNode | SlotSelection
+  viewCtx: ViewCtx | undefined,
+  target: TplNode | SlotSelection,
 ): InsertRelLoc[] {
   // Special cases
   if (
@@ -4719,6 +4332,25 @@ export function getPreferredInsertLocs(
   ];
   const validInsertLocs = getValidInsertLocs(viewCtx, target);
   return rank.filter((r) => validInsertLocs.has(r));
+}
+
+/** Returns the first preferred InsertRelLoc at target for the first of newItems that fits. */
+export function getAutoInsertLoc(
+  viewCtx: ViewCtx | undefined,
+  newItems: TplNode[],
+  target: TplNode | SlotSelection,
+  ctx: PasteTplCtx,
+) {
+  const locs = getPreferredInsertLocs(viewCtx, target);
+  for (const newItem of newItems) {
+    const loc = locs.find(
+      (l) => canPasteTplAt(newItem, target, l, ctx) === true,
+    );
+    if (loc) {
+      return loc;
+    }
+  }
+  return undefined;
 }
 
 export function getFocusedInsertAnchor(viewCtx: ViewCtx) {
@@ -4750,7 +4382,7 @@ export function getMergedTextArg(tpl: TplComponent) {
     return slotParams[0][1];
   } else {
     const childrenSlot = slotParams.find(
-      ([p, _t]) => p.variable.name === "children"
+      ([p, _t]) => p.variable.name === "children",
     );
     if (childrenSlot) {
       return childrenSlot[1];
@@ -4768,8 +4400,8 @@ export function getOnlyVisibleTextArg(viewCtx: ViewCtx, tpl: TplNode) {
       (p) =>
         getTreeNodeVisibility(
           viewCtx,
-          new SlotSelection({ tpl: tpl as TplComponent, slotParam: p })
-        ) === TplVisibility.Visible
+          new SlotSelection({ tpl: tpl as TplComponent, slotParam: p }),
+        ) === TplVisibility.Visible,
     );
   const arg =
     visibleSlotParams &&

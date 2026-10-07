@@ -18,23 +18,23 @@ import semver from "semver";
 import * as uuid from "uuid";
 
 const paths = [
-  "src/wab/shared/codegen/__tests__/bundles/todomvc.json",
-  "src/wab/shared/codegen/__tests__/bundles/counters-test.json",
-  "src/wab/shared/codegen/__tests__/bundles/todoapp.json",
-  "src/wab/shared/codegen/__tests__/bundles/form-with-reset-input.json",
-  "src/wab/shared/codegen/__tests__/bundles/links.json",
-  "src/wab/shared/codegen/__tests__/bundles/people-list-explicit-states.json",
-  "src/wab/shared/codegen/__tests__/bundles/people-list-implicit-states.json",
-  "src/wab/shared/codegen/__tests__/bundles/hidden-components.json",
-  "src/wab/shared/codegen/__tests__/bundles/aria-code-components.json",
-  "src/wab/shared/codegen/__tests__/bundles/custom-functions-test.json",
-  "src/wab/shared/codegen/__tests__/bundles/data-tokens.json",
-  "src/wab/shared/codegen/__tests__/bundles/data-tokens-page-meta.json",
-  "src/wab/shared/codegen/__tests__/bundles/global-variant-test.json",
-  "src/wab/shared/codegen/__tests__/bundles/style-token-overrides.json",
-  "src/wab/shared/codegen/__tests__/bundles/animations-test.json",
-  "src/wab/shared/codegen/__tests__/bundles/imported-project-default-theme-styles.json",
-  "src/wab/shared/codegen/__tests__/bundles/linked-props.json",
+  "src/wab/shared/codegen/__testonly__/bundles/todomvc.json",
+  "src/wab/shared/codegen/__testonly__/bundles/counters-test.json",
+  "src/wab/shared/codegen/__testonly__/bundles/todoapp.json",
+  "src/wab/shared/codegen/__testonly__/bundles/form-with-reset-input.json",
+  "src/wab/shared/codegen/__testonly__/bundles/links.json",
+  "src/wab/shared/codegen/__testonly__/bundles/people-list-explicit-states.json",
+  "src/wab/shared/codegen/__testonly__/bundles/people-list-implicit-states.json",
+  "src/wab/shared/codegen/__testonly__/bundles/hidden-components.json",
+  "src/wab/shared/codegen/__testonly__/bundles/aria-code-components.json",
+  "src/wab/shared/codegen/__testonly__/bundles/custom-functions-test.json",
+  "src/wab/shared/codegen/__testonly__/bundles/data-tokens.json",
+  "src/wab/shared/codegen/__testonly__/bundles/data-tokens-page-meta.json",
+  "src/wab/shared/codegen/__testonly__/bundles/global-variant-test.json",
+  "src/wab/shared/codegen/__testonly__/bundles/style-token-overrides.json",
+  "src/wab/shared/codegen/__testonly__/bundles/animations-test.json",
+  "src/wab/shared/codegen/__testonly__/bundles/imported-project-default-theme-styles.json",
+  "src/wab/shared/codegen/__testonly__/bundles/linked-props.json",
   "src/wab/server/pkg-mgr/data/plume-master-pkg.json",
   "src/wab/server/pkg-mgr/data/plexus-master-pkg.json",
   "playwright/bundles/state-management.json",
@@ -81,33 +81,33 @@ const paths = [
   "../loader-tests/data/react-aria.json",
   "../loader-tests/data/strapi.json",
   "../loader-tests/data/wordpress.json",
-  "src/wab/shared/site-diffs/_tests_/bundles/code-components-with-same-name.json",
-  "src/wab/shared/site-diffs/_tests_/bundles/rich-text-conflict.json",
-  "src/wab/shared/site-diffs/_tests_/bundles/test-tpl-merge.json",
-  "src/wab/shared/site-diffs/_tests_/bundles/test-tpl-parent-merge.json",
-  "src/wab/shared/site-diffs/_tests_/bundles/multiple-interactions-with-conflicts.json",
-  "src/wab/shared/site-diffs/_tests_/bundles/arg-variants-conflict-after-swap-components.json",
-  "src/wab/shared/site-diffs/_tests_/bundles/test-merging-deps.json",
-  "src/wab/shared/site-diffs/_tests_/bundles/test-edge-cases-merge.json",
-  "src/wab/shared/site-diffs/_tests_/bundles/test-edge-cases-merge-2.json",
-  "src/wab/shared/site-diffs/_tests_/bundles/test-reroot.json",
-  "src/wab/shared/site-diffs/_tests_/bundles/global-context-merge.json",
-  "src/wab/shared/site-diffs/_tests_/bundles/style-tokens-conflict.json",
-  "src/wab/shared/site-diffs/_tests_/bundles/default-slot-change.json",
-  "src/wab/shared/site-diffs/_tests_/bundles/test-dangling-ref-deletion.json",
-  "src/wab/shared/insertable-templates/__tests__/bundles/copy-and-paste.json",
-  "src/wab/shared/codegen/react-p/server-queries/__tests__/bundles/simple-component-server-queries.json",
-  "src/wab/shared/codegen/react-p/server-queries/__tests__/bundles/advanced-component-server-queries.json",
+  "src/wab/shared/site-diffs/__testonly__/bundles/code-components-with-same-name.json",
+  "src/wab/shared/site-diffs/__testonly__/bundles/rich-text-conflict.json",
+  "src/wab/shared/site-diffs/__testonly__/bundles/test-tpl-merge.json",
+  "src/wab/shared/site-diffs/__testonly__/bundles/test-tpl-parent-merge.json",
+  "src/wab/shared/site-diffs/__testonly__/bundles/multiple-interactions-with-conflicts.json",
+  "src/wab/shared/site-diffs/__testonly__/bundles/arg-variants-conflict-after-swap-components.json",
+  "src/wab/shared/site-diffs/__testonly__/bundles/test-merging-deps.json",
+  "src/wab/shared/site-diffs/__testonly__/bundles/test-edge-cases-merge.json",
+  "src/wab/shared/site-diffs/__testonly__/bundles/test-edge-cases-merge-2.json",
+  "src/wab/shared/site-diffs/__testonly__/bundles/test-reroot.json",
+  "src/wab/shared/site-diffs/__testonly__/bundles/global-context-merge.json",
+  "src/wab/shared/site-diffs/__testonly__/bundles/style-tokens-conflict.json",
+  "src/wab/shared/site-diffs/__testonly__/bundles/default-slot-change.json",
+  "src/wab/shared/site-diffs/__testonly__/bundles/test-dangling-ref-deletion.json",
+  "src/wab/shared/insertable-templates/__testonly__/bundles/copy-and-paste.json",
+  "src/wab/shared/codegen/react-p/server-queries/__testonly__/bundles/simple-component-server-queries.json",
+  "src/wab/shared/codegen/react-p/server-queries/__testonly__/bundles/advanced-component-server-queries.json",
   "src/wab/shared/web-exporter/bundles/starter-project-desktop-first.json",
-  "src/wab/server/__tests__/bundle-migrations/fixtures/style-variants.migrated.json",
-  "src/wab/server/__tests__/bundle-migrations/fixtures/code-component-meta-add-refActions.migrated.json",
-  "src/wab/server/__tests__/bundle-migrations/fixtures/code-component-variants.migrated.json",
-  "src/wab/server/__tests__/bundle-migrations/fixtures/plume-default-components.migrated.json",
-  "src/wab/server/__tests__/bundle-migrations/fixtures/duplicate-variants.migrated.json",
-  "src/wab/server/__tests__/bundle-migrations/fixtures/merge-duplicate-variants.migrated.json",
-  "src/wab/server/__tests__/bundle-migrations/fixtures/flex-gap-bundle.migrated.json",
-  "src/wab/server/__tests__/bundle-migrations/fixtures/transform-format-migration.migrated.json",
-  "src/wab/server/__tests__/bundle-migrations/fixtures/page-meta-image-ref.migrated.json",
+  "src/wab/server/scripts/__testonly__/fixtures/style-variants.migrated.json",
+  "src/wab/server/scripts/__testonly__/fixtures/code-component-meta-add-refActions.migrated.json",
+  "src/wab/server/scripts/__testonly__/fixtures/code-component-variants.migrated.json",
+  "src/wab/server/scripts/__testonly__/fixtures/plume-default-components.migrated.json",
+  "src/wab/server/scripts/__testonly__/fixtures/duplicate-variants.migrated.json",
+  "src/wab/server/scripts/__testonly__/fixtures/merge-duplicate-variants.migrated.json",
+  "src/wab/server/scripts/__testonly__/fixtures/flex-gap-bundle.migrated.json",
+  "src/wab/server/scripts/__testonly__/fixtures/transform-format-migration.migrated.json",
+  "src/wab/server/scripts/__testonly__/fixtures/page-meta-image-ref.migrated.json",
 ];
 
 async function migrate() {
@@ -121,7 +121,7 @@ async function migrate() {
       !path.includes("/stale-bundle.json"),
       () =>
         `The stale bundle should not be migrated here. Please use
-          \`yarn db:upgrade-stale-bundle\``
+          \`pnpm db:upgrade-stale-bundle\``,
     );
     logger().info(`Migrating ${path}`);
     // await execa.command(sh.quote`git checkout ${path}`, {
@@ -147,13 +147,13 @@ export async function migrateInMemory(bundleJson: string) {
     const projectData: ProjectFullDataResponse = maybeBundles;
     bundles = Object.fromEntries<Bundle>([
       ...projectData.pkgVersions.map(
-        (pkgVersion) => [pkgVersion.id, pkgVersion.data] as const
+        (pkgVersion) => [pkgVersion.id, pkgVersion.data] as const,
       ),
       ...projectData.revisions.map((rev) => [rev.branchId, rev.data] as const),
     ]);
   } else {
     bundles = Object.fromEntries<Bundle>(
-      Array.isArray(maybeBundles) ? maybeBundles : [["id", maybeBundles]]
+      Array.isArray(maybeBundles) ? maybeBundles : [["id", maybeBundles]],
     );
   }
 
@@ -172,7 +172,7 @@ export async function migrateInMemory(bundleJson: string) {
       model: string,
       tags: string[],
       description: string,
-      revisionNum: number
+      revisionNum: number,
     ) => {
       const newId = uuid.v4();
       const unbundled = JSON.parse(model);
@@ -183,7 +183,7 @@ export async function migrateInMemory(bundleJson: string) {
       const pkgBundles = Object.entries(bundles)
         .filter(([id, b]) => b.map[b.root].pkgId === pkgId)
         .sort(([aid, a], [bid, b]) =>
-          semver.gt(a.map[a.root].version, b.map[b.root].version) ? -1 : +1
+          semver.gt(a.map[a.root].version, b.map[b.root].version) ? -1 : +1,
         );
       return pkgBundles.map(([id, b]) => bundleAsDbEntity(id, b) as PkgVersion);
     },
@@ -206,7 +206,7 @@ export async function migrateInMemory(bundleJson: string) {
       logger().info(
         `\tMigrating ${bundleId} to ${migration.name}, with deps ${bundle.deps
           .map((d) => `${d}@${bundles[d].version}`)
-          .join(", ")}`
+          .join(", ")}`,
       );
 
       // Make sure all dependencies are migrated first. We have to do this, and
@@ -260,7 +260,7 @@ export async function migrateInMemory(bundleJson: string) {
         .filter(
           (b) =>
             bundleRoot(b).__type === "ProjectDependency" &&
-            bundleRoot(b).pkgId === pkgId
+            bundleRoot(b).pkgId === pkgId,
         )
         .map((b) => bundleRoot(b).version);
       if (existingVersions.some((v) => semver.gt(v, root.version))) {
@@ -278,13 +278,13 @@ export async function migrateInMemory(bundleJson: string) {
       logger().info(
         `\tTesting bundle ${bundleId}@${bundle.version}, with deps ${bundle.deps
           .map((b) => `${b}@${bundles[b].version}`)
-          .join("; ")}`
+          .join("; ")}`,
       );
       const { site } = await unbundleSite(
         new Bundler(),
         bundle,
         db,
-        bundleAsDbEntity(bundleId, bundle)
+        bundleAsDbEntity(bundleId, bundle),
       );
       assertSiteInvariants(site);
     }
@@ -324,17 +324,17 @@ export async function migrateInMemory(bundleJson: string) {
             ],
           }
         : Array.isArray(maybeBundles)
-        ? flattenDeps(
-            Object.fromEntries(
-              Object.entries(bundles).map(([bid, b]) => [bid, b.deps])
-            )
-          ).map((bid) => [bid, bundles[bid]])
-        : maybeOne([...Object.entries(bundles)])![1]
+          ? flattenDeps(
+              Object.fromEntries(
+                Object.entries(bundles).map(([bid, b]) => [bid, b.deps]),
+              ),
+            ).map((bid) => [bid, bundles[bid]])
+          : maybeOne([...Object.entries(bundles)])![1],
     ),
     {
       parser: "json",
       trailingComma: "none",
-    }
+    },
   );
 }
 

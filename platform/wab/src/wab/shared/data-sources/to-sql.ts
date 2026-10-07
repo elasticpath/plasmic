@@ -3,19 +3,27 @@ import {
   DATA_SOURCE_QUERY_BUILDER_CONFIG,
   GenericDataSource,
 } from "@/wab/shared/data-sources-meta/data-source-registry";
-import {
-  buildQueryBuilderConfig,
-  Filters,
-} from "@/wab/shared/data-sources-meta/data-sources";
+import { Filters } from "@/wab/shared/data-sources-meta/data-sources";
 import {
   getDynamicStringSegments,
   isDynamicValue,
 } from "@/wab/shared/dynamic-bindings";
-import { Utils as QbUtils } from "@react-awesome-query-builder/antd";
+import {
+  AntdConfig,
+  Utils as QbUtils,
+} from "@react-awesome-query-builder/antd";
+import { merge } from "lodash";
+
+export function buildQueryBuilderConfig(config: any, fields: any) {
+  return {
+    ...merge({}, AntdConfig, config),
+    fields: fields,
+  };
+}
 
 export function buildSqlStringForFilterTemplateArg(
   source: GenericDataSource,
-  template: string
+  template: string,
 ) {
   // We need to temporarily replace the dynamic expressions in order to parse
   // the JSON, as the string might be an invalid JSON. Since the expression
@@ -23,7 +31,7 @@ export function buildSqlStringForFilterTemplateArg(
   // the only values that we can replace them with are numbers, so we need
   // to find digits that don't occur in the string! :/
   const bindings = getDynamicStringSegments(template).filter((seg) =>
-    isDynamicValue(seg)
+    isDynamicValue(seg),
   );
   let substitutedTemplate = template;
   const bindingCodes = bindings.map((binding) => {
@@ -33,7 +41,7 @@ export function buildSqlStringForFilterTemplateArg(
       substitutedTemplate.includes(bindingCode) ||
       substringOccurrencesCount(
         substitutedTemplate.replace(binding, bindingCode),
-        bindingCode
+        bindingCode,
       ) !== 1
     ) {
       // Random 10-digit number
@@ -45,7 +53,7 @@ export function buildSqlStringForFilterTemplateArg(
   // Fix types from our custom types to normal types
   substitutedTemplate = substitutedTemplate.replace(
     /"valueType":\["(boolean|number|datetime|select|date)-custom"\]/g,
-    '"valueType":["$1"]'
+    '"valueType":["$1"]',
   );
   const unquotedFilter = JSON.parse(substitutedTemplate) as Filters;
   // Add quotes for columns in filter to fix upper cases
@@ -58,11 +66,11 @@ export function buildSqlStringForFilterTemplateArg(
       quotedKeysObj[quotedKey] = value;
       return quotedKeysObj;
     },
-    {}
+    {},
   );
   const builderConfig = buildQueryBuilderConfig(
     DATA_SOURCE_QUERY_BUILDER_CONFIG[source.source],
-    quotedFields
+    quotedFields,
   );
   const tree = JSON.parse(treeTemplate);
   let sql = tree
@@ -70,19 +78,19 @@ export function buildSqlStringForFilterTemplateArg(
       // expressions!
       QbUtils.sqlFormat(QbUtils.loadTree(tree), builderConfig)
     : unquotedFilter
-    ? QbUtils.sqlFormat(
-        ensure(
-          QbUtils.loadFromJsonLogic(unquotedFilter, builderConfig),
-          () => `Failed to parse JSON Logic`
-        ),
-        builderConfig
-      )
-    : undefined;
+      ? QbUtils.sqlFormat(
+          ensure(
+            QbUtils.loadFromJsonLogic(unquotedFilter, builderConfig),
+            () => `Failed to parse JSON Logic`,
+          ),
+          builderConfig,
+        )
+      : undefined;
   bindingCodes.forEach((bindingCode, i) => {
     if (sql) {
       assert(
         substringOccurrencesCount(sql, bindingCode) === 1,
-        () => `Couldn't find binding code ${bindingCode} in SQL string: ${sql}`
+        () => `Couldn't find binding code ${bindingCode} in SQL string: ${sql}`,
       );
       sql = sql.replace(bindingCode, bindings[i]);
     }

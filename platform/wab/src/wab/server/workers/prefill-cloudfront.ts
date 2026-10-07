@@ -28,15 +28,14 @@ export function _resetCloudfrontClientForTest() {
 export async function prefillCloudfront(
   mgr: DbMgr,
   pool: PlasmicWorkerPool,
-  pkgVersionId: string
+  pkgVersionId: string,
 ) {
   await ensureDevFlags(mgr);
   const pkgVersion = await mgr.getPkgVersionById(pkgVersionId);
   const pkg = await mgr.getPkgById(pkgVersion.pkgId);
   const projectId = pkg.projectId;
-  const loaderPublishmentsRaw = await mgr.getRecentLoaderPublishments(
-    projectId
-  );
+  const loaderPublishmentsRaw =
+    await mgr.getRecentLoaderPublishments(projectId);
   const loaderPublishments = uniqBy(loaderPublishmentsRaw, (publishment) =>
     [
       publishment.platform,
@@ -44,6 +43,7 @@ export async function prefillCloudfront(
       publishment.browserOnly ?? false,
       publishment.i18nKeyScheme,
       publishment.i18nTagPrefix,
+<<<<<<< HEAD
       publishment.appDir ?? false,
       ...[...publishment.projectIds].sort(),
     ].join(",")
@@ -74,6 +74,24 @@ export async function prefillCloudfront(
         publishment: (typeof loaderPublishments)[0];
         resolvedProjectIdSpecs: string[];
       }> = [];
+=======
+      publishment.appDir,
+      ...publishment.projectIds,
+    ].join(","),
+  );
+
+  logger().info(
+    `Pre-filling ${projectId}@${pkgVersion.version} for combinations [${loaderPublishments.map(stringifyPublishment).join(", ")}]`,
+  );
+
+  for (const publishment of loaderPublishments) {
+    const comboInfo = stringifyPublishment(publishment);
+    try {
+      const resolvedProjectIdSpecs = await getResolvedProjectVersions(
+        mgr,
+        publishment.projectIds,
+      );
+>>>>>>> upstream/master
 
       // Phase 1: resolve all project versions upfront so prefillData is fully
       // populated before bundle generation starts. This ensures invalidation
@@ -86,6 +104,7 @@ export async function prefillCloudfront(
         prefillData.push({ publishment, resolvedProjectIdSpecs });
       }
 
+<<<<<<< HEAD
       // Phase 2: generate bundles sequentially to bound peak memory usage.
       // Each variant is wrapped independently so a single failure does not abort
       // the remaining variants — all are still invalidated below.
@@ -242,5 +261,50 @@ export async function prefillCloudfront(
       pkg_version_id: pkgVersionId,
       variant_count: loaderPublishments.length,
     }
+=======
+      await withSpan(
+        "loader-prefill",
+        async () => {
+          await genPublishedLoaderCodeBundle(
+            mgr,
+            pool,
+            makeGenPublishedLoaderCodeBundleOpts({
+              source: "prefill",
+              projectVersions: Object.fromEntries(
+                resolvedProjectIdSpecs.map((spec) => {
+                  const [pid, version] = spec.split("@");
+                  return [pid, mkVersionToSync(version, false)];
+                }),
+              ),
+              platform: publishment.platform,
+              appDir: publishment.appDir ?? false,
+              loaderVersion: publishment.loaderVersion,
+              browserOnly: publishment.browserOnly,
+              i18n: {
+                keyScheme: publishment.i18nKeyScheme ?? undefined,
+                tagPrefix: publishment.i18nTagPrefix ?? undefined,
+              },
+            }),
+          );
+        },
+        label,
+      );
+      logger().info(
+        `Done pre-filling combo ${comboInfo} resolvedProjectIds=${JSON.stringify(resolvedProjectIdSpecs)}`,
+      );
+    } catch (err) {
+      // Even if there was an error, continue with remaining combos and mark
+      // as pre-filled at the end, else it'll never be pre-filled.
+      logger().error(`Error pre-filling combo ${comboInfo}`, err);
+    }
+  }
+  await mgr.updatePkgVersion(
+    pkgVersion.pkgId,
+    pkgVersion.version,
+    pkgVersion.branchId,
+    {
+      isPrefilled: true,
+    },
+>>>>>>> upstream/master
   );
 }

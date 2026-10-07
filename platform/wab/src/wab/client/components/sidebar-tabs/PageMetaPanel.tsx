@@ -34,13 +34,10 @@ const PageMetaPanel = observer(function PageMetaPanel(props: {
 }) {
   const { page, viewCtx } = props;
   const sc = useStudioCtx();
-  const disableDynamicValue = !sc.appCtx.appConfig.serverQueries
-    ? true
-    : undefined;
 
   const titleExpr = React.useMemo(
     () => convertPageMetaStringToExpr(page.pageMeta?.title),
-    [page.pageMeta?.title]
+    [page.pageMeta?.title],
   );
 
   return (
@@ -69,7 +66,6 @@ const PageMetaPanel = observer(function PageMetaPanel(props: {
         viewCtx={viewCtx}
         tpl={page.tplTree as TplTag}
         disableLinkToProp={true}
-        disableDynamicValue={disableDynamicValue}
       />
     </SidebarSection>
   );
@@ -89,7 +85,7 @@ export type PageMetaString = string | TemplatedString;
  * This converts the onChange value back to PageMetaString.
  */
 export function convertExprToPageMetaString(
-  value: Expr | null | undefined
+  value: Expr | null | undefined,
 ): PageMetaString | null {
   if (value == null) {
     return null;
@@ -119,7 +115,7 @@ export function convertExprToPageMetaString(
  * This converts PageMetaString to an accepted value type.
  */
 export function convertPageMetaStringToExpr(
-  value: PageMetaString | null | undefined
+  value: PageMetaString | null | undefined,
 ): Expr | undefined {
   if (value == null) {
     return undefined;

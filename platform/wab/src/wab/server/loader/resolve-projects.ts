@@ -15,7 +15,7 @@ export type VersionToSync = {
 
 export function mkVersionToSync(
   version: string,
-  indirect?: boolean
+  indirect?: boolean,
 ): VersionToSync {
   return {
     version,
@@ -23,31 +23,36 @@ export function mkVersionToSync(
   };
 }
 
+async function getPkgByProjectOrThrow(dbMgr: DbMgr, projectId: string) {
+  const pkg = await dbMgr.getPkgByProjectId(projectId);
+  if (!pkg) {
+    throw new BadRequestError(
+      `Project ${projectId} has not been published yet.`,
+    );
+  }
+  return pkg;
+}
+
 async function getPkgVersionByProject(
   dbMgr: DbMgr,
   projectId: string,
   versionRange?: string,
   tag?: string,
-  opts: { prefilledOnly: boolean } = { prefilledOnly: false }
+  opts: { prefilledOnly: boolean } = { prefilledOnly: false },
 ) {
-  const pkg = await dbMgr.getPkgByProjectId(projectId);
-  if (!pkg) {
-    throw new BadRequestError(
-      `Project ${projectId} has not been published yet.`
-    );
-  }
+  const pkg = await getPkgByProjectOrThrow(dbMgr, projectId);
   const pkgVersion = await dbMgr.getPkgVersion(pkg.id, versionRange, tag, opts);
   return { pkg, pkgVersion };
 }
 
 export async function resolveProjectDeps(
   dbMgr: DbMgr,
-  projectVersions: Record<string, VersionToSync>
+  projectVersions: Record<string, VersionToSync>,
 ): Promise<Record<string, VersionToSync>> {
   const seeds = await Promise.all(
     Object.entries(projectVersions).map(async ([projectId, v]) => {
       const branches = await dbMgr.listBranchesForProject(
-        projectId as ProjectId
+        projectId as ProjectId,
       );
       const maybeBranch = branches.find((branch) => branch.name === v.version);
 
@@ -60,43 +65,39 @@ export async function resolveProjectDeps(
           branchId: maybeBranch?.id,
         });
       }
-    })
+    }),
   );
   const deps = await resolveDeps(dbMgr, seeds);
   return Object.fromEntries(
     Object.entries(deps).map(([id, version]) => [
       id,
       mkVersionToSync(version, true),
-    ])
+    ]),
   );
 }
 
 export async function resolveLatestProjectVersions(
   dbMgr: DbMgr,
   projectIdsAndTags: { projectId: string; tag: string | undefined }[],
-  opts: { prefilledOnly: boolean } = { prefilledOnly: false }
+  opts: { prefilledOnly: boolean } = { prefilledOnly: false },
 ) {
   return withSpan(
     "resolveLatestProjectVersions",
     async () => {
       const pkgVersions = await Promise.all(
-        projectIdsAndTags.map((projectIdAndTag) =>
-          getPkgVersionByProject(
-            dbMgr,
-            projectIdAndTag.projectId,
-            undefined,
-            projectIdAndTag.tag,
-            opts
-          )
-        )
+        projectIdsAndTags.map(async ({ projectId, tag }) => {
+          const pkg = await getPkgByProjectOrThrow(dbMgr, projectId);
+          return {
+            projectId,
+            version: await dbMgr.getLatestPkgVersionNumber(pkg.id, tag, opts),
+          };
+        }),
       );
       return Object.fromEntries(
-        pkgVersions.map(({ pkg, pkgVersion }) => [
-          pkg.projectId,
-          pkgVersion.version,
-        ])
+        pkgVersions.map(({ projectId, version }) => [projectId, version]),
       );
     },
+<<<<<<< HEAD
     undefined,
     {
       project_count: projectIdsAndTags.length,
@@ -105,25 +106,27 @@ export async function resolveLatestProjectVersions(
         p.tag ? `${p.projectId}@${p.tag}` : p.projectId
       ),
     }
+=======
+>>>>>>> upstream/master
   );
 }
 
 export async function resolveLatestProjectRevisions(
   dbMgr: DbMgr,
-  projectIdsAndBranches: { id: string; branchName: string | undefined }[]
+  projectIdsAndBranches: { id: string; branchName: string | undefined }[],
 ) {
   const revisions = await Promise.all(
     projectIdsAndBranches.map(async (p) => {
       const branches = await dbMgr.listBranchesForProject(p.id as ProjectId);
       const matchingBranch = branches.find(
-        (branch) => branch.name === p.branchName
+        (branch) => branch.name === p.branchName,
       );
       const branchId = matchingBranch?.id;
       return [
         p.id,
         await dbMgr.getLatestProjectRevNumber(p.id, { branchId: branchId }),
       ];
-    })
+    }),
   );
   return Object.fromEntries(revisions) as Record<string, number>;
 }
@@ -167,7 +170,7 @@ export function extractProjectId(id: string): ProjectId {
 
 async function resolveDeps(
   dbMgr: DbMgr,
-  seeds: (ProjectRevision | PkgVersion)[]
+  seeds: (ProjectRevision | PkgVersion)[],
 ) {
   const pkgIdToMaxVersion: Record<string, string> = {};
 
@@ -185,7 +188,7 @@ async function resolveDeps(
 
   for (const seed of seeds) {
     const bundle = JSON.parse(
-      seed instanceof ProjectRevision ? seed.data : seed.model
+      seed instanceof ProjectRevision ? seed.data : seed.model,
     ) as UnsafeBundle;
     const deps = await loadDepPackages(dbMgr, bundle, { extendTokens: true });
     for (const dep of deps) {
@@ -205,7 +208,7 @@ async function resolveDeps(
 export async function getResolvedProjectVersions(
   mgr: DbMgr,
   projectIdSpecs: string[],
-  opts: { prefilledOnly: boolean } = { prefilledOnly: false }
+  opts: { prefilledOnly: boolean } = { prefilledOnly: false },
 ) {
   const projectVersionsOrTags = projectIdSpecs.map(parseProjectIdSpec);
   const projectIdsAndTagsToResolve = projectVersionsOrTags
@@ -217,20 +220,20 @@ export async function getResolvedProjectVersions(
     const resolved = await resolveLatestProjectVersions(
       mgr,
       projectIdsAndTagsToResolve,
-      opts
+      opts,
     );
     const newProjectIdSpecsMap = {
       ...Object.fromEntries(
         projectVersionsOrTags.map(({ projectId, version }) => [
           projectId,
           version,
-        ])
+        ]),
       ),
       ...resolved,
     };
     const newProjectIdSpecs = sortBy(
       Object.entries(newProjectIdSpecsMap),
-      ([projectId]) => projectId
+      ([projectId]) => projectId,
     ).map(([projectId, version]) => `${projectId}@${version}`);
     return newProjectIdSpecs;
   }
@@ -246,18 +249,18 @@ export async function getResolvedProjectVersions(
 async function resolvePreviewVersion(
   mgr: DbMgr,
   projectId: string,
-  maybeBranchName: string | undefined
+  maybeBranchName: string | undefined,
 ) {
   const branches = await mgr.listBranchesForProject(projectId as ProjectId);
   const maybeBranch = branches.find(
-    (branch) => branch.name === maybeBranchName
+    (branch) => branch.name === maybeBranchName,
   );
   return maybeBranch?.name ?? "latest";
 }
 
 export async function getPreviewResolvedVersions(
   mgr: DbMgr,
-  projectIdSpecs: string[]
+  projectIdSpecs: string[],
 ) {
   const projectAndBranches = projectIdSpecs.map(parseProjectIdSpec);
   const projectIdsAndBranchesToResolve = projectAndBranches
@@ -270,7 +273,7 @@ export async function getPreviewResolvedVersions(
     const resolvedVersion = resolvePreviewVersion(
       mgr,
       pb.projectId,
-      pb.maybeBranchName
+      pb.maybeBranchName,
     );
     return `${pb.projectId}@${resolvedVersion}`;
   });

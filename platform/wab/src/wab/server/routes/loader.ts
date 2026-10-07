@@ -25,39 +25,42 @@ import {
 } from "@/wab/server/loader/resolve-projects";
 import { logger } from "@/wab/server/observability";
 import { superDbMgr, userDbMgr } from "@/wab/server/routes/util";
+import { setSentryErrorContext } from "@/wab/server/sentry";
 import { TraceCarrier, withSpan } from "@/wab/server/util/apm-util";
+<<<<<<< HEAD
 import {
   getServerTimingHeader,
   runWithServerTiming,
   timedProxy,
 } from "@/wab/server/util/server-timing";
+=======
+import { makeS3Client } from "@/wab/server/util/s3-util";
+>>>>>>> upstream/master
 import { prefillCloudfront } from "@/wab/server/workers/prefill-cloudfront";
 import { BadRequestError, NotFoundError } from "@/wab/shared/ApiErrors/errors";
 import { ProjectId } from "@/wab/shared/ApiSchema";
 import { Bundler } from "@/wab/shared/bundler";
 import { toClassName } from "@/wab/shared/codegen/util";
-import {
-  ensure,
-  ensureArray,
-  ensureInstance,
-  hackyCast,
-  tuple,
-} from "@/wab/shared/common";
+import { ensure, ensureArray, hackyCast, tuple } from "@/wab/shared/common";
 import { tplToPlasmicElements } from "@/wab/shared/element-repr/gen-element-repr-v2";
 import { LocalizationKeyScheme } from "@/wab/shared/localization";
 import { toJson } from "@/wab/shared/model/model-tree-util";
+<<<<<<< HEAD
 import {
   getCodegenOriginUrl,
   getCodegenPublicUrl,
   getLoaderInternalUrl,
 } from "@/wab/shared/urls";
 import { Semaphore } from "async-mutex";
+=======
+import { getCodegenOriginUrl, getCodegenUrl } from "@/wab/shared/urls";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
+>>>>>>> upstream/master
 import { context, propagation } from "@opentelemetry/api";
-import S3 from "aws-sdk/clients/s3";
 import execa from "execa";
 import { Request, Response } from "express-serve-static-core";
 import fs from "fs";
-import { isString } from "lodash";
+import { isString, pickBy } from "lodash";
 import path from "path";
 
 // Semaphore to limit concurrent HTML preview subprocess spawning.
@@ -151,7 +154,7 @@ export async function buildPublishedLoaderAssets(req: Request, res: Response) {
   const resolvedProjectIdSpecs = await getResolvedProjectVersions(
     mgr,
     projectIdSpecs,
-    { prefilledOnly: true }
+    { prefilledOnly: true },
   );
 
   const query = makeCacheableVersionedLoaderQuery({
@@ -173,7 +176,7 @@ export async function buildPublishedLoaderAssets(req: Request, res: Response) {
   // Return 200 with redirect URL - https://linear.app/plasmic/issue/PLA-12576
   const polyfillProjectId = ANGULAR_POLYFILL_PROJECT_ID;
   const isPolyfillProject = projectIdSpecs.some(
-    (spec) => parseProjectIdSpec(spec).projectId === polyfillProjectId
+    (spec) => parseProjectIdSpec(spec).projectId === polyfillProjectId,
   );
 
   if (isPolyfillProject) {
@@ -232,6 +235,7 @@ export function makeCacheableVersionedLoaderQuery({
 }
 
 export async function buildVersionedLoaderAssets(req: Request, res: Response) {
+<<<<<<< HEAD
   return runWithServerTiming(async () => {
     const mgr = userDbMgr(req);
     const {
@@ -311,6 +315,72 @@ export async function buildVersionedLoaderAssets(req: Request, res: Response) {
       i18nTagPrefix,
       appDir: nextjsAppDir,
     });
+=======
+  const mgr = userDbMgr(req);
+  const {
+    platform,
+    nextjsAppDir,
+    browserOnly,
+    projectIdSpecs,
+    loaderVersion,
+    i18nKeyScheme,
+    i18nTagPrefix,
+    skipHead,
+  } = getLoaderOptions(req);
+
+  const projectVersions = projectIdSpecs.map(parseProjectIdSpec);
+
+  for (const { projectId, version } of projectVersions) {
+    if (!version) {
+      throw new BadRequestError(
+        `Project ${projectId} does not have a specified version`,
+      );
+    }
+  }
+
+  await Promise.all(
+    projectVersions.map(({ projectId }) =>
+      mgr.checkProjectPerms(projectId, "viewer", "get"),
+    ),
+  );
+
+  const projects = await Promise.all(
+    projectVersions.map(
+      async ({ projectId }) => await mgr.getProjectById(projectId),
+    ),
+  );
+  trackLoaderCodegenEvent(req, projects, {
+    versionType: "versioned",
+    platform,
+  });
+
+  req.promLabels.projectId = projects.map((p) => p.id).join(",");
+
+  const result = await genPublishedLoaderCodeBundle(
+    mgr,
+    req.workerpool,
+    makeGenPublishedLoaderCodeBundleOpts({
+      source: "live",
+      platform,
+      appDir: nextjsAppDir,
+      projectVersions: Object.fromEntries(
+        projectVersions.map(({ projectId, version }) => [
+          projectId,
+          mkVersionToSync(
+            ensure(version, "Unexpected nullish version in projectVersions"),
+          ),
+        ]),
+      ),
+      i18n: {
+        keyScheme: i18nKeyScheme,
+        tagPrefix: i18nTagPrefix,
+      },
+      loaderVersion,
+      browserOnly,
+      skipHead,
+    }),
+  );
+>>>>>>> upstream/master
 
     if (process.env.ENABLE_SERVER_TIMING === "true") {
       const timingHeader = getServerTimingHeader();
@@ -390,7 +460,7 @@ export async function buildLatestLoaderAssets(req: Request, res: Response) {
         // We need to check if pv.tag is a branch name or a pkgversion tag.
         // The only way to know is to try to find a branch with the same name...
         const branches = await mgr.listBranchesForProject(
-          pv.projectId as ProjectId
+          pv.projectId as ProjectId,
         );
         if (branches.some((b) => b.name === pv.tag)) {
           // Found it!
@@ -409,12 +479,12 @@ export async function buildLatestLoaderAssets(req: Request, res: Response) {
       } else {
         return { id: pv.projectId, branchName: undefined };
       }
-    })
+    }),
   );
   await Promise.all(
     projectIdsBranches.map(({ id }) =>
-      mgr.checkProjectPerms(id, "viewer", "get")
-    )
+      mgr.checkProjectPerms(id, "viewer", "get"),
+    ),
   );
 
   // We set the projectIds and their current revisions as weak e-tag.  If the browser
@@ -422,7 +492,7 @@ export async function buildLatestLoaderAssets(req: Request, res: Response) {
   // been updated, and skip re-generating code if so.
   const projectRevs = await resolveLatestProjectRevisions(
     mgr,
-    projectIdsBranches
+    projectIdsBranches,
   );
   const etag = `W/"${LOADER_CACHE_BUST}-${Object.entries(projectRevs)
     .map(([pid, rev]) => `${pid}@${rev}`)
@@ -433,7 +503,7 @@ export async function buildLatestLoaderAssets(req: Request, res: Response) {
   }
 
   const projects = await Promise.all(
-    projectIdsBranches.map(async ({ id }) => await mgr.getProjectById(id))
+    projectIdsBranches.map(async ({ id }) => await mgr.getProjectById(id)),
   );
 
   req.promLabels.projectId = projects.map((p) => p.id).join(",");
@@ -474,7 +544,7 @@ export async function getLoaderChunk(req: Request, res: Response) {
 
   if (!Array.isArray(fileNames)) {
     throw new BadRequestError(
-      "Invalid `fileName` param: " + req.query.fileName
+      "Invalid `fileName` param: " + req.query.fileName,
     );
   }
 
@@ -482,22 +552,25 @@ export async function getLoaderChunk(req: Request, res: Response) {
 
   logger().info(`Loading S3 bundle from ${LOADER_ASSETS_BUCKET} ${bundleKey}`);
 
-  const s3 = new S3({ endpoint: process.env.S3_ENDPOINT });
+  const s3 = makeS3Client();
 
-  const obj = await s3
-    .getObject({
+  const obj = await s3.send(
+    new GetObjectCommand({
       Bucket: LOADER_ASSETS_BUCKET,
       Key: bundleKey,
-    })
-    .promise();
-  const serialized = ensureInstance(obj.Body, Buffer).toString("utf8");
+    }),
+  );
+  const serialized = await ensure(
+    obj.Body,
+    "Unexpected empty loader bundle body",
+  ).transformToString("utf8");
 
   const bundle: LoaderBundleOutput = JSON.parse(serialized);
 
   const modules = (
     Array.isArray(bundle.modules) ? bundle.modules : bundle.modules.browser
   ).filter(
-    (m): m is CodeModule => m.type === "code" && fileNamesSet.has(m.fileName)
+    (m): m is CodeModule => m.type === "code" && fileNamesSet.has(m.fileName),
   );
 
   if (!modules.length || !fileNames) {
@@ -512,11 +585,11 @@ export async function getLoaderChunk(req: Request, res: Response) {
       ${modules
         .map((module) =>
           `globalThis.__PLASMIC_CHUNKS[${JSON.stringify(
-            module.fileName
+            module.fileName,
           )}] = ${JSON.stringify(module.code)};
           globalThis.__PlasmicBundlePromises[${JSON.stringify(
-            "__promise_resolve_" + module.fileName
-          )}]();`.trim()
+            "__promise_resolve_" + module.fileName,
+          )}]();`.trim(),
         )
         .join("\n")}
     })()`.trim();
@@ -544,7 +617,7 @@ export async function buildPublishedLoaderHtml(req: Request, res: Response) {
         req.query.globalVariants ? (req.query.componentProps as string) : "[]",
       ],
       ["prepass", req.query.prepass === "1" ? "1" : "0"],
-    ]).toString()
+    ]).toString(),
   );
 }
 
@@ -566,7 +639,7 @@ async function buildLoader(
   versionType: "preview" | "versioned",
   platform: "html" | "repr-v2" | "repr-v3",
   componentRequired: true,
-  func: (props: ComponentLoaderProps) => Promise<void>
+  func: (props: ComponentLoaderProps) => Promise<void>,
 ): Promise<void>;
 async function buildLoader(
   req: Request,
@@ -574,7 +647,7 @@ async function buildLoader(
   versionType: "preview" | "versioned",
   platform: "html" | "repr-v2" | "repr-v3",
   componentRequired: false,
-  func: (props: ProjectLoaderProps) => Promise<void>
+  func: (props: ProjectLoaderProps) => Promise<void>,
 ): Promise<void>;
 async function buildLoader(
   req: Request,
@@ -584,7 +657,7 @@ async function buildLoader(
   componentRequired: boolean,
   func:
     | ((props: ProjectLoaderProps) => Promise<void>)
-    | ((props: ComponentLoaderProps) => Promise<void>)
+    | ((props: ComponentLoaderProps) => Promise<void>),
 ): Promise<void> {
   const mgr = userDbMgr(req);
   const projectIdSpec = req.params.projectId as string | undefined;
@@ -603,12 +676,12 @@ async function buildLoader(
 
   if (!version && versionType !== "preview") {
     throw new BadRequestError(
-      `Project ${projectId} does not have specified version`
+      `Project ${projectId} does not have specified version`,
     );
   }
 
   const token = mgr.projectIdsAndTokens?.find(
-    (p) => p.projectId === projectId
+    (p) => p.projectId === projectId,
   )?.projectApiToken;
   if (!token) {
     throw new BadRequestError(`No project token specified for ${projectId}`);
@@ -625,7 +698,10 @@ async function buildLoader(
       ])
     )[projectId];
     const prefix = `${LOADER_CACHE_BUST}-${projectId}@${projectRev}`;
-    const suffix = component ? `-${normComponentName(component)}` : "";
+    // Encode because Node rejects header values with chars above U+00FF
+    const suffix = component
+      ? `-${encodeURIComponent(normComponentName(component))}`
+      : "";
     const etag = `W/${prefix}${suffix}`;
 
     if (checkEtagSkippable(req, res, etag)) {
@@ -650,8 +726,9 @@ async function buildLoader(
 }
 
 export async function genLoaderHtmlBundleSandboxed(
-  args: Parameters<typeof genLoaderHtmlBundle>[0]
+  args: Parameters<typeof genLoaderHtmlBundle>[0],
 ) {
+<<<<<<< HEAD
   // Acquire semaphore permit to limit concurrent subprocess spawning
   const getHtmlPreviewQueueDepth = () =>
     (htmlPreviewSemaphore["_weightedQueues"] as unknown[][]).reduce(
@@ -669,6 +746,10 @@ export async function genLoaderHtmlBundleSandboxed(
   });
   try {
     return await withSpan("genLoaderHtmlBundleSandboxed", async () => {
+=======
+  return withSpan("genLoaderHtmlBundleSandboxed", async () => {
+    const profilerService = process.env.GCLOUD_PROFILER_SERVICE;
+>>>>>>> upstream/master
     const cmd = [
       "node",
       "-r",
@@ -676,7 +757,24 @@ export async function genLoaderHtmlBundleSandboxed(
       "src/wab/server/loader/gen-html-bundle.ts",
     ];
     const payload = JSON.stringify(args);
+<<<<<<< HEAD
     const renderStart = Date.now();
+=======
+    const profilerEnv = profilerService
+      ? { GCLOUD_PROFILER_SERVICE: `${profilerService}-bwrap-worker` }
+      : {};
+    // The env the OTel auto-instrumentation and Cloud Profiler need. Already
+    // allowlisted here, so the sandbox never sees the rest of process.env.
+    const sandboxEnv = {
+      ...pickBy(
+        process.env,
+        (value, key) =>
+          value !== undefined &&
+          (key === "NODE_OPTIONS" || key.startsWith("OTEL_")),
+      ),
+      ...profilerEnv,
+    };
+>>>>>>> upstream/master
 
     // prettier-ignore
     const bwrapArgs = [
@@ -695,11 +793,10 @@ export async function genLoaderHtmlBundleSandboxed(
       "--ro-bind-try", "/otel-auto-instrumentation-nodejs", "/otel-auto-instrumentation-nodejs",
     ];
 
-    // Allowlist the env the OTel auto-instrumentation needs, plus the trace
-    // carrier. Pushed as discrete --setenv triples because values like
-    // NODE_OPTIONS and OTEL_RESOURCE_ATTRIBUTES can contain spaces.
-    for (const [k, v] of Object.entries(process.env)) {
-      if (v !== undefined && (k === "NODE_OPTIONS" || k.startsWith("OTEL_"))) {
+    // Pushed as discrete --setenv triples because values like NODE_OPTIONS and
+    // OTEL_RESOURCE_ATTRIBUTES can contain spaces.
+    for (const [k, v] of Object.entries(sandboxEnv)) {
+      if (v !== undefined) {
         bwrapArgs.push("--setenv", k, v);
       }
     }
@@ -717,10 +814,14 @@ export async function genLoaderHtmlBundleSandboxed(
 
     bwrapArgs.push("--chdir", process.cwd(), ...cmd, payload);
 
-    const { stdout, stderr, exitCode } =
+    const result =
       process.env.DISABLE_BWRAP === "1"
-        ? await execa(cmd[0], [...cmd.slice(1), payload], { reject: false })
+        ? await execa(cmd[0], [...cmd.slice(1), payload], {
+            reject: false,
+            env: { ...process.env, ...profilerEnv },
+          })
         : await execa("bwrap", bwrapArgs, { reject: false });
+<<<<<<< HEAD
     logger().info("html-preview-subprocess-done", {
       htmlPreviewRenderMs: Date.now() - renderStart,
       htmlPreviewExitCode: exitCode,
@@ -730,18 +831,44 @@ export async function genLoaderHtmlBundleSandboxed(
         `Sandboxed loader subprocess succeeded with exit code 0 but got unexpected stderr ${stderr}`
       );
     } else if (exitCode !== 0) {
+=======
+    const { stdout, stderr, exitCode, signal, timedOut, failed } = result;
+    const hideProjectToken = (value: string) =>
+      args.projectToken
+        ? value.replaceAll(args.projectToken, "[redacted]")
+        : value;
+    const diagnostic = {
+      projectId: args.projectId,
+      component: args.component,
+      traceparent: traceCarrier.traceparent,
+      exitCode,
+      signal,
+      timedOut,
+      failed,
+      stdoutLength: stdout.length,
+      stderr: hideProjectToken(stderr).slice(0, 8192),
+      spawnError:
+        "originalMessage" in result
+          ? hideProjectToken(String(result.originalMessage)).slice(0, 8192)
+          : undefined,
+    };
+    if (failed || exitCode !== 0 || stdout.length === 0) {
+>>>>>>> upstream/master
       // This error comes from @plasmicapp/loader-react
       if (stderr.includes("Unable to find components")) {
-        // Split at the first new line to avoid returning the stack trace.
-        throw new NotFoundError(stderr.split("\n")[0]);
+        logger().info("Sandboxed loader component not found", diagnostic);
+        throw new NotFoundError(hideProjectToken(stderr.split("\n")[0]));
       }
-
-      logger().error(
-        `Sandboxed loader subprocess failed with exit code ${exitCode} with stderr: ${stderr}`
-      );
+      logger().error("Sandboxed loader subprocess failed", diagnostic);
+      const error = new Error("Sandboxed loader subprocess failed");
+      setSentryErrorContext(error, "htmlBuild", diagnostic);
+      throw error;
     }
-    if (stdout.length === 0) {
-      throw new Error("Sandboxed loader subprocess returned no HTML");
+    if (stderr.trim().length > 0) {
+      logger().warn(
+        "Sandboxed loader subprocess succeeded with stderr",
+        diagnostic,
+      );
     }
     return { html: stdout };
     });
@@ -803,7 +930,7 @@ export async function buildLatestLoaderHtml(req: Request, res: Response) {
 async function genReprV2(
   req: Request,
   res: Response,
-  props: ProjectLoaderProps
+  props: ProjectLoaderProps,
 ) {
   const { projectId, project } = props;
 
@@ -813,11 +940,11 @@ async function genReprV2(
   const { site } = await mgr.tryGetPkgVersionByProjectVersionOrTag(
     bundler,
     projectId,
-    props.version || "latest"
+    props.version || "latest",
   );
 
   const componentReprs = site.components.map((c) =>
-    tuple(c.name, tplToPlasmicElements(c.tplTree))
+    tuple(c.name, tplToPlasmicElements(c.tplTree)),
   );
 
   res.json({ site: { components: Object.fromEntries(componentReprs) } });
@@ -826,7 +953,7 @@ async function genReprV2(
 async function genReprV3(
   req: Request,
   res: Response,
-  props: ProjectLoaderProps
+  props: ProjectLoaderProps,
 ) {
   const { projectId } = props;
 
@@ -836,7 +963,7 @@ async function genReprV3(
   const { site } = await mgr.tryGetPkgVersionByProjectVersionOrTag(
     bundler,
     projectId,
-    props.version || "latest"
+    props.version || "latest",
   );
 
   res.json({ site: toJson(site, bundler) });
@@ -847,7 +974,7 @@ async function buildPublishedLoaderRedirect(
   res: Response,
   loaderType: `repr-v2` | `repr-v3` | `html`,
   componentRequired: boolean,
-  query: string
+  query: string,
 ) {
   const mgr = userDbMgr(req);
   const projectIdSpec = req.params.projectId as string | undefined;
@@ -874,7 +1001,7 @@ async function buildPublishedLoaderRedirect(
     res,
     `/api/v1/loader/${loaderType}/versioned/${resolvedProjectIdSpec}${
       component ? "/" + normComponentName(component) : ""
-    }?${query}`
+    }?${query}`,
   );
 }
 
@@ -884,7 +1011,7 @@ export async function buildPublishedLoaderReprV2(req: Request, res: Response) {
     res,
     "repr-v2",
     true,
-    new URLSearchParams([["cb", LOADER_CACHE_BUST]]).toString()
+    new URLSearchParams([["cb", LOADER_CACHE_BUST]]).toString(),
   );
 }
 
@@ -898,7 +1025,7 @@ export async function buildVersionedLoaderReprV2(req: Request, res: Response) {
     async (props) => {
       setAsCacheableResource(res);
       await genReprV2(req, res, props);
-    }
+    },
   );
 }
 
@@ -911,7 +1038,7 @@ export async function buildLatestLoaderReprV2(req: Request, res: Response) {
     false,
     async (props) => {
       await genReprV2(req, res, props);
-    }
+    },
   );
 }
 
@@ -921,7 +1048,7 @@ export async function buildPublishedLoaderReprV3(req: Request, res: Response) {
     res,
     "repr-v3",
     false,
-    new URLSearchParams([["cb", LOADER_CACHE_BUST]]).toString()
+    new URLSearchParams([["cb", LOADER_CACHE_BUST]]).toString(),
   );
 }
 
@@ -935,7 +1062,7 @@ export async function buildVersionedLoaderReprV3(req: Request, res: Response) {
     async (props) => {
       setAsCacheableResource(res);
       await genReprV3(req, res, props);
-    }
+    },
   );
 }
 
@@ -948,7 +1075,7 @@ export async function buildLatestLoaderReprV3(req: Request, res: Response) {
     false,
     async (props) => {
       await genReprV3(req, res, props);
-    }
+    },
   );
 }
 
@@ -985,7 +1112,7 @@ function setAsCacheableResource(res: Response, maxAge = 31536000) {
   // browser cache.
   res.setHeader(
     "Cache-Control",
-    `max-age=${Math.min(3600, maxAge)}, s-maxage=${maxAge}`
+    `max-age=${Math.min(3600, maxAge)}, s-maxage=${maxAge}`,
   );
 }
 
@@ -1019,7 +1146,7 @@ export function checkEtagSkippable(req: Request, res: Response, etag: string) {
     return true;
   }
   logger().info(
-    `Preview request no match ${etag} ${req.headers["if-none-match"]}`
+    `Preview request no match ${etag} ${req.headers["if-none-match"]}`,
   );
   return false;
 }
@@ -1034,7 +1161,7 @@ function trackLoaderCodegenEvent(
   opts: {
     versionType: "versioned" | "preview" | "chunk";
     platform: string;
-  }
+  },
 ) {
   const { versionType, platform } = opts;
   req.analytics.track(
@@ -1048,18 +1175,18 @@ function trackLoaderCodegenEvent(
       platform,
       versionType,
     },
-    { sampleThreshold: 0.1 }
+    { sampleThreshold: 0.1 },
   );
 }
 
 const getHydrationScriptInfo = () => {
   const dir = path.resolve(
-    path.join(process.cwd(), "..", "loader-html-hydrate")
+    path.join(process.cwd(), "..", "loader-html-hydrate"),
   );
   const buildDir = path.join(dir, "build");
   const files = fs.readdirSync(buildDir);
   const filename = files.filter(
-    (file) => file.startsWith("loader-") && file.endsWith(".js")
+    (file) => file.startsWith("loader-") && file.endsWith(".js"),
   )[0];
 
   if (!filename) {
@@ -1074,9 +1201,13 @@ const getHydrationScriptInfo = () => {
 };
 
 export function getHydrationScript(_: Request, res: Response) {
-  res.setHeader("Cache-Control", "maxage=60, s-maxage=60");
+  res.setHeader("Cache-Control", "max-age=60, s-maxage=60");
   res.redirect(
+<<<<<<< HEAD
     `${getCodegenPublicUrl()}/static/js/${getHydrationScriptInfo().filename}`
+=======
+    `${getCodegenUrl()}/static/js/${getHydrationScriptInfo().filename}`,
+>>>>>>> upstream/master
   );
 }
 
@@ -1084,10 +1215,10 @@ export function getHydrationScriptVersioned(req: Request, res: Response) {
   const { dir, filename, hash } = getHydrationScriptInfo();
   if (hash !== req.params.hash) {
     throw new NotFoundError(
-      `Hydration script with hash=${req.params.hash} is unavailable`
+      `Hydration script with hash=${req.params.hash} is unavailable`,
     );
   }
-  res.setHeader("Cache-Control", "maxage=31536000, s-maxage=31536000");
+  res.setHeader("Cache-Control", "max-age=31536000, s-maxage=31536000");
   res.sendFile(path.join(dir, filename));
 }
 

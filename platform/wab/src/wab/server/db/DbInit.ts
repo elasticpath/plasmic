@@ -73,29 +73,28 @@ export async function seedTestDb(em: EntityManager) {
     lastName: "User 2",
   });
 
-  const { enterpriseFt, teamFt, proFt, starterFt } = await seedTestFeatureTiers(
-    em
-  );
+  const { enterpriseFt, teamFt, proFt, starterFt } =
+    await seedTestFeatureTiers(em);
 
-  const enterpriseOrg = await seedTeam(
+  const enterpriseTeam = await seedTeam(
     em,
     user1,
     "Test Enterprise Org",
-    enterpriseFt
+    enterpriseFt,
   );
   await seedTeam(
     em,
     user1,
     "Test Enterprise Child Org A",
     enterpriseFt,
-    enterpriseOrg
+    enterpriseTeam,
   );
   await seedTeam(
     em,
     user1,
     "Test Enterprise Child Org B",
     enterpriseFt,
-    enterpriseOrg
+    enterpriseTeam,
   );
   await seedTeam(em, user1, "Test Scale Org", teamFt);
   await seedTeam(em, user2, "Test Pro Org", proFt);
@@ -106,7 +105,7 @@ export async function seedTestDb(em: EntityManager) {
   // Seed the special pkgs, which must be done after some users have been created
   const sysnames: InsertableId[] = [PLUME_INSERTABLE_ID, PLEXUS_INSERTABLE_ID];
   await Promise.all(
-    sysnames.map(async (sysname) => await new PkgMgr(db, sysname).seedPkg())
+    sysnames.map(async (sysname) => await new PkgMgr(db, sysname).seedPkg()),
   );
 
   const plexusBundleInfo = getBundleInfo(PLEXUS_INSERTABLE_ID);
@@ -155,7 +154,7 @@ export async function seedTestDb(em: EntityManager) {
                 componentName: startCase(item),
                 templateName: `${plexusBundleInfo.sysname}/${kebabCase(item)}`,
                 imageUrl: `https://static1.plasmic.app/insertables/${kebabCase(
-                  item
+                  item,
                 )}.svg`,
                 type: "insertable-templates-component" as const,
                 projectId: plexusBundleInfo.projectId,
@@ -205,8 +204,8 @@ export async function seedTestDb(em: EntityManager) {
         },
       },
       null,
-      2
-    )
+      2,
+    ),
   );
 }
 
@@ -218,7 +217,7 @@ export async function seedTestUserAndProjects(
     firstName?: string;
     lastName?: string;
   },
-  numProjects = 2
+  numProjects = 2,
 ) {
   const db0 = new DbMgr(em, SUPER_USER);
 
@@ -250,13 +249,13 @@ export async function seedTestUserAndProjects(
       name: "Homepage",
     });
     $$$(comp.tplTree).append(
-      mkTplInlinedText("Hello, world!", [getBaseVariant(comp)])
+      mkTplInlinedText("Hello, world!", [getBaseVariant(comp)]),
     );
 
     const siteBundle = new Bundler().bundle(
       site,
       "",
-      await getLastBundleVersion()
+      await getLastBundleVersion(),
     );
     await db.saveProjectRev({
       projectId: project.id,
@@ -270,7 +269,7 @@ export async function seedTestUserAndProjects(
   logger().info(
     `Inserted user id=${user.id} email=${
       user.email
-    } with projects ids=${projects.map((p) => p.id).join(",")}`
+    } with projects ids=${projects.map((p) => p.id).join(",")}`,
   );
 
   return { user, projects };
@@ -281,7 +280,7 @@ async function seedTeam(
   user: User,
   name: string,
   featureTier: FeatureTier,
-  parentTeam?: Team
+  parentTeam?: Team,
 ) {
   const db = new DbMgr(em, normalActor(user.id));
   let team = await db.createTeam(name);
@@ -294,7 +293,7 @@ async function seedTeam(
   });
 
   logger().info(
-    `Inserted team id=${team.id} name=${team.name} owned by user id=${user.id} email=${user.email} with feature tier id=${featureTier.id} name=${featureTier.name}`
+    `Inserted team id=${team.id} name=${team.name} owned by user id=${user.id} email=${user.email} with feature tier id=${featureTier.id} name=${featureTier.name}`,
   );
 
   return team;
@@ -306,6 +305,6 @@ async function seedTestPromotionCodes(em: EntityManager) {
     "FREETESTING",
     "FREETESTING - Free trial for testing",
     30,
-    null
+    null,
   );
 }

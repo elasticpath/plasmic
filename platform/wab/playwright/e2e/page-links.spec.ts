@@ -36,7 +36,7 @@ test.describe("Page Links", () => {
     await apiClient.removeProjectAfterTest(
       projectId,
       "user2@example.com",
-      "!53kr3tz!"
+      "!53kr3tz!",
     );
   });
 
@@ -53,7 +53,7 @@ test.describe("Page Links", () => {
         fragment?: string;
         pageParam?: string;
       },
-      dataPlasmicProp = "href"
+      dataPlasmicProp = "href",
     ) {
       const placeholder = `${pageData.name} - ${pageData.path}`;
       const href = `${
@@ -87,6 +87,16 @@ test.describe("Page Links", () => {
         fragment: "123",
       });
 
+      // expect query param and fragment editors shown
+      await expect(
+        models.studio.frame.locator('[data-test-id="prop-editor-row-a"]'),
+      ).toBeVisible();
+      await expect(
+        models.studio.frame.locator(
+          '[data-test-id="prop-editor-row-fragment"]',
+        ),
+      ).toBeVisible();
+
       await models.studio.leftPanel.switchToTreeTab();
       await models.studio.leftPanel.selectTreeNode([
         "vertical stack",
@@ -104,8 +114,15 @@ test.describe("Page Links", () => {
         false,
         dynamicPage.dynamicPageParam
           ? { pageParam: dynamicPage.dynamicPageParam }
-          : undefined
+          : undefined,
       );
+
+      // expect path param editor shown
+      if (dynamicPage.dynamicPageParam) {
+        await expect(
+          models.studio.frame.locator('[data-test-id="prop-editor-row-id"]'),
+        ).toBeVisible();
+      }
 
       // assert hrefs in interaction
       await models.studio.leftPanel.switchToTreeTab();
@@ -128,7 +145,7 @@ test.describe("Page Links", () => {
       // assert hrefs in prop default/preview values
       await models.studio.rightPanel.switchToComponentDataTab();
       const propsSection = models.studio.frame.locator(
-        `[data-test-id="props-section"]`
+        `[data-test-id="props-section"]`,
       );
       const labeledItem = propsSection
         .locator(`[data-plasmic-role="labeled-item"]`)
@@ -140,18 +157,18 @@ test.describe("Page Links", () => {
 
     async function replaceAllLinks(oldPage: Page, newPage: Page) {
       const oldPageElement = (await models.studio.projectPanel()).getByText(
-        oldPage.name
+        oldPage.name,
       );
       await oldPageElement.first().click({ button: "right" });
 
       const replaceMenuTrigger = models.studio.frame.getByText(
-        "Replace all links to this page with"
+        "Replace all links to this page with",
       );
       await replaceMenuTrigger.waitFor({ state: "visible" });
       await replaceMenuTrigger.hover();
 
       const replaceMenu = models.studio.frame.locator(
-        `#proj-item-menu-replaceAllLinks-popup`
+        `#proj-item-menu-replaceAllLinks-popup`,
       );
       const newPageOption = replaceMenu.getByText(newPage.name);
       await newPageOption.click();

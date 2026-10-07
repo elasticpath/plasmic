@@ -8,6 +8,7 @@ import { SidebarSection } from "@/wab/client/components/sidebar/SidebarSection";
 import { TplExpsProvider } from "@/wab/client/components/style-controls/StyleComponent";
 import {
   IconLinkButton,
+  PopupFocuser,
   useOnIFrameMouseDown,
 } from "@/wab/client/components/widgets";
 import { AttributesTooltip } from "@/wab/client/components/widgets/DetailedTooltips";
@@ -30,11 +31,6 @@ import {
 import { ComponentPropOrigin } from "@/wab/shared/core/lang";
 import { alwaysVisibleHTMLAttributes, metaSvc } from "@/wab/shared/core/metas";
 import {
-  isTagInline,
-  textBlockTags,
-  textInlineTags,
-} from "@/wab/shared/core/rich-text-util";
-import {
   EventHandlerKeyType,
   getDisplayNameOfEventHandlerKey,
   getEventHandlerByEventKey,
@@ -47,6 +43,14 @@ import {
   computeDefinedIndicator,
   DefinedIndicatorType,
 } from "@/wab/shared/defined-indicator";
+import {
+  COMMON_TAGS,
+  GENERAL_TAGS,
+  isTagInline,
+  tagDisplayLabel,
+  textBlockTags,
+  textInlineTags,
+} from "@/wab/shared/html";
 import { getInputTypeOptions } from "@/wab/shared/html-utils";
 import {
   Component,
@@ -61,7 +65,7 @@ import { unsetTplVariantableAttr } from "@/wab/shared/TplMgr";
 import { tryGetBaseVariantSetting } from "@/wab/shared/Variants";
 import { notification, Popover, Select } from "antd";
 import { RefSelectProps } from "antd/lib/select";
-import L, { keyBy, orderBy, uniq, without } from "lodash";
+import { keyBy, orderBy, uniq, without } from "lodash";
 import { observer } from "mobx-react";
 import { ok } from "neverthrow";
 import React from "react";
@@ -91,17 +95,23 @@ const COMMON_INPUT_ATTRS = [
 export function getInputTagType(tpl: TplTag) {
   const vs = ensure(
     tryGetBaseVariantSetting(tpl),
-    "Tpl should have base variant"
+    "Tpl should have base variant",
   );
   const expr = vs.attrs.type;
   return (expr && tryExtractString(expr)) || "text";
 }
 
+/**
+ * Attrs of an `a` tag that are edited in the dedicated Link section, rather
+ * than in the generic HTML attributes section.
+ */
+export const LINK_ATTRS = ["href", "target"];
+
 export function getEditableTagAttrs(viewCtx: ViewCtx, tpl: TplTag) {
   if (tpl.tag === "img") {
     return ["alt", "loading", ...COMMON_GLOBAL_ATTRS];
   } else if (tpl.tag === "a") {
-    return ["href", "target", ...COMMON_GLOBAL_ATTRS];
+    return [...LINK_ATTRS, ...COMMON_GLOBAL_ATTRS];
   } else if (tpl.tag === "textarea") {
     // Note that even though textarea does not take `value` attr, we do use
     // `value` attr here to represent the content of the textarea.
@@ -133,18 +143,21 @@ export function getEditableTagAttrs(viewCtx: ViewCtx, tpl: TplTag) {
   }
 }
 
-function getHiddenTagAttrs(tpl: TplTag) {
-  if (tpl.tag === "img") {
+function getHiddenTagAttrs(tag: string) {
+  if (tag === "img") {
     return ["width", "height"];
+  } else if (tag === "a") {
+    // These are edited in the Link section instead
+    return LINK_ATTRS;
   }
   return [];
 }
 
-function switchableTags(tpl: TplTag) {
+function switchableTags(tpl: TplTag): readonly string[] {
   if (tpl.tag === "input") {
     const typeExpr = ensure(
       tryGetBaseVariantSetting(tpl),
-      "Tpl should have base variant"
+      "Tpl should have base variant",
     ).attrs.type;
     const type = (typeExpr && tryExtractLit(typeExpr)) || "text";
     if (type === "text") {
@@ -166,58 +179,10 @@ function switchableTags(tpl: TplTag) {
       return textBlockTags;
     }
   } else {
-    return ALL_CONTAINER_TAGS;
+    return [...GENERAL_TAGS].sort();
   }
 }
 
-export const TAG_TO_DISPLAY_NAME = {
-  div: "Box",
-  button: "Button",
-  a: "Link",
-  h1: "H1",
-  h2: "H2",
-  h3: "H3",
-  h4: "H4",
-  h5: "H5",
-  h6: "H6",
-  hgroup: "Heading group",
-  address: "Address",
-  article: "Article",
-  aside: "Aside",
-  blockquote: "Blockquote",
-  cite: "Citation",
-  code: "Code",
-  dl: "Description list",
-  dt: "Term",
-  dd: "Description",
-  figure: "Figure",
-  figcaption: "Figure caption",
-  footer: "Footer",
-  form: "Form",
-  label: "Label",
-  ul: "Unordered list",
-  ol: "Ordered list",
-  li: "List item",
-  header: "Header",
-  main: "Main",
-  nav: "Nav",
-  p: "Paragraph",
-  pre: "Pre",
-  section: "Section",
-  span: "Span",
-  input: "Input",
-  textarea: "Text area",
-  strong: "Strong",
-  i: "Italic",
-  em: "Emphasis",
-  sub: "Subscript",
-  sup: "Superscript",
-};
-const nonContainerTags = ["ul", "ol", "li"];
-export const ALL_CONTAINER_TAGS = L.without(
-  Object.keys(TAG_TO_DISPLAY_NAME),
-  ...nonContainerTags
-).sort();
 export const TplTagSection = observer(TplTagSection_);
 
 function TplTagSection_(props: { tpl: TplTag; viewCtx: ViewCtx }) {
@@ -232,10 +197,10 @@ function TplTagSection_(props: { tpl: TplTag; viewCtx: ViewCtx }) {
     return null;
   }
   const commonTagOptions = allTagOptions.filter((tag) =>
-    ["div", "button", "a", "h1", "h2", "h3", "h4", "h5", "h6"].includes(tag)
+    (COMMON_TAGS as readonly string[]).includes(tag),
   );
   const otherTagOptions = allTagOptions.filter(
-    (tag) => !commonTagOptions.includes(tag)
+    (tag) => !commonTagOptions.includes(tag),
   );
 
   return (
@@ -283,14 +248,14 @@ function TplTagSection_(props: { tpl: TplTag; viewCtx: ViewCtx }) {
               <Select.OptGroup label="Common">
                 {commonTagOptions.map((option) => (
                   <Select.Option key={option} value={option}>
-                    {TAG_TO_DISPLAY_NAME[option] + " <" + option + ">"}
+                    {tagDisplayLabel(option)}
                   </Select.Option>
                 ))}
               </Select.OptGroup>
               <Select.OptGroup label="Everything else">
                 {otherTagOptions.map((option) => (
                   <Select.Option key={option} value={option}>
-                    {TAG_TO_DISPLAY_NAME[option] + " <" + option + ">"}
+                    {tagDisplayLabel(option)}
                   </Select.Option>
                 ))}
               </Select.OptGroup>
@@ -342,7 +307,7 @@ export const HTMLAttributesSection = observer(
     const params = isTplTag(tpl)
       ? getEditableTagParams(viewCtx, tpl)
       : tpl.component.params.filter(
-          (p) => p.origin === ComponentPropOrigin.ReactHTMLAttributes
+          (p) => p.origin === ComponentPropOrigin.ReactHTMLAttributes,
         );
     const vtm = viewCtx.variantTplMgr();
 
@@ -375,20 +340,17 @@ export const HTMLAttributesSection = observer(
 
     const effectiveVs = expsProvider.effectiveVs();
 
-    const attrsToHide = isTplTag(tpl) ? getHiddenTagAttrs(tpl) : [];
+    const attrsToHide = isTplTag(tpl) ? getHiddenTagAttrs(tpl.tag) : [];
     const attrs = uniq([
       // Explicitly added
       ...addedAttrs,
       // Explicitly set
       ...Object.keys(effectiveVs.attrs).filter(
-        (attr) =>
-          !SPECIAL_ATTRS.includes(attr) &&
-          !isAttrEventHandler(attr) &&
-          !attrsToHide.includes(attr)
+        (attr) => !SPECIAL_ATTRS.includes(attr) && !isAttrEventHandler(attr),
       ),
       // Always show by default for this tag type
       ...params.map((it) => (isKnownParam(it) ? it.variable.name : it.name)),
-    ]);
+    ]).filter((attr) => !attrsToHide.includes(attr));
 
     const attrInfos = attrs.map((attr) => {
       const attrSource = effectiveVs.getAttrSource(attr);
@@ -396,7 +358,7 @@ export const HTMLAttributesSection = observer(
         viewCtx.site,
         viewCtx.currentComponent(),
         attrSource,
-        expsProvider.targetIndicatorCombo
+        expsProvider.targetIndicatorCombo,
       );
 
       return {
@@ -408,7 +370,7 @@ export const HTMLAttributesSection = observer(
     });
 
     const ariaAttrInfos = attrInfos.filter(
-      (attr) => /aria-/i.test(attr.attr) || ["role", "id"].includes(attr.attr)
+      (attr) => /aria-/i.test(attr.attr) || ["role", "id"].includes(attr.attr),
     );
     const otherAttrInfos = attrInfos.filter((a) => !ariaAttrInfos.includes(a));
 
@@ -420,13 +382,13 @@ export const HTMLAttributesSection = observer(
         (it) => it.attr === "placeholder",
         (it) => it.attr,
       ],
-      ["desc", "desc", "desc", "asc"]
+      ["desc", "desc", "desc", "asc"],
     );
 
     const orderedAriaAttrInfos = orderBy(
       ariaAttrInfos,
       [(it) => it.attr === "id", (it) => it.attr === "role", (it) => it.attr],
-      ["desc", "desc", "asc"]
+      ["desc", "desc", "asc"],
     );
 
     const makeMaybeCollapsibleEditorRow = ({
@@ -480,7 +442,7 @@ export const HTMLAttributesSection = observer(
                 },
                 ...orderedAriaAttrInfos.map(makeMaybeCollapsibleEditorRow),
               ],
-              { alwaysVisible: true }
+              { alwaysVisible: true },
             )
           }
         </SidebarSection>
@@ -497,7 +459,7 @@ export const HTMLAttributesSection = observer(
         )}
       </>
     );
-  }
+  },
 );
 
 function AddHtmlAttrButton(props: {
@@ -505,9 +467,12 @@ function AddHtmlAttrButton(props: {
   onSelect: (attr: string) => void;
 }) {
   const { tag, onSelect } = props;
-  const params = metaSvc.paramsForTag(tag);
+  const hiddenAttrs = getHiddenTagAttrs(tag);
+  const params = metaSvc
+    .paramsForTag(tag)
+    .filter((p) => !hiddenAttrs.includes(p.name));
   const [searchValue, setSearchValue] = React.useState<string | undefined>(
-    undefined
+    undefined,
   );
   const [showing, setShowing] = React.useState(false);
   const selectRef = React.useRef<RefSelectProps>(null);
@@ -517,49 +482,53 @@ function AddHtmlAttrButton(props: {
   return (
     <Popover
       trigger={["click"]}
-      onVisibleChange={(visible) => {
+      onOpenChange={(visible) => {
         setShowing(visible);
         setSearchValue(undefined);
-        if (visible) {
-          selectRef.current?.focus();
-        }
       }}
       overlayClassName="ant-popover--tight"
-      visible={showing}
+      open={showing}
       placement={"left"}
       destroyTooltipOnHide
       content={
-        <Select
-          showSearch={true}
-          searchValue={searchValue}
-          onSearch={(val) => setSearchValue(val)}
-          onSelect={(val) => {
-            onSelect(val as string);
-            setShowing(false);
-          }}
-          onBlur={() => setShowing(false)}
-          style={{
-            width: 200,
-          }}
-          autoFocus
-          bordered={false}
-          ref={selectRef}
-          placeholder="Search or enter any attribute"
-          open
-        >
-          {searchValue && (
-            <Select.Option key={"__custom__"} value={searchValue}>
-              {searchValue}
-            </Select.Option>
-          )}
-          {params.map((p) =>
-            SPECIAL_ATTRS.includes(p.name) ? null : (
-              <Select.Option key={p.name} value={p.name}>
-                {p.name}
+        <>
+          <PopupFocuser
+            targetId="html-attribute-select"
+            targetRef={selectRef}
+          />
+          <Select
+            id="html-attribute-select"
+            showSearch={true}
+            searchValue={searchValue}
+            onSearch={(val) => setSearchValue(val)}
+            onSelect={(val) => {
+              onSelect(val as string);
+              setShowing(false);
+            }}
+            onBlur={() => setShowing(false)}
+            style={{
+              width: 200,
+            }}
+            autoFocus
+            bordered={false}
+            ref={selectRef}
+            placeholder="Search or enter any attribute"
+            open
+          >
+            {searchValue && (
+              <Select.Option key={"__custom__"} value={searchValue}>
+                {searchValue}
               </Select.Option>
-            )
-          )}
-        </Select>
+            )}
+            {params.map((p) =>
+              SPECIAL_ATTRS.includes(p.name) ? null : (
+                <Select.Option key={p.name} value={p.name}>
+                  {p.name}
+                </Select.Option>
+              ),
+            )}
+          </Select>
+        </>
       }
     >
       <IconLinkButton data-test-id="add-html-attribute">
@@ -616,12 +585,12 @@ function InteractionModal({
               const expr = getEventHandlerByEventKey(
                 component,
                 tpl,
-                eventHandlerKey
+                eventHandlerKey,
               );
               if (isKnownVarRef(expr)) {
                 const param = ensure(
                   extractReferencedParam(component, expr),
-                  `param not found for variable ${expr.variable.name}`
+                  `param not found for variable ${expr.variable.name}`,
                 );
                 if (isAllowedDefaultExpr(newExpr)) {
                   param.defaultExpr = newExpr;
@@ -634,7 +603,7 @@ function InteractionModal({
                 setEventHandlerByEventKey(tpl, eventHandlerKey, newExpr);
               }
               return ok();
-            })
+            }),
           )
         }
       />
@@ -651,77 +620,79 @@ interface HTMLAttributePropEditorProps {
   about?: string;
 }
 
-export function HTMLAttributePropEditor(props: HTMLAttributePropEditorProps) {
-  const { viewCtx, tpl, expsProvider, attr, onChange, about } = props;
-  const vtm = viewCtx.variantTplMgr();
-  const effectiveVs = expsProvider.effectiveVs();
-  const baseVs = vtm.tryGetBaseVariantSetting(tpl);
-  const curSharedVS = vtm.tryGetCurrentSharedVariantSetting(tpl);
+export const HTMLAttributePropEditor = observer(
+  function HTMLAttributePropEditor(props: HTMLAttributePropEditorProps) {
+    const { viewCtx, tpl, expsProvider, attr, onChange, about } = props;
+    const vtm = viewCtx.variantTplMgr();
+    const effectiveVs = expsProvider.effectiveVs();
+    const baseVs = vtm.tryGetBaseVariantSetting(tpl);
+    const curSharedVS = vtm.tryGetCurrentSharedVariantSetting(tpl);
 
-  if (!curSharedVS || !baseVs) {
-    return null;
-  }
+    if (!curSharedVS || !baseVs) {
+      return null;
+    }
 
-  const expr = effectiveVs.attrs[attr];
-  const attrSource = effectiveVs.getAttrSource(attr);
-  const propType = inferPropTypeFromAttr(viewCtx, tpl, attr) ?? "string";
-  const defined = computeDefinedIndicator(
-    viewCtx.site,
-    viewCtx.currentComponent(),
-    attrSource,
-    expsProvider.targetIndicatorCombo
-  );
+    const expr = effectiveVs.attrs[attr];
+    const attrSource = effectiveVs.getAttrSource(attr);
+    const propType = inferPropTypeFromAttr(viewCtx, tpl, attr) ?? "string";
+    const defined = computeDefinedIndicator(
+      viewCtx.site,
+      viewCtx.currentComponent(),
+      attrSource,
+      expsProvider.targetIndicatorCombo,
+    );
 
-  return (
-    <PropEditorRow
-      key={attr}
-      attr={attr}
-      propType={propType}
-      expr={expr}
-      label={viewCtx.tagMeta().expandLabel(attr) || attr}
-      about={about}
-      definedIndicator={defined}
-      onDelete={
-        (isTplTag(tpl) && isRequiredAttr(tpl.tag, attr)) ||
-        defined.source !== "set" ||
-        isKnownVarRef(expr)
-          ? undefined
-          : () => {
-              viewCtx.change(() => {
-                delete curSharedVS.attrs[attr];
-              });
-            }
-      }
-      onChange={(newExpr) =>
-        viewCtx.change(() => {
-          if (newExpr) {
-            const isVarRef = isKnownVarRef(newExpr);
-            const targetVs = isVarRef ? baseVs : curSharedVS;
-            if (isVarRef) {
-              unsetTplVariantableAttr(tpl, attr);
-              const referencedParam = extractReferencedParam(
-                viewCtx.currentComponent(),
-                newExpr
-              );
-              if (
-                referencedParam &&
-                expr &&
-                isAllowedDefaultExpr(expr) &&
-                isAllowedDefaultExprForPropType(propType)
-              ) {
-                referencedParam.defaultExpr = clone(expr);
+    return (
+      <PropEditorRow
+        key={attr}
+        attr={attr}
+        propType={propType}
+        expr={expr}
+        label={viewCtx.tagMeta().expandLabel(attr) || attr}
+        about={about}
+        definedIndicator={defined}
+        onDelete={
+          (isTplTag(tpl) && isRequiredAttr(tpl.tag, attr)) ||
+          defined.source !== "set" ||
+          isKnownVarRef(expr)
+            ? undefined
+            : () => {
+                viewCtx.change(() => {
+                  delete curSharedVS.attrs[attr];
+                });
               }
+        }
+        onChange={(newExpr) =>
+          viewCtx.change(() => {
+            if (newExpr) {
+              const isVarRef = isKnownVarRef(newExpr);
+              const targetVs = isVarRef ? baseVs : curSharedVS;
+              if (isVarRef) {
+                unsetTplVariantableAttr(tpl, attr);
+                const referencedParam = extractReferencedParam(
+                  viewCtx.currentComponent(),
+                  newExpr,
+                );
+                if (
+                  referencedParam &&
+                  expr &&
+                  isAllowedDefaultExpr(expr) &&
+                  isAllowedDefaultExprForPropType(propType)
+                ) {
+                  referencedParam.defaultExpr = clone(expr);
+                }
+              }
+              targetVs.attrs[attr] = newExpr;
+            } else {
+              const targetVs = isKnownVarRef(expr) ? baseVs : curSharedVS;
+              delete targetVs.attrs[attr];
             }
-            targetVs.attrs[attr] = newExpr;
-          } else {
-            const targetVs = isKnownVarRef(expr) ? baseVs : curSharedVS;
-            delete targetVs.attrs[attr];
-          }
-          onChange?.(newExpr);
-        })
-      }
-      tpl={tpl}
-      viewCtx={viewCtx}
-    />
-  );
-}
+            onChange?.(newExpr);
+          })
+        }
+        tpl={tpl}
+        viewCtx={viewCtx}
+      />
+    );
+  },
+);

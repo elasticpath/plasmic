@@ -26,15 +26,32 @@ export async function loadDepPackages(
   opts?: {
     extendTokens?: boolean;
     dontMigrateBundle?: boolean;
-  }
+  },
+) {
+  const loadBundle = opts?.dontMigrateBundle
+    ? async (pkg: PkgVersion) => parseBundle(pkg)
+    : getMigratedBundle;
+  return (
+    await loadDepPackagesWithBundles(dbMgr, bundle, loadBundle, opts)
+  ).map(({ pkg }) => pkg);
+}
+
+async function loadDepPackagesWithBundles<T extends UnsafeBundle>(
+  dbMgr: MigrationDbMgr,
+  bundle: UnsafeBundle | UnsafeBundle[],
+  loadBundle: (pkg: PkgVersion) => Promise<T>,
+  opts?: {
+    extendTokens?: boolean;
+  },
 ) {
   const deps: string[] = [];
   const loadedPkgs: Record<string, PkgVersion> = {};
+  const loadedBundles: Record<string, T> = {};
   const pkg2DirectDeps: Record<string, string[]> = {};
   let bundlesToCheck = Array.isArray(bundle) ? [...bundle] : [bundle];
   while (bundlesToCheck.length > 0) {
     const newDeps = L.uniq(L.flatten(bundlesToCheck.map((b) => b.deps))).filter(
-      (id) => !deps.includes(id)
+      (id) => !deps.includes(id),
     );
     if (newDeps.length === 0) {
       break;
@@ -43,26 +60,28 @@ export async function loadDepPackages(
     if (opts?.extendTokens) {
       // TODO: do a single query to the db, instead of N
       await Promise.all(
-        newDeps.map((id) => dbMgr.extendProjectIdAndTokens(id))
+        newDeps.map((id) => dbMgr.extendProjectIdAndTokens(id)),
       );
     }
     const depPkgs = await Promise.all(
-      newDeps.map((id) => dbMgr.getPkgVersionById(id))
+      newDeps.map((id) => dbMgr.getPkgVersionById(id)),
     );
 
     bundlesToCheck = [];
     for (const [id, depPkg] of strictZip(newDeps, depPkgs)) {
       loadedPkgs[id] = depPkg;
-      const pkgBundle = opts?.dontMigrateBundle
-        ? parseBundle(depPkg)
-        : await getMigratedBundle(depPkg);
+      const pkgBundle = await loadBundle(depPkg);
+      loadedBundles[id] = pkgBundle;
       bundlesToCheck.push(pkgBundle);
       pkg2DirectDeps[id] = pkgBundle.deps;
     }
   }
 
   const orderedDeps = flattenDeps(pkg2DirectDeps);
-  return orderedDeps.map((id) => loadedPkgs[id]);
+  return orderedDeps.map((id) => ({
+    pkg: loadedPkgs[id],
+    bundle: loadedBundles[id],
+  }));
 }
 
 /**
@@ -72,7 +91,7 @@ export async function loadDepPackages(
  */
 export async function getOrderedDepBundleIds(
   bundle: Bundle,
-  getPkgVersionBundleFromId: (id: string) => Promise<Bundle>
+  getPkgVersionBundleFromId: (id: string) => Promise<Bundle>,
 ) {
   const pkg2DirectDeps: Record<string, string[]> = {};
   const pkgVersionIdToBundle: Record<string, Bundle> = {};
@@ -84,7 +103,7 @@ export async function getOrderedDepBundleIds(
     }
     const bund = await ensure(
       getPkgVersionBundleFromId(id),
-      "pkg version bundle must exist at this point"
+      "pkg version bundle must exist at this point",
     );
     pkgVersionIdToBundle[id] = bund;
     pkg2DirectDeps[id] = [...bund.deps];
@@ -103,9 +122,9 @@ export async function getOrderedDepBundleIds(
         id,
         ensure(
           pkgVersionIdToBundle[id],
-          "pkg version id to bundle must exist at this point"
+          "pkg version id to bundle must exist at this point",
         ),
-      ] as const
+      ] as const,
   );
 }
 
@@ -145,13 +164,16 @@ export async function unbundleWithDeps(
   dbMgr: DbMgr,
   bundler: Bundler,
   id: string,
-  bundle: Bundle
+  bundle: Bundle,
 ) {
   logger().info(`Unbundling with deps ${id}`);
-  const depPkgs = await loadDepPackages(dbMgr, bundle);
-  for (const depPkg of depPkgs) {
-    const depBundle = await getMigratedBundle(depPkg);
-    bundler.unbundle(depBundle, depPkg.id);
+  const deps = await loadDepPackagesWithBundles(
+    dbMgr,
+    bundle,
+    getMigratedBundle,
+  );
+  for (const { pkg, bundle: depBundle } of deps) {
+    bundler.unbundle(depBundle, pkg.id);
   }
   return bundler.unbundle(bundle, id);
 }
@@ -160,7 +182,7 @@ export async function unbundleProjectFromData(
   dbMgr: DbMgr,
   bundler: Bundler,
   rev: ProjectRevision,
-  unbundleId?: string
+  unbundleId?: string,
 ) {
   return unbundleProjectFromBundle(dbMgr, bundler, {
     bundle: await getMigratedBundle(rev),
@@ -171,13 +193,13 @@ export async function unbundleProjectFromData(
 export async function unbundleProjectFromBundle(
   dbMgr: DbMgr,
   bundler: Bundler,
-  rev: { bundle: Bundle; projectId: string }
+  rev: { bundle: Bundle; projectId: string },
 ) {
   const site = await unbundleWithDeps(
     dbMgr,
     bundler,
     rev.projectId,
-    rev.bundle
+    rev.bundle,
   );
   return site as classes.Site;
 }
@@ -185,7 +207,7 @@ export async function unbundleProjectFromBundle(
 export async function unbundlePkgVersion(
   dbMgr: DbMgr,
   bundler: Bundler,
-  pkgVersion: PkgVersion
+  pkgVersion: PkgVersion,
 ) {
   const bundle = await getMigratedBundle(pkgVersion);
   const result = await unbundleWithDeps(dbMgr, bundler, pkgVersion.id, bundle);
@@ -196,7 +218,7 @@ export async function unbundlePkgVersionFromBundle(
   dbMgr: DbMgr,
   bundler: Bundler,
   pkgVersion: PkgVersion,
-  bundle: Bundle
+  bundle: Bundle,
 ) {
   const result = await unbundleWithDeps(dbMgr, bundler, pkgVersion.id, bundle);
   return result as classes.ProjectDependency;

@@ -17,7 +17,7 @@ const testFiles = [
   "**/*.stories.tsx",
   "**/*.test.ts",
   "**/*.test.tsx",
-  "**/test/**/*",
+  "**/__testonly__/**/*",
   "**/__mocks__/**/*",
 ];
 
@@ -103,6 +103,45 @@ const restrictedImportPaths = [
   },
 ];
 
+// Only test files may reference a module's `_testonly`.
+const restrictedTestonlySyntaxRule = {
+  selector:
+    ":matches(ImportSpecifier[imported.name=/^_testonly/], ExportSpecifier[local.name=/^_testonly/], MemberExpression[property.name=/^_testonly/])",
+  message:
+    "`_testonly` is only for tests. Please use the module's real exports.",
+};
+
+// Shared by every `no-restricted-syntax` rule, since an override replaces the
+// whole list rather than extending it.
+const restrictedSyntaxRules = [
+  {
+    selector: "CallExpression[callee.name='ensure'][arguments.length!=2]",
+    message: "`ensure` must always be invoked with a message.",
+  },
+  {
+    selector: "CallExpression[callee.name='assert'][arguments.length!=2]",
+    message: "`assert` must always be invoked with a message.",
+  },
+  {
+    selector: `CallExpression[callee.name='ensureInstance'][arguments.length=2] > Identifier[name=/\\b(${TYPES})\\b/]`,
+    message:
+      "ensureInstance cannot be called on model types. Use ensureKnownXXX instead.",
+  },
+  {
+    selector: `BinaryExpression[operator='instanceof'] > Identifier[name=/\\b(${TYPES})\\b/]`,
+    message:
+      "instanceof cannot be used with model types. Use isKnownXXX instead.",
+  },
+  restrictedTestonlySyntaxRule,
+];
+
+// Only test files may import from `__testonly__/`.
+const noTestImportPattern = {
+  group: ["**/__testonly__/*"],
+  message:
+    "Only test files can import files in `__testonly__/`. Please move this file inside `__testonly__/`",
+};
+
 module.exports = {
   root: true,
   ignorePatterns: [
@@ -116,6 +155,7 @@ module.exports = {
     "examples/",
     "internal/",
     "packages/host/src/type-utils.ts",
+    "platform/canvas-packages/internal_pkgs/",
     "platform/wab/create-react-app-new/",
     "platform/wab/deps/",
     "platform/wab/public/static/",
@@ -181,27 +221,7 @@ module.exports = {
       },
     ],
     "no-restricted-imports": ["error", { paths: restrictedImportPaths }],
-    "no-restricted-syntax": [
-      "warn",
-      {
-        selector: "CallExpression[callee.name='ensure'][arguments.length!=2]",
-        message: "`ensure` must always be invoked with a message.",
-      },
-      {
-        selector: "CallExpression[callee.name='assert'][arguments.length!=2]",
-        message: "`assert` must always be invoked with a message.",
-      },
-      {
-        selector: `CallExpression[callee.name='ensureInstance'][arguments.length=2] > Identifier[name=/\\b(${TYPES})\\b/]`,
-        message:
-          "ensureInstance cannot be called on model types. Use ensureKnownXXX instead.",
-      },
-      {
-        selector: `BinaryExpression[operator='instanceof'] > Identifier[name=/\\b(${TYPES})\\b/]`,
-        message:
-          "instanceof cannot be used with model types. Use isKnownXXX instead.",
-      },
-    ],
+    "no-restricted-syntax": ["warn", ...restrictedSyntaxRules],
     "react/forbid-elements": [
       "error",
       {
@@ -255,17 +275,27 @@ module.exports = {
         types: "always",
       },
     ],
-    "jest/no-conditional-expect": "off",
   },
   env: {
     es6: true,
     node: true,
     browser: true,
-    jasmine: true,
-    jest: true,
   },
   parser: "@typescript-eslint/parser",
   overrides: [
+    {
+      // Repo-wide guard. The wab overrides below replace this rule per-file
+      // and re-add the pattern alongside their own.
+      files: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"],
+      excludedFiles: testFiles,
+      rules: {
+        "@typescript-eslint/no-restricted-imports": [
+          "error",
+          { patterns: [noTestImportPattern] },
+        ],
+      },
+    },
+
     {
       files: [
         "platform/wab/src/**/*.ts",
@@ -330,12 +360,7 @@ module.exports = {
                       "Files in `server/` cannot import from `client/`. Please move this file inside `client/` or use `import type`",
                     allowTypeImports: true,
                   },
-                  {
-                    group: ["**/test/*"],
-                    message:
-                      "Only test files can import files in `test/`. Please move this file inside `test/` or use `import type`",
-                    allowTypeImports: true,
-                  },
+                  noTestImportPattern,
                   {
                     group: ["mobx"],
                     message:
@@ -360,12 +385,7 @@ module.exports = {
                       "Files in `client/` cannot import from `server/`. Please move this file inside `server/` or use `import type`",
                     allowTypeImports: true,
                   },
-                  {
-                    group: ["**/test/*"],
-                    message:
-                      "Only test files can import files in `test/`. Please move this file inside `test/` or use `import type`",
-                    allowTypeImports: true,
-                  },
+                  noTestImportPattern,
                 ],
               },
             ],
@@ -392,12 +412,7 @@ module.exports = {
                       "Only server files can import from `server/`. Please move this file inside `server/` or use `import type`",
                     allowTypeImports: true,
                   },
-                  {
-                    group: ["**/test/*"],
-                    message:
-                      "Only test files can import files in `test/`. Please move this file inside `test/` or use `import type`",
-                    allowTypeImports: true,
-                  },
+                  noTestImportPattern,
                   {
                     group: ["mobx"],
                     message:
@@ -437,7 +452,22 @@ module.exports = {
     },
 
     {
+      files: testFiles,
+      rules: {
+        // Tests may use `_testonly`.
+        "no-restricted-syntax": [
+          "warn",
+          ...restrictedSyntaxRules.filter(
+            (rule) => rule !== restrictedTestonlySyntaxRule
+          ),
+        ],
+      },
+    },
+
+    {
       files: ["packages/cli/src/**/*.ts", "packages/cli/src/**/*.tsx"],
+      // Tests fall through to the testFiles override above.
+      excludedFiles: testFiles,
       rules: {
         "no-restricted-properties": [
           "error",
@@ -455,6 +485,7 @@ module.exports = {
         ],
         "no-restricted-syntax": [
           "error",
+          ...restrictedSyntaxRules,
           {
             selector:
               "Identifier[name=/^(existsSync|readFileSync|renameSync|unlinkSync|writeFileSync)$/]",
@@ -466,7 +497,6 @@ module.exports = {
   plugins: [
     "@typescript-eslint",
     "react",
-    "jest",
     "import",
     "eslint-plugin-no-relative-import-paths",
   ],
@@ -491,5 +521,15 @@ module.exports = {
     JSX: false,
     JQuery: false,
     cy: false,
+    // Provided by vitest's `globals: true`.
+    afterAll: "readonly",
+    afterEach: "readonly",
+    beforeAll: "readonly",
+    beforeEach: "readonly",
+    describe: "readonly",
+    expect: "readonly",
+    it: "readonly",
+    test: "readonly",
+    vi: "readonly",
   },
 };

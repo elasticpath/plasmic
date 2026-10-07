@@ -11,6 +11,7 @@ import {
   TplTagSection,
 } from "@/wab/client/components/sidebar-tabs/HTMLAttributesSection";
 import { LayoutSection } from "@/wab/client/components/sidebar-tabs/LayoutSection";
+import { LinkSection } from "@/wab/client/components/sidebar-tabs/LinkSection";
 import { ListStyleSection } from "@/wab/client/components/sidebar-tabs/ListStyleSection";
 import {
   MergedSlotsPropsSection,
@@ -74,7 +75,6 @@ import {
   isCodeComponentTpl,
   isPageComponent,
 } from "@/wab/shared/core/components";
-import { isTagListContainer } from "@/wab/shared/core/rich-text-util";
 import {
   isBackgroundValidForTpl,
   isListStyleValidForTpl,
@@ -108,8 +108,8 @@ import {
   resolvesToCodeComponent,
 } from "@/wab/shared/core/tpls";
 import { ValComponent } from "@/wab/shared/core/val-nodes";
-import { DevFlagsType } from "@/wab/shared/devflags";
 import { isGridTag } from "@/wab/shared/grid-utils";
+import { isTagListContainer } from "@/wab/shared/html";
 import {
   TplComponent,
   TplNode,
@@ -128,6 +128,7 @@ export enum Section {
   RepeatingElement = "repeating-element",
   CustomBehaviors = "custom-behavior",
   HTMLAttributes = "html-attributes",
+  Link = "link",
   PrivateStyleVariants = "private-style-variants",
   ComponentProps = "component-props",
   ComponentStyleProps = "component-style-props",
@@ -231,6 +232,9 @@ const SECTION_SETTINGS: AllSectionsPresent<SectionSetting> = {
   [Section.HTMLAttributes]: {
     publicSection: PublicStyleSection.HTMLAttributes,
   },
+  [Section.Link]: {
+    publicSection: PublicStyleSection.HTMLAttributes,
+  },
   [Section.PrivateStyleVariants]: {
     publicSection: PublicStyleSection.ElementStates,
   },
@@ -277,7 +281,7 @@ const SECTION_SETTINGS: AllSectionsPresent<SectionSetting> = {
 function getSectionSetting(section: Section) {
   return ensure(
     SECTION_SETTINGS[section],
-    `No settings configured for section ${section}`
+    `No settings configured for section ${section}`,
   );
 }
 
@@ -292,6 +296,7 @@ const settingSections = new Set([
   Section.RepeatingElement,
   Section.CustomBehaviors,
   Section.HTMLAttributes,
+  Section.Link,
   Section.ComponentProps,
   Section.VariantsPicker,
   Section.Repeater,
@@ -334,13 +339,6 @@ const styleSections = new Set([
   Section.ComponentMergedSlotTypography,
 ]);
 
-const isSectionActive = (section: Section, devflags: DevFlagsType) => {
-  if (section === Section.SlotSettings) {
-    return devflags.focusable;
-  }
-  return true;
-};
-
 const htmlTagsWithAttributes = new Set([
   "a",
   "button",
@@ -352,10 +350,11 @@ const htmlTagsWithAttributes = new Set([
 function getRenderBySection(
   tpl: TplNode,
   viewCtx: ViewCtx,
-  renderOpts: Map<Section, boolean>
+  renderOpts: Map<Section, boolean>,
 ) {
   const isSlot = isTplSlot(tpl);
   const isTag = isTplTag(tpl);
+  const isLink = isTplTag(tpl) && tpl.tag === "a";
   const isColumns = isTplColumns(tpl);
   const isColumn = isTplColumn(tpl);
   const isGridChild =
@@ -389,7 +388,7 @@ function getRenderBySection(
   const showStyleSections = shouldShowStyleSections(
     tpl,
     viewCtx,
-    missingPositionClass
+    missingPositionClass,
   );
 
   const expsProvider = new TplExpsProvider(viewCtx, tpl as TplNode);
@@ -440,6 +439,7 @@ function getRenderBySection(
     return true;
   };
 
+  const showLink = isLink && showSection(Section.Link);
   const map = new Map([
     [
       Section.SimplifiedCodeComponentMode,
@@ -740,11 +740,24 @@ function getRenderBySection(
       Section.TextContentOnly,
       () =>
         hasTextContent(tpl) &&
-        showSection(Section.Typography) && (
+        showSection(Section.Typography) &&
+        !showLink && (
           <TextOnlySection
             key={`${tpl.uuid}-text`}
             expsProvider={sc.props.expsProvider}
             viewCtx={viewCtx}
+          />
+        ),
+    ],
+    [
+      Section.Link,
+      () =>
+        showLink && (
+          <LinkSection
+            key={`${tpl.uuid}-link`}
+            viewCtx={viewCtx}
+            tpl={tpl as TplTag}
+            expsProvider={expsProvider}
           />
         ),
     ],
@@ -933,7 +946,7 @@ function getRenderBySection(
           name === Section.MissingPositionClass ||
           name === Section.ComponentStyleProps) &&
         render(),
-    ])
+    ]),
   );
 }
 
@@ -986,6 +999,9 @@ function getOrderedSections(tpl: TplNode, viewCtx: ViewCtx): Set<Section> {
   if (isTplTextBlock(tpl)) {
     pushIfNew(Section.Tag);
   }
+  if (isTplTag(tpl) && tpl.tag === "a") {
+    pushIfNew(Section.Link);
+  }
   if (isTplTag(tpl) && htmlTagsWithAttributes.has(tpl.tag)) {
     pushIfNew(Section.HTMLAttributes);
   }
@@ -1005,7 +1021,7 @@ function getOrderedSections(tpl: TplNode, viewCtx: ViewCtx): Set<Section> {
       Section.Layout,
       Section.Spacing,
       Section.Overflow,
-      Section.Background
+      Section.Background,
     );
   }
   if (isTplColumn(tpl)) {
@@ -1017,7 +1033,7 @@ function getOrderedSections(tpl: TplNode, viewCtx: ViewCtx): Set<Section> {
       Section.ColumnsPanel,
       Section.Spacing,
       Section.Overflow,
-      Section.Background
+      Section.Background,
     );
   }
   if (isTplVariantable(tpl) && tpl.parent && isGridTag(tpl.parent)) {
@@ -1060,23 +1076,20 @@ function getOrderedSections(tpl: TplNode, viewCtx: ViewCtx): Set<Section> {
   pushIfNew(Section.TransitionsPanel);
   pushIfNew(Section.TransformPanel);
   pushIfNew(Section.Tag);
+  pushIfNew(Section.Link);
   pushIfNew(Section.HTMLAttributes);
   if (isTplContainer(tpl)) {
     pushIfNew(Section.Typography);
   }
 
   pushIfNew(Section.CustomBehaviors);
-  if (viewCtx.appCtx.appConfig.focusable) {
-    pushIfNew(Section.SlotSettings);
-  }
+  pushIfNew(Section.SlotSettings);
 
   pushIfNew(Section.ComponentMergedSlotText);
   pushIfNew(Section.ComponentMergedSlotTypography);
   pushIfNew(Section.ComponentMergedSlotProps);
 
-  const activeSections = Object.values(Section).filter((section) =>
-    isSectionActive(section as Section, viewCtx.appCtx.appConfig)
-  );
+  const activeSections = Object.values(Section);
   assert(
     orderedSections.size === activeSections.length,
     () =>
@@ -1084,7 +1097,7 @@ function getOrderedSections(tpl: TplNode, viewCtx: ViewCtx): Set<Section> {
         .filter((s) => !activeSections.includes(s))
         .join(", ")}, extras ${activeSections
         .filter((s) => !orderedSections.has(s))
-        .join(", ")}`
+        .join(", ")}`,
   );
   return orderedSections;
 }
@@ -1103,7 +1116,7 @@ export function getOrderedSectionRender(
   tpl: TplNode,
   viewCtx: ViewCtx,
   renderOpts: Map<Section, boolean>,
-  styleTabFilter: StyleTabFilter
+  styleTabFilter: StyleTabFilter,
 ) {
   const renderBySection = getRenderBySection(tpl, viewCtx, renderOpts);
   const orderedSections = getOrderedSections(tpl, viewCtx);
@@ -1112,13 +1125,13 @@ export function getOrderedSectionRender(
       (section) =>
         canEditSection(viewCtx.studioCtx, section) &&
         ((styleTabFilter === "style-only" && isStyleSection(section)) ||
-          (styleTabFilter === "settings-only" && isSettingsSection(section)))
+          (styleTabFilter === "settings-only" && isSettingsSection(section))),
     )
     .map((section) =>
       ensure(
         renderBySection.get(section),
-        "All sections should have a render function"
-      )
+        "All sections should have a render function",
+      ),
     );
 }
 
@@ -1151,7 +1164,7 @@ function shouldAlertMissingPositionClass(vc: ViewCtx) {
 function shouldShowStyleSections(
   tpl: TplNode,
   viewCtx: ViewCtx,
-  missingPositionClass: boolean
+  missingPositionClass: boolean,
 ) {
   if (isTplCodeComponent(tpl)) {
     if (viewCtx.getTplCodeComponentMeta(tpl)?.styleSections === true) {
@@ -1164,7 +1177,7 @@ function shouldShowStyleSections(
     if (
       !isTplCodeComponentStyleable(
         viewCtx.studioCtx.codeComponentsRegistry,
-        tpl
+        tpl,
       )
     ) {
       return false;
@@ -1174,7 +1187,7 @@ function shouldShowStyleSections(
     return shouldShowStyleSections(
       tpl.component.tplTree,
       viewCtx,
-      missingPositionClass
+      missingPositionClass,
     );
   }
   return true;
@@ -1182,7 +1195,7 @@ function shouldShowStyleSections(
 
 export function isCodeComponentMissingPositionClass(
   vc: ViewCtx,
-  val: ValComponent
+  val: ValComponent,
 ) {
   const $doms = $(asOne(vc.renderState.sel2dom(val, vc.canvasCtx)) ?? []);
   if ($doms?.length && resolvesToCodeComponent(val.tpl)) {
@@ -1229,7 +1242,7 @@ const MissingPositionClassSection = observer(
         </div>
       </SidebarSection>
     );
-  }
+  },
 );
 
 export function canEditSection(studioCtx: StudioCtx, section: Section) {
@@ -1251,7 +1264,7 @@ export function canEditSection(studioCtx: StudioCtx, section: Section) {
 
 export function canRenderMixins(
   tpl: TplNode,
-  viewCtx: ViewCtx
+  viewCtx: ViewCtx,
 ): tpl is TplNode {
   const missingPositionClass = isCodeComponentTpl(tpl)
     ? shouldAlertMissingPositionClass(viewCtx)
@@ -1259,7 +1272,7 @@ export function canRenderMixins(
   const showStyleSections = shouldShowStyleSections(
     tpl,
     viewCtx,
-    missingPositionClass
+    missingPositionClass,
   );
 
   return (
@@ -1271,7 +1284,7 @@ export function canRenderMixins(
 
 export function canRenderPrivateStyleVariants(
   tpl: TplNode,
-  viewCtx: ViewCtx
+  viewCtx: ViewCtx,
 ): tpl is TplTag {
   const ancestorSlot = getAncestorTplSlot(tpl, true);
   return (
