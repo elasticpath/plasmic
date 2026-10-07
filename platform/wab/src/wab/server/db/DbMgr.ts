@@ -4366,10 +4366,41 @@ export class DbMgr implements MigrationDbMgr {
     pkgId: string,
     versionRange?: string,
     tag?: string,
+    opts: { prefilledOnly?: boolean; branchId?: BranchId } = {}
+  ) {
+    return this.tryGetPkgVersionInternal(pkgId, versionRange, tag, opts, false);
+  }
+
+  /** Resolves the latest published version without fetching its potentially large model. */
+  async getLatestPkgVersionNumber(
+    pkgId: string,
+    tag: string | undefined,
+    opts: { prefilledOnly?: boolean } = {}
+  ): Promise<string> {
+    const pkgVersion = await this.tryGetPkgVersionInternal(
+      pkgId,
+      "latest",
+      tag,
+      opts,
+      true
+    );
+    return ensureFound(
+      pkgVersion,
+      `PkgVersion for pkgId=${pkgId}, version=latest${
+        tag ? ", tag=" + tag : ""
+      }`
+    ).version;
+  }
+
+  private async tryGetPkgVersionInternal(
+    pkgId: string,
+    versionRange: string | undefined,
+    tag: string | undefined,
     {
       prefilledOnly = false,
       branchId,
-    }: { prefilledOnly?: boolean; branchId?: BranchId } = {}
+    }: { prefilledOnly?: boolean; branchId?: BranchId },
+    versionOnly: boolean
   ) {
     await this.checkPkgPerms(pkgId, "viewer", "get");
     if (branchId) {
@@ -4405,7 +4436,18 @@ export class DbMgr implements MigrationDbMgr {
       ]);
       const chain = getCommitChainFromBranch(graph, branchId);
       if (chain[0]) {
-        return await this.getPkgVersionById(chain[0]);
+        if (!versionOnly) {
+          return this.getPkgVersionById(chain[0]);
+        }
+        const pkgVersion = ensureFound(
+          await this.pkgVersions().findOne({
+            select: ["id", "pkgId", "version"],
+            where: { id: chain[0], ...excludeDeleted() },
+          }),
+          `Pkg Version ${chain[0]}`
+        );
+        await this.checkPkgPerms(pkgVersion.pkgId, "viewer", "get");
+        return pkgVersion;
       }
       // A branch without published pkgVersions has no head in the commit graph.
       return undefined;
@@ -4450,19 +4492,21 @@ export class DbMgr implements MigrationDbMgr {
       return;
     }
 
-    return getOneOrFailIfTooMany(
-      this.pkgVersions()
-        .createQueryBuilder("pkgVersion")
-        .leftJoinAndSelect("pkgVersion.pkg", "pkg")
-        .where("pkgVersion.pkgId = :pkgId", { pkgId })
-        .andWhere(
-          "(:branchId::text is null AND pkgVersion.branchId is null OR pkgVersion.branchId = :branchId::text)",
-          { branchId }
-        )
-        .andWhere("pkgVersion.version = :version", { version })
-        .andWhere("pkgVersion.deletedAt is null")
-        .printSql()
-    );
+    const pkgVersionQuery = this.pkgVersions()
+      .createQueryBuilder("pkgVersion")
+      .where("pkgVersion.pkgId = :pkgId", { pkgId })
+      .andWhere(
+        "(:branchId::text IS NULL AND pkgVersion.branchId IS NULL OR pkgVersion.branchId = :branchId::text)",
+        { branchId }
+      )
+      .andWhere("pkgVersion.version = :version", { version })
+      .andWhere("pkgVersion.deletedAt IS NULL");
+    if (versionOnly) {
+      pkgVersionQuery.select(["pkgVersion.id", "pkgVersion.version"]);
+    } else {
+      pkgVersionQuery.leftJoinAndSelect("pkgVersion.pkg", "pkg");
+    }
+    return getOneOrFailIfTooMany(pkgVersionQuery.printSql());
   }
 
   /**
