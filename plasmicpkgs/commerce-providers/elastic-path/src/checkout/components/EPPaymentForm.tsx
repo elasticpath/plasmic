@@ -25,7 +25,7 @@ interface PaymentFormInternalProps {
   appearance: Appearance;
   onSuccess?: (order: ElasticPathOrder) => void;
   onError?: (error: Error) => void;
-  apiBaseUrl?: string;
+  checkout: ReturnType<typeof useCheckout>;
   className?: string;
   style?: React.CSSProperties;
 }
@@ -37,12 +37,10 @@ function PaymentFormInternal({
   appearance,
   onSuccess,
   onError,
-  apiBaseUrl,
+  checkout,
   className,
   style
 }: PaymentFormInternalProps) {
-  const checkout = useCheckout({ apiBaseUrl });
-  
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -309,7 +307,7 @@ export function EPPaymentForm({
       appearance={appearance}
       onSuccess={onSuccess}
       onError={onError}
-      apiBaseUrl={apiBaseUrl}
+      checkout={checkout}
       className={className}
       style={style}
     />

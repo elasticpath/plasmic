@@ -98,6 +98,34 @@ describe("EPPaymentForm", () => {
     expect(JSON.parse(confirmCall![1].body).stripePaymentIntentId).toBe("pi_fake");
   });
 
+  it("confirms with the transaction that setup created", async () => {
+    const onSuccess = jest.fn();
+    render(
+      <EPPaymentForm
+        order={order}
+        stripePublishableKey="pk_test_123"
+        onSuccess={onSuccess}
+      />
+    );
+    await screen.findByTestId("stripe-payment-element");
+    const pay = screen.getByRole("button", { name: /Pay/ });
+    await waitFor(() => expect((pay as HTMLButtonElement).disabled).toBe(false));
+
+    await act(async () => {
+      fireEvent.click(pay);
+    });
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    const confirmCall = fetchMock.mock.calls.find(([url]) =>
+      url.endsWith("/checkout/confirm-payment")
+    );
+    expect(JSON.parse(confirmCall![1].body)).toEqual({
+      orderId: "order-1",
+      transactionId: "txn-1",
+      stripePaymentIntentId: "pi_fake",
+    });
+  });
+
   it("shows the Stripe error when the payment is declined", async () => {
     render(<EPPaymentForm order={order} stripePublishableKey="pk_test_123" />);
     await screen.findByTestId("stripe-payment-element");
