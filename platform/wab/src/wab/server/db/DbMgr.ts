@@ -662,11 +662,9 @@ type MergeArgs = MergeSrcDst & {
   tags?: string[];
 };
 
-// What the merge phase hands to the publish phase. Plain values only: no site,
-// bundler, pkg version row or revision row, so none of them stay reachable.
 type PreparedMerge = {
-  prepared: true;
-  result: Extract<
+  status: "prepared";
+  mergeResult: Extract<
     MergeResult,
     { status: "can be merged" | "resolution accepted" }
   >;
@@ -8379,51 +8377,42 @@ export class DbMgr implements MigrationDbMgr {
       tags = [],
     } = args;
 
-    // The merge phase holds the sites, the bundler and the revision rows. It
-    // must not be inlined here, so that they can be collected before the
-    // publishes below load their own sites.
-    const merge = await this._prepareMerge(args, opts);
-    if (!("prepared" in merge)) {
-      return merge;
+    const outcome = await this._prepareMerge(args, opts);
+    if (outcome.status !== "prepared") {
+      return outcome;
     }
     const {
-      result,
+      mergeResult,
       projectId,
       fromBranchId,
       toBranchId,
       latestFromPkgVersionId,
       latestToRevisionNum,
       mergedData,
-    } = merge;
+    } = outcome;
+
+    const autoCommit = async (branchId: BranchId | undefined) =>
+      (
+        await this.publishProject(
+          projectId,
+          // TODO compute the semantic version bump
+          undefined,
+          [],
+          "Auto-generated commit pre-merge",
+          undefined,
+          undefined,
+          branchId
+        )
+      ).pkgVersion;
 
     // Auto-commit if there are outstanding changes in source
-    const finalFromCommitId: PkgVersionId = !result.fromHasOutstandingChanges
-      ? latestFromPkgVersionId
-      : (
-          await this.publishProject(
-            projectId,
-            // TODO compute the semantic version bump
-            undefined,
-            [],
-            "Auto-generated commit pre-merge",
-            undefined,
-            undefined,
-            fromBranchId
-          )
-        ).pkgVersion.id;
+    const finalFromCommitId = mergeResult.fromHasOutstandingChanges
+      ? (await autoCommit(fromBranchId)).id
+      : latestFromPkgVersionId;
 
     // Auto-commit if there are outstanding changes in destination and option is enabled
-    if (result.toHasOutstandingChanges && autoCommitOnToBranch) {
-      await this.publishProject(
-        projectId,
-        // TODO compute the semantic version bump
-        undefined,
-        [],
-        "Auto-generated commit pre-merge",
-        undefined,
-        undefined,
-        toBranchId
-      );
+    if (mergeResult.toHasOutstandingChanges && autoCommitOnToBranch) {
+      await autoCommit(toBranchId);
     }
 
     // Make the merge commit.
@@ -8457,14 +8446,15 @@ export class DbMgr implements MigrationDbMgr {
     }
 
     return {
-      ...result,
+      ...mergeResult,
       pkgVersion: omit(pkgVersion, ["model"]),
     };
   }
 
-  // The merge phase of _tryMergeBranch: reads, loads the sites, runs tryMerge,
-  // and returns early for everything but a merge that is ready to be committed.
-  // It returns only plain values, so that the sites are unreachable afterwards.
+  // The merge phase of _tryMergeBranch: everything that loads sites lives here,
+  // and only plain values leave it (no site, bundler or row). That lets the
+  // sites be collected before the publishes load their own.
+  // Returns early for everything but a merge that is ready to be committed.
   private async _prepareMerge(
     {
       fromBranchId: from,
@@ -8603,7 +8593,7 @@ export class DbMgr implements MigrationDbMgr {
       ancestorPkgVersion
     );
 
-    let result: PreparedMerge["result"];
+    let result: PreparedMerge["mergeResult"];
     let mergeStepRaw: MergeStep | undefined = undefined;
     const mergedUuid = mkUuid();
     const mergedSite = (
@@ -8716,8 +8706,6 @@ export class DbMgr implements MigrationDbMgr {
       }
     }
 
-    // Bundle the merged site now, so that no site or the bundler is needed
-    // (or reachable) once this method returns.
     let mergedData: string;
     if (resolution) {
       // Either we use the given resolvedSite if available,
@@ -8754,8 +8742,8 @@ export class DbMgr implements MigrationDbMgr {
     }
 
     return {
-      prepared: true,
-      result,
+      status: "prepared",
+      mergeResult: result,
       projectId,
       fromBranchId,
       toBranchId,

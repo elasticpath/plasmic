@@ -931,40 +931,35 @@ describe("merging", () => {
         data2: { x: 1, z: 1 },
       });
 
-      const sitesLoadedByMerge: WeakRef<object>[] = [];
-      let sitesAliveAtFirstPublish: number | undefined = undefined;
-
-      const realUnbundle = Bundler.prototype.unbundle;
+      const unbundle = jest.spyOn(Bundler.prototype, "unbundle");
       const realPublish = DbMgr.prototype.publishProject;
-      Bundler.prototype.unbundle = function (...args) {
-        const inst = realUnbundle.apply(this, args);
-        if (sitesAliveAtFirstPublish === undefined) {
-          sitesLoadedByMerge.push(new WeakRef(inst));
-        }
-        return inst;
-      };
-      DbMgr.prototype.publishProject = async function (...args) {
-        if (sitesAliveAtFirstPublish === undefined) {
+      let sites: { loaded: number; alive: number } | undefined;
+      jest
+        .spyOn(DbMgr.prototype, "publishProject")
+        .mockImplementationOnce(async function (this: DbMgr, ...args) {
+          // The spy records every site it returned, which would keep them alive.
+          const refs = unbundle.mock.results.map((r) => new WeakRef(r.value));
+          unbundle.mockClear();
+          // A WeakRef target survives until the end of the job that made it.
           await new Promise((resolve) => setImmediate(resolve));
           collectGarbage();
-          sitesAliveAtFirstPublish = sitesLoadedByMerge.filter((ref) =>
-            ref.deref()
-          ).length;
-        }
-        return realPublish.apply(this, args);
-      };
+          sites = {
+            loaded: refs.length,
+            alive: refs.filter((ref) => ref.deref()).length,
+          };
+          return realPublish.apply(this, args);
+        });
       try {
         await db1().tryMergeBranch({
           toBranchId: MainBranchId,
           fromBranchId: branch.id,
         });
       } finally {
-        Bundler.prototype.unbundle = realUnbundle;
-        DbMgr.prototype.publishProject = realPublish;
+        jest.restoreAllMocks();
       }
 
-      expect(sitesLoadedByMerge.length).toBeGreaterThan(0);
-      expect(sitesAliveAtFirstPublish).toBe(0);
+      expect(sites?.loaded).toBeGreaterThan(0);
+      expect(sites?.alive).toBe(0);
     }));
 });
 
