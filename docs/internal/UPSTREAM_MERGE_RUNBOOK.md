@@ -104,6 +104,11 @@ change, take upstream's version and delete its check from `ep-fork-integrity.spe
 - `platform/wab/src/wab/server/db/DbMgr.ts`: `_tryMergeBranch` reads the head pkg versions
   of both branches through `getPkgVersionHead`, which skips the `model` column, instead
   of `getPkgVersion` (#652).
+- `platform/wab/src/wab/server/db/DbMgr.ts`: `_tryMergeBranch` runs the publishes, and
+  the merge phase lives in `_prepareMerge`. It loads the sites, runs `tryMerge`, bundles
+  the merged site and returns plain values only, so the merge's sites are collectable
+  before any publish loads its own. Do not read a site or the bundler in the publish
+  phase (#676).
 
 **Sentry → Datadog (fork-wide)**
 
