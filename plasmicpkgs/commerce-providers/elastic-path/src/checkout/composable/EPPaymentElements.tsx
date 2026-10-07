@@ -16,12 +16,7 @@ import {
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
-import {
-  Elements,
-  PaymentElement,
-  useElements,
-} from "@stripe/react-stripe-js";
-import { loadStripe } from "@stripe/stripe-js/pure";
+import type { Stripe } from "@stripe/stripe-js";
 import React, {
   useCallback,
   useEffect,
@@ -31,6 +26,8 @@ import React, {
 } from "react";
 import { Registerable } from "../../registerable";
 import { createLogger } from "../../utils/logger";
+import { loadStripeJs } from "../stripe/load-stripe-js";
+import { usePaymentElement } from "../stripe/use-payment-element";
 import { useCheckoutInternal } from "./EPCheckoutProvider";
 
 const log = createLogger("EPPaymentElements");
@@ -209,7 +206,7 @@ function EPPaymentElementsRuntime(props: RuntimeProps) {
   const [error, setError] = useState<string | null>(null);
   const [paymentMethodType, setPaymentMethodType] = useState("card");
 
-  const [stripeInstance, setStripeInstance] = useState<any>(null);
+  const [stripeInstance, setStripeInstance] = useState<Stripe | null>(null);
 
   // Elements instance to expose back to CheckoutInternalContext
   const elementsRef = useRef<any>(null);
@@ -224,10 +221,10 @@ function EPPaymentElementsRuntime(props: RuntimeProps) {
       return;
     }
 
-    loadStripe(stripePublishableKey)
-      .then((stripe) => {
-        if (cancelled || !stripe) return;
-        setStripeInstance(stripe);
+    loadStripeJs()
+      .then((StripeJs) => {
+        if (cancelled) return;
+        setStripeInstance(StripeJs(stripePublishableKey));
         setError(null);
       })
       .catch((err) => {
@@ -285,6 +282,24 @@ function EPPaymentElementsRuntime(props: RuntimeProps) {
     [isReady, isProcessing, error, paymentMethodType, clientSecret]
   );
 
+  const { ref: paymentElementRef, elements } = usePaymentElement(
+    clientSecret ? stripeInstance : null,
+    {
+      elements: {
+        clientSecret: clientSecret ?? undefined,
+        appearance: { theme: "stripe", ...(appearance || {}) },
+        loader: "auto",
+      },
+      paymentElement: { layout: "tabs" },
+      onReady: handleReady,
+      onChange: handleChange,
+    }
+  );
+
+  useEffect(() => {
+    if (elements) syncElements(elements);
+  }, [elements, syncElements]);
+
   // Stripe not loaded yet
   if (!stripeInstance) {
     return (
@@ -318,43 +333,14 @@ function EPPaymentElementsRuntime(props: RuntimeProps) {
     );
   }
 
-  const elementsOptions = {
-    clientSecret,
-    appearance: {
-      theme: "stripe" as const,
-      ...(appearance || {}),
-    },
-    loader: "auto" as const,
-  };
-
   return (
-    <Elements stripe={stripeInstance} options={elementsOptions}>
-      <div className={className} data-ep-payment-elements="">
-        <DataProvider name="paymentData" data={paymentData}>
-          <PaymentElement
-            onReady={handleReady}
-            onChange={handleChange}
-            options={{ layout: "tabs" }}
-          />
-          <ElementsCapture onElements={syncElements} />
-          {children}
-        </DataProvider>
-      </div>
-    </Elements>
+    <div className={className} data-ep-payment-elements="">
+      <DataProvider name="paymentData" data={paymentData}>
+        <div ref={paymentElementRef} />
+        {children}
+      </DataProvider>
+    </div>
   );
-}
-
-// ---------------------------------------------------------------------------
-// Capture Elements instance from Stripe context
-// ---------------------------------------------------------------------------
-function ElementsCapture({ onElements }: { onElements: (e: any) => void }) {
-  const elements = useElements();
-  useEffect(() => {
-    if (elements) {
-      onElements(elements);
-    }
-  }, [elements, onElements]);
-  return null;
 }
 
 // ---------------------------------------------------------------------------

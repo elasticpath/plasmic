@@ -566,20 +566,24 @@ describe("EP Fork Integrity", () => {
   });
 
   describe("Stripe loads in a hostless storefront", () => {
-    it("no module loads @stripe/* with a dynamic import()", () => {
+    it("no source file imports @stripe/* except as a type", () => {
+      const typeOnly = /\b(?:import|export)\s+type\b[^;]*?from\s*["'][^"']+["']/g;
       const offenders = sourceFiles(EP_PKG + "/src").filter((file) =>
-        /import\(\s*["'`]@stripe\//.test(readFile(file))
+        /["'`]@stripe\//.test(readFile(file).replace(typeOnly, ""))
       );
       expect(offenders).toEqual([]);
     });
 
-    it("loadStripe comes from @stripe/stripe-js/pure, so js.stripe.com waits for a call", () => {
-      const eager =
-        /(?:^|\n)\s*import\s+(?!type\b)(?:(?!\bimport\b)[^;])*?from\s+["']@stripe\/stripe-js["']|require\(\s*["']@stripe\/stripe-js["']\s*\)/;
-      const offenders = sourceFiles(EP_PKG + "/src").filter((file) =>
-        eager.test(readFile(file))
-      );
-      expect(offenders).toEqual([]);
+    it("the package installs no Stripe library at runtime", () => {
+      const pkgJson = readJson(`${EP_PKG}/package.json`);
+      const runtime = Object.keys({
+        ...pkgJson.dependencies,
+        ...pkgJson.peerDependencies,
+        ...pkgJson.optionalDependencies,
+      });
+      expect(
+        runtime.filter((name) => name === "stripe" || name.startsWith("@stripe/"))
+      ).toEqual([]);
     });
   });
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Stripe, StripeElements } from '@stripe/stripe-js';
-import { loadStripe } from '@stripe/stripe-js/pure';
+import { loadStripeJs } from '../stripe/load-stripe-js';
 
 /**
  * Configuration options for the Stripe payment hook
@@ -84,7 +84,8 @@ export function useStripePayment(options: UseStripePaymentOptions): UseStripePay
 
     const initializeStripe = async () => {
       try {
-        const stripeInstance = await loadStripe(stripePublishableKey);
+        const StripeJs = await loadStripeJs();
+        const stripeInstance = StripeJs(stripePublishableKey);
         
         if (isMounted) {
           if (!stripeInstance) {

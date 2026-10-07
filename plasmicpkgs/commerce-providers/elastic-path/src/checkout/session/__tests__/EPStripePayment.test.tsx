@@ -4,54 +4,26 @@
  * C-4.2: EPStripePayment component tests
  *
  * Covers: design-time preview states, DataProvider exposure, className
- * application, gateway registration with PaymentRegistrationContext,
- * runtime mock-form rendering, and outside-provider warning.
+ * application, and the runtime card form inside EPCheckoutSessionProvider
+ * against a fake Stripe.js: connected account, confirmation token, 3DS,
+ * free cart, missing key and unmount.
  *
  * Note: esbuild does not hoist jest.mock(). We use require() to obtain the
  * mocked module reference so interception works regardless of import order.
  */
 
-const mockStripe = {
-  confirmPayment: jest.fn(),
-  handleNextAction: jest.fn(),
-  createConfirmationToken: jest.fn(),
-};
-jest.mock("@stripe/stripe-js/pure", () => ({
-  __esModule: true,
-  loadStripe: jest.fn(() => Promise.resolve(mockStripe)),
-}));
-
-const mockElements = { submit: jest.fn() };
-jest.mock("@stripe/react-stripe-js", () => ({
-  Elements: ({ children, options }: any) => (
-    <div data-testid="stripe-elements" data-options={JSON.stringify(options)}>
-      {children}
-    </div>
-  ),
-  PaymentElement: (props: any) => {
-    if (props.onReady) setTimeout(() => props.onReady(), 0);
-    return <div data-testid="stripe-payment-element" />;
-  },
-  useElements: jest.fn(() => mockElements),
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const mockStripeJs = require("../../stripe/__tests__/fake-stripe-js").createFakeStripeJs();
+jest.mock("../../stripe/load-stripe-js", () => ({
+  loadStripeJs: () => mockStripeJs.load(),
 }));
 
 // Mock useCheckoutSession (avoids SWR internals)
-const mockConfirmPayment = jest.fn().mockResolvedValue({});
+const mockPlaceOrder = jest.fn();
+const mockResumePayment = jest.fn();
+const mockAbandonPayment = jest.fn();
 jest.mock("../use-checkout-session", () => ({
-  useCheckoutSession: jest.fn().mockReturnValue({
-    session: null,
-    isLoading: false,
-    error: null,
-    createSession: jest.fn(),
-    updateSession: jest.fn(),
-    calculateShipping: jest.fn(),
-    placeOrder: jest.fn(),
-    confirmPayment: mockConfirmPayment,
-    resumePayment: jest.fn(),
-    abandonPayment: jest.fn(),
-    reset: jest.fn(),
-    refresh: jest.fn(),
-  }),
+  useCheckoutSession: jest.fn(),
 }));
 
 // Mock @plasmicapp/host
@@ -87,8 +59,7 @@ jest.mock("@plasmicapp/host/registerComponent", () => {
 });
 
 import React from "react";
-import { act, render, screen } from "@testing-library/react";
-import { PaymentRegistrationContext } from "../payment-registration-context";
+import { act, render, screen, waitFor } from "@testing-library/react";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
@@ -105,18 +76,54 @@ const {
     abandonPayment: jest.Mock;
   }) => Promise<any>;
 };
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { EPCheckoutSessionProvider } = require("../EPCheckoutSessionProvider");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { StripeProvider } = require("../StripeProvider");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { useCheckoutSession } = require("../use-checkout-session");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { usePlasmicCanvasContext } = require("@plasmicapp/host");
+
+function withSession(session: unknown) {
+  useCheckoutSession.mockReturnValue({
+    session,
+    isLoading: false,
+    error: null,
+    createSession: jest.fn(),
+    updateSession: jest.fn(),
+    calculateShipping: jest.fn(),
+    placeOrder: mockPlaceOrder,
+    confirmPayment: jest.fn(),
+    resumePayment: mockResumePayment,
+    abandonPayment: mockAbandonPayment,
+    reset: jest.fn(),
+    refresh: jest.fn(),
+  });
+}
+
+const payableSession = (total = 4200) => ({
+  status: "open",
+  totals: { total, currency: "USD" },
+  payment: { gateway: null, status: "idle", clientToken: null },
+});
+
+function dataOf(testId: string) {
+  return JSON.parse(screen.getByTestId(testId).getAttribute("data-value") || "{}");
+}
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockStripeJs.reset();
+  usePlasmicCanvasContext.mockReturnValue(false);
+  withSession(null);
+});
 
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 describe("EPStripePayment", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    const { usePlasmicCanvasContext } = require("@plasmicapp/host");
-    usePlasmicCanvasContext.mockReturnValue(false);
-  });
-
   it("renders children in auto mode (outside editor)", () => {
     render(
       <EPStripePayment publishableKey="pk_test_123">
@@ -145,7 +152,6 @@ describe("EPStripePayment", () => {
   });
 
   it("renders in design-time ready preview state", () => {
-    const { usePlasmicCanvasContext } = require("@plasmicapp/host");
     usePlasmicCanvasContext.mockReturnValue(true);
 
     render(
@@ -154,15 +160,13 @@ describe("EPStripePayment", () => {
       </EPStripePayment>
     );
     expect(screen.getByTestId("ready-child")).toBeTruthy();
-    const dp = screen.getByTestId("data-provider-stripePaymentData");
-    const data = JSON.parse(dp.getAttribute("data-value") || "{}");
+    const data = dataOf("data-provider-stripePaymentData");
     expect(data.isReady).toBe(true);
     expect(data.isProcessing).toBe(false);
     expect(data.error).toBeNull();
   });
 
   it("renders in design-time processing preview state", () => {
-    const { usePlasmicCanvasContext } = require("@plasmicapp/host");
     usePlasmicCanvasContext.mockReturnValue(true);
 
     render(
@@ -171,13 +175,10 @@ describe("EPStripePayment", () => {
       </EPStripePayment>
     );
     expect(screen.getByTestId("proc-child")).toBeTruthy();
-    const dp = screen.getByTestId("data-provider-stripePaymentData");
-    const data = JSON.parse(dp.getAttribute("data-value") || "{}");
-    expect(data.isProcessing).toBe(true);
+    expect(dataOf("data-provider-stripePaymentData").isProcessing).toBe(true);
   });
 
   it("renders in design-time error preview state", () => {
-    const { usePlasmicCanvasContext } = require("@plasmicapp/host");
     usePlasmicCanvasContext.mockReturnValue(true);
 
     render(
@@ -186,13 +187,12 @@ describe("EPStripePayment", () => {
       </EPStripePayment>
     );
     expect(screen.getByTestId("err-child")).toBeTruthy();
-    const dp = screen.getByTestId("data-provider-stripePaymentData");
-    const data = JSON.parse(dp.getAttribute("data-value") || "{}");
-    expect(data.error).toBe("Your card was declined. Please try a different card.");
+    expect(dataOf("data-provider-stripePaymentData").error).toBe(
+      "Your card was declined. Please try a different card."
+    );
   });
 
   it("renders mock payment form in editor auto mode", () => {
-    const { usePlasmicCanvasContext } = require("@plasmicapp/host");
     usePlasmicCanvasContext.mockReturnValue(true);
 
     const { container } = render(
@@ -202,6 +202,20 @@ describe("EPStripePayment", () => {
     );
     // Mock form sentinel is rendered in design-time
     expect(container.querySelector("[data-ep-stripe-payment]")).toBeTruthy();
+  });
+
+  it("loads no Stripe.js in any canvas preview state", () => {
+    usePlasmicCanvasContext.mockReturnValue(true);
+    withSession(payableSession());
+
+    for (const previewState of ["auto", "ready", "processing", "error"]) {
+      render(
+        <EPStripePayment publishableKey="pk_test_123" previewState={previewState}>
+          <span>content</span>
+        </EPStripePayment>
+      );
+    }
+    expect(mockStripeJs.load).not.toHaveBeenCalled();
   });
 
   it("has correct component metadata", () => {
@@ -216,107 +230,224 @@ describe("EPStripePayment", () => {
   });
 });
 
-describe("EPStripePayment at runtime with a payable cart", () => {
-  const { useCheckoutSession } = require("../use-checkout-session");
-  const { loadStripe } = require("@stripe/stripe-js/pure");
-  const payableSession = {
-    status: "open",
-    totals: { total: 4200, currency: "USD" },
-  };
-
-  const withSession = (session: unknown) =>
-    useCheckoutSession.mockReturnValue({
-      session,
-      resumePayment: jest.fn(),
-      abandonPayment: jest.fn(),
-    });
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    withSession(payableSession);
-  });
-
-  afterAll(() => withSession(null));
-
-  it("loads Stripe for the connected account and renders the card form", async () => {
-    render(
-      <EPStripePayment publishableKey="pk_test_123" stripeAccount="acct_9">
-        <span>content</span>
-      </EPStripePayment>
+describe("EPStripePayment in a checkout session", () => {
+  function renderCheckout(
+    stripeProps: Record<string, unknown> = { publishableKey: "pk_test_123" },
+    providerProps?: Record<string, unknown>
+  ) {
+    const session = React.createRef<any>();
+    const tree = (
+      <EPCheckoutSessionProvider ref={session}>
+        <EPStripePayment {...stripeProps}>
+          <span>content</span>
+        </EPStripePayment>
+      </EPCheckoutSessionProvider>
     );
+    const view = render(
+      providerProps ? <StripeProvider {...providerProps}>{tree}</StripeProvider> : tree
+    );
+    return { session, view };
+  }
+
+  beforeEach(() => withSession(payableSession()));
+
+  it("mounts the card form for the cart total", async () => {
+    renderCheckout({ publishableKey: "pk_test_123", layout: "accordion" });
 
     expect(await screen.findByTestId("stripe-payment-element")).toBeTruthy();
-    expect(loadStripe).toHaveBeenCalledWith("pk_test_123", {
-      stripeAccount: "acct_9",
-    });
-    const options = JSON.parse(
-      screen.getByTestId("stripe-elements").getAttribute("data-options") || "{}"
-    );
-    expect(options).toMatchObject({
+    const stripe = mockStripeJs.last();
+    expect(stripe.key).toBe("pk_test_123");
+    expect(stripe.lastElements!.options).toMatchObject({
       mode: "payment",
       amount: 4200,
       currency: "usd",
     });
-  });
-
-  it("loads Stripe for the connected account set on EP Stripe Provider", async () => {
-    const { StripeProvider } = require("../StripeProvider");
-    render(
-      <StripeProvider publishableKey="pk_test_ctx" stripeAccount="acct_ctx">
-        <EPStripePayment>
-          <span>content</span>
-        </EPStripePayment>
-      </StripeProvider>
+    expect(stripe.lastElements!.paymentElement!.options).toEqual({
+      layout: "accordion",
+    });
+    await waitFor(() =>
+      expect(dataOf("data-provider-stripePaymentData").isReady).toBe(true)
     );
-
-    expect(await screen.findByTestId("stripe-payment-element")).toBeTruthy();
-    expect(loadStripe).toHaveBeenCalledWith("pk_test_ctx", {
-      stripeAccount: "acct_ctx",
-    });
   });
 
-  it("registers a gateway that mints a confirmation token", async () => {
-    mockElements.submit.mockResolvedValue({});
-    mockStripe.createConfirmationToken.mockResolvedValue({
-      confirmationToken: { id: "ctoken_1" },
-    });
-    let confirm: (() => Promise<Record<string, unknown>>) | undefined;
-    const registry = {
-      registerGateway: (_name: string, fn: any) => {
-        confirm = fn;
-      },
-      getRegisteredGateway: () => null,
-    };
+  it("updates the amount when the cart total changes", async () => {
+    const { view } = renderCheckout();
+    await screen.findByTestId("stripe-payment-element");
 
-    render(
-      <PaymentRegistrationContext.Provider value={registry}>
+    withSession(payableSession(5100));
+    view.rerender(
+      <EPCheckoutSessionProvider>
         <EPStripePayment publishableKey="pk_test_123">
           <span>content</span>
         </EPStripePayment>
-      </PaymentRegistrationContext.Provider>
+      </EPCheckoutSessionProvider>
     );
-    await screen.findByTestId("stripe-payment-element");
 
-    let result: Record<string, unknown> | undefined;
-    await act(async () => {
-      result = await confirm!();
-    });
-    expect(result).toEqual({ confirmation_token: "ctoken_1" });
-    expect(mockStripe.createConfirmationToken).toHaveBeenCalledWith({
-      elements: mockElements,
-    });
+    await waitFor(() =>
+      expect(mockStripeJs.last().lastElements!.options.amount).toBe(5100)
+    );
+    expect(mockStripeJs.instances).toHaveLength(1);
   });
 
-  it("renders the slot without Stripe for a free cart", () => {
-    withSession({ status: "open", totals: { total: 0, currency: "USD" } });
-    const { container } = render(
-      <EPStripePayment publishableKey="pk_test_123">
-        <span data-testid="free-child">content</span>
-      </EPStripePayment>
+  it("uses the connected account set on the component", async () => {
+    renderCheckout({ publishableKey: "pk_test_123", stripeAccount: "acct_9" });
+    await screen.findByTestId("stripe-payment-element");
+    expect(mockStripeJs.last().options).toEqual({ stripeAccount: "acct_9" });
+  });
+
+  it("uses the key and connected account set on EP Stripe Provider", async () => {
+    renderCheckout({}, { publishableKey: "pk_test_ctx", stripeAccount: "acct_ctx" });
+    await screen.findByTestId("stripe-payment-element");
+    expect(mockStripeJs.last().key).toBe("pk_test_ctx");
+    expect(mockStripeJs.last().options).toEqual({ stripeAccount: "acct_ctx" });
+  });
+
+  it("prefers the component's connected account over the provider's", async () => {
+    renderCheckout(
+      { stripeAccount: "acct_prop" },
+      { publishableKey: "pk_test_ctx", stripeAccount: "acct_ctx" }
     );
-    expect(screen.getByTestId("free-child")).toBeTruthy();
-    expect(container.querySelector("[data-ep-payment-free]")).toBeTruthy();
-    expect(screen.queryByTestId("stripe-elements")).toBeNull();
+    await screen.findByTestId("stripe-payment-element");
+    expect(mockStripeJs.last().options).toEqual({ stripeAccount: "acct_prop" });
+  });
+
+  it("places the order with a confirmation token", async () => {
+    mockPlaceOrder.mockResolvedValue({
+      success: true,
+      data: { session: { status: "complete" } },
+    });
+    const { session } = renderCheckout();
+    await screen.findByTestId("stripe-payment-element");
+
+    let result: any;
+    await act(async () => {
+      result = await session.current.placeOrder();
+    });
+
+    expect(mockPlaceOrder).toHaveBeenCalledWith({
+      gateway: "stripe",
+      confirmation_token: "ctoken_fake",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("completes 3DS with the session client secret, then resumes", async () => {
+    mockPlaceOrder.mockResolvedValue({
+      success: true,
+      data: {
+        session: {
+          status: "open",
+          payment: { gateway: "stripe", status: "requires_action", clientToken: "pi_3ds_secret" },
+        },
+      },
+    });
+    mockResumePayment.mockResolvedValue({
+      success: true,
+      data: { session: { status: "complete" } },
+    });
+    const { session } = renderCheckout();
+    await screen.findByTestId("stripe-payment-element");
+
+    let result: any;
+    await act(async () => {
+      result = await session.current.placeOrder();
+    });
+
+    expect(mockStripeJs.last().handleNextAction).toHaveBeenCalledWith({
+      clientSecret: "pi_3ds_secret",
+    });
+    expect(mockResumePayment).toHaveBeenCalled();
+    expect(mockAbandonPayment).not.toHaveBeenCalled();
+    expect(result.data.session.status).toBe("complete");
+  });
+
+  it("abandons the payment when 3DS fails", async () => {
+    mockPlaceOrder.mockResolvedValue({
+      success: true,
+      data: {
+        session: {
+          status: "open",
+          payment: { gateway: "stripe", status: "requires_action", clientToken: "pi_3ds_secret" },
+        },
+      },
+    });
+    mockAbandonPayment.mockResolvedValue({
+      success: true,
+      data: { session: { status: "open", payment: { status: "failed" } } },
+    });
+    const { session } = renderCheckout();
+    await screen.findByTestId("stripe-payment-element");
+    mockStripeJs.last().handleNextAction.mockResolvedValue({
+      error: { code: "payment_intent_authentication_failure", message: "Declined" },
+    });
+
+    let result: any;
+    await act(async () => {
+      result = await session.current.placeOrder();
+    });
+
+    expect(mockAbandonPayment).toHaveBeenCalled();
+    expect(mockResumePayment).not.toHaveBeenCalled();
+    expect(result.success).toBe(false);
+  });
+
+  it("renders the slot without Stripe for a free cart", async () => {
+    withSession(payableSession(0));
+    const { view } = renderCheckout();
+
+    expect(view.container.querySelector("[data-ep-payment-free]")).toBeTruthy();
+    await act(async () => {});
+    expect(screen.queryByTestId("stripe-payment-element")).toBeNull();
+    expect(mockStripeJs.instances.flatMap((s: any) => s.elements.mock.calls)).toEqual([]);
+  });
+
+  it("removes the card form when the cart becomes free", async () => {
+    const { view } = renderCheckout();
+    await screen.findByTestId("stripe-payment-element");
+    const elements = mockStripeJs.last().lastElements!;
+
+    withSession(payableSession(0));
+    view.rerender(
+      <EPCheckoutSessionProvider>
+        <EPStripePayment publishableKey="pk_test_123">
+          <span>content</span>
+        </EPStripePayment>
+      </EPCheckoutSessionProvider>
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByTestId("stripe-payment-element")).toBeNull()
+    );
+    expect(elements.paymentElement!.destroyed).toBe(true);
+    expect(elements.update).not.toHaveBeenCalled();
+  });
+
+  it("shows an error when no publishable key is set", async () => {
+    renderCheckout({});
+
+    expect(await screen.findByText("Stripe publishable key is required")).toBeTruthy();
+    expect(mockStripeJs.load).not.toHaveBeenCalled();
+  });
+
+  it("shows an error when Stripe.js cannot load", async () => {
+    mockStripeJs.load.mockRejectedValue(
+      new Error("Failed to load Stripe.js from https://js.stripe.com/v3")
+    );
+    renderCheckout();
+
+    expect(
+      await screen.findByText("Failed to load Stripe.js from https://js.stripe.com/v3")
+    ).toBeTruthy();
+  });
+
+  it("destroys the card form on unmount", async () => {
+    const { view } = renderCheckout();
+    await screen.findByTestId("stripe-payment-element");
+    const element = mockStripeJs.last().lastElements!.paymentElement!;
+
+    view.unmount();
+
+    expect(element.destroyed).toBe(true);
   });
 });
 
