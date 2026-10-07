@@ -1,6 +1,6 @@
 {
   "name": "plasmicpkgs-dev",
-  "version": "0.0.83",
+  "version": "0.0.95",
   "private": true,
   "scripts": {
     "dev": "next dev --port 3001",
@@ -8,6 +8,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+<<<<<<< HEAD
     "@elasticpath/plasmic-ep-commerce-elastic-path": "0.8.0",
     "@elasticpath/plasmic-mcp-registry": "0.2.2",
     "@plasmicapp/loader-nextjs": "2.0.21",
@@ -22,6 +23,20 @@
     "@plasmicpkgs/plasmic-strapi": "0.1.215",
     "@plasmicpkgs/strapi": "0.0.34",
     "@plasmicpkgs/wordpress": "0.0.35",
+=======
+    "@plasmicapp/loader-nextjs": "workspace:*",
+    "@plasmicpkgs/cms": "workspace:*",
+    "@plasmicpkgs/commerce": "workspace:*",
+    "@plasmicpkgs/commerce-shopify": "workspace:*",
+    "@plasmicpkgs/contentful": "workspace:*",
+    "@plasmicpkgs/fetch": "workspace:*",
+    "@plasmicpkgs/graphql": "workspace:*",
+    "@plasmicpkgs/plasmic-basic-components": "workspace:*",
+    "@plasmicpkgs/plasmic-cms": "workspace:*",
+    "@plasmicpkgs/plasmic-strapi": "workspace:*",
+    "@plasmicpkgs/strapi": "workspace:*",
+    "@plasmicpkgs/wordpress": "workspace:*",
+>>>>>>> upstream/master
     "next": "^15.5.9",
     "react": "^19",
     "react-dom": "^19"

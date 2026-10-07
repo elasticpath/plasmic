@@ -20,9 +20,11 @@ import { setupPassport } from "@/wab/server/auth/passport-cfg";
 import * as authRoutes from "@/wab/server/auth/routes";
 import { apiAuth } from "@/wab/server/auth/routes";
 import { doLogout } from "@/wab/server/auth/util";
+import { checkCaptchaToken } from "@/wab/server/captcha";
 import { Config } from "@/wab/server/config";
 import { DbMgr, SUPER_USER } from "@/wab/server/db/DbMgr";
 import { getDevFlagsMergedWithOverrides } from "@/wab/server/db/appconfig";
+import { getE2eDevFlags } from "@/wab/server/e2e-devflags";
 import { createMailer } from "@/wab/server/emails/Mailer";
 import { ExpressSession } from "@/wab/server/entities/Entities";
 import "@/wab/server/extensions";
@@ -196,7 +198,6 @@ import {
   prefillPublishedLoader,
 } from "@/wab/server/routes/loader";
 import { genTranslatableStrings } from "@/wab/server/routes/localization";
-import * as mailingListRoutes from "@/wab/server/routes/mailinglist";
 import { getAppConfig, getClip, putClip } from "@/wab/server/routes/misc";
 import {
   createProjectWebhook,
@@ -287,6 +288,7 @@ import {
   getWorkspaces,
   updateWorkspace,
 } from "@/wab/server/routes/workspaces";
+import { shouldIgnoreErrorByMessage } from "@/wab/server/sentry";
 import { logError } from "@/wab/server/server-util";
 import {
   ASYNC_TIMING,
@@ -300,17 +302,19 @@ import {
 } from "@/wab/server/util/pruneCache";
 import { createWorkerPool } from "@/wab/server/workers/pool";
 import { ensureDevFlags } from "@/wab/server/workers/worker-utils";
+import { ApiError } from "@/wab/shared/ApiErrors/ApiError";
 import {
   AuthError,
   NotFoundError,
-  isApiError,
   transformErrors,
 } from "@/wab/shared/ApiErrors/errors";
+import { CAPTCHA_TOKEN_HEADER } from "@/wab/shared/ApiSchema";
 import { publicCmsReadsContract } from "@/wab/shared/api/cms";
 import { Bundler } from "@/wab/shared/bundler";
 import { mkShortId, safeCast, spawn } from "@/wab/shared/common";
+import { DataSourceError } from "@/wab/shared/data-sources-meta/data-sources";
 import { isAdminTeamEmail } from "@/wab/shared/devflag-utils";
-import { DEVFLAGS } from "@/wab/shared/devflags";
+import { DEVFLAGS, applyDevFlagOverridesToTarget } from "@/wab/shared/devflags";
 import { isStampedIgnoreError } from "@/wab/shared/error-handling";
 import fileUpload from "express-fileupload";
 import { customEPCCCookieAuth } from "./auth/custom-api-auth";
@@ -325,7 +329,6 @@ const csrfFreeStaticRoutes = [
   "/api/v1/admin/clone",
   "/api/v1/admin/deactivate-user",
   "/api/v1/admin/revert-project-revision",
-  "/api/v1/mail/subscribe",
   "/api/v1/plume-pkg/versions",
   "/api/v1/localization/gen-texts",
   "/api/v1/hosting-hit",
@@ -339,9 +342,17 @@ const csrfFreeStaticRoutes = [
   "/api/v1/cli/emit-token",
 ];
 
-const isCsrfFreeRoute = (pathname: string, config: Config) => {
+const isCsrfFreeRoute = (req: Request, config: Config) => {
+  const pathname = req.path;
+  if (
+    ["GET", "HEAD"].includes(req.method) &&
+    pathname !== "/api/v1/auth/csrf"
+  ) {
+    return true;
+  }
   return (
     csrfFreeStaticRoutes.includes(pathname) ||
+    pathname.startsWith("/static/js/loader-hydrate") ||
     pathname.includes("/api/v1/clip/") ||
     pathname.includes("/api/v1/code/") ||
     pathname.includes("/api/v1/loader/") ||
@@ -355,14 +366,18 @@ const isCsrfFreeRoute = (pathname: string, config: Config) => {
     pathname.includes("/api/v1/app-auth/user") ||
     pathname.includes("/api/v1/app-auth/userinfo") ||
     pathname.includes("/api/v1/app-auth/token") ||
+<<<<<<< HEAD
     pathname.includes("/api/v1/copilot/ui/public") ||
     pathname.includes("/api/v1/provision") ||
+=======
+>>>>>>> upstream/master
     (!config.production &&
       (pathname === "/api/v1/projects/import" ||
         pathname.includes("/api/v1/cmse/")))
   );
 };
 
+<<<<<<< HEAD
 const ignoredErrorMessages = [
   "CSRF token mismatch",
   "Connection closed before response fulfilled",
@@ -379,14 +394,26 @@ function shouldIgnoreErrorByMessage(message: string) {
 function addDatadogMiddleware(app: express.Application) {
   // dd-trace auto-instruments Express — no requestHandler/tracingHandler needed.
   // Tag the active span with projectId for correlation in Datadog APM.
+=======
+function addSentry(app: express.Application) {
+  if (!process.env.SENTRY_DSN) {
+    return;
+  }
+  logger().debug(`Sentry enabled with DSN: ${process.env.SENTRY_DSN}`);
+
+>>>>>>> upstream/master
   app.use((req, _res, next) => {
     const projectId =
       req.params.projectId ?? req.query.projectId ?? req.params.projectBranchId;
     if (projectId) {
+<<<<<<< HEAD
       const span = tracer.scope().active();
       if (span) {
         span.setTag("projectId", String(projectId));
       }
+=======
+      Sentry.getIsolationScope().setTag("projectId", String(projectId));
+>>>>>>> upstream/master
     }
     next();
   });
@@ -402,6 +429,7 @@ export function getStatusCodeFromResponse(error: any): number {
   return statusCode ? parseInt(statusCode as string, 10) : 500;
 }
 
+<<<<<<< HEAD
 function addDatadogErrorHandler(app: express.Application) {
   /** Returns true if response code is internal server error */
   const defaultShouldHandleError = (error: any): boolean => {
@@ -437,14 +465,40 @@ function addDatadogErrorHandler(app: express.Application) {
       }
     )
   );
+=======
+function addSentryError(app: express.Application) {
+  if (!process.env.SENTRY_DSN) {
+    return;
+  }
+
+  Sentry.setupExpressErrorHandler(app, {
+    shouldHandleError: (error) => {
+      if (shouldIgnoreErrorByMessage(error.message || "")) {
+        return false;
+      }
+      if (isStampedIgnoreError(error)) {
+        return false;
+      }
+      // Report iff the client gets an internal server error
+      const response = toErrorResponse(error);
+      return !response || response.statusCode >= 500;
+    },
+  });
+>>>>>>> upstream/master
 }
 
 export function addLoggingMiddleware(app: express.Application) {
   app.use(
     safeCast<RequestHandler>(async (req: Request, res, next) => {
+<<<<<<< HEAD
       req.id = req.get("x-request-id") ?? mkShortId();
       runWithRequestId(req.id, () => next());
     })
+=======
+      req.id = mkShortId();
+      next();
+    }),
+>>>>>>> upstream/master
   );
   app.use((req: Request, res: any, next) => {
     const start = Date.now();
@@ -466,9 +520,13 @@ export function addLoggingMiddleware(app: express.Application) {
           referrer: req.get("referrer"),
           userAgent: req.get("user-agent"),
           contentLength: res.get("content-length"),
+<<<<<<< HEAD
           duration: duration,
           ...(res.locals.rateLimit ? { rateLimit: res.locals.rateLimit } : {}),
         }
+=======
+        },
+>>>>>>> upstream/master
       );
     });
     next();
@@ -498,7 +556,7 @@ export function addPromMetricsMiddleware(app: express.Application) {
       req.promLabels = {};
 
       next();
-    })
+    }),
   );
 
   // Handles /metrics
@@ -521,8 +579,8 @@ export function addPromMetricsMiddleware(app: express.Application) {
       promClient: {
         collectDefaultMetrics: {},
       },
-      buckets: DEFAULT_HISTOGRAM_BUCKETS,
-    })
+      buckets: [...DEFAULT_HISTOGRAM_BUCKETS, 300],
+    }),
   );
 }
 
@@ -531,7 +589,7 @@ function addMiddlewares(
   config: Config,
   opts?: {
     skipSession?: boolean;
-  }
+  },
 ) {
   addPromMetricsMiddleware(app);
   addLoggingMiddleware(app);
@@ -569,7 +627,7 @@ function addMiddlewares(
       }
 
       next();
-    })
+    }),
   );
 
   app.use(customEPCCCookieAuth);
@@ -594,7 +652,7 @@ function addMiddlewares(
         if (!res.headersSent) {
           res.setHeader(
             "Server-Timing",
-            callsToServerTiming(timingStore.calls)
+            callsToServerTiming(timingStore.calls),
           );
         }
         if (timingStore.calls && timingStore.calls.length > 0) {
@@ -620,7 +678,7 @@ function addMiddlewares(
       req.mailer = createMailer();
       req.bundler = new Bundler();
       next();
-    })
+    }),
   );
 
   app.use(
@@ -633,17 +691,14 @@ function addMiddlewares(
         } else {
           next();
         }
-      }
-    )
+      },
+    ),
   );
   app.use(safeCast<RequestHandler>(authRoutes.authApiTokenMiddleware));
   if (!opts?.skipSession) {
     const csrf = lusca.csrf();
     app.use((req, res, next) => {
-      if (
-        isCsrfFreeRoute(req.path, config) ||
-        authRoutes.isPublicApiRequest(req)
-      ) {
+      if (isCsrfFreeRoute(req, config) || authRoutes.isPublicApiRequest(req)) {
         // API requests also don't need csrf
         return next();
       } else {
@@ -654,6 +709,12 @@ function addMiddlewares(
     logger().debug("Skipping CSRF setup...");
   }
 
+  app.use((req, _res, next) => {
+    if (req.readableAborted) {
+      return;
+    }
+    next();
+  });
   // Parse body further down to prevent unauthorized users from incurring large parses.
   app.use(bodyParser.json({ limit: "400mb" }));
   app.use(bodyParser.urlencoded({ extended: true }));
@@ -672,8 +733,12 @@ function addMiddlewares(
       const mgr = superDbMgr(req);
       const merged = await getDevFlagsMergedWithOverrides(mgr);
       req.devflags = merged;
+      const e2eDevFlags = getE2eDevFlags(req);
+      if (e2eDevFlags) {
+        applyDevFlagOverridesToTarget(req.devflags, e2eDevFlags);
+      }
       next();
-    })
+    }),
   );
 
   const workerpool = createWorkerPool(config);
@@ -681,7 +746,7 @@ function addMiddlewares(
     safeCast<RequestHandler>(async (req, res, next) => {
       req.workerpool = workerpool;
       next();
-    })
+    }),
   );
 }
 
@@ -696,11 +761,12 @@ function addOptionsRoutes(app: express.Application) {
   app.options("/api/v1/cms/*", corsPreflight());
   app.options(
     "/api/v1/server-data/sources/:dataSourceId/execute",
-    corsPreflight()
+    corsPreflight(),
   );
   app.options("/api/v1/app-auth/token", corsPreflight());
   app.options("/api/v1/app-auth/userinfo", corsPreflight());
   app.options("/api/v1/loader/*", corsPreflight());
+<<<<<<< HEAD
   // For mailing list subscriptions
   // allow subscription requests from anywhere (e.g. localhost or www.plasmic.app)
   app.options("/api/v1/mail/subscribe", cors());
@@ -728,6 +794,8 @@ function addOptionsRoutes(app: express.Application) {
   app.options("/api/v1/data-source/sources", cmCorsPreflight());
   app.options("/api/v1/data-source/sources/test", cmCorsPreflight());
   app.options("/api/v1/data-source/sources/*", cmCorsPreflight());
+=======
+>>>>>>> upstream/master
 }
 
 export function addCmsPublicRoutes(app: express.Application) {
@@ -741,11 +809,11 @@ export function addCmsPublicRoutes(app: express.Application) {
   app.put(
     "/api/v1/cms/databases/:dbId/tables",
     apiAuth,
-    withNext(upsertDatabaseTables)
+    withNext(upsertDatabaseTables),
   );
   app.post(
     "/api/v1/cms/databases/:dbId/tables/:tableIdentifier/rows",
-    withNext(publicCreateRows)
+    withNext(publicCreateRows),
   );
   app.post("/api/v1/cms/rows/:rowId/publish", withNext(publicPublishRow));
   app.put("/api/v1/cms/rows/:rowId", withNext(publicUpdateRow));
@@ -771,7 +839,7 @@ export function addCmsEditorRoutes(app: express.Application) {
   app.post("/api/v1/cmse/tables/:tableId/rows", withNext(createRows));
   app.post(
     "/api/v1/cmse/tables/:tableId/trigger-webhook",
-    withNext(triggerTableWebhooks)
+    withNext(triggerTableWebhooks),
   );
 
   app.get("/api/v1/cmse/rows/:rowId", getCmseRow);
@@ -781,7 +849,7 @@ export function addCmsEditorRoutes(app: express.Application) {
   app.post("/api/v1/cmse/rows/:rowId/clone", withNext(cloneRow));
   app.post(
     "/api/v1/cmse/tables/:tableId/check-unique-fields",
-    withNext(checkUniqueFields)
+    withNext(checkUniqueFields),
   );
   app.get("/api/v1/cmse/row-revisions/:revId", getRowRevision);
 
@@ -793,7 +861,7 @@ export function addCmsEditorRoutes(app: express.Application) {
         fileSize: 8 * 1024 * 1024, // 8MB
       },
     }),
-    withNext(cmsFileUpload)
+    withNext(cmsFileUpload),
   );
 }
 
@@ -801,17 +869,17 @@ export function addWhiteLabelRoutes(app: express.Application) {
   app.post(
     "/api/v1/wl/:whiteLabelName/users",
     safeCast<RequestHandler>(authRoutes.teamApiAuth),
-    withNext(createWhiteLabelUser)
+    withNext(createWhiteLabelUser),
   );
   app.get(
     "/api/v1/wl/:whiteLabelName/users/:externalUserId",
     safeCast<RequestHandler>(authRoutes.teamApiAuth),
-    getWhiteLabelUser
+    getWhiteLabelUser,
   );
   app.delete(
     "/api/v1/wl/:whiteLabelName/users/:externalUserId",
     safeCast<RequestHandler>(authRoutes.teamApiAuth),
-    withNext(deleteWhiteLabelUser)
+    withNext(deleteWhiteLabelUser),
   );
   app.get("/api/v1/wl/:whiteLabelName/open", openJwt);
 }
@@ -820,7 +888,7 @@ export function addIntegrationsRoutes(app: express.Application) {
   app.post(
     "/api/v1/server-data/sources/:dataSourceId/execute",
     cors(),
-    executeDataSourceOperationHandler
+    executeDataSourceOperationHandler,
   );
 }
 
@@ -831,6 +899,7 @@ export function addDataSourceRoutes(app: express.Application) {
   app.post("/api/v1/data-source/sources", cmCors, withNext(createDataSource));
   app.post(
     "/api/v1/data-source/sources/test",
+<<<<<<< HEAD
     cmCors,
     withNext(testDataSourceConnection)
   );
@@ -843,23 +912,34 @@ export function addDataSourceRoutes(app: express.Application) {
     "/api/v1/data-source/sources/:dataSourceId",
     cmCors,
     withNext(deleteDataSource)
+=======
+    withNext(testDataSourceConnection),
+  );
+  app.put(
+    "/api/v1/data-source/sources/:dataSourceId",
+    withNext(updateDataSource),
+  );
+  app.delete(
+    "/api/v1/data-source/sources/:dataSourceId",
+    withNext(deleteDataSource),
+>>>>>>> upstream/master
   );
   app.post(
     "/api/v1/data-source/sources/:dataSourceId",
     cors(),
-    executeDataSourceStudioOperationHandler
+    executeDataSourceStudioOperationHandler,
   );
   app.post(
     "/api/v1/data-source/sources/:dataSourceId/op-id",
-    withNext(getDataSourceOperationId)
+    withNext(getDataSourceOperationId),
   );
   app.post(
     "/api/v1/data-source/sources/:dataSourceId/execute-studio",
-    executeDataSourceOperationHandlerInStudio
+    executeDataSourceOperationHandlerInStudio,
   );
   app.post(
     "/api/v1/data-source/sources/:dataSourceId/allow",
-    withNext(allowProjectToDataSource)
+    withNext(allowProjectToDataSource),
   );
   // app.post("/api/v1/data-source/token", withNext(generateTemporaryToken));
   // app.delete("/api/v1/data-source/token", withNext(revokeTemporaryToken));
@@ -874,15 +954,15 @@ export function addAnalyticsRoutes(app: express.Application) {
   app.get("/api/v1/analytics/team/:teamId", getAnalyticsForTeam);
   app.get(
     "/api/v1/analytics/team/:teamId/project/:projectId",
-    getAnalyticsForProject
+    getAnalyticsForProject,
   );
   app.get(
     "/api/v1/analytics/team/:teamId/project/:projectId/meta",
-    getAnalyticsProjectMeta
+    getAnalyticsProjectMeta,
   );
   app.get(
     "/api/v1/analytics/team/:teamId/billing",
-    getAnalyticsBillingInfoForTeam
+    getAnalyticsBillingInfoForTeam,
   );
 }
 
@@ -900,7 +980,7 @@ export function addAppAuthRoutes(app: express.Application) {
 
 export function addEndUserManagementRoutes(
   app: express.Application,
-  authedSensitiveRateLimiter: RequestHandler
+  authedSensitiveRateLimiter: RequestHandler,
 ) {
   app.use("/api/v1/end-user", createGeneralApiRateLimiter());
   /**
@@ -908,13 +988,13 @@ export function addEndUserManagementRoutes(
    */
   app.post(
     "/api/v1/end-user/app/:projectId/config",
-    withNext(upsertAppAuthConfig)
+    withNext(upsertAppAuthConfig),
   );
   app.get("/api/v1/end-user/app/:projectId/pub-config", getAppAuthPubConfig);
   app.get("/api/v1/end-user/app/:projectId/config", getAppAuthConfig);
   app.delete(
     "/api/v1/end-user/app/:projectId/config",
-    withNext(deleteAppAuthConfig)
+    withNext(deleteAppAuthConfig),
   );
 
   /**
@@ -924,15 +1004,15 @@ export function addEndUserManagementRoutes(
   app.post("/api/v1/end-user/app/:projectId/roles", withNext(createRole));
   app.put(
     "/api/v1/end-user/app/:projectId/roles-orders",
-    withNext(changeAppRolesOrder)
+    withNext(changeAppRolesOrder),
   );
   app.put(
     "/api/v1/end-user/app/:projectId/roles/:roleId",
-    withNext(updateAppRole)
+    withNext(updateAppRole),
   );
   app.delete(
     "/api/v1/end-user/app/:projectId/roles/:roleId",
-    withNext(deleteAppRole)
+    withNext(deleteAppRole),
   );
 
   /**
@@ -942,19 +1022,19 @@ export function addEndUserManagementRoutes(
   app.post(
     "/api/v1/end-user/app/:projectId/access-rules",
     authedSensitiveRateLimiter,
-    withNext(createAccessRules)
+    withNext(createAccessRules),
   );
   app.put(
     "/api/v1/end-user/app/:projectId/access-rules/:accessId",
-    withNext(updateAccessRule)
+    withNext(updateAccessRule),
   );
   app.delete(
     "/api/v1/end-user/app/:projectId/access-rules/:accessId",
-    withNext(deleteAccessRule)
+    withNext(deleteAccessRule),
   );
   app.get(
     "/api/v1/end-user/app/:projectId/user-role/:endUserId",
-    getUserRoleInApp
+    getUserRoleInApp,
   );
 
   /**
@@ -962,25 +1042,25 @@ export function addEndUserManagementRoutes(
    */
   app.post(
     "/api/v1/end-user/teams/:teamId/directory",
-    withNext(createEndUserDirectory)
+    withNext(createEndUserDirectory),
   );
   app.get("/api/v1/end-user/directories/:directoryId", getEndUserDirectory);
   app.put(
     "/api/v1/end-user/directories/:directoryId",
-    withNext(updateEndUserDirectory)
+    withNext(updateEndUserDirectory),
   );
   app.get(
     "/api/v1/end-user/directories/:directoryId/apps",
-    getEndUserDirectoryApps
+    getEndUserDirectoryApps,
   );
   app.get("/api/v1/end-user/directories/:directoryId/users", getDirectoryUsers);
   app.delete(
     "/api/v1/end-user/directories/:directoryId",
-    withNext(deleteDirectory)
+    withNext(deleteDirectory),
   );
   app.get(
     "/api/v1/end-user/teams/:teamId/directories",
-    listTeamEndUserDirectories
+    listTeamEndUserDirectories,
   );
 
   /**
@@ -988,15 +1068,15 @@ export function addEndUserManagementRoutes(
    * */
   app.post(
     "/api/v1/end-user/directories/:directoryId/users",
-    withNext(addDirectoryEndUsers)
+    withNext(addDirectoryEndUsers),
   );
   app.put(
     "/api/v1/end-user/directories/:directoryId/users/:userId/groups",
-    withNext(updateEndUserGroups)
+    withNext(updateEndUserGroups),
   );
   app.delete(
     "/api/v1/end-user/directories/:directoryId/users/:endUserId",
-    withNext(removeEndUserFromDirectory)
+    withNext(removeEndUserFromDirectory),
   );
 
   /**
@@ -1004,19 +1084,19 @@ export function addEndUserManagementRoutes(
    */
   app.get(
     "/api/v1/end-user/directories/:directoryId/groups",
-    listDirectoryGroups
+    listDirectoryGroups,
   );
   app.post(
     "/api/v1/end-user/directories/:directoryId/groups",
-    withNext(createDirectoryGroup)
+    withNext(createDirectoryGroup),
   );
   app.delete(
     "/api/v1/end-user/directories/:directoryId/groups/:groupId",
-    withNext(deleteDirectoryGroup)
+    withNext(deleteDirectoryGroup),
   );
   app.put(
     "/api/v1/end-user/directories/:directoryId/groups/:groupId",
-    withNext(updateDirectoryGroup)
+    withNext(updateDirectoryGroup),
   );
 
   /**
@@ -1024,16 +1104,16 @@ export function addEndUserManagementRoutes(
    */
   app.get(
     "/api/v1/end-user/app/:projectId/access-registry",
-    listAppAccessRegistries
+    listAppAccessRegistries,
   );
   app.delete(
     "/api/v1/end-user/app/:projectId/access-registry/:accessId",
-    withNext(deleteAppAccessRegister)
+    withNext(deleteAppAccessRegister),
   );
   app.get("/api/v1/end-user/app/:projectId/app-users", withNext(listAppUsers));
   app.get(
     "/api/v1/end-user/app/:projectId/app-user",
-    withNext(getInitialUserToViewAs)
+    withNext(getInitialUserToViewAs),
   );
 
   /**
@@ -1046,15 +1126,15 @@ export function addEndUserManagementRoutes(
    */
   app.get(
     "/api/v1/end-user/app/:projectId/user-props-config",
-    withNext(getAppCurrentUserOpConfig)
+    withNext(getAppCurrentUserOpConfig),
   );
   app.post(
     "/api/v1/end-user/app/:projectId/user-props-config",
-    withNext(upsertCurrentUserOpConfig)
+    withNext(upsertCurrentUserOpConfig),
   );
   app.post(
     "/api/v1/end-user/app/:projectId/user-props",
-    withNext(getAppCurrentUserProperties)
+    withNext(getAppCurrentUserProperties),
   );
 }
 
@@ -1065,19 +1145,27 @@ export function addCodegenOnlyRoutes(app: express.Application) {
   app.post("/api/v1/code/required-packages", createWriteRateLimiter(), withNext(requiredPackages));
   app.post(
     "/api/v1/code/latest-codegen-version",
-    withNext(latestCodegenVersion)
+    withNext(latestCodegenVersion),
   );
   app.post(
     "/api/v1/projects/:projectId/code/components",
     apiAuth,
+<<<<<<< HEAD
     createWriteRateLimiter(),
     withNext(genCode)
+=======
+    withNext(genCode),
+>>>>>>> upstream/master
   );
   app.post(
     "/api/v1/projects/:projectId/code/meta",
     apiAuth,
+<<<<<<< HEAD
     createWriteRateLimiter(),
     withNext(getProjectMeta)
+=======
+    withNext(getProjectMeta),
+>>>>>>> upstream/master
   );
   app.get("/api/v1/localization/gen-texts", createWriteRateLimiter(), genTranslatableStrings);
   app.post(
@@ -1098,7 +1186,7 @@ export function addLoaderRoutes(app: express.Application) {
     "/api/v1/loader/code/published",
     cors(),
     apiAuth,
-    withNext(buildPublishedLoaderAssets)
+    withNext(buildPublishedLoaderAssets),
   );
   // A CloudFront Function (viewer-request) rewrites published requests to embed
   // sorted base project IDs into the URL path before CloudFront caches the
@@ -1123,54 +1211,96 @@ export function addLoaderRoutes(app: express.Application) {
     "/api/v1/loader/code/versioned",
     cors(),
     apiAuth,
-    withNext(buildVersionedLoaderAssets)
+    withNext(buildVersionedLoaderAssets),
   );
   app.get(
     "/api/v1/loader/code/preview",
     cors(),
     apiAuth,
+<<<<<<< HEAD
     createPreviewRateLimiter(),
     withNext(buildLatestLoaderAssets)
   );
   app.get("/api/v1/loader/chunks", cors(), getLoaderChunk);
   app.get(
+=======
+    withNext(buildLatestLoaderAssets),
+  );
+  app.get("/api/v1/loader/chunks", cors(), getLoaderChunk);
+  app.get(
+    "/api/v1/loader/html/published/:projectId/:component",
+    cors(),
+    apiAuth,
+    withNext(buildPublishedLoaderHtml),
+  );
+  app.get(
+    "/api/v1/loader/html/versioned/:projectId/:component",
+    cors(),
+    apiAuth,
+    withNext(buildVersionedLoaderHtml),
+  );
+  app.get(
+    "/api/v1/loader/html/preview/:projectId/:component",
+    cors(),
+    apiAuth,
+    buildLatestLoaderHtml,
+  );
+  app.get(
+>>>>>>> upstream/master
     "/api/v1/loader/repr-v2/published/:projectId",
     cors(),
     apiAuth,
-    withNext(buildPublishedLoaderReprV2)
+    withNext(buildPublishedLoaderReprV2),
   );
   app.get(
     "/api/v1/loader/repr-v2/versioned/:projectId",
     cors(),
     apiAuth,
-    withNext(buildVersionedLoaderReprV2)
+    withNext(buildVersionedLoaderReprV2),
   );
   app.get(
     "/api/v1/loader/repr-v2/preview/:projectId",
     cors(),
     apiAuth,
+<<<<<<< HEAD
     createPreviewRateLimiter(),
     buildLatestLoaderReprV2
+=======
+    buildLatestLoaderReprV2,
+>>>>>>> upstream/master
   );
   app.get(
     "/api/v1/loader/repr-v3/published/:projectId",
     cors(),
     apiAuth,
-    withNext(buildPublishedLoaderReprV3)
+    withNext(buildPublishedLoaderReprV3),
   );
   app.get(
     "/api/v1/loader/repr-v3/versioned/:projectId",
     cors(),
     apiAuth,
-    withNext(buildVersionedLoaderReprV3)
+    withNext(buildVersionedLoaderReprV3),
   );
   app.get(
     "/api/v1/loader/repr-v3/preview/:projectId",
     cors(),
     apiAuth,
+<<<<<<< HEAD
     createPreviewRateLimiter(),
     withNext(buildLatestLoaderReprV3)
   );
+=======
+    withNext(buildLatestLoaderReprV3),
+  );
+
+  app.post(
+    "/api/v1/loader/code/prefill/:pkgVersionId",
+    cors(),
+    // intentionally no apiAuth()
+    withNext(prefillPublishedLoader),
+  );
+
+>>>>>>> upstream/master
   app.get("/static/js/loader-hydrate.js", getHydrationScript);
   app.get("/static/js/loader-hydrate.:hash.js", getHydrationScriptVersioned);
 }
@@ -1218,7 +1348,7 @@ export function addImgOptimizerRoutes(app: express.Application) {
 
 export function addMainAppServerRoutes(
   app: express.Application,
-  config: Config
+  config: Config,
 ) {
   // Rate limiter for unauthenticated routes such as login, sign-up, and
   // password reset. Keyed by client IP, since there is no authenticated actor.
@@ -1283,12 +1413,13 @@ export function addMainAppServerRoutes(
   app.post(
     "/api/v1/auth/login",
     sensitiveRateLimiter,
-    withNext(authRoutes.login)
+    withNext(authRoutes.login),
   );
   app.post(
     "/api/v1/auth/sign-up",
     sensitiveRateLimiter,
-    withNext(authRoutes.signUp)
+    captcha("sign_up"),
+    withNext(authRoutes.signUp),
   );
   app.get("/api/v1/auth/self", cmCors, generalApiLimiter, withNext(authRoutes.self));
   app.post("/api/v1/auth/self", cmCors, generalApiLimiter, withNext(authRoutes.updateSelf));
@@ -1296,31 +1427,33 @@ export function addMainAppServerRoutes(
   app.post(
     "/api/v1/auth/self/password",
     sensitiveRateLimiter,
-    withNext(authRoutes.updateSelfPassword)
+    withNext(authRoutes.updateSelfPassword),
   );
   app.post("/api/v1/auth/logout", cmCors, generalApiLimiter, withNext(authRoutes.logout));
   app.post(
     "/api/v1/auth/forgotPassword",
     sensitiveRateLimiter,
-    withNext(authRoutes.forgotPassword)
+    captcha("forgot_password"),
+    withNext(authRoutes.forgotPassword),
   );
   app.post(
     "/api/v1/auth/resetPassword",
     sensitiveRateLimiter,
-    withNext(authRoutes.resetPassword)
+    withNext(authRoutes.resetPassword),
   );
   app.post(
     "/api/v1/auth/confirmEmail",
     sensitiveRateLimiter,
-    withNext(authRoutes.confirmEmail)
+    withNext(authRoutes.confirmEmail),
   );
   app.post(
     "/api/v1/auth/sendEmailVerification",
     sensitiveRateLimiter,
-    withNext(authRoutes.sendEmailVerification)
+    withNext(authRoutes.sendEmailVerification),
   );
   app.get(
     "/api/v1/auth/getEmailVerificationToken",
+<<<<<<< HEAD
     sensitiveRateLimiter,
     authRoutes.getEmailVerificationToken
   );
@@ -1342,6 +1475,26 @@ export function addMainAppServerRoutes(
     "/api/v1/oauth2/google-sheets/callback",
     generalApiLimiter,
     authRoutes.googleSheetsCallback
+=======
+    authRoutes.getEmailVerificationToken,
+  );
+  app.get("/api/v1/auth/google", authRoutes.googleLogin);
+  app.get(
+    "/api/v1/oauth2/google/callback",
+    withNext(authRoutes.googleCallback),
+  );
+  app.get("/api/v1/auth/sso/test", authRoutes.isValidSsoEmail);
+  app.get("/api/v1/auth/sso/:tenantId/login", authRoutes.ssoLogin);
+  app.get(
+    "/api/v1/auth/sso/:tenantId/consume",
+    withNext(authRoutes.ssoCallback),
+  );
+  app.get("/api/v1/auth/airtable", authRoutes.airtableLogin);
+  app.get("/api/v1/auth/google-sheets", authRoutes.googleSheetsLogin);
+  app.get(
+    "/api/v1/oauth2/google-sheets/callback",
+    authRoutes.googleSheetsCallback,
+>>>>>>> upstream/master
   );
   app.get("/api/v1/oauth2/airtable/callback", generalApiLimiter, authRoutes.airtableCallback);
   app.get("/api/v1/auth/integrations", generalApiLimiter, authRoutes.getUserAuthIntegrations);
@@ -1353,198 +1506,188 @@ export function addMainAppServerRoutes(
   app.post(
     "/api/v1/admin/clone",
     adminOnly,
-    withNext(adminRoutes.cloneProject)
+    withNext(adminRoutes.cloneProject),
   );
   app.post(
     "/api/v1/admin/revert-project-revision",
     adminOnly,
-    withNext(adminRoutes.revertProjectRevision)
+    withNext(adminRoutes.revertProjectRevision),
   );
   app.post(
     "/api/v1/admin/resetPassword",
     adminOnly,
-    withNext(adminRoutes.resetPassword)
+    withNext(adminRoutes.resetPassword),
   );
 
   app.post(
     "/api/v1/admin/setPassword",
     adminOnly,
-    withNext(adminRoutes.setPassword)
+    withNext(adminRoutes.setPassword),
   );
   app.post(
     "/api/v1/admin/updateMode",
     adminOnly,
-    withNext(adminRoutes.updateSelfAdminMode)
+    withNext(adminRoutes.updateSelfAdminMode),
   );
   app.get("/api/v1/admin/users", adminOnly, adminRoutes.listUsers);
   app.get(
     "/api/v1/admin/feature-tiers",
     adminOnly,
-    adminRoutes.listAllFeatureTiers
+    adminRoutes.listAllFeatureTiers,
   );
   app.put(
     "/api/v1/admin/feature-tiers",
     adminOnly,
-    withNext(adminRoutes.addFeatureTier)
+    withNext(adminRoutes.addFeatureTier),
   );
   app.post(
     "/api/v1/admin/change-team-owner",
     adminOnly,
-    withNext(adminRoutes.changeTeamOwner)
+    withNext(adminRoutes.changeTeamOwner),
   );
   app.post(
     "/api/v1/admin/upgrade-personal-team",
     adminOnly,
-    withNext(adminRoutes.upgradePersonalTeam)
+    withNext(adminRoutes.upgradePersonalTeam),
   );
   app.post(
     "/api/v1/admin/reset-team-trial",
     adminOnly,
-    withNext(adminRoutes.resetTeamTrial)
+    withNext(adminRoutes.resetTeamTrial),
   );
   app.post("/api/v1/admin/teams", adminOnly, withNext(adminRoutes.listTeams));
   app.post(
     "/api/v1/admin/projects",
     adminOnly,
-    withNext(adminRoutes.listProjects)
+    withNext(adminRoutes.listProjects),
   );
   app.post(
     "/api/v1/admin/workspaces",
     adminOnly,
-    withNext(adminRoutes.createWorkspace)
+    withNext(adminRoutes.createWorkspace),
   );
   app.post(
     "/api/v1/admin/delete-project",
     adminOnly,
-    withNext(adminRoutes.deleteProject)
+    withNext(adminRoutes.deleteProject),
   );
   app.delete(
     "/api/v1/admin/delete-project-and-revisions",
     adminOnly,
-    withNext(adminRoutes.deleteProjectAndRevisions)
+    withNext(adminRoutes.deleteProjectAndRevisions),
   );
   app.post(
     "/api/v1/admin/restore-project",
     adminOnly,
-    withNext(adminRoutes.restoreProject)
+    withNext(adminRoutes.restoreProject),
   );
   app.post(
     "/api/v1/admin/change-project-owner",
     adminOnly,
-    withNext(adminRoutes.updateProjectOwner)
+    withNext(adminRoutes.updateProjectOwner),
   );
   app.post(
     "/api/v1/admin/login-as",
     adminOnly,
-    withNext(adminRoutes.adminLoginAs)
+    withNext(adminRoutes.adminLoginAs),
   );
   app.post(
     "/api/v1/admin/deactivate-user",
     adminOnly,
-    withNext(adminRoutes.deactivateUser)
+    withNext(adminRoutes.deactivateUser),
   );
   app.post(
     "/api/v1/admin/upgrade-team",
     adminOnly,
-    withNext(adminRoutes.upgradeTeam)
+    withNext(adminRoutes.upgradeTeam),
   );
   app.get("/api/v1/admin/devflags", adminOnly, adminRoutes.getDevFlagOverrides);
   app.get(
     "/api/v1/admin/devflags/versions",
     adminOnly,
-    adminRoutes.getDevFlagVersions
+    adminRoutes.getDevFlagVersions,
   );
   app.put(
     "/api/v1/admin/devflags",
     adminOnly,
-    withNext(adminRoutes.setDevFlagOverrides)
+    withNext(adminRoutes.setDevFlagOverrides),
   );
   app.post(
     "/api/v1/admin/upsert-sso",
     adminOnly,
-    withNext(adminRoutes.upsertSsoConfig)
+    withNext(adminRoutes.upsertSsoConfig),
   );
   app.get("/api/v1/admin/get-sso", adminOnly, adminRoutes.getSsoByTeam);
-  app.post(
-    "/api/v1/admin/create-tutorial-db",
-    adminOnly,
-    withNext(adminRoutes.createTutorialDb)
-  );
-  app.post(
-    "/api/v1/admin/reset-tutorial-db",
-    adminOnly,
-    withNext(adminRoutes.resetTutorialDb)
-  );
   app.get(
     "/api/v1/admin/get-team-by-white-label-name",
     adminOnly,
-    adminRoutes.getTeamByWhiteLabelName
+    adminRoutes.getTeamByWhiteLabelName,
   );
   app.post(
     "/api/v1/admin/update-team-white-label-info",
     adminOnly,
-    withNext(adminRoutes.updateTeamWhiteLabelInfo)
+    withNext(adminRoutes.updateTeamWhiteLabelInfo),
   );
   app.post(
     "/api/v1/admin/update-team-white-label-name",
     adminOnly,
-    withNext(adminRoutes.updateTeamWhiteLabelName)
+    withNext(adminRoutes.updateTeamWhiteLabelName),
   );
   app.post(
     "/api/v1/admin/promotion-code",
     adminOnly,
-    withNext(adminRoutes.createPromotionCode)
+    withNext(adminRoutes.createPromotionCode),
   );
   app.get(
     "/api/v1/admin/app-auth-metrics",
     adminOnly,
-    adminRoutes.getAppAuthMetrics
+    adminRoutes.getAppAuthMetrics,
   );
   app.get(
     "/api/v1/admin/project/:projectId/app-meta",
     adminOnly,
-    adminRoutes.getProjectAppMeta
+    adminRoutes.getProjectAppMeta,
   );
   app.get(
     `/api/v1/admin/project/:projectId/rev`,
     adminOnly,
-    adminRoutes.getLatestProjectRevision
+    adminRoutes.getLatestProjectRevision,
   );
   app.post(
     `/api/v1/admin/project/:projectId/rev`,
     adminOnly,
-    adminRoutes.saveProjectRevisionData
+    adminRoutes.saveProjectRevisionData,
   );
   app.get(
     `/api/v1/admin/pkg-version/data`,
     adminOnly,
-    adminRoutes.getPkgVersion
+    adminRoutes.getPkgVersion,
   );
   app.post(
     `/api/v1/admin/pkg-version/:pkgVersionId`,
     adminOnly,
-    withNext(adminRoutes.savePkgVersion)
+    withNext(adminRoutes.savePkgVersion),
   );
 
   app.get(
     "/api/v1/admin/teams/:teamId/discourse-info",
     adminOnly,
-    adminRoutes.getTeamDiscourseInfo
+    adminRoutes.getTeamDiscourseInfo,
   );
   app.put(
     "/api/v1/admin/teams/:teamId/sync-discourse-info",
     adminOnly,
-    withNext(adminRoutes.syncTeamDiscourseInfo)
+    withNext(adminRoutes.syncTeamDiscourseInfo),
   );
   app.post(
     "/api/v1/admin/teams/:teamId/send-support-welcome-email",
     adminOnly,
-    withNext(adminRoutes.sendTeamSupportWelcomeEmail)
+    withNext(adminRoutes.sendTeamSupportWelcomeEmail),
   );
   app.get(
     "/api/v1/admin/project-branches-metadata/:projectId",
     adminOnly,
-    adminRoutes.getProjectBranchesMetadata
+    adminRoutes.getProjectBranchesMetadata,
   );
 
   /**
@@ -1563,17 +1706,17 @@ export function addMainAppServerRoutes(
   app.get("/api/v1/pkgs/:pkgId", withNext(getPkgVersion));
   app.post(
     "/api/v1/projects/:projectId/revert-to-revision",
-    revertProjectToRevision
+    revertProjectToRevision,
   );
   app.get(
     "/api/v1/projects/:projectId/revs/unpublished",
-    listUnpublishedProjectRevisions
+    listUnpublishedProjectRevisions,
   );
   app.get("/api/v1/projects/:projectId/revs/:revisionId", getProjectRevision);
   app.get("/api/v1/pkgs/projectId/:projectId", getPkgVersionByProjectId);
   app.get(
     "/api/v1/pkgs/:pkgId/versions-without-data",
-    listPkgVersionsWithoutData
+    listPkgVersionsWithoutData,
   );
   app.post("/api/v1/pkgs/:pkgId/update-version", updatePkgVersion);
 
@@ -1584,63 +1727,63 @@ export function addMainAppServerRoutes(
     "/api/v1/projects",
     cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
-    withNext(listProjects)
+    withNext(listProjects),
   );
   app.post("/api/v1/projects", cmCors, withNext(createProject));
   app.post(
     "/api/v1/projects/create-project-with-hostless-packages",
-    withNext(createProjectWithHostlessPackages)
+    withNext(createProjectWithHostlessPackages),
   );
   app.post("/api/v1/projects/:projectId/clone", cmCors, createWriteRateLimiter(), withNext(cloneProject));
   app.post(
     "/api/v1/templates/:projectId/clone",
     cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
-    withNext(clonePublishedTemplate)
+    withNext(clonePublishedTemplate),
   );
   // Import includes capabilities to keep the project id, allow data source op issuing,
   // set project domains, thus we need to be more careful with it.
   app.post(
     "/api/v1/projects/import",
     adminOrDevelopmentEnvOnly,
-    withNext(importProject)
+    withNext(importProject),
   );
   app.get(
     "/api/v1/projects/:projectId/meta",
     cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
-    getProjectMeta
+    getProjectMeta,
   );
   app.put(
     "/api/v1/projects/:projectId/meta",
     cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
-    updateProjectMeta
+    updateProjectMeta,
   );
   app.get("/api/v1/projects/:projectId/branches", listBranchesForProject);
   app.post(
     "/api/v1/projects/:projectId/branches",
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
-    withNext(createBranch)
+    withNext(createBranch),
   );
   app.put(
     "/api/v1/projects/:projectId/branches/:branchId",
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
-    withNext(updateBranch)
+    withNext(updateBranch),
   );
   app.delete(
     "/api/v1/projects/:projectId/branches/:branchId",
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
-    withNext(deleteBranch)
+    withNext(deleteBranch),
   );
   app.post(
     "/api/v1/projects/:projectId/main-branch-protection",
-    withNext(setMainBranchProtection)
+    withNext(setMainBranchProtection),
   );
   app.get("/api/v1/projects/:projectBranchId", withNext(getProjectRev));
   app.get(
     "/api/v1/projects/:projectId/revision-without-data",
-    getProjectRevWithoutData
+    getProjectRevWithoutData,
   );
   app.get("/api/v1/project-data/:projectId", adminOnly, getFullProjectData);
   app.put("/api/v1/projects/:projectId", cmCors, updateProject);
@@ -1648,7 +1791,7 @@ export function addMainAppServerRoutes(
     "/api/v1/projects/:projectId",
     cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
-    withNext(deleteProject)
+    withNext(deleteProject),
   );
   app.put("/api/v1/projects/:projectId/revert-to-version", revertToVersion);
   app.put("/api/v1/projects/:projectId/update-host", cmCors, withNext(updateHostUrl));
@@ -1656,44 +1799,48 @@ export function addMainAppServerRoutes(
   app.get("/api/v1/projects/:projectId/updates", getModelUpdates);
   app.post(
     "/api/v1/projects/:projectId/create-pkg",
-    withNext(createPkgByProjectId)
+    withNext(createPkgByProjectId),
   );
   app.get("/api/v1/projects/:projectId/pkg", getPkgByProjectId);
   app.post(
     "/api/v1/projects/:projectId/publish",
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
+<<<<<<< HEAD
     createWriteRateLimiter(),
     publishProject
+=======
+    publishProject,
+>>>>>>> upstream/master
   );
   app.post(
     "/api/v1/projects/:projectId/next-publish-version",
-    withNext(computeNextProjectVersion)
+    withNext(computeNextProjectVersion),
   );
   app.get(
     "/api/v1/projects/:projectId/pkgs/:pkgVersionId/status",
-    getPkgVersionPublishStatus
+    getPkgVersionPublishStatus,
   );
   app.post(
     "/api/v1/projects/:projectBranchId/revisions/:revision",
-    saveProjectRev
+    saveProjectRev,
   );
   app.post("/api/v1/projects/:projectId/merge", createWriteRateLimiter(), tryMergeBranch);
   app.post(
     "/api/v1/projects/:projectId/code/project-sync-metadata",
     apiAuth,
-    withNext(getProjectSyncMetadata)
+    withNext(getProjectSyncMetadata),
   );
   app.post(
     "/api/v1/projects/:projectId",
     cors({ origin: true, credentials: true }),
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
     apiAuth,
-    updateProjectData
+    updateProjectData,
   );
   app.get(
     "/api/v1/projects/:projectId/versions",
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
-    withNext(listProjectVersionsWithoutData)
+    withNext(listProjectVersionsWithoutData),
   );
 
   addInternalRoutes(app);
@@ -1707,36 +1854,40 @@ export function addMainAppServerRoutes(
   app.get(
     "/api/v1/teams",
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
-    withNext(teamRoutes.listTeams)
+    withNext(teamRoutes.listTeams),
   );
   app.post(
     "/api/v1/teams",
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
+<<<<<<< HEAD
     adminOnly,
     withNext(teamRoutes.createTeam)
+=======
+    withNext(teamRoutes.createTeam),
+>>>>>>> upstream/master
   );
   app.get(
     "/api/v1/teams/:teamId",
     cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
-    teamRoutes.getTeamById
+    teamRoutes.getTeamById,
   );
   app.get(
     "/api/v1/teams/:teamId/meta",
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
-    teamRoutes.getTeamMeta
+    teamRoutes.getTeamMeta,
   );
   app.get("/api/v1/teams/:teamId/projects", teamRoutes.getTeamProjects);
   app.get(
     "/api/v1/teams/:teamId/workspaces",
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
-    teamRoutes.getTeamWorkspaces
+    teamRoutes.getTeamWorkspaces,
   );
   app.put("/api/v1/teams/:teamId", cmCors, withNext(teamRoutes.updateTeam));
   app.delete(
     "/api/v1/teams/:teamId",
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
-    withNext(teamRoutes.deleteTeam)
+    withNext(teamRoutes.deleteTeam),
   );
   app.post("/api/v1/teams/purgeUsers", withNext(teamRoutes.purgeUsersFromTeam));
   app.post("/api/v1/teams/:teamId/join", teamRoutes.joinTeam);
@@ -1744,21 +1895,21 @@ export function addMainAppServerRoutes(
     "/api/v1/grant-revoke",
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
     authedSensitiveRateLimiter,
-    teamRoutes.changeResourcePermissions
+    teamRoutes.changeResourcePermissions,
   );
   app.get("/api/v1/feature-tiers", teamRoutes.listCurrentFeatureTiers);
   app.get("/api/v1/teams/:teamId/tokens", teamRoutes.listTeamTokens);
   app.post(
     "/api/v1/teams/:teamId/tokens",
-    withNext(teamRoutes.createTeamToken)
+    withNext(teamRoutes.createTeamToken),
   );
   app.delete(
     "/api/v1/teams/:teamId/tokens/:token",
-    withNext(teamRoutes.revokeTeamToken)
+    withNext(teamRoutes.revokeTeamToken),
   );
   app.post(
     "/api/v1/teams/:teamId/prepare-support-urls",
-    withNext(teamRoutes.prepareTeamSupportUrls)
+    withNext(teamRoutes.prepareTeamSupportUrls),
   );
 
   /**
@@ -1768,8 +1919,12 @@ export function addMainAppServerRoutes(
     "/api/v1/workspaces",
     cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
+<<<<<<< HEAD
     adminOnly,
     createWorkspace
+=======
+    createWorkspace,
+>>>>>>> upstream/master
   );
   app.get("/api/v1/workspaces/:workspaceId", cmCors, getWorkspace);
   app.get("/api/v1/personal-workspace", cmCors, getPersonalWorkspace);
@@ -1778,14 +1933,14 @@ export function addMainAppServerRoutes(
     "/api/v1/workspaces/:workspaceId",
     cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
-    withNext(deleteWorkspace)
+    withNext(deleteWorkspace),
   );
 
   app.get(
     "/api/v1/workspaces",
     cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
-    withNext(getWorkspaces)
+    withNext(getWorkspaces),
   );
 
   /**
@@ -1793,27 +1948,27 @@ export function addMainAppServerRoutes(
    */
   app.post(
     "/api/v1/projects/:projectId/trigger-webhook",
-    withNext(triggerProjectWebhook)
+    withNext(triggerProjectWebhook),
   );
   app.get("/api/v1/projects/:projectId/webhooks", getProjectWebhooks);
   app.post(
     "/api/v1/projects/:projectId/webhooks",
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
-    withNext(createProjectWebhook)
+    withNext(createProjectWebhook),
   );
   app.put(
     "/api/v1/projects/:projectId/webhooks/:webhookId",
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
-    withNext(updateProjectWebhook)
+    withNext(updateProjectWebhook),
   );
   app.delete(
     "/api/v1/projects/:projectId/webhooks/:webhookId",
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
-    withNext(deleteProjectWebhook)
+    withNext(deleteProjectWebhook),
   );
   app.get(
     "/api/v1/projects/:projectId/webhooks/events",
-    getProjectWebhookEvents
+    getProjectWebhookEvents,
   );
 
   app.post("/api/v1/fmt-code", createWriteRateLimiter(), withNext(fmtCode));
@@ -1828,6 +1983,7 @@ export function addMainAppServerRoutes(
   );
   app.delete(
     "/api/v1/settings/apitokens/:token",
+<<<<<<< HEAD
     cmCors,
     withNext(apiTokenRoutes.revokeToken)
   );
@@ -1841,6 +1997,13 @@ export function addMainAppServerRoutes(
     "/api/v1/mail/subscribe",
     cors(),
     withNext(mailingListRoutes.subscribe)
+=======
+    withNext(apiTokenRoutes.revokeToken),
+  );
+  app.put(
+    "/api/v1/settings/apitokens/emit/:initToken",
+    withNext(apiTokenRoutes.emitToken),
+>>>>>>> upstream/master
   );
 
   /**
@@ -1865,7 +2028,7 @@ export function addMainAppServerRoutes(
   app.get("/api/v1/github/data", githubData);
   app.get(
     "/api/v1/github/detect/:owner/:repo",
-    withNext(detectOptionsFromDirectory)
+    withNext(detectOptionsFromDirectory),
   );
   app.get("/api/v1/github/branches", githubBranches);
   app.post("/api/v1/github/repos", withNext(setupNewGithubRepo));
@@ -1876,24 +2039,24 @@ export function addMainAppServerRoutes(
    */
   app.get(
     "/api/v1/projects/:projectId/repositories",
-    withNext(getProjectRepositories)
+    withNext(getProjectRepositories),
   );
   app.post("/api/v1/project_repositories", withNext(addProjectRepository));
   app.delete(
     "/api/v1/project_repositories/:projectRepositoryId",
-    withNext(deleteProjectRepository)
+    withNext(deleteProjectRepository),
   );
   app.post(
     "/api/v1/project_repositories/:projectRepositoryId/action",
-    withNext(fireGitAction)
+    withNext(fireGitAction),
   );
   app.get(
     "/api/v1/project_repositories/:projectRepositoryId/latest-run",
-    getLatestWorkflowRun
+    getLatestWorkflowRun,
   );
   app.get(
     "/api/v1/project_repositories/:projectRepositoryId/runs/:workflowRunId",
-    getGitWorkflowJob
+    getGitWorkflowJob,
   );
 
   /**
@@ -1908,13 +2071,13 @@ export function addMainAppServerRoutes(
     "/api/v1/hosts",
     cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
-    getTrustedHostsForSelf
+    getTrustedHostsForSelf,
   );
   app.post(
     "/api/v1/hosts",
     cmCors,
     safeCast<RequestHandler>(authRoutes.teamApiUserAuth),
-    withNext(addTrustedHost)
+    withNext(addTrustedHost),
   );
   app.delete("/api/v1/hosts/:trustedHostId", cmCors, withNext(deleteTrustedHost));
 
@@ -1926,7 +2089,7 @@ export function addMainAppServerRoutes(
         fileSize: 100 * 1024 * 1024, // 100MB
       },
     }),
-    withNext(uploadImage)
+    withNext(uploadImage),
   );
 
   app.post(
@@ -1994,14 +2157,14 @@ export function addMainAppServerRoutes(
    */
   addEndUserManagementRoutes(app, authedSensitiveRateLimiter);
 
-  if (typeof jest === "undefined") {
+  if (typeof vi === "undefined") {
     // Do not create the interval in unit tests, because it keeps running and
     // breaks later tests.
     const checkAndNotifyUpdates = () => {
       spawn(
         getConnection().transaction((entMgr) =>
-          checkAndNofityHostlessVersion(new DbMgr(entMgr, SUPER_USER))
-        )
+          checkAndNofityHostlessVersion(new DbMgr(entMgr, SUPER_USER)),
+        ),
       );
     };
 
@@ -2026,8 +2189,9 @@ export function addEndErrorHandlers(app: express.Application) {
         origErr: Error,
         req: Request,
         res: Response,
-        _next: NextFunction
+        _next: NextFunction,
       ) => {
+<<<<<<< HEAD
         // Normalize first so severity is decided on the error's real status
         // code, not on however the throw site happened to construct it.
         const err = isApiError(origErr) ? origErr : transformErrors(origErr);
@@ -2048,11 +2212,24 @@ export function addEndErrorHandlers(app: express.Application) {
               { stack: err.stack }
             );
           }
+=======
+        const response = toErrorResponse(origErr);
+
+        // Log at a severity matching the status code we're about to return.
+        // A 4xx is the client's mistake and is expected traffic, so logging it
+        // at ERROR both buries real failures and dominates log volume; only an
+        // unhandled error (no response, i.e. a 500) is ours to act on.
+        if (!response || response.statusCode >= 500) {
+          logger().error("ERROR!", origErr);
+        } else if (!(origErr instanceof AuthError)) {
+          logger().warn("Request failed", origErr);
+>>>>>>> upstream/master
         }
         if (res.headersSent || res.writableEnded) {
           logError(origErr, "Tried to edit closed response");
           return;
         }
+<<<<<<< HEAD
 
         // Ensure CORS headers are set on error responses for CM origins
         // This prevents CORS errors from masking the actual error
@@ -2066,12 +2243,41 @@ export function addEndErrorHandlers(app: express.Application) {
           res
             .status(err.statusCode)
             .json({ error: { ...err, message: err.message } });
+=======
+        if (response) {
+          res.status(response.statusCode).json({ error: response.body });
+>>>>>>> upstream/master
         } else {
           res.status(500).json({ error: { message: "Internal Server Error" } });
         }
-      }
-    )
+      },
+    ),
   );
+}
+
+/**
+ * Returns the response to send for errors that are meant to reach the client
+ * with a specific status code. Everything else is an internal server error.
+ */
+function toErrorResponse(
+  origErr: Error,
+): { statusCode: number; body: object } | undefined {
+  const err = origErr instanceof ApiError ? origErr : transformErrors(origErr);
+  if (err instanceof ApiError) {
+    return {
+      statusCode: err.statusCode,
+      body: { ...err, message: err.message },
+    };
+  }
+  if (err instanceof DataSourceError && err.statusCode) {
+    // Data source fetchers forward the status of a failed query (e.g. 400 for
+    // a bad SQL query). Without a statusCode, it's an internal failure.
+    return {
+      statusCode: err.statusCode,
+      body: { ...err, message: err.message },
+    };
+  }
+  return undefined;
 }
 
 function addNotFoundHandler(app: express.Application) {
@@ -2087,7 +2293,7 @@ export async function createApp(
   addCleanRoutes?: (app: express.Application) => void,
   opts?: {
     skipSession: boolean;
-  }
+  },
 ): Promise<{ app: express.Application }> {
   const app = express();
 
@@ -2100,8 +2306,13 @@ export async function createApp(
     await setupPassport(dbMgr, config, DEVFLAGS);
   });
 
+<<<<<<< HEAD
   // Datadog middleware for span tagging
   addDatadogMiddleware(app);
+=======
+  // Sentry setup needs to be first
+  addSentry(app);
+>>>>>>> upstream/master
 
   if (config.production) {
     app.enable("trust proxy");
@@ -2129,8 +2340,13 @@ export async function createApp(
   // addEndErrorHandlers().
   addNotFoundHandler(app);
 
+<<<<<<< HEAD
   // Datadog error handler must go after routes
   addDatadogErrorHandler(app);
+=======
+  // Sentry error handler must go after routes
+  addSentryError(app);
+>>>>>>> upstream/master
 
   // On error, rollback transactions
   addEndErrorHandlers(app);
@@ -2159,12 +2375,27 @@ export async function createApp(
   logger().info(
     `Starting server with heap memory ${
       v8.getHeapStatistics().total_available_size / 1024 / 1024
-    }MB`
+    }MB`,
   );
 
   trackPostgresPool(name);
 
   return { app };
+}
+
+function captcha(expectedAction: string) {
+  return async (req: Request, _res: Response, next: NextFunction) => {
+    try {
+      await checkCaptchaToken({
+        req,
+        captchaToken: req.get(CAPTCHA_TOKEN_HEADER) ?? "",
+        expectedAction,
+      });
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
 }
 
 function corsPreflight() {
@@ -2179,10 +2410,10 @@ function corsPreflight() {
     async (req, res, next) => {
       res.set(
         "Cache-Control",
-        `max-age=${30 * 24 * 60 * 60}, s-maxage=${30 * 24 * 60 * 60}`
+        `max-age=${30 * 24 * 60 * 60}, s-maxage=${30 * 24 * 60 * 60}`,
       );
       corsHandler(req, res, next);
-    }
+    },
   );
   return handler;
 }
@@ -2234,7 +2465,9 @@ export function makeExpressSessionMiddleware(config: Config) {
       // By not using a subquery, maybe less likely for deadlock
       limitSubquery: false,
       onError: () => {},
-      //ttl: 86400,
+      // Anonymous sessions are only for CSRF, expire them sooner.
+      ttl: (_store, sess) =>
+        sess.passport?.user ? Math.floor(sess.cookie.maxAge / 1000) : 86400,
     }).connect(getConnection().getRepository(ExpressSession)),
   });
 }

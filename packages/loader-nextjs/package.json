@@ -1,5 +1,5 @@
 {
-  "version": "2.0.21",
+  "version": "2.0.28",
   "name": "@plasmicapp/loader-nextjs",
   "description": "Plasmic loader SDK for Next.js",
   "homepage": "https://www.plasmic.app",
@@ -56,9 +56,8 @@
     "build:index": "node ../../build.mjs ./src/index.tsx --use-client",
     "build:edge": "node ../../build.mjs ./src/edge.ts --no-esm",
     "build:react-server": "node ../../build.mjs ./src/react-server.tsx",
-    "yalcp": "yalc publish --push",
-    "test": "jest packages/loader-nextjs --config=../../jest.config.js --passWithNoTests",
-    "coverage": "pnpm test --coverage",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
     "lint": "eslint",
     "prepublishOnly": "npm run build",
     "postpublish": "bash ../../scripts/publish-api-doc-model.sh",
@@ -76,18 +75,21 @@
     }
   ],
   "dependencies": {
-    "@plasmicapp/loader-core": "2.0.4",
-    "@plasmicapp/loader-edge": "1.0.81",
-    "@plasmicapp/loader-react": "2.0.18",
-    "@plasmicapp/watcher": "1.0.86",
+    "@plasmicapp/loader-core": "workspace:*",
+    "@plasmicapp/loader-edge": "workspace:*",
+    "@plasmicapp/loader-react": "workspace:*",
+    "@plasmicapp/watcher": "workspace:*",
     "server-only": "0.0.1"
   },
   "devDependencies": {
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
     "next": "^14",
-    "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
   },
   "peerDependencies": {
     "next": ">=14.0.0",

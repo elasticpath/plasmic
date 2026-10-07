@@ -1,0 +1,8 @@
+# Own pnpm root, so `pnpm install` here does not walk up to
+# platform/pnpm-workspace.yaml and install the wab workspace instead.
+packages: []
+
+minimumReleaseAge: 4320
+minimumReleaseAgeExclude:
+  - "@plasmicapp/*"
+  - "@plasmicpkgs/*"

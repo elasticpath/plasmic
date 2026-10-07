@@ -4,23 +4,24 @@ import {
   DefaultCmsLeftTabsProps,
   PlasmicCmsLeftTabs,
 } from "@/wab/client/plasmic/plasmic_kit_cms/PlasmicCmsLeftTabs";
-import { ensure } from "@/wab/shared/common";
+import { useMatchedRoute } from "@/wab/client/route/useMatchedRoute";
+import { CmsDatabaseId, CmsTableId } from "@/wab/shared/ApiSchema";
 import { accessLevelRank } from "@/wab/shared/EntUtil";
+import { ensure } from "@/wab/shared/common";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
 import { HTMLElementRefOf } from "@plasmicapp/react-web";
 import * as React from "react";
-import { useRouteMatch } from "react-router";
 
 export type CmsLeftTabsProps = DefaultCmsLeftTabsProps;
 
 function CmsLeftTabs_(props: CmsLeftTabsProps, ref: HTMLElementRefOf<"div">) {
-  const match = useRouteMatch<any>()!;
-  const params: any = {
-    databaseId: match.params.databaseId,
-  };
   const appCtx = useAppCtx();
-  const database = useCmsDatabase(match.params.databaseId);
+  const match = useMatchedRoute<{
+    databaseId: CmsDatabaseId;
+    tableId: CmsTableId;
+  }>()!;
+  const params = { databaseId: match.pathParams.databaseId };
+  const database = useCmsDatabase(match.pathParams.databaseId);
 
   if (!database) {
     return null;
@@ -28,7 +29,7 @@ function CmsLeftTabs_(props: CmsLeftTabsProps, ref: HTMLElementRefOf<"div">) {
 
   const team = ensure(
     appCtx.workspaces.find((w) => w.id === database.workspaceId),
-    "Expected existing workspace"
+    "Expected existing workspace",
   ).team;
 
   const shouldHideSettingsButton =
@@ -36,36 +37,37 @@ function CmsLeftTabs_(props: CmsLeftTabsProps, ref: HTMLElementRefOf<"div">) {
       appCtx.perms.find(
         (p) =>
           (p.workspaceId === database.workspaceId || p.teamId === team.id) &&
-          p.userId === ensure(appCtx.selfInfo, "Unexpected nullish selfInfo").id
-      )?.accessLevel || "blocked"
+          p.userId ===
+            ensure(appCtx.selfInfo, "Unexpected nullish selfInfo").id,
+      )?.accessLevel || "blocked",
     ) < accessLevelRank("editor");
   return (
     <PlasmicCmsLeftTabs
       root={{ ref }}
       {...props}
       contentButton={{
-        href: match.params.tableId
-          ? fillRoute(APP_ROUTES.cmsModelContent, {
+        href: match.pathParams.tableId
+          ? APP_ROUTES.cmsModelContent.fill({
               ...params,
-              tableId: match.params.tableId,
+              tableId: match.pathParams.tableId,
             })
-          : fillRoute(APP_ROUTES.cmsContentRoot, params),
+          : APP_ROUTES.cmsContentRoot.fill(params),
         tooltip: "Edit content",
         "data-test-id": "cmsContent",
       }}
       schemaButton={{
-        href: match.params.tableId
-          ? fillRoute(APP_ROUTES.cmsModelSchema, {
+        href: match.pathParams.tableId
+          ? APP_ROUTES.cmsModelSchema.fill({
               ...params,
-              tableId: match.params.tableId,
+              tableId: match.pathParams.tableId,
             })
-          : fillRoute(APP_ROUTES.cmsSchemaRoot, params),
+          : APP_ROUTES.cmsSchemaRoot.fill(params),
         tooltip: "Edit models",
         "data-test-id": "cmsModels",
       }}
       settingsButton={{
         style: shouldHideSettingsButton ? { display: "none" } : {},
-        href: fillRoute(APP_ROUTES.cmsSettings, params),
+        href: APP_ROUTES.cmsSettings.fill(params),
         tooltip: "CMS Settings",
         "data-test-id": "cmsSettings",
       }}

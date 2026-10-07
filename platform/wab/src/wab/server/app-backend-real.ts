@@ -24,7 +24,7 @@ import { Config } from "@/wab/server/config";
 import { logger } from "@/wab/server/observability";
 import { sendCommentsNotificationEmails } from "@/wab/server/scripts/send-comments-notifications";
 import { withSpan } from "@/wab/server/util/apm-util";
-import httpProxy from "http-proxy";
+import httpProxy from "http-proxy-3";
 
 export async function runAppServer(config: Config) {
   await ensureDbConnections(config.databaseUri, {
@@ -74,7 +74,7 @@ export async function runAppServer(config: Config) {
         logger().info(`No socket host found; serving sockets from app backend`);
         ({ attach } = addSocketRoutes(application, config));
       }
-    }
+    },
   );
 
   // runs every 10 minutes
@@ -93,6 +93,10 @@ export async function runAppServer(config: Config) {
       });
       socketProxy.on("error", (err, _req, res) => {
         captureException(err);
+<<<<<<< HEAD
+=======
+        logger().error(`Error in socketProxy. ${err}`);
+>>>>>>> upstream/master
         res.end("Something wrong happened when connecting to the server.");
       });
     } else if (attach) {
@@ -119,12 +123,12 @@ async function prepareFreshDb(opts: any, config: Config) {
 
   const expressSessionSchema = path.resolve(
     appDir,
-    "node_modules/connect-pg-simple/table.sql"
+    "node_modules/connect-pg-simple/table.sql",
   );
   const createSessionRes = childProcess.spawnSync(
     "psql",
     [dburi, "-f", expressSessionSchema],
-    { env: process.env }
+    { env: process.env },
   );
   if (createSessionRes.status !== 0) {
     logger().error("Failed to create express session table.");

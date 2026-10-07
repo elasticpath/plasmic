@@ -8,6 +8,7 @@ import VariantsDrawer from "@/wab/client/components/canvas/VariantsBar/VariantsD
 import { makeVariantsController } from "@/wab/client/components/variants/VariantsController";
 import { frameToClientRect } from "@/wab/client/coords";
 import { plasmicCanvasTransformEvent } from "@/wab/client/definitions/events";
+import { useAutoFocus } from "@/wab/client/hooks/useAutoFocus";
 import PlasmicVariantsBar from "@/wab/client/plasmic/plasmic_kit_variants_bar/PlasmicVariantsBar";
 import { StudioCtx, usePlasmicCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
@@ -54,7 +55,7 @@ function useFocusedVariants(viewCtx: ViewCtx) {
   const canChangeVariants = variantsController?.canChangeActiveVariants();
   const activeVariants = variantsController?.getActiveNonBaseVariants() ?? [];
   const targetedVariants = activeVariants?.filter((it) =>
-    variantsController?.isTargeted(it)
+    variantsController?.isTargeted(it),
   );
 
   const focusedTpl = viewCtx?.focusedTpl();
@@ -86,7 +87,7 @@ function getFocusedElementRect(studioCtx: StudioCtx) {
   if (isKnownArenaFrame(focusObj) && vc) {
     return vc.viewportCtx
       .scalerToClient(
-        Box.fromRect(studioCtx.getArenaFrameScalerRect(focusObj)!)
+        Box.fromRect(studioCtx.getArenaFrameScalerRect(focusObj)!),
       )
       .rect();
   } else {
@@ -147,7 +148,7 @@ function useFloatingBarForFocusedFrame({
 
       const clipperBox = viewCtx.viewportCtx.clipperBox();
       const componentBox = viewCtx.viewportCtx.scalerToClient(
-        Box.fromRect(focusedComponentRect)
+        Box.fromRect(focusedComponentRect),
       );
       const panelRect = panelRef.current.getBoundingClientRect();
       const controlledObj = studioCtx.hoverBoxControlledObj;
@@ -162,11 +163,11 @@ function useFloatingBarForFocusedFrame({
         (isMixedArena(studioCtx.currentArena)
           ? HOVER_TAG_HEIGHT
           : focusedElementRect && focusedElementRect.height
-          ? Math.max(
-              componentBox.top() - (focusedElementRect.top - hoverTagHeight),
-              0
-            )
-          : 0) +
+            ? Math.max(
+                componentBox.top() - (focusedElementRect.top - hoverTagHeight),
+                0,
+              )
+            : 0) +
         GUTTER * 1.3;
 
       const maxTranslateX =
@@ -179,9 +180,9 @@ function useFloatingBarForFocusedFrame({
         Math.max(
           Math.min(
             componentBox.left() - clipperBox.left() + GUTTER,
-            maxTranslateX
+            maxTranslateX,
           ),
-          CANVAS_PADDING
+          CANVAS_PADDING,
         );
 
       const translateY =
@@ -192,9 +193,9 @@ function useFloatingBarForFocusedFrame({
               componentTopMargin -
               clipperBox.top() -
               panelRect.height,
-            maxTranslateY
+            maxTranslateY,
           ),
-          CANVAS_PADDING
+          CANVAS_PADDING,
         );
 
       panelRef.current.style.transform = `translate(${translateX}px, ${translateY}px)`;
@@ -278,7 +279,7 @@ export const VariantsBar = observer(function VariantsBar_({
         isScreenVariant(v) &&
         spotlightInfo.shouldRender &&
         isDedicatedArena(studioCtx.currentArena)
-      )
+      ),
   );
 
   if (allAvailableVariants.length === 0) {
@@ -309,7 +310,6 @@ const VariantsBarInner = observer(function VariantsBarInner_({
     viewCtx,
     contained,
   });
-  const preventDismissingRef = useRef(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const component = viewCtx.currentComponent();
   const groupToSuperComp =
@@ -318,7 +318,7 @@ const VariantsBarInner = observer(function VariantsBarInner_({
   useEffect(
     /* Close variants drawer on unmount */ () => () =>
       studioCtx.setShowVariantsDrawer(false),
-    []
+    [],
   );
 
   useEffect(
@@ -328,7 +328,7 @@ const VariantsBarInner = observer(function VariantsBarInner_({
     [
       studioCtx.focusedViewCtx()?.arenaFrame().uid,
       studioCtx.focusedViewCtx()?.focusedSelectable()?.tpl?.uid,
-    ]
+    ],
   );
 
   const getVariantUnpinHandler = (it: Variant) =>
@@ -353,19 +353,20 @@ const VariantsBarInner = observer(function VariantsBarInner_({
 
   const handleRecordingButtonClick = () => {
     viewCtx?.change(() =>
-      variantsController?.onToggleTargetingOfActiveVariants()
+      variantsController?.onToggleTargetingOfActiveVariants(),
     );
   };
 
-  const handleDropdownVisibleChange = (visible) => {
-    studioCtx.setShowVariantsDrawer(visible);
+  const toggleDrawerProps = {
+    onMouseDown: (e: React.MouseEvent) => {
+      e.preventDefault(); // prevent focus, keep focus on VariantDrawer's search input
+    },
+    onClick: () => {
+      studioCtx.setShowVariantsDrawer(!studioCtx.showVariantsDrawer);
+    },
   };
 
-  useLayoutEffect(() => {
-    if (studioCtx.showVariantsDrawer) {
-      defer(() => searchInputRef.current?.focus());
-    }
-  }, [studioCtx.showVariantsDrawer]);
+  useAutoFocus(studioCtx.showVariantsDrawer && searchInputRef);
 
   const handleClearVariants = () => {
     variantsController?.onClearVariants();
@@ -380,7 +381,7 @@ const VariantsBarInner = observer(function VariantsBarInner_({
   };
 
   const spotlightInfo = getSpotlightInfo(
-    ensure(viewCtx, "Expected viewCtx to be not null in VariantsBar")
+    ensure(viewCtx, "Expected viewCtx to be not null in VariantsBar"),
   );
 
   return !canChangeVariants && !displayVariants.length ? null : (
@@ -398,29 +399,14 @@ const VariantsBarInner = observer(function VariantsBarInner_({
                 className: showPanel ? styles.absolute : styles.hidden,
               }
         }
-        dropdownTrigger={{
-          onMouseDown: () => {
-            preventDismissingRef.current = true;
-            defer(() => {
-              preventDismissingRef.current = false;
-            });
-          },
-        }}
-        emptyListMessage={{
-          children: "Edit variants",
-          onMouseDown: () =>
-            studioCtx.showVariantsDrawer
-              ? studioCtx.setShowVariantsDrawer(false)
-              : setTimeout(() => studioCtx.setShowVariantsDrawer(true)),
-        }}
+        emptyListMessage={{ children: "Edit variants", ...toggleDrawerProps }}
         chevronDownIcon={{
           wrap: (chevronDownIcon) => (
             <Dropdown
               transitionName=""
-              trigger={["click"]}
+              trigger={[]}
               placement={"bottomLeft"}
-              visible={studioCtx.showVariantsDrawer}
-              onVisibleChange={handleDropdownVisibleChange}
+              open={studioCtx.showVariantsDrawer}
               overlay={() => (
                 <VariantsDrawer
                   component={component}
@@ -433,15 +419,14 @@ const VariantsBarInner = observer(function VariantsBarInner_({
                     isDedicatedArena(studioCtx.currentArena) &&
                     !!spotlightInfo.shouldRender
                   }
-                  onDismiss={() => {
-                    if (!preventDismissingRef.current) {
-                      studioCtx.setShowVariantsDrawer(false);
-                    }
-                  }}
+                  onDismiss={() => studioCtx.setShowVariantsDrawer(false)}
                 />
               )}
             >
-              <div data-test-id="variants-bar-dropdown-trigger">
+              <div
+                data-test-id="variants-bar-dropdown-trigger"
+                {...toggleDrawerProps}
+              >
                 {chevronDownIcon}
               </div>
             </Dropdown>

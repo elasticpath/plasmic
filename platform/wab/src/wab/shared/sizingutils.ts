@@ -13,6 +13,7 @@ import {
   getGlobalVariants,
   isBaseVariant,
   tryGetBaseVariantSetting,
+  variantComboKey,
 } from "@/wab/shared/Variants";
 import { ComponentGenHelper } from "@/wab/shared/codegen/codegen-helpers";
 import { assert, ensure, replaceObj } from "@/wab/shared/common";
@@ -44,12 +45,7 @@ import {
   getEffectiveVariantSetting,
   getTplComponentActiveVariantsByVs,
 } from "@/wab/shared/effective-variant-setting";
-import {
-  makeExpProxy,
-  makeExpandedExp,
-  makeReadonlyExpProxy,
-  makeReadonlyExpandedExp,
-} from "@/wab/shared/exprs";
+import { makeExpProxy, makeExpandedExp } from "@/wab/shared/exprs";
 import {
   ContainerLayoutType,
   getRshContainerType,
@@ -74,7 +70,7 @@ export function isSizeProp(prop: string): prop is "width" | "height" {
 export function deriveSizeStyleValue(
   prop: "width" | "height",
   val: string,
-  isStudio?: boolean
+  isStudio?: boolean,
 ) {
   if (val === "stretch") {
     return "100%";
@@ -137,25 +133,25 @@ export function hasSpecialSizeVal(tpl: TplNode, vs: VariantSetting) {
 export function deriveSizeStylesForTpl(
   ctx: ComponentGenHelper,
   tpl: TplNode,
-  vs: VariantSetting
+  vs: VariantSetting,
 ) {
   const exp = ctx.getExpr(tpl, vs);
   const _getTplComponentDefaultSize = memoizeOne(() =>
     isTplComponent(tpl)
       ? getTplComponentDefaultSize(ctx, tpl, vs.variants)
-      : undefined
+      : undefined,
   );
   const _getMixinExpr = memoizeOne(() => {
     if (vs.rs.mixins.length > 0) {
       return createRuleSetMerger(
         expandRuleSets(vs.rs.mixins.map((m) => m.rs)),
-        tpl
+        tpl,
       );
     }
     return undefined;
   });
   const _getTokenResolver = memoizeOne(() =>
-    ctx.siteHelper.makeTokenRefResolver()
+    ctx.siteHelper.makeTokenRefResolver(),
   );
   const _getParentContainerType = memoizeOne(() => {
     const parentExp = getParentExp(ctx, tpl, vs.variants);
@@ -167,7 +163,7 @@ export function deriveSizeStylesForTpl(
 
   const shouldNotShrink = (
     dim: "width" | "height",
-    val: string | undefined
+    val: string | undefined,
   ) => {
     if ((val === undefined || val === "default") && isTplComponent(tpl)) {
       val = _getTplComponentDefaultSize()?.[dim];
@@ -184,7 +180,7 @@ export function deriveSizeStylesForTpl(
       }
       if (setOrMixinVal) {
         const realVal = isTokenRef(setOrMixinVal)
-          ? _getTokenResolver()(setOrMixinVal) ?? setOrMixinVal
+          ? (_getTokenResolver()(setOrMixinVal) ?? setOrMixinVal)
           : setOrMixinVal;
 
         return isExplicitSize(realVal) && !isExplicitPercentage(realVal);
@@ -313,15 +309,20 @@ export function isExplicitPercentage(val: string) {
 }
 
 export function makeSizeAwareExpProxy(exp: IRuleSetHelpersX, tpl: TplNode) {
-  const isInstance = isTplComponent(tpl);
+  const ro = new ReadonlySizeAwareExp(exp, tpl);
   return makeExpProxy(
     exp,
     Object.assign(
-      {},
-      makeReadonlySizeAwareExpProxy(exp, tpl),
+      {
+        has: (prop: string) => ro.has(prop),
+        get: (prop: string) => ro.get(prop),
+        getRaw: (prop: string) => ro.getRaw(prop),
+        props: () => ro.props(),
+        getDefault: (prop: string) => ro.getDefault(prop),
+      },
       makeExpandedExp({
         set: (prop: string, val: string) => {
-          if (isInstance && (prop === "width" || prop === "height")) {
+          if (ro.isInstance && (prop === "width" || prop === "height")) {
             if (val === "auto") {
               // We translate "auto" to "default"
               val = "default";
@@ -329,33 +330,47 @@ export function makeSizeAwareExpProxy(exp: IRuleSetHelpersX, tpl: TplNode) {
           }
           exp.set(prop, val);
         },
-      })
-    )
+      }),
+    ),
   );
+}
+
+// Codegen creates one per tpl, variant setting), RuleSetMerger has one per ruleset.
+class ReadonlySizeAwareExp implements ReadonlyIRuleSetHelpersX {
+  readonly isInstance: boolean;
+  constructor(
+    private readonly exp: ReadonlyIRuleSetHelpersX,
+    private readonly tpl: TplNode,
+  ) {
+    this.isInstance = isTplComponent(tpl);
+  }
+  has(prop: string) {
+    return this.exp.has(prop);
+  }
+  getRaw(prop: string) {
+    return this.exp.getRaw(prop);
+  }
+  props() {
+    return this.exp.props();
+  }
+  getDefault(prop: string) {
+    if (this.isInstance && (prop === "width" || prop === "height")) {
+      // We return "default" for default width/height for TplComponent,
+      // instead of the usual default of "auto"
+      return "default";
+    }
+    return getCssDefault(prop, isTplTag(this.tpl) ? this.tpl.tag : undefined);
+  }
+  get(prop: string) {
+    return this.getRaw(prop) || this.getDefault(prop);
+  }
 }
 
 export function makeReadonlySizeAwareExpProxy(
   exp: ReadonlyIRuleSetHelpersX,
-  tpl: TplNode
-) {
-  const isInstance = isTplComponent(tpl);
-  return makeReadonlyExpProxy(
-    exp,
-    makeReadonlyExpandedExp({
-      getRaw: (prop: string) => {
-        return exp.getRaw(prop);
-      },
-      getDefault: (prop: string) => {
-        if (isInstance && (prop === "width" || prop === "height")) {
-          // We return "default" for default width/height for TplComponent,
-          // instead of the usual default of "auto"
-          return "default";
-        } else {
-          return getCssDefault(prop, isTplTag(tpl) ? tpl.tag : undefined);
-        }
-      },
-    })
-  );
+  tpl: TplNode,
+): ReadonlyIRuleSetHelpersX {
+  return new ReadonlySizeAwareExp(exp, tpl);
 }
 
 /**
@@ -365,16 +380,16 @@ export function makeReadonlySizeAwareExpProxy(
 export function getTplComponentDefaultSize(
   compHelper: ComponentGenHelper,
   tpl: TplComponent,
-  variantCombo: VariantCombo
+  variantCombo: VariantCombo,
 ) {
   const component = tpl.component;
   const effectiveVs = compHelper.getEffectiveVariantSetting(tpl, variantCombo);
   const activeComponentVariants = getTplComponentActiveVariantsByVs(
     tpl,
-    effectiveVs
+    effectiveVs,
   );
   const activeGlobalVariants = getGlobalVariants(variantCombo);
-  return getComponentDefaultSize(component, [
+  return compHelper.siteHelper.getComponentDefaultSize(component, [
     ...activeComponentVariants,
     ...activeGlobalVariants,
   ]);
@@ -393,12 +408,12 @@ export function getTplComponentDefaultSize(
  */
 export function getTplComponentDefaultSizeByActiveVariants(
   tpl: TplComponent,
-  activeVariants: Variant[]
+  activeVariants: Variant[],
 ) {
   const component = tpl.component;
   const activeComponentVariants = getTplComponentActiveVariantsByVs(
     tpl,
-    getEffectiveVariantSetting(tpl, activeVariants)
+    getEffectiveVariantSetting(tpl, activeVariants),
   );
   const activeGlobalVariants = getGlobalVariants(activeVariants);
   return getComponentDefaultSize(component, [
@@ -409,14 +424,14 @@ export function getTplComponentDefaultSizeByActiveVariants(
 
 export function getFrameComponentDefaultSize(
   vtm: VariantTplMgr,
-  component: Component
+  component: Component,
 ) {
   return getComponentDefaultSize(component, vtm.getRootVariantCombo());
 }
 
 export function isStretchyComponent(
   component: Component,
-  variants: Variant[] = []
+  variants: Variant[] = [],
 ) {
   variants = ensureValidCombo(component, variants);
 
@@ -449,7 +464,7 @@ export function isStretchyComponent(
 function getComponentDefaultSize_(
   component: Component,
   // activeVariants are either variants of Component or global variants
-  activeVariants: Variant[]
+  activeVariants: Variant[],
 ) {
   const root = component.tplTree;
   if (!isTplVariantable(root)) {
@@ -480,7 +495,7 @@ function getComponentDefaultSize_(
       root,
       // activeVariants contains variants that belong to the argument `component`,
       // _not_ `root.component`.
-      activeVariants
+      activeVariants,
     );
     if (size.width === "default") {
       size.width = innerDefaultSize.width;
@@ -502,11 +517,8 @@ export const getComponentDefaultSize = keyedComputedFn(
   getComponentDefaultSize_,
   {
     keyFn: (comp, activeVariants) =>
-      `${comp.uuid}-${activeVariants
-        .map((v) => v.uuid)
-        .sort()
-        .join("-")}`,
-  }
+      `${comp.uuid}-${variantComboKey(activeVariants)}`,
+  },
 );
 
 // export const getComponentDefaultSize = getComponentDefaultSize_;
@@ -514,7 +526,7 @@ export const getComponentDefaultSize = keyedComputedFn(
 export function getParentExp(
   ctx: ComponentGenHelper,
   tpl: TplNode,
-  variantCombo: VariantCombo
+  variantCombo: VariantCombo,
 ) {
   const parent = ctx.layoutParent(tpl, false);
   if (isKnownTplTag(parent)) {
@@ -525,7 +537,7 @@ export function getParentExp(
 
 export function isTplComponentResizable(
   tpl: TplComponent,
-  variantCombo: VariantCombo
+  variantCombo: VariantCombo,
 ) {
   // const sizes = getTplComponentDefaultSize(tpl, variantCombo);
   // const widthResizable = !sizes.width || !isExplicitSize(sizes.width);
@@ -557,7 +569,7 @@ export function isTplResizable(tpl: TplNode, vtm: VariantTplMgr) {
 export function resetTplSize(
   tpl: TplNode,
   vtm: VariantTplMgr,
-  prop?: "width" | "height"
+  prop?: "width" | "height",
 ) {
   const props = prop ? [prop] : ["width", "height"];
   if (!isTplResizable(tpl, vtm)) {
@@ -579,7 +591,7 @@ export function resetTplSize(
 export function isTplDefaultSized(
   tpl: TplNode,
   vtm: VariantTplMgr,
-  prop?: "width" | "height"
+  prop?: "width" | "height",
 ) {
   const props = prop ? [prop] : ["width", "height"];
   if (!isTplResizable(tpl, vtm)) {
@@ -589,7 +601,7 @@ export function isTplDefaultSized(
   const exp = vtm.effectiveTargetVariantSetting(tpl as TplNode).rsh();
   if (isTplTag(tpl)) {
     return props.every(
-      (p) => !exp.has(p) || exp.get(p) === "wrap" || exp.get(p) === "auto"
+      (p) => !exp.has(p) || exp.get(p) === "wrap" || exp.get(p) === "auto",
     );
   } else if (isTplComponent(tpl)) {
     return props.every((p) => !exp.has(p) || exp.get(p) === "default");
@@ -601,7 +613,7 @@ export function isTplDefaultSized(
 export function isTplAutoSizable(
   tpl: TplNode,
   vtm: VariantTplMgr,
-  prop?: "width" | "height"
+  prop?: "width" | "height",
 ) {
   const props = prop ? [prop] : ["width", "height"];
 
@@ -650,11 +662,11 @@ export function getPageFrameSizeType(pageFrame: ArenaFrame): PageSizeType {
  */
 export function getPageComponentSizeType(
   component: PageComponent,
-  activeVariants: VariantCombo = []
+  activeVariants: VariantCombo = [],
 ) {
   const rootEffectiveVS = getEffectiveVariantSettingOfDeepRootElement(
     component,
-    activeVariants
+    activeVariants,
   );
 
   const exp = rootEffectiveVS?.rsh();
@@ -671,13 +683,13 @@ export function getPageComponentSizeType(
 
 export function setPageSizeType(
   component: PageComponent,
-  sizeType: PageSizeType
+  sizeType: PageSizeType,
 ) {
   assert(component.pageMeta, "Must be a PageComponent");
   const root = component.tplTree as TplNode;
   const exp = RSH(
     ensure(tryGetBaseVariantSetting(root), "Must have base VariantSetting").rs,
-    root
+    root,
   );
   exp.set("width", "stretch");
   if (sizeType === "fixed") {

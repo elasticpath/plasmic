@@ -2,9 +2,7 @@
   // Common tsconfig used for type checking and generating declaration files.
   // Docs: https://www.typescriptlang.org/tsconfig
   "exclude": [
-    "**/testonly/**",
-    "**/__specs__/**",
-    "**/__tests__/**",
+    "**/__testonly__/**",
     "**/*.spec.ts",
     "**/*.spec.tsx",
     "**/*.test.ts",
@@ -12,7 +10,7 @@
   ],
   "compilerOptions": {
     "module": "NodeNext",
-    "lib": ["DOM", "ESNext"],
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
     // output .d.ts declaration files for consumers
     "declaration": true,
     // output .d.ts declaration files only (esbuild will transpile to .js for us)

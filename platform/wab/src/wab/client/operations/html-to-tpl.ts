@@ -5,6 +5,7 @@ import {
   readAndSanitizeSvgXmlAsImage,
   ResizableImage,
 } from "@/wab/client/dom-utils";
+import { applySanitizedTplStyles } from "@/wab/client/operations/set-tpl-styles";
 import {
   WIError,
   WIImportFailedError,
@@ -18,6 +19,7 @@ import {
   WIElement,
   WIFragment,
   WIScreenVariant,
+  WIText,
   WIVariant,
 } from "@/wab/client/web-importer/types";
 import { ProjectId } from "@/wab/shared/ApiSchema";
@@ -27,6 +29,7 @@ import { assert, assertNever, ensure, mkShortId } from "@/wab/shared/common";
 import {
   interpolatedStringToCodeExpr,
   interpolatedStringToExpr,
+  interpolatedStringToHrefExpr,
   interpolatedStringToRichText,
 } from "@/wab/shared/copilot/dynamic-value-input";
 import { mkNormalizedRep } from "@/wab/shared/copilot/utils";
@@ -44,11 +47,12 @@ import {
   mkParam,
   ParamExportType,
 } from "@/wab/shared/core/lang";
+import { nodeMarkerText } from "@/wab/shared/core/rich-text-util";
 import {
   allAnimationSequences,
+  allMixins,
   getResponsiveStrategy,
 } from "@/wab/shared/core/sites";
-import { validateStylesForTpl } from "@/wab/shared/core/style-props-tpl";
 import {
   mkRuleSet,
   tryGetAnimationSequenceUuidFromCssVar,
@@ -80,12 +84,16 @@ import {
   Interaction,
   isKnownDateRangeStrings,
   isKnownDateString,
+  isKnownHrefType,
   isKnownTplComponent,
   isKnownTplSlot,
   isKnownTplTag,
   KeyFrame,
+  NodeMarker,
   ObjectPath,
   Param,
+  RawText,
+  RichText,
   Site,
   TplNode,
   TplTag,
@@ -100,7 +108,6 @@ import {
   wabToTsType,
 } from "@/wab/shared/model/model-util";
 import { ResponsiveStrategy } from "@/wab/shared/responsiveness";
-import { RSH } from "@/wab/shared/RuleSetHelpers";
 import { isSlot } from "@/wab/shared/SlotUtils";
 import { TplMgr } from "@/wab/shared/TplMgr";
 import {
@@ -153,9 +160,10 @@ export async function htmlToTpl(
     site: Site;
     vtm: VariantTplMgr;
     appCtx: AppCtx;
-  }
+    pageHrefs: boolean;
+  },
 ): Promise<Result<HtmlToTplResult, WIImportFailedError>> {
-  const { site, vtm, appCtx } = opts;
+  const { site, vtm, appCtx, pageHrefs } = opts;
 
   const parseResult = await parseHtmlToWebImporterTree(html, site);
   if (parseResult.isErr()) {
@@ -171,15 +179,16 @@ export async function htmlToTpl(
     tplVariantSettingsData,
     tplRepeatData,
     tplVisibilityData,
-  } = await wiTreeToTpl(wiTree, { site, vtm, appCtx, errors });
+    tplMixinsData,
+  } = await wiTreeToTpl(wiTree, { site, vtm, appCtx, errors, pageHrefs });
 
   if (tpls.length === 0) {
     return err(
       new WIImportFailedError(
         "nothing-to-insert",
         errors,
-        "No elements could be built from the HTML snippet"
-      )
+        "No elements could be built from the HTML snippet",
+      ),
     );
   }
 
@@ -247,20 +256,20 @@ export async function htmlToTpl(
                 case VariantGroupType.GlobalScreen: {
                   return ensure(
                     findMatchingScreenVariant(site, wiVariant),
-                    "screen variant resolvability checked above"
+                    "screen variant resolvability checked above",
                   );
                 }
                 case "style": {
                   assert(
                     isKnownTplTag(tplNode),
-                    "style variant applicability checked above"
+                    "style variant applicability checked above",
                   );
                   const selectors = wiVariant.selectors.map((s) => `:${s}`);
                   const existingPrivateStyleVariant =
                     getPrivateStyleVariantsForTag(
                       owningComponent,
                       tplNode,
-                      selectors
+                      selectors,
                     )[0];
 
                   return (
@@ -268,12 +277,12 @@ export async function htmlToTpl(
                     finalizeOpts.tplMgr.createPrivateStyleVariant(
                       owningComponent,
                       tplNode,
-                      selectors
+                      selectors,
                     )
                   );
                 }
               }
-            }
+            },
           );
 
           applyVariantStyles(
@@ -284,7 +293,7 @@ export async function htmlToTpl(
             unsafeStyles,
             animations,
             finalizeOpts.ccRegistry,
-            htmlToTplErrors
+            htmlToTplErrors,
           );
         }
       }
@@ -298,7 +307,7 @@ export async function htmlToTpl(
         vtm.ensureBaseVariantSetting(tplNode).dataRep = mkNormalizedRep(
           rep.collection,
           rep.itemName,
-          rep.indexName
+          rep.indexName,
         );
       }
 
@@ -314,11 +323,33 @@ export async function htmlToTpl(
         }
       }
 
+      // Apply data-mixins onto the base variant setting. The mixins are
+      // appended rather than applied with vtm.applyMixin, so the element's
+      // own styles from the HTML keep outranking them.
+      if (tplMixinsData.size > 0) {
+        const siteMixins = allMixins(site, { includeDeps: "direct" });
+        for (const [tplNode, uuids] of tplMixinsData.entries()) {
+          const rs = vtm.ensureBaseVariantSetting(tplNode).rs;
+          for (const uuid of uuids) {
+            const mixin = siteMixins.find((m) => m.uuid === uuid);
+            if (!mixin) {
+              htmlToTplErrors.push({
+                code: "unknown-mixin",
+                tpl: tplRef(tplNode),
+                mixin: uuid,
+              });
+            } else if (!rs.mixins.includes(mixin)) {
+              rs.mixins.push(mixin);
+            }
+          }
+        }
+      }
+
       // if we have any image/svg tpls we need to create their respective assets and update their attrs accordingly
       for (const [assetTpl, assetData] of tplImageAssetMap) {
         const { asset } = finalizeOpts.tplMgr.getOrCreateImageAsset(
           assetData.image,
-          assetData.options
+          assetData.options,
         );
 
         const vs = ensureVariantSetting(assetTpl, []);
@@ -352,6 +383,7 @@ export const htmlAttrsIgnoredByTpl = new Set([
   "data-repeat-index", // repetition index local-var name
   "data-visible-if", // dynamic visibility condition (dataCond)
   "data-visibility", // static visibility state (displayNone / notRendered)
+  "data-mixins", // applied mixin uuids (rs.mixins)
 ]);
 
 /** Matches both lowercase HTML (`onclick`) and camelCase React (`onClick`). */
@@ -376,7 +408,7 @@ export function toReactEventAttr(name: string) {
  * containing a single customFunction interaction.
  */
 export function mkEventHandlerExprFromHtmlAttrValue(
-  jsCode: string
+  jsCode: string,
 ): EventHandler {
   const eventHandler = new EventHandler({ interactions: [] });
   const interaction = new Interaction({
@@ -424,8 +456,8 @@ function tplRef(tpl: TplNode): WITplRef {
     type: isKnownTplComponent(tpl)
       ? "TplComponent"
       : isKnownTplSlot(tpl)
-      ? "TplSlot"
-      : "TplTag",
+        ? "TplSlot"
+        : "TplTag",
     uuid: tpl.uuid,
   };
 }
@@ -438,30 +470,24 @@ function applyVariantStyles(
   unsafeStyles: Record<string, string>,
   animations: Animation[] | null,
   ccRegistry: CodeComponentsRegistry,
-  htmlToTplErrors: WIError[]
+  htmlToTplErrors: WIError[],
 ) {
   const vs = vtm.ensureVariantSetting(tpl, variantCombo);
-  // Only styles Studio allows on this tpl may enter the RuleSet; the rest are
-  // dropped and reported in errors.
-  const { valid, invalid } = validateStylesForTpl(
-    safeStyles,
+  const { invalid } = applySanitizedTplStyles({
     tpl,
-    vtm.effectiveRsh(tpl, variantCombo),
-    ccRegistry
-  );
-  RSH(vs.rs, tpl).merge(valid);
-  const invalidProps = Object.keys(invalid);
-  if (invalidProps.length > 0) {
+    vs,
+    effectiveRsh: vtm.effectiveRsh(tpl, variantCombo),
+    ccRegistry,
+    safe: safeStyles,
+    unsafe: unsafeStyles,
+  });
+  if (invalid.length > 0) {
     htmlToTplErrors.push({
       code: "styles-not-applicable",
       tpl: tplRef(tpl),
-      props: invalidProps,
+      props: invalid,
       variantDesc: toVariantComboKey(variantCombo),
     });
-  }
-
-  if (Object.keys(unsafeStyles).length > 0) {
-    vs.attrs["style"] = code(JSON.stringify(unsafeStyles));
   }
 
   vs.rs.animations = animations;
@@ -469,7 +495,7 @@ function applyVariantStyles(
 
 function findMatchingScreenVariant(
   site: Site,
-  screenVariantInCombo: WIScreenVariant
+  screenVariantInCombo: WIScreenVariant,
 ) {
   const activeScreenGroup = site.activeScreenVariantGroup;
   const orderedScreenVariants = activeScreenGroup
@@ -505,9 +531,10 @@ async function wiTreeToTpl(
     vtm: VariantTplMgr;
     appCtx: AppCtx;
     errors: WIError[];
-  }
+    pageHrefs: boolean;
+  },
 ) {
-  const { site, vtm, appCtx, errors } = opts;
+  const { site, vtm, appCtx, errors, pageHrefs } = opts;
   const tplImageAssetMap = new Map<
     TplTag,
     {
@@ -516,10 +543,18 @@ async function wiTreeToTpl(
     }
   >();
   const tplVariantSettingsData = new Map<TplNode, TplVariantSettingsData[]>();
-  // Repetition (data-repeat) and visibility (data-visibility / data-visible-if),
-  // are both applied in finalize.
+  // Repetition (data-repeat), visibility (data-visibility / data-visible-if)
+  // and mixins (data-mixins) are all applied in finalize.
   const tplRepeatData = new Map<TplNode, TplRepeatData>();
   const tplVisibilityData = new Map<TplNode, TplVisibilityData>();
+  const tplMixinsData = new Map<TplNode, string[]>();
+
+  function collectMixins(node: WIBase, tpl: TplNode) {
+    const uuids = node.attrs["data-mixins"]?.split(/\s+/).filter(Boolean);
+    if (uuids && uuids.length > 0) {
+      tplMixinsData.set(tpl, uuids);
+    }
+  }
 
   function collectDataRepeat(node: WIBase, tpl: TplNode) {
     const collectionStr = node.attrs["data-repeat"];
@@ -549,21 +584,22 @@ async function wiTreeToTpl(
     } else if (visibility !== undefined && visibility !== "visible") {
       throw new EvaluationError(
         `Invalid data-visibility value ${JSON.stringify(
-          visibility
-        )}. Expected "visible", "displayNone", or "notRendered"; use data-visible-if for a dynamic condition.`
+          visibility,
+        )}. Expected "visible", "displayNone", or "notRendered"; use data-visible-if for a dynamic condition.`,
       );
     }
   }
 
-  /** Collect repetition + visibility bindings authored via `data-*` attributes. */
+  /** Collect repetition, visibility and mixin bindings authored via `data-*` attributes. */
   function collectStructuralBindings(node: WIBase, tpl: TplNode) {
     collectDataRepeat(node, tpl);
     collectVisibility(node, tpl);
+    collectMixins(node, tpl);
   }
 
   function collectWIVariantData(
     node: Exclude<WIElement, WIFragment>,
-    tpl: TplNode
+    tpl: TplNode,
   ) {
     // Container layout defaults don't apply to text and slots nodes.
     const defaultStyles: Record<string, string> =
@@ -583,7 +619,7 @@ async function wiTreeToTpl(
 
     // Find base variant settings
     const baseVariantSetting = node.variantSettings.find(
-      isWIBaseVariantSettings
+      isWIBaseVariantSettings,
     );
 
     const baseStyles = {
@@ -649,11 +685,80 @@ async function wiTreeToTpl(
           mkEventHandlerExprFromHtmlAttrValue(value);
         continue;
       }
+      if (key === "href" && pageHrefs) {
+        try {
+          result[key] = interpolatedStringToHrefExpr(site, value);
+        } catch (e) {
+          if (!(e instanceof EvaluationError)) {
+            throw e;
+          }
+          errors.push({
+            code: "invalid-href",
+            path: node.path,
+            reason: e.message,
+          });
+        }
+        continue;
+      }
       result[key] = isDynamicValue(value)
         ? interpolatedStringToExpr(value)
         : value;
     }
     return result;
+  }
+
+  /**
+   * Builds a text-type TplTag from a WIText, in the same shape the canvas
+   * text editor saves.
+   */
+  function buildTextBlockTpl(node: WIText): TplTag {
+    const markers: NodeMarker[] = [];
+    let richText: RichText;
+    if (node.content.length === 1 && typeof node.content[0] === "string") {
+      richText = interpolatedStringToRichText(node.content[0]);
+    } else {
+      let text = "";
+      const addMarkerTpl = (markerTpl: TplTag) => {
+        markers.push(
+          new NodeMarker({
+            position: text.length,
+            length: nodeMarkerText.length,
+            tpl: markerTpl,
+          }),
+        );
+        text += nodeMarkerText;
+      };
+      for (const part of node.content) {
+        if (typeof part !== "string") {
+          addMarkerTpl(buildTextBlockTpl(part));
+        } else if (isDynamicValue(part)) {
+          const dynamicValTpl = vtm.mkTplTagX("span", {
+            type: TplTagType.Text,
+          });
+          vtm.ensureBaseVariantSetting(dynamicValTpl).text =
+            interpolatedStringToRichText(part);
+          addMarkerTpl(dynamicValTpl);
+        } else {
+          text += part;
+        }
+      }
+      richText = new RawText({ text, markers });
+    }
+
+    const tpl = vtm.mkTplTagX(
+      node.tag,
+      {
+        attrs: htmlAttrsToTplAttrs(node),
+        name: node.attrs["data-plasmic-name"],
+        type: TplTagType.Text,
+      },
+      // NodeMarker tpls are also the text block's normal children.
+      markers.map((m) => m.tpl),
+    );
+    vtm.ensureBaseVariantSetting(tpl).text = richText;
+    collectWIVariantData(node, tpl);
+    collectStructuralBindings(node, tpl);
+    return tpl;
   }
 
   async function rec(node: WIElement): Promise<TplNode[]> {
@@ -667,22 +772,13 @@ async function wiTreeToTpl(
     const tplName = node.attrs["data-plasmic-name"];
     const nodePath = node.path;
     if (node.type === "text") {
-      const tpl = vtm.mkTplTagX(node.tag, {
-        attrs: htmlAttrsToTplAttrs(node),
-        name: tplName,
-        type: TplTagType.Text,
-      });
-      const vs = vtm.ensureBaseVariantSetting(tpl);
-      vs.text = interpolatedStringToRichText(node.text);
-      collectWIVariantData(node, tpl);
-      collectStructuralBindings(node, tpl);
-      return [tpl];
+      return [buildTextBlockTpl(node)];
     }
 
     if (node.type === "svg") {
       const svgImage = await readAndSanitizeSvgXmlAsImage(
         appCtx,
-        node.outerHtml
+        node.outerHtml,
       );
 
       if (svgImage) {
@@ -690,7 +786,7 @@ async function wiTreeToTpl(
           appCtx,
           svgImage,
           undefined,
-          undefined
+          undefined,
         );
         if (!imageResult || !imageOpts) {
           errors.push({ code: "svg-upload-failed", path: nodePath });
@@ -743,16 +839,17 @@ async function wiTreeToTpl(
         for (const [propName, propValue] of Object.entries(node.props)) {
           // An invalid prop drops just that prop; the instance still inserts.
           getComponentArgFromHtmlProp(
+            site,
             component,
             componentName,
             propName,
             propValue,
-            nodePath
+            nodePath,
           ).match(
             ([param, argValue]) => {
               args[param.variable.name] = argValue;
             },
-            (error) => errors.push(error)
+            (error) => errors.push(error),
           );
         }
       }
@@ -760,7 +857,7 @@ async function wiTreeToTpl(
       if (node.slots) {
         for (const [slotName, slotChildren] of Object.entries(node.slots)) {
           const param = component.params.find(
-            (p) => paramToVarName(component, p) === toVarName(slotName)
+            (p) => paramToVarName(component, p) === toVarName(slotName),
           );
           if (!param) {
             errors.push({
@@ -803,8 +900,8 @@ async function wiTreeToTpl(
             tplVariantSettingsData.set(
               tpl,
               vsData.filter((vs) =>
-                vs.variantCombo.every((v) => v.type === "base")
-              )
+                vs.variantCombo.every((v) => v.type === "base"),
+              ),
             );
           }
         }
@@ -862,9 +959,9 @@ async function wiTreeToTpl(
         },
         (
           await Promise.all(
-            node.children.map(async (child) => await rec(child))
+            node.children.map(async (child) => await rec(child)),
           )
-        ).flat()
+        ).flat(),
       );
 
       collectWIVariantData(node, tpl);
@@ -884,6 +981,7 @@ async function wiTreeToTpl(
     tplVariantSettingsData,
     tplRepeatData,
     tplVisibilityData,
+    tplMixinsData,
   };
 }
 
@@ -894,7 +992,7 @@ async function wiTreeToTpl(
  */
 export function upsertAnimationSequences(
   animationSequences: WIAnimationSequence[],
-  opts: { site: Site }
+  opts: { site: Site },
 ): AnimationSequence[] {
   const { site } = opts;
   const result: AnimationSequence[] = [];
@@ -910,12 +1008,12 @@ export function upsertAnimationSequences(
           rs: mkRuleSet({
             values: camelCssPropsToKebab(wiKeyframe.safeStyles),
           }),
-        })
+        }),
     );
 
     const sequenceVarName = toVarName(sequence.name);
     const existingSequence = site.animationSequences.find(
-      (existing) => toVarName(existing.name) === sequenceVarName
+      (existing) => toVarName(existing.name) === sequenceVarName,
     );
 
     if (existingSequence) {
@@ -945,7 +1043,7 @@ export function upsertAnimationSequences(
  */
 export function wiAnimationsToSiteAnimations(
   wiAnimations: CssAnimation[],
-  opts: { site: Site }
+  opts: { site: Site },
 ): { animations: Animation[]; errors: WIError[] } {
   const { site } = opts;
   const animations: Animation[] = [];
@@ -959,7 +1057,7 @@ export function wiAnimationsToSiteAnimations(
     const animationSequence = animationSequences.find(
       (seq) =>
         seq.uuid === animSeqUuid ||
-        toVarName(seq.name) === toVarName(wiAnim.name)
+        toVarName(seq.name) === toVarName(wiAnim.name),
     );
 
     if (!animationSequence) {
@@ -977,7 +1075,7 @@ export function wiAnimationsToSiteAnimations(
         direction: wiAnim.direction,
         fillMode: wiAnim.fillMode,
         playState: wiAnim.playState,
-      })
+      }),
     );
   }
   return { animations, errors };
@@ -1009,11 +1107,12 @@ function splitStylesByAnimations(styles: Record<string, string>): {
  * Err (an `invalid-component-prop` WIError) on invalid prop name, slot params, or type mismatches.
  */
 export function getComponentArgFromHtmlProp(
+  site: Site,
   component: Component,
   componentName: string,
   propName: string,
   value: unknown,
-  path?: string
+  path?: string,
 ): Result<[Param, Expr], WIError> {
   const fail = (reason: string) =>
     err<[Param, Expr], WIError>({
@@ -1025,7 +1124,7 @@ export function getComponentArgFromHtmlProp(
     });
   const name = toVarName(propName);
   const param = component.params.find(
-    (p) => paramToVarName(component, p) === name
+    (p) => paramToVarName(component, p) === name,
   );
 
   if (!param) {
@@ -1034,7 +1133,7 @@ export function getComponentArgFromHtmlProp(
 
   if (isSlot(param)) {
     return fail(
-      "it is a slot — pass slot content as children, not as a data-prop attribute"
+      "it is a slot — pass slot content as children, not as a data-prop attribute",
     );
   }
 
@@ -1044,15 +1143,15 @@ export function getComponentArgFromHtmlProp(
 
   // Variant group handling
   const variantGroup = component.variantGroups.find(
-    (group) => group.param === param
+    (group) => group.param === param,
   );
   if (variantGroup) {
     if (isStandaloneVariantGroup(variantGroup)) {
       if (value !== true) {
         return fail(
           `it is a standalone variant toggle and expects true, got ${JSON.stringify(
-            value
-          )}`
+            value,
+          )}`,
         );
       }
       return ok([
@@ -1064,7 +1163,7 @@ export function getComponentArgFromHtmlProp(
       const variants: Variant[] = [];
       for (const v of values) {
         const variant = variantGroup.variants.find(
-          (vv) => toVarName(vv.name) === toVarName(`${v}`)
+          (vv) => toVarName(vv.name) === toVarName(`${v}`),
         );
         if (!variant) {
           return fail(`no variant matching ${JSON.stringify(`${v}`)}`);
@@ -1074,12 +1173,23 @@ export function getComponentArgFromHtmlProp(
       return ok([param, new VariantsRef({ variants })]);
     } else {
       const variant = variantGroup.variants.find(
-        (v) => toVarName(v.name) === toVarName(`${value}`)
+        (v) => toVarName(v.name) === toVarName(`${value}`),
       );
       if (!variant) {
         return fail(`no variant matching ${JSON.stringify(`${value}`)}`);
       }
       return ok([param, new VariantsRef({ variants: [variant] })]);
+    }
+  }
+
+  if (isKnownHrefType(param.type) && typeof value === "string") {
+    try {
+      return ok([param, interpolatedStringToHrefExpr(site, value)]);
+    } catch (e) {
+      if (!(e instanceof EvaluationError)) {
+        throw e;
+      }
+      return fail(e.message);
     }
   }
 
@@ -1100,13 +1210,13 @@ export function getComponentArgFromHtmlProp(
 
   if (isChoiceType(param.type)) {
     const options = param.type.options.map((opt) =>
-      typeof opt === "object" ? opt.value : opt
+      typeof opt === "object" ? opt.value : opt,
     );
     if (!options.some((opt) => opt === value)) {
       return fail(
         `must be one of ${JSON.stringify(options)} but got ${JSON.stringify(
-          value
-        )}`
+          value,
+        )}`,
       );
     }
     return ok([param, code(JSON.stringify(value))]);
@@ -1114,19 +1224,19 @@ export function getComponentArgFromHtmlProp(
 
   if (isMultiChoiceType(param.type)) {
     const options = param.type.options.map((opt) =>
-      typeof opt === "object" ? opt.value : opt
+      typeof opt === "object" ? opt.value : opt,
     );
     if (!Array.isArray(value)) {
       return fail(`expects an array but got ${JSON.stringify(value)}`);
     }
     const invalidValues = value.filter(
-      (v) => !options.some((opt) => opt === v)
+      (v) => !options.some((opt) => opt === v),
     );
     if (invalidValues.length > 0) {
       return fail(
         `values must be from ${JSON.stringify(
-          options
-        )} but got invalid values: ${JSON.stringify(invalidValues)}`
+          options,
+        )} but got invalid values: ${JSON.stringify(invalidValues)}`,
       );
     }
     return ok([param, code(JSON.stringify(value))]);
@@ -1150,8 +1260,8 @@ export function getComponentArgFromHtmlProp(
     ) {
       return fail(
         `expects an array of [from, to] date strings but got ${JSON.stringify(
-          value
-        )}`
+          value,
+        )}`,
       );
     }
     return ok([param, codeLit(value as JsonValue)]);

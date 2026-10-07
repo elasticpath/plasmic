@@ -24,13 +24,9 @@ import {
 import { isUserProjectEditor } from "@/wab/client/studio-ctx/StudioCtx";
 import { trackEvent } from "@/wab/client/tracking";
 import { ApiAppEndUserAccessRule, ApiProject } from "@/wab/shared/ApiSchema";
-import {
-  ensure,
-  isValidEmail,
-  withoutFalsy,
-  withoutNils,
-} from "@/wab/shared/common";
+import { ensure, withoutFalsy, withoutNils } from "@/wab/shared/common";
 import { DEVFLAGS } from "@/wab/shared/devflags";
+import { parseEmailAddress } from "@/wab/shared/email-address";
 import { DomainValidator } from "@/wab/shared/hosting";
 import { prodUrlForProject } from "@/wab/shared/project-urls";
 import { HTMLElementRefOf } from "@plasmicapp/react-web";
@@ -58,7 +54,7 @@ const GENERAL_ACCESS_TOOLTIP = (
 
 function PermissionsTab_(
   props: PermissionsTabProps,
-  ref: HTMLElementRefOf<"div">
+  ref: HTMLElementRefOf<"div">,
 ) {
   const { directoryId, project, appCtx, ...rest } = props;
 
@@ -67,7 +63,7 @@ function PermissionsTab_(
   const { roles, loading: loadingRoles } = useAppRoles(appCtx, project.id);
   const { accesses, mutate: mutateAccesses } = useAppAccessRules(
     appCtx,
-    project.id
+    project.id,
   );
   const { groups } = useDirectoryGroups(appCtx, directoryId);
 
@@ -77,24 +73,24 @@ function PermissionsTab_(
     useAppAuthConfig(appCtx, project.id);
 
   const accessesByEmail = accesses.filter(
-    (u): u is ApiAppEndUserAccessRule & { email: string } => "email" in u
+    (u): u is ApiAppEndUserAccessRule & { email: string } => "email" in u,
   );
   const accessesByExternalId = accesses.filter(
     (u): u is ApiAppEndUserAccessRule & { externalId: string } =>
-      "externalId" in u
+      "externalId" in u,
   );
 
   const accessesByGroup = accesses.filter(
     (u): u is ApiAppEndUserAccessRule & { directoryEndUserGroupId: string } =>
-      "directoryEndUserGroupId" in u
+      "directoryEndUserGroupId" in u,
   );
   const accessesByDomain = accesses.filter(
-    (u): u is ApiAppEndUserAccessRule & { domain: string } => "domain" in u
+    (u): u is ApiAppEndUserAccessRule & { domain: string } => "domain" in u,
   );
 
   async function changeAccessRole(
     access: ApiAppEndUserAccessRule,
-    newRoleId: string | undefined | null
+    newRoleId: string | undefined | null,
   ) {
     if (newRoleId) {
       await mutateAccesses(
@@ -112,7 +108,7 @@ function PermissionsTab_(
             }
             return u;
           }),
-        }
+        },
       );
 
       await mutateHostAppAuthData();
@@ -122,20 +118,20 @@ function PermissionsTab_(
   async function inviteElements(
     unfilteredEmails: string[],
     unfilteredDomains: string[],
-    unfilteredGroupIds: string[]
+    unfilteredGroupIds: string[],
   ) {
     const emails: string[] = [];
     unfilteredEmails.forEach((email) => {
       if (validator.isEmail(email)) {
         if (accessesByEmail.find((u) => u.email === email)) {
-          notification.warn({
+          notification.warning({
             message: `Email ${email} has already been added`,
           });
         } else {
           emails.push(email);
         }
       } else {
-        notification.warn({
+        notification.warning({
           message: `Email ${email} is not valid`,
         });
       }
@@ -145,14 +141,14 @@ function PermissionsTab_(
     unfilteredDomains.forEach((domain) => {
       if (domain.startsWith("@") && validator.isFQDN(domain.substring(1))) {
         if (accessesByDomain.find((u) => u.domain === domain)) {
-          notification.warn({
+          notification.warning({
             message: `Domain ${domain} has already been added`,
           });
         } else {
           domains.push(domain);
         }
       } else {
-        notification.warn({
+        notification.warning({
           message: `Domain ${domain} is not valid`,
         });
       }
@@ -162,7 +158,7 @@ function PermissionsTab_(
     unfilteredGroupIds.forEach((groupId) => {
       if (accessesByGroup.find((u) => u.directoryEndUserGroupId === groupId)) {
         const group = groups.find((g) => g.id === groupId);
-        notification.warn({
+        notification.warning({
           message: `Group ${group?.name} has already been added`,
         });
       } else {
@@ -215,7 +211,7 @@ function PermissionsTab_(
             isFake: true,
           })),
         ],
-      }
+      },
     );
 
     trackEvent(APP_AUTH_TRACKING_EVENT, {
@@ -234,7 +230,7 @@ function PermissionsTab_(
   }
 
   function tryGetGroupId(value: string) {
-    if (!(!isDomainEntry(value) && !isValidEmail(value))) {
+    if (!(!isDomainEntry(value) && !parseEmailAddress(value))) {
       return undefined;
     }
     const group = groups.find((g) => g.name === value);
@@ -243,9 +239,12 @@ function PermissionsTab_(
 
   async function inviteCurrentSelection() {
     await inviteElements(
-      invites.flatMap((invite) => (isValidEmail(invite) ? [invite] : [])),
+      invites.flatMap((invite) => {
+        const parsedEmail = parseEmailAddress(invite);
+        return parsedEmail ? [parsedEmail.normalized] : [];
+      }),
       invites.flatMap((invite) => (isDomainEntry(invite) ? [invite] : [])),
-      withoutNils(invites.map((invite) => tryGetGroupId(invite)))
+      withoutNils(invites.map((invite) => tryGetGroupId(invite))),
     );
   }
 
@@ -257,7 +256,7 @@ function PermissionsTab_(
       },
       {
         optimisticData: accesses.filter((u) => u.id !== access.id),
-      }
+      },
     );
 
     if ("email" in access) {
@@ -295,7 +294,7 @@ function PermissionsTab_(
         ),
         value: group.name,
       })),
-      isValidEmail(search.trim()) && {
+      parseEmailAddress(search.trim()) && {
         label: "Add " + search,
         value: search,
       },
@@ -304,12 +303,12 @@ function PermissionsTab_(
         value: search,
       },
     ]).filter(({ value }) => !invites.includes(value)),
-    ({ value }) => value
+    ({ value }) => value,
   );
 
   const [submitting, setSubmitting] = useState(false);
 
-  const anyEmails = invites.some((v) => isValidEmail(v));
+  const anyEmails = invites.some((v) => !!parseEmailAddress(v));
 
   const [selecting, setSelecting] = useState(false);
 
@@ -321,7 +320,7 @@ function PermissionsTab_(
     useGetDomainsForProject(project.id);
 
   const { data: releases, isLoading: loadingReleases } = useGetProjectReleases(
-    project.id
+    project.id,
   );
 
   if (loadingRoles || loadingDomains || loadingReleases) {
@@ -331,7 +330,7 @@ function PermissionsTab_(
   const prodUrl = prodUrlForProject(
     DEVFLAGS,
     project,
-    domainsResult?.domains ?? []
+    domainsResult?.domains ?? [],
   );
   const hasVersions = (releases ?? []).length > 0;
   const published = !!prodUrl && hasVersions;
@@ -480,7 +479,7 @@ function PermissionsTab_(
             }),
             ...accessesByGroup.map((access) => {
               const group = groups.find(
-                (g) => g.id === access.directoryEndUserGroupId
+                (g) => g.id === access.directoryEndUserGroupId,
               );
 
               if (!group) {
@@ -575,7 +574,7 @@ function PermissionsTab_(
                       ...appAuthConfig,
                       registeredRoleId: newRegisteredRoleId,
                     },
-                  }
+                  },
                 );
               }}
             />,

@@ -1,4 +1,6 @@
+import { getSerializableConnectionOptions } from "@/wab/server/db/DbCon";
 import { DbMgr } from "@/wab/server/db/DbMgr";
+import { LoaderBundleOutput } from "@/wab/server/loader/module-bundler";
 import {
   extractProjectId,
   mkVersionToSync,
@@ -10,7 +12,11 @@ import {
   loaderBundleCacheCounter,
   loaderCodegenCacheCounter,
 } from "@/wab/server/promstats";
+<<<<<<< HEAD
 import { withSpan, withTimeSpent } from "@/wab/server/util/apm-util";
+=======
+import { withSpan } from "@/wab/server/util/apm-util";
+>>>>>>> upstream/master
 import {
   tryGetS3CacheEntry,
   upsertS3CacheEntry,
@@ -27,7 +33,6 @@ import { unzip3 } from "@/wab/shared/collections";
 import { tuple } from "@/wab/shared/common";
 import { LocalizationKeyScheme } from "@/wab/shared/localization";
 import { createHash } from "crypto";
-import { getConnection } from "typeorm";
 
 /**
  * This is used for busting codegen caches.  You should increment this number if
@@ -47,8 +52,9 @@ import { getConnection } from "typeorm";
  * 20 - style token overrides
  * 21 - cached outputs with appDir=true include removed imports
  * 22 - placeholder render modules and css are no longer emitted for non-hostless code components
+ * 23 - normalize invalid code component identifiers in loader output
  */
-export const LOADER_CACHE_BUST = "22";
+export const LOADER_CACHE_BUST = "23";
 
 /**
  * This represents the version of the loader API wire format; should reflect the
@@ -77,14 +83,19 @@ export async function genPublishedLoaderCodeBundle(
     i18nKeyScheme: LocalizationKeyScheme | undefined;
     i18nTagPrefix: string | undefined;
     skipHead?: boolean;
-  }
+  },
 ) {
   const { projectVersions } = opts;
 
+<<<<<<< HEAD
   // EP: Fast path — check S3 for a pre-built bundle before any dep resolution
   // or DB work. Returns early on a warm hit; falls through on miss.
   const cachedBundle = await tryGetCachedPublishedBundle(projectVersions, opts);
   if (cachedBundle !== null) {
+=======
+  const cachedBundle = await tryGetCachedPublishedBundle(opts);
+  if (cachedBundle) {
+>>>>>>> upstream/master
     return cachedBundle;
   }
 
@@ -94,6 +105,7 @@ export async function genPublishedLoaderCodeBundle(
       ...(await resolveProjectDeps(dbMgr, projectVersions)),
       ...projectVersions,
     }),
+<<<<<<< HEAD
     undefined,
     {
       project_count: Object.keys(projectVersions).length,
@@ -102,6 +114,9 @@ export async function genPublishedLoaderCodeBundle(
         ([id, v]) => `${id}@${v.version}`
       ),
     }
+=======
+    `Project versions ${JSON.stringify(projectVersions)}`,
+>>>>>>> upstream/master
   );
 
   await ensureDevFlags(dbMgr);
@@ -120,7 +135,7 @@ export async function genPublishedLoaderCodeBundle(
       i18nKeyScheme: opts.i18nKeyScheme,
       i18nTagPrefix: opts.i18nTagPrefix,
       skipHead: opts.skipHead,
-    }
+    },
   );
 }
 
@@ -137,14 +152,14 @@ export async function genLatestLoaderCodeBundle(
     i18nKeyScheme: LocalizationKeyScheme | undefined;
     i18nTagPrefix: string | undefined;
     skipHead?: boolean;
-  }
+  },
 ) {
   const projectIdsBranches = opts.projectIdsBranches;
 
   const projectVersions = Object.fromEntries(
     projectIdsBranches.map(({ id, branchName }) => {
       return [id, mkVersionToSync(branchName ?? "latest")];
-    })
+    }),
   );
 
   const allProjectVersions = {
@@ -172,7 +187,7 @@ export async function genLatestLoaderCodeBundle(
       i18nKeyScheme: opts.i18nKeyScheme,
       i18nTagPrefix: opts.i18nTagPrefix,
       skipHead: opts.skipHead,
-    }
+    },
   );
 }
 
@@ -190,19 +205,23 @@ async function genLoaderCodeBundleForProjectVersions(
     i18nKeyScheme?: LocalizationKeyScheme;
     i18nTagPrefix: string | undefined;
     skipHead?: boolean;
-  }
+  },
 ) {
+<<<<<<< HEAD
   const exportOpts = makeExportOpts(opts); // EP: extracted helper
+=======
+  const exportOpts = makeExportOpts(opts);
+>>>>>>> upstream/master
 
   const codegenProject = async (
     projectId: string,
     version: string | undefined,
-    indirect: boolean
+    indirect: boolean,
   ) => {
     const res = await pool.exec("codegen", [
       {
         scheme: "blackbox",
-        connectionOptions: getConnection().options,
+        connectionOptions: getSerializableConnectionOptions(),
         projectId,
         exportOpts: exportOpts,
         maybeVersionOrTag: version,
@@ -221,10 +240,10 @@ async function genLoaderCodeBundleForProjectVersions(
         await Promise.all(
           Object.entries(projectVersions).map(async ([projectId, v]) => {
             const branches = await dbMgr.listBranchesForProject(
-              projectId as ProjectId
+              projectId as ProjectId,
             );
             const maybeBranch = branches.find(
-              (branch) => branch.name === v.version
+              (branch) => branch.name === v.version,
             );
 
             // If version is a branch name, we want to get the latest of that branch
@@ -252,7 +271,7 @@ async function genLoaderCodeBundleForProjectVersions(
                   [
                     CachedCodegenOutputBundle,
                     Record<string, string[]>,
-                    ComponentReference[]
+                    ComponentReference[],
                   ]
                 >({
                   bucket: LOADER_ASSETS_BUCKET,
@@ -278,13 +297,14 @@ async function genLoaderCodeBundleForProjectVersions(
               });
               if (!codegenCacheHit && opts.source === "live") {
                 logger().info(
-                  `Loader codegen cache miss for live request: ${codegenKey}`
+                  `Loader codegen cache miss for live request: ${codegenKey}`,
                 );
               }
               return codegenResult;
             }
-          })
+          }),
         ),
+<<<<<<< HEAD
       undefined,
       {
         platform: opts.platform,
@@ -294,11 +314,18 @@ async function genLoaderCodeBundleForProjectVersions(
         project_versions: JSON.stringify(projectVersions),
       }
     )
+=======
+      `Projects ${JSON.stringify({
+        ...projectVersions,
+        loaderVersion: opts.loaderVersion,
+      })}`,
+    ),
+>>>>>>> upstream/master
   );
 
   const mergedComponentDeps: Record<string, string[]> = Object.assign(
     {},
-    ...componentDeps
+    ...componentDeps,
   );
 
   const bundleProjects = async () => {
@@ -324,13 +351,13 @@ async function genLoaderCodeBundleForProjectVersions(
           await Promise.all(
             Object.entries(projectVersions).map(async ([p, v]) => {
               const branches = await dbMgr.listBranchesForProject(
-                p as ProjectId
+                p as ProjectId,
               );
               const versionIsBranchName = !!branches.find(
-                (branch) => branch.name === v.version
+                (branch) => branch.name === v.version,
               );
               return v.version !== "latest" && !versionIsBranchName;
-            })
+            }),
           )
         ).every((x) => x)
       ) {
@@ -355,7 +382,7 @@ async function genLoaderCodeBundleForProjectVersions(
         });
         if (!bundleCacheHit && opts.source === "live") {
           logger().info(
-            `Loader bundle cache miss for live request: ${bundleKey}`
+            `Loader bundle cache miss for live request: ${bundleKey}`,
           );
         }
         bundle.bundleKey = bundleKey;
@@ -364,6 +391,7 @@ async function genLoaderCodeBundleForProjectVersions(
         return await bundleProjects();
       }
     },
+<<<<<<< HEAD
     undefined,
     {
       platform: opts.platform,
@@ -376,6 +404,12 @@ async function genLoaderCodeBundleForProjectVersions(
         ([id, v]) => `${id}@${v.version}`
       ),
     }
+=======
+    `Projects ${JSON.stringify({
+      ...projectVersions,
+      loaderVersion: opts.loaderVersion,
+    })}`,
+>>>>>>> upstream/master
   );
   return result;
 }
@@ -495,7 +529,7 @@ function makeBundleBucketPath(opts: {
   }/ps=${projectSpecs.join(",")}/platform=${
     opts.platform
   }/browserOnly=${!!opts.browserOnly}/opts=${makeExportOptsKey(
-    opts.exportOpts
+    opts.exportOpts,
   )}`;
   return key;
 }
@@ -512,6 +546,73 @@ function makeExportOptsKey(opts: ExportOpts) {
   return createHash("sha256").update(str).digest("hex");
 }
 
+/** The subset of the loader options that feed into the codegen `ExportOpts`. */
+interface ExportOptsInputs {
+  platform?: string;
+  platformOptions: ExportPlatformOptions;
+  loaderVersion: number;
+  i18nKeyScheme?: LocalizationKeyScheme;
+  i18nTagPrefix: string | undefined;
+  skipHead?: boolean;
+}
+
+function makeExportOpts(opts: ExportOptsInputs): ExportOpts {
+  return {
+    ...LOADER_CODEGEN_OPTS_DEFAULTS,
+    platform: (opts.platform ??
+      LOADER_CODEGEN_OPTS_DEFAULTS.platform) as ExportOpts["platform"],
+    platformOptions: opts.platformOptions,
+    useComponentSubstitutionApi: true,
+    useGlobalVariantsSubstitutionApi: true,
+    useCodeComponentHelpersRegistry: opts.loaderVersion >= 10 ? true : false,
+    ...(opts.i18nKeyScheme && {
+      localization: {
+        keyScheme: opts.i18nKeyScheme ?? "content",
+        tagPrefix: opts.i18nTagPrefix,
+      },
+    }),
+    skipHead: opts.skipHead,
+  };
+}
+
+/**
+ * Probes the bundle cache before resolving deps or running codegen. Costs one
+ * extra S3 get on a miss, but lets a fully-cached published bundle skip all
+ * the db and worker-pool work that produces the very same key.
+ */
+async function tryGetCachedPublishedBundle(
+  opts: ExportOptsInputs & {
+    source: "prefill" | "live";
+    projectVersions: Record<string, VersionToSync>;
+    browserOnly: boolean;
+  },
+): Promise<LoaderBundleOutput | null> {
+  const exportOpts = makeExportOpts(opts);
+  const bundleKey = makeBundleBucketPath({
+    projectVersions: opts.projectVersions,
+    platform: exportOpts.platform,
+    loaderVersion: opts.loaderVersion,
+    browserOnly: opts.browserOnly,
+    exportOpts,
+  });
+  const cached = await withSpan("loader-bundle-cache-probe", async () =>
+    tryGetS3CacheEntry<LoaderBundleOutput>({
+      bucket: LOADER_ASSETS_BUCKET,
+      key: bundleKey,
+      deserialize: (str) => JSON.parse(str),
+    }),
+  );
+  if (!cached) {
+    // Leave the miss to be counted by the upsertS3CacheEntry call downstream,
+    // which probes the same key again before computing.
+    return null;
+  }
+  loaderBundleCacheCounter.inc({ result: "hit", source: opts.source });
+  cached.bundleKey = bundleKey;
+  return cached;
+}
+
 export const _testonly = {
   makeBundleBucketPath,
+  makeExportOpts,
 };

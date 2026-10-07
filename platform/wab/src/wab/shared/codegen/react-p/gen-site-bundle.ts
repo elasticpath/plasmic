@@ -1,4 +1,5 @@
 import { AppAuthProvider } from "@/wab/shared/ApiSchema";
+import { componentToDeepReferenced } from "@/wab/shared/cached-selectors";
 import {
   ComponentGenHelper,
   SiteGenHelper,
@@ -13,6 +14,7 @@ import { exportStyleTokens } from "@/wab/shared/codegen/style-tokens";
 import { ExportOpts, ProjectConfig } from "@/wab/shared/codegen/types";
 import { exportGlobalVariantGroup } from "@/wab/shared/codegen/variants";
 import {
+  CodeComponent,
   exportCodeComponentConfig,
   isCodeComponent,
   isFrameComponent,
@@ -24,52 +26,21 @@ import { CssVarResolver } from "@/wab/shared/core/styles";
 import { Component, Site } from "@/wab/shared/model/classes";
 import { computeSerializerSiteContext, exportReactPresentational } from ".";
 
-export function exportSiteComponents(
+export function getSiteComponentsToExport(
   site: Site,
   opts: {
-    scheme: "blackbox" | "plain";
-    projectConfig: ProjectConfig;
-    componentIdOrNames?: string[];
-    componentExportOpts: ExportOpts;
-    s3ImageLinks: Record<string, string>;
-    imagesToFilter: Set<string>;
+    componentIdOrNames?: readonly string[];
+    componentExportOpts: Pick<
+      ExportOpts,
+      "codeComponentStubs" | "hostLessComponentsConfig"
+    >;
     includePages: boolean;
-    isPlasmicHosted: boolean;
-    forceAllCsr: boolean;
-    appAuthProvider?: AppAuthProvider;
-  }
+  },
 ) {
-  const {
-    scheme,
-    projectConfig,
-    componentIdOrNames,
-    componentExportOpts,
-    s3ImageLinks,
-    imagesToFilter,
-    includePages,
-    isPlasmicHosted,
-    forceAllCsr,
-    appAuthProvider,
-  } = opts;
+  const { componentIdOrNames, componentExportOpts, includePages } = opts;
 
-  const siteGenHelper = new SiteGenHelper(site, false);
-  const siteCtx = computeSerializerSiteContext(site);
-
-  const cssVarResolver = new CssVarResolver(
-    siteGenHelper.allStyleTokensAndOverrides(),
-    siteGenHelper.allMixins(),
-    siteGenHelper.allImageAssets(),
-    site.activeTheme,
-    {
-      keepAssetRefs: ["files", "public-files"].includes(
-        opts.componentExportOpts.imageOpts.scheme
-      ),
-      useCssVariables: true,
-    }
-  );
-
-  // When componentIdOrNames is not specified, we don't sync component whose
-  // name starts with "_".
+  // When componentIdOrNames is not specified, don't sync components whose
+  // name start with "_".
   const includeComponent = (c: Component) => {
     if (isFrameComponent(c)) {
       return false;
@@ -77,7 +48,7 @@ export function exportSiteComponents(
     if (isCodeComponent(c)) {
       if (isHostLessCodeComponent(c)) {
         return componentExportOpts.hostLessComponentsConfig === "stub";
-      } else if (!opts.componentExportOpts.codeComponentStubs) {
+      } else if (!componentExportOpts.codeComponentStubs) {
         return false;
       }
     }
@@ -97,12 +68,85 @@ export function exportSiteComponents(
     return true;
   };
 
-  const components = site.components.filter(includeComponent);
+  return site.components.filter(includeComponent);
+}
+
+/** Code components whose imports can be emitted for the selected components. */
+export function getCodeComponentsUsedByExport(
+  site: Site,
+  components: readonly Component[],
+): CodeComponent[] {
+  const usedComponents = new Set<Component>(
+    site.globalContexts.map((tpl) => tpl.component),
+  );
+  for (const component of components) {
+    for (const referencedComponent of componentToDeepReferenced(
+      component,
+      true,
+    )) {
+      usedComponents.add(referencedComponent);
+    }
+  }
+  return site.components
+    .filter(isCodeComponent)
+    .filter((component) => usedComponents.has(component));
+}
+
+export function exportSiteComponents(
+  site: Site,
+  opts: {
+    scheme: "blackbox" | "plain";
+    projectConfig: ProjectConfig;
+    componentIdOrNames?: string[];
+    componentExportOpts: ExportOpts;
+    s3ImageLinks: Record<string, string>;
+    imagesToFilter: Set<string>;
+    includePages: boolean;
+    isPlasmicHosted: boolean;
+    forceAllCsr: boolean;
+    appAuthProvider?: AppAuthProvider;
+    siteGenHelper?: SiteGenHelper;
+  },
+) {
+  const {
+    scheme,
+    projectConfig,
+    componentIdOrNames,
+    componentExportOpts,
+    s3ImageLinks,
+    imagesToFilter,
+    includePages,
+    isPlasmicHosted,
+    forceAllCsr,
+    appAuthProvider,
+  } = opts;
+
+  const siteGenHelper = opts.siteGenHelper ?? new SiteGenHelper(site, false);
+  const siteCtx = computeSerializerSiteContext(site, siteGenHelper);
+
+  const cssVarResolver = new CssVarResolver(
+    siteGenHelper.allStyleTokensAndOverrides(),
+    siteGenHelper.allMixins(),
+    siteGenHelper.allImageAssets(),
+    site.activeTheme,
+    {
+      keepAssetRefs: ["files", "public-files"].includes(
+        opts.componentExportOpts.imageOpts.scheme,
+      ),
+      useCssVariables: true,
+    },
+  );
+
+  const components = getSiteComponentsToExport(site, {
+    componentIdOrNames,
+    componentExportOpts,
+    includePages,
+  });
 
   const genComponentBundle = (component: Component) => {
     const componentGenHelper = new ComponentGenHelper(
       siteGenHelper,
-      cssVarResolver
+      cssVarResolver,
     );
     if (scheme === "blackbox") {
       return exportReactPresentational(
@@ -115,15 +159,16 @@ export function exportSiteComponents(
         forceAllCsr,
         appAuthProvider,
         componentExportOpts,
-        siteCtx
+        siteCtx,
       );
     } else {
       return exportReactPlain(
+        siteGenHelper,
         component,
         site,
         projectConfig,
         componentExportOpts,
-        siteCtx
+        siteCtx,
       );
     }
   };
@@ -137,16 +182,20 @@ export function exportSiteComponents(
     .map(exportCodeComponentConfig);
 
   const customFunctionMetas = site.customFunctions.map((customFunction) =>
-    exportCustomFunctionConfig(customFunction)
+    exportCustomFunctionConfig(customFunction),
   );
 
   const globalVariantGroups = site.globalVariantGroups.filter(
-    (g) => g.variants.length > 0
+    (g) => g.variants.length > 0,
   );
   const globalVariantBundles = [...globalVariantGroups].map((vg) => {
     return exportGlobalVariantGroup(vg, componentExportOpts);
   });
-  const tokens = exportStyleTokens(projectConfig.projectId, site);
+  const tokens = exportStyleTokens(
+    projectConfig.projectId,
+    site,
+    siteGenHelper.makeTokenValueResolver(),
+  );
   const iconAssets = site.imageAssets
     .filter((x) => x.type === ImageAssetType.Icon && x.dataUri)
     .map((x) => {
@@ -159,7 +208,7 @@ export function exportSiteComponents(
             (x) =>
               x.type === ImageAssetType.Picture &&
               x.dataUri &&
-              !imagesToFilter.has(x.uuid)
+              !imagesToFilter.has(x.uuid),
           )
           .map((x) => {
             return exportPictureAsset(x, componentExportOpts);

@@ -1,3 +1,4 @@
+import { ssoEmailKey } from "@/wab/client/LocalStorageKey";
 import { NonAuthCtx, useNonAuthCtx } from "@/wab/client/app-ctx";
 import { isPlasmicPath } from "@/wab/client/cli-routes";
 import {
@@ -8,21 +9,20 @@ import "@/wab/client/components/pages/AuthForm.sass";
 import { IntakeFlowForm } from "@/wab/client/components/pages/IntakeFlowForm";
 import { LinkButton } from "@/wab/client/components/widgets";
 import { useAppCtx } from "@/wab/client/contexts/AppContexts";
-import { ssoEmailKey } from "@/wab/client/LocalStorageKey";
+import { getFormStringValues } from "@/wab/client/dom";
+import { Redirect } from "@/wab/client/route/Redirect";
+import { CaptchaError } from "@/wab/shared/ApiErrors/errors";
 import { ApiUser, UserId } from "@/wab/shared/ApiSchema";
 import { mkUuid, spawnWrapper } from "@/wab/shared/common";
 import { MAX_PASSWORD_LENGTH } from "@/wab/shared/password-policy";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
 import { Button, Divider, Input, notification } from "antd";
-import $ from "jquery";
 import * as React from "react";
 import { useState } from "react";
-import { Redirect } from "react-router-dom";
 import useSWR from "swr";
 
 const LazyPasswordStrengthBar = React.lazy(
-  () => import("@/wab/client/components/PasswordStrengthBar")
+  () => import("@/wab/client/components/PasswordStrengthBar"),
 );
 
 type Mode =
@@ -55,10 +55,10 @@ export function useAuthForm({
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [oauthFeedback, setOauthFeedback] = useState<undefined | Feedback>(
-    undefined
+    undefined,
   );
   const [formFeedback, setFormFeedback] = useState<undefined | Feedback>(
-    undefined
+    undefined,
   );
   const nextPath = getNextPath();
 
@@ -75,12 +75,14 @@ export function useAuthForm({
     setMode(nonAuthCtx, newMode);
   }
 
-  async function onSubmit(e) {
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    let { email, password, firstName, lastName } = $(e.target).serializeJSON();
-    email = email.trim();
-    firstName = firstName?.trim();
-    lastName = lastName?.trim();
+    const values = getFormStringValues(e.currentTarget);
+    const email = values.email?.trim() ?? "";
+    const password = values.password ?? "";
+    // Only rendered in "sign up" mode; the server rejects empty names.
+    const firstName = values.firstName?.trim() ?? "";
+    const lastName = values.lastName?.trim() ?? "";
     setSubmitting(true);
     try {
       await nonAuthCtx.api.refreshCsrfToken();
@@ -140,11 +142,19 @@ export function useAuthForm({
         }
       }
     } catch (err) {
-      setFormFeedback({
-        type: "error",
-        content: "Unexpected error occurred logging in.",
-      });
-      throw err;
+      if (err instanceof CaptchaError) {
+        setFormFeedback({
+          type: "error",
+          content:
+            "Browser verification failed. Please try again. Contact us if you are human and this issue persists.",
+        });
+      } else {
+        setFormFeedback({
+          type: "error",
+          content: "Unexpected error occurred logging in.",
+        });
+        throw err;
+      }
     } finally {
       setSubmitting(false);
     }
@@ -192,13 +202,12 @@ export function AuthForm({ mode, onLoggedIn }: AuthFormProps) {
         appCtx.router.routeTo(nextPath);
       } else {
         appCtx.router.routeTo(
-          fillRoute(
-            APP_ROUTES.survey,
+          APP_ROUTES.survey.fill(
             {},
             {
-              continueTo: fillRoute(APP_ROUTES.emailVerification, {}),
-            }
-          )
+              continueTo: APP_ROUTES.emailVerification.fill({}),
+            },
+          ),
         );
       }
     },
@@ -229,7 +238,7 @@ export function AuthForm({ mode, onLoggedIn }: AuthFormProps) {
                       content: "Unexpected error occurred logging in.",
                     });
                   }}
-                  googleAuthUrl={fillRoute(APP_ROUTES.googleAuth, {})}
+                  googleAuthUrl={APP_ROUTES.googleAuth.fill({})}
                 >
                   {mode === "sign in"
                     ? "Sign in with Google"
@@ -328,7 +337,7 @@ export function ResetPasswordForm() {
   const nonAuthCtx = useNonAuthCtx();
   const [submitting, setSubmitting] = React.useState(false);
   const [feedback, setFeedback] = React.useState<undefined | Feedback>(
-    undefined
+    undefined,
   );
   return (
     <IntakeFlowForm>
@@ -337,7 +346,9 @@ export function ResetPasswordForm() {
           className="LoginForm__Fields"
           onSubmit={async (e) => {
             e.preventDefault();
-            const { email, password } = $(e.target).serializeJSON();
+            const { email = "", password = "" } = getFormStringValues(
+              e.currentTarget,
+            );
 
             setSubmitting(true);
             const res = await nonAuthCtx.api.resetPassword({
@@ -431,7 +442,7 @@ export function ForgotPasswordForm() {
   const nonAuthCtx = useNonAuthCtx();
   const [submitting, setSubmitting] = React.useState(false);
   const [feedback, setFeedback] = React.useState<undefined | Feedback>(
-    undefined
+    undefined,
   );
   return (
     <IntakeFlowForm>
@@ -440,14 +451,31 @@ export function ForgotPasswordForm() {
           className="LoginForm__Fields"
           onSubmit={async (e) => {
             e.preventDefault();
-            const { email } = $(e.target).serializeJSON();
+            const { email = "" } = getFormStringValues(e.currentTarget);
             setSubmitting(true);
-            await nonAuthCtx.api.forgotPassword({ email: email.trim() });
-            setFeedback({
-              type: "success",
-              content: "Success! Check your email for instructions.",
-            });
-            setSubmitting(false);
+            try {
+              await nonAuthCtx.api.forgotPassword({ email: email.trim() });
+              setFeedback({
+                type: "success",
+                content: "Success! Check your email for instructions.",
+              });
+            } catch (err) {
+              if (err instanceof CaptchaError) {
+                setFeedback({
+                  type: "error",
+                  content:
+                    "Browser verification failed. Please try again. Contact us if you are human and this issue persists.",
+                });
+              } else {
+                setFeedback({
+                  type: "error",
+                  content: "Unexpected error occurred. Please try again.",
+                });
+                throw err;
+              }
+            } finally {
+              setSubmitting(false);
+            }
           }}
         >
           <FormFeedback feedback={feedback} />
@@ -478,12 +506,12 @@ export function SsoLoginForm(props: { onLoggedIn: () => void }) {
   const appCtx = useAppCtx();
   const [submitting, setSubmitting] = React.useState(false);
   const [feedback, setFeedback] = React.useState<undefined | Feedback>(
-    undefined
+    undefined,
   );
 
   const { mutate: mutatePreviousSsoEmail, data: previousSsoEmail } = useSWR(
     ssoEmailKey,
-    async () => await nonAuthCtx.api.getStorageItem(ssoEmailKey)
+    async () => await nonAuthCtx.api.getStorageItem(ssoEmailKey),
   );
 
   function setSelfInfo(user: ApiUser) {
@@ -513,7 +541,7 @@ export function SsoLoginForm(props: { onLoggedIn: () => void }) {
           className="LoginForm__Fields"
           onSubmit={async (e) => {
             e.preventDefault();
-            const { email } = $(e.target).serializeJSON();
+            const { email = "" } = getFormStringValues(e.currentTarget);
             setSubmitting(true);
             const ssoTest = await nonAuthCtx.api.isValidSsoEmail(email.trim());
             setSubmitting(false);
@@ -570,14 +598,14 @@ function setMode(nonAuthCtx: NonAuthCtx, newMode: Mode) {
   const nextPath = getNextPath();
   nonAuthCtx.router.routeTo(
     newMode === "sign in"
-      ? fillRoute(APP_ROUTES.login, {}, { continueTo: nextPath })
+      ? APP_ROUTES.login.fill({}, { continueTo: nextPath })
       : newMode === "sign up"
-      ? fillRoute(APP_ROUTES.signup, {}, { continueTo: nextPath })
-      : newMode === "sso"
-      ? fillRoute(APP_ROUTES.sso, {}, { continueTo: nextPath })
-      : newMode === "forgot password"
-      ? fillRoute(APP_ROUTES.forgotPassword, {}, { continueTo: nextPath })
-      : fillRoute(APP_ROUTES.resetPassword, {}, { continueTo: nextPath })
+        ? APP_ROUTES.signup.fill({}, { continueTo: nextPath })
+        : newMode === "sso"
+          ? APP_ROUTES.sso.fill({}, { continueTo: nextPath })
+          : newMode === "forgot password"
+            ? APP_ROUTES.forgotPassword.fill({}, { continueTo: nextPath })
+            : APP_ROUTES.resetPassword.fill({}, { continueTo: nextPath }),
   );
 }
 
@@ -585,13 +613,13 @@ function getNextPath() {
   const continueToPath = new URLSearchParams(location.search).get("continueTo");
   return continueToPath && isPlasmicPath(continueToPath)
     ? continueToPath
-    : fillRoute(APP_ROUTES.dashboard, {});
+    : APP_ROUTES.dashboard.fill({});
 }
 
 function createFakeUser(
   email: string,
   firstName: string,
-  lastName: string
+  lastName: string,
 ): ApiUser {
   return {
     id: mkUuid() as UserId,

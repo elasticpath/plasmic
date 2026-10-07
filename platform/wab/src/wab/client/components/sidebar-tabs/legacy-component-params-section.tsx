@@ -89,8 +89,8 @@ export const LegacyComponentParamsSection = observer(
                         { value: val },
                         {
                           component,
-                        }
-                      )
+                        },
+                      ),
                     );
                   }}
                   value={component.editableByContentEditor}
@@ -109,8 +109,8 @@ export const LegacyComponentParamsSection = observer(
                         { value: val },
                         {
                           component,
-                        }
-                      )
+                        },
+                      ),
                     );
                   }}
                   value={component.hiddenFromContentEditor}
@@ -119,34 +119,33 @@ export const LegacyComponentParamsSection = observer(
             </>
           ) : null}
 
-          {studioCtx.appCtx.appConfig.focusable &&
-            isReusableComponent(component) && (
-              <div className="SidebarSectionListItem justify-between">
-                <div className="labeled-item__label">
-                  <LabelWithDetailedTooltip
-                    tooltip={() =>
-                      "User of the studio must select this component element first before selecting any of its slot contents. Useful for components like Button, where the user is much more likely to intend to select the Button itself than its label."
-                    }
-                  >
-                    Selected before slot contents
-                  </LabelWithDetailedTooltip>
-                </div>
-                <BoolPropEditor
-                  onChange={(val) => {
-                    spawn(
-                      COMMANDS.component.settings.setTrapFocus.execute(
-                        studioCtx,
-                        { value: val },
-                        {
-                          component,
-                        }
-                      )
-                    );
-                  }}
-                  value={component.trapsFocus}
-                />
+          {isReusableComponent(component) && (
+            <div className="SidebarSectionListItem justify-between">
+              <div className="labeled-item__label">
+                <LabelWithDetailedTooltip
+                  tooltip={() =>
+                    "User of the studio must select this component element first before selecting any of its slot contents. Useful for components like Button, where the user is much more likely to intend to select the Button itself than its label."
+                  }
+                >
+                  Selected before slot contents
+                </LabelWithDetailedTooltip>
               </div>
-            )}
+              <BoolPropEditor
+                onChange={(val) => {
+                  spawn(
+                    COMMANDS.component.settings.setTrapFocus.execute(
+                      studioCtx,
+                      { value: val },
+                      {
+                        component,
+                      },
+                    ),
+                  );
+                }}
+                value={component.trapsFocus}
+              />
+            </div>
+          )}
 
           {!metaDataOnly &&
             component.variantGroups.length > 0 &&
@@ -224,7 +223,7 @@ export const LegacyComponentParamsSection = observer(
                 addOrEditComponentMetadata(
                   component,
                   metaKeyAndValue.key,
-                  metaKeyAndValue.value
+                  metaKeyAndValue.value,
                 );
               }
             });
@@ -246,7 +245,7 @@ export const LegacyComponentParamsSection = observer(
         )}
         {isAdminTeamEmail(
           studioCtx.appCtx.selfInfo?.email,
-          studioCtx.appCtx.appConfig
+          studioCtx.appCtx.appConfig,
         ) && (
           <LabeledListItem
             className="mt-m p0"
@@ -273,7 +272,7 @@ export const LegacyComponentParamsSection = observer(
                         componentId: undefined,
                       });
                     }
-                  })
+                  }),
                 );
               }}
             />
@@ -293,7 +292,7 @@ export const LegacyComponentParamsSection = observer(
         )}
       </SidebarSection>
     );
-  }
+  },
 );
 
 function ParamsSection(props: {
@@ -370,8 +369,8 @@ const ParamRow = observer(function ParamRow(props: {
           onEdit={(val) => {
             spawn(
               studioCtx.changeUnsafe(() =>
-                studioCtx.tplMgr().renameParam(component, param, val)
-              )
+                studioCtx.tplMgr().renameParam(component, param, val),
+              ),
             );
           }}
           labelFactory={(_props) => (
@@ -413,10 +412,10 @@ const ParamRow = observer(function ParamRow(props: {
                       param.type,
                       val,
                       undefined,
-                      undefined
+                      undefined,
                     );
                     return ok();
-                  })
+                  }),
                 );
               }}
             />
@@ -473,12 +472,12 @@ const MetadataRow = observer(function MetadataRow(props: {
                     addOrEditComponentMetadata(
                       component,
                       newKey,
-                      component.metadata[metadataKey]
+                      component.metadata[metadataKey],
                     );
                     removeComponentMetadata(component, metadataKey);
                   }
                 }
-              })
+              }),
             );
           }}
           labelFactory={(_props) => (
@@ -492,7 +491,7 @@ const MetadataRow = observer(function MetadataRow(props: {
             spawn(
               studioCtx.changeUnsafe(() => {
                 addOrEditComponentMetadata(component, metadataKey, newValue);
-              })
+              }),
             );
           }}
           labelFactory={(_props) => (
@@ -513,7 +512,7 @@ const MetadataRow = observer(function MetadataRow(props: {
 function makeParamMenu(
   studioCtx: StudioCtx,
   component: Component,
-  param: Param
+  param: Param,
 ) {
   return (
     <Menu>
@@ -551,7 +550,7 @@ function makeParamMenu(
 function makeMetadataMenu(
   studioCtx: StudioCtx,
   component: Component,
-  metadataKey: string
+  metadataKey: string,
 ) {
   return (
     <Menu>

@@ -1,4 +1,3 @@
-import { CopilotPromptInput } from "@/wab/client/components/copilot/CopilotPromptInput";
 import { Icon } from "@/wab/client/components/widgets/Icon";
 import NewComponentItem from "@/wab/client/components/widgets/NewComponentItem";
 import NewComponentSection from "@/wab/client/components/widgets/NewComponentSection";
@@ -29,15 +28,12 @@ export type NewPageInfo =
       type: "template";
       componentName: string;
       projectId: string;
-    }
-  | {
-      name: string;
-      type: "copilot";
-      prompt: string;
     };
 
-interface NewPageModalProps
-  extends Omit<DefaultNewComponentModalProps, "children"> {
+interface NewPageModalProps extends Omit<
+  DefaultNewComponentModalProps,
+  "children"
+> {
   onSubmit: (info: NewPageInfo) => void;
   onCancel: () => void;
   studioCtx: StudioCtx;
@@ -66,7 +62,6 @@ function NewPageModal(props: NewPageModalProps) {
   const showDefaultPageTemplates =
     pageTemplatesGroups.length === 0 ||
     !studioCtx.getCurrentUiConfig().hideDefaultPageTemplates;
-  const uiCopilotEnabled = studioCtx.uiCopilotEnabled();
 
   const getNewPageName = (defaultName: string) => {
     return !pageInfo.name ||
@@ -109,8 +104,7 @@ function NewPageModal(props: NewPageModalProps) {
         props: {
           "data-test-id": "prompt-submit",
           htmlType: "submit",
-          disabled:
-            !pageInfo.name || (pageInfo.type === "copilot" && !pageInfo.prompt),
+          disabled: !pageInfo.name,
         },
       }}
       showTemplates={true}
@@ -135,38 +129,6 @@ function NewPageModal(props: NewPageModalProps) {
               setPageInfo({ type: "dynamic", name: getNewPageName("NewPage") });
             }}
           />
-          {uiCopilotEnabled && (
-            <NewComponentItem
-              isSelected={pageInfo.type === "copilot"}
-              title="Copilot page"
-              imgUrl={"https://jovial-poitras-57edb1.netlify.app/blank.png"}
-              onClick={() => {
-                setPageInfo({
-                  type: "copilot",
-                  prompt: pageInfo.type === "copilot" ? pageInfo.prompt : "",
-                  name: getNewPageName("NewPage"),
-                });
-              }}
-            />
-          )}
-        </NewComponentSection>
-      )}
-      {pageInfo.type === "copilot" && (
-        <NewComponentSection title="Copilot Prompt">
-          <CopilotPromptInput
-            showImageUpload={false}
-            textAreaInput={{
-              value: pageInfo.prompt,
-              placeholder: "Describe the page you want to create...",
-              rows: 3,
-              autoFocus: true,
-              onChange: (e) =>
-                setPageInfo((prev) => ({
-                  ...prev,
-                  prompt: e.target.value ?? "",
-                })),
-            }}
-          />
         </NewComponentSection>
       )}
       {pageTemplatesGroups.map((group, idx) => (
@@ -176,7 +138,7 @@ function NewPageModal(props: NewPageModalProps) {
         >
           {(
             group.items.filter(
-              (c) => c.type === "insertable-templates-item"
+              (c) => c.type === "insertable-templates-item",
             ) as InsertableTemplatesItem[]
           ).map((comp) => {
             return (
@@ -206,18 +168,21 @@ function NewPageModal(props: NewPageModalProps) {
                       icon={EyeIcon}
                       onClick={async () => {
                         await studioCtx.projectDependencyManager.fetchInsertableTemplate(
-                          comp.projectId
+                          comp.projectId,
                         );
                         const template =
                           studioCtx.projectDependencyManager.getInsertableTemplate(
-                            comp
+                            comp,
                           );
                         if (!template) {
                           return;
                         }
                         const route = APP_ROUTES.projectFullPreview.pattern
                           .replace(":projectId", comp.projectId)
-                          .replace(":previewPath*", template.component.uuid);
+                          .replace(
+                            "{/*previewPath}",
+                            `/${template.component.uuid}`,
+                          );
                         window.open(route, "_blank");
                       }}
                     />

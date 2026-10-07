@@ -14,6 +14,7 @@ export type CopilotPromptInputProps = DefaultCopilotPromptInputProps &
     | "imageUploadIcon"
     | "imageUploadContainer"
     | "runPromptBtn"
+    | "stopBtn"
     | "textAreaInput"
     | "modelOverrideInput"
     | "systemPromptInput"
@@ -21,7 +22,7 @@ export type CopilotPromptInputProps = DefaultCopilotPromptInputProps &
 
 function CopilotPromptInput_(
   props: CopilotPromptInputProps,
-  ref: HTMLElementRefOf<"div">
+  ref: HTMLElementRefOf<"div">,
 ) {
   return <PlasmicCopilotPromptInput root={{ ref }} {...props} />;
 }

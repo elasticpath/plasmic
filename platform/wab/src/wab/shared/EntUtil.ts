@@ -2,6 +2,7 @@
 //  allow granting this on workspaces/projects, only on teams.
 
 import type { Project, ProjectRevision } from "@/wab/server/entities/Entities";
+import { ApiProject } from "@/wab/shared/ApiSchema";
 import {
   MinimalRevisionInfo,
   PkgVersionInfoMeta,
@@ -21,7 +22,7 @@ const accessLevelOrderAsc = [
 export type AccessLevel = (typeof accessLevelOrderAsc)[number];
 
 const grantableAccessLevels = accessLevelOrderAsc.filter(
-  (level) => level !== "blocked"
+  (level) => level !== "blocked",
 );
 
 export type GrantableAccessLevel = (typeof grantableAccessLevels)[number];
@@ -47,7 +48,7 @@ export function accessLevelRank(a: AccessLevel) {
   return accessLevelOrderAsc.indexOf(a);
 }
 
-export function isUnownedProject(project: SiteInfo | Project) {
+export function isUnownedProject(project: SiteInfo | Project | ApiProject) {
   return !project.createdById && project.readableByPublic;
 }
 
@@ -55,7 +56,7 @@ export function isUnownedProject(project: SiteInfo | Project) {
  * Type guard to check if a value is a PkgVersionInfoMeta
  */
 export function isPkgVersionInfoMeta(
-  value: PkgVersionInfoMeta | MinimalRevisionInfo
+  value: PkgVersionInfoMeta | MinimalRevisionInfo,
 ): value is PkgVersionInfoMeta {
   return "pkgId" in value;
 }
@@ -64,7 +65,7 @@ export function isPkgVersionInfoMeta(
  * Type guard to check if a value is a ProjectRevision
  */
 export function isProjectRevision(
-  value: PkgVersionInfoMeta | MinimalRevisionInfo
+  value: PkgVersionInfoMeta | MinimalRevisionInfo,
 ): value is ProjectRevision {
   return "revision" in value;
 }

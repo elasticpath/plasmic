@@ -12,6 +12,7 @@ import {
   DefaultLivePopOutButtonProps,
   PlasmicLivePopOutButton,
 } from "@/wab/client/plasmic/plasmic_kit_top_bar/PlasmicLivePopOutButton";
+import { useHistory } from "@/wab/client/route/HistoryProvider";
 import { useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { useForceUpdate } from "@/wab/client/useForceUpdate";
 import { getFrameHeight } from "@/wab/shared/Arenas";
@@ -19,12 +20,11 @@ import { spawn } from "@/wab/shared/common";
 import { getPublicUrl, getStaticBaseUrl } from "@/wab/shared/urls";
 import { observer } from "mobx-react";
 import * as React from "react";
-import { useHistory } from "react-router";
 
 type LivePopOutButtonProps = DefaultLivePopOutButtonProps;
 
 const LivePopOutButton = observer(function LivePopOutButton(
-  props: LivePopOutButtonProps
+  props: LivePopOutButtonProps,
 ) {
   const history = useHistory();
   const studioCtx = useStudioCtx();
@@ -54,14 +54,14 @@ const LivePopOutButton = observer(function LivePopOutButton(
                     (location.search ?? "") +
                     (location.hash ?? ""),
                 },
-                "*"
+                "*",
               );
 
               reset();
               const frame = previewCtx.popup?.frames[0];
               frameRef.current = frame || null;
               await onLoad();
-            })()
+            })(),
           );
           break;
         case "popstate":
@@ -89,7 +89,7 @@ const LivePopOutButton = observer(function LivePopOutButton(
     const vc = studioCtx.focusedViewCtx();
     if (vc && !isLiveMode(history.location.pathname)) {
       windowOptions += `,width=${vc.arenaFrame().width},height=${getFrameHeight(
-        vc.arenaFrame()
+        vc.arenaFrame(),
       )}`;
     }
 
@@ -105,7 +105,7 @@ const LivePopOutButton = observer(function LivePopOutButton(
         const popup = window.open(
           `${studioUrl}/static/popup.html#${hostUrl}`,
           "_blank",
-          windowOptions
+          windowOptions,
         );
         if (popup) {
           await previewCtx.setPopup(popup);
@@ -117,7 +117,7 @@ const LivePopOutButton = observer(function LivePopOutButton(
           // the component for now 😐
           forceUpdate();
         }
-      })()
+      })(),
     );
   };
 
@@ -132,13 +132,13 @@ const LivePopOutButton = observer(function LivePopOutButton(
   const setFrameColor = React.useCallback(
     (
       frame: React.MutableRefObject<Window | null>,
-      color: string | null | undefined
+      color: string | null | undefined,
     ) => {
       if (frame?.current?.document?.body?.style) {
         frame.current.document.body.style.backgroundColor = color ?? "";
       }
     },
-    []
+    [],
   );
 
   useFrameBgColor(frameRef, previewCtx, setFrameColor);

@@ -1,15 +1,15 @@
 import { APP_AUTH_TRACKING_EVENT } from "@/wab/client/app-auth/constants";
 import { AppCtx } from "@/wab/client/app-ctx";
 import ActivityTab from "@/wab/client/components/app-auth/ActivityTab";
+import AuthConfig from "@/wab/client/components/app-auth/AuthConfig";
+import DirectoryConfig from "@/wab/client/components/app-auth/DirectoryConfig";
+import PermissionsTab from "@/wab/client/components/app-auth/PermissionsTab";
+import SettingsTab from "@/wab/client/components/app-auth/SettingsTab";
 import {
   useAppAuthConfig,
   useMutateHostAppAuthData,
   useTeamDirectories,
 } from "@/wab/client/components/app-auth/app-auth-contexts";
-import AuthConfig from "@/wab/client/components/app-auth/AuthConfig";
-import DirectoryConfig from "@/wab/client/components/app-auth/DirectoryConfig";
-import PermissionsTab from "@/wab/client/components/app-auth/PermissionsTab";
-import SettingsTab from "@/wab/client/components/app-auth/SettingsTab";
 import { Spinner, Tab, Tabs } from "@/wab/client/components/widgets";
 import Button from "@/wab/client/components/widgets/Button";
 import { Modal } from "@/wab/client/components/widgets/Modal";
@@ -17,6 +17,7 @@ import { useTopFrameCtx } from "@/wab/client/frame-ctx/top-frame-ctx";
 import { trackEvent } from "@/wab/client/tracking";
 import { ApiEndUserDirectory, ApiProject } from "@/wab/shared/ApiSchema";
 import { uniqueName, withoutNils } from "@/wab/shared/common";
+import { APP_ROUTES } from "@/wab/shared/route/app-routes";
 import React from "react";
 
 interface AppAuthSettingsModalProps {
@@ -39,7 +40,7 @@ function AppAuthSettings(props: AppAuthSettingsModalProps) {
   } = useAppAuthConfig(appCtx, project.id);
   const { directories, mutate: mutateTeamDirectories } = useTeamDirectories(
     appCtx,
-    teamId ?? undefined
+    teamId ?? undefined,
   );
   const mutateHostAppAuthData = useMutateHostAppAuthData(project.id);
   const [isSettingUp, setIsSettingUp] = React.useState(false);
@@ -74,7 +75,7 @@ function AppAuthSettings(props: AppAuthSettingsModalProps) {
           The current project is not associated with a team. Please move it to a
           team.
         </p>
-        <a href="/projects">Go to dashboard</a>
+        <a href={APP_ROUTES.dashboard.fill({})}>Go to dashboard</a>
       </Modal>
     );
   }
@@ -108,8 +109,8 @@ function AppAuthSettings(props: AppAuthSettingsModalProps) {
                   teamId,
                   uniqueName(
                     withoutNils(directories.map((d) => d.name)),
-                    `App "${project.name}" directory`
-                  )
+                    `App "${project.name}" directory`,
+                  ),
                 );
                 directoryId = directory.id;
                 await appCtx.api.upsertAppAuthConfig(project.id, {

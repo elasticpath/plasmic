@@ -17,13 +17,14 @@ import {
 } from "@/wab/shared/data-sources-meta/airtable-meta";
 import { DATA_SOURCE_QUERY_BUILDER_CONFIG } from "@/wab/shared/data-sources-meta/data-source-registry";
 import {
+  DataSourceError,
   Filters,
   FiltersLogic,
   LabeledValue,
   RawPagination,
-  buildQueryBuilderConfig,
   fillPagination,
 } from "@/wab/shared/data-sources-meta/data-sources";
+import { buildQueryBuilderConfig } from "@/wab/shared/data-sources/to-sql";
 import { CrudSorting } from "@pankod/refine-core";
 import {
   DataSourceSchema,
@@ -55,12 +56,12 @@ const JSON_LOGIC_TO_AIRTABLE_OPERATORS = {
 
 export function makeAirtableFetcher(
   dbCon: Connection,
-  source: AirtableDataSource
+  source: AirtableDataSource,
 ) {
   return new AirtableFetcher(
     dbCon,
     ensure(source.credentials.credentials, `Must specify credentials`),
-    source.settings.baseId
+    source.settings.baseId,
   );
 }
 
@@ -73,7 +74,7 @@ const fetchSchema = moize(
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
-      }
+      },
     );
     if (res.status === 401) {
       const data = await res.json();
@@ -85,7 +86,7 @@ const fetchSchema = moize(
     isPromise: true,
     maxAge: 10 * 1000, // 10 seconds cache
     maxArgs: 1,
-  }
+  },
 );
 
 function logicToFormula(logic: FiltersLogic, dateFields: Set<string>): Formula {
@@ -117,7 +118,7 @@ function logicToFormula(logic: FiltersLogic, dateFields: Set<string>): Formula {
     if (logic[operator].length === 3) {
       const reverseOperator = ensure(
         JSON_LOGIC_REVERSE_OPERATORS[operator],
-        () => `No reverse logic for operator ${operator}`
+        () => `No reverse logic for operator ${operator}`,
       );
       const value1 = processFieldValue({
         field: logic[operator][1].var,
@@ -133,7 +134,7 @@ function logicToFormula(logic: FiltersLogic, dateFields: Set<string>): Formula {
         [
           ensure(
             JSON_LOGIC_TO_AIRTABLE_OPERATORS[operator],
-            () => `No airtable operator for operator: ${operator}`
+            () => `No airtable operator for operator: ${operator}`,
           ),
           field,
           value2,
@@ -141,7 +142,7 @@ function logicToFormula(logic: FiltersLogic, dateFields: Set<string>): Formula {
         [
           ensure(
             JSON_LOGIC_TO_AIRTABLE_OPERATORS[reverseOperator],
-            () => `No airtable operator for operator: ${reverseOperator}`
+            () => `No airtable operator for operator: ${reverseOperator}`,
           ),
           field,
           value1,
@@ -156,7 +157,7 @@ function logicToFormula(logic: FiltersLogic, dateFields: Set<string>): Formula {
       return [
         ensure(
           JSON_LOGIC_TO_AIRTABLE_OPERATORS[operator],
-          () => `No airtable operator for operator: ${operator}`
+          () => `No airtable operator for operator: ${operator}`,
         ),
         field,
         value,
@@ -171,7 +172,7 @@ function filtersToAirtableFormula(filters?: Filters) {
   if (filters) {
     const builderConfig = buildQueryBuilderConfig(
       DATA_SOURCE_QUERY_BUILDER_CONFIG.airtable,
-      filters.fields
+      filters.fields,
     );
     logic = filters.tree
       ? toJsonLogicFormat(filters.tree, builderConfig)
@@ -185,8 +186,8 @@ function filtersToAirtableFormula(filters?: Filters) {
     new Set(
       Object.keys(fields).filter((field) => {
         return fields[field].type === "date";
-      })
-    )
+      }),
+    ),
   );
 
   return compile(formula);
@@ -198,7 +199,7 @@ export class AirtableFetcher {
   constructor(
     private dbCon: Connection,
     private credentials: string,
-    private baseId: string
+    private baseId: string,
   ) {}
 
   async getSchema(): Promise<DataSourceSchema> {
@@ -206,19 +207,16 @@ export class AirtableFetcher {
     return this.tryAndRefresh(async () => {
       const { data, statusCode } = await fetchSchema(
         this.baseId,
-        this.tokenData.accessToken
+        this.tokenData.accessToken,
       );
       if (data.error) {
-        const error = new Error(data.error.message);
-        (error as any).statusCode = statusCode;
-        throw error;
+        throw new DataSourceError(data.error.message, statusCode);
       }
       if (data.errors) {
-        const error = new Error(
-          data.errors.map((err) => err.message).join(",")
+        throw new DataSourceError(
+          data.errors.map((err) => err.message).join(","),
+          statusCode,
         );
-        (error as any).statusCode = statusCode;
-        throw error;
       }
       const dataSourceSchema: DataSourceSchema = {
         tables: (data.tables as any[]).map<TableSchema>((table) => ({
@@ -242,7 +240,7 @@ export class AirtableFetcher {
                 label: field.name,
                 type: AIRTABLE_TYPE_TO_BUILDER_TYPE[field.type] ?? "unknown",
                 readOnly: AIRTABLE_READONLY_TYPES.includes(field.type),
-              })
+              }),
             ),
           ],
         })),
@@ -337,7 +335,7 @@ export class AirtableFetcher {
             [FAKE_AIRTABLE_FIELD]: p.id,
           })),
         },
-        { paginate: opts.pagination }
+        { paginate: opts.pagination },
       );
     });
   }
@@ -352,7 +350,7 @@ export class AirtableFetcher {
     }
     return this.tryAndRefresh(async () => {
       const { fields } = await this.client(opts.resource).find(
-        opts.id.toString()
+        opts.id.toString(),
       );
       return this.processResult(opts.resource, {
         data: {
@@ -370,7 +368,7 @@ export class AirtableFetcher {
     await this.getAndCacheCredentials();
     return this.tryAndRefresh(async () => {
       const { id, fields } = await this.client(opts.resource).create(
-        opts.variables ?? {}
+        opts.variables ?? {},
       );
 
       return this.processResult(opts.resource, {
@@ -392,7 +390,7 @@ export class AirtableFetcher {
     await this.getAndCacheCredentials();
     return this.tryAndRefresh(async () => {
       const data = await this.client(opts.resource).create(
-        opts.variables.map((val) => ({ fields: val }))
+        opts.variables.map((val) => ({ fields: val })),
       );
       return this.processResult(opts.resource, {
         data: data.map((p) => ({
@@ -414,7 +412,7 @@ export class AirtableFetcher {
     return this.tryAndRefresh(async () => {
       const { fields, id } = await this.client(opts.resource).update(
         `${opts.variables[FAKE_AIRTABLE_FIELD]}`,
-        omit(opts.variables, FAKE_AIRTABLE_FIELD)
+        omit(opts.variables, FAKE_AIRTABLE_FIELD),
       );
 
       return this.processResult(opts.resource, {
@@ -450,7 +448,7 @@ export class AirtableFetcher {
         opts.variables.map((v) => ({
           id: v[FAKE_AIRTABLE_FIELD],
           fields: omit(v, FAKE_AIRTABLE_FIELD),
-        }))
+        })),
       );
       return this.processResult(opts.resource, {
         data: data.map((p) => ({
@@ -471,7 +469,7 @@ export class AirtableFetcher {
     }
     return this.tryAndRefresh(async () => {
       const { fields } = await this.client(opts.resource).destroy(
-        opts.id.toString()
+        opts.id.toString(),
       );
       return this.processResult(opts.resource, {
         data: {
@@ -489,7 +487,7 @@ export class AirtableFetcher {
     await this.getAndCacheCredentials();
     return this.tryAndRefresh(async () => {
       const data = await this.client(opts.resource).destroy(
-        opts.ids.map(String)
+        opts.ids.map(String),
       );
 
       return this.processResult(opts.resource, {
@@ -530,7 +528,7 @@ export class AirtableFetcher {
   private async processResult(
     resource: string,
     result: Omit<SingleRowResult, "schema"> | Omit<ManyRowsResult, "schema">,
-    opts?: { paginate?: RawPagination }
+    opts?: { paginate?: RawPagination },
   ): Promise<SingleRowResult | ManyRowsResult> {
     if (opts?.paginate) {
       (result as ManyRowsResult).paginate = fillPagination(opts.paginate);
@@ -565,7 +563,7 @@ const AIRTABLE_TYPE_TO_BUILDER_TYPE = {
 } as const;
 
 export async function fetchBases(
-  oauthToken: OauthToken
+  oauthToken: OauthToken,
 ): Promise<LabeledValue[]> {
   let tokens = oauthToken.token;
   const req = async () => {
@@ -588,7 +586,7 @@ export async function fetchBases(
         ({
           value: base.id,
           label: base.name,
-        } as LabeledValue)
+        }) as LabeledValue,
     );
   };
   return tryAndRefresh(req, oauthToken.id, oauthToken.token, (newTokens) => {
@@ -600,7 +598,7 @@ async function tryAndRefresh(
   req: () => Promise<any>,
   oauthTokenId: string,
   token: TokenData,
-  resolve?: (newTokens: TokenData) => void
+  resolve?: (newTokens: TokenData) => void,
 ) {
   try {
     const data = await req();
@@ -625,7 +623,7 @@ async function refreshAndUpdateToken(oauthTokenId: string, token: TokenData) {
     await mgr.waitLockTransactionResource(oauthTokenId);
     const currentToken = ensure(
       await mgr.getOauthTokenById(oauthTokenId),
-      "OauthToken must exist"
+      "OauthToken must exist",
     );
     if (
       currentToken.token.accessToken !== token.accessToken ||
@@ -649,8 +647,8 @@ async function refreshAndUpdateToken(oauthTokenId: string, token: TokenData) {
             refreshToken,
           });
           await resolve({ accessToken, refreshToken });
-        }
-      )
+        },
+      ),
     );
   });
 }

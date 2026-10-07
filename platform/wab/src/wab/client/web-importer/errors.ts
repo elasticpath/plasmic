@@ -9,7 +9,7 @@ export class WIImportFailedError extends CustomError {
   constructor(
     public readonly reason: "invalid-html" | "nothing-to-insert",
     public readonly errors: WIError[],
-    message: string
+    message: string,
   ) {
     super(message);
   }
@@ -63,6 +63,7 @@ export type WIError =
       reason: string;
     }
   | { code: "svg-upload-failed"; path: string }
+  | { code: "invalid-href"; path: string; reason: string }
   | {
       code: "invalid-style-declaration";
       prop: string;
@@ -85,6 +86,7 @@ export type WIError =
       selector?: string;
     }
   | { code: "unknown-animation"; animation: string }
+  | { code: "unknown-mixin"; tpl: WITplRef; mixin: string }
   | {
       code: "svg-size-fallback";
       path: string;
@@ -116,11 +118,11 @@ export function formatWIError(error: WIError): string {
       }.`;
     case "invalid-data-props":
       return `Ignored data-props on component "${error.component}"${pathAt(
-        error.path
+        error.path,
       )}: ${error.reason}. The component was inserted without props.`;
     case "unknown-component":
       return `Skipped component "${error.component}"${pathAt(
-        error.path
+        error.path,
       )}: not found ${
         error.projectId
           ? `in imported project "${error.projectId}"`
@@ -132,7 +134,7 @@ export function formatWIError(error: WIError): string {
       }"${pathAt(error.path)}: ${error.reason}.`;
     case "unknown-slot":
       return `Skipped content for slot "${error.slot}"${pathAt(
-        error.path
+        error.path,
       )}: component "${error.component}" has no such slot.`;
     case "invalid-slot-target":
       return `Skipped <slot-target>${pathAt(error.path)}: ${error.reason}.`;
@@ -140,9 +142,11 @@ export function formatWIError(error: WIError): string {
       return `Skipped slot content${pathAt(error.path)}: ${error.reason}.`;
     case "svg-upload-failed":
       return `Skipped SVG${pathAt(error.path)}: failed to process the image.`;
+    case "invalid-href":
+      return `Dropped href${pathAt(error.path)}: ${error.reason}.`;
     case "invalid-style-declaration":
       return `Dropped invalid style "${error.prop}: ${error.value}"${pathAt(
-        error.path
+        error.path,
       )}${error.reason ? ` (${error.reason})` : ""}.`;
     case "styles-not-applicable":
       return `Dropped styles not applicable to ${error.tpl.type} uuid=${
@@ -160,9 +164,11 @@ export function formatWIError(error: WIError): string {
         : `Skipped invalid @keyframes "${error.sequence}".`;
     case "unknown-animation":
       return `Dropped animation "${error.animation}": no matching animation sequence in this project.`;
+    case "unknown-mixin":
+      return `Dropped mixin "${error.mixin}" on ${error.tpl.type} uuid=${error.tpl.uuid}: no matching mixin in this project or its direct imports.`;
     case "svg-size-fallback":
       return `SVG${pathAt(
-        error.path
+        error.path,
       )} has no usable width/height; defaulted to ${error.fallback}.`;
     case "invalid-css":
       return `CSS parse issue: ${error.message}.`;

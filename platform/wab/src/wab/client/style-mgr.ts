@@ -94,7 +94,7 @@ export interface UpsertStyleChanges {
         tpl: TplNode;
         updateDependentVSs?: boolean;
         updateChildren?: boolean;
-      }
+      },
     ]
   >;
   deletedVariantSettings?: ReadonlyArray<[VariantSetting, TplNode]>;
@@ -241,7 +241,7 @@ export class StyleMgr {
           ...this.dirtyComponents.keys(),
         ]
           .map((c) => getComponentDisplayName(c))
-          .join(", ")}`
+          .join(", ")}`,
     );
 
     // Clear all active animation previews before resetting styles
@@ -262,7 +262,7 @@ export class StyleMgr {
       () =>
         `resetStyles added dirty components: ${[...this.dirtyComponents.keys()]
           .map((c) => getComponentDisplayName(c))
-          .join(", ")}`
+          .join(", ")}`,
     );
   }
 
@@ -274,7 +274,7 @@ export class StyleMgr {
           ...this.dirtyComponents.keys(),
         ]
           .map((c) => getComponentDisplayName(c))
-          .join(", ")}`
+          .join(", ")}`,
     );
     assert(this.upsertedVSs.size === 0, () => `Found stale upsertedVSs`);
 
@@ -284,7 +284,7 @@ export class StyleMgr {
           tplChildren(opts.tpl).forEach(
             (child) =>
               isTplVariantable(child) &&
-              this.upsertDependentRuleSets(child, vs.variants)
+              this.upsertDependentRuleSets(child, vs.variants),
           );
         }
         if (opts.updateDependentVSs) {
@@ -297,7 +297,7 @@ export class StyleMgr {
 
     if (changes.deletedVariantSettings) {
       changes.deletedVariantSettings.forEach(([vs, tpl]) =>
-        this.deleteRuleSet(tpl, vs)
+        this.deleteRuleSet(tpl, vs),
       );
     }
 
@@ -321,7 +321,7 @@ export class StyleMgr {
 
     if (changes.rulesReorderedComponents) {
       changes.rulesReorderedComponents.forEach((comp) =>
-        this.reorderRules(comp)
+        this.reorderRules(comp),
       );
     }
 
@@ -331,7 +331,7 @@ export class StyleMgr {
       () =>
         `upsertStyles added dirty components: ${[...this.dirtyComponents.keys()]
           .map((c) => getComponentDisplayName(c))
-          .join(", ")}`
+          .join(", ")}`,
     );
 
     this.upsertedVSs.clear();
@@ -339,7 +339,7 @@ export class StyleMgr {
 
   private upsertDependentRuleSets(tpl: TplNode, combo: VariantCombo) {
     getDependentVariantSettings(tpl.vsettings, combo).forEach((vs) =>
-      this.upsertRuleSet(tpl, vs)
+      this.upsertRuleSet(tpl, vs),
     );
   }
 
@@ -355,7 +355,7 @@ export class StyleMgr {
     const upsertStyleSheet = (
       id: string,
       styleText: string,
-      version?: number
+      version?: number,
     ) => {
       let style = doc.getElementById(id);
       if (!style) {
@@ -386,15 +386,15 @@ export class StyleMgr {
             }). Only know of: ${site.projectDependencies
               .filter((d) => this.depToStyleText.has(d))
               .map((d) => `${d.name} v${d.version} (uuid: ${d.uuid})`)
-              .join(", ")}`
-        )
+              .join(", ")}`,
+        ),
       );
     }
 
     upsertStyleSheet(
       "plasmic-vars",
       this.varsStyleText.styleText,
-      this.varsStyleText.version
+      this.varsStyleText.version,
     );
 
     const neededComps = componentToDeepReferenced(rootComp, true);
@@ -406,7 +406,7 @@ export class StyleMgr {
       upsertStyleSheet(
         `plasmic-comp-${comp.uuid}`,
         compStyle.styleText,
-        compStyle.version
+        compStyle.version,
       );
     }
 
@@ -430,14 +430,14 @@ export class StyleMgr {
         () =>
           `Component ${getComponentDisplayName(component)} (uuid: ${
             component.uuid
-          }) is not in site.components`
+          }) is not in site.components`,
       );
 
       const vsRules = xSetDefault(this.componentToVsRules, component, () => []);
       for (const [vs, tpl] of extractComponentVariantSettings(
         site,
         component,
-        true
+        true,
       )) {
         this.updateMixinToRs(tpl, vs);
         vsRules.push({
@@ -456,8 +456,8 @@ export class StyleMgr {
       this.componentToVsRules.get(component),
       () =>
         `Missing VsRules for component ${getComponentDisplayName(
-          component
-        )} (uuid: ${component.uuid})`
+          component,
+        )} (uuid: ${component.uuid})`,
     ).filter((vs) => isActiveVariantSetting(this.studioCtx.site, vs.vs));
     const existingVersion =
       maybe(this.componentToStyleText.get(component), (x) => x.version) ?? 0;
@@ -474,7 +474,7 @@ export class StyleMgr {
         const animationPreviewRules = this.generateAnimationPreviewRules(
           animationPreview.valKey,
           animationPreview.animations,
-          animationPreview.frameValOwnerKey
+          animationPreview.frameValOwnerKey,
         );
         styleText += "\n" + animationPreviewRules;
       }
@@ -500,11 +500,11 @@ export class StyleMgr {
       [
         ...site.themes,
         ...withoutNils(
-          walkDependencyTree(site, "all").map((dep) => dep.site.activeTheme)
+          walkDependencyTree(site, "all").map((dep) => dep.site.activeTheme),
         ),
       ],
       site.imageAssets,
-      site.activeTheme ?? null
+      site.activeTheme ?? null,
     );
     this.varsStyleText = {
       styleText,
@@ -531,8 +531,8 @@ export class StyleMgr {
         allDepMixins,
         site.themes,
         allDepImageAssets,
-        null
-      )
+        null,
+      ),
     );
 
     // We bake in the css var references for the dep site's components,
@@ -547,7 +547,7 @@ export class StyleMgr {
       [],
       [],
       allDepImageAssets,
-      site.activeTheme
+      site.activeTheme,
     );
 
     const allDepComponents = allComponents(site, { includeDeps: "all" });
@@ -560,7 +560,7 @@ export class StyleMgr {
       for (const [vs, tpl] of extractComponentVariantSettings(
         site,
         component,
-        true
+        true,
       )) {
         allRules.push(...genCanvasRules(compHelper, tpl, vs));
       }
@@ -580,7 +580,7 @@ export class StyleMgr {
       assert(
         isFrameRootTplComponent(site, tpl) ||
           (isTplComponent(tpl) && isContextCodeComponent(tpl.component)),
-        () => `No owningComponent found for Tpl ${tpl.uuid}`
+        () => `No owningComponent found for Tpl ${tpl.uuid}`,
       );
       return;
     }
@@ -630,7 +630,7 @@ export class StyleMgr {
       assert(
         isFrameRootTplComponent(site, tpl) ||
           (isTplComponent(tpl) && isContextCodeComponent(tpl.component)),
-        () => `No owningComponent found for Tpl ${tpl.uuid}`
+        () => `No owningComponent found for Tpl ${tpl.uuid}`,
       );
       return;
     }
@@ -656,7 +656,7 @@ export class StyleMgr {
       for (const [vs2, _tpl] of extractComponentVariantSettings(
         site,
         component,
-        false
+        false,
       )) {
         this.upsertedVSs.add(vs2);
       }
@@ -666,7 +666,7 @@ export class StyleMgr {
 
       const compGenHelper = new ComponentGenHelper(
         new SiteGenHelper(site, true),
-        undefined
+        undefined,
       );
       const rules = genCanvasRules(compGenHelper, tpl, vs);
       const vsRules = xSetDefault(this.componentToVsRules, component, () => []);
@@ -685,7 +685,7 @@ export class StyleMgr {
             ? [tpl.vsettings[0]]
             : sortedVariantSettings(
                 tpl.vsettings,
-                makeVariantComboSorter(site, component)
+                makeVariantComboSorter(site, component),
               );
         const curVsIndex = sortedVsettings.findIndex((x) => x === vs);
 
@@ -746,7 +746,7 @@ export class StyleMgr {
     mixins: Map<
       Mixin,
       { updateDependentVSs?: boolean; updateTplChildren?: boolean }
-    >
+    >,
   ) {
     for (const [mixin, opts] of mixins) {
       const refs = this.fixAndGetMixinRefs(mixin);
@@ -756,7 +756,7 @@ export class StyleMgr {
             tplChildren(tpl).forEach(
               (child) =>
                 isTplVariantable(child) &&
-                this.upsertDependentRuleSets(child, vs.variants)
+                this.upsertDependentRuleSets(child, vs.variants),
             );
           }
           if (opts.updateDependentVSs) {
@@ -786,7 +786,7 @@ export class StyleMgr {
 
       const isDefaultStyle = site.activeTheme?.defaultStyle.uuid === mixin.uuid;
       const style = (site.activeTheme?.styles || []).find(
-        (s) => s.style.uuid === mixin.uuid
+        (s) => s.style.uuid === mixin.uuid,
       );
       if (!style && !isDefaultStyle) {
         // Can't find a ThemeStyle corresponding to the given mixin.  Weird?
@@ -837,14 +837,14 @@ export class StyleMgr {
         .map(([tpl, vss]) =>
           tuple(
             tpl,
-            Array.from(vss).filter((vs) => vs.rs.mixins.includes(mixin))
-          )
+            Array.from(vss).filter((vs) => vs.rs.mixins.includes(mixin)),
+          ),
         )
         .filter(([_tpl, vss]) => vss.length > 0);
 
       this.mixinToVs.set(
         mixin,
-        new Map(validRefs.map(([tpl, vss]) => tuple(tpl, new Set(vss))))
+        new Map(validRefs.map(([tpl, vss]) => tuple(tpl, new Set(vss)))),
       );
       return validRefs;
     }
@@ -896,7 +896,7 @@ export class StyleMgr {
   private generateAnimationPreviewRules(
     valKey: string,
     animations: Animation[],
-    frameValOwnerKey: string
+    frameValOwnerKey: string,
   ): string {
     const rules: string[] = [];
 
@@ -919,12 +919,12 @@ export class StyleMgr {
         .map(
           (anim) =>
             `${makeAnimationKeyframeCssVarName(
-              anim.sequence
-            )}: ${getAnimationSequenceIdentifier(anim.sequence)};`
+              anim.sequence,
+            )}: ${getAnimationSequenceIdentifier(anim.sequence)};`,
         )
         .join(" ");
       rules.push(
-        `${selector} { ${animVarDecls} animation: ${animationProp}; }`
+        `${selector} { ${animVarDecls} animation: ${animationProp}; }`,
       );
     }
 
@@ -965,7 +965,7 @@ export class StyleMgr {
     // frames that may share the same base variant class.
     const frameValOwnerKey = ensure(
       focusedViewCtx.valState().maybeValUserRoot()?.valOwner,
-      "ValOwner must exist"
+      "ValOwner must exist",
     ).key;
 
     const key = this.makeAnimationKey(tpl);
@@ -1000,7 +1000,9 @@ export class StyleMgr {
     if (animatedElement) {
       try {
         await Promise.all(
-          animatedElement.getAnimations().map((animation) => animation.finished)
+          animatedElement
+            .getAnimations()
+            .map((animation) => animation.finished),
         );
       } catch (error) {
         // When an animation is cancelled the Promise rejects with AbortError.
@@ -1048,7 +1050,7 @@ export class StyleMgr {
 }
 
 export function summaryToStyleChanges(
-  summary: ChangeSummary
+  summary: ChangeSummary,
 ): UpsertStyleChanges | undefined {
   const resetCssVars = [
     CssVarsChangeType.CssVarsOnly,
@@ -1071,7 +1073,7 @@ export function summaryToStyleChanges(
   return {
     variantSettings: Array.from(summary.updatedRuleSets.entries()),
     deletedVariantSettings: Array.from(
-      summary.deletedVariantSettings.entries()
+      summary.deletedVariantSettings.entries(),
     ),
     resetCssVars,
     regenMixins: summary.regenMixins,

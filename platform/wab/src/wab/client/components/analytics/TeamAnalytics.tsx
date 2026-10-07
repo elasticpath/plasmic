@@ -12,12 +12,12 @@ import {
   DefaultTeamAnalyticsProps,
   PlasmicTeamAnalytics,
 } from "@/wab/client/plasmic/plasmic_kit_analytics/PlasmicTeamAnalytics";
-import { ensure } from "@/wab/shared/common";
+import { useHistory, useLocation } from "@/wab/client/route/HistoryProvider";
 import { TeamId } from "@/wab/shared/ApiSchema";
+import { ensure } from "@/wab/shared/common";
 import { HTMLElementRefOf } from "@plasmicapp/react-web";
-import moment from "moment";
+import dayjs from "dayjs";
 import * as React from "react";
-import { useHistory, useLocation } from "react-router";
 
 export interface TeamAnalyticsProps extends DefaultTeamAnalyticsProps {
   teamId: TeamId;
@@ -25,7 +25,7 @@ export interface TeamAnalyticsProps extends DefaultTeamAnalyticsProps {
 
 function TeamAnalytics_(
   props: TeamAnalyticsProps,
-  ref: HTMLElementRefOf<"div">
+  ref: HTMLElementRefOf<"div">,
 ) {
   const history = useHistory();
   const location = useLocation();
@@ -33,7 +33,7 @@ function TeamAnalytics_(
   const { teamId } = props;
 
   const changeParamsAndNavigate = (
-    params: Record<string, string | undefined>
+    params: Record<string, string | undefined>,
   ) => {
     const newParams = new URLSearchParams(location.search);
     Object.keys(params).forEach((key) => {
@@ -93,10 +93,10 @@ function TeamAnalytics_(
   const extractTimeRange = (): TimeRange => {
     const fromStr = searchParams.get(TeamAnalyticsFilterParams.TimeRangeFrom);
     const from = fromStr
-      ? moment(fromStr)
-      : moment().subtract(1, "month").startOf("month");
+      ? dayjs(fromStr)
+      : dayjs().subtract(1, "month").startOf("month");
     const toStr = searchParams.get(TeamAnalyticsFilterParams.TimeRangeTo);
-    const to = toStr ? moment(toStr) : moment().endOf("day");
+    const to = toStr ? dayjs(toStr) : dayjs().endOf("day");
     return [from, to];
   };
 
@@ -138,7 +138,7 @@ function TeamAnalytics_(
 
     const team = ensure(
       appCtx.teams.find((t) => t.id === teamId),
-      "Team should exist for analytics"
+      "Team should exist for analytics",
     );
 
     if (team.featureTier?.analytics) {

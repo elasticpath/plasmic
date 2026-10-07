@@ -1,5 +1,7 @@
-import { switchType } from "@/wab/shared/common";
+import { toVarName } from "@/wab/shared/codegen/util";
+import { ensure, maybe, switchType } from "@/wab/shared/common";
 import {
+  TemplatedStringPropEditorValue,
   codeLit,
   customCode,
   deserCompositeExpr,
@@ -8,10 +10,9 @@ import {
   simplifyTemplatedString,
   stripParens,
   stripParensAndMaybeConvertToIife,
-  TemplatedStringPropEditorValue,
   tryExtractJson,
 } from "@/wab/shared/core/exprs";
-import { jsonParse, JsonValue } from "@/wab/shared/core/lang";
+import { JsonValue, jsonParse } from "@/wab/shared/core/lang";
 import {
   getDynamicStringSegments,
   isDynamicValue,
@@ -25,31 +26,42 @@ import {
   CustomCode,
   Expr,
   ExprText,
+  ObjectPath,
+  PageHref,
+  RawText,
+  RichText,
+  Site,
+  TemplatedString,
+  VarRef,
   isKnownCompositeExpr,
   isKnownExpr,
   isKnownObjectPath,
-  ObjectPath,
-  RawText,
-  RichText,
-  TemplatedString,
 } from "@/wab/shared/model/classes";
 import { parseJsCode } from "@/wab/shared/parser-utils";
-import { mapValues } from "lodash";
+import {
+  getMatchingPagePathParams,
+  renderPageHrefUrl,
+} from "@/wab/shared/utils/url-utils";
+import { mapValues, minBy } from "lodash";
 import { z } from "zod";
 
 /**
  * Description of copilot's dynamic-value input format, `{{ jsExpr }}` interpolation.
  * Content is static by default and a `{{ }}`-wrapped JS expression makes it dynamic.
  * `read` serializes exprs back in the same form (`exprToInterpolatedString`).
+ * Kept short since it's repeated on every dynamic field; the chat system prompt and the
+ * plasmic-designer skill explain the format.
  */
-export const interpolatedStringFormatDescription = `Values are static by default (plain text is NOT quoted). Wrap JS in {{ }} to bind it to runtime data (e.g. "{{ currentItem.name }}") or to pass a non-string literal (e.g. "{{ 5 }}").`;
+export const interpolatedStringFormatDescription = `Static unless JS is wrapped in {{ }} (runtime data, or a non-string literal like "{{ 5 }}"); plain text is not quoted.`;
 
 /**
  * Converts `{{ jsExpr }}` interpolated string to `Expr`. A string with no `{{ }}`,
  * or one that simplifies to static text, becomes a static `codeLit`, otherwise
  * `ObjectPath` / `CustomCode` / `TemplatedString`.
  */
-export function interpolatedStringToExpr(str: string): Expr {
+export function interpolatedStringToExpr(
+  str: string,
+): ObjectPath | CustomCode | TemplatedString {
   const simplified = parseInterpolatedString(str);
   return typeof simplified === "string" ? codeLit(simplified) : simplified;
 }
@@ -59,7 +71,7 @@ export function interpolatedStringToExpr(str: string): Expr {
  * for repeat / visibility conditions. Throws EvaluationError otherwise.
  */
 export function interpolatedStringToCodeExpr(
-  str: string
+  str: string,
 ): ObjectPath | CustomCode {
   const expr = interpolatedStringToExpr(str.trim());
   if (isRealCodeExprEnsuringType(expr)) {
@@ -67,7 +79,7 @@ export function interpolatedStringToCodeExpr(
   }
   const badStr = JSON.stringify(str);
   throw new EvaluationError(
-    `Expected a JS expression (e.g. {{ $q.myQuery.data }}), not static text. Got: ${badStr}`
+    `Expected a JS expression (e.g. {{ $q.myQuery.data }}), not static text. Got: ${badStr}`,
   );
 }
 
@@ -88,7 +100,7 @@ export function interpolatedStringToRichText(str: string): RichText {
  * Throws `EvaluationError` on a malformed `{{ }}` body.
  */
 export function parseInterpolatedString(
-  str: string
+  str: string,
 ): TemplatedStringPropEditorValue {
   return simplifyTemplatedString(interpolatedStringToTemplatedString(str));
 }
@@ -107,7 +119,7 @@ export function codeToDynExpr(code: string): ObjectPath | CustomCode {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     throw new EvaluationError(
-      `Invalid interpolation: ${msg}. Code was: ${JSON.stringify(code)}`
+      `Invalid interpolation: ${msg}. Code was: ${JSON.stringify(code)}`,
     );
   }
   return customCode(code);
@@ -133,7 +145,7 @@ export function objectLiteralToExpr(input: string): Expr | undefined {
     const msg = e instanceof Error ? e.message : String(e);
     throw new EvaluationError(
       `Object/array arg values must be valid JSON with each dynamic leaf as a quoted {{ }} string, ` +
-        `e.g. { "url": "{{ $ctx.params.api }}", "method": "GET" }. Parse error: ${msg}`
+        `e.g. { "url": "{{ $ctx.params.api }}", "method": "GET" }. Parse error: ${msg}`,
     );
   }
   return serCompositeExprMaybe(jsonToValueOrExpr(json));
@@ -153,10 +165,7 @@ export function isObjectOrArrayLiteralInput(input: string): boolean {
 
 /** A JSON tree whose leaves may also be dynamic `Expr`s. */
 type ValueOrExpr =
-  | JsonValue
-  | Expr
-  | ValueOrExpr[]
-  | { [key: string]: ValueOrExpr };
+  JsonValue | Expr | ValueOrExpr[] | { [key: string]: ValueOrExpr };
 
 /** Replaces `{{ }}` string leaves in a JSON tree with dynamic `Expr`s. */
 function jsonToValueOrExpr(value: JsonValue): ValueOrExpr {
@@ -177,7 +186,7 @@ function jsonToValueOrExpr(value: JsonValue): ValueOrExpr {
  * Dynamic segments with simple member-access become ObjectPath instead of CustomCode.
  */
 export function interpolatedStringToTemplatedString(
-  str: string
+  str: string,
 ): TemplatedString {
   // Preserves leading/trailing whitespace in static content.
   // Only the `{{ }}` expression body is trimmed.
@@ -186,7 +195,7 @@ export function interpolatedStringToTemplatedString(
     text: segments.map((seg) =>
       isDynamicValue(seg)
         ? codeToDynExpr(seg.substring(2, seg.length - 2))
-        : seg
+        : seg,
     ),
   });
 }
@@ -211,11 +220,12 @@ function exprToInterpolation(expr: ObjectPath | CustomCode): string {
  * - Static string value -> raw string.
  * - `ObjectPath` / `CustomCode` -> `{{ jsExpr }}`.
  * - `TemplatedString` -> static parts as-is, dynamic parts as `{{ jsExpr }}`.
+ * - `VarRef` -> `{{ $props.varName }}` (its canvas evaluation form).
+ * - `PageHref` -> the page URL with dynamic params/query/fragment as `{{ }}`.
  *
  * Returns `undefined` for other exprs, which callers must skip:
  * - `RenderExpr` (slot content) shows in read as `<slot>` children.
- * - `EventHandler` are structured Interactions, and need their own read/write tool (TODO).
- * - `VarRef`, `PageHref`, have JS forms and can be included in the future (TODO).
+ * - `EventHandler` shows in read as the component's `interactions`.
  *
  * Data tokens are emitted as raw `$dataTokens_*` (no display-name transform).
  */
@@ -224,15 +234,88 @@ export function exprToInterpolatedString(expr: Expr): string | undefined {
     .when(TemplatedString, (templatedString) =>
       templatedString.text
         .map((seg) =>
-          typeof seg === "string" ? seg : exprToInterpolation(seg)
+          typeof seg === "string" ? seg : exprToInterpolation(seg),
         )
-        .join("")
+        .join(""),
     )
     .when([CustomCode, ObjectPath], (dynExpr) => {
       const json = tryExtractJson(dynExpr);
       return typeof json === "string" ? json : exprToInterpolation(dynExpr);
     })
+    .when(VarRef, (varRef) =>
+      varRef.variable
+        ? `{{ $props.${toVarName(varRef.variable.name)} }}`
+        : undefined,
+    )
+    .when(PageHref, (pageHref) => pageHrefToInterpolatedString(pageHref))
     .elseUnsafe(() => undefined);
+}
+
+/**
+ * Renders a `PageHref` as its URL with dynamic params/query/fragment inlined as
+ * `{{ }}`, e.g. `/products/{{ $state.slug }}?ref={{ $props.ref }}`.
+ *
+ * TODO: Support `PageHref.encode`, current ignored since it's not clear how to
+ * express it as an interpolated string.
+ */
+function pageHrefToInterpolatedString(pageHref: PageHref): string | undefined {
+  // Parts are all renderable, only a dangling VarRef reads as an empty segment.
+  return renderPageHrefUrl(
+    pageHref,
+    (value) => exprToInterpolatedString(value) ?? "",
+  );
+}
+
+/**
+ * Inverse of `pageHrefToInterpolatedString`: a root-relative href becomes a
+ * `PageHref` to the page whose path it matches, preferring the fewest params
+ * like routing does. Other hrefs convert with `interpolatedStringToExpr`.
+ * Throws `EvaluationError` when no page matches.
+ */
+export function interpolatedStringToHrefExpr(site: Site, href: string): Expr {
+  if (!href.startsWith("/") || href.startsWith("//")) {
+    return interpolatedStringToExpr(href);
+  }
+  // Mask each {{ }} so its code cannot split the URL.
+  const dynSegments: string[] = [];
+  const masked = getDynamicStringSegments(href)
+    .map((seg) =>
+      isDynamicValue(seg) ? `\uE000${dynSegments.push(seg) - 1}\uE001` : seg,
+    )
+    .join("");
+  const toExpr = (str: string) =>
+    interpolatedStringToExpr(
+      str.replace(/\uE000(\d+)\uE001/g, (_, i) => dynSegments[Number(i)]),
+    );
+  const [, path, search, fragment] = ensure(
+    /^([^?#]*)(?:\?([^#]*))?(?:#(.*))?$/.exec(masked),
+    "Every string matches",
+  );
+  const match = minBy(
+    site.components.flatMap((page) => {
+      const params =
+        page.pageMeta && getMatchingPagePathParams(page.pageMeta.path, path);
+      return params ? [{ page, params }] : [];
+    }),
+    ({ params }) => Object.keys(params).length,
+  );
+  if (!match) {
+    throw new EvaluationError(
+      `no page path matches "${href}"; once that page exists, set this href again`,
+    );
+  }
+  return new PageHref({
+    page: match.page,
+    params: mapValues(match.params, toExpr),
+    query: Object.fromEntries(
+      [...new URLSearchParams(search)].map(([key, value]) => [
+        key,
+        toExpr(value),
+      ]),
+    ),
+    fragment: fragment === undefined ? null : toExpr(fragment),
+    encode: true,
+  });
 }
 
 export function dataQueryArgSchema() {
@@ -248,7 +331,7 @@ export function dataQueryArgSchema() {
       value: z
         .string()
         .describe(
-          "Object/array value: a JSON literal whose dynamic leaves are inline `{{ }}` strings."
+          "Object/array value: a JSON literal whose dynamic leaves are inline `{{ }}` strings.",
         ),
     }),
   ]);
@@ -256,22 +339,20 @@ export function dataQueryArgSchema() {
 export type DataQueryArgJson = z.infer<ReturnType<typeof dataQueryArgSchema>>;
 
 /**
- * Placeholder for exprs that can't currently be rendered (e.g. VarRef, PageHref).
- * Emitted instead of "" so the arg doesn't read as empty static text.
- */
-const UNSUPPORTED_EXPR_SENTINEL = "{{ /* unsupported expression */ }}";
-
-/**
  * Serializes a function arg `Expr` back to the tagged form with `value` accepted by
  * `createDataQuery`. `CompositeExpr` for object/array, otherwise `InterpolatedString`.
+ * Returns `undefined` for exprs with no inline form, which callers must skip.
  */
-export function exprToDataQueryArg(name: string, expr: Expr): DataQueryArgJson {
+export function exprToDataQueryArg(
+  name: string,
+  expr: Expr,
+): DataQueryArgJson | undefined {
   if (isKnownCompositeExpr(expr)) {
     return {
       __type: "CompositeExpr",
       name,
       value: JSON.stringify(
-        exprLeavesToInterpolations(deserCompositeExpr(expr))
+        exprLeavesToInterpolations(deserCompositeExpr(expr)),
       ),
     };
   }
@@ -279,17 +360,17 @@ export function exprToDataQueryArg(name: string, expr: Expr): DataQueryArgJson {
   if (json !== undefined && typeof json === "object" && json !== null) {
     return { __type: "CompositeExpr", name, value: JSON.stringify(json) };
   }
-  return {
+  return maybe(exprToInterpolatedString(expr), (value) => ({
     __type: "InterpolatedString",
     name,
-    value: exprToInterpolatedString(expr) ?? UNSUPPORTED_EXPR_SENTINEL,
-  };
+    value,
+  }));
 }
 
 /** Recursively replaces `Expr` leaves of a deserialized object with `{{ }}`. */
 function exprLeavesToInterpolations(value: ValueOrExpr): JsonValue {
   if (isKnownExpr(value)) {
-    return exprToInterpolatedString(value) ?? UNSUPPORTED_EXPR_SENTINEL;
+    return exprToInterpolatedString(value) ?? null;
   }
   if (Array.isArray(value)) {
     return value.map(exprLeavesToInterpolations);

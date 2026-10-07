@@ -76,12 +76,12 @@ Notes:
   - we have more consistent control across platforms of which python we are relying on, which can have subtle effects on the chances of success of npm gyp builds. Plus, no more sudden switching python 3.8 to 3.9 (for ex) just because you updated MacOS!
 - You want asdf-direnv so that:
   - you get local virtualenv's managed by direnv (what's called "layouts" in direnv) - these local envs are not handled by asdf.
-  - things like `node --various-node-flags $(which yarn)` work as expected (used in various scripts).
+  - things like `node --various-node-flags $(which pnpm)` work as expected (used in various scripts).
   - plus the general benefits of avoiding shims.
 
 ## Docker setup
 
-By default, the source code is mounted as a shared volume with the host. The node modules are mounted separately, each having their own volume, in order to cache the npm install step and make sure we don't pollute the shared volume with the built artifacts.
+By default, the source code is mounted as a shared volume with the host. The node modules are mounted separately, each having their own volume, in order to cache dependency installation and make sure we don't pollute the shared volume with the built artifacts.
 
 This setup is quite heavy on CPU/RAM consumption, make sure you have **at least** 8GB of RAM available for the application container.
 
@@ -110,7 +110,7 @@ NODE_ENV=development
 
 ### 2. Installing dependencies
 
-Run `pnpm install` in the root folder, then `yarn install` in `./platform/wab`
+Run `pnpm install` in the root folder, then `pnpm install` in `./platform` (one pnpm workspace covering wab, canvas-packages, loader-bundle-env and loader-html-hydrate)
 
 #### Configuring Git and Git hooks
 
@@ -121,7 +121,7 @@ The root `pnpm install` also sets up the repository's Git hooks through Husky. I
 In the `./platform/wab` run:
 
 ```
-yarn seed
+pnpm seed
 ```
 
 ### 4. Application setup

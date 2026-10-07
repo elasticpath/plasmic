@@ -148,7 +148,7 @@ export class TplQuery {
     child: TplNode,
     newChildren: TplNode[],
     mutate: (children: TplNode[]) => void,
-    opts: { deepRemove: boolean }
+    opts: { deepRemove: boolean },
   ) {
     return switchType(child.parent)
       .when(null, () => {
@@ -159,6 +159,9 @@ export class TplQuery {
           newChild.parent = null;
         }
         mutate(content);
+        if (!content.includes(child)) {
+          TplQuery._cleanup(child, { deep: opts.deepRemove });
+        }
         owningComponent.tplTree = only(content);
         trackComponentRoot(owningComponent);
       })
@@ -172,7 +175,7 @@ export class TplQuery {
           arg.param.variable.name,
           newChildren,
           mutate,
-          opts
+          opts,
         );
       })
       .result();
@@ -185,7 +188,7 @@ export class TplQuery {
     parent: TplNode | SlotSelection,
     newChildren: TplNode[],
     func: (children: TplNode[]) => void,
-    opts: { deepRemove: boolean }
+    opts: { deepRemove: boolean },
   ) {
     const updateSlot = (tpl, slotName) =>
       TplQuery._updateSlot(tpl, slotName, newChildren, func, opts);
@@ -205,7 +208,7 @@ export class TplQuery {
           p.defaultContents,
           newChildren,
           func,
-          opts
+          opts,
         );
       })
 
@@ -221,7 +224,7 @@ export class TplQuery {
     slotName: string,
     newChildren: TplNode[],
     func: (children: TplNode[]) => void,
-    opts: { deepRemove: boolean }
+    opts: { deepRemove: boolean },
   ) {
     return $$$(parent).updateSlotArg(
       slotName,
@@ -236,7 +239,7 @@ export class TplQuery {
         const expr = ensureKnownRenderExpr(arg.expr);
         return { newChildren, updateArg: () => func(expr.tpl) };
       },
-      opts
+      opts,
     );
   }
 
@@ -245,14 +248,14 @@ export class TplQuery {
     children: TplNode[],
     newChildren: TplNode[],
     func: (children: TplNode[]) => void,
-    opts: { deepRemove: boolean }
+    opts: { deepRemove: boolean },
   ) {
     this._updateChildArrayDynamic(
       parent,
       () => children,
       newChildren,
       () => func(children),
-      opts
+      opts,
     );
   }
 
@@ -278,7 +281,7 @@ export class TplQuery {
     opts: {
       skipCycleCheck?: boolean;
       deepRemove: boolean;
-    }
+    },
   ) {
     const destOwningComponent = $$$(parent).tryGetOwningComponent();
     if (destOwningComponent && !opts.skipCycleCheck) {
@@ -321,7 +324,7 @@ export class TplQuery {
 
   private static checkComponentCycles(
     destOwningComponent: Component,
-    newChildren: TplNode[]
+    newChildren: TplNode[],
   ) {
     if (detectComponentCycle(destOwningComponent, newChildren)) {
       throw new ComponentCycleUserError();
@@ -390,7 +393,7 @@ export class TplQuery {
       const privateVariants = allStyleOrCodeComponentVariants(component).filter(
         (v) =>
           v.forTpl &&
-          $$$(v.forTpl).ancestors().toArrayOfTplNodes().includes(node)
+          $$$(v.forTpl).ancestors().toArrayOfTplNodes().includes(node),
       );
       if (privateVariants.length) {
         const tplMgr = new TplMgr({ site });
@@ -400,7 +403,7 @@ export class TplQuery {
 
     // Remove implicit states from this subtree
     flattenTpls(node).forEach((subNode) =>
-      removeImplicitStatesAfterRemovingTplNode(site, component, subNode)
+      removeImplicitStatesAfterRemovingTplNode(site, component, subNode),
     );
 
     // Remove all tplSlots in the subtree of node.
@@ -449,7 +452,7 @@ export class TplQuery {
                 tryRemove(contents, node);
               }
             },
-            { deepRemove: deep }
+            { deepRemove: deep },
           );
         })
         .result();
@@ -491,7 +494,7 @@ export class TplQuery {
         node,
         ungroupedItems,
         (contents) => replaceMultiple(contents, node, ungroupedItems),
-        { deepRemove: false }
+        { deepRemove: false },
       );
     }
   }
@@ -511,7 +514,7 @@ export class TplQuery {
           const index = L.indexOf(contents, node);
           return insert(contents, index + offset, toInsert);
         },
-        { deepRemove: false }
+        { deepRemove: false },
       );
     }
     return this;
@@ -543,7 +546,7 @@ export class TplQuery {
           insert(children, index, toInsert);
         }
       },
-      { deepRemove: false }
+      { deepRemove: false },
     );
     return this;
   }
@@ -568,8 +571,8 @@ export class TplQuery {
   clear() {
     common.check(
       this.nodes.every(
-        (node) => isKnownTplTag(node) || isKnownTplComponent(node)
-      )
+        (node) => isKnownTplTag(node) || isKnownTplComponent(node),
+      ),
     );
     for (const node of [...this.nodes]) {
       for (const child of $$$(node).children().toArray()) {
@@ -606,10 +609,10 @@ export class TplQuery {
             (ss) =>
               maybe(
                 $$$(
-                  ensure(ss.tpl, () => `Expected a tpl-backed SlotSelection`)
+                  ensure(ss.tpl, () => `Expected a tpl-backed SlotSelection`),
                 ).getSlotArg(ss.slotParam.variable.name),
-                (arg) => ensureKnownRenderExpr(arg.expr).tpl
-              ) || []
+                (arg) => ensureKnownRenderExpr(arg.expr).tpl,
+              ) || [],
           )
           .when(TplNode, (n) => {
             if (childrenOnly) {
@@ -618,8 +621,8 @@ export class TplQuery {
               return tplChildren(n);
             }
           })
-          .result()
-      )
+          .result(),
+      ),
     );
   }
 
@@ -636,12 +639,12 @@ export class TplQuery {
             .when(TplTag, (n) => [n])
             .when(TplComponent, (n) => [n])
             .when(TplSlot, (n) =>
-              $$$(n.defaultContents).layoutContent().toArrayOfTplNodes()
+              $$$(n.defaultContents).layoutContent().toArrayOfTplNodes(),
             )
             .elseUnsafe(() => []);
           return result;
-        })
-      )
+        }),
+      ),
     );
   }
 
@@ -653,7 +656,7 @@ export class TplQuery {
    *
    */
   layoutParent(
-    opts: { includeSelf?: boolean; throughSlot?: boolean } = {}
+    opts: { includeSelf?: boolean; throughSlot?: boolean } = {},
   ): TplQuery {
     const self = this.one();
     if (opts.includeSelf) {
@@ -664,7 +667,7 @@ export class TplQuery {
     } else {
       assert(
         !(self instanceof SlotSelection),
-        () => "No parent exists for SlotSelection"
+        () => "No parent exists for SlotSelection",
       );
     }
 
@@ -719,7 +722,7 @@ export class TplQuery {
 
   parentOrSlotSelection() {
     return $$$(
-      filterMapNils(this.nodes, (n) => getParentTplOrSlotSelection(n))
+      filterMapNils(this.nodes, (n) => getParentTplOrSlotSelection(n)),
     );
   }
 
@@ -758,7 +761,7 @@ export class TplQuery {
       (children) => {
         children.splice(0, children.length, ...newChildrenArr);
       },
-      { deepRemove: true }
+      { deepRemove: true },
     );
   }
 
@@ -769,7 +772,7 @@ export class TplQuery {
       node,
       [replacement],
       (children) => replace(children, node, replacement),
-      { deepRemove: true }
+      { deepRemove: true },
     );
     return this;
   }
@@ -781,7 +784,7 @@ export class TplQuery {
       node,
       replacements,
       (children) => replaceMultiple(children, node, replacements),
-      { deepRemove: true }
+      { deepRemove: true },
     );
     return this;
   }
@@ -789,13 +792,13 @@ export class TplQuery {
   _wrap(
     wrapper: TplTag | TplComponent | SlotSelection,
     wrappeds: TplNode[],
-    replaceOne: boolean
+    replaceOne: boolean,
   ) {
     const tplWrapper =
       wrapper instanceof SlotSelection
         ? ensure(
             wrapper.toTplSlotSelection().tpl,
-            () => `Expected tpl-backed SlotSelection`
+            () => `Expected tpl-backed SlotSelection`,
           )
         : wrapper;
     common.check(this.nodes.length === 1);
@@ -812,7 +815,7 @@ export class TplQuery {
         replaceOne
           ? replace(contents, wrapped, tplWrapper)
           : replaceAll(contents, [tplWrapper]),
-      { deepRemove: false }
+      { deepRemove: false },
     );
     TplQuery._updateChildren(
       wrapper,
@@ -820,7 +823,7 @@ export class TplQuery {
       (children) => {
         replaceAll(children, wrappeds);
       },
-      { deepRemove: true }
+      { deepRemove: true },
     );
     return this;
   }
@@ -853,7 +856,7 @@ export class TplQuery {
   /** Return strict ancestors bottom-up. Does not include current node. */
   parents(): TplQuery {
     return $$$(
-      this.toArrayOfTplNodes().flatMap((tpl) => ancestorsUp(tpl, true))
+      this.toArrayOfTplNodes().flatMap((tpl) => ancestorsUp(tpl, true)),
     );
   }
 
@@ -862,15 +865,15 @@ export class TplQuery {
    */
   ancestorsWithSlotSelections(): TplQuery {
     return $$$(
-      this.toArray().flatMap((node) => ancestorsUpWithSlotSelections(node))
+      this.toArray().flatMap((node) => ancestorsUpWithSlotSelections(node)),
     );
   }
 
   parentsWithSlotSelections(): TplQuery {
     return $$$(
       this.toArray().flatMap((node) =>
-        ancestorsUpWithSlotSelections(node).slice(1)
-      )
+        ancestorsUpWithSlotSelections(node).slice(1),
+      ),
     );
   }
 
@@ -887,9 +890,9 @@ export class TplQuery {
           .map((x) =>
             x instanceof SlotSelection
               ? summarizeSlotParam(x.slotParam)
-              : summarizeTpl(x)
+              : summarizeTpl(x),
           )
-          .join(", ")}`
+          .join(", ")}`,
     );
   }
 
@@ -902,7 +905,7 @@ export class TplQuery {
   closest(x: /*TWZ*/ TplQuery) {
     const needle = $$$(x).get(0);
     return $$$(
-      [...this.add(this.parents()).toArray()].filter((n) => n === needle)
+      [...this.add(this.parents()).toArray()].filter((n) => n === needle),
     );
   }
 
@@ -930,7 +933,7 @@ export class TplQuery {
   getSlotArgForParam(param: Param) {
     check(this.isSlotParam(param));
     return getSlotArgs(this.getTplComponent()).find(
-      (arg) => arg.param === param
+      (arg) => arg.param === param,
     );
   }
 
@@ -942,7 +945,7 @@ export class TplQuery {
   getBaseArgs() {
     const vs = ensure(
       tryGetBaseVariantSetting(this.getTplComponent()),
-      () => `Expected base variant settings to exist`
+      () => `Expected base variant settings to exist`,
     );
     return vs.args;
   }
@@ -955,14 +958,14 @@ export class TplQuery {
   getBaseAttrs() {
     const vs = ensure(
       tryGetBaseVariantSetting(this.getTplTag()),
-      () => `Expected base variant settings to exist`
+      () => `Expected base variant settings to exist`,
     );
     return vs.attrs;
   }
 
   getAllAttrs() {
     return L.flatten(
-      this.getTplTag().vsettings.map((vs) => Object.entries(vs.attrs))
+      this.getTplTag().vsettings.map((vs) => Object.entries(vs.attrs)),
     );
   }
 
@@ -978,7 +981,7 @@ export class TplQuery {
   setSlotArgForParam(
     param: Param,
     expr: Expr,
-    opts?: { skipCycleCheck?: boolean }
+    opts?: { skipCycleCheck?: boolean },
   ) {
     check(this.isSlotParam(param));
     return this.updateSlotArgForParam(
@@ -995,14 +998,14 @@ export class TplQuery {
         // Any existing content of the arg should be deeply removed
         deepRemove: true,
         skipCycleCheck: opts?.skipCycleCheck,
-      }
+      },
     );
   }
 
   updateSlotArg(
     argName: string,
     func: (arg: Arg) => UpdateSlotArgSpec,
-    opts: { deepRemove: boolean }
+    opts: { deepRemove: boolean },
   ) {
     return this.updateSlotArgForParam(this.param(argName), func, opts);
   }
@@ -1010,7 +1013,7 @@ export class TplQuery {
   updateSlotArgForParam(
     param: Param,
     func: (arg: Arg) => UpdateSlotArgSpec,
-    opts: { deepRemove: boolean; skipCycleCheck?: boolean }
+    opts: { deepRemove: boolean; skipCycleCheck?: boolean },
   ) {
     check(this.isSlotParam(param));
     const maybeArg = this.getSlotArgForParam(param);
@@ -1027,7 +1030,7 @@ export class TplQuery {
           this.getBaseArgs().push(arg);
         }
       },
-      opts
+      opts,
     );
     return this;
   }
@@ -1036,16 +1039,16 @@ export class TplQuery {
     check(this.isSlot(argName));
     return removeWhere(
       this.getBaseArgs(),
-      (arg) => arg.param.variable.name === argName
+      (arg) => arg.param.variable.name === argName,
     );
   }
 
   param(paramName) {
     return ensure(
       this.getTplComponent().component.params.find(
-        (p) => p.variable.name === paramName
+        (p) => p.variable.name === paramName,
       ),
-      () => `Expected param ${paramName} to exist`
+      () => `Expected param ${paramName} to exist`,
     );
   }
 
@@ -1054,7 +1057,7 @@ export class TplQuery {
       new SlotSelection({
         tpl: this.getTplComponent(),
         slotParam: this.param(slotName),
-      })
+      }),
     );
   }
 
@@ -1092,7 +1095,7 @@ export class TplQuery {
     return $$$(
       clamp
         ? clampedAt(siblings, index + offset)
-        : siblings[index + offset] || []
+        : siblings[index + offset] || [],
     );
   }
 

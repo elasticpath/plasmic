@@ -18,6 +18,10 @@ const config: KnipConfig = {
       entry: ["src/entry-app.ts"],
       project: ["**/*.{js,cjs,mjs,jsx,ts,cts,mts,tsx}"],
     },
+    "platform/shared/hosting": {
+      entry: ["src/index.ts"],
+      project: ["**/*.{js,cjs,mjs,jsx,ts,cts,mts,tsx}"],
+    },
     "platform/wab": {
       entry: ["src/**/*.{js,cjs,mjs,jsx,ts,cts,mts,tsx}"],
       project: ["**/*.{js,cjs,mjs,jsx,ts,cts,mts,tsx}"],
@@ -35,18 +39,12 @@ const config: KnipConfig = {
         "prismjs",
 
         // used by react-icons
-        "font-awesome",
         "@fortawesome/.+",
 
         // below deps are not verified to actually be needed
 
         "buffer", // used by StudioHtmlPlugin.ts?
         "url", // used by route.ts?
-
-        // used by jest?
-        "@babel/plugin-proposal-decorators",
-        "@babel/preset-env",
-        "@babel/preset-typescript",
       ],
     },
   },

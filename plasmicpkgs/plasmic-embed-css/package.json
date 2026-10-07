@@ -1,6 +1,6 @@
 {
   "name": "@plasmicpkgs/plasmic-embed-css",
-  "version": "0.1.242",
+  "version": "0.1.246",
   "description": "Plasmic embed css code components",
   "homepage": "https://www.plasmic.app",
   "repository": {
@@ -35,11 +35,11 @@
     "analyze": "size-limit --why"
   },
   "devDependencies": {
-    "@plasmicapp/host": "2.0.15",
+    "@plasmicapp/host": "workspace:*",
     "@types/node": "^17.0.45",
-    "@types/react": "^18",
-    "tsdx": "^0.14.1",
-    "tslib": "^2.3.1"
+    "@types/react": "catalog:",
+    "tsdx": "catalog:",
+    "tslib": "catalog:"
   },
   "peerDependencies": {
     "@plasmicapp/host": ">=1.0.0",

@@ -1,5 +1,4 @@
-import { tokenTypes } from "@/wab/commons/StyleToken";
-import { CopilotImage, CopilotToken } from "@/wab/shared/ApiSchema";
+import { ArenaRef, arenaTypes } from "@/wab/shared/ApiSchema";
 import { DataSourceSchema } from "@plasmicapp/data-sources";
 import { UIMessage } from "ai";
 import GPT3Tokenizer from "gpt3-tokenizer";
@@ -36,11 +35,11 @@ export type CreateChatCompletionRequestOptions = OpenAI.RequestOptions;
 export type ChatCompletionRequestMessageRoleEnum = ChatCompletionRole;
 
 export function showCompletionRequest(
-  createChatCompletionRequest: CreateChatCompletionRequest
+  createChatCompletionRequest: CreateChatCompletionRequest,
 ) {
   const tokenizer = new GPT3Tokenizer({ type: "gpt3" });
   const encoded: { bpe: number[]; text: string[] } = tokenizer.encode(
-    createChatCompletionRequest.messages.map((m) => m.content).join("")
+    createChatCompletionRequest.messages.map((m) => m.content).join(""),
   );
 
   const chat = createChatCompletionRequest.messages
@@ -72,7 +71,7 @@ export interface CopilotCodeChainProps {
   data: Record<string, any>;
   context?: string;
   executeRequest: (
-    request: CreateChatCompletionRequest
+    request: CreateChatCompletionRequest,
   ) => Promise<WholeChatCompletionResponse>;
   goal: string;
 }
@@ -83,15 +82,9 @@ export interface CopilotSqlCodeChainProps {
   data: Record<string, any>;
   dataSourceSchema: DataSourceSchema;
   executeRequest: (
-    request: CreateChatCompletionRequest
+    request: CreateChatCompletionRequest,
   ) => Promise<WholeChatCompletionResponse>;
   goal: string;
-}
-
-export interface CopilotUiProps {
-  goal: string;
-  images?: Array<CopilotImage>;
-  tokens?: CopilotToken[];
 }
 
 /**
@@ -102,78 +95,17 @@ export interface CopilotChat {
   messages: UIMessage[];
 }
 
-// Structured Response schemas
-const CopilotUiGenerateHtmlActionSchema = z.object({
-  name: z.literal("insert-html"),
-  data: z.object({
-    html: z
-      .string()
-      .describe(
-        "Extract the <style> and <body> tag from the HTML document i.e <style></style><body></body> only"
-      ),
-  }),
+export const copilotMessageMetadataSchema = z.object({
+  /** The arena open in Studio when the user sent the message. */
+  currentArena: z
+    .object({
+      type: z.enum(arenaTypes),
+      name: z.string(),
+      componentUuids: z.array(z.string()),
+    })
+    .optional() satisfies z.ZodType<ArenaRef | undefined>,
 });
 
-const CopilotUiTokenSchema = z.object({
-  tokenType: z
-    .enum(tokenTypes)
-    .describe(
-      `Type of token. Only ${tokenTypes.join(
-        ", "
-      )} are supported. Length units except FontSize and LineHeight should use Spacing. If a token type is not supported, inline the CSS value instead.`
-    ),
-  name: z
-    .string()
-    .describe(
-      "A unique token name. Make sure it's in the format of existing tokens if available"
-    ),
-  value: z
-    .string()
-    .describe("Token value including unit such as 10px, 1.5rem, #fff123 etc"),
-});
-
-const CopilotUiTokenActionSchema = z.object({
-  name: z.literal("add-token"),
-  data: CopilotUiTokenSchema,
-});
-
-export const CopilotUiActionsSchema = z.object({
-  actions: z.array(
-    z.union([CopilotUiGenerateHtmlActionSchema, CopilotUiTokenActionSchema])
-  ),
-});
-
-export type CopilotUiActions = z.infer<typeof CopilotUiActionsSchema>;
-
-export const CopilotUiResponseSchema = z.object({
-  tokens: z.array(CopilotUiTokenSchema),
-  html: z
-    .string()
-    .describe(
-      "Extract the <style> and <body> tag from the HTML document i.e <style></style><body></body> only"
-    ),
-});
-
-export type CopilotUiResponse = z.infer<typeof CopilotUiResponseSchema>;
-
-// This util function is added for transformation to add the 'data: CopilotUiActions' in the QueryCopilotUiResponse
-// for backward compatibility. When the client logic is migrated from QueryCopilotUiResponse.data to QueryCopilotUiResponse.response
-// we can remove this
-export const copilotUiResponseToActions = (
-  copilotUiResponse: CopilotUiResponse
-): CopilotUiActions => {
-  return {
-    actions: [
-      ...copilotUiResponse.tokens.map((token) => ({
-        name: z.literal("add-token").value,
-        data: token,
-      })),
-      {
-        name: z.literal("insert-html").value,
-        data: {
-          html: copilotUiResponse.html,
-        },
-      },
-    ],
-  };
-};
+export type CopilotMessageMetadata = z.infer<
+  typeof copilotMessageMetadataSchema
+>;

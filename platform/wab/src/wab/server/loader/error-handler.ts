@@ -1,5 +1,5 @@
 import { logger } from "@/wab/server/observability";
-import { uploadFilesToS3 } from "@/wab/server/util/s3-util";
+import { shouldBypassS3, uploadFilesToS3 } from "@/wab/server/util/s3-util";
 import { ComponentReference } from "@/wab/server/workers/codegen";
 import { LoaderEsbuildFatalError } from "@/wab/shared/ApiErrors/errors";
 import {
@@ -43,14 +43,14 @@ export function buildMissingComponentErrors(
   errors: {
     missingComponent?: ComponentReference;
     importingComponent: ComponentReference;
-  }[]
+  }[],
 ) {
   const projects = uniqBy(
     [
       ...errors.map((err) => err.importingComponent),
       ...withoutNils(errors.map((err) => err.missingComponent)),
     ],
-    (c) => c.projectId
+    (c) => c.projectId,
   );
   return `
 Found ${errors.length} errors while bundling the components:
@@ -78,7 +78,7 @@ Contact support if you need help.
 // into a more user-friendly message.
 export function transformBundlerErrors(
   msg: string,
-  componentRefs: ComponentReference[]
+  componentRefs: ComponentReference[],
 ) {
   if (MISSING_COMPONENT_PATTERN.test(msg)) {
     // Reset the regex to the beginning
@@ -88,18 +88,18 @@ export function transformBundlerErrors(
         const [, , importingUuid, missingUuid] = match;
         const importingComponent = ensure(
           componentRefs.find((comp) => comp.id === importingUuid),
-          `Bundle error is referencing a component not present in the site components "${importingUuid}"`
+          `Bundle error is referencing a component not present in the site components "${importingUuid}"`,
         );
 
         const missingComponent = componentRefs.find(
-          (comp) => comp.id === missingUuid
+          (comp) => comp.id === missingUuid,
         );
 
         return {
           missingComponent,
           importingComponent,
         };
-      }
+      },
     );
 
     return buildMissingComponentErrors(allErrors);
@@ -115,6 +115,9 @@ export function getAllTsxFilesFromString(err: string) {
 }
 
 export async function uploadErrorFiles(err: Error, dir: string) {
+  if (shouldBypassS3()) {
+    return;
+  }
   const files = getAllTsxFilesFromString(err.toString());
   if (files.length === 0) {
     return;
@@ -131,7 +134,7 @@ export async function uploadErrorFiles(err: Error, dir: string) {
   };
 
   const fileContents = await Promise.all(
-    files.map(async (f) => tuple(f, await readFile(f)))
+    files.map(async (f) => tuple(f, await readFile(f))),
   );
 
   const filesDict = omitNils(Object.fromEntries(fileContents));
@@ -150,9 +153,13 @@ export async function uploadErrorFiles(err: Error, dir: string) {
     `Error files: ${Object.keys(filesDict)
       .map(
         (f) =>
+<<<<<<< HEAD
           `s3://${LOADER_ERRORS_BUCKET}/${prefix}/${f}`
+=======
+          `https://plasmic-errors.s3-us-west-2.amazonaws.com/${prefix}/${f}`,
+>>>>>>> upstream/master
       )
-      .join(" , ")}`
+      .join(" , ")}`,
   );
 
   return prefix;
@@ -173,7 +180,7 @@ const ESBUILD_FATAL_ERROR_PATTERNS = [
 
 export async function checkEsbuildFatalError(msg: string) {
   const isFatal = ESBUILD_FATAL_ERROR_PATTERNS.some((pattern) =>
-    msg.includes(pattern)
+    msg.includes(pattern),
   );
 
   if (isFatal) {

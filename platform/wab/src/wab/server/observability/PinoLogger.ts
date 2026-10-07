@@ -67,8 +67,13 @@ export class PinoLogger implements Logger {
 
   private log(
     level: "info" | "error" | "warn" | "debug",
+<<<<<<< HEAD
     message: string | Error,
     payload?: Record<string, any>
+=======
+    message: string,
+    payload?: Record<string, any>,
+>>>>>>> upstream/master
   ) {
     const { requestId } = requestStorage.getStore() ?? {};
     // An Error arrives here whenever a caller does `logger().error(err)` — the
