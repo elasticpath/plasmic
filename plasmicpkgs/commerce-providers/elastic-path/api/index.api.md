@@ -2034,7 +2034,7 @@ export interface StockLocationData {
 }
 
 // @public (undocumented)
-export function StripeProvider({ publishableKey, children, }: StripeProviderProps): React_2.JSX.Element;
+export function StripeProvider({ publishableKey, stripeAccount, children, }: StripeProviderProps): React_2.JSX.Element;
 
 // @public (undocumented)
 export const stripeProviderMeta: GlobalContextMeta<StripeProviderProps>;

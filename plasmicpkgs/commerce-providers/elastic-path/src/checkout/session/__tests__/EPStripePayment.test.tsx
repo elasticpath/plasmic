@@ -55,14 +55,29 @@ jest.mock("../use-checkout-session", () => ({
 }));
 
 // Mock @plasmicapp/host
-jest.mock("@plasmicapp/host", () => ({
-  DataProvider: ({ children, name, data }: any) => (
-    <div data-testid={`data-provider-${name}`} data-value={JSON.stringify(data)}>
-      {children}
-    </div>
-  ),
-  usePlasmicCanvasContext: jest.fn().mockReturnValue(false),
-}));
+jest.mock("@plasmicapp/host", () => {
+  const { createContext, useContext } = require("react");
+  const DataEnv = createContext({});
+  return {
+    DataProvider: ({ children, name, data }: any) => {
+      const env = useContext(DataEnv);
+      return (
+        <DataEnv.Provider value={{ ...env, [name]: data }}>
+          <div
+            data-testid={`data-provider-${name}`}
+            data-value={JSON.stringify(data)}
+          >
+            {children}
+          </div>
+        </DataEnv.Provider>
+      );
+    },
+    useDataEnv: () => useContext(DataEnv),
+    usePlasmicCanvasContext: jest.fn().mockReturnValue(false),
+  };
+});
+
+jest.mock("@plasmicapp/host/registerGlobalContext", () => jest.fn());
 
 // Mock @plasmicapp/host/registerComponent
 jest.mock("@plasmicapp/host/registerComponent", () => {
@@ -241,6 +256,22 @@ describe("EPStripePayment at runtime with a payable cart", () => {
       mode: "payment",
       amount: 4200,
       currency: "usd",
+    });
+  });
+
+  it("loads Stripe for the connected account set on EP Stripe Provider", async () => {
+    const { StripeProvider } = require("../StripeProvider");
+    render(
+      <StripeProvider publishableKey="pk_test_ctx" stripeAccount="acct_ctx">
+        <EPStripePayment>
+          <span>content</span>
+        </EPStripePayment>
+      </StripeProvider>
+    );
+
+    expect(await screen.findByTestId("stripe-payment-element")).toBeTruthy();
+    expect(loadStripe).toHaveBeenCalledWith("pk_test_ctx", {
+      stripeAccount: "acct_ctx",
     });
   });
 
