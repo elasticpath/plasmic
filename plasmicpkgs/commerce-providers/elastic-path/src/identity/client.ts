@@ -5,8 +5,7 @@ import {
   type EpIdentityClient,
   type EpIdentityOperationName,
 } from "./operations";
-
-export const DEFAULT_EP_BASE_PATH = "/api/ep";
+import { EP_AUTH_BASE_PATH } from "../ep-auth-base-path";
 
 export interface EpIdentityClientOptions {
   fetch?: typeof fetch;
@@ -56,7 +55,7 @@ export function createEpIdentityClient(
   if ("basePath" in options) {
     throw new Error(
       "createEpIdentityClient: basePath was removed; the auth handler is " +
-        `fixed at ${DEFAULT_EP_BASE_PATH}. Drop basePath.`
+        `fixed at ${EP_AUTH_BASE_PATH}. Drop basePath.`
     );
   }
   const doFetch = options.fetch ?? ((...args) => fetch(...args));
@@ -66,7 +65,7 @@ export function createEpIdentityClient(
     input?: unknown
   ): Promise<unknown> {
     const route = EP_IDENTITY_ROUTES[operation];
-    const url = `${DEFAULT_EP_BASE_PATH}${route.path}`;
+    const url = `${EP_AUTH_BASE_PATH}${route.path}`;
 
     const init: RequestInit = { method: route.method, credentials: "include" };
     if (route.method === "POST") {

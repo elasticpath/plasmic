@@ -31,6 +31,7 @@
 import { NextResponse } from "next/server.js";
 import type { NextRequest } from "next/server.js";
 import { hasCookie, parseCookieHeader } from "../../utils/cookie-header";
+import { EP_AUTH_BASE_PATH } from "../../ep-auth-base-path";
 import type { EpAuth } from "./create-ep-auth-better";
 
 /**
@@ -47,7 +48,7 @@ export function epAuthMiddleware(epAuth: EpAuth) {
     const url = new URL((request as Request).url);
 
     // Don't bootstrap on auth-handler routes — they ARE the bootstrap.
-    if (url.pathname.startsWith("/api/ep")) {
+    if (url.pathname.startsWith(EP_AUTH_BASE_PATH)) {
       return NextResponse.next();
     }
 
@@ -66,7 +67,8 @@ export function epAuthMiddleware(epAuth: EpAuth) {
     // => Response` API so the same code path that powers
     // `/api/ep/ep/anonymous` runs here, with full setSessionCookie
     // semantics.
-    const anonReq = new Request(`${url.origin}/api/ep/ep/anonymous`, {
+    const anonUrl = `${url.origin}${EP_AUTH_BASE_PATH}/ep/anonymous`;
+    const anonReq = new Request(anonUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

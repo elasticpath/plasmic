@@ -1,3 +1,4 @@
+import { EP_AUTH_BASE_PATH } from "../ep-auth-base-path";
 import { makeEpCallError, readEpCallError } from "./call-error";
 import {
   epDesignFnNotServedMessage,
@@ -5,10 +6,10 @@ import {
 } from "./design-fn-names";
 import type { EpDesignRealm } from "./design-realm";
 
-const DESIGN_PATH = "/api/ep/design";
+const DESIGN_PATH = `${EP_AUTH_BASE_PATH}/design`;
 
 const MOUNT_SNIPPET =
-  'app/api/ep/design/[fn]/route.ts:\n\n' +
+  `app${DESIGN_PATH}/[fn]/route.ts:\n\n` +
   '  import { createEpDesignRoutes } from\n' +
   '    "@elasticpath/plasmic-ep-commerce-elastic-path/server";\n' +
   '  import { epAuth } from "@/lib/ep-auth";\n\n' +

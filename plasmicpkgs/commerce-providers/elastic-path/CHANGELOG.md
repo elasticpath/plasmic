@@ -44,6 +44,7 @@ example does, resolves as before.
 | `ShopperContext`'s `basePath` | None. The auth handler is always at `/api/ep`. |
 | `basePath` on `createEpAuth` | None. Mount the auth handler at `/api/ep`, the only path the components, `epAuthMiddleware` and the proxy route's cart write call. A config that still passes `basePath` now throws at startup. |
 | `basePath` on `createEpIdentityClient` | None. The client always calls `/api/ep`, where the auth handler is. Passing `basePath` now throws. |
+| `DEFAULT_EP_BASE_PATH` | `EP_AUTH_BASE_PATH`, the same `"/api/ep"`, renamed because it is the only mount, not a default. |
 | `providerProps()` on the session `getSession` returns | None. It carried only the mount path, and nothing read it. Drop any `globalContextsProps` entry that passes it. |
 | `cartMergeStrategy` on `createEpAuth` | `sessionCartResolver`. |
 | `/ep/account/login` with `{ epMemberId, epAccountId, epAccountToken, epAccountExpires }` | `{ username, password }`. The package mints the account credential itself, so there is nothing left to verify. |

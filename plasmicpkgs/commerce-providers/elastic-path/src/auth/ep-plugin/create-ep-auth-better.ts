@@ -27,6 +27,7 @@ import { nextCookies } from "better-auth/next-js";
 import { epPlugin } from "./ep-plugin";
 import type { EpResolveConfig } from "./ep-plugin";
 import { DEFAULT_HOST_ALLOWLIST } from "../host-allowlist";
+import { EP_AUTH_BASE_PATH } from "../../ep-auth-base-path";
 import {
   assertNonSentinelSecret,
   resolveAuthSecret,
@@ -252,7 +253,7 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
   if ("basePath" in input) {
     throw new Error(
       "createEpAuth: basePath was removed; the auth handler is fixed at " +
-        "/api/ep. Drop basePath and mount the routes at /api/ep."
+        `${EP_AUTH_BASE_PATH}. Drop basePath and mount the routes there.`
     );
   }
   if (
@@ -278,7 +279,7 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
   const auth = betterAuth({
     secret,
     baseURL,
-    basePath: "/api/ep",
+    basePath: EP_AUTH_BASE_PATH,
     trustedOrigins,
     plugins: [
       epPlugin({
