@@ -2,7 +2,8 @@
  * EPAccountLoginFormProvider — collects credentials and signs the shopper in.
  *
  * Owns the login form state and calls `useEpIdentity().login`. After success
- * it asks the surrounding Account Provider to reload.
+ * it asks the surrounding Account Provider to reload. When that reload
+ * fulfills, a valid `?redirect=` or `redirectUrl` navigates away.
  */
 
 import { DataProvider, usePlasmicCanvasContext } from "@plasmicapp/host";
@@ -19,6 +20,7 @@ import React, {
 import { useEpIdentity } from "../identity/useEpIdentity";
 import { Registerable } from "../registerable";
 import { useAccountReload } from "./EPAccountProvider";
+import { assignReturnTo, readLocationSearch, resolveReturnTo } from "./return-to";
 
 type LoginField = "username" | "password";
 type LoginStatus = "idle" | "submitting" | "submitted" | "error";
@@ -65,6 +67,7 @@ export function useAccountLoginForm(): AccountLoginFormContextValue {
 interface EPAccountLoginFormProviderProps {
   children?: React.ReactNode;
   className?: string;
+  redirectUrl?: string;
 }
 
 interface EPAccountLoginFormProviderActions {
@@ -85,7 +88,7 @@ export const EPAccountLoginFormProvider = React.forwardRef<
   EPAccountLoginFormProviderActions,
   EPAccountLoginFormProviderProps
 >(function EPAccountLoginFormProvider(props, ref) {
-  const { children, className } = props;
+  const { children, className, redirectUrl } = props;
   const inEditor = !!usePlasmicCanvasContext();
   const identity = useEpIdentity();
   const reloadAccount = useAccountReload();
@@ -151,13 +154,18 @@ export const EPAccountLoginFormProvider = React.forwardRef<
     try {
       await reloadAccount();
       setStatus("submitted");
+      const target = resolveReturnTo({
+        search: readLocationSearch(),
+        configured: redirectUrl,
+      });
+      if (target) assignReturnTo(target);
     } catch {
       setStatus("submitted");
       setError(REFRESH_FAILED);
     } finally {
       submittingRef.current = false;
     }
-  }, [inEditor, values, identity, reloadAccount]);
+  }, [inEditor, values, identity, reloadAccount, redirectUrl]);
 
   useImperativeHandle(ref, () => ({ submit }), [submit]);
 
@@ -200,7 +208,7 @@ export const epAccountLoginFormProviderMeta: CodeComponentMeta<EPAccountLoginFor
     name: "plasmic-commerce-ep-account-login-form-provider",
     displayName: "EP Account Login Form Provider",
     description:
-      "Signs the shopper in with username and password, then reloads the surrounding EP Account Provider. Wire a button to the Submit action. Does not publish the credentials.",
+      "Signs the shopper in with username and password, then reloads the surrounding EP Account Provider. After that reload succeeds, navigates to a valid ?redirect= on this page, or to Redirect URL. Wire a button to the Submit action. Does not publish the credentials.",
     props: {
       children: {
         type: "slot",
@@ -227,6 +235,12 @@ export const epAccountLoginFormProviderMeta: CodeComponentMeta<EPAccountLoginFor
           },
         ],
       },
+      redirectUrl: {
+        type: "string",
+        displayName: "Redirect URL",
+        description:
+          "Optional same-site path to open after sign-in and a successful account reload, such as /account or /account?welcome=1. A fragment is allowed. A valid ?redirect= on this page overrides it. Invalid values are ignored, and an invalid query falls back to this path. Leave empty to stay on the page. No navigation when the reload fails, or in the Studio canvas.",
+      },
     },
     providesData: true,
     importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
@@ -236,7 +250,7 @@ export const epAccountLoginFormProviderMeta: CodeComponentMeta<EPAccountLoginFor
       submit: {
         displayName: "Submit",
         description:
-          "Sign in with the collected username and password. No-op in the Studio canvas.",
+          "Sign in with the collected username and password, then follow a valid return-to redirect. No-op in the Studio canvas.",
         argTypes: [],
       },
     },

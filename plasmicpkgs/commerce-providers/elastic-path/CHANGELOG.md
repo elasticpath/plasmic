@@ -86,6 +86,15 @@ and asks the Account Provider to reload. A normal Studio button calls the
 Account Provider's `logout()` ref action, which signs out through the
 same client and reloads account state. Both actions no-op in the Plasmic
 canvas; the real mutations run at runtime and in interactive preview.
+`EPAccountLoginFormProvider` takes an optional `redirectUrl`. After sign-in
+and a successful account reload, the page navigates there. A valid
+`?redirect=` on the login page overrides it. The value must be a same-site
+path starting with a single `/`, and may include a query string or fragment.
+A protocol-relative path, a backslash, a scheme, or a control character is
+ignored, and an invalid query falls back to a valid `redirectUrl`. If the
+reload fails, the shopper stays on the page even when a later automatic
+retry succeeds. With neither a valid query nor a valid `redirectUrl`, login
+stays on the page as before. Navigation is a no-op in the Studio canvas.
 A normal Studio button calls the Account Provider's `selectAccount(accountId)`
 ref action to choose an organisation. It no-ops in the Plasmic canvas. At
 runtime the already-selected id returns without a request or a reload; any
