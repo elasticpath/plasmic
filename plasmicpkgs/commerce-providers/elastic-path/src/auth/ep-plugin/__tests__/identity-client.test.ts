@@ -94,12 +94,12 @@ function installEpFetch() {
  * Stands in for the browser: carries the cookie jar the way a browser
  * would, and routes the client's request at the mounted handler.
  */
-function browserAt(basePath?: string) {
+function browserAt(extraConfig: Record<string, unknown> = {}) {
   const epAuth = createEpAuth({
     clientId: EP_CLIENT_ID,
     host: EP_HOST,
     secret: SECRET,
-    basePath,
+    ...extraConfig,
     passwordProfileId: PROFILE,
     checkout: { sessionSecret: "identity-client-test-secret-569" },
   } as any);
@@ -141,7 +141,7 @@ function browserAt(basePath?: string) {
   }) as unknown as typeof fetch;
 
   return {
-    client: createEpIdentityClient({ basePath, fetch: browserFetch }),
+    client: createEpIdentityClient({ fetch: browserFetch }),
     seen,
     get cookie() {
       return jar;
@@ -226,13 +226,13 @@ describe("the identity client against the mounted handler", () => {
     expect(err.status).toBe(401);
   });
 
-  it("finds a handler the consumer mounted somewhere else", async () => {
-    const browser = browserAt("/api/store");
+  it("keeps the handler at /api/ep when a config still carries the removed basePath", async () => {
+    const browser = browserAt({ basePath: "/api/store" });
 
     const anonymous = await browser.client.signInAnonymously();
 
     expect(anonymous.session.id).toBeTruthy();
-    expect(browser.seen).toEqual(["/api/store/ep/anonymous"]);
+    expect(browser.seen).toEqual(["/api/ep/ep/anonymous"]);
   });
 
   it("points the envelope at a cart", async () => {

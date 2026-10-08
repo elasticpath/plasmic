@@ -7,8 +7,7 @@
  *
  *   epAuth.api.getSession({ cookies, headers })
  *     → Promise<EpSession>
- *     → { session, user, cart, isAuthenticated, headers(), providerProps(),
- *         commitCookies() }
+ *     → { session, user, cart, isAuthenticated, headers(), commitCookies() }
  *
  * Catchall pages (and the existing `EpSession` consumers) keep working
  * with no source change.
@@ -75,54 +74,8 @@ describe("createEpAuth adapter (PRD #273)", () => {
       isAuthenticated: false,
     });
     expect(typeof session.headers).toBe("function");
-    expect(typeof session.providerProps).toBe("function");
+    expect(session).not.toHaveProperty("providerProps");
     expect(typeof session.commitCookies).toBe("function");
-  });
-
-  it("providerProps() never serializes the EP access token", async () => {
-    const epAuth = createEpAuth({
-      clientId: EP_CLIENT_ID,
-      host: EP_HOST,
-      secret: "x".repeat(48),
-      checkout: { sessionSecret: "dev-secret-min-16-chars" },
-    });
-
-    const session = await epAuth.api.getSession({
-      cookies: {},
-      headers: {},
-    });
-
-    expect(session.session?.accessToken).toBe(FAKE_TOKEN);
-    expect(JSON.stringify(session.providerProps())).not.toContain(FAKE_TOKEN);
-  });
-
-  it("tells the page where the auth handler is mounted (#569)", async () => {
-    const epAuth = createEpAuth({
-      clientId: EP_CLIENT_ID,
-      host: EP_HOST,
-      secret: "x".repeat(48),
-      basePath: "/api/store",
-      checkout: { sessionSecret: "dev-secret-min-16-chars" },
-    });
-
-    const session = await epAuth.api.getSession({ cookies: {}, headers: {} });
-
-    // The identity client reads this off the shopper context, so a consumer
-    // who moved the handler says so once, on createEpAuth, and nowhere else.
-    expect(session.providerProps()).toEqual({ basePath: "/api/store" });
-  });
-
-  it("names the default mount when the consumer took it", async () => {
-    const epAuth = createEpAuth({
-      clientId: EP_CLIENT_ID,
-      host: EP_HOST,
-      secret: "x".repeat(48),
-      checkout: { sessionSecret: "dev-secret-min-16-chars" },
-    });
-
-    const session = await epAuth.api.getSession({ cookies: {}, headers: {} });
-
-    expect(session.providerProps()).toEqual({ basePath: "/api/ep" });
   });
 
   it("commitCookies() emits the better-auth Set-Cookie headers", async () => {

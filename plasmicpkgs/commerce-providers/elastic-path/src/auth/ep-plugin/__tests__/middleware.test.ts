@@ -55,7 +55,6 @@ function buildEpAuth() {
     host: EP_HOST,
     secret: "x".repeat(48),
     baseURL: "http://localhost:3456",
-    basePath: "/api/ep",
     checkout: { sessionSecret: "dev-secret-min-16-chars" },
   });
 }
@@ -151,7 +150,7 @@ describe("epAuthMiddleware (PRD #273)", () => {
     expect((globalThis.fetch as any).mock.calls.length).toBe(0);
   });
 
-  it("skips mint on request paths matching the auth handler basePath", async () => {
+  it("skips mint on request paths under the auth handler at /api/ep", async () => {
     // /api/ep/* requests are the auth handler itself — middleware must
     // not bootstrap mid-flight or it'd loop.
     const epAuth = buildEpAuth();

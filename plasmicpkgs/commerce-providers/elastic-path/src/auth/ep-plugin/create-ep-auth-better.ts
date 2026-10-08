@@ -8,7 +8,7 @@
  *   const epAuth = createEpAuth({ clientId, host, ... });
  *   const session = await epAuth.api.getSession({ cookies, headers });
  *   //  → { session, user, cart, isAuthenticated, headers(),
- *   //      providerProps(), commitCookies() }
+ *   //      commitCookies() }
  *
  * Internally:
  *   - Wraps `betterAuth({ secret, plugins: [epPlugin(...)], ... })`
@@ -44,7 +44,6 @@ export interface CreateEpAuthBetterInput {
   clientId: string;
   host: string;
   secret?: string;
-  basePath?: string;
   baseURL?: string;
   /**
    * Origins allowed to call the auth handler. Better-auth rejects
@@ -163,7 +162,6 @@ export interface EpSession {
   cart: { id: string } | null;
   isAuthenticated: boolean;
   headers(): Record<string, string>;
-  providerProps(): Record<string, any>;
   commitCookies(res: { appendHeader(name: string, value: string): void }): void;
 }
 
@@ -184,7 +182,6 @@ export interface EpAuth {
    */
   handler: any;
   config: {
-    basePath: string;
     trustedOrigins: string[];
     hostAllowlist: readonly string[];
     /**
@@ -268,7 +265,6 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
   }
   const secret = resolveAuthSecret(input.secret, { label: "createEpAuth" });
 
-  const basePath = input.basePath ?? "/api/ep";
   const baseURL = input.baseURL ?? "http://localhost";
   const trustedOrigins = resolveTrustedOrigins(input.trustedOrigins, baseURL);
   const hostAllowlist = resolveHostAllowlist(input.hostAllowlist);
@@ -276,7 +272,7 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
   const auth = betterAuth({
     secret,
     baseURL,
-    basePath,
+    basePath: "/api/ep",
     trustedOrigins,
     plugins: [
       epPlugin({
@@ -306,7 +302,6 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
   });
 
   const config = Object.freeze({
-    basePath,
     trustedOrigins,
     hostAllowlist,
     clientId: input.clientId,
@@ -342,7 +337,7 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
           if (!anonResponse.ok) {
             // Anonymous mint failed (e.g. EP unreachable). Return an empty
             // EpSession so callers fail-soft, same as the legacy impl.
-            return makeEmptyEpSession(config);
+            return makeEmptyEpSession();
           }
           for (const c of extractSetCookies(anonResponse)) {
             pendingSetCookies.push(c);
@@ -448,11 +443,6 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
             }
             return h;
           },
-          // Serialized into page HTML via globalContextsProps, so this
-          // carries the mount path and never a credential.
-          providerProps() {
-            return { basePath: config.basePath };
-          },
           commitCookies(res) {
             for (const cookie of pendingSetCookies) {
               res.appendHeader("Set-Cookie", cookie);
@@ -466,14 +456,13 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
   };
 }
 
-function makeEmptyEpSession(config: any): EpSession {
+function makeEmptyEpSession(): EpSession {
   return {
     session: null,
     user: null,
     cart: null,
     isAuthenticated: false,
     headers: () => ({}),
-    providerProps: () => ({ basePath: config.basePath }),
     commitCookies: () => {},
   };
 }

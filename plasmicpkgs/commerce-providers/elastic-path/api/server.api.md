@@ -221,7 +221,6 @@ export interface EpAuth {
     };
     // (undocumented)
     config: {
-        basePath: string;
         trustedOrigins: string[];
         hostAllowlist: readonly string[];
         clientId: string;
@@ -249,8 +248,6 @@ export interface EpAuthConfig {
         };
         clover?: any;
     };
-    // (undocumented)
-    basePath?: string;
     // (undocumented)
     baseURL?: string;
     // (undocumented)
@@ -644,8 +641,6 @@ export interface EpSession {
     headers(): Record<string, string>;
     // (undocumented)
     isAuthenticated: boolean;
-    // (undocumented)
-    providerProps(): Record<string, any>;
     // (undocumented)
     session: EpSessionData | null;
     // (undocumented)
