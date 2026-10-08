@@ -15,6 +15,10 @@ import {
   epUpdateCartItem,
   useEpCart,
 } from "../../index";
+import {
+  latchEpCanvasArtboard,
+  resetEpCanvasArtboard,
+} from "../../ep-server-functions/design-realm";
 import { epCartCacheKey } from "../cache-keys";
 
 type ProxyCall = { fn: string; body: Record<string, unknown> };
@@ -210,5 +214,32 @@ describe("cart writes from the root entry", () => {
     expect(caught?.message).not.toBe("dispatch_failed");
     expect(caught?.message).toMatch(/couldn't remove/i);
     expect(caught?.code).toBe("dispatch_failed");
+  });
+});
+
+describe("cart writes on the Studio artboard", () => {
+  afterEach(() => resetEpCanvasArtboard());
+
+  it.each([
+    ["an add", () => epAddCartItem({ productId: "prod-1", quantity: 1 })],
+    ["an update", () => epUpdateCartItem({ itemId: "li-1", quantity: 2 })],
+    ["a remove", () => epRemoveCartItem({ itemId: "li-1" })],
+  ])("rejects %s with a readable error and leaves the cart as it was", async (_, writeCart) => {
+    proxy.seed([{ id: "li-1", quantity: 1 }]);
+    await renderBadge("li-1x1");
+    latchEpCanvasArtboard();
+
+    let caught: (Error & { code?: string }) | undefined;
+    await act(async () => {
+      caught = await writeCart().then(
+        () => undefined,
+        (err) => err
+      );
+    });
+
+    expect(caught).toBeInstanceOf(Error);
+    expect(caught?.message).toMatch(/studio/i);
+    expect(caught?.code).toBe("design_fn_not_served");
+    expect(screen.getByTestId("badge").textContent).toBe("li-1x1");
   });
 });
