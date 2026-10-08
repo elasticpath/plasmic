@@ -47,6 +47,8 @@ example does, resolves as before.
 | `DEFAULT_EP_BASE_PATH` | `EP_AUTH_BASE_PATH`, the same `"/api/ep"`, renamed because it is the only mount, not a default. |
 | `providerProps()` on the session `getSession` returns | None. It carried only the mount path, and nothing read it. Drop any `globalContextsProps` entry that passes it. |
 | `cartMergeStrategy` on `createEpAuth` | `sessionCartResolver`. |
+| `buildEpCtx(session, { locale, currency })` | `createEpAuth({ resolveLocale })`. It reads the request's cookies and headers, and `buildEpCtx(session)` takes the result from the session. |
+| Elastic Path Provider's `currency` | `createEpAuth({ resolveLocale })`. The prop is hidden and ignored; nothing ever sent it to Elastic Path. |
 | `/ep/account/login` with `{ epMemberId, epAccountId, epAccountToken, epAccountExpires }` | `{ username, password }`. The package mints the account credential itself, so there is nothing left to verify. |
 
 Two capabilities go with them, not only their configuration:
@@ -57,8 +59,8 @@ Two capabilities go with them, not only their configuration:
   accepted one from the page would hand that cart to whoever sent it.
 - **Overriding the shopper from the page.** `X-Shopper-Context` and EP Shopper
   Context could set the cart, account, locale and currency for a request. The
-  session the server holds is now the only source; set locale and currency on
-  the Elastic Path Provider.
+  session the server holds is now the only source; set locale and currency
+  with `createEpAuth`'s `resolveLocale`.
 
 ### Deprecated
 
@@ -208,10 +210,17 @@ A cart write no longer resolves with a cart priced differently from the one
 `ep.getCart` reads. `epAddCartItem`, `epUpdateCartItem`, `epRemoveCartItem`,
 `epApplyPromoCode` and `epRemovePromoCode` read the cart back without the
 `Accept-Language` and `X-Moltin-Currency` headers that `ep.getCart` sent for the
-shopper's locale and currency. Every cart read now sends the same headers. Server
-code supplies the locale and currency through `buildEpCtx`. A browser call
-through the proxy route sends neither header, because the shopper session
-carries no locale or currency.
+shopper's locale and currency. Every cart read now sends the same headers.
+
+A browser call through the proxy route is priced and localised the way the
+server render is. The proxy sent neither `Accept-Language` nor
+`X-Moltin-Currency`, so a cart a browser write returned could be in a different
+currency from the server-rendered cart. `createEpAuth`'s `resolveLocale` now
+chooses both from the request's cookies and headers on every `getSession`, and
+the server render and the proxy route read them from that one session. Derive
+them from something every request carries, such as a cookie: a proxy request
+does not carry the page's URL. A locale that is not a BCP 47 tag, or a currency
+that is not three letters, is not sent.
 
 `/server` type declarations are generated from the entry point instead of a
 hand-kept list, so an export can no longer ship without its type. `/server`
