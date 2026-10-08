@@ -19,13 +19,21 @@ export interface PaymentElementConfig {
  * Mounts a Stripe Payment Element into the node given to `ref`. Elements are
  * recreated when the client secret changes; other option changes go through
  * `update`. The element is destroyed when the node or the component goes.
+ * `stripe` is the instance that created `elements`; use the two together.
  */
 export function usePaymentElement(
   stripe: Stripe | null,
   config: PaymentElementConfig
-): { ref: (node: HTMLDivElement | null) => void; elements: StripeElements | null } {
+): {
+  ref: (node: HTMLDivElement | null) => void;
+  elements: StripeElements | null;
+  stripe: Stripe | null;
+} {
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
-  const [elements, setElements] = useState<StripeElements | null>(null);
+  const [mounted, setMounted] = useState<{
+    stripe: Stripe;
+    elements: StripeElements;
+  } | null>(null);
   const live = useRef<{
     elements: StripeElements;
     element: StripePaymentElement;
@@ -56,11 +64,11 @@ export function usePaymentElement(
       elementsUpdate: latest.current.elementsUpdate,
       paymentElementUpdate: latest.current.paymentElementUpdate,
     };
-    setElements(created);
+    setMounted({ stripe, elements: created });
     return () => {
       element.destroy();
       live.current = null;
-      setElements(null);
+      setMounted(null);
     };
   }, [stripe, container, clientSecret]);
 
@@ -70,7 +78,7 @@ export function usePaymentElement(
     }
     live.current.elements.update(JSON.parse(elementsUpdate));
     applied.current.elementsUpdate = elementsUpdate;
-  }, [elements, elementsUpdate]);
+  }, [mounted, elementsUpdate]);
 
   useEffect(() => {
     if (
@@ -81,7 +89,11 @@ export function usePaymentElement(
     }
     live.current.element.update(JSON.parse(paymentElementUpdate));
     applied.current.paymentElementUpdate = paymentElementUpdate;
-  }, [elements, paymentElementUpdate]);
+  }, [mounted, paymentElementUpdate]);
 
-  return { ref: setContainer, elements };
+  return {
+    ref: setContainer,
+    elements: mounted?.elements ?? null,
+    stripe: mounted?.stripe ?? null,
+  };
 }

@@ -99,6 +99,7 @@ function createElements(options: any): FakeElements & {
 
 export function createFakeStripeJs() {
   const instances: FakeStripe[] = [];
+  const hooks: { onConstruct?: (stripe: FakeStripe) => void } = {};
   const Stripe = jest.fn((key: string, options?: any) => {
     const created: FakeElements[] = [];
     const stripe: FakeStripe = {
@@ -132,6 +133,7 @@ export function createFakeStripeJs() {
       }),
     };
     instances.push(stripe);
+    hooks.onConstruct?.(stripe);
     return stripe;
   });
   const load = jest.fn(() => Promise.resolve(Stripe));
@@ -139,6 +141,7 @@ export function createFakeStripeJs() {
     Stripe,
     load,
     instances,
+    hooks,
     last(): FakeStripe {
       const stripe = instances[instances.length - 1];
       if (!stripe) throw new Error("Stripe was never constructed");
@@ -146,6 +149,7 @@ export function createFakeStripeJs() {
     },
     reset() {
       instances.length = 0;
+      delete hooks.onConstruct;
       Stripe.mockClear();
       load.mockClear();
       load.mockImplementation(() => Promise.resolve(Stripe));

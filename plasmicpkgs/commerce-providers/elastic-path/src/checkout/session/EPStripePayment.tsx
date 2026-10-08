@@ -373,8 +373,10 @@ const EPStripePaymentRuntime = React.forwardRef<
   const [error, setError] = useState<string | null>(null);
   const [stripeInstance, setStripeInstance] = useState<Stripe | null>(null);
 
-  const stripeRef = useRef<StripeWithConfirmationTokens | null>(null);
-  const elementsRef = useRef<any>(null);
+  const cardFormRef = useRef<{
+    stripe: StripeWithConfirmationTokens;
+    elements: StripeElements;
+  } | null>(null);
   const mountedRef = useRef(true);
   const inFlightRef = useRef(false);
   const resumePaymentRef = useRef(resumePayment);
@@ -398,8 +400,7 @@ const EPStripePaymentRuntime = React.forwardRef<
         const stripe = StripeJs(
           publishableKey,
           stripeAccount ? { stripeAccount } : undefined
-        ) as StripeWithConfirmationTokens;
-        stripeRef.current = stripe;
+        );
         setStripeInstance(stripe);
         setError(null);
       })
@@ -423,11 +424,11 @@ const EPStripePaymentRuntime = React.forwardRef<
   // forwards it to placeOrder({ confirmation_token, gateway: "stripe" }).
   // completeRequiresAction runs after /pay returns requires_action.
   const confirmGateway = useCallback(async () => {
-    const stripe = stripeRef.current;
-    const elements = elementsRef.current;
-    if (!stripe || !elements) {
+    const cardForm = cardFormRef.current;
+    if (!cardForm) {
       throw new Error("Stripe is not ready — wait for isReady");
     }
+    const { stripe, elements } = cardForm;
     const submit = await elements.submit();
     if (submit?.error) {
       throw new Error(submit.error.message ?? "Form validation failed");
@@ -458,7 +459,7 @@ const EPStripePaymentRuntime = React.forwardRef<
       setIsProcessing(true);
       setError(null);
       try {
-        const stripe = stripeRef.current;
+        const stripe = cardFormRef.current?.stripe;
         if (!stripe?.handleNextAction) {
           throw new Error("Stripe is not ready — wait for isReady");
         }
@@ -538,7 +539,11 @@ const EPStripePaymentRuntime = React.forwardRef<
   // EP creates the PaymentIntent server-side via createCartPaymentIntent.
   // Card-only: the PaymentElement's default doesn't collect name/address,
   // and EP attaches the order's billing server-side.
-  const { ref: paymentElementRef, elements } = usePaymentElement(
+  const {
+    ref: paymentElementRef,
+    elements,
+    stripe: elementsStripe,
+  } = usePaymentElement(
     free ? null : stripeInstance,
     {
       elements: {
@@ -553,7 +558,10 @@ const EPStripePaymentRuntime = React.forwardRef<
       onChange: handleChange,
     }
   );
-  elementsRef.current = elements;
+  cardFormRef.current =
+    elements && elementsStripe
+      ? { stripe: elementsStripe as StripeWithConfirmationTokens, elements }
+      : null;
 
   if (free) {
     return (

@@ -344,6 +344,41 @@ describe("EPStripePayment in a checkout session", () => {
     expect(result.success).toBe(true);
   });
 
+  it("mints the token with the Stripe instance that made the card form, even mid key change", async () => {
+    mockPlaceOrder.mockResolvedValue({
+      success: true,
+      data: { session: { status: "complete" } },
+    });
+    const session = React.createRef<any>();
+    const ui = (publishableKey: string) => (
+      <EPCheckoutSessionProvider ref={session}>
+        <EPStripePayment publishableKey={publishableKey}>
+          <span>content</span>
+        </EPStripePayment>
+      </EPCheckoutSessionProvider>
+    );
+    const view = render(ui("pk_test_a"));
+    await screen.findByTestId("stripe-payment-element");
+    const first = mockStripeJs.last();
+
+    let placed: Promise<any> | undefined;
+    mockStripeJs.hooks.onConstruct = () =>
+      queueMicrotask(() => {
+        placed = session.current.placeOrder();
+      });
+    view.rerender(ui("pk_test_b"));
+    await waitFor(() => expect(placed).toBeDefined());
+
+    let result: any;
+    await act(async () => {
+      result = await placed;
+    });
+    expect(result.success).toBe(true);
+    expect(first.createConfirmationToken).toHaveBeenCalledWith({
+      elements: first.lastElements,
+    });
+  });
+
   it("does not place the order when the card form is incomplete", async () => {
     const { session } = renderCheckout();
     await screen.findByTestId("stripe-payment-element");
