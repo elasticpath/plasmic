@@ -7,7 +7,9 @@
  *   }));
  *
  * The Payment Element renders a `stripe-payment-element` node into the
- * container it is mounted in, and fires `ready` on the next tick.
+ * container it is mounted in, and fires `ready` on the next tick. Like
+ * Stripe.js, createConfirmationToken rejects Elements that this instance
+ * did not create or that were not submitted first.
  */
 
 export interface FakePaymentElement {
@@ -18,6 +20,7 @@ export interface FakePaymentElement {
 
 export interface FakeElements {
   options: any;
+  submitted: boolean;
   submit: jest.Mock;
   update: jest.Mock;
   paymentElement: FakePaymentElement | null;
@@ -74,8 +77,12 @@ function createElements(options: any): FakeElements & {
 } {
   const elements = {
     options: { ...options },
+    submitted: false,
     paymentElement: null as ReturnType<typeof createPaymentElement> | null,
-    submit: jest.fn().mockResolvedValue({}),
+    submit: jest.fn(async () => {
+      elements.submitted = true;
+      return {};
+    }),
     update: jest.fn((next: any) => {
       elements.options = { ...elements.options, ...next };
     }),
@@ -93,17 +100,30 @@ function createElements(options: any): FakeElements & {
 export function createFakeStripeJs() {
   const instances: FakeStripe[] = [];
   const Stripe = jest.fn((key: string, options?: any) => {
+    const created: FakeElements[] = [];
     const stripe: FakeStripe = {
       key,
       options,
       lastElements: null,
       elements: jest.fn((elementsOptions: any) => {
         stripe.lastElements = createElements(elementsOptions);
+        created.push(stripe.lastElements);
         return stripe.lastElements;
       }),
-      createConfirmationToken: jest
-        .fn()
-        .mockResolvedValue({ confirmationToken: { id: "ctoken_fake" } }),
+      createConfirmationToken: jest.fn(async (params: any) => {
+        const elements = params?.elements;
+        if (!created.includes(elements)) {
+          throw new Error(
+            "IntegrationError: elements must come from this Stripe instance"
+          );
+        }
+        if (!elements.submitted) {
+          throw new Error(
+            "IntegrationError: elements.submit() must be called before createConfirmationToken()"
+          );
+        }
+        return { confirmationToken: { id: "ctoken_fake" } };
+      }),
       handleNextAction: jest
         .fn()
         .mockResolvedValue({ paymentIntent: { status: "succeeded" } }),

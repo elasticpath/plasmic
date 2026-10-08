@@ -330,11 +330,36 @@ describe("EPStripePayment in a checkout session", () => {
       result = await session.current.placeOrder();
     });
 
+    const stripe = mockStripeJs.last();
+    const elements = stripe.lastElements!;
+    expect(elements.submit).toHaveBeenCalledTimes(1);
+    expect(stripe.createConfirmationToken).toHaveBeenCalledWith({ elements });
+    expect(elements.submit.mock.invocationCallOrder[0]).toBeLessThan(
+      stripe.createConfirmationToken.mock.invocationCallOrder[0]
+    );
     expect(mockPlaceOrder).toHaveBeenCalledWith({
       gateway: "stripe",
       confirmation_token: "ctoken_fake",
     });
     expect(result.success).toBe(true);
+  });
+
+  it("does not place the order when the card form is incomplete", async () => {
+    const { session } = renderCheckout();
+    await screen.findByTestId("stripe-payment-element");
+    const stripe = mockStripeJs.last();
+    stripe.lastElements!.submit.mockResolvedValue({
+      error: { message: "Your card number is incomplete." },
+    });
+
+    let result: any;
+    await act(async () => {
+      result = await session.current.placeOrder();
+    });
+
+    expect(stripe.createConfirmationToken).not.toHaveBeenCalled();
+    expect(mockPlaceOrder).not.toHaveBeenCalled();
+    expect(result.error.message).toBe("Your card number is incomplete.");
   });
 
   it("completes 3DS with the session client secret, then resumes", async () => {
