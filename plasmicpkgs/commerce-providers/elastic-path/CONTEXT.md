@@ -246,10 +246,11 @@ endpoints rather than dispatched through the proxy.
 **Identity client**:
 The typed methods the identity operations are called through —
 `useEpIdentity()` in a component, `createEpIdentityClient()` outside React.
-It is the only thing in the package that knows where the auth handler is
-mounted. Arguments and results are typed against the endpoints, and its
-session type is checked against the release allowlist at compile time, so no
-method can be typed as returning a credential the handler withholds.
+It calls the auth handler at `EP_AUTH_BASE_PATH` (`/api/ep`), the one mount
+path every built-in caller shares. Arguments and results are typed against the
+endpoints, and its session type is checked against the release allowlist at
+compile time, so no method can be typed as returning a credential the handler
+withholds.
 _Avoid_: auth client (better-auth's own client is a different thing and is
 deliberately not used)
 

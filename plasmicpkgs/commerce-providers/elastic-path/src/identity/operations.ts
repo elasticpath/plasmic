@@ -61,7 +61,7 @@ export interface EpIdentityRoute {
 }
 
 /**
- * Paths under the base path the auth handler was mounted at. `/get-session` is
+ * Paths under `/api/ep`, where the auth handler is mounted. `/get-session` is
  * better-auth's own endpoint; the rest are the plugin's, hence the second `/ep`.
  */
 export const EP_IDENTITY_ROUTES: {
