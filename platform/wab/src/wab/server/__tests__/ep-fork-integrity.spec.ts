@@ -668,6 +668,12 @@ describe("EP Fork Integrity", () => {
       expect(src).toContain("getTokensDict");
     });
 
+    it("tryMergeBranch reads the head pkg versions without their model", () => {
+      const src = readFile("platform/wab/src/wab/server/db/DbMgr.ts");
+      expect(src).toContain("private async getPkgVersionHead(");
+      expect(src).toContain("await this.getPkgVersionHead(pkg.id, toBranchId)");
+    });
+
     it("final style tokens are classified with set lookups", () => {
       expect(
         readFile("platform/wab/src/wab/shared/core/tokens.ts")
