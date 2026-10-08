@@ -61,30 +61,6 @@ describe("createEpIdentityClient", () => {
     ]);
   });
 
-  it("follows a handler mounted somewhere other than the default", async () => {
-    const stub = fetchStub(() => json(ENVELOPE));
-    const client = createEpIdentityClient({
-      basePath: "/api/store",
-      fetch: stub.fetch,
-    });
-
-    await client.login({ username: "buyer@example.com", password: "pw" });
-
-    expect(stub.calls[0].url).toBe("/api/store/ep/account/login");
-  });
-
-  it("tolerates a base path written with a trailing slash", async () => {
-    const stub = fetchStub(() => json(ENVELOPE));
-    const client = createEpIdentityClient({
-      basePath: "/api/store/",
-      fetch: stub.fetch,
-    });
-
-    await client.logout();
-
-    expect(stub.calls[0].url).toBe("/api/store/ep/account/logout");
-  });
-
   it("sends the shopper's cookies, which are the only identity input", async () => {
     const stub = fetchStub(() => json(ENVELOPE));
     const client = createEpIdentityClient({ fetch: stub.fetch });

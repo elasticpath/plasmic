@@ -30,10 +30,6 @@ export const epAuth = createEpAuth({
   // Optional: payment adapters
   adapters: { stripe: { secretKey: process.env.STRIPE_SECRET_KEY! } },
 
-  // Optional: auth handler prefix (default: /api/ep). The components and
-  // epAuthMiddleware only call /api/ep, so leave it unless you use neither.
-  // basePath: "/api/store",
-
   // Optional: choose the shopper's cart when they sign in or switch
   // organisation. See "Which cart wins at sign-in" below.
   // sessionCartResolver: ({ guestCartId, accountCarts }) => ...,
@@ -365,19 +361,20 @@ never run one on a shared host or against a production store.
 
 ### API Routes
 
-`createEpAuthRoutes(epAuth)` mounts the auth handler:
+`createEpAuthRoutes(epAuth)` mounts the auth handler, which answers only under
+`/api/ep`:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `{basePath}/ep/anonymous` | Mint an anonymous session |
-| POST | `{basePath}/ep/refresh` | Rotate the EP token |
-| POST | `{basePath}/ep/cart` | Persist `epCartId` on the session |
-| POST | `{basePath}/ep/account/login` | Sign an account member in |
-| POST | `{basePath}/ep/account/roster` | Read the accounts the member belongs to |
-| POST | `{basePath}/ep/account/select` | Select or deselect the account being bought for |
-| POST | `{basePath}/ep/account/roll` | Re-mint the account credential before it runs out |
-| POST | `{basePath}/ep/account/logout` | Sign the account member out |
-| GET | `{basePath}/get-session` | Read the session, minus EP credentials |
+| POST | `/api/ep/ep/anonymous` | Mint an anonymous session |
+| POST | `/api/ep/ep/refresh` | Rotate the EP token |
+| POST | `/api/ep/ep/cart` | Persist `epCartId` on the session |
+| POST | `/api/ep/ep/account/login` | Sign an account member in |
+| POST | `/api/ep/ep/account/roster` | Read the accounts the member belongs to |
+| POST | `/api/ep/ep/account/select` | Select or deselect the account being bought for |
+| POST | `/api/ep/ep/account/roll` | Re-mint the account credential before it runs out |
+| POST | `/api/ep/ep/account/logout` | Sign the account member out |
+| GET | `/api/ep/get-session` | Read the session, minus EP credentials |
 
 Call these through the identity client rather than by hand. The table is the
 contract the client is built from, not an instruction to write `fetch`.
@@ -484,15 +481,12 @@ try {
 }
 ```
 
-**Outside React**, `createEpIdentityClient({ basePath })` builds the same
-client.
+**Outside React**, `createEpIdentityClient()` builds the same client.
 
-**Mount the routes at `/api/ep`.** The registered components,
-`useEpIdentity()` and `epAuthMiddleware` call `/api/ep`, `/api/ep/proxy` and
-`/api/ep/design`, and nothing tells them otherwise. `basePath` on `createEpAuth` moves the auth
-handler, and only a client you build with
-`createEpIdentityClient({ basePath })` can reach it there.
-`providerProps()` returns that mount path; no component reads it.
+**Mount the routes at `/api/ep`.** The auth handler answers only there, and
+the registered components, `useEpIdentity()`, `epAuthMiddleware` and the proxy
+route's cart write call `/api/ep`, `/api/ep/proxy` and `/api/ep/design`. No
+option moves them.
 
 **In the Studio canvas** the client stays relative, which resolves against the
 document serving the artboard — the consumer's own app, holding the shopper's

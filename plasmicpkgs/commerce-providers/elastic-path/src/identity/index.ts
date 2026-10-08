@@ -1,8 +1,5 @@
-export {
-  createEpIdentityClient,
-  epIdentityErrorCode,
-  DEFAULT_EP_BASE_PATH,
-} from "./client";
+export { createEpIdentityClient, epIdentityErrorCode } from "./client";
+export { EP_AUTH_BASE_PATH } from "../ep-auth-base-path";
 export type { EpIdentityClientOptions, EpIdentityError } from "./client";
 export { useEpIdentity } from "./useEpIdentity";
 export { EP_IDENTITY_ROUTES, EP_IDENTITY_OPERATION_NAMES } from "./operations";

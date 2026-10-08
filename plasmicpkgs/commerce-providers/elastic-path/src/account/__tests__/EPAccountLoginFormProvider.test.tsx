@@ -438,7 +438,7 @@ describe("EPAccountLoginFormProvider", () => {
     });
   });
 
-  it("posts login to the auth handler's own mount path", async () => {
+  it("posts login to the auth handler at /api/ep", async () => {
     const { fetchImpl } = installFetch();
     const ref = renderForm();
     fireEvent.click(screen.getByTestId("fill"));

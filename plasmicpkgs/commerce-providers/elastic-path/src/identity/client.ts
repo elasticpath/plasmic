@@ -5,12 +5,9 @@ import {
   type EpIdentityClient,
   type EpIdentityOperationName,
 } from "./operations";
-
-export const DEFAULT_EP_BASE_PATH = "/api/ep";
+import { EP_AUTH_BASE_PATH } from "../ep-auth-base-path";
 
 export interface EpIdentityClientOptions {
-  /** Where the auth handler was mounted; the value given to `createEpAuth`. */
-  basePath?: string;
   fetch?: typeof fetch;
 }
 
@@ -22,11 +19,6 @@ export interface EpIdentityError extends Error {
 /** The server's reason for refusing, e.g. `account_lapsed`. */
 export function epIdentityErrorCode(err: unknown): string | undefined {
   return readEpErrorCode(err);
-}
-
-function normalizeBasePath(basePath: string): string {
-  const trimmed = basePath.replace(/\/$/, "");
-  return trimmed.startsWith("/") || trimmed === "" ? trimmed : `/${trimmed}`;
 }
 
 async function readRefusal(
@@ -60,7 +52,12 @@ async function readRefusal(
 export function createEpIdentityClient(
   options: EpIdentityClientOptions = {}
 ): EpIdentityClient {
-  const basePath = normalizeBasePath(options.basePath ?? DEFAULT_EP_BASE_PATH);
+  if ("basePath" in options) {
+    throw new Error(
+      "createEpIdentityClient: basePath was removed; the auth handler is " +
+        `fixed at ${EP_AUTH_BASE_PATH}. Drop basePath.`
+    );
+  }
   const doFetch = options.fetch ?? ((...args) => fetch(...args));
 
   async function call(
@@ -68,7 +65,7 @@ export function createEpIdentityClient(
     input?: unknown
   ): Promise<unknown> {
     const route = EP_IDENTITY_ROUTES[operation];
-    const url = `${basePath}${route.path}`;
+    const url = `${EP_AUTH_BASE_PATH}${route.path}`;
 
     const init: RequestInit = { method: route.method, credentials: "include" };
     if (route.method === "POST") {

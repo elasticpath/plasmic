@@ -9,6 +9,7 @@
  * so the calling route can forward them onto its own response.
  */
 import type { EpAuth } from "./create-ep-auth-better";
+import { EP_AUTH_BASE_PATH } from "../../ep-auth-base-path";
 
 export async function persistCartId(
   epAuth: EpAuth,
@@ -19,7 +20,7 @@ export async function persistCartId(
   const incomingOrigin =
     request.headers.get("origin") ?? new URL(request.url).origin;
   const internalReq = new Request(
-    `${new URL(request.url).origin}/api/ep/ep/cart`,
+    `${new URL(request.url).origin}${EP_AUTH_BASE_PATH}/ep/cart`,
     {
       method: "POST",
       headers: {

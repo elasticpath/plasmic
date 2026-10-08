@@ -94,15 +94,14 @@ function installEpFetch() {
  * Stands in for the browser: carries the cookie jar the way a browser
  * would, and routes the client's request at the mounted handler.
  */
-function browserAt(basePath?: string) {
+function browserAt() {
   const epAuth = createEpAuth({
     clientId: EP_CLIENT_ID,
     host: EP_HOST,
     secret: SECRET,
-    basePath,
     passwordProfileId: PROFILE,
     checkout: { sessionSecret: "identity-client-test-secret-569" },
-  } as any);
+  });
   const routes = createEpAuthRoutes(epAuth);
 
   let jar = "";
@@ -141,7 +140,7 @@ function browserAt(basePath?: string) {
   }) as unknown as typeof fetch;
 
   return {
-    client: createEpIdentityClient({ basePath, fetch: browserFetch }),
+    client: createEpIdentityClient({ fetch: browserFetch }),
     seen,
     get cookie() {
       return jar;
@@ -226,15 +225,6 @@ describe("the identity client against the mounted handler", () => {
     expect(err.status).toBe(401);
   });
 
-  it("finds a handler the consumer mounted somewhere else", async () => {
-    const browser = browserAt("/api/store");
-
-    const anonymous = await browser.client.signInAnonymously();
-
-    expect(anonymous.session.id).toBeTruthy();
-    expect(browser.seen).toEqual(["/api/store/ep/anonymous"]);
-  });
-
   it("points the envelope at a cart", async () => {
     const browser = browserAt();
     await browser.client.signInAnonymously();
@@ -242,6 +232,28 @@ describe("the identity client against the mounted handler", () => {
     const updated = await browser.client.setCart({ cartId: "cart-42" });
 
     expect(updated.session.epCartId).toBe("cart-42");
+  });
+});
+
+describe("a config that still carries the removed basePath", () => {
+  it("stops createEpAuth, naming /api/ep as the mount", () => {
+    expect(() =>
+      createEpAuth({
+        clientId: EP_CLIENT_ID,
+        host: EP_HOST,
+        secret: SECRET,
+        checkout: { sessionSecret: "identity-client-test-secret-569" },
+        basePath: "/api/store",
+      } as Parameters<typeof createEpAuth>[0])
+    ).toThrow(/basePath.*\/api\/ep/);
+  });
+
+  it("stops createEpIdentityClient, naming /api/ep as the mount", () => {
+    expect(() =>
+      createEpIdentityClient({ basePath: "/api/store" } as Parameters<
+        typeof createEpIdentityClient
+      >[0])
+    ).toThrow(/basePath.*\/api\/ep/);
   });
 });
 

@@ -344,9 +344,6 @@ export interface CustomerData {
     name: string;
 }
 
-// @public (undocumented)
-export const DEFAULT_EP_BASE_PATH = "/api/ep";
-
 // @public
 export const DEFAULT_LOCALE = "en-US";
 
@@ -404,6 +401,9 @@ export interface ElasticPathOrder {
     // (undocumented)
     type: 'order';
 }
+
+// @public
+export const EP_AUTH_BASE_PATH = "/api/ep";
 
 // @public
 export const EP_CART_CACHE_KEY: "ep-cart";
@@ -864,7 +864,6 @@ export type EpIdentityClient = {
 
 // @public (undocumented)
 export interface EpIdentityClientOptions {
-    basePath?: string;
     // (undocumented)
     fetch?: typeof fetch;
 }

@@ -8,11 +8,12 @@
  * function fetches EP directly.
  */
 import { readEpErrorCode } from "../browser-call";
+import { EP_AUTH_BASE_PATH } from "../ep-auth-base-path";
 import { makeEpCallError, readEpCallError } from "./call-error";
 import { callEpDesign } from "./design-fetch";
 import { currentEpDesignRealm } from "./design-realm";
 
-const PROXY_PATH = "/api/ep/proxy";
+const PROXY_PATH = `${EP_AUTH_BASE_PATH}/proxy`;
 
 export function shouldUseProxy(): boolean {
   return typeof window !== "undefined";

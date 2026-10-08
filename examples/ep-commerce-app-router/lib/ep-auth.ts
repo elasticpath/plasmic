@@ -32,7 +32,6 @@ export const epAuth = createBetterEpAuth({
   host: "https://useast.api.elasticpath.com",
   secret: SECRET,
   baseURL: process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3456",
-  basePath: "/api/ep",
   passwordProfileId: process.env.EP_PASSWORD_PROFILE_ID,
   resolveConfig: async ({ hostAllowlist }) => {
     const config = await getEpProviderConfig(hostAllowlist);
