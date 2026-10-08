@@ -940,13 +940,15 @@ describe("merging", () => {
           // The spy records every site it returned, which would keep them alive.
           const refs = unbundle.mock.results.map((r) => new WeakRef(r.value));
           unbundle.mockClear();
-          // A WeakRef target survives until the end of the job that made it.
-          await new Promise((resolve) => setImmediate(resolve));
-          collectGarbage();
-          sites = {
-            loaded: refs.length,
-            alive: refs.filter((ref) => ref.deref()).length,
-          };
+          // The sites are released shortly after the merge phase returns, not
+          // necessarily within one tick, so collect until none are left.
+          let alive = refs.length;
+          for (let i = 0; i < 20 && alive > 0; i++) {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            collectGarbage();
+            alive = refs.filter((ref) => ref.deref()).length;
+          }
+          sites = { loaded: refs.length, alive };
           return realPublish.apply(this, args);
         });
       try {
