@@ -23,7 +23,6 @@ export function isSameSiteRedirect(value: string): boolean {
   return true;
 }
 
-/** Decoded `redirect` query value, or null when the param is absent or empty. */
 export function readRedirectQuery(search: string): string | null {
   const raw = search.startsWith("?") ? search.slice(1) : search;
   const params = new URLSearchParams(raw);
@@ -33,13 +32,6 @@ export function readRedirectQuery(search: string): string | null {
   return value;
 }
 
-/**
- * 1. valid decoded `?redirect=`
- * 2. valid configured path
- * 3. null — stay on the page
- *
- * `search === null` means there is no browser location, so step 1 is skipped.
- */
 export function resolveReturnTo(input: {
   search: string | null;
   configured?: string | null;
@@ -54,13 +46,11 @@ export function resolveReturnTo(input: {
   return null;
 }
 
-/** `window.location.search`, or null when this is not a browser. */
 export function readLocationSearch(): string | null {
   if (typeof window === "undefined") return null;
   return window.location?.search ?? "";
 }
 
-/** Full-page navigation. No-op when there is no browser location. */
 export function assignReturnTo(path: string): void {
   if (typeof window === "undefined") return;
   window.location.assign(path);
