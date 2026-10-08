@@ -2,7 +2,11 @@ export interface EpCallErrorInfo {
   message: string;
   code?: string;
   correlationId?: string;
+  /** The route sent the failing function's own message. */
+  forwarded?: boolean;
 }
+
+const forwardedMessageErrors = new WeakSet<Error>();
 
 export function makeEpCallError(info: EpCallErrorInfo): Error {
   const err = new Error(info.message) as Error & {
@@ -11,7 +15,13 @@ export function makeEpCallError(info: EpCallErrorInfo): Error {
   };
   if (info.code) err.code = info.code;
   if (info.correlationId) err.correlationId = info.correlationId;
+  if (info.forwarded) forwardedMessageErrors.add(err);
   return err;
+}
+
+/** True when the error's message is the one the failing function raised. */
+export function carriesForwardedMessage(err: unknown): err is Error {
+  return err instanceof Error && forwardedMessageErrors.has(err);
 }
 
 export async function readEpCallError(
@@ -39,6 +49,7 @@ export async function readEpCallError(
     }
     if (typeof body.message === "string" && body.message.trim()) {
       info.message = body.message;
+      info.forwarded = res.status !== 404 && res.status !== 405;
     } else if (typeof body.error === "string" && body.error.trim()) {
       info.message = body.error;
     } else if (

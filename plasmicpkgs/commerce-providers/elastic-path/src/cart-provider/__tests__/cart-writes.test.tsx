@@ -31,11 +31,14 @@ function cartWith(lines: Array<{ id: string; quantity: number; location?: string
   };
 }
 
+const NOT_JSON = Symbol("an HTML error page");
+
 /** A storefront proxy route backed by one shopper's cart. */
 function fakeProxy() {
   const calls: ProxyCall[] = [];
   let cart = cartWith([]);
   let failure: { status: number; body: unknown } | null = null;
+  let unreachable = false;
 
   const fetchStub = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -46,9 +49,13 @@ function fakeProxy() {
       ({
         ok: status >= 200 && status < 300,
         status,
-        json: async () => payload,
+        json: async () => {
+          if (payload === NOT_JSON) throw new SyntaxError("Unexpected token <");
+          return payload;
+        },
       }) as unknown as Response;
 
+    if (fn !== "getCart" && unreachable) throw new TypeError("Failed to fetch");
     if (fn !== "getCart" && failure) return respond(failure.status, failure.body);
     switch (fn) {
       case "getCart":
@@ -82,6 +89,9 @@ function fakeProxy() {
     },
     failWith(status: number, body: unknown) {
       failure = { status, body };
+    },
+    failToConnect() {
+      unreachable = true;
     },
   };
 }
@@ -214,6 +224,71 @@ describe("cart writes from the root entry", () => {
     expect(caught?.message).not.toBe("dispatch_failed");
     expect(caught?.message).toMatch(/couldn't remove/i);
     expect(caught?.code).toBe("dispatch_failed");
+  });
+});
+
+describe("every cart write rejection reads as shopper copy", () => {
+  async function rejectionOf(write: () => Promise<unknown>) {
+    return write().then(
+      () => undefined,
+      (err) => err as Error & { code?: string; correlationId?: string }
+    );
+  }
+
+  it("when the proxy route is not mounted", async () => {
+    proxy.failWith(404, { error: "Not Found" });
+
+    const caught = await rejectionOf(() =>
+      epAddCartItem({ productId: "prod-1", quantity: 1 })
+    );
+
+    expect(caught?.message).toBe(
+      "We couldn't add this item to your cart. Please try again."
+    );
+    expect(caught?.code).toBe("route_not_found");
+  });
+
+  it("when the proxy route answers a 405", async () => {
+    proxy.failWith(405, NOT_JSON);
+
+    const caught = await rejectionOf(() =>
+      epUpdateCartItem({ itemId: "li-1", quantity: 2 })
+    );
+
+    expect(caught?.message).toBe("We couldn't update the quantity. Please try again.");
+    expect(caught?.code).toBe("route_not_found");
+  });
+
+  it("when the server fails with an error page and no code", async () => {
+    proxy.failWith(502, NOT_JSON);
+
+    const caught = await rejectionOf(() => epRemoveCartItem({ itemId: "li-1" }));
+
+    expect(caught).toBeInstanceOf(Error);
+    expect(caught?.message).toBe("We couldn't remove this item. Please try again.");
+  });
+
+  it("when the network is down", async () => {
+    proxy.failToConnect();
+
+    const caught = await rejectionOf(() =>
+      epAddCartItem({ productId: "prod-1", quantity: 1 })
+    );
+
+    expect(caught).toBeInstanceOf(Error);
+    expect(caught?.message).toBe(
+      "We couldn't add this item to your cart. Please try again."
+    );
+  });
+
+  it("keeps the correlation id of a coded failure", async () => {
+    proxy.failWith(401, { error: "no_session", code: "no_session", correlationId: "corr-2" });
+
+    const caught = await rejectionOf(() => epRemoveCartItem({ itemId: "li-1" }));
+
+    expect(caught?.message).toMatch(/session expired/i);
+    expect(caught?.code).toBe("no_session");
+    expect(caught?.correlationId).toBe("corr-2");
   });
 });
 

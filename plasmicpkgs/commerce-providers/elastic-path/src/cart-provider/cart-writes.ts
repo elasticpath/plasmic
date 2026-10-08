@@ -1,5 +1,8 @@
 import { mutate as swrMutate } from "swr";
-import { makeEpCallError } from "../ep-server-functions/call-error";
+import {
+  carriesForwardedMessage,
+  makeEpCallError,
+} from "../ep-server-functions/call-error";
 import { cartMutationErrorCopy } from "../ep-server-functions/cart-mutation-error-copy";
 import * as serverCartWrites from "../ep-server-functions/cart-mutations";
 import type {
@@ -12,10 +15,18 @@ import { epProxyErrorCode } from "../ep-server-functions/proxy-fetch";
 import type { Cart } from "../types/cart";
 import { epCartCacheKey } from "./cache-keys";
 
-const BARE_ERROR_CODE = /^[a-z]+(?:_[a-z]+)*$/;
-
 const NOT_ON_STUDIO_CANVAS =
   "Cart changes don't run on the Studio canvas. Preview the page to try them.";
+
+function withShopperMessage(err: unknown, failureCopy: string): Error {
+  if (carriesForwardedMessage(err)) return err;
+  const message = epProxyErrorCode(err)
+    ? cartMutationErrorCopy(err, failureCopy)
+    : failureCopy;
+  if (!(err instanceof Error)) return makeEpCallError({ message });
+  err.message = message;
+  return err;
+}
 
 async function writeCartAndSeedCache<I>(
   serverCartWrite: (input: I) => Promise<Cart>,
@@ -26,10 +37,7 @@ async function writeCartAndSeedCache<I>(
   try {
     cart = await serverCartWrite(input);
   } catch (err) {
-    if (err instanceof Error && epProxyErrorCode(err) && BARE_ERROR_CODE.test(err.message)) {
-      err.message = cartMutationErrorCopy(err, failureCopy);
-    }
-    throw err;
+    throw withShopperMessage(err, failureCopy);
   }
   if (!cart) {
     throw currentEpDesignRealm() === "artboard"
@@ -47,9 +55,11 @@ async function writeCartAndSeedCache<I>(
  * the browser it calls the storefront's proxy route, then every `useEpCart()`
  * consumer shows the new cart.
  *
- * Rejects with an `Error` whose `message` is readable and whose `code`, when
- * the proxy route sent one, is stable to branch on (`insufficient_stock`,
- * `no_session`, `dispatch_failed`).
+ * Rejects with an `Error` whose `message` is shopper copy, or Elastic Path's
+ * own reason when the proxy route forwards it. Its `code`, when there is one,
+ * is stable to branch on: `insufficient_stock`, `no_session`,
+ * `dispatch_failed`, `route_not_found`, or `design_fn_not_served` on the
+ * Studio canvas.
  */
 export function epAddCartItem(input: EpAddCartItemInput): Promise<Cart> {
   return writeCartAndSeedCache(
