@@ -80,8 +80,8 @@ storefront's proxy route, so no Elastic Path credential reaches the page. After
 a write, every `useEpCart()` consumer shows the new cart. A rejection is an
 `Error` whose `message` is text you can show the shopper and, when there is
 one, a stable `code` such as `insufficient_stock`. On the Studio canvas a write
-does not run; it rejects with the code `design_fn_not_served`. `/server` keeps
-its own copies for server code.
+does not run; it rejects with the code `design_fn_not_served`. They are the
+same functions `/server` exports.
 
 `createEpDesignRoutes` serves Studio design time. It answers four catalog
 reads, `getProduct`, `getProductList`, `getProductPage` and
@@ -134,6 +134,15 @@ already does. Calls made with `getClientCredentialsToken` never carry it, and
 with no account selected no checkout call does.
 
 ### Changed
+
+`epAddCartItem`, `epUpdateCartItem` and `epRemoveCartItem` reject the same way
+on the server as in the browser. A server rejection's `message` is shopper copy,
+such as "There isn't enough stock to add that quantity. Try a smaller amount.",
+not Elastic Path's reason, and it always has a `code`. Server code that read the
+reason from `message` reads it from `cause`. EP Add To Cart Button, EP Cart Item
+Quantity Control and EP Cart Item Remove Button show shopper copy for a network
+failure instead of the browser's own message, and on the Studio canvas they say
+that cart changes do not run there.
 
 A shopper's cart at sign-in is not merged with the account's. 0.8.0 replaced
 the documented `cartMergeStrategy: "merge"` default with keep-the-guest-cart,

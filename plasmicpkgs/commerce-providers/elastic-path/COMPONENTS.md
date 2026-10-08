@@ -142,14 +142,18 @@ development, the `message` is that reason. Otherwise it is fixed text for the
 failure, such as "We couldn't add this item to your cart. Please try again."
 Branch on `code`, not on the message text. A network failure or an error page
 with no code rejects with no `code`. `route_not_found` means the proxy route
-is not mounted.
+is not mounted. `cause` holds the original failure, and `correlationId`, when
+there is one, matches the proxy route's log line.
 
 On the Studio canvas, a write does not run and the cart does not change. The
 write rejects with the code `design_fn_not_served`. Preview the page to try the
 write.
 
-`/server` exports the same three names for server code. Those return the cart
-but refresh no browser cache.
+`/server` exports the same three functions. On the server they write with the
+request's session and reject the same way: the same shopper `message`, the same
+`code`, and Elastic Path's own reason in `cause`. A server rejection always has
+a `code`; a failure with no known cause is `dispatch_failed`. Only a call in the
+browser refreshes the `useEpCart()` cache.
 
 ---
 
