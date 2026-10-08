@@ -5,25 +5,20 @@
  */
 import { createEpIdentityClient } from "../identity/client";
 
-export async function getCartIdFromSession(
-  basePath?: string
-): Promise<string | undefined> {
+export async function getCartIdFromSession(): Promise<string | undefined> {
   if (typeof window === "undefined") return undefined;
   try {
-    const session = await createEpIdentityClient({ basePath }).getSession();
+    const session = await createEpIdentityClient().getSession();
     return session?.session?.epCartId ?? undefined;
   } catch {
     return undefined;
   }
 }
 
-export async function setCartIdInSession(
-  id: string,
-  basePath?: string
-): Promise<void> {
+export async function setCartIdInSession(id: string): Promise<void> {
   if (typeof window === "undefined") return;
   try {
-    await createEpIdentityClient({ basePath }).setCart({ cartId: id });
+    await createEpIdentityClient().setCart({ cartId: id });
   } catch {
     // Best-effort write. Persist failure is non-fatal — the operation
     // that produced the new cart ID has already succeeded against EP;

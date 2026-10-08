@@ -1,4 +1,4 @@
-/** The accessors follow the mount path their caller was given. */
+/** The accessors reach the envelope's cart through the auth handler at /api/ep. */
 import { getCartIdFromSession, setCartIdInSession } from "../cart-session";
 
 const originalFetch = globalThis.fetch;
@@ -28,14 +28,6 @@ describe("getCartIdFromSession", () => {
     expect(calls[0].url).toBe("/api/ep/get-session");
   });
 
-  it("follows a handler the consumer mounted elsewhere", async () => {
-    respond({ session: { epCartId: "cart-7" } });
-
-    await getCartIdFromSession("/api/store");
-
-    expect(calls[0].url).toBe("/api/store/get-session");
-  });
-
   it("reports no cart rather than failing when there is no session", async () => {
     respond(null);
 
@@ -57,14 +49,6 @@ describe("setCartIdInSession", () => {
 
     expect(calls[0].url).toBe("/api/ep/ep/cart");
     expect(JSON.parse(calls[0].init.body)).toEqual({ cartId: "cart-9" });
-  });
-
-  it("follows a handler the consumer mounted elsewhere", async () => {
-    respond({ session: {} });
-
-    await setCartIdInSession("cart-9", "/api/store");
-
-    expect(calls[0].url).toBe("/api/store/ep/cart");
   });
 
   it("swallows a failed write, which the next page load re-derives", async () => {

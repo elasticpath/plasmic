@@ -481,8 +481,7 @@ try {
 }
 ```
 
-**Outside React**, `createEpIdentityClient({ basePath })` builds the same
-client.
+**Outside React**, `createEpIdentityClient()` builds the same client.
 
 **Mount the routes at `/api/ep`.** The auth handler answers only there, and
 the registered components, `useEpIdentity()`, `epAuthMiddleware` and the proxy

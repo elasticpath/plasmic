@@ -37,9 +37,9 @@ jest.mock("@plasmicapp/host/registerComponent", () => {
 });
 
 // The provider re-reads whenever it is handed a different identity client.
-// Nothing in a page varies the mount path any more, so the tests that cover
-// that reaction drive it here instead.
-let identityBasePath = "/api/ep";
+// Nothing in a page swaps the client, so the tests that cover that reaction
+// swap it here, telling clients apart by the URL prefix their requests carry.
+let identityPrefix = "/api/ep";
 jest.mock("../../identity/useEpIdentity", () => {
   const ReactLocal = require("react");
   const {
@@ -47,10 +47,14 @@ jest.mock("../../identity/useEpIdentity", () => {
   } = require("../../identity/client") as typeof import("../../identity/client");
   return {
     useEpIdentity: () => {
-      const basePath = identityBasePath;
+      const prefix = identityPrefix;
       return ReactLocal.useMemo(
-        () => createEpIdentityClient({ basePath }),
-        [basePath]
+        () =>
+          createEpIdentityClient({
+            fetch: (url, init) =>
+              fetch(String(url).replace(/^\/api\/ep/, prefix), init),
+          }),
+        [prefix]
       );
     },
   };
@@ -79,9 +83,9 @@ const {
   RELOAD_RETRY_BACKOFF_MS,
 } = require("../EPAccountProvider");
 
-/** Stands in for an auth handler mounted somewhere other than the default. */
-function MountedAt(props: { basePath: string; children: React.ReactNode }) {
-  identityBasePath = props.basePath;
+/** Hands the provider an identity client whose requests carry `prefix`. */
+function ClientAt(props: { prefix: string; children: React.ReactNode }) {
+  identityPrefix = props.prefix;
   return <>{props.children}</>;
 }
 
@@ -294,7 +298,7 @@ describe("previewAccountContext", () => {
 describe("EPAccountProvider", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    identityBasePath = "/api/ep";
+    identityPrefix = "/api/ep";
     mockUsePlasmicCanvasContext.mockReturnValue(false);
     (global as unknown as { fetch: typeof fetch }).fetch = jest.fn(
       () => new Promise(() => {})
@@ -357,14 +361,14 @@ describe("EPAccountProvider", () => {
     });
   });
 
-  it("reads the session from the mount path", async () => {
+  it("reads the session through the identity client", async () => {
     const fetchImpl = mockSessionAndRoster({ epMemberId: "member-1" });
     render(
-      <MountedAt basePath="/api/store">
+      <ClientAt prefix="/api/store">
         <EPAccountProvider>
           <span>child</span>
         </EPAccountProvider>
-      </MountedAt>
+      </ClientAt>
     );
     await waitFor(() => {
       expect(publishedAccount().state).toBe("memberOnly");
@@ -386,12 +390,12 @@ describe("EPAccountProvider", () => {
     fetchImpl.mockImplementation((url: string, init?: RequestInit) =>
       String(url).startsWith("/api/b/") ? pending : baseFetch(url, init)
     );
-    const tree = (basePath: string) => (
-      <MountedAt basePath={basePath}>
+    const tree = (prefix: string) => (
+      <ClientAt prefix={prefix}>
         <EPAccountProvider>
           <span>child</span>
         </EPAccountProvider>
-      </MountedAt>
+      </ClientAt>
     );
 
     const { rerender } = render(tree("/api/a"));
@@ -633,17 +637,17 @@ describe("EPAccountProvider", () => {
       expect(screen.queryByTestId("signed-in")).toBeNull();
     });
 
-    it("posts logout to the mount path", async () => {
+    it("posts logout through the identity client", async () => {
       const { releaseReload, logoutCalls } = installLogoutFetch({
         epMemberId: "member-1",
       });
       const ref = React.createRef<AccountActions>();
       render(
-        <MountedAt basePath="/api/store">
+        <ClientAt prefix="/api/store">
           <EPAccountProvider ref={ref}>
             <span>child</span>
           </EPAccountProvider>
-        </MountedAt>
+        </ClientAt>
       );
       await waitFor(() => {
         expect(publishedAccount().state).toBe("memberOnly");
@@ -2117,7 +2121,7 @@ describe("EPAccountProvider", () => {
       });
     });
 
-    it("posts select to the mount path", async () => {
+    it("posts select through the identity client", async () => {
       const { selectCalls, sessionReads } = installSelectFetch({
         initialSession: { epMemberId: "member-1" },
         nextSession: {
@@ -2127,11 +2131,11 @@ describe("EPAccountProvider", () => {
       });
       const ref = React.createRef<AccountActions>();
       render(
-        <MountedAt basePath="/api/store">
+        <ClientAt prefix="/api/store">
           <EPAccountProvider ref={ref}>
             <span>child</span>
           </EPAccountProvider>
-        </MountedAt>
+        </ClientAt>
       );
       await waitFor(() => {
         expect(publishedAccount().state).toBe("memberOnly");
@@ -2760,12 +2764,12 @@ describe("EPAccountProvider", () => {
         }
       ) as typeof fetch;
       const handle: { reload?: () => Promise<void> } = {};
-      const tree = (basePath: string) => (
-        <MountedAt basePath={basePath}>
+      const tree = (prefix: string) => (
+        <ClientAt prefix={prefix}>
           <EPAccountProvider>
             <ReloadHandle handle={handle} />
           </EPAccountProvider>
-        </MountedAt>
+        </ClientAt>
       );
       const { rerender } = render(tree("/api/a"));
       await waitFor(() => {
@@ -2988,12 +2992,12 @@ describe("EPAccountProvider", () => {
       (global as unknown as { fetch: typeof fetch }).fetch =
         fetchImpl as typeof fetch;
       const handle: { reload?: () => Promise<void> } = {};
-      const tree = (basePath: string) => (
-        <MountedAt basePath={basePath}>
+      const tree = (prefix: string) => (
+        <ClientAt prefix={prefix}>
           <EPAccountProvider>
             <ReloadHandle handle={handle} />
           </EPAccountProvider>
-        </MountedAt>
+        </ClientAt>
       );
       const { rerender } = render(tree("/api/a"));
       await flushPromises();

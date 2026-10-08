@@ -864,7 +864,6 @@ export type EpIdentityClient = {
 
 // @public (undocumented)
 export interface EpIdentityClientOptions {
-    basePath?: string;
     // (undocumented)
     fetch?: typeof fetch;
 }

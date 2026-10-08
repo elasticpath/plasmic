@@ -43,6 +43,7 @@ example does, resolves as before.
 | `buildCartCookieHeader`, `buildClearCartCookieHeader`, the `ep_cart` cookie | The envelope's own cart pointer, written by `setCart`. |
 | `ShopperContext`'s `basePath` | None. The auth handler is always at `/api/ep`. |
 | `basePath` on `createEpAuth` | None. Mount the auth handler at `/api/ep`, the only path the components, `epAuthMiddleware` and the proxy route's cart write call. |
+| `basePath` on `createEpIdentityClient` | None. The client always calls `/api/ep`, where the auth handler is. |
 | `providerProps()` on the session `getSession` returns | None. It carried only the mount path, and nothing read it. Drop any `globalContextsProps` entry that passes it. |
 | `cartMergeStrategy` on `createEpAuth` | `sessionCartResolver`. |
 | `/ep/account/login` with `{ epMemberId, epAccountId, epAccountToken, epAccountExpires }` | `{ username, password }`. The package mints the account credential itself, so there is nothing left to verify. |

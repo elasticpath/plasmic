@@ -3,6 +3,9 @@ import { createEpIdentityClient } from "../../client";
 
 const identity = createEpIdentityClient();
 
+// @ts-expect-error the auth handler is always at /api/ep
+createEpIdentityClient({ basePath: "/api/store" });
+
 // A caller cannot name a route.
 // @ts-expect-error there is no URL to pass
 identity.logout("/api/ep/ep/account/logout");
