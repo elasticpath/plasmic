@@ -23,16 +23,27 @@ function sessionWith(
 
 describe("buildEpCtx", () => {
   it("carries the host and client id the session was minted against", () => {
-    expect(buildEpCtx(sessionWith(), { locale: "en-GB" })).toEqual({
+    expect(buildEpCtx(sessionWith())).toEqual({
       accessToken: "tok-abc",
       host: HOST,
       clientId: "cid-abc",
       cartId: undefined,
       accountId: undefined,
       accountToken: undefined,
-      locale: "en-GB",
+      locale: undefined,
       currency: undefined,
     });
+  });
+
+  it("carries the locale and currency the session resolved", () => {
+    const ctx = buildEpCtx({
+      ...sessionWith(),
+      locale: "en-GB",
+      currency: "GBP",
+    });
+
+    expect(ctx.locale).toBe("en-GB");
+    expect(ctx.currency).toBe("GBP");
   });
 
   it("carries the session cart", () => {

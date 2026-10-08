@@ -55,7 +55,7 @@ import type {
 } from "../../ep-server-functions";
 import { classifyEpFailure } from "../../ep-server-functions/call-error";
 import { withEpSession } from "../../ep-server-functions/session-context";
-import type { EpCtx } from "../../ep-server-functions/build-ep-ctx";
+import { buildEpCtx } from "../../ep-server-functions/build-ep-ctx";
 import { parseCookieHeader } from "../../utils/cookie-header";
 import type { EpAuth } from "./create-ep-auth-better";
 import { enforceOriginGate, isTrustedOrigin } from "./origin-gate";
@@ -93,22 +93,6 @@ const CART_WRITE_FNS = new Set([
 /** Promised `params` only — see the note on `CartRouteContext`. */
 interface ProxyRouteContext {
   params: Promise<{ fn?: string }>;
-}
-
-interface SessionShape {
-  session: {
-    accessToken: string;
-    host: string;
-    clientId: string;
-    expires: number;
-    locale?: string;
-    account?: {
-      id: string;
-      name?: string;
-      token: string;
-    } | null;
-  } | null;
-  cart: { id: string } | null;
 }
 
 const FN_DISPATCH: Record<
@@ -227,10 +211,10 @@ export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes {
       >;
 
       const cookies = parseCookieHeader(request.headers.get("cookie") ?? "");
-      const sessionResult = (await epAuth.api.getSession({
+      const sessionResult = await epAuth.api.getSession({
         cookies,
         headers: Object.fromEntries(request.headers.entries()),
-      })) as SessionShape;
+      });
 
       const session = sessionResult.session;
       if (!session?.accessToken) {
@@ -251,20 +235,9 @@ export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes {
         });
       }
 
-      // Run the function inside `withEpSession` — same path SSR uses.
-      // The function reads its auth via `getCurrentEpSession()` and
-      // makes the EP REST call directly with the shopper's bearer.
-      // The session itself already carries host/clientId/accessToken,
-      // so we don't need to re-fetch the loader bundle to build ctx.
-      const epCtx: EpCtx = {
-        accessToken: session.accessToken,
-        host: session.host,
-        clientId: session.clientId,
-        cartId: sessionResult.cart?.id ?? undefined,
-        accountId: session.account?.id,
-        accountToken: session.account?.token,
-        locale: session.locale,
-      };
+      // Same context SSR builds, so a proxied call is priced and localised
+      // the way the server render was.
+      const epCtx = buildEpCtx(sessionResult);
 
       let result: unknown;
       try {

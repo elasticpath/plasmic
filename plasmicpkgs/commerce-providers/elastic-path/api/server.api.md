@@ -47,10 +47,7 @@ export function assertProductionSecret(secret: string | undefined, opts: {
 }): void;
 
 // @public (undocumented)
-export function buildEpCtx(session: Pick<EpSession, "session" | "cart">, opts?: {
-    locale?: string;
-    currency?: string;
-}): EpCtx;
+export function buildEpCtx(session: Pick<EpSession, "session" | "cart" | "locale" | "currency">): EpCtx;
 
 // @public
 export const CART_ADJUSTMENT_KINDS: readonly ["fee", "handling", "shipping"];
@@ -260,6 +257,16 @@ export interface EpAuthConfig {
     hostAllowlist?: readonly string[];
     passwordProfileId?: string;
     resolveConfig?: EpResolveConfig;
+    resolveLocale?: (request: {
+        cookies: Record<string, string>;
+        headers: Record<string, string>;
+    }) => {
+        locale?: string;
+        currency?: string;
+    } | null | undefined | Promise<{
+        locale?: string;
+        currency?: string;
+    } | null | undefined>;
     // (undocumented)
     secret?: string;
     sessionCartResolver?: EpSessionCartResolver;
@@ -636,10 +643,12 @@ export interface EpSession {
     commitCookies(res: {
         appendHeader(name: string, value: string): void;
     }): void;
+    currency?: string;
     // (undocumented)
     headers(): Record<string, string>;
     // (undocumented)
     isAuthenticated: boolean;
+    locale?: string;
     // (undocumented)
     session: EpSessionData | null;
     // (undocumented)
