@@ -188,6 +188,33 @@ describe("EPPaymentElements", () => {
       expect(await screen.findByTestId("stripe-payment-element")).toBeTruthy();
     });
 
+    it("updates the appearance in place, keeping the card the shopper typed", async () => {
+      const setElements = jest.fn();
+      const ui = (appearance: Record<string, unknown>) => (
+        <CheckoutInternalContext.Provider
+          value={{ clientSecret: "pi_1_secret_2", setElements, elements: null }}
+        >
+          <EPPaymentElements stripePublishableKey="pk_test_123" appearance={appearance}>
+            <span>Payment</span>
+          </EPPaymentElements>
+        </CheckoutInternalContext.Provider>
+      );
+      const view = render(ui({ theme: "stripe" }));
+      await screen.findByTestId("stripe-payment-element");
+      const stripe = mockStripeJs.last();
+      const elements = stripe.lastElements!;
+
+      view.rerender(ui({ theme: "night" }));
+
+      await waitFor(() =>
+        expect(elements.update).toHaveBeenCalledWith({
+          appearance: { theme: "night" },
+        })
+      );
+      expect(stripe.elements).toHaveBeenCalledTimes(1);
+      expect(elements.paymentElement!.destroyed).toBe(false);
+    });
+
     it("publishes the payment method the shopper picks and card errors", async () => {
       renderInCheckout("pi_1_secret_2");
       await screen.findByTestId("stripe-payment-element");

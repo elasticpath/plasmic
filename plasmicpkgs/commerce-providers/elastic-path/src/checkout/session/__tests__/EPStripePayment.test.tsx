@@ -270,9 +270,11 @@ describe("EPStripePayment in a checkout session", () => {
     );
   });
 
-  it("updates the amount when the cart total changes", async () => {
+  it("updates the amount in place, keeping the card the shopper typed", async () => {
     const { view } = renderCheckout();
     await screen.findByTestId("stripe-payment-element");
+    const stripe = mockStripeJs.last();
+    const elements = stripe.lastElements!;
 
     withSession(payableSession(5100));
     view.rerender(
@@ -284,9 +286,13 @@ describe("EPStripePayment in a checkout session", () => {
     );
 
     await waitFor(() =>
-      expect(mockStripeJs.last().lastElements!.options.amount).toBe(5100)
+      expect(elements.update).toHaveBeenCalledWith(
+        expect.objectContaining({ amount: 5100, currency: "usd" })
+      )
     );
     expect(mockStripeJs.instances).toHaveLength(1);
+    expect(stripe.elements).toHaveBeenCalledTimes(1);
+    expect(elements.paymentElement!.destroyed).toBe(false);
   });
 
   it("uses the connected account set on the component", async () => {

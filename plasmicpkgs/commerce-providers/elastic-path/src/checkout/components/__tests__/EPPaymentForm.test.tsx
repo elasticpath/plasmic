@@ -126,6 +126,27 @@ describe("EPPaymentForm", () => {
     });
   });
 
+  it("updates the theme in place, keeping the card the shopper typed", async () => {
+    const view = render(
+      <EPPaymentForm order={order} stripePublishableKey="pk_test_123" />
+    );
+    await screen.findByTestId("stripe-payment-element");
+    const stripe = mockStripeJs.last();
+    const elements = stripe.lastElements!;
+
+    view.rerender(
+      <EPPaymentForm order={order} stripePublishableKey="pk_test_123" theme="night" />
+    );
+
+    await waitFor(() =>
+      expect(elements.update).toHaveBeenCalledWith({
+        appearance: expect.objectContaining({ theme: "night" }),
+      })
+    );
+    expect(stripe.elements).toHaveBeenCalledTimes(1);
+    expect(elements.paymentElement!.destroyed).toBe(false);
+  });
+
   it("shows the Stripe error when the payment is declined", async () => {
     render(<EPPaymentForm order={order} stripePublishableKey="pk_test_123" />);
     await screen.findByTestId("stripe-payment-element");
