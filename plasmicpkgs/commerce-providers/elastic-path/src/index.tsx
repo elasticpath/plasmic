@@ -102,7 +102,9 @@ export {
   epRemoveCartItem,
   epUpdateCartItem,
 } from "./cart-provider/cart-writes";
-export type { Cart } from "./types/cart";
+export type { Cart, CartItem, CartItemType, CartMeta } from "./types/cart";
+export type { FormattedPrice } from "./utils/price";
+export type { CartResponse } from "@epcc-sdk/sdks-shopper";
 export type {
   EpAddCartItemInput,
   EpRemoveCartItemInput,

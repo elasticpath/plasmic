@@ -6,7 +6,7 @@
 
 import { CanvasComponentProps } from '@plasmicapp/host/registerComponent';
 import type { CartItemObject } from '@epcc-sdk/sdks-shopper';
-import type { CartResponse } from '@epcc-sdk/sdks-shopper';
+import { CartResponse } from '@epcc-sdk/sdks-shopper';
 import { CodeComponentMeta } from '@plasmicapp/host/registerComponent';
 import type { FormattedPrice as FormattedPrice_2 } from '@epcc-sdk/sdks-shopper';
 import { GlobalContextMeta } from '@plasmicapp/host';
@@ -129,6 +129,39 @@ export type Cart = Omit<CartResponse, "meta"> & {
     promotions: CartItem[];
     itemCount: number;
 };
+
+// @public (undocumented)
+export type CartItem = Omit<EpCartItem, "type"> & {
+    type?: CartItemType;
+    meta?: {
+        display_price?: {
+            with_tax?: CartItemPricePair;
+            without_tax?: CartItemPricePair;
+            without_discount?: CartItemPricePair;
+            discount?: CartItemPricePair;
+            tax?: CartItemPricePair;
+        };
+    };
+    custom_inputs?: Record<string, unknown>;
+    location?: string;
+};
+
+// @public
+export type CartItemType = "cart_item" | "custom_item" | "promotion_item" | "subscription_item";
+
+// @public (undocumented)
+export type CartMeta = Omit<EpCartMeta, "display_price"> & {
+    display_price?: {
+        with_tax?: FormattedPrice;
+        without_tax?: FormattedPrice;
+        tax?: FormattedPrice;
+        discount?: FormattedPrice;
+        without_discount?: FormattedPrice;
+        shipping?: FormattedPrice;
+    };
+};
+
+export { CartResponse }
 
 // @public (undocumented)
 export interface CatalogSearchData {
@@ -1377,6 +1410,9 @@ export type FormatSpec = "auto" | "text" | "currency" | "date" | "number" | "raw
 
 // @public
 export function formatStripeError(error: any): string;
+
+// @public
+export type FormattedPrice = Required<FormattedPrice_2>;
 
 // @public
 export function formatValue(value: unknown, format?: FormatSpec, locale?: string, currency?: string): string;

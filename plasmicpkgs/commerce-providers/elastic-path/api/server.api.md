@@ -5,7 +5,6 @@
 ```ts
 
 import type { BetterAuthPlugin } from 'better-auth';
-import type { CartEntityResponse } from '@epcc-sdk/sdks-shopper';
 import type { CartItemObject } from '@epcc-sdk/sdks-shopper';
 import type { CartResponse } from '@epcc-sdk/sdks-shopper';
 import type { Client } from '@epcc-sdk/sdks-shopper';
