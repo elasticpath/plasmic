@@ -18,9 +18,8 @@
  * the write is server-only; the primitive itself is auth-agnostic.
  */
 import { deleteACartItem, getACart, manageCarts } from "@epcc-sdk/sdks-shopper";
+import { readCart } from "../../ep-server-functions/read-cart";
 import type { Cart } from "../../types/cart";
-import { normalizeCart } from "../../utils/normalize";
-import { buildCartReadHeaders } from "../../utils/cart-read-headers";
 import type { SessionShippingRate } from "./types";
 
 /** Sentinel SKU that marks a storefront-managed shipping line. */
@@ -138,14 +137,8 @@ export async function setCartShippingLine(
   });
 
   // 3. Re-read + normalize so the caller sees the re-priced total.
-  const updated = await getACart({
-    client,
-    path: { cartID: cartId },
-    query: { include: ["items"] },
-    headers: buildCartReadHeaders({
-      locale: input.locale,
-      currency: input.currency,
-    }),
+  return readCart(client, cartId, {
+    locale: input.locale,
+    currency: input.currency,
   });
-  return normalizeCart(updated.data!, input.locale ?? "en-US");
 }

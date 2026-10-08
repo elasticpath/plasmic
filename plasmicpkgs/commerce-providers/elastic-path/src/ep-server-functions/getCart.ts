@@ -1,10 +1,9 @@
-import { getACart } from "@epcc-sdk/sdks-shopper";
-import { buildCartReadHeaders } from "../utils/cart-read-headers";
-import { normalizeCart } from "../utils/normalize";
+import type { Cart } from "../types/cart";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
+import { readCart } from "./read-cart";
 import { getCurrentEpSession } from "./session-context";
-type CartReadResult = ReturnType<typeof normalizeCart> | null;
+type CartReadResult = Cart | null;
 
 /**
  * Fetches the current shopper's cart, server-side or via the consumer
@@ -28,19 +27,10 @@ export async function epGetCart(): Promise<CartReadResult> {
   if (!auth.cartId) return null;
   const client = buildEpClient(auth);
   try {
-    const response = await getACart({
-      client,
-      path: { cartID: auth.cartId },
-      query: { include: ["items"] },
-      // SSR parity with the client cart read: re-price for the shopper's
-      // locale/currency at read time (headers omitted when unset).
-      headers: buildCartReadHeaders({
-        locale: auth.locale,
-        currency: auth.currency,
-      }),
+    return await readCart(client, auth.cartId, {
+      locale: auth.locale,
+      currency: auth.currency,
     });
-    if (!response.data) return null;
-    return normalizeCart(response.data, auth.locale ?? "en-US");
   } catch {
     return null;
   }

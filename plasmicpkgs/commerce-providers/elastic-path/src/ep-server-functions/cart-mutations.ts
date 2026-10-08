@@ -7,11 +7,10 @@ import {
   updateACartItem,
 } from "@epcc-sdk/sdks-shopper";
 import type { Cart } from "../types/cart";
-import { buildCartReadHeaders } from "../utils/cart-read-headers";
-import { normalizeCart } from "../utils/normalize";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
+import { readCart } from "./read-cart";
 import {
   addCustomCartItem,
   type CartAdjustmentKind,
@@ -53,21 +52,15 @@ function assertEpSdkOk(
   }
 }
 
-async function fetchNormalizedCart(
+function readSessionCart(
   client: ReturnType<typeof buildEpClient>,
   auth: EpServerAuth,
   cartId: string
 ): Promise<Cart> {
-  const cart = await getACart({
-    client,
-    path: { cartID: cartId },
-    query: { include: ["items"] },
-    headers: buildCartReadHeaders({
-      locale: auth.locale,
-      currency: auth.currency,
-    }),
+  return readCart(client, cartId, {
+    locale: auth.locale,
+    currency: auth.currency,
   });
-  return normalizeCart(cart.data!, auth.locale ?? "en-US");
 }
 
 export interface EpAddCartItemInput {
@@ -174,7 +167,7 @@ export async function epAddCartItem(input: EpAddCartItemInput): Promise<Cart> {
     );
   }
 
-  const cart = await fetchNormalizedCart(client, auth, cartId);
+  const cart = await readSessionCart(client, auth, cartId);
   // Soft EP failures (e.g. unpublished catalog product) can resolve without
   // `error` while leaving the cart empty — surface that instead of a quiet
   // empty success that looks like "add did nothing".
@@ -257,7 +250,7 @@ export async function epUpdateCartItem(
   });
   assertEpSdkOk(updateRes, "epUpdateCartItem");
 
-  return fetchNormalizedCart(client, auth, auth.cartId);
+  return readSessionCart(client, auth, auth.cartId);
 }
 
 /**
@@ -338,7 +331,7 @@ export async function epRemoveCartItem(
   });
   assertEpSdkOk(deleteRes, "epRemoveCartItem");
 
-  return fetchNormalizedCart(client, auth, auth.cartId);
+  return readSessionCart(client, auth, auth.cartId);
 }
 
 /**
@@ -382,7 +375,7 @@ export async function epApplyPromoCode(
   });
   assertEpSdkOk(applyRes, "epApplyPromoCode");
 
-  const cart = await fetchNormalizedCart(client, auth, auth.cartId);
+  const cart = await readSessionCart(client, auth, auth.cartId);
   // A code the cart does not qualify for can come back 201 with no promotion
   // line written. Reporting that as success leaves the shopper looking at an
   // unchanged total with nothing said, so treat it as the rejection it is.
@@ -427,5 +420,5 @@ export async function epRemovePromoCode(
   });
   assertEpSdkOk(deleteRes, "epRemovePromoCode");
 
-  return fetchNormalizedCart(client, auth, auth.cartId);
+  return readSessionCart(client, auth, auth.cartId);
 }
