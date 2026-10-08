@@ -7,6 +7,7 @@ import {
   updateACartItem,
 } from "@epcc-sdk/sdks-shopper";
 import type { Cart } from "../types/cart";
+import { buildCartReadHeaders } from "../utils/cart-read-headers";
 import { normalizeCart } from "../utils/normalize";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
@@ -61,6 +62,10 @@ async function fetchNormalizedCart(
     client,
     path: { cartID: cartId },
     query: { include: ["items"] },
+    headers: buildCartReadHeaders({
+      locale: auth.locale,
+      currency: auth.currency,
+    }),
   });
   return normalizeCart(cart.data!, auth.locale ?? "en-US");
 }

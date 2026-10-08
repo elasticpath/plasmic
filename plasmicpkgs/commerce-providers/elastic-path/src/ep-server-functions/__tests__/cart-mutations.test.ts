@@ -850,3 +850,49 @@ describe("browser transport", () => {
     expect(mockManageCarts).toHaveBeenCalled();
   });
 });
+
+describe("the cart a write resolves with", () => {
+  const SHOPPER = {
+    ...SESSION_BASE,
+    cartId: "cart-id",
+    locale: "fr-FR",
+    currency: "EUR",
+  };
+  const PRICED_FOR_SHOPPER = {
+    headers: { "Accept-Language": "fr-FR", "X-Moltin-Currency": "EUR" },
+  };
+
+  function lastCartRead() {
+    return mockGetACart.mock.calls[mockGetACart.mock.calls.length - 1][0];
+  }
+
+  it("is priced for the shopper's locale and currency after an add", async () => {
+    mockSuccessfulAdd();
+
+    await withEpSession(SHOPPER, () =>
+      epAddCartItem({ productId: "prod-1", quantity: 1 })
+    );
+
+    expect(lastCartRead()).toMatchObject(PRICED_FOR_SHOPPER);
+  });
+
+  it("is priced for the shopper's locale and currency after an update", async () => {
+    mockUpdateACartItem.mockResolvedValue({});
+    mockGetACart.mockResolvedValue(CART_WITH_ITEM_RESPONSE);
+
+    await withEpSession(SHOPPER, () =>
+      epUpdateCartItem({ itemId: "li-1", quantity: 2, location: "north" })
+    );
+
+    expect(lastCartRead()).toMatchObject(PRICED_FOR_SHOPPER);
+  });
+
+  it("is priced for the shopper's locale and currency after a remove", async () => {
+    mockDeleteACartItem.mockResolvedValue({});
+    mockGetACart.mockResolvedValue(CART_RESPONSE);
+
+    await withEpSession(SHOPPER, () => epRemoveCartItem({ itemId: "li-1" }));
+
+    expect(lastCartRead()).toMatchObject(PRICED_FOR_SHOPPER);
+  });
+});
