@@ -101,6 +101,9 @@ change, take upstream's version and delete its check from `ep-fork-integrity.spe
   once per site per call and passes it down through `hashRuleSet` and `hashExpr`. Final
   tokens are classified with set lookups through the `isMember` argument of
   `toFinalToken` (#643).
+- `platform/wab/src/wab/server/db/DbMgr.ts`: `_tryMergeBranch` reads the head pkg versions
+  of both branches through `getPkgVersionHead`, which skips the `model` column, instead
+  of `getPkgVersion` (#652).
 
 **Sentry → Datadog (fork-wide)**
 
