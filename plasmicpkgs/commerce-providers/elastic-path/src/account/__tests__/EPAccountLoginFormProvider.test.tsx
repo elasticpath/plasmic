@@ -33,8 +33,11 @@ jest.mock("@plasmicapp/host/registerComponent", () => {
 import React, { useEffect, useRef } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-const { EPAccountProvider } = require("../EPAccountProvider");
-const { useAccountReload } = require("../EPAccountProvider");
+const {
+  EPAccountProvider,
+  RELOAD_RETRY_BACKOFF_MS,
+  useAccountReload,
+} = require("../EPAccountProvider");
 const {
   EPAccountLoginFormProvider,
   useAccountLoginForm,
@@ -172,11 +175,11 @@ describe("EPAccountLoginFormProvider", () => {
     delete (global as unknown as { fetch?: typeof fetch }).fetch;
   });
 
-  function renderForm() {
+  function renderForm(props?: { redirectUrl?: string }) {
     const ref = React.createRef<LoginActions>();
     render(
       <EPAccountProvider>
-        <EPAccountLoginFormProvider ref={ref}>
+        <EPAccountLoginFormProvider ref={ref} redirectUrl={props?.redirectUrl}>
           <Fill />
         </EPAccountLoginFormProvider>
       </EPAccountProvider>
@@ -489,11 +492,211 @@ describe("EPAccountLoginFormProvider", () => {
     );
     expect(epAccountLoginFormProviderMeta.props).not.toHaveProperty("username");
     expect(epAccountLoginFormProviderMeta.props).not.toHaveProperty("password");
+    expect(epAccountLoginFormProviderMeta.props.redirectUrl).toEqual(
+      expect.objectContaining({ type: "string", displayName: "Redirect URL" })
+    );
+    expect(epAccountLoginFormProviderMeta.props.redirectUrl).not.toHaveProperty(
+      "defaultValue"
+    );
     const loader = { registerComponent: jest.fn() };
     registerEPAccountLoginFormProvider(loader);
     expect(loader.registerComponent).toHaveBeenCalledWith(
       EPAccountLoginFormProvider,
       epAccountLoginFormProviderMeta
     );
+  });
+
+  describe("return-to redirect", () => {
+    const originalLocation = window.location;
+
+    beforeEach(() => {
+      delete (window as any).location;
+      (window as any).location = { assign: jest.fn(), search: "" };
+    });
+
+    afterEach(() => {
+      (window as any).location = originalLocation;
+      jest.useRealTimers();
+    });
+
+    function setSearch(search: string) {
+      (window as any).location.search = search;
+    }
+
+    async function signIn(props?: { redirectUrl?: string }) {
+      installFetch({
+        postLoginSession: { epMemberId: "member-1" },
+      });
+      const ref = renderForm(props);
+      await waitFor(() => {
+        expect(publishedAccount().isLoading).toBe(false);
+      });
+      fireEvent.click(screen.getByTestId("fill"));
+      await act(async () => {
+        await ref.current!.submit();
+      });
+    }
+
+    it("navigates to a configured /account after the reload fulfills", async () => {
+      await signIn({ redirectUrl: "/account" });
+      expect(window.location.assign).toHaveBeenCalledTimes(1);
+      expect(window.location.assign).toHaveBeenCalledWith("/account");
+      expect(publishedForm()).toEqual({
+        status: "submitted",
+        error: null,
+        isSubmitting: false,
+      });
+    });
+
+    it("navigates to a configured path that includes a query string", async () => {
+      await signIn({ redirectUrl: "/account?welcome=1" });
+      expect(window.location.assign).toHaveBeenCalledWith("/account?welcome=1");
+    });
+
+    it("lets a valid ?redirect= override the configured path", async () => {
+      setSearch("?redirect=/checkout");
+      await signIn({ redirectUrl: "/account" });
+      expect(window.location.assign).toHaveBeenCalledWith("/checkout");
+    });
+
+    it("uses a decoded ?redirect= value", async () => {
+      setSearch("?redirect=%2Fcheckout");
+      await signIn({ redirectUrl: "/account" });
+      expect(window.location.assign).toHaveBeenCalledWith("/checkout");
+    });
+
+    it("falls back to redirectUrl when ?redirect= is unsafe", async () => {
+      setSearch("?redirect=//evil.example");
+      await signIn({ redirectUrl: "/account" });
+      expect(window.location.assign).toHaveBeenCalledTimes(1);
+      expect(window.location.assign).toHaveBeenCalledWith("/account");
+    });
+
+    it("does not navigate when the query and redirectUrl are both invalid", async () => {
+      setSearch("?redirect=javascript:alert(1)");
+      await signIn({ redirectUrl: "https://shop.example/account" });
+      expect(publishedForm().status).toBe("submitted");
+      expect(publishedForm().error).toBeNull();
+      expect(window.location.assign).not.toHaveBeenCalled();
+    });
+
+    it("does not navigate when redirect support is unused", async () => {
+      await signIn();
+      expect(publishedForm()).toEqual({
+        status: "submitted",
+        error: null,
+        isSubmitting: false,
+      });
+      expect(publishedAccount().accountMember).toEqual({ id: "member-1" });
+      expect(window.location.assign).not.toHaveBeenCalled();
+    });
+
+    it("does not navigate until reloadAccount fulfills", async () => {
+      const { releaseReload } = installFetch({ hangReload: true });
+      const ref = renderForm({ redirectUrl: "/account" });
+      fireEvent.click(screen.getByTestId("fill"));
+
+      let submit: Promise<void> = Promise.resolve();
+      await act(async () => {
+        submit = ref.current!.submit();
+      });
+
+      expect(publishedForm().isSubmitting).toBe(true);
+      expect(window.location.assign).not.toHaveBeenCalled();
+
+      await act(async () => {
+        releaseReload();
+        await submit;
+      });
+      expect(window.location.assign).toHaveBeenCalledTimes(1);
+      expect(window.location.assign).toHaveBeenCalledWith("/account");
+    });
+
+    it("does not redirect when the initial reload fails, even after a later retry succeeds", async () => {
+      jest.useFakeTimers();
+      let getSessionCount = 0;
+      const fetchImpl = jest.fn((url: string) => {
+        const target = String(url);
+        if (target.endsWith("/get-session")) {
+          getSessionCount += 1;
+          if (getSessionCount === 1) {
+            return jsonResponse({ session: {} });
+          }
+          if (getSessionCount === 2) {
+            return jsonResponse({ message: "unavailable" }, false);
+          }
+          return jsonResponse({
+            session: { epMemberId: "member-recovered" },
+          });
+        }
+        if (target.includes("/account/login")) {
+          return jsonResponse({
+            user: { id: "user-1", email: "buyer@example.com" },
+            session: { epMemberId: "member-1" },
+            accounts: [],
+            total: 0,
+          });
+        }
+        if (target.includes("/account/roster")) {
+          return jsonResponse({ accounts: [], total: 0 });
+        }
+        return jsonResponse({}, false);
+      });
+      (global as unknown as { fetch: typeof fetch }).fetch =
+        fetchImpl as typeof fetch;
+
+      const ref = renderForm({ redirectUrl: "/account" });
+      async function flushPromises() {
+        await act(async () => {
+          for (let i = 0; i < 20; i += 1) await Promise.resolve();
+        });
+      }
+      await flushPromises();
+      fireEvent.click(screen.getByTestId("fill"));
+      await act(async () => {
+        await ref.current!.submit();
+      });
+
+      expect(publishedForm()).toEqual({
+        status: "submitted",
+        error: "Signed in, but the account could not be refreshed.",
+        isSubmitting: false,
+      });
+      expect(getSessionCount).toBe(2);
+      expect(publishedAccount().isLoading).toBe(true);
+      expect(window.location.assign).not.toHaveBeenCalled();
+
+      await act(async () => {
+        jest.advanceTimersByTime(RELOAD_RETRY_BACKOFF_MS[0] - 1);
+      });
+      await flushPromises();
+      expect(getSessionCount).toBe(2);
+      expect(window.location.assign).not.toHaveBeenCalled();
+
+      await act(async () => {
+        jest.advanceTimersByTime(1);
+      });
+      await flushPromises();
+      expect(getSessionCount).toBe(3);
+      expect(publishedAccount().accountMember).toEqual({
+        id: "member-recovered",
+      });
+      expect(publishedAccount().isLoading).toBe(false);
+      expect(window.location.assign).not.toHaveBeenCalled();
+    });
+
+    it("does not sign in or navigate in the Studio canvas", async () => {
+      mockUsePlasmicCanvasContext.mockReturnValue(true);
+      setSearch("?redirect=/checkout");
+      const { fetchImpl } = installFetch();
+      const ref = renderForm({ redirectUrl: "/account" });
+      fireEvent.click(screen.getByTestId("fill"));
+      await act(async () => {
+        await ref.current!.submit();
+      });
+      expect(loginCalls(fetchImpl)).toEqual([]);
+      expect(window.location.assign).not.toHaveBeenCalled();
+      expect(publishedForm().isSubmitting).toBe(false);
+    });
   });
 });
