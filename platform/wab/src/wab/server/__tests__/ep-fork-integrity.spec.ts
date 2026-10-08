@@ -566,10 +566,12 @@ describe("EP Fork Integrity", () => {
   });
 
   describe("Stripe loads in a hostless storefront", () => {
-    it("no source file imports @stripe/* except as a type", () => {
+    it("no source file imports a Stripe library except as a type", () => {
       const typeOnly = /\b(?:import|export)\s+type\b[^;]*?from\s*["'][^"']+["']/g;
+      const stripeModule =
+        /["'`]@stripe\/|(?:\bfrom|\bimport|\brequire\(|\bimport\()\s*["'`]stripe["'`]/;
       const offenders = sourceFiles(EP_PKG + "/src").filter((file) =>
-        /["'`]@stripe\//.test(readFile(file).replace(typeOnly, ""))
+        stripeModule.test(readFile(file).replace(typeOnly, ""))
       );
       expect(offenders).toEqual([]);
     });
