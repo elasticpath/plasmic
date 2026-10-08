@@ -133,7 +133,7 @@ function checkNoRequireShim() {
 // Browser code imports the root, so the root must not reach what only /server
 // needs: better-auth, Next's server runtime and Node built-ins.
 const SERVER_ONLY_MODULE =
-  /^(?:better-auth(?:\/|$)|next\/server(?:\.js)?$|(?:node:)?(?:async_hooks|crypto)$)/;
+  /^(?:@?better-auth(?:\/|$)|next\/(?:server|headers)(?:\.js)?$|(?:node:)?(?:async_hooks|crypto)$)/;
 
 function checkRootPullsInNoServerModule() {
   for (const file of ["dist/index.esm.js", "dist/index.js"]) {
