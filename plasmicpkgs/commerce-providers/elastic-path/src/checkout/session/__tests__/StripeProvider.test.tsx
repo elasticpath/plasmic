@@ -45,6 +45,18 @@ describe("StripeProvider", () => {
     const dp = screen.getByTestId("data-provider-stripe");
     const data = JSON.parse(dp.getAttribute("data-value") || "{}");
     expect(data.publishableKey).toBeNull();
+    expect(data.stripeAccount).toBeNull();
+  });
+
+  it("exposes stripeAccount via $ctx.stripe", () => {
+    render(
+      <StripeProvider publishableKey="pk_test_abc" stripeAccount="acct_1">
+        <span>child</span>
+      </StripeProvider>
+    );
+    const dp = screen.getByTestId("data-provider-stripe");
+    const data = JSON.parse(dp.getAttribute("data-value") || "{}");
+    expect(data.stripeAccount).toBe("acct_1");
   });
 
   it("registers as a global context with the right name + import path", () => {
@@ -57,5 +69,8 @@ describe("StripeProvider", () => {
     );
     expect(stripeProviderMeta.providesData).toBe(true);
     expect(stripeProviderMeta.props.publishableKey).toBeDefined();
+    expect(stripeProviderMeta.props.stripeAccount.displayName).toBe(
+      "Connected Account ID"
+    );
   });
 });

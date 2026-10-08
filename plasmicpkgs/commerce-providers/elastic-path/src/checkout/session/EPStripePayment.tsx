@@ -1,8 +1,9 @@
 /**
  * EPStripePayment — Plasmic component for the EP-native Stripe gateway.
  *
- *   - Renders <Elements mode="payment"> (deferred PaymentIntent).
- *   - Renders <PaymentElement> only (card). Billing name/address are NOT
+ *   - Loads Stripe.js from js.stripe.com when it mounts, and mounts a
+ *     Payment Element (card) in Elements mode "payment" (deferred
+ *     PaymentIntent). Billing name/address are NOT
  *     collected here — the checkout form already captures them and EP attaches
  *     the order's billing server-side (createCartPaymentIntent).
  *   - On submit: stripe.createConfirmationToken({ elements }) → token.
@@ -28,6 +29,7 @@ import {
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
+import type { Stripe, StripeElements } from "@stripe/stripe-js";
 import React, {
   useCallback,
   useEffect,
@@ -37,12 +39,22 @@ import React, {
 } from "react";
 import type { Registerable } from "../../registerable";
 import { createLogger } from "../../utils/logger";
+import { loadStripeJs } from "../stripe/load-stripe-js";
+import { usePaymentElement } from "../stripe/use-payment-element";
 import { usePaymentRegistration } from "./payment-registration-context";
 import type {
   GatewayContinuationResult,
   GatewayPaySession,
 } from "./payment-registration-context";
 import { useCheckoutSession } from "./use-checkout-session";
+
+// @stripe/stripe-js 2.x types predate confirmation tokens; Stripe.js v3 has them.
+type StripeWithConfirmationTokens = Stripe & {
+  createConfirmationToken(options: { elements: StripeElements }): Promise<
+    | { confirmationToken: { id: string }; error?: undefined }
+    | { confirmationToken?: undefined; error: { message?: string } }
+  >;
+};
 
 const FAILED_PI_STATUSES = new Set([
   "requires_payment_method",
@@ -337,7 +349,7 @@ const EPStripePaymentRuntime = React.forwardRef<
     publishableKey: string | null;
     stripeAccount: string | null;
     appearance: Record<string, any>;
-    layout: string;
+    layout: "tabs" | "accordion";
     className?: string;
     apiBaseUrl: string;
     children?: React.ReactNode;
@@ -359,17 +371,12 @@ const EPStripePaymentRuntime = React.forwardRef<
   const [isReady, setIsReady] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [stripeInstance, setStripeInstance] = useState<any>(null);
-  const [StripeComponents, setStripeComponents] = useState<{
-    Elements: any;
-    PaymentElement: any;
-    AddressElement: any;
-    useElements: any;
-    useStripe: any;
-  } | null>(null);
+  const [stripeInstance, setStripeInstance] = useState<Stripe | null>(null);
 
-  const stripeRef = useRef<any>(null);
-  const elementsRef = useRef<any>(null);
+  const cardFormRef = useRef<{
+    stripe: StripeWithConfirmationTokens;
+    elements: StripeElements;
+  } | null>(null);
   const mountedRef = useRef(true);
   const inFlightRef = useRef(false);
   const resumePaymentRef = useRef(resumePayment);
@@ -377,7 +384,6 @@ const EPStripePaymentRuntime = React.forwardRef<
   const abandonPaymentRef = useRef(abandonPayment);
   abandonPaymentRef.current = abandonPayment;
 
-  // Lazy-load Stripe SDK
   useEffect(() => {
     mountedRef.current = true;
     let cancelled = false;
@@ -385,34 +391,16 @@ const EPStripePaymentRuntime = React.forwardRef<
       setError("Stripe publishable key is required");
       return;
     }
-    Promise.all([
-      import("@stripe/stripe-js"),
-      import("@stripe/react-stripe-js"),
-    ])
-      .then(([stripeJs, reactStripe]) => {
+    // For connected-account gateways (EP-native Stripe / Connect), the
+    // ConfirmationToken must be minted in the connected account's context
+    // so the server can confirm it on that account.
+    loadStripeJs()
+      .then((StripeJs) => {
         if (cancelled) return;
-        const loadStripe =
-          stripeJs.loadStripe ??
-          stripeJs.default?.loadStripe ??
-          stripeJs.default;
-        setStripeComponents({
-          Elements: reactStripe.Elements,
-          PaymentElement: reactStripe.PaymentElement,
-          AddressElement: reactStripe.AddressElement,
-          useElements: reactStripe.useElements,
-          useStripe: reactStripe.useStripe,
-        });
-        // For connected-account gateways (EP-native Stripe / Connect), the
-        // ConfirmationToken must be minted in the connected account's context
-        // so the server can confirm it on that account.
-        return loadStripe(
+        const stripe = StripeJs(
           publishableKey,
           stripeAccount ? { stripeAccount } : undefined
         );
-      })
-      .then((stripe) => {
-        if (cancelled || !stripe) return;
-        stripeRef.current = stripe;
         setStripeInstance(stripe);
         setError(null);
       })
@@ -436,11 +424,11 @@ const EPStripePaymentRuntime = React.forwardRef<
   // forwards it to placeOrder({ confirmation_token, gateway: "stripe" }).
   // completeRequiresAction runs after /pay returns requires_action.
   const confirmGateway = useCallback(async () => {
-    const stripe = stripeRef.current;
-    const elements = elementsRef.current;
-    if (!stripe || !elements) {
+    const cardForm = cardFormRef.current;
+    if (!cardForm) {
       throw new Error("Stripe is not ready — wait for isReady");
     }
+    const { stripe, elements } = cardForm;
     const submit = await elements.submit();
     if (submit?.error) {
       throw new Error(submit.error.message ?? "Form validation failed");
@@ -471,7 +459,7 @@ const EPStripePaymentRuntime = React.forwardRef<
       setIsProcessing(true);
       setError(null);
       try {
-        const stripe = stripeRef.current;
+        const stripe = cardFormRef.current?.stripe;
         if (!stripe?.handleNextAction) {
           throw new Error("Stripe is not ready — wait for isReady");
         }
@@ -545,7 +533,37 @@ const EPStripePaymentRuntime = React.forwardRef<
   // a free checkout without any page-level conditional wiring.
   const total = session?.totals?.total ?? 0;
   const currency = (session?.totals?.currency || "").toLowerCase();
-  if (!(total > 0) || !currency) {
+  const free = !(total > 0) || !currency;
+
+  // Deferred PaymentIntent: amount + currency declared upfront. On submit,
+  // EP creates the PaymentIntent server-side via createCartPaymentIntent.
+  // Card-only: the PaymentElement's default doesn't collect name/address,
+  // and EP attaches the order's billing server-side.
+  const {
+    ref: paymentElementRef,
+    elements,
+    stripe: elementsStripe,
+  } = usePaymentElement(
+    free ? null : stripeInstance,
+    {
+      elements: {
+        mode: "payment",
+        amount: total,
+        currency,
+        appearance: { theme: "stripe", ...(appearance || {}) },
+        loader: "auto",
+      },
+      paymentElement: { layout },
+      onReady: handleReady,
+      onChange: handleChange,
+    }
+  );
+  cardFormRef.current =
+    elements && elementsStripe
+      ? { stripe: elementsStripe as StripeWithConfirmationTokens, elements }
+      : null;
+
+  if (free) {
     return (
       <div
         className={className}
@@ -562,7 +580,7 @@ const EPStripePaymentRuntime = React.forwardRef<
     );
   }
 
-  if (!stripeInstance || !StripeComponents) {
+  if (!stripeInstance) {
     return (
       <div className={className} data-ep-stripe-payment="">
         <DataProvider
@@ -580,57 +598,15 @@ const EPStripePaymentRuntime = React.forwardRef<
     );
   }
 
-  const { Elements, PaymentElement } = StripeComponents;
-
-  // Deferred PaymentIntent: amount + currency declared upfront. On submit,
-  // EP creates the PaymentIntent server-side via createCartPaymentIntent.
-  const elementsOptions = {
-    mode: "payment" as const,
-    amount: total,
-    currency,
-    appearance: { theme: "stripe" as const, ...(appearance || {}) },
-    loader: "auto" as const,
-  };
-
   return (
-    <Elements stripe={stripeInstance} options={elementsOptions}>
-      <div className={className} data-ep-stripe-payment="">
-        <DataProvider name="stripePaymentData" data={paymentData}>
-          <ElementsCapture
-            useElements={StripeComponents.useElements}
-            onElements={(el: any) => {
-              elementsRef.current = el;
-            }}
-          />
-          <PaymentElement
-            onReady={handleReady}
-            onChange={handleChange}
-            // Card-only: the redundant billing block was the separate
-            // AddressElement (removed). The PaymentElement's default doesn't
-            // collect name/address, and EP attaches the order's billing
-            // server-side, so no billing is collected or passed here.
-            options={{ layout }}
-          />
-          {children}
-        </DataProvider>
-      </div>
-    </Elements>
+    <div className={className} data-ep-stripe-payment="">
+      <DataProvider name="stripePaymentData" data={paymentData}>
+        <div ref={paymentElementRef} />
+        {children}
+      </DataProvider>
+    </div>
   );
 });
-
-function ElementsCapture({
-  useElements,
-  onElements,
-}: {
-  useElements: () => any;
-  onElements: (e: any) => void;
-}) {
-  const elements = useElements();
-  useEffect(() => {
-    if (elements) onElements(elements);
-  }, [elements, onElements]);
-  return null;
-}
 
 export const epStripePaymentMeta: CodeComponentMeta<EPStripePaymentProps> = {
   name: "plasmic-commerce-ep-stripe-payment",

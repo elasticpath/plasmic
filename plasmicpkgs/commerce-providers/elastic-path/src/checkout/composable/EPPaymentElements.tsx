@@ -16,6 +16,7 @@ import {
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
+import type { Stripe } from "@stripe/stripe-js";
 import React, {
   useCallback,
   useEffect,
@@ -25,6 +26,8 @@ import React, {
 } from "react";
 import { Registerable } from "../../registerable";
 import { createLogger } from "../../utils/logger";
+import { loadStripeJs } from "../stripe/load-stripe-js";
+import { usePaymentElement } from "../stripe/use-payment-element";
 import { useCheckoutInternal } from "./EPCheckoutProvider";
 
 const log = createLogger("EPPaymentElements");
@@ -203,18 +206,12 @@ function EPPaymentElementsRuntime(props: RuntimeProps) {
   const [error, setError] = useState<string | null>(null);
   const [paymentMethodType, setPaymentMethodType] = useState("card");
 
-  // Stripe instances loaded lazily
-  const [stripeInstance, setStripeInstance] = useState<any>(null);
-  const [StripeComponents, setStripeComponents] = useState<{
-    Elements: any;
-    PaymentElement: any;
-  } | null>(null);
+  const [stripeInstance, setStripeInstance] = useState<Stripe | null>(null);
 
   // Elements instance to expose back to CheckoutInternalContext
   const elementsRef = useRef<any>(null);
   const mountedRef = useRef(true);
 
-  // Lazy-load Stripe SDK
   useEffect(() => {
     mountedRef.current = true;
     let cancelled = false;
@@ -224,21 +221,10 @@ function EPPaymentElementsRuntime(props: RuntimeProps) {
       return;
     }
 
-    Promise.all([
-      import("@stripe/stripe-js").then((m) => m.loadStripe),
-      import("@stripe/react-stripe-js"),
-    ])
-      .then(([loadStripe, reactStripe]) => {
+    loadStripeJs()
+      .then((StripeJs) => {
         if (cancelled) return;
-        setStripeComponents({
-          Elements: reactStripe.Elements,
-          PaymentElement: reactStripe.PaymentElement,
-        });
-        return loadStripe(stripePublishableKey);
-      })
-      .then((stripe) => {
-        if (cancelled || !stripe) return;
-        setStripeInstance(stripe);
+        setStripeInstance(StripeJs(stripePublishableKey));
         setError(null);
       })
       .catch((err) => {
@@ -296,8 +282,26 @@ function EPPaymentElementsRuntime(props: RuntimeProps) {
     [isReady, isProcessing, error, paymentMethodType, clientSecret]
   );
 
+  const { ref: paymentElementRef, elements } = usePaymentElement(
+    clientSecret ? stripeInstance : null,
+    {
+      elements: {
+        clientSecret: clientSecret ?? undefined,
+        appearance: { theme: "stripe", ...(appearance || {}) },
+        loader: "auto",
+      },
+      paymentElement: { layout: "tabs" },
+      onReady: handleReady,
+      onChange: handleChange,
+    }
+  );
+
+  useEffect(() => {
+    if (elements) syncElements(elements);
+  }, [elements, syncElements]);
+
   // Stripe not loaded yet
-  if (!stripeInstance || !StripeComponents) {
+  if (!stripeInstance) {
     return (
       <div className={className} data-ep-payment-elements="">
         <DataProvider
@@ -329,73 +333,14 @@ function EPPaymentElementsRuntime(props: RuntimeProps) {
     );
   }
 
-  // Render Stripe Elements + PaymentElement
-  const { Elements, PaymentElement } = StripeComponents;
-
-  const elementsOptions = {
-    clientSecret,
-    appearance: {
-      theme: "stripe" as const,
-      ...(appearance || {}),
-    },
-    loader: "auto" as const,
-  };
-
   return (
-    <Elements stripe={stripeInstance} options={elementsOptions}>
-      <div className={className} data-ep-payment-elements="">
-        <DataProvider name="paymentData" data={paymentData}>
-          <PaymentElement
-            onReady={handleReady}
-            onChange={handleChange}
-            options={{ layout: "tabs" }}
-          />
-          <ElementsCapture onElements={syncElements} />
-          {children}
-        </DataProvider>
-      </div>
-    </Elements>
+    <div className={className} data-ep-payment-elements="">
+      <DataProvider name="paymentData" data={paymentData}>
+        <div ref={paymentElementRef} />
+        {children}
+      </DataProvider>
+    </div>
   );
-}
-
-// ---------------------------------------------------------------------------
-// Capture Elements instance from Stripe context
-// ---------------------------------------------------------------------------
-function ElementsCapture({ onElements }: { onElements: (e: any) => void }) {
-  const [useElementsHook, setUseElementsHook] = useState<
-    (() => any) | null
-  >(null);
-
-  useEffect(() => {
-    import("@stripe/react-stripe-js").then((mod) => {
-      setUseElementsHook(() => mod.useElements);
-    });
-  }, []);
-
-  if (!useElementsHook) return null;
-
-  return (
-    <ElementsCaptureInner
-      useElements={useElementsHook}
-      onElements={onElements}
-    />
-  );
-}
-
-function ElementsCaptureInner({
-  useElements,
-  onElements,
-}: {
-  useElements: () => any;
-  onElements: (e: any) => void;
-}) {
-  const elements = useElements();
-  useEffect(() => {
-    if (elements) {
-      onElements(elements);
-    }
-  }, [elements, onElements]);
-  return null;
 }
 
 // ---------------------------------------------------------------------------

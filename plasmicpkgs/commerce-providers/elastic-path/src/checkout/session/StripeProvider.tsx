@@ -1,14 +1,18 @@
 /**
  * StripeProvider — Plasmic global context that exposes the Stripe
- * publishable key to all `EPStripePayment` instances on a page.
+ * publishable key and connected account to all `EPStripePayment` instances
+ * on a page.
  *
  * The publishable key is the Stripe `pk_live_*` / `pk_test_*` value. It
  * lives in `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` and is exposed to Plasmic
  * pages by registering this global context with `publishableKey` bound to
  * `process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` in the host app.
  *
- * `EPStripePayment` reads `$ctx.stripe.publishableKey` as a fallback when
- * its `publishableKey` prop is unset.
+ * `stripeAccount` is the `acct_*` of a connected-account gateway (EP-native
+ * Stripe / Connect).
+ *
+ * `EPStripePayment` reads `$ctx.stripe.publishableKey` and
+ * `$ctx.stripe.stripeAccount` as fallbacks when its own props are unset.
  */
 import React from "react";
 import { DataProvider, GlobalContextMeta } from "@plasmicapp/host";
@@ -17,16 +21,21 @@ import type { Registerable } from "../../registerable";
 
 export interface StripeProviderProps {
   publishableKey?: string;
+  stripeAccount?: string;
   children?: React.ReactNode;
 }
 
 export function StripeProvider({
   publishableKey,
+  stripeAccount,
   children,
 }: StripeProviderProps) {
   const data = React.useMemo(
-    () => ({ publishableKey: publishableKey || null }),
-    [publishableKey]
+    () => ({
+      publishableKey: publishableKey || null,
+      stripeAccount: stripeAccount || null,
+    }),
+    [publishableKey, stripeAccount]
   );
   return (
     <DataProvider name="stripe" data={data}>
@@ -39,13 +48,19 @@ export const stripeProviderMeta: GlobalContextMeta<StripeProviderProps> = {
   name: "plasmic-commerce-ep-stripe-provider",
   displayName: "EP Stripe Provider",
   description:
-    "Provides the Stripe publishable key to all EPStripePayment instances. " +
+    "Provides the Stripe publishable key and connected account to all EPStripePayment instances. " +
     "Bind `publishableKey` to NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY in your host app.",
   props: {
     publishableKey: {
       type: "string",
       displayName: "Publishable Key",
       description: "Your Stripe pk_live_* or pk_test_*.",
+    },
+    stripeAccount: {
+      type: "string",
+      displayName: "Connected Account ID",
+      description:
+        "Optional acct_* for connected-account gateways (EP-native Stripe / Connect). The ConfirmationToken is minted in this account's context.",
     },
   },
   importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
@@ -60,4 +75,3 @@ export function registerStripeProvider(loader?: Registerable) {
       : registerGlobalContext(...args);
   doRegister(StripeProvider, stripeProviderMeta);
 }
-

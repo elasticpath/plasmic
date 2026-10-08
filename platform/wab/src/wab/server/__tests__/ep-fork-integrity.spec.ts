@@ -565,6 +565,35 @@ describe("EP Fork Integrity", () => {
     });
   });
 
+  describe("Stripe loads in a hostless storefront", () => {
+    it("no source file imports a Stripe library except as a type", () => {
+      const typeOnly = /\b(?:import|export)\s+type\b[^;]*?from\s*["'][^"']+["']/g;
+      const stripeModule =
+        /["'`]@stripe\/|(?:\bfrom|\bimport|\brequire\(|\bimport\()\s*["'`]stripe["'`]/;
+      const offenders = sourceFiles(EP_PKG + "/src").filter((file) =>
+        stripeModule.test(readFile(file).replace(typeOnly, ""))
+      );
+      expect(offenders).toEqual([]);
+    });
+
+    it("no public declaration needs a Stripe library to type-check", () => {
+      expect(readFile(`${EP_PKG}/api/index.api.md`)).not.toContain("@stripe/");
+      expect(readFile(`${EP_PKG}/api/server.api.md`)).not.toContain("@stripe/");
+    });
+
+    it("the package installs no Stripe library at runtime", () => {
+      const pkgJson = readJson(`${EP_PKG}/package.json`);
+      const runtime = Object.keys({
+        ...pkgJson.dependencies,
+        ...pkgJson.peerDependencies,
+        ...pkgJson.optionalDependencies,
+      });
+      expect(
+        runtime.filter((name) => name === "stripe" || name.startsWith("@stripe/"))
+      ).toEqual([]);
+    });
+  });
+
   describe("registrations that cannot be removed are inert", () => {
     it("EP Shopper Context says so in its display name", () => {
       expect(

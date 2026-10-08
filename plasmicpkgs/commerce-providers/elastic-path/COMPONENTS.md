@@ -415,7 +415,7 @@ Rates come from the `shippingRateResolver` configured on the server; see the REA
 
 ### EPPaymentElements
 
-Stripe Payment Element wrapper. Lazy-loads `@stripe/stripe-js` and `@stripe/react-stripe-js`.
+Stripe Payment Element wrapper. Loads Stripe.js from `https://js.stripe.com/v3` when it mounts in the browser.
 
 **DataProvider `paymentData`:**
 

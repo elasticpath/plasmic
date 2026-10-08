@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
-import { loadStripe } from '@stripe/stripe-js';
+import type { Appearance, Stripe } from '@stripe/stripe-js';
 import { formatCurrencyFromCents } from '../../utils/formatCurrency';
+import { loadStripeJs } from '../stripe/load-stripe-js';
+import { usePaymentElement } from '../stripe/use-payment-element';
 import { useStripePayment } from '../hooks/use-stripe-payment';
 import { useCheckout } from '../hooks/use-checkout';
 import type { ElasticPathOrder } from '../types';
@@ -19,29 +20,52 @@ interface EPPaymentFormProps {
 
 interface PaymentFormInternalProps {
   order: ElasticPathOrder;
+  stripe: Stripe | null;
   clientSecret: string;
+  appearance: Appearance;
   onSuccess?: (order: ElasticPathOrder) => void;
   onError?: (error: Error) => void;
-  apiBaseUrl?: string;
+  checkout: ReturnType<typeof useCheckout>;
   className?: string;
   style?: React.CSSProperties;
 }
 
 function PaymentFormInternal({
   order,
+  stripe,
   clientSecret,
+  appearance,
   onSuccess,
   onError,
-  apiBaseUrl,
+  checkout,
   className,
   style
 }: PaymentFormInternalProps) {
-  const stripe = useStripe();
-  const elements = useElements();
-  const checkout = useCheckout({ apiBaseUrl });
-  
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const paymentElementOptions = {
+    layout: 'tabs' as const,
+    defaultValues: {
+      billingDetails: {
+        name: order.customer?.name || '',
+        email: order.customer?.email || '',
+        address: order.billing_address ? {
+          line1: order.billing_address.line_1,
+          line2: order.billing_address.line_2 || '',
+          city: order.billing_address.city,
+          state: order.billing_address.county || '',
+          postal_code: order.billing_address.postcode,
+          country: order.billing_address.country
+        } : undefined
+      }
+    }
+  };
+
+  const { ref: paymentElementRef, elements } = usePaymentElement(stripe, {
+    elements: { clientSecret, appearance },
+    paymentElement: paymentElementOptions,
+  });
 
   const handleSubmit = useCallback(async (event: React.FormEvent) => {
     event.preventDefault();
@@ -94,24 +118,6 @@ function PaymentFormInternal({
     }
   }, [stripe, elements, order.id, checkout, onSuccess, onError]);
 
-  const paymentElementOptions = {
-    layout: 'tabs' as const,
-    defaultValues: {
-      billingDetails: {
-        name: order.customer?.name || '',
-        email: order.customer?.email || '',
-        address: order.billing_address ? {
-          line1: order.billing_address.line_1,
-          line2: order.billing_address.line_2 || '',
-          city: order.billing_address.city,
-          state: order.billing_address.county || '',
-          postal_code: order.billing_address.postcode,
-          country: order.billing_address.country
-        } : undefined
-      }
-    }
-  };
-
   return (
     <div className={className} style={style}>
       <form onSubmit={handleSubmit}>
@@ -119,7 +125,7 @@ function PaymentFormInternal({
           <h3>Payment Information</h3>
           
           <div className="ep-payment-element">
-            <PaymentElement options={paymentElementOptions} />
+            <div ref={paymentElementRef} />
           </div>
           
           {errorMessage && (
@@ -180,7 +186,8 @@ export function EPPaymentForm({
   style,
   theme = 'stripe'
 }: EPPaymentFormProps) {
-  const [stripePromise, setStripePromise] = useState<Promise<any> | null>(null);
+  const [stripe, setStripe] = useState<Stripe | null>(null);
+  const [stripeLoadError, setStripeLoadError] = useState<string | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [isSettingUp, setIsSettingUp] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
@@ -189,10 +196,23 @@ export function EPPaymentForm({
 
   // Initialize Stripe
   useEffect(() => {
-    if (stripePublishableKey && !stripePromise) {
-      setStripePromise(loadStripe(stripePublishableKey));
-    }
-  }, [stripePublishableKey, stripePromise]);
+    if (!stripePublishableKey) return;
+    let cancelled = false;
+    loadStripeJs()
+      .then((StripeJs) => {
+        if (!cancelled) setStripe(StripeJs(stripePublishableKey));
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setStripeLoadError(
+            error instanceof Error ? error.message : 'Failed to load Stripe'
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [stripePublishableKey]);
 
   // Setup payment intent
   useEffect(() => {
@@ -222,7 +242,7 @@ export function EPPaymentForm({
     }
   }, [order, checkout, onError]);
 
-  const appearance = {
+  const appearance: Appearance = {
     theme: theme,
     variables: {
       colorPrimary: '#0570de',
@@ -233,11 +253,6 @@ export function EPPaymentForm({
       spacingUnit: '4px',
       borderRadius: '6px'
     }
-  };
-
-  const options = {
-    clientSecret: clientSecret || undefined,
-    appearance
   };
 
   if (setupError) {
@@ -266,7 +281,7 @@ export function EPPaymentForm({
     );
   }
 
-  if (!stripePromise) {
+  if (!stripePublishableKey) {
     return (
       <div className={className} style={style}>
         <div className="ep-error-message">
@@ -276,18 +291,26 @@ export function EPPaymentForm({
     );
   }
 
+  if (stripeLoadError) {
+    return (
+      <div className={className} style={style}>
+        <div className="ep-error-message">{stripeLoadError}</div>
+      </div>
+    );
+  }
+
   return (
-    <Elements stripe={stripePromise} options={options}>
-      <PaymentFormInternal
-        order={order}
-        clientSecret={clientSecret}
-        onSuccess={onSuccess}
-        onError={onError}
-        apiBaseUrl={apiBaseUrl}
-        className={className}
-        style={style}
-      />
-    </Elements>
+    <PaymentFormInternal
+      order={order}
+      stripe={stripe}
+      clientSecret={clientSecret}
+      appearance={appearance}
+      onSuccess={onSuccess}
+      onError={onError}
+      checkout={checkout}
+      className={className}
+      style={style}
+    />
   );
 }
 

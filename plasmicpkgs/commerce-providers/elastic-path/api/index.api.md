@@ -14,8 +14,6 @@ import type { Product as Product_2 } from '@epcc-sdk/sdks-shopper';
 import { default as React_2 } from 'react';
 import registerComponent from '@plasmicapp/host/registerComponent';
 import registerGlobalContext from '@plasmicapp/host/registerGlobalContext';
-import { Stripe } from '@stripe/stripe-js';
-import { StripeElements } from '@stripe/stripe-js';
 
 // @public (undocumented)
 export type AccountContext = {
@@ -2034,7 +2032,7 @@ export interface StockLocationData {
 }
 
 // @public (undocumented)
-export function StripeProvider({ publishableKey, children, }: StripeProviderProps): React_2.JSX.Element;
+export function StripeProvider({ publishableKey, stripeAccount, children, }: StripeProviderProps): React_2.JSX.Element;
 
 // @public (undocumented)
 export const stripeProviderMeta: GlobalContextMeta<StripeProviderProps>;
@@ -2116,8 +2114,8 @@ export function usePaymentMethod(paymentMethodType: PaymentMethodType, stripeOpt
     } | {
         layout: string;
     };
-    stripe: Stripe | null;
-    elements: StripeElements | null;
+    stripe: StripePaymentClient | null;
+    elements: StripePaymentElements | null;
     isLoading: boolean;
     isProcessing: boolean;
     error: Error | null;
