@@ -53,6 +53,12 @@ async function readRefusal(
 export function createEpIdentityClient(
   options: EpIdentityClientOptions = {}
 ): EpIdentityClient {
+  if ("basePath" in options) {
+    throw new Error(
+      "createEpIdentityClient: basePath was removed; the auth handler is " +
+        `fixed at ${DEFAULT_EP_BASE_PATH}. Drop basePath.`
+    );
+  }
   const doFetch = options.fetch ?? ((...args) => fetch(...args));
 
   async function call(

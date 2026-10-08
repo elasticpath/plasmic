@@ -249,6 +249,12 @@ function cookieHeaderFromSetCookies(setCookies: string[]): string {
 
 
 export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
+  if ("basePath" in input) {
+    throw new Error(
+      "createEpAuth: basePath was removed; the auth handler is fixed at " +
+        "/api/ep. Drop basePath and mount the routes at /api/ep."
+    );
+  }
   if (
     input.checkout?.sessionSecret &&
     input.checkout.sessionSecret.length < 16
