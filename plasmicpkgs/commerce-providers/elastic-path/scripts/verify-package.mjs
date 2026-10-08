@@ -130,6 +130,34 @@ function checkNoRequireShim() {
   }
 }
 
+// Browser code imports the root, so the root must not reach what only /server
+// needs: better-auth, Next's server runtime and Node built-ins.
+const SERVER_ONLY_MODULE =
+  /^(?:better-auth(?:\/|$)|next\/server(?:\.js)?$|(?:node:)?(?:async_hooks|crypto)$)/;
+
+function checkRootPullsInNoServerModule() {
+  for (const file of ["dist/index.esm.js", "dist/index.js"]) {
+    const { metafile } = esbuild.buildSync({
+      entryPoints: [path.join(installedDir, file)],
+      bundle: true,
+      packages: "external",
+      platform: "neutral",
+      write: false,
+      metafile: true,
+      logLevel: "silent",
+    });
+    const serverOnly = [
+      ...new Set(
+        Object.values(metafile.inputs)
+          .flatMap((input) => input.imports)
+          .filter((i) => i.external && SERVER_ONLY_MODULE.test(i.path))
+          .map((i) => i.path)
+      ),
+    ];
+    check(`${file} pulls in no /server module`, serverOnly.length === 0, serverOnly.join("\n"));
+  }
+}
+
 function sameNames(label, actual, expected) {
   const a = [...actual].sort();
   const e = [...expected].sort();
@@ -246,6 +274,7 @@ try {
   checkAttw(tarball, "./server", []);
   install(tarball);
   checkNoRequireShim();
+  checkRootPullsInNoServerModule();
   for (const [label, smoke] of [["/server smoke", smokeServer], ["root smoke", smokeRoot]]) {
     try {
       await smoke();
