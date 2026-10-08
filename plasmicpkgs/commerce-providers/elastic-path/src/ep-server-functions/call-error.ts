@@ -4,17 +4,22 @@ export interface EpCallErrorInfo {
   correlationId?: string;
   /** The route sent the failing function's own message. */
   forwarded?: boolean;
+  cause?: unknown;
 }
 
+const epCallErrors = new WeakSet<Error>();
 const forwardedMessageErrors = new WeakSet<Error>();
 
 export function makeEpCallError(info: EpCallErrorInfo): Error {
   const err = new Error(info.message) as Error & {
     code?: string;
     correlationId?: string;
+    cause?: unknown;
   };
   if (info.code) err.code = info.code;
   if (info.correlationId) err.correlationId = info.correlationId;
+  if (info.cause !== undefined) err.cause = info.cause;
+  epCallErrors.add(err);
   if (info.forwarded) forwardedMessageErrors.add(err);
   return err;
 }
@@ -22,6 +27,29 @@ export function makeEpCallError(info: EpCallErrorInfo): Error {
 /** True when the error's message is the one the failing function raised. */
 export function carriesForwardedMessage(err: unknown): err is Error {
   return err instanceof Error && forwardedMessageErrors.has(err);
+}
+
+/**
+ * Maps a server-side failure to a stable code. A code this package already
+ * put on the error wins; another library's `code` (for example Node's
+ * `ECONNREFUSED`) does not.
+ */
+export function classifyEpFailure(err: unknown): string {
+  if (err instanceof Error && epCallErrors.has(err)) {
+    const code = (err as { code?: unknown }).code;
+    if (typeof code === "string" && code) return code;
+  }
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  if (/not enough stock|insufficient stock/i.test(message)) {
+    return "insufficient_stock";
+  }
+  if (/no cart on session|no EP session/i.test(message)) {
+    return "no_session";
+  }
+  if (/^epApplyPromoCode:|^epRemovePromoCode:/.test(message)) {
+    return "invalid_promo_code";
+  }
+  return "dispatch_failed";
 }
 
 export async function readEpCallError(

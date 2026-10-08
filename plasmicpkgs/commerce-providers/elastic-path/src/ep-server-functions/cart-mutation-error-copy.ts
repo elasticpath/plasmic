@@ -1,4 +1,4 @@
-import { epProxyErrorCode } from "./proxy-fetch";
+import { readEpErrorCode } from "../browser-call";
 
 /**
  * Stable proxy `code` → shopper-facing copy for cart mutation DataProviders
@@ -14,6 +14,8 @@ const CART_MUTATION_ERROR_COPY: Record<string, string> = {
   no_session: "Your session expired. Refresh the page and try again.",
   invalid_promo_code:
     "That code isn't valid for this basket. Check it and try again.",
+  design_fn_not_served:
+    "Cart changes don't run on the Studio canvas. Preview the page to try them.",
 };
 
 /**
@@ -27,7 +29,7 @@ export function cartMutationErrorCopy(
   err: unknown,
   genericFallback: string
 ): string {
-  const code = epProxyErrorCode(err);
+  const code = readEpErrorCode(err);
   if (code) {
     return CART_MUTATION_ERROR_COPY[code] ?? genericFallback;
   }

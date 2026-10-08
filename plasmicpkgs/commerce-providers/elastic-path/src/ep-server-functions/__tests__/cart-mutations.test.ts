@@ -41,6 +41,34 @@ const {
 } = require("../cart-mutations");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { withEpSession } = require("../session-context");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { makeEpCallError } = require("../call-error");
+
+type CartWriteError = Error & {
+  code?: string;
+  correlationId?: string;
+  cause?: unknown;
+};
+
+function rejectionOf(write: Promise<unknown>): Promise<CartWriteError> {
+  return write.then(
+    () => {
+      throw new Error("expected the cart write to reject");
+    },
+    (err) => err as CartWriteError
+  );
+}
+
+function causeOf(err: CartWriteError): string {
+  return err.cause instanceof Error ? err.cause.message : String(err.cause);
+}
+
+const ADD_FAILED = "We couldn't add this item to your cart. Please try again.";
+const UPDATE_FAILED = "We couldn't update the quantity. Please try again.";
+const REMOVE_FAILED = "We couldn't remove this item. Please try again.";
+const OUT_OF_STOCK =
+  "There isn't enough stock to add that quantity. Try a smaller amount.";
+const SESSION_EXPIRED = "Your session expired. Refresh the page and try again.";
 
 const SESSION_BASE = {
   accessToken: "tok",
@@ -152,10 +180,14 @@ describe("epAddCartItem", () => {
     expect(mockCreateACart).not.toHaveBeenCalled();
   });
 
-  it("throws when called without an active EP session", async () => {
-    await expect(
+  it("rejects as no_session when called without an active EP session", async () => {
+    const err = await rejectionOf(
       epAddCartItem({ productId: "prod-1", quantity: 1 })
-    ).rejects.toThrow(/no EP session/i);
+    );
+
+    expect(err.message).toBe(SESSION_EXPIRED);
+    expect(err.code).toBe("no_session");
+    expect(causeOf(err)).toMatch(/no EP session/i);
     expect(mockManageCarts).not.toHaveBeenCalled();
   });
 
@@ -178,16 +210,19 @@ describe("epAddCartItem", () => {
     expect(result.id).toBe("new-cart-id");
   });
 
-  it("propagates the underlying SDK error when the EP backend rejects the add", async () => {
-    mockManageCarts.mockRejectedValue(
-      Object.assign(new Error("out of stock"), { status: 422 })
-    );
+  it("keeps the underlying SDK error as the cause when the EP backend rejects the add", async () => {
+    const sdkError = Object.assign(new Error("EP 503"), { status: 503 });
+    mockManageCarts.mockRejectedValue(sdkError);
 
-    await expect(
+    const err = await rejectionOf(
       withEpSession({ ...SESSION_BASE, cartId: "cart-id" }, () =>
         epAddCartItem({ productId: "prod-1", quantity: 1 })
       )
-    ).rejects.toThrow(/out of stock/);
+    );
+
+    expect(err.message).toBe(ADD_FAILED);
+    expect(err.code).toBe("dispatch_failed");
+    expect(err.cause).toBe(sdkError);
   });
 
   it("throws when manageCarts soft-fails with { error } (throwOnError defaults false)", async () => {
@@ -197,11 +232,15 @@ describe("epAddCartItem", () => {
       },
     });
 
-    await expect(
+    const err = await rejectionOf(
       withEpSession({ ...SESSION_BASE, cartId: "cart-id" }, () =>
         epAddCartItem({ productId: "prod-1", quantity: 1 })
       )
-    ).rejects.toThrow(/not available for purchase/);
+    );
+
+    expect(err.message).toBe(ADD_FAILED);
+    expect(err.code).toBe("dispatch_failed");
+    expect(causeOf(err)).toMatch(/not available for purchase/);
     expect(mockGetACart).not.toHaveBeenCalled();
   });
 
@@ -212,11 +251,14 @@ describe("epAddCartItem", () => {
     });
     mockGetACart.mockResolvedValue(CART_RESPONSE); // included.items: []
 
-    await expect(
+    const err = await rejectionOf(
       withEpSession({ ...SESSION_BASE, cartId: "cart-id" }, () =>
         epAddCartItem({ productId: "prod-1", quantity: 1 })
       )
-    ).rejects.toThrow(/cart still empty after add/);
+    );
+
+    expect(err.message).toBe(ADD_FAILED);
+    expect(causeOf(err)).toMatch(/cart still empty after add/);
   });
 
   it("uses sku rather than productId when the input provides a sku (variant selection)", async () => {
@@ -499,18 +541,25 @@ describe("epUpdateCartItem", () => {
     );
   });
 
-  it("throws when called without an active EP session", async () => {
-    await expect(
+  it("rejects as no_session when called without an active EP session", async () => {
+    const err = await rejectionOf(
       epUpdateCartItem({ itemId: "item-1", quantity: 1 })
-    ).rejects.toThrow(/no EP session/i);
+    );
+
+    expect(err.message).toBe(SESSION_EXPIRED);
+    expect(err.code).toBe("no_session");
+    expect(causeOf(err)).toMatch(/no EP session/i);
   });
 
-  it("throws when the session has no cartId (nothing to update against)", async () => {
-    await expect(
+  it("rejects as no_session when the session has no cartId (nothing to update against)", async () => {
+    const err = await rejectionOf(
       withEpSession(SESSION_BASE, () =>
         epUpdateCartItem({ itemId: "item-1", quantity: 1 })
       )
-    ).rejects.toThrow(/no cart/i);
+    );
+
+    expect(err.code).toBe("no_session");
+    expect(causeOf(err)).toMatch(/no cart/i);
     expect(mockUpdateACartItem).not.toHaveBeenCalled();
   });
   it("throws when updateACartItem soft-fails with { error }", async () => {
@@ -524,11 +573,15 @@ describe("epUpdateCartItem", () => {
       error: { errors: [{ detail: "quantity exceeds stock" }] },
     });
 
-    await expect(
+    const err = await rejectionOf(
       withEpSession({ ...SESSION_BASE, cartId: "cart-id" }, () =>
         epUpdateCartItem({ itemId: "item-1", quantity: 99 })
       )
-    ).rejects.toThrow(/quantity exceeds stock/);
+    );
+
+    expect(err.message).toBe(UPDATE_FAILED);
+    expect(err.code).toBe("dispatch_failed");
+    expect(causeOf(err)).toMatch(/quantity exceeds stock/);
     // Location pre-read happens; post-update cart fetch must not.
     expect(mockGetACart).toHaveBeenCalledTimes(1);
   });
@@ -552,16 +605,20 @@ describe("epRemoveCartItem", () => {
     );
   });
 
-  it("throws when called without an active EP session", async () => {
-    await expect(epRemoveCartItem({ itemId: "item-1" })).rejects.toThrow(
-      /no EP session/i
-    );
+  it("rejects as no_session when called without an active EP session", async () => {
+    const err = await rejectionOf(epRemoveCartItem({ itemId: "item-1" }));
+
+    expect(err.message).toBe(SESSION_EXPIRED);
+    expect(err.code).toBe("no_session");
   });
 
-  it("throws when the session has no cartId (nothing to remove from)", async () => {
-    await expect(
+  it("rejects as no_session when the session has no cartId (nothing to remove from)", async () => {
+    const err = await rejectionOf(
       withEpSession(SESSION_BASE, () => epRemoveCartItem({ itemId: "item-1" }))
-    ).rejects.toThrow(/no cart/i);
+    );
+
+    expect(err.code).toBe("no_session");
+    expect(causeOf(err)).toMatch(/no cart/i);
     expect(mockDeleteACartItem).not.toHaveBeenCalled();
   });
 
@@ -570,11 +627,15 @@ describe("epRemoveCartItem", () => {
       error: { errors: [{ detail: "cart item not found" }] },
     });
 
-    await expect(
+    const err = await rejectionOf(
       withEpSession({ ...SESSION_BASE, cartId: "cart-id" }, () =>
         epRemoveCartItem({ itemId: "item-1" })
       )
-    ).rejects.toThrow(/cart item not found/);
+    );
+
+    expect(err.message).toBe(REMOVE_FAILED);
+    expect(err.code).toBe("dispatch_failed");
+    expect(causeOf(err)).toMatch(/cart item not found/);
     expect(mockGetACart).not.toHaveBeenCalled();
   });
 });
@@ -832,11 +893,13 @@ describe("browser transport", () => {
   });
 
   it("surfaces a proxy failure rather than reporting a write that never happened", async () => {
-    mockCallEpProxy.mockRejectedValue(new Error("not enough stock"));
+    const proxyError = new Error("ep proxy addCartItem failed (502)");
+    mockCallEpProxy.mockRejectedValue(proxyError);
 
-    await expect(
-      epAddCartItem({ productId: "p1", quantity: 1 })
-    ).rejects.toThrow("not enough stock");
+    const err = await rejectionOf(epAddCartItem({ productId: "p1", quantity: 1 }));
+
+    expect(err.message).toBe(ADD_FAILED);
+    expect(err.cause).toBe(proxyError);
   });
 
   it("writes directly when an ALS session is present", async () => {
@@ -848,6 +911,70 @@ describe("browser transport", () => {
 
     expect(mockCallEpProxy).not.toHaveBeenCalled();
     expect(mockManageCarts).toHaveBeenCalled();
+  });
+});
+
+describe("a cart write the server rejects", () => {
+  const SHOPPER = { ...SESSION_BASE, cartId: "cart-id" };
+  const EP_STOCK_REASON = "There is not enough stock to add 99 of this item";
+
+  it("names an out-of-stock add insufficient_stock, in shopper copy, with Elastic Path's reason as the cause", async () => {
+    mockManageCarts.mockResolvedValue({
+      error: { errors: [{ detail: EP_STOCK_REASON }] },
+    });
+
+    const err = await rejectionOf(
+      withEpSession(SHOPPER, () =>
+        epAddCartItem({ productId: "prod-1", quantity: 99 })
+      )
+    );
+
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toBe(OUT_OF_STOCK);
+    expect(err.code).toBe("insufficient_stock");
+    expect(causeOf(err)).toContain(EP_STOCK_REASON);
+  });
+
+  it("names an out-of-stock quantity change insufficient_stock", async () => {
+    mockUpdateACartItem.mockResolvedValue({
+      error: { errors: [{ detail: EP_STOCK_REASON }] },
+    });
+
+    const err = await rejectionOf(
+      withEpSession(SHOPPER, () =>
+        epUpdateCartItem({ itemId: "li-1", quantity: 99, location: "north" })
+      )
+    );
+
+    expect(err.message).toBe(OUT_OF_STOCK);
+    expect(err.code).toBe("insufficient_stock");
+  });
+
+  it("rejects the way the browser does for the same code", async () => {
+    mockManageCarts.mockResolvedValue({
+      error: { errors: [{ detail: EP_STOCK_REASON }] },
+    });
+    const onServer = await rejectionOf(
+      withEpSession(SHOPPER, () =>
+        epAddCartItem({ productId: "prod-1", quantity: 99 })
+      )
+    );
+
+    mockShouldUseProxy.mockReturnValue(true);
+    mockCallEpProxy.mockRejectedValue(
+      makeEpCallError({
+        message: "ep proxy addCartItem failed (500)",
+        code: "insufficient_stock",
+        correlationId: "corr-1",
+      })
+    );
+    const inBrowser = await rejectionOf(
+      epAddCartItem({ productId: "prod-1", quantity: 99 })
+    );
+
+    expect(inBrowser.message).toBe(onServer.message);
+    expect(inBrowser.code).toBe(onServer.code);
+    expect(inBrowser.correlationId).toBe("corr-1");
   });
 });
 

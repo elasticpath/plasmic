@@ -7,13 +7,11 @@ import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useState } from "react";
-import { mutate as swrMutate } from "swr";
 import { Registerable } from "../registerable";
 import { createLogger } from "../utils/logger";
 import { epProxyErrorCode } from "../ep-server-functions/proxy-fetch";
 import { epRemoveCartItem } from "../ep-server-functions/cart-mutations";
 import { cartMutationErrorCopy } from "../ep-server-functions/cart-mutation-error-copy";
-import { epCartCacheKey } from "../cart-provider/cache-keys";
 
 const log = createLogger("EPCartItemRemoveButton");
 
@@ -81,7 +79,6 @@ export function EPCartItemRemoveButton(props: EPCartItemRemoveButtonProps) {
     setIsLoading(true);
     try {
       await epRemoveCartItem({ itemId: currentItem.id });
-      await swrMutate(epCartCacheKey());
       log.info("Item removed from cart", {
         itemId: currentItem.id,
       } as Record<string, unknown>);

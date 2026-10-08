@@ -15,6 +15,7 @@ import {
   epUpdateCartItem,
   useEpCart,
 } from "../../index";
+import * as serverFunctions from "../../ep-server-functions";
 import {
   latchEpCanvasArtboard,
   resetEpCanvasArtboard,
@@ -125,6 +126,12 @@ async function renderBadge(expected: string) {
 }
 
 describe("cart writes from the root entry", () => {
+  it("are the very functions /server exports", () => {
+    expect(epAddCartItem).toBe(serverFunctions.epAddCartItem);
+    expect(epUpdateCartItem).toBe(serverFunctions.epUpdateCartItem);
+    expect(epRemoveCartItem).toBe(serverFunctions.epRemoveCartItem);
+  });
+
   it("adds an item at a location and resolves with the updated cart", async () => {
     await renderBadge("empty");
 

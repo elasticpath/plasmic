@@ -53,6 +53,7 @@ import type {
   EpRemovePromoCodeInput,
   EpUpdateCartItemInput,
 } from "../../ep-server-functions";
+import { classifyEpFailure } from "../../ep-server-functions/call-error";
 import { withEpSession } from "../../ep-server-functions/session-context";
 import type { EpCtx } from "../../ep-server-functions/build-ep-ctx";
 import { parseCookieHeader } from "../../utils/cookie-header";
@@ -88,27 +89,6 @@ const CART_WRITE_FNS = new Set([
   "applyPromoCode",
   "removePromoCode",
 ]);
-
-/**
- * Maps a dispatch failure to a stable code. `message` is withheld in
- * production, so the code is the only failure detail a browser caller can
- * branch on there.
- */
-function classifyDispatchError(err: unknown): string {
-  const message = err instanceof Error ? err.message : String(err ?? "");
-  if (/not enough stock|insufficient stock/i.test(message)) {
-    return "insufficient_stock";
-  }
-  if (/no cart on session|no EP session/i.test(message)) {
-    return "no_session";
-  }
-  // Production withholds `message`, so the code is the only thing that tells
-  // the promo input a code was rejected rather than the request failing.
-  if (/^epApplyPromoCode:|^epRemovePromoCode:/.test(message)) {
-    return "invalid_promo_code";
-  }
-  return "dispatch_failed";
-}
 
 /** Promised `params` only — see the note on `CartRouteContext`. */
 interface ProxyRouteContext {
@@ -295,7 +275,7 @@ export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes {
           `[ep-commerce] proxy dispatch_failed fn=${fnName} correlationId=${correlationId}`,
           err
         );
-        const code = classifyDispatchError(err);
+        const code = classifyEpFailure(err);
         return new Response(
           JSON.stringify(
             isTrustedDevEnvironment()

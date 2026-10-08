@@ -8,7 +8,6 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React, { useState } from "react";
 import { useFormContext } from "react-hook-form";
-import { mutate as swrMutate } from "swr";
 import type { Product } from "./types/product";
 import { Registerable } from "./registerable";
 import { createLogger } from "./utils/logger";
@@ -19,7 +18,6 @@ import {
 import { epProxyErrorCode } from "./ep-server-functions/proxy-fetch";
 import { epAddCartItem } from "./ep-server-functions/cart-mutations";
 import { cartMutationErrorCopy } from "./ep-server-functions/cart-mutation-error-copy";
-import { epCartCacheKey } from "./cart-provider/cache-keys";
 
 const log = createLogger("EPAddToCartButton");
 
@@ -171,9 +169,6 @@ export function EPAddToCartButton(props: EPAddToCartButtonProps) {
       }
 
       await epAddCartItem(extractCartItemFromForm(formValues, product, {}));
-
-      // Refresh any EPCartProvider in the tree.
-      await swrMutate(epCartCacheKey());
 
       log.info("Item added to cart successfully");
 

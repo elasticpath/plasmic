@@ -209,18 +209,11 @@ export function EPCartItemQuantityControl(
       setError(null);
       setIsLoading(true);
       try {
-        const updated = await epUpdateCartItem({
+        await epUpdateCartItem({
           itemId,
           quantity: newQuantity,
           ...(location ? { location } : {}),
         });
-        // Seeding the cache with an empty result would blank the cart, since
-        // `revalidate: false` leaves nothing to correct it. Revalidate instead.
-        if (updated) {
-          await swrMutate(epCartCacheKey(), updated, { revalidate: false });
-        } else {
-          await swrMutate(epCartCacheKey());
-        }
         setLocalQuantity(newQuantity);
         quantityRef.current = newQuantity;
         prevServerQuantity.current = newQuantity;

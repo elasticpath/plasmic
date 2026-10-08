@@ -1,8 +1,6 @@
 import { GlobalActionDict, GlobalActionsProvider } from "@plasmicapp/host";
 import React from "react";
-import { mutate as swrMutate } from "swr";
 import { DEFAULT_DEBOUNCE_MS } from "../const";
-import { epCartCacheKey } from "../cart-provider/cache-keys";
 import {
   epAddCartItem,
   epRemoveCartItem,
@@ -16,10 +14,6 @@ interface ServerCartActions extends GlobalActionDict {
   addItem: (productId: string, variantId: string, quantity: number) => void;
   updateItem: (lineItemId: string, quantity: number) => void;
   removeItem: (lineItemId: string) => void;
-}
-
-async function refreshCart(): Promise<void> {
-  await swrMutate(epCartCacheKey());
 }
 
 /**
@@ -44,34 +38,30 @@ export function ServerCartActionsProvider(
     () => ({
       addItem(productId, variantId, quantity) {
         // A line references the child product when one was chosen.
-        epAddCartItem({ productId: variantId || productId, quantity })
-          .then(refreshCart)
-          .catch((err) => {
+        epAddCartItem({ productId: variantId || productId, quantity }).catch(
+          (err) => {
             log.error("Add to cart failed", {
               error: err instanceof Error ? err.message : String(err),
             } as Record<string, unknown>);
-          });
+          }
+        );
       },
       updateItem(lineItemId, quantity) {
         if (updateTimer.current) clearTimeout(updateTimer.current);
         updateTimer.current = setTimeout(() => {
-          epUpdateCartItem({ itemId: lineItemId, quantity })
-            .then(refreshCart)
-            .catch((err) => {
-              log.error("Cart quantity update failed", {
-                error: err instanceof Error ? err.message : String(err),
-              } as Record<string, unknown>);
-            });
-        }, DEFAULT_DEBOUNCE_MS);
-      },
-      removeItem(lineItemId) {
-        epRemoveCartItem({ itemId: lineItemId })
-          .then(refreshCart)
-          .catch((err) => {
-            log.error("Cart item removal failed", {
+          epUpdateCartItem({ itemId: lineItemId, quantity }).catch((err) => {
+            log.error("Cart quantity update failed", {
               error: err instanceof Error ? err.message : String(err),
             } as Record<string, unknown>);
           });
+        }, DEFAULT_DEBOUNCE_MS);
+      },
+      removeItem(lineItemId) {
+        epRemoveCartItem({ itemId: lineItemId }).catch((err) => {
+          log.error("Cart item removal failed", {
+            error: err instanceof Error ? err.message : String(err),
+          } as Record<string, unknown>);
+        });
       },
     }),
     []

@@ -173,7 +173,7 @@ export interface EpAccountSlot {
     token: string;
 }
 
-// @public (undocumented)
+// @public
 export function epAddCartItem(input: EpAddCartItemInput): Promise<Cart>;
 
 // @public (undocumented)
@@ -587,7 +587,7 @@ export interface EpProxyRoutes {
     options: (request: Request) => Response;
 }
 
-// @public (undocumented)
+// @public
 export function epRemoveCartItem(input: EpRemoveCartItemInput): Promise<Cart>;
 
 // @public (undocumented)
@@ -687,7 +687,7 @@ export interface EpSessionData {
     memberId?: string;
 }
 
-// @public (undocumented)
+// @public
 export function epUpdateCartItem(input: EpUpdateCartItemInput): Promise<Cart>;
 
 // @public (undocumented)

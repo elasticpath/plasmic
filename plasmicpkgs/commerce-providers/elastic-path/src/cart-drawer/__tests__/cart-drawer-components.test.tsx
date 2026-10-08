@@ -24,6 +24,7 @@
 // unchanged.
 const mockUseCart = jest.fn();
 jest.mock("../../cart-provider/use-ep-cart", () => ({
+  ...jest.requireActual("../../cart-provider/use-ep-cart"),
   __esModule: true,
   useEpCart: () => {
     const r = mockUseCart() ?? {};
@@ -1055,7 +1056,8 @@ describe("EPCartItemQuantityControl", () => {
   });
 
   it("increment calls updateCartItem proxy with new quantity", async () => {
-    mockCallEpProxy.mockResolvedValue(undefined);
+    const updatedCart = { id: "cart-1", items: [{ id: "item-1" }] };
+    mockCallEpProxy.mockResolvedValue(updatedCart);
     mockUseSelector.mockReturnValue({ id: "item-1", quantity: 2 });
 
     let ctxValue: any;
@@ -1072,7 +1074,9 @@ describe("EPCartItemQuantityControl", () => {
       itemId: "item-1",
       quantity: 3,
     });
-    expect(mockSwrMutate).toHaveBeenCalled();
+    expect(mockSwrMutate.mock.calls).toEqual([
+      ["ep-cart", updatedCart, { revalidate: false }],
+    ]);
   });
 
   it("increment includes location when the line item has a locationSlug", async () => {
@@ -1119,7 +1123,8 @@ describe("EPCartItemQuantityControl", () => {
   });
 
   it("decrement calls updateCartItem proxy with new quantity", async () => {
-    mockCallEpProxy.mockResolvedValue(undefined);
+    const updatedCart = { id: "cart-1", items: [{ id: "item-1" }] };
+    mockCallEpProxy.mockResolvedValue(updatedCart);
     mockUseSelector.mockReturnValue({ id: "item-1", quantity: 3 });
 
     let ctxValue: any;
@@ -1136,7 +1141,9 @@ describe("EPCartItemQuantityControl", () => {
       itemId: "item-1",
       quantity: 2,
     });
-    expect(mockSwrMutate).toHaveBeenCalled();
+    expect(mockSwrMutate.mock.calls).toEqual([
+      ["ep-cart", updatedCart, { revalidate: false }],
+    ]);
   });
 
   it("reverts quantity on update error", async () => {
@@ -1256,9 +1263,9 @@ describe("EPCartItemQuantityControl", () => {
     );
     await act(async () => { ctxValue.increment(); });
 
-    expect(mockSwrMutate).toHaveBeenCalledWith("ep-cart", updatedCart, {
-      revalidate: false,
-    });
+    expect(mockSwrMutate.mock.calls).toEqual([
+      ["ep-cart", updatedCart, { revalidate: false }],
+    ]);
   });
 
   it("revalidates rather than seeding an empty mutation result", async () => {
@@ -1429,7 +1436,9 @@ describe("EPCartItemQuantityControl", () => {
     );
     await act(async () => { ctxValue.increment(); });
     expect(ctxValue.quantity).toBe(2);
-    expect(readProviderState("quantityControl").error).toBe("Network error");
+    expect(readProviderState("quantityControl").error).toBe(
+      "We couldn't update the quantity. Please try again."
+    );
     expect(mockSwrMutate).toHaveBeenCalledWith("ep-cart");
   });
 
@@ -1447,7 +1456,9 @@ describe("EPCartItemQuantityControl", () => {
       </EPCartItemQuantityControl>
     );
     await act(async () => { ctxValue.increment(); });
-    expect(readProviderState("quantityControl").error).toBe("Network error");
+    expect(readProviderState("quantityControl").error).toBe(
+      "We couldn't update the quantity. Please try again."
+    );
 
     let resolveUpdate: (value: unknown) => void = () => {};
     mockCallEpProxy.mockImplementation(
@@ -1692,7 +1703,8 @@ describe("EPCartItemQuantityButton", () => {
 
 describe("EPCartItemRemoveButton", () => {
   it("calls removeCartItem proxy on click", async () => {
-    mockCallEpProxy.mockResolvedValue(undefined);
+    const updatedCart = { id: "cart-1", items: [] };
+    mockCallEpProxy.mockResolvedValue(updatedCart);
     mockUseSelector.mockReturnValue({ id: "item-1", name: "Product A" });
 
     render(
@@ -1706,7 +1718,9 @@ describe("EPCartItemRemoveButton", () => {
     expect(mockCallEpProxy).toHaveBeenCalledWith("removeCartItem", {
       itemId: "item-1",
     });
-    expect(mockSwrMutate).toHaveBeenCalled();
+    expect(mockSwrMutate.mock.calls).toEqual([
+      ["ep-cart", updatedCart, { revalidate: false }],
+    ]);
   });
 
   it("does not call removeCartItem when no item id", async () => {
@@ -1813,7 +1827,9 @@ describe("EPCartItemRemoveButton", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button"));
     });
-    expect(readProviderState("removeItemState").error).toBe("Fail");
+    expect(readProviderState("removeItemState").error).toBe(
+      "We couldn't remove this item. Please try again."
+    );
     expect(mockSwrMutate).not.toHaveBeenCalled();
   });
 
@@ -1829,7 +1845,9 @@ describe("EPCartItemRemoveButton", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button"));
     });
-    expect(readProviderState("removeItemState").error).toBe("Fail");
+    expect(readProviderState("removeItemState").error).toBe(
+      "We couldn't remove this item. Please try again."
+    );
 
     let resolveRemove: (value: unknown) => void = () => {};
     mockCallEpProxy.mockImplementation(
@@ -1844,13 +1862,13 @@ describe("EPCartItemRemoveButton", () => {
     expect(readProviderState("removeItemState").isLoading).toBe(true);
 
     await act(async () => {
-      resolveRemove(undefined);
+      resolveRemove({ id: "cart-1", items: [] });
     });
     expect(readProviderState("removeItemState").error).toBeNull();
   });
 
   it("leaves removeItemState.error null after a successful remove", async () => {
-    mockCallEpProxy.mockResolvedValue(undefined);
+    mockCallEpProxy.mockResolvedValue({ id: "cart-1", items: [] });
     mockUseSelector.mockReturnValue({ id: "item-1", name: "Product A" });
 
     render(
@@ -1875,6 +1893,29 @@ describe("EPCartItemRemoveButton", () => {
     expect(readProviderState("removeItemState").error).toBe(
       "Sample error message"
     );
+  });
+
+  it("says why a remove does nothing on the Studio canvas", async () => {
+    const realm = require("../../ep-server-functions/design-realm");
+    mockCallEpProxy.mockResolvedValue(undefined);
+    mockUseSelector.mockReturnValue({ id: "item-1", name: "Product A" });
+    realm.latchEpCanvasArtboard();
+
+    try {
+      render(
+        <EPCartItemRemoveButton>
+          <span>Remove</span>
+        </EPCartItemRemoveButton>
+      );
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button"));
+      });
+    } finally {
+      realm.resetEpCanvasArtboard();
+    }
+
+    expect(readProviderState("removeItemState").error).toMatch(/studio canvas/i);
+    expect(mockSwrMutate).not.toHaveBeenCalled();
   });
 
   it("maps no_session to shopper-facing removeItemState.error", async () => {
@@ -1937,7 +1978,7 @@ describe("EPCartItemRemoveButton", () => {
     expect(mockCallEpProxy).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      resolveRemove(undefined);
+      resolveRemove({ id: "cart-1", items: [] });
     });
   });
 });
