@@ -82,7 +82,8 @@ export const commerceProviderMeta: any = {
       type: "string",
       displayName: "Currency",
       description:
-        "ISO 4217 currency code (e.g. USD, GBP, CHF) sent with the cart read so line prices and totals re-price for the active locale. Leave empty to use the cart's stored currency. Bind to your per-locale currency resolution.",
+        "Deprecated — ignored. The storefront server chooses the currency with createEpAuth's resolveLocale, so a server render and a browser call price the cart the same way.",
+      hidden: () => true,
       advanced: true,
     },
     currencyDisplay: {

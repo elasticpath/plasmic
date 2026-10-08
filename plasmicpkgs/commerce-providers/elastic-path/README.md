@@ -783,7 +783,7 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 ## Components
 
 ### Core
-- **EP Provider** — Global context: `clientId`, `host`, `locale`, `currency`
+- **EP Provider** — Global context: `clientId`, `host`, `locale`
 - **EP Shopper Context (deprecated)** — Does nothing and renders its children. Remove it from your project
 
 ### Product Display
