@@ -73,12 +73,15 @@ removed component or a removed published prop. Both are empty instead.
 
 The root entry exports the cart writes `epAddCartItem`, `epUpdateCartItem` and
 `epRemoveCartItem`, their input types, and the `Cart` type they resolve with,
-so a storefront's own React component can write to the cart. In the browser
-they call the storefront's proxy route, so no Elastic Path credential reaches
-the page. After a write, every `useEpCart()` consumer shows the new cart. A
-rejection is an `Error` with a readable `message` and, when the proxy route sent
-one, a stable `code` such as `insufficient_stock`. `/server` keeps its own
-copies for server code.
+so a storefront's own React component can write to the cart. The types `Cart`
+is built from, `CartResponse`, `CartMeta`, `CartItem`, `CartItemType` and
+`FormattedPrice`, are exported too. In the browser the writes call the
+storefront's proxy route, so no Elastic Path credential reaches the page. After
+a write, every `useEpCart()` consumer shows the new cart. A rejection is an
+`Error` whose `message` is text you can show the shopper and, when there is
+one, a stable `code` such as `insufficient_stock`. On the Studio canvas a write
+does not run; it rejects with the code `design_fn_not_served`. `/server` keeps
+its own copies for server code.
 
 `createEpDesignRoutes` serves Studio design time. It answers four catalog
 reads, `getProduct`, `getProductList`, `getProductPage` and
@@ -192,11 +195,14 @@ changes: same props, same slots, same data.
 
 ### Fixed
 
-The cart a cart write returns is read the same way as `ep.getCart`.
-`epAddCartItem`, `epUpdateCartItem`, `epRemoveCartItem`, `epApplyPromoCode` and
-`epRemovePromoCode` read the cart back without the `Accept-Language` and
-`X-Moltin-Currency` headers that `ep.getCart` sends for the shopper's locale and
-currency.
+A cart write no longer resolves with a cart priced differently from the one
+`ep.getCart` reads. `epAddCartItem`, `epUpdateCartItem`, `epRemoveCartItem`,
+`epApplyPromoCode` and `epRemovePromoCode` read the cart back without the
+`Accept-Language` and `X-Moltin-Currency` headers that `ep.getCart` sent for the
+shopper's locale and currency. Every cart read now sends the same headers. Server
+code supplies the locale and currency through `buildEpCtx`. A browser call
+through the proxy route sends neither header, because the shopper session
+carries no locale or currency.
 
 `/server` type declarations are generated from the entry point instead of a
 hand-kept list, so an export can no longer ship without its type. `/server`

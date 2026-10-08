@@ -122,7 +122,8 @@ async function addToCart(productId: string) {
     console.log(`${cart.items.length} lines in the cart`);
   } catch (err) {
     const { message, code } = err as Error & { code?: string };
-    // code: "insufficient_stock", "no_session" or "dispatch_failed"
+    // code: "insufficient_stock", "no_session", "dispatch_failed",
+    // "route_not_found" or "design_fn_not_served"
     showError(message);
   }
 }
@@ -131,11 +132,21 @@ async function addToCart(productId: string) {
 `epAddCartItem` takes `productId`, `quantity`, and optionally `sku`,
 `location`, `bundleConfiguration` and `customInputs`. `epUpdateCartItem` takes
 `itemId`, `quantity` and optionally `location`; without it, the line's own
-location is used. `epRemoveCartItem` takes `itemId`.
+location is used. `epRemoveCartItem` takes `itemId`. The root entry also
+exports the types of the cart they resolve with: `Cart`, `CartItem`,
+`CartItemType`, `CartMeta`, `CartResponse` and `FormattedPrice`.
 
-A rejection is an `Error` with a readable `message`. A production proxy route
-withholds Elastic Path's own reason, so branch on `code`, not on the message
-text.
+A rejection is an `Error` whose `message` you can show the shopper. When the
+proxy route forwards Elastic Path's own reason, which it does only in
+development, the `message` is that reason. Otherwise it is fixed text for the
+failure, such as "We couldn't add this item to your cart. Please try again."
+Branch on `code`, not on the message text. A network failure or an error page
+with no code rejects with no `code`. `route_not_found` means the proxy route
+is not mounted.
+
+On the Studio canvas, a write does not run and the cart does not change. The
+write rejects with the code `design_fn_not_served`. Preview the page to try the
+write.
 
 `/server` exports the same three names for server code. Those return the cart
 but refresh no browser cache.
