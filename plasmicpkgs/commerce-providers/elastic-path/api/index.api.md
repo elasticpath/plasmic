@@ -122,6 +122,14 @@ export function buildLeafOptions(): ChoiceObject[];
 // @public (undocumented)
 export function buildTemplateOptions(templates: ExtensionTemplate[] | undefined): ChoiceObject[];
 
+// @public
+export type Cart = Omit<CartResponse, "meta"> & {
+    meta?: CartMeta;
+    items: CartItem[];
+    promotions: CartItem[];
+    itemCount: number;
+};
+
 // @public (undocumented)
 export interface CatalogSearchData {
     // (undocumented)
@@ -485,6 +493,23 @@ export interface EpAccountSummary {
     id: string;
     // (undocumented)
     name?: string;
+}
+
+// @public
+export function epAddCartItem(input: EpAddCartItemInput): Promise<Cart>;
+
+// @public (undocumented)
+export interface EpAddCartItemInput {
+    bundleConfiguration?: unknown;
+    // (undocumented)
+    customInputs?: Record<string, unknown>;
+    location?: string;
+    // (undocumented)
+    productId: string;
+    // (undocumented)
+    quantity: number;
+    // (undocumented)
+    sku?: string;
 }
 
 // @public (undocumented)
@@ -1166,6 +1191,15 @@ export const EPRefinementList: React_2.ForwardRefExoticComponent<EPRefinementLis
 // @public (undocumented)
 export function EPRelatedProductsProvider(props: EPRelatedProductsProviderProps): React_2.JSX.Element;
 
+// @public
+export function epRemoveCartItem(input: EpRemoveCartItemInput): Promise<Cart>;
+
+// @public (undocumented)
+export interface EpRemoveCartItemInput {
+    // (undocumented)
+    itemId: string;
+}
+
 // @public (undocumented)
 export const EPSearchAutocomplete: React_2.ForwardRefExoticComponent<EPSearchAutocompleteProps & React_2.RefAttributes<EPSearchAutocompleteActions>>;
 
@@ -1244,6 +1278,18 @@ export const EPStripePayment: React_2.ForwardRefExoticComponent<EPStripePaymentP
 
 // @public (undocumented)
 export const epStripePaymentMeta: CodeComponentMeta<EPStripePaymentProps>;
+
+// @public
+export function epUpdateCartItem(input: EpUpdateCartItemInput): Promise<Cart>;
+
+// @public (undocumented)
+export interface EpUpdateCartItemInput {
+    // (undocumented)
+    itemId: string;
+    location?: string;
+    // (undocumented)
+    quantity: number;
+}
 
 // @public (undocumented)
 export function EPVariationCase(props: EPVariationCaseProps): React_2.JSX.Element | null;

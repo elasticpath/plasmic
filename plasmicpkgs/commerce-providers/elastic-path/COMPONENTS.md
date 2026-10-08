@@ -101,10 +101,44 @@ const { cart, isLoading, error, refresh } = useEpCart();
 `useCheckoutCart()` reads the same cart for checkout, as
 `{ data, isEmpty, isLoading, error, mutate }`.
 
-The cart writes `epAddCartItem`, `epUpdateCartItem` and `epRemoveCartItem` are
-exported from `/server` for server code. The root entry exports no cart write,
-so browser code writes to the cart through the components or the global
-actions.
+To write to the cart, call `epAddCartItem`, `epUpdateCartItem` or
+`epRemoveCartItem`. They replace `useAddItem`, `useUpdateItem` and
+`useRemoveItem`, which this release removed. In the browser they call the
+storefront's proxy route, so no Elastic Path credential reaches the page. Each
+resolves with the updated cart, and every `useEpCart()` consumer, such as the
+cart drawer, the badge and the checkout summary, shows it without a reload:
+
+```tsx
+"use client";
+import { epAddCartItem } from "@elasticpath/plasmic-ep-commerce-elastic-path";
+
+async function addToCart(productId: string) {
+  try {
+    const cart = await epAddCartItem({
+      productId,
+      quantity: 1,
+      location: "warehouse-north",
+    });
+    console.log(`${cart.items.length} lines in the cart`);
+  } catch (err) {
+    const { message, code } = err as Error & { code?: string };
+    // code: "insufficient_stock", "no_session" or "dispatch_failed"
+    showError(message);
+  }
+}
+```
+
+`epAddCartItem` takes `productId`, `quantity`, and optionally `sku`,
+`location`, `bundleConfiguration` and `customInputs`. `epUpdateCartItem` takes
+`itemId`, `quantity` and optionally `location`; without it, the line's own
+location is used. `epRemoveCartItem` takes `itemId`.
+
+A rejection is an `Error` with a readable `message`. A production proxy route
+withholds Elastic Path's own reason, so branch on `code`, not on the message
+text.
+
+`/server` exports the same three names for server code. Those return the cart
+but refresh no browser cache.
 
 ---
 

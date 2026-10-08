@@ -98,6 +98,17 @@ export {
 export { useEpCart } from "./cart-provider/use-ep-cart";
 export type { UseEpCartReturn } from "./cart-provider/use-ep-cart";
 export {
+  epAddCartItem,
+  epRemoveCartItem,
+  epUpdateCartItem,
+} from "./cart-provider/cart-writes";
+export type { Cart } from "./types/cart";
+export type {
+  EpAddCartItemInput,
+  EpRemoveCartItemInput,
+  EpUpdateCartItemInput,
+} from "./ep-server-functions/cart-mutations";
+export {
   epCartCacheKey,
   EP_CART_CACHE_KEY,
 } from "./cart-provider/cache-keys";

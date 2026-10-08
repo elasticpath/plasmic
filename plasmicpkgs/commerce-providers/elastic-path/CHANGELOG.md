@@ -37,7 +37,7 @@ example does, resolves as before.
 | --- | --- |
 | `useEpCommerce().client`, `EpCommerce.client` | None. Call an `ep.*` server function; it resolves the session the server holds. |
 | `createCartRoutes`, the `/api/ep/cart/*` routes | `createEpProxyRoutes`, already mounted at `/api/ep/proxy/[fn]`. Delete the cart route file. |
-| `useCart`, `useAddItem`, `useUpdateItem`, `useRemoveItem` | `useEpCart` to read. To write from the browser, use the cart components or the Elastic Path Provider's cart global actions; `epAddCartItem` / `epUpdateCartItem` / `epRemoveCartItem` are on `/server` for server code. |
+| `useCart`, `useAddItem`, `useUpdateItem`, `useRemoveItem` | `useEpCart` to read. To write, `epAddCartItem`, `epUpdateCartItem` and `epRemoveCartItem` from the root entry. Each returns a promise of the updated cart and rejects on failure. `epAddCartItem` takes `location`, `bundleConfiguration`, `customInputs` and `sku`. |
 | `useShopperFetch`, `useShopperContext`, `ShopperOverrides` | None. Nothing in the page carries shopper identity. |
 | `X-Shopper-Context`, `resolveCartId`, `parseShopperHeader` | None. The shopper envelope is the only identity input. |
 | `buildCartCookieHeader`, `buildClearCartCookieHeader`, the `ep_cart` cookie | The envelope's own cart pointer, written by `setCart`. |
@@ -70,6 +70,15 @@ removed component or a removed published prop. Both are empty instead.
 - **EP Promo Code Input**'s `Use Server Routes` is hidden and ignored.
 
 ### Added
+
+The root entry exports the cart writes `epAddCartItem`, `epUpdateCartItem` and
+`epRemoveCartItem`, their input types, and the `Cart` type they resolve with,
+so a storefront's own React component can write to the cart. In the browser
+they call the storefront's proxy route, so no Elastic Path credential reaches
+the page. After a write, every `useEpCart()` consumer shows the new cart. A
+rejection is an `Error` with a readable `message` and, when the proxy route sent
+one, a stable `code` such as `insufficient_stock`. `/server` keeps its own
+copies for server code.
 
 `createEpDesignRoutes` serves Studio design time. It answers four catalog
 reads, `getProduct`, `getProductList`, `getProductPage` and
@@ -182,6 +191,12 @@ only the ones that were already server-rendered. Nothing about the components
 changes: same props, same slots, same data.
 
 ### Fixed
+
+The cart a cart write returns is read the same way as `ep.getCart`.
+`epAddCartItem`, `epUpdateCartItem`, `epRemoveCartItem`, `epApplyPromoCode` and
+`epRemovePromoCode` read the cart back without the `Accept-Language` and
+`X-Moltin-Currency` headers that `ep.getCart` sends for the shopper's locale and
+currency.
 
 `/server` type declarations are generated from the entry point instead of a
 hand-kept list, so an export can no longer ship without its type. `/server`
