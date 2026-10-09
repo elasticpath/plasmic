@@ -212,7 +212,7 @@ export interface EpAuth {
     api: {
         getSession(req: {
             cookies: Record<string, string>;
-            headers?: Record<string, string>;
+            headers?: Record<string, string | string[] | undefined>;
         }): Promise<EpSession>;
     };
     // (undocumented)
