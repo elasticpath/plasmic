@@ -103,11 +103,13 @@ export interface CreateEpAuthBetterInput {
   passwordProfileId?: string;
   /**
    * Chooses the shopper's locale and currency for a request, from the cookies
-   * and headers handed to `getSession`. The session carries the result, so a
-   * server render and a browser call through the proxy route send Elastic
-   * Path the same `Accept-Language` and `X-Moltin-Currency`. The proxy request
-   * is not the page request, so derive both from something every request
-   * carries, such as a cookie. A locale is sent in its canonical form
+   * and headers handed to `getSession`. A `getSession` call that passes no
+   * headers, such as a server render, hands it the page request's headers
+   * from `next/headers`. The session carries the result, so a server render
+   * and a browser call through the proxy route send Elastic Path the same
+   * `Accept-Language` and `X-Moltin-Currency`. A proxy request does not carry
+   * the page's URL, so derive both from a cookie or a header every request
+   * carries, such as `Accept-Language`. A locale is sent in its canonical form
    * (`en-us` becomes `en-US`) and a currency in upper case. A locale that is
    * not a valid BCP 47 tag, or a currency that is not three letters, is not
    * sent.

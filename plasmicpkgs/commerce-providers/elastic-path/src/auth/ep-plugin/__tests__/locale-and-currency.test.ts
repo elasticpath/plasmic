@@ -5,6 +5,22 @@ import { buildEpCtx } from "../../../ep-server-functions/build-ep-ctx";
 import { epGetCart } from "../../../ep-server-functions/getCart";
 import { withEpSession } from "../../../ep-server-functions/session-context";
 
+const nextRequest = vi.hoisted(() => ({
+  headers: undefined as Headers | undefined,
+}));
+
+vi.mock("next/headers.js", () => ({
+  async headers() {
+    if (!nextRequest.headers) {
+      throw new Error("`headers` was called outside a request scope.");
+    }
+    return nextRequest.headers;
+  },
+  async cookies() {
+    return { get() {}, set() {} };
+  },
+}));
+
 const EP_HOST = "https://api.test.elasticpath.com";
 const ORIGIN = "http://localhost:3000";
 const CART_ID = "cart-fr";
@@ -62,6 +78,7 @@ function json(body: unknown): Response {
 }
 
 beforeEach(() => {
+  nextRequest.headers = undefined;
   originalFetch = globalThis.fetch;
   cartReads = [];
   globalThis.fetch = vi.fn(async (input: any, init?: RequestInit) => {
@@ -100,16 +117,20 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function storefrontAuth() {
+function storefrontAuth(
+  resolveLocaleAndCurrency: Parameters<
+    typeof createEpAuth
+  >[0]["resolveLocaleAndCurrency"] = ({ cookies }) => ({
+    locale: cookies["shop-locale"],
+    currency: cookies["shop-currency"],
+  })
+) {
   return createEpAuth({
     clientId: "test-client-id",
     host: EP_HOST,
     secret: "x".repeat(48),
     baseURL: ORIGIN,
-    resolveLocaleAndCurrency: ({ cookies }) => ({
-      locale: cookies["shop-locale"],
-      currency: cookies["shop-currency"],
-    }),
+    resolveLocaleAndCurrency,
   });
 }
 
@@ -143,12 +164,14 @@ function proxyCall(
   routes: ReturnType<typeof createEpProxyRoutes>,
   fn: string,
   cookie: string,
-  body: unknown
+  body: unknown,
+  headers: Record<string, string> = {}
 ) {
   return routes.handle(
     new Request(`${ORIGIN}/api/ep/proxy/${fn}`, {
       method: "POST",
       headers: {
+        ...headers,
         "Content-Type": "application/json",
         Origin: ORIGIN,
         Cookie: cookie,
@@ -159,8 +182,7 @@ function proxyCall(
   );
 }
 
-async function shopperWithCart() {
-  const auth = storefrontAuth();
+async function shopperWithCart(auth = storefrontAuth()) {
   const routes = createEpProxyRoutes(auth);
   const anon = await (auth.handler.api as any).epAnonymous({
     body: {},
@@ -212,6 +234,51 @@ describe("proxy locale and currency", () => {
     expect(res.status).toBe(200);
     expect(ssr).toEqual({ acceptLanguage: "fr-FR", currency: "EUR" });
     expect(proxiedRead).toEqual(ssr);
+  });
+});
+
+describe("a resolver keyed on request headers", () => {
+  const byAcceptLanguage = storefrontAuth.bind(null, ({ headers }) => ({
+    locale: headers["accept-language"],
+  }));
+
+  it("gets the page request's headers on a server render that passes none", async () => {
+    nextRequest.headers = new Headers({ "Accept-Language": "de-DE" });
+
+    const session = await byAcceptLanguage().api.getSession({ cookies: {} });
+
+    expect(session.locale).toBe("de-DE");
+  });
+
+  it("gives a server render and a proxied call the same answer", async () => {
+    const { auth, routes, cookie } = await shopperWithCart(byAcceptLanguage());
+    const before = cartReads.length;
+
+    await proxyCall(routes, "getCart", cookie, {}, { "Accept-Language": "de-DE" });
+    const proxiedRead = cartReads[before];
+    nextRequest.headers = new Headers({ "Accept-Language": "de-DE" });
+    const ssr = await ssrCartRead(auth, cookie);
+
+    expect(ssr.acceptLanguage).toBe("de-DE");
+    expect(proxiedRead).toEqual(ssr);
+  });
+
+  it("uses the headers a caller passes over the page request's", async () => {
+    nextRequest.headers = new Headers({ "Accept-Language": "de-DE" });
+
+    const session = await byAcceptLanguage().api.getSession({
+      cookies: {},
+      headers: { "accept-language": "fr-FR" },
+    });
+
+    expect(session.locale).toBe("fr-FR");
+  });
+
+  it("gets no headers outside a request", async () => {
+    const session = await byAcceptLanguage().api.getSession({ cookies: {} });
+
+    expect(session.locale).toBeUndefined();
+    expect(session.session?.accessToken).toBe("anon-token");
   });
 });
 
