@@ -6,6 +6,7 @@ export { EP_IDENTITY_ROUTES, EP_IDENTITY_OPERATION_NAMES } from "./operations";
 export type {
   EpAccountLoginRequest,
   EpAccountLoginResult,
+  EpAccountRegisterRequest,
   EpAccountRosterRequest,
   EpAccountRosterResult,
   EpIdentityClient,

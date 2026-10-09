@@ -382,6 +382,7 @@ never run one on a shared host or against a production store.
 | POST | `/api/ep/ep/refresh` | Rotate the EP token |
 | POST | `/api/ep/ep/cart` | Persist `epCartId` on the session |
 | POST | `/api/ep/ep/account/login` | Sign an account member in |
+| POST | `/api/ep/ep/account/register` | Register an account member |
 | POST | `/api/ep/ep/account/roster` | Read the accounts the member belongs to |
 | POST | `/api/ep/ep/account/select` | Select or deselect the account being bought for |
 | POST | `/api/ep/ep/account/roll` | Re-mint the account credential before it runs out |
@@ -466,6 +467,7 @@ function SignIn() {
 | `refresh()` | — | the session |
 | `setCart({ cartId })` | cart id | the session |
 | `login({ username, password, name? })` | credentials | the session, plus the member's organisations |
+| `register({ username, password, name, email })` | credentials | the session, plus the member's organisations |
 | `roster({ limit?, offset? })` | paging | every organisation, or one page when `limit` or `offset` is set |
 | `selectAccount({ accountId })` | organisation id, or `null` to deselect | the session |
 | `rollAccount()` | — | the session |
@@ -529,6 +531,14 @@ Elastic Path's `/v2/account-members/tokens` itself, so no Elastic Path
 credential is ever in the browser. It answers with the roster —
 `{ accounts: [{ id, name }], total }` — alongside the session, so a chooser
 renders with no second call.
+
+`POST /ep/account/register` takes `{ username, password, name, email }`. The
+server posts a self-signup request to Elastic Path's `/v2/account-members/tokens`,
+with the same password profile as login, then follows login's session,
+checkout and cart path. The response has login's shape. An Elastic Path `4xx`
+other than `401` is `registration_rejected` with Elastic Path's status and
+`errors[0].detail` as the message; a `401` or `5xx` is
+`account_token_mint_failed`, as for login.
 
 Selection follows from the count. Exactly one account and the member is placed
 in it; several and **none** is chosen for them; none at all and the member is

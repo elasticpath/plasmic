@@ -2,9 +2,9 @@
  * Elastic Path's account-member token call, and the discovery it needs.
  *
  * `POST /v2/account-members/tokens` mints one account-management token per
- * account the member belongs to. It takes either the member's password or an
- * account token they already hold, so the package can sign a member in and
- * later re-mint without ever storing a credential.
+ * account the member belongs to. It takes the member's password, a self-signup,
+ * or an account token they already hold, so the package can sign a member in
+ * and later re-mint without ever storing a credential.
  *
  * The response is the account roster and the token list at once. Callers keep
  * the tokens on the server and hand the browser only `{ id, name }`.
@@ -34,7 +34,20 @@ export interface EpAccountTokenPage {
 }
 
 export type EpAccountCredential =
-  | { passwordProfileId: string; username: string; password: string }
+  | {
+      mechanism: "password";
+      passwordProfileId: string;
+      username: string;
+      password: string;
+    }
+  | {
+      mechanism: "self_signup";
+      passwordProfileId: string;
+      username: string;
+      password: string;
+      name: string;
+      email: string;
+    }
   | { accountToken: string };
 
 export class EpAccountTokenError extends Error {
@@ -148,10 +161,11 @@ export async function discoverPasswordProfileId(input: {
 /**
  * Mints one page of the member's account tokens.
  *
- * With a password this is the sign-in; with an account token it re-mints from
- * a credential the session already holds, which needs no password and returns
- * a fresh window of one page. `collectAccountTokens` walks the rest when the
- * roster is larger than that page.
+ * With a password this is the sign-in. With self-signup it creates the member
+ * and signs them in. With an account token it re-mints from a credential the
+ * session already holds, which needs no password and returns a fresh window of
+ * one page. `collectAccountTokens` walks the rest when the roster is larger
+ * than that page.
  */
 export async function mintAccountTokens(input: {
   host: string;
@@ -170,25 +184,36 @@ export async function mintAccountTokens(input: {
     "Content-Type": "application/json",
   };
   let data: Record<string, string>;
-  let usingPassword: boolean;
+  let failure: "password" | "self_signup" | "account_token";
 
-  if ("passwordProfileId" in credential) {
-    usingPassword = true;
-    data = {
-      type: "account_management_authentication_token",
-      authentication_mechanism: "password",
-      password_profile_id: credential.passwordProfileId,
-      username: credential.username,
-      password: credential.password,
-    };
-  } else {
-    usingPassword = false;
+  if ("accountToken" in credential) {
+    failure = "account_token";
     // The existing token rides in the header. In the body the call answers 400
     // on a derived internal id it never asked for.
     headers[EP_ACCOUNT_TOKEN_HEADER] = credential.accountToken;
     data = {
       type: "account_management_authentication_token",
       authentication_mechanism: "account_management_authentication_token",
+    };
+  } else if (credential.mechanism === "self_signup") {
+    failure = "self_signup";
+    data = {
+      type: "account_management_authentication_token",
+      authentication_mechanism: "self_signup",
+      password_profile_id: credential.passwordProfileId,
+      username: credential.username,
+      password: credential.password,
+      name: credential.name,
+      email: credential.email,
+    };
+  } else {
+    failure = "password";
+    data = {
+      type: "account_management_authentication_token",
+      authentication_mechanism: "password",
+      password_profile_id: credential.passwordProfileId,
+      username: credential.username,
+      password: credential.password,
     };
   }
 
@@ -208,11 +233,23 @@ export async function mintAccountTokens(input: {
 
   if (!response.ok) {
     const detail = await readError(response);
-    if (usingPassword && response.status === 400) {
+    if (failure === "password" && response.status === 400) {
       throw new EpAccountTokenError(
         "invalid_credentials",
         401,
         `Elastic Path rejected the member's credentials: ${detail}`
+      );
+    }
+    if (
+      failure === "self_signup" &&
+      response.status >= 400 &&
+      response.status < 500 &&
+      response.status !== 401
+    ) {
+      throw new EpAccountTokenError(
+        "registration_rejected",
+        response.status,
+        detail
       );
     }
     throw new EpAccountTokenError(
@@ -280,7 +317,7 @@ export async function mintAccountTokens(input: {
 export async function collectAccountTokens(input: {
   host: string;
   implicitToken: string;
-  credential: EpAccountCredential;
+  credential: Exclude<EpAccountCredential, { mechanism: "self_signup" }>;
 }): Promise<EpAccountTokenPage> {
   let offset = 0;
   const entries: EpAccountTokenEntry[] = [];

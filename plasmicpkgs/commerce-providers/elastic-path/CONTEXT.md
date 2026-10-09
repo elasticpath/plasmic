@@ -186,8 +186,9 @@ account's cart stays in Elastic Path), expired session (precisely what this is
 not)
 
 **Identity transition**:
-The moment the envelope's Elastic Path identity changes — a login or an
-account switch. The only moment the **session cart** is reselected.
+The moment the envelope's Elastic Path identity changes — a member sign-in
+(sign-up or login) or an account switch. The only moment the **session
+cart** is reselected.
 
 **Session cart**:
 The one Elastic Path cart the shopper envelope points at, held as `epCartId`.
@@ -214,7 +215,7 @@ package keeps the guest cart, or adopts the account cart with the most recent
 update when there is no guest cart. The cart that loses is never deleted. It is
 told which transition this is in these same terms, so a member of several
 accounts choosing their first one is a **login** and not an **account switch**,
-however it reaches the package.
+however it reaches the package. A sign-up reaches it as a **login**.
 
 **Forwarded call**:
 A browser-originated request whose path and parameters come from the browser
@@ -236,12 +237,12 @@ _Avoid_: unauthenticated (the call is authenticated; the resource is just not
 scoped by that authentication)
 
 **Identity operation**:
-One of the nine things a call site does to the shopper envelope — read it,
-mint it, rotate it, point it at a cart, sign a member in or out, read the
-roster, select an account, roll its credential. Reached as a method on the
-**identity client**, never as a route. Distinct from a *named operation*:
-these are authentication-plugin endpoints, so the client is derived from the
-endpoints rather than dispatched through the proxy.
+One of the things a call site does to the shopper envelope — read it, mint
+it, rotate it, point it at a cart, register a member, sign a member in or
+out, read the roster, select an account, roll its credential. Reached as
+a method on the **identity client**, never as a route. Distinct from a
+*named operation*: these are authentication-plugin endpoints, so the client
+is derived from the endpoints rather than dispatched through the proxy.
 
 **Identity client**:
 The typed methods the identity operations are called through —

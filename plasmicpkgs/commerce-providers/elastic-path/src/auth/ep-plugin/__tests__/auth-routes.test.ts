@@ -57,6 +57,7 @@ const SESSION_RETURNING_ROUTES = [
   ["POST", "/api/ep/ep/anonymous"],
   ["POST", "/api/ep/ep/refresh"],
   ["POST", "/api/ep/ep/account/login"],
+  ["POST", "/api/ep/ep/account/register"],
   ["POST", "/api/ep/ep/account/logout"],
   ["POST", "/api/ep/ep/account/select"],
   ["POST", "/api/ep/ep/account/roll"],

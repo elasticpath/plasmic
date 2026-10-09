@@ -17,6 +17,7 @@ import type { BetterAuthPlugin } from "better-auth";
 import { epIdentityPayload } from "../../identity/operations";
 import type {
   EpAccountLoginRequest,
+  EpAccountRegisterRequest,
   EpAccountRosterRequest,
   EpSelectAccountRequest,
   EpSetCartRequest,
@@ -48,7 +49,10 @@ import {
   mintAccountTokens,
   toAccountRoster,
 } from "./account-tokens";
-import type { EpAccountTokenPage } from "./account-tokens";
+import type {
+  EpAccountCredential,
+  EpAccountTokenPage,
+} from "./account-tokens";
 import { CHECKOUT_SESSION_COOKIE_NAME } from "../../checkout/session/cookie-name";
 import { resolveSessionCart } from "./session-cart";
 import type {
@@ -56,6 +60,12 @@ import type {
   EpSessionCartTrigger,
   EpTransitionCtx,
 } from "./session-cart";
+
+type MemberCredential = EpAccountCredential extends infer C
+  ? C extends { passwordProfileId: string }
+    ? Omit<C, "passwordProfileId">
+    : never
+  : never;
 
 export interface EpPluginOptions {
   /**
@@ -398,6 +408,72 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
     return cartId ? setSessionCart(cleared, cartId) : cleared;
   }
 
+  async function authenticateWithAccountCredential(
+    ctx: any,
+    existing: { user: any; session: any },
+    prior: any,
+    operation: "login" | "register",
+    credential: MemberCredential,
+    member: { email: string; name: string }
+  ) {
+    const host = prior.epHost;
+    const implicitToken = prior.epAccessToken;
+    let minted;
+    try {
+      minted = await mintAccountTokens({
+        host,
+        implicitToken,
+        credential: {
+          ...credential,
+          passwordProfileId: await passwordProfileId(host, implicitToken),
+        },
+      });
+    } catch (err) {
+      return accountTokenFailure(err);
+    }
+
+    const user = {
+      ...existing.user,
+      email: member.email,
+      name: member.name,
+      updatedAt: new Date(),
+    };
+    // The identity changed, so any checkout in flight was priced and
+    // addressed for the shopper who is no longer the one here.
+    tearDownCheckoutSession(ctx);
+
+    let session: any = applyLoginOutcome(
+      { ...prior, updatedAt: new Date() },
+      minted
+    );
+    // Only a selection reaches the resolver: with no account there is
+    // no credential to list account carts with and no `accountId` to
+    // hand it.
+    if (session.epAccount) {
+      session = await applySessionCart(session, {
+        priorSession: prior,
+        account: session.epAccount,
+        memberId: minted.memberId,
+        reauthenticated: true,
+      });
+    } else if (cartBelongsToSomeoneElse(prior, minted.memberId)) {
+      // Nothing to resolve, but the cart in hand is not this
+      // shopper's. Leaving it would hand the next member to sign in
+      // on this browser the previous one's cart, and would then offer
+      // it as theirs at their first selection.
+      session = clearSessionCart(session);
+    }
+
+    await setSessionCookie(ctx, { session, user } as any);
+    const payload = {
+      user,
+      session,
+      accounts: toAccountRoster(minted.entries),
+      total: minted.total,
+    };
+    return ctx.json(epIdentityPayload(operation, payload));
+  }
+
   return {
     id: "ep",
     endpoints: {
@@ -472,68 +548,16 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
           // The package signs the member in itself, so no Elastic Path
           // credential passes through the browser in either direction.
           if (typeof username === "string" && typeof password === "string") {
-            const host = prior.epHost;
-            const implicitToken = prior.epAccessToken;
-            let minted;
-            try {
-              minted = await mintAccountTokens({
-                host,
-                implicitToken,
-                credential: {
-                  passwordProfileId: await passwordProfileId(
-                    host,
-                    implicitToken
-                  ),
-                  username,
-                  password,
-                },
-              });
-            } catch (err) {
-              return accountTokenFailure(err);
-            }
-
-            const user = {
-              ...existing.user,
-              email: username,
-              name: typeof body.name === "string" ? body.name : username,
-              updatedAt: new Date(),
-            };
-            // The identity changed, so any checkout in flight was priced and
-            // addressed for the shopper who is no longer the one here.
-            tearDownCheckoutSession(ctx);
-
-            let session: any = applyLoginOutcome(
-              { ...prior, updatedAt: new Date() },
-              minted
-            );
-            // Only a selection reaches the resolver: with no account there is
-            // no credential to list account carts with and no `accountId` to
-            // hand it.
-            if (session.epAccount) {
-              session = await applySessionCart(session, {
-                priorSession: prior,
-                account: session.epAccount,
-                memberId: minted.memberId,
-                reauthenticated: true,
-              });
-            } else if (
-              cartBelongsToSomeoneElse(prior, minted.memberId)
-            ) {
-              // Nothing to resolve, but the cart in hand is not this
-              // shopper's. Leaving it would hand the next member to sign in
-              // on this browser the previous one's cart, and would then offer
-              // it as theirs at their first selection.
-              session = clearSessionCart(session);
-            }
-
-            await setSessionCookie(ctx, { session, user } as any);
-            return ctx.json(
-              epIdentityPayload("login", {
-                user,
-                session,
-                accounts: toAccountRoster(minted.entries),
-                total: minted.total,
-              })
+            return authenticateWithAccountCredential(
+              ctx,
+              existing,
+              prior,
+              "login",
+              { mechanism: "password", username, password },
+              {
+                email: username,
+                name: typeof body.name === "string" ? body.name : username,
+              }
             );
           }
 
@@ -541,6 +565,42 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             "invalid_input",
             400,
             "Body must include { username, password }."
+          );
+        }
+      ),
+
+      epAccountRegister: createAuthEndpoint(
+        "/ep/account/register",
+        { method: "POST" },
+        async (ctx) => {
+          const existing = await readExistingSession(ctx);
+          if (!existing?.user || !existing?.session) return noSessionError();
+          const prior = sessionWithLapseApplied(existing.session);
+
+          const body = ((ctx.body as any) ??
+            {}) as Partial<EpAccountRegisterRequest>;
+          const { username, password, name, email } = body;
+
+          if (
+            typeof username === "string" &&
+            typeof password === "string" &&
+            typeof name === "string" &&
+            typeof email === "string"
+          ) {
+            return authenticateWithAccountCredential(
+              ctx,
+              existing,
+              prior,
+              "register",
+              { mechanism: "self_signup", username, password, name, email },
+              { email, name }
+            );
+          }
+
+          return jsonError(
+            "invalid_input",
+            400,
+            "Body must include { username, password, name, email }."
           );
         }
       ),

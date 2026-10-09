@@ -261,6 +261,20 @@ async function signIn(auth: any, cookies: string) {
   return { res, cookies: mergeCookies(cookies, res) };
 }
 
+async function register(auth: any, cookies: string) {
+  const res = await (auth.api as any).epAccountRegister({
+    body: {
+      username: "new-buyer",
+      password: PASSWORD,
+      name: "New Buyer",
+      email: "new-buyer@example.com",
+    },
+    headers: new Headers({ cookie: cookies }),
+    asResponse: true,
+  });
+  return { res, cookies: mergeCookies(cookies, res) };
+}
+
 async function select(auth: any, cookies: string, accountId: string | null) {
   const res = await auth.api.epAccountSelect({
     body: { accountId },
@@ -692,6 +706,114 @@ describe("a checkout in flight", () => {
     );
     expect(cleared).toHaveLength(1);
     expect(cleared[0]).toMatch(/Max-Age=0/i);
+  });
+
+  it("is torn down by a registration, the same way a login tears it down", async () => {
+    store.carts = [cart("cart-guest")];
+    const auth = buildAuth();
+    let cookies = await anonymous(auth);
+    cookies = await setCart(auth, cookies, "cart-guest");
+
+    const res = await (auth.api as any).epAccountRegister({
+      body: {
+        username: "new-buyer",
+        password: PASSWORD,
+        name: "New Buyer",
+        email: "new-buyer@example.com",
+      },
+      headers: new Headers({ cookie: cookies }),
+      asResponse: true,
+    });
+
+    const cleared = setCookieHeaders(res).filter((c) =>
+      c.startsWith("ep_checkout_session=")
+    );
+    expect(cleared).toHaveLength(1);
+    expect(cleared[0]).toMatch(/Max-Age=0/i);
+  });
+});
+
+describe("the cart a shopper keeps when they register", () => {
+  it("keeps the guest cart and calls the resolver a login", async () => {
+    store.carts = [cart("cart-guest")];
+    const triggers: string[] = [];
+    const auth = buildAuth({
+      sessionCartResolver: (input) => {
+        triggers.push(input.trigger);
+        return { keep: input.guestCartId! };
+      },
+    });
+    let cookies = await anonymous(auth);
+    cookies = await setCart(auth, cookies, "cart-guest");
+
+    const { res } = await register(auth, cookies);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.session.epCartId).toBe("cart-guest");
+    expect(triggers).toEqual(["login"]);
+  });
+
+  it("keeps an anonymous guest cart when several accounts come back, and does not resolve", async () => {
+    store.accounts = [NORTH, SOUTH];
+    store.carts = [cart("cart-guest")];
+    let asked = 0;
+    const auth = buildAuth({
+      sessionCartResolver: () => {
+        asked += 1;
+        return { keep: "cart-guest" };
+      },
+    });
+    let cookies = await anonymous(auth);
+    cookies = await setCart(auth, cookies, "cart-guest");
+
+    const { res } = await register(auth, cookies);
+    const body = await res.json();
+
+    expect(body.session.epAccount).toBeUndefined();
+    expect(body.session.epCartId).toBe("cart-guest");
+    expect(asked).toBe(0);
+  });
+
+  it("keeps an anonymous guest cart when no account comes back", async () => {
+    store.accounts = [];
+    store.carts = [cart("cart-guest")];
+    let asked = 0;
+    const auth = buildAuth({
+      sessionCartResolver: () => {
+        asked += 1;
+        return { keep: "cart-guest" };
+      },
+    });
+    let cookies = await anonymous(auth);
+    cookies = await setCart(auth, cookies, "cart-guest");
+
+    const { res } = await register(auth, cookies);
+    const body = await res.json();
+
+    expect(body.session.epMemberId).toBe("member-1");
+    expect(body.session.epAccount).toBeUndefined();
+    expect(body.session.epCartId).toBe("cart-guest");
+    expect(asked).toBe(0);
+  });
+
+  it("does not inherit the previous member's cart", async () => {
+    store.accounts = [NORTH];
+    store.carts = [cart("cart-first-member", { accountIds: [NORTH.id] })];
+    const auth = buildAuth();
+    let cookies = await anonymous(auth);
+    cookies = await setCart(auth, cookies, "cart-first-member");
+    const first = await signIn(auth, cookies);
+    expect((await first.res.json()).session.epCartId).toBe("cart-first-member");
+
+    store.accounts = [NORTH, SOUTH];
+    store.memberId = "member-2";
+    const second = await register(auth, first.cookies);
+    const body = await second.res.json();
+
+    expect(body.session.epMemberId).toBe("member-2");
+    expect(body.session.epAccount).toBeUndefined();
+    expect(body.session.epCartId).toBeUndefined();
   });
 });
 

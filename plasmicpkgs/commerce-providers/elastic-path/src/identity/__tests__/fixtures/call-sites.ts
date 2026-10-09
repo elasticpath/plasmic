@@ -17,6 +17,15 @@ identity.login({ username: "buyer@example.com" });
 // @ts-expect-error the endpoint reads `username`, not `user`
 identity.login({ user: "buyer@example.com", password: "pw" });
 
+identity.register({
+  username: "buyer",
+  password: "pw",
+  name: "Buyer",
+  email: "buyer@example.com",
+});
+// @ts-expect-error email is required
+identity.register({ username: "buyer", password: "pw", name: "Buyer" });
+
 // Paging is optional; the operation is not.
 identity.roster();
 identity.roster({ limit: 10, offset: 20 });

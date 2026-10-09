@@ -43,6 +43,12 @@ describe("createEpIdentityClient", () => {
     await client.refresh();
     await client.setCart({ cartId: "cart-1" });
     await client.login({ username: "buyer@example.com", password: "pw" });
+    await client.register({
+      username: "buyer@example.com",
+      password: "pw",
+      name: "Buyer",
+      email: "buyer@example.com",
+    });
     await client.roster();
     await client.selectAccount({ accountId: "acct-1" });
     await client.rollAccount();
@@ -54,6 +60,7 @@ describe("createEpIdentityClient", () => {
       "/api/ep/ep/refresh",
       "/api/ep/ep/cart",
       "/api/ep/ep/account/login",
+      "/api/ep/ep/account/register",
       "/api/ep/ep/account/roster",
       "/api/ep/ep/account/select",
       "/api/ep/ep/account/roll",
@@ -90,6 +97,26 @@ describe("createEpIdentityClient", () => {
       username: "buyer@example.com",
       password: "pw",
     });
+  });
+
+  it("sends the registration fields it was given, and nothing else", async () => {
+    const stub = fetchStub(() => json(ENVELOPE));
+    const client = createEpIdentityClient({ fetch: stub.fetch });
+
+    await client.register({
+      username: "buyer",
+      password: "pw",
+      name: "Buyer",
+      email: "buyer@example.com",
+    });
+
+    expect(JSON.parse(stub.calls[0].init.body as string)).toEqual({
+      username: "buyer",
+      password: "pw",
+      name: "Buyer",
+      email: "buyer@example.com",
+    });
+    expect(stub.calls[0].url).toBe("/api/ep/ep/account/register");
   });
 
   it("asks for the first page of the roster when given no paging", async () => {

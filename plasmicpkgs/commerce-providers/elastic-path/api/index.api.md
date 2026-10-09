@@ -506,6 +506,18 @@ export const EPAccountProvider: React_2.ForwardRefExoticComponent<EPAccountProvi
 export const epAccountProviderMeta: CodeComponentMeta<EPAccountProviderProps>;
 
 // @public (undocumented)
+export interface EpAccountRegisterRequest {
+    // (undocumented)
+    email: string;
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    password: string;
+    // (undocumented)
+    username: string;
+}
+
+// @public (undocumented)
 export interface EpAccountRosterRequest {
     // (undocumented)
     limit?: number;
@@ -961,6 +973,11 @@ export interface EpIdentityOperations {
     refresh: {
         request: void;
         response: EpSessionEnvelope;
+    };
+    // (undocumented)
+    register: {
+        request: EpAccountRegisterRequest;
+        response: EpAccountLoginResult;
     };
     // (undocumented)
     rollAccount: {
