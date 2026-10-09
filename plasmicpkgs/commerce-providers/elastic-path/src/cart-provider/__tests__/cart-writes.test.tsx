@@ -552,6 +552,26 @@ describe("overlapping cart writes", () => {
     });
   });
 
+  describe("with a write rejected in the configure panel", () => {
+    const canvasPkgs = window as unknown as { __CanvasPkgs?: unknown };
+    afterEach(() => {
+      delete canvasPkgs.__CanvasPkgs;
+    });
+
+    it("treat it as no write at all", async () => {
+      await renderReaders("li-1x1");
+      const [first] = await startHeld(setQuantity(2));
+
+      canvasPkgs.__CanvasPkgs = {};
+      const panel = await start(setQuantity(5));
+      delete canvasPkgs.__CanvasPkgs;
+      await release(0, first);
+
+      expect(panel.error?.code).toBe("design_fn_not_served");
+      await expectSettledOn("li-1x2", 0);
+    });
+  });
+
   describe("from two copies of the package on one page", () => {
     const otherCopysCache = {};
     afterEach(() =>
