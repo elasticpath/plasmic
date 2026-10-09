@@ -14,47 +14,59 @@ function loadCopy(): SeedModule {
 
 const CART = { id: "cart-1", items: [], promotions: [] } as unknown as Cart;
 
-describe("cart cache seeds", () => {
-  it("keeps one seed per cache when the registering module is evaluated again", async () => {
-    const seeds = loadCopy();
+const write = () => Promise.resolve(CART);
+
+function cacheSpy(take: (cart: Cart) => unknown = jest.fn()) {
+  return { take: jest.fn(take), refetch: jest.fn() };
+}
+
+describe("cart cache registry", () => {
+  it("keeps one entry per cache when the registering module is evaluated again", async () => {
+    const copy = loadCopy();
     const cache = {};
-    const first = jest.fn();
-    const second = jest.fn();
+    const first = cacheSpy();
+    const second = cacheSpy();
 
-    seeds.registerEpCartCacheSeed(cache, first);
-    seeds.registerEpCartCacheSeed(cache, second);
-    await seeds.seedEpCartCaches(CART);
+    copy.registerEpCartCache(cache, first);
+    copy.registerEpCartCache(cache, second);
+    await copy.orderEpCartWrite(write);
 
-    expect(first).not.toHaveBeenCalled();
-    expect(second).toHaveBeenCalledTimes(1);
+    expect(first.take).not.toHaveBeenCalled();
+    expect(second.take).toHaveBeenCalledTimes(1);
   });
 
   it("reaches a cache another copy of the package registered", async () => {
     const appCopy = loadCopy();
     const bundleCopy = loadCopy();
-    const appSeed = jest.fn();
-    const bundleSeed = jest.fn();
+    const appCache = cacheSpy();
+    const bundleCache = cacheSpy();
 
-    appCopy.registerEpCartCacheSeed({}, appSeed);
-    bundleCopy.registerEpCartCacheSeed({}, bundleSeed);
-    await appCopy.seedEpCartCaches(CART);
+    appCopy.registerEpCartCache({}, appCache);
+    bundleCopy.registerEpCartCache({}, bundleCache);
+    await appCopy.orderEpCartWrite(write);
 
-    expect(appSeed).toHaveBeenCalledWith(CART);
-    expect(bundleSeed).toHaveBeenCalledWith(CART);
+    expect(appCache.take).toHaveBeenCalledWith(CART);
+    expect(bundleCache.take).toHaveBeenCalledWith(CART);
   });
 
-  it("does not fail when a seed throws, and still runs the others", async () => {
-    const seeds = loadCopy();
-    const healthy = jest.fn();
+  it("does not fail the write when a cache throws, and still reaches the others", async () => {
+    const copy = loadCopy();
+    const healthy = cacheSpy();
     jest.spyOn(console, "warn").mockImplementation(() => {});
 
-    seeds.registerEpCartCacheSeed({}, () => {
-      throw new Error("cache gone");
-    });
-    seeds.registerEpCartCacheSeed({}, () => Promise.reject(new Error("cache gone")));
-    seeds.registerEpCartCacheSeed({}, healthy);
+    copy.registerEpCartCache(
+      {},
+      cacheSpy(() => {
+        throw new Error("cache gone");
+      })
+    );
+    copy.registerEpCartCache(
+      {},
+      cacheSpy(() => Promise.reject(new Error("cache gone")))
+    );
+    copy.registerEpCartCache({}, healthy);
 
-    await expect(seeds.seedEpCartCaches(CART)).resolves.toBeUndefined();
-    expect(healthy).toHaveBeenCalledWith(CART);
+    await expect(copy.orderEpCartWrite(write)).resolves.toBe(CART);
+    expect(healthy.take).toHaveBeenCalledWith(CART);
   });
 });

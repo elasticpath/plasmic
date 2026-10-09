@@ -16,7 +16,8 @@ import {
   useEpCart,
 } from "../../index";
 import * as serverFunctions from "../../ep-server-functions";
-import { registerEpCartCacheSeed } from "../../ep-server-functions/cart-cache-seed";
+import { registerEpCartCache } from "../../ep-server-functions/cart-cache-seed";
+import type { Cart } from "../../types/cart";
 import {
   latchEpCanvasArtboard,
   resetEpCanvasArtboard,
@@ -40,7 +41,10 @@ function fakeProxy() {
   const calls: ProxyCall[] = [];
   let cart = cartWith([]);
   let failure: { status: number; body: unknown } | null = null;
+  let nextFailure: { status: number; body: unknown } | null = null;
   let unreachable = false;
+  let holding = false;
+  const held: Array<() => void> = [];
 
   const fetchStub = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -58,6 +62,21 @@ function fakeProxy() {
       }) as unknown as Response;
 
     if (fn !== "getCart" && unreachable) throw new TypeError("Failed to fetch");
+    const response = answer(fn, body, respond);
+    if (fn === "getCart" || !holding) return response;
+    return new Promise<Response>((resolve) => held.push(() => resolve(response)));
+  });
+
+  function answer(
+    fn: string,
+    body: Record<string, any>,
+    respond: (status: number, payload: unknown) => Response
+  ): Response {
+    if (fn !== "getCart" && nextFailure) {
+      const { status, body: payload } = nextFailure;
+      nextFailure = null;
+      return respond(status, payload);
+    }
     if (fn !== "getCart" && failure) return respond(failure.status, failure.body);
     switch (fn) {
       case "getCart":
@@ -81,7 +100,7 @@ function fakeProxy() {
       default:
         return respond(404, { code: "unknown_fn" });
     }
-  });
+  }
 
   return {
     fetchStub,
@@ -95,23 +114,44 @@ function fakeProxy() {
     failToConnect() {
       unreachable = true;
     },
+    /** Elastic Path fails the next write; its response is still held like any other. */
+    failNextWrite(status: number, body: unknown) {
+      nextFailure = { status, body };
+    },
+    /** Elastic Path applies each write as it arrives, but its response waits for `release`. */
+    holdWrites() {
+      holding = true;
+    },
+    heldWrites: () => held.length,
+    /** Sends the response to the write that arrived `index`-th (from 0). */
+    release(index: number) {
+      held[index]();
+    },
+    reads: () => calls.filter((c) => c.fn === "getCart").length,
   };
 }
 
-function CartBadge() {
+/** Every cart a reader has rendered, in order. */
+let shown: Record<string, string[]>;
+
+function CartReader({ testId }: { testId: string }) {
   const { cart, isLoading } = useEpCart();
   if (isLoading) return <span>loading</span>;
   const lines = cart?.items ?? [];
-  return (
-    <span data-testid="badge">
-      {lines.map((l) => `${l.id}x${l.quantity}`).join(",") || "empty"}
-    </span>
-  );
+  const text = lines.map((l) => `${l.id}x${l.quantity}`).join(",") || "empty";
+  const log = (shown[testId] ??= []);
+  if (log[log.length - 1] !== text) log.push(text);
+  return <span data-testid={testId}>{text}</span>;
+}
+
+function CartBadge() {
+  return <CartReader testId="badge" />;
 }
 
 let proxy: ReturnType<typeof fakeProxy>;
 
 beforeEach(async () => {
+  shown = {};
   proxy = fakeProxy();
   (globalThis as { fetch?: unknown }).fetch = proxy.fetchStub;
   await mutate(epCartCacheKey(), undefined, false);
@@ -186,8 +226,11 @@ describe("cart writes from the root entry", () => {
 
   it("resolves a write that succeeded when another cache fails to take the cart", async () => {
     const brokenCache = {};
-    registerEpCartCacheSeed(brokenCache, () => {
-      throw new Error("cache gone");
+    registerEpCartCache(brokenCache, {
+      take: () => {
+        throw new Error("cache gone");
+      },
+      refetch: () => undefined,
     });
     jest.spyOn(console, "warn").mockImplementation(() => {});
     try {
@@ -201,7 +244,7 @@ describe("cart writes from the root entry", () => {
       expect(cart?.items).toEqual([expect.objectContaining({ id: "li-new" })]);
       await waitFor(() => expect(screen.getByTestId("badge").textContent).toBe("li-newx1"));
     } finally {
-      registerEpCartCacheSeed(brokenCache, () => undefined);
+      registerEpCartCache(brokenCache, { take: () => undefined, refetch: () => undefined });
     }
   });
 
@@ -255,6 +298,222 @@ describe("cart writes from the root entry", () => {
     expect(caught?.message).not.toBe("dispatch_failed");
     expect(caught?.message).toMatch(/couldn't remove/i);
     expect(caught?.code).toBe("dispatch_failed");
+  });
+});
+
+describe("overlapping cart writes", () => {
+  type Outcome = { cart?: Cart; error?: Error & { code?: string } };
+
+  const text = (testId: string) => screen.getByTestId(testId).textContent;
+  let readsBefore: number;
+
+  async function renderReaders(expected: string) {
+    render(
+      <SWRConfig value={{ dedupingInterval: 0 }}>
+        <CartReader testId="badge" />
+        <CartReader testId="drawer" />
+      </SWRConfig>
+    );
+    await waitFor(() => {
+      expect(text("badge")).toBe(expected);
+      expect(text("drawer")).toBe(expected);
+    });
+    readsBefore = proxy.reads();
+  }
+
+  function start(write: () => Promise<Cart>): Promise<Outcome> {
+    return write().then(
+      (cart) => ({ cart }),
+      (error) => ({ error })
+    );
+  }
+
+  async function startHeld(...writes: Array<() => Promise<Cart>>) {
+    proxy.holdWrites();
+    const outcomes = writes.map(start);
+    await waitFor(() => expect(proxy.heldWrites()).toBe(writes.length));
+    return outcomes;
+  }
+
+  async function release(index: number, outcome: Promise<Outcome>) {
+    let result: Outcome = {};
+    await act(async () => {
+      proxy.release(index);
+      result = await outcome;
+    });
+    return result;
+  }
+
+  async function expectSettledOn(expected: string, cartReads: number) {
+    await waitFor(() => {
+      expect(proxy.reads() - readsBefore).toBe(cartReads);
+      expect(text("badge")).toBe(expected);
+      expect(text("drawer")).toBe(expected);
+    });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    expect(proxy.reads() - readsBefore).toBe(cartReads);
+    expect(text("badge")).toBe(expected);
+    expect(text("drawer")).toBe(expected);
+  }
+
+  function expectNeverShownAfter(newer: string, older: string) {
+    for (const log of [shown.badge, shown.drawer]) {
+      expect(log.slice(log.indexOf(newer))).not.toContain(older);
+    }
+  }
+
+  beforeEach(() => proxy.seed([{ id: "li-1", quantity: 1 }]));
+
+  const setQuantity = (quantity: number) => () =>
+    epUpdateCartItem({ itemId: "li-1", quantity });
+
+  it("shows a single write in every reader without reading the cart again", async () => {
+    await renderReaders("li-1x1");
+
+    await act(async () => {
+      await epUpdateCartItem({ itemId: "li-1", quantity: 2 });
+    });
+
+    await expectSettledOn("li-1x2", 0);
+  });
+
+  it("released in the order they were sent, end on the newest cart and read it once", async () => {
+    await renderReaders("li-1x1");
+    const [first, second] = await startHeld(setQuantity(2), setQuantity(3));
+
+    await release(0, first);
+    await release(1, second);
+
+    await expectSettledOn("li-1x3", 1);
+  });
+
+  it("released in reverse, never show the older cart and end on the cart Elastic Path holds", async () => {
+    await renderReaders("li-1x1");
+    const [first, second] = await startHeld(setQuantity(2), setQuantity(3));
+
+    await release(1, second);
+    await waitFor(() => expect(text("badge")).toBe("li-1x3"));
+    proxy.seed([{ id: "li-1", quantity: 4 }]);
+    await release(0, first);
+
+    await expectSettledOn("li-1x4", 1);
+    expect(shown.badge).not.toContain("li-1x2");
+    expect(shown.drawer).not.toContain("li-1x2");
+  });
+
+  it("resolve each call with the cart that call produced, even one the readers never show", async () => {
+    await renderReaders("li-1x1");
+    const [first, second] = await startHeld(setQuantity(2), setQuantity(3));
+
+    const secondResult = await release(1, second);
+    const firstResult = await release(0, first);
+
+    expect(secondResult.cart?.items).toEqual([
+      expect.objectContaining({ id: "li-1", quantity: 3 }),
+    ]);
+    expect(firstResult.cart?.items).toEqual([
+      expect.objectContaining({ id: "li-1", quantity: 2 }),
+    ]);
+    await expectSettledOn("li-1x3", 1);
+  });
+
+  it("with one failure, still end on the cart Elastic Path holds and read it once", async () => {
+    await renderReaders("li-1x1");
+    proxy.holdWrites();
+    const first = start(setQuantity(2));
+    proxy.failNextWrite(500, { error: "dispatch_failed", code: "insufficient_stock" });
+    const second = start(setQuantity(99));
+    await waitFor(() => expect(proxy.heldWrites()).toBe(2));
+
+    const failed = await release(1, second);
+    await release(0, first);
+
+    expect(failed.error?.code).toBe("insufficient_stock");
+    await expectSettledOn("li-1x2", 1);
+  });
+
+  it("read the cart once for three rapid writes, not three times", async () => {
+    await renderReaders("li-1x1");
+    const [first, second, third] = await startHeld(
+      setQuantity(2),
+      setQuantity(3),
+      setQuantity(4)
+    );
+
+    await release(1, second);
+    await release(2, third);
+    await release(0, first);
+
+    await expectSettledOn("li-1x4", 1);
+    expectNeverShownAfter("li-1x3", "li-1x2");
+  });
+
+  it("read the cart once when the reader's module has been evaluated again", async () => {
+    const sameSwr = jest.requireActual("swr");
+    jest.doMock("swr", () => sameSwr);
+    try {
+      jest.isolateModules(() => {
+        require("../use-ep-cart");
+      });
+    } finally {
+      jest.dontMock("swr");
+    }
+    await renderReaders("li-1x1");
+    const [first, second] = await startHeld(setQuantity(2), setQuantity(3));
+
+    await release(1, second);
+    await release(0, first);
+
+    await expectSettledOn("li-1x3", 1);
+  });
+
+  describe("with a write rejected on the Studio artboard", () => {
+    afterEach(() => resetEpCanvasArtboard());
+
+    it("treat it as no write at all", async () => {
+      await renderReaders("li-1x1");
+      const [first] = await startHeld(setQuantity(2));
+
+      latchEpCanvasArtboard();
+      const canvas = await start(setQuantity(5));
+      resetEpCanvasArtboard();
+      await release(0, first);
+
+      expect(canvas.error?.code).toBe("design_fn_not_served");
+      await expectSettledOn("li-1x2", 0);
+    });
+  });
+
+  describe("from two copies of the package on one page", () => {
+    const otherCopysCache = {};
+    afterEach(() =>
+      registerEpCartCache(otherCopysCache, {
+        take: () => undefined,
+        refetch: () => undefined,
+      })
+    );
+
+    it("are ordered together, and every copy's cache reads the cart once", async () => {
+      const take = jest.fn();
+      const refetch = jest.fn();
+      registerEpCartCache(otherCopysCache, { take, refetch });
+      let otherCopy: typeof serverFunctions | undefined;
+      jest.isolateModules(() => {
+        otherCopy = require("../../ep-server-functions");
+      });
+      await renderReaders("li-1x1");
+      const [first, second] = await startHeld(setQuantity(2), () =>
+        otherCopy!.epUpdateCartItem({ itemId: "li-1", quantity: 3 })
+      );
+
+      await release(1, second);
+      await release(0, first);
+
+      await expectSettledOn("li-1x3", 1);
+      expect(shown.badge).not.toContain("li-1x2");
+      expect(refetch).toHaveBeenCalledTimes(1);
+      expect(take.mock.calls.map(([cart]) => cart.items[0].quantity)).toEqual([3]);
+    });
   });
 });
 

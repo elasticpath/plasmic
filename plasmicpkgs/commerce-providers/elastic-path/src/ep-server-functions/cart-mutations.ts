@@ -13,7 +13,7 @@ import {
   classifyEpFailure,
   makeEpCallError,
 } from "./call-error";
-import { seedEpCartCaches } from "./cart-cache-seed";
+import { orderEpCartWrite } from "./cart-cache-seed";
 import {
   CART_WRITE_FAILURE_COPY,
   cartMutationErrorCopy,
@@ -162,30 +162,37 @@ async function writeCart<I>(
   failureCopy: string
 ): Promise<Cart> {
   const auth = getCurrentEpSession();
-  let cart: Cart | undefined;
-  if (!isUsableAuth(auth) && shouldUseProxy()) {
-    try {
-      cart = await writeViaProxy(input);
-    } catch (err) {
-      throw rejectionFromProxy(err, failureCopy);
+  const write = async (): Promise<Cart> => {
+    let cart: Cart | undefined;
+    if (!isUsableAuth(auth) && shouldUseProxy()) {
+      try {
+        cart = await writeViaProxy(input);
+      } catch (err) {
+        throw rejectionFromProxy(err, failureCopy);
+      }
+    } else {
+      try {
+        cart = await writeWithSession(auth, input);
+      } catch (err) {
+        throw rejectionFromServer(err, failureCopy);
+      }
     }
-  } else {
-    try {
-      cart = await writeWithSession(auth, input);
-    } catch (err) {
-      throw rejectionFromServer(err, failureCopy);
+    if (!cart) {
+      const code =
+        currentEpDesignRealm() === "artboard"
+          ? "design_fn_not_served"
+          : undefined;
+      throw makeEpCallError({
+        code,
+        message: code
+          ? cartMutationErrorCopy({ code }, failureCopy)
+          : failureCopy,
+      });
     }
-  }
-  if (!cart) {
-    const code =
-      currentEpDesignRealm() === "artboard" ? "design_fn_not_served" : undefined;
-    throw makeEpCallError({
-      code,
-      message: code ? cartMutationErrorCopy({ code }, failureCopy) : failureCopy,
-    });
-  }
-  await seedEpCartCaches(cart);
-  return cart;
+    return cart;
+  };
+  // At design time the write never runs, so it must not count as one.
+  return currentEpDesignRealm() ? write() : orderEpCartWrite(write);
 }
 
 /**

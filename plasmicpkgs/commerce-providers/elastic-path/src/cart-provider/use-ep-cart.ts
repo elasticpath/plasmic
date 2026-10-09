@@ -1,12 +1,13 @@
 import useSWR, { mutate } from "swr";
 import type { Cart } from "../types/cart";
-import { registerEpCartCacheSeed } from "../ep-server-functions/cart-cache-seed";
+import { registerEpCartCache } from "../ep-server-functions/cart-cache-seed";
 import { epGetCart } from "../ep-server-functions/getCart";
 import { epCartCacheKey } from "./cache-keys";
 
-registerEpCartCacheSeed(mutate, (cart) =>
-  mutate(epCartCacheKey(), cart, { revalidate: false })
-);
+registerEpCartCache(mutate, {
+  take: (cart) => mutate(epCartCacheKey(), cart, { revalidate: false }),
+  refetch: () => mutate(epCartCacheKey()),
+});
 
 export interface UseEpCartReturn {
   cart: Cart | null;
