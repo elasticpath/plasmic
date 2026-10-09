@@ -7,8 +7,21 @@ export interface EpCallErrorInfo {
   cause?: unknown;
 }
 
-const epCallErrors = new WeakSet<Error>();
-const forwardedMessageErrors = new WeakSet<Error>();
+const CALL_ERROR_BRAND = Symbol.for(
+  "@elasticpath/plasmic-ep-commerce-elastic-path/call-error"
+);
+
+interface CallErrorBrand {
+  forwarded: boolean;
+}
+
+function brandOf(err: unknown): CallErrorBrand | undefined {
+  if (!(err instanceof Error)) return undefined;
+  const brand = (err as { [CALL_ERROR_BRAND]?: unknown })[CALL_ERROR_BRAND];
+  return brand && typeof brand === "object"
+    ? (brand as CallErrorBrand)
+    : undefined;
+}
 
 export function makeEpCallError(info: EpCallErrorInfo): Error {
   const err = new Error(info.message) as Error & {
@@ -19,14 +32,15 @@ export function makeEpCallError(info: EpCallErrorInfo): Error {
   if (info.code) err.code = info.code;
   if (info.correlationId) err.correlationId = info.correlationId;
   if (info.cause !== undefined) err.cause = info.cause;
-  epCallErrors.add(err);
-  if (info.forwarded) forwardedMessageErrors.add(err);
+  Object.defineProperty(err, CALL_ERROR_BRAND, {
+    value: { forwarded: Boolean(info.forwarded) } satisfies CallErrorBrand,
+  });
   return err;
 }
 
 /** True when the error's message is the one the failing function raised. */
 export function carriesForwardedMessage(err: unknown): err is Error {
-  return err instanceof Error && forwardedMessageErrors.has(err);
+  return brandOf(err)?.forwarded === true;
 }
 
 /**
@@ -35,7 +49,7 @@ export function carriesForwardedMessage(err: unknown): err is Error {
  * `ECONNREFUSED`) does not.
  */
 export function classifyEpFailure(err: unknown): string {
-  if (err instanceof Error && epCallErrors.has(err)) {
+  if (brandOf(err)) {
     const code = (err as { code?: unknown }).code;
     if (typeof code === "string" && code) return code;
   }
