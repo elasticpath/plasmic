@@ -9,7 +9,7 @@ import registerComponent, {
 import React, { useState } from "react";
 import { Registerable } from "../registerable";
 import { createLogger } from "../utils/logger";
-import { epProxyErrorCode } from "../ep-server-functions/proxy-fetch";
+import { readEpErrorCode } from "../browser-call";
 import { epRemoveCartItem } from "../ep-server-functions/cart-mutations";
 import { cartMutationErrorCopy } from "../ep-server-functions/cart-mutation-error-copy";
 
@@ -87,7 +87,7 @@ export function EPCartItemRemoveButton(props: EPCartItemRemoveButtonProps) {
         err instanceof Error ? err.message : "Failed to remove item";
       log.error("Remove failed", {
         error: message,
-        code: epProxyErrorCode(err),
+        code: readEpErrorCode(err),
       } as Record<string, unknown>);
       setError(cartMutationErrorCopy(err, GENERIC_REMOVE_ERROR));
     } finally {

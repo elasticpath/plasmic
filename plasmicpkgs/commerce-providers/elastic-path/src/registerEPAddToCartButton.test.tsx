@@ -10,7 +10,6 @@ const mockUsePlasmicCanvasContext = jest.fn();
 const mockUseFormContext = jest.fn();
 
 jest.mock("./ep-server-functions/proxy-fetch", () => ({
-  // `epProxyErrorCode` is pure — exercise the real one.
   ...jest.requireActual("./ep-server-functions/proxy-fetch"),
   callEpProxy: (...a: unknown[]) => mockCallEpProxy(...a),
   shouldUseProxy: () => true,

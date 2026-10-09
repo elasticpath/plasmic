@@ -11,7 +11,7 @@ import { mutate as swrMutate } from "swr";
 import { Registerable } from "../registerable";
 import { createLogger } from "../utils/logger";
 import { MOCK_CART_LINE_ITEMS } from "../utils/design-time-data";
-import { epProxyErrorCode } from "../ep-server-functions/proxy-fetch";
+import { readEpErrorCode } from "../browser-call";
 import { epUpdateCartItem } from "../ep-server-functions/cart-mutations";
 import { cartMutationErrorCopy } from "../ep-server-functions/cart-mutation-error-copy";
 import { epCartCacheKey } from "../cart-provider/cache-keys";
@@ -222,7 +222,7 @@ export function EPCartItemQuantityControl(
           err instanceof Error ? err.message : "Failed to update quantity";
         log.error("Quantity update failed", {
           error: message,
-          code: epProxyErrorCode(err),
+          code: readEpErrorCode(err),
         } as Record<string, unknown>);
         setError(cartMutationErrorCopy(err, GENERIC_QUANTITY_ERROR));
 
@@ -236,7 +236,7 @@ export function EPCartItemQuantityControl(
         // must not permanently disable +. Branch on the code, not the message:
         // the proxy withholds messages in production.
         if (
-          epProxyErrorCode(err) === "insufficient_stock" &&
+          readEpErrorCode(err) === "insufficient_stock" &&
           newQuantity > previousQty
         ) {
           setStockCap(revertTo);
