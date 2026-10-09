@@ -13,7 +13,7 @@ interface CartCacheRegistry {
   lastTicket: number;
   newestApplied: number;
   inFlight: number;
-  overlapped: boolean;
+  refetchDue: boolean;
 }
 
 // On globalThis, not in module scope: a page can hold two copies of this
@@ -34,7 +34,7 @@ function cartCacheRegistry(): CartCacheRegistry {
       lastTicket: 0,
       newestApplied: 0,
       inFlight: 0,
-      overlapped: false,
+      refetchDue: false,
     };
     scope[REGISTRY_KEY] = registry;
   }
@@ -64,20 +64,24 @@ async function eachCache(
  * Runs a browser cart write and puts its cart in every registered cache, unless
  * a write sent after it has already done so. Elastic Path may apply
  * overlapping writes in a different order from the one they were sent in, so
- * once the last of them finishes, every cache reads the cart again.
+ * once the last of them finishes, every cache reads the cart again. With
+ * `refetchOnFailure`, a failed write also has the caches read the cart once the
+ * last write finishes.
  */
 export async function sequenceEpCartWrite(
-  write: () => Promise<Cart>
+  write: () => Promise<Cart>,
+  { refetchOnFailure = false }: { refetchOnFailure?: boolean } = {}
 ): Promise<Cart> {
   if (typeof window === "undefined") return write();
   const registry = cartCacheRegistry();
   const ticket = ++registry.lastTicket;
   registry.inFlight += 1;
-  if (registry.inFlight > 1) registry.overlapped = true;
+  if (registry.inFlight > 1) registry.refetchDue = true;
   let cart: Cart;
   try {
     cart = await write();
   } catch (err) {
+    if (refetchOnFailure) registry.refetchDue = true;
     finishWrite(registry);
     throw err;
   }
@@ -99,8 +103,8 @@ export async function sequenceEpCartWrite(
 
 function finishWrite(registry: CartCacheRegistry): void {
   registry.inFlight -= 1;
-  if (registry.inFlight === 0 && registry.overlapped) {
-    registry.overlapped = false;
+  if (registry.inFlight === 0 && registry.refetchDue) {
+    registry.refetchDue = false;
     void eachCache(
       registry,
       (cache) => cache.refetch(),

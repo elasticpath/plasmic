@@ -157,6 +157,7 @@ interface CartWrite<I> {
   viaProxy: (input: I) => Promise<Cart | undefined>;
   withSession: (auth: EpSessionContext | undefined, input: I) => Promise<Cart>;
   failureCopy: string;
+  refetchOnFailure?: boolean;
 }
 
 async function sendCartWrite<I>(
@@ -192,7 +193,9 @@ function writeCart<I>(write: CartWrite<I>): Promise<Cart> {
   const auth = getCurrentEpSession();
   const send = () => sendCartWrite(auth, write);
   // Elastic Path is never written at design time, so there is no write to sequence.
-  return currentEpDesignRealm() ? send() : sequenceEpCartWrite(send);
+  return currentEpDesignRealm()
+    ? send()
+    : sequenceEpCartWrite(send, { refetchOnFailure: write.refetchOnFailure });
 }
 
 /**
@@ -219,11 +222,29 @@ export function epAddCartItem(input: EpAddCartItemInput): Promise<Cart> {
 
 /** Sets a cart line's quantity. Resolves, refreshes and rejects like {@link epAddCartItem}. */
 export function epUpdateCartItem(input: EpUpdateCartItemInput): Promise<Cart> {
+  return updateCartItem(input, false);
+}
+
+/**
+ * Like {@link epUpdateCartItem}, but a failure has every cart reader read the
+ * cart again, in the one read its burst of writes makes.
+ */
+export function updateCartItemOrRefetch(
+  input: EpUpdateCartItemInput
+): Promise<Cart> {
+  return updateCartItem(input, true);
+}
+
+function updateCartItem(
+  input: EpUpdateCartItemInput,
+  refetchOnFailure: boolean
+): Promise<Cart> {
   return writeCart({
     input,
     viaProxy: (i) => callEpProxy<Cart>("updateCartItem", proxyArgs(i)),
     withSession: updateCartItemWithSession,
     failureCopy: CART_WRITE_FAILURE_COPY.update,
+    refetchOnFailure,
   });
 }
 

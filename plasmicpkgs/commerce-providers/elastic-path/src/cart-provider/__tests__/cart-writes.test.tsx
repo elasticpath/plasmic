@@ -23,6 +23,12 @@ import {
   resetEpCanvasArtboard,
 } from "../../ep-server-functions/design-realm";
 import { epCartCacheKey } from "../cache-keys";
+import { DataProvider } from "@plasmicapp/host";
+import { EPCartItemQuantityControl } from "../../cart-drawer/EPCartItemQuantityControl";
+import {
+  useCartItemQuantity,
+  type CartItemQuantityContextValue,
+} from "../../cart-drawer/CartDrawerContext";
 
 type ProxyCall = { fn: string; body: Record<string, unknown> };
 
@@ -307,11 +313,12 @@ describe("overlapping cart writes", () => {
   const text = (testId: string) => screen.getByTestId(testId).textContent;
   let readsBefore: number;
 
-  async function renderReaders(expected: string) {
+  async function renderReaders(expected: string, extra?: React.ReactNode) {
     render(
       <SWRConfig value={{ dedupingInterval: 0 }}>
         <CartReader testId="badge" />
         <CartReader testId="drawer" />
+        {extra}
       </SWRConfig>
     );
     await waitFor(() => {
@@ -465,6 +472,67 @@ describe("overlapping cart writes", () => {
     await release(0, first);
 
     await expectSettledOn("li-1x3", 1);
+  });
+
+  describe("with a failed write from the quantity control", () => {
+    let control: CartItemQuantityContextValue | null = null;
+
+    function TakeControl() {
+      control = useCartItemQuantity();
+      return null;
+    }
+
+    const quantityControlFor = (line: { id: string; quantity: number }) => (
+      <DataProvider name="currentCartItem" data={line}>
+        <EPCartItemQuantityControl>
+          <TakeControl />
+        </EPCartItemQuantityControl>
+      </DataProvider>
+    );
+
+    beforeEach(() => jest.spyOn(console, "error").mockImplementation(() => {}));
+    afterEach(() => jest.restoreAllMocks());
+
+    it("alone, put the control back and read the cart once", async () => {
+      await renderReaders("li-1x1", quantityControlFor({ id: "li-1", quantity: 1 }));
+      proxy.failWith(500, { error: "dispatch_failed", code: "insufficient_stock" });
+
+      act(() => control!.increment());
+
+      await expectSettledOn("li-1x1", 1);
+      expect(control!.quantity).toBe(1);
+      expect(control!.isLoading).toBe(false);
+    });
+
+    it.each([
+      ["before", [1, 0]],
+      ["after", [0, 1]],
+    ])("finishing %s the other write, read the cart once", async (_, order) => {
+      proxy.seed([
+        { id: "li-1", quantity: 1 },
+        { id: "li-2", quantity: 1 },
+      ]);
+      await renderReaders(
+        "li-1x1,li-2x1",
+        quantityControlFor({ id: "li-1", quantity: 1 })
+      );
+      proxy.holdWrites();
+      const other = start(() => epUpdateCartItem({ itemId: "li-2", quantity: 5 }));
+      await waitFor(() => expect(proxy.heldWrites()).toBe(1));
+      proxy.failNextWrite(500, { error: "dispatch_failed", code: "insufficient_stock" });
+      act(() => control!.increment());
+      await waitFor(() => expect(proxy.heldWrites()).toBe(2));
+
+      for (const index of order) {
+        await act(async () => proxy.release(index));
+      }
+      await act(async () => {
+        await other;
+      });
+
+      await expectSettledOn("li-1x1,li-2x5", 1);
+      expect(control!.quantity).toBe(1);
+    });
   });
 
   describe("with a write rejected on the Studio artboard", () => {
