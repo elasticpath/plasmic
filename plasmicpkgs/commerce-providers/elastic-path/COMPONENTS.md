@@ -583,7 +583,7 @@ Quantity and remove mutations expose the same pattern:
 
 `error` is `null` when there is no current failure, and clears when a new attempt begins. Studio provides an **error** preview state on both components. Neither renders a default toast or banner; designers choose how to display the bound value.
 
-Like Add to Cart, these values are shopper-facing copy derived from stable proxy error codes (`insufficient_stock`, `no_session`, …). Production responses sanitize raw messages to `dispatch_failed`, so components must not bind that token through to the UI.
+Like Add to Cart, these values are the cart write's rejection message (see [§4](#4-cart)): shopper-facing copy for the stable error code (`insufficient_stock`, `no_session`, …), or, in development only, Elastic Path's own reason when the proxy route forwards it.
 
 ### Required Next.js setup
 

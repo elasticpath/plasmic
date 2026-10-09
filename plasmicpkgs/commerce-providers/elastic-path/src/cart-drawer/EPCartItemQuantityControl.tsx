@@ -13,7 +13,7 @@ import { createLogger } from "../utils/logger";
 import { MOCK_CART_LINE_ITEMS } from "../utils/design-time-data";
 import { readEpErrorCode } from "../browser-call";
 import { epUpdateCartItem } from "../ep-server-functions/cart-mutations";
-import { cartMutationErrorCopy } from "../ep-server-functions/cart-mutation-error-copy";
+import { cartWriteErrorText } from "../ep-server-functions/cart-mutation-error-copy";
 import { epCartCacheKey } from "../cart-provider/cache-keys";
 import {
   CartItemQuantityContext,
@@ -21,9 +21,6 @@ import {
 } from "./CartDrawerContext";
 
 const log = createLogger("EPCartItemQuantityControl");
-
-const GENERIC_QUANTITY_ERROR =
-  "We couldn't update the quantity. Please try again.";
 
 type PreviewState = "auto" | "withData" | "loading" | "minReached" | "error";
 
@@ -224,7 +221,7 @@ export function EPCartItemQuantityControl(
           error: message,
           code: readEpErrorCode(err),
         } as Record<string, unknown>);
-        setError(cartMutationErrorCopy(err, GENERIC_QUANTITY_ERROR));
+        setError(cartWriteErrorText(err, "update"));
 
         const revertTo = Math.max(minQuantity, Number(previousQty) || minQuantity);
         setLocalQuantity(revertTo);

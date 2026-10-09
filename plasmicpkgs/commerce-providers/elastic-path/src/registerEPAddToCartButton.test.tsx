@@ -197,6 +197,27 @@ describe("EPAddToCartButton", () => {
     expect(readState().error).toMatch(/out of stock/);
   });
 
+  it("shows the write's rejection message for a coded failure, without mapping it again", async () => {
+    setUp();
+    mockCallEpProxy.mockRejectedValue(
+      makeEpCallError({
+        message: "epAddCartItem: The requested quantity exceeds the available stock",
+        code: "insufficient_stock",
+        forwarded: true,
+      })
+    );
+
+    render(<EPAddToCartButton>Add</EPAddToCartButton>);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Add"));
+    });
+
+    expect(readState().error).toBe(
+      "epAddCartItem: The requested quantity exceeds the available stock"
+    );
+  });
+
   it("shows shopper copy, not the transport's message, for a failure with no reason", async () => {
     setUp();
     mockCallEpProxy.mockRejectedValue(new TypeError("Failed to fetch"));
