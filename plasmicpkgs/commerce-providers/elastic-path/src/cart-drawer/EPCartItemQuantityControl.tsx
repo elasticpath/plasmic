@@ -7,14 +7,12 @@ import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useState, useCallback, useEffect, useRef } from "react";
-import { mutate as swrMutate } from "swr";
 import { Registerable } from "../registerable";
 import { createLogger } from "../utils/logger";
 import { MOCK_CART_LINE_ITEMS } from "../utils/design-time-data";
 import { readEpErrorCode } from "../browser-call";
-import { epUpdateCartItem } from "../ep-server-functions/cart-mutations";
+import { updateCartItemOrRefetch } from "../ep-server-functions/cart-mutations";
 import { cartWriteErrorText } from "../ep-server-functions/cart-mutation-error-copy";
-import { epCartCacheKey } from "../cart-provider/cache-keys";
 import {
   CartItemQuantityContext,
   CartItemQuantityContextValue,
@@ -206,7 +204,7 @@ export function EPCartItemQuantityControl(
       setError(null);
       setIsLoading(true);
       try {
-        await epUpdateCartItem({
+        await updateCartItemOrRefetch({
           itemId,
           quantity: newQuantity,
           ...(location ? { location } : {}),
@@ -237,13 +235,6 @@ export function EPCartItemQuantityControl(
           newQuantity > previousQty
         ) {
           setStockCap(revertTo);
-        }
-
-        // Refresh cart so UI matches EP after a failed write.
-        try {
-          await swrMutate(epCartCacheKey());
-        } catch {
-          // ignore revalidation errors
         }
       } finally {
         inFlightRef.current = false;

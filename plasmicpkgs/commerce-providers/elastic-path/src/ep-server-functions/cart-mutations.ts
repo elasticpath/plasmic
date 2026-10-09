@@ -13,7 +13,7 @@ import {
   classifyEpFailure,
   makeEpCallError,
 } from "./call-error";
-import { seedEpCartCaches } from "./cart-cache-seed";
+import { sequenceEpCartWrite } from "./cart-cache-registry";
 import {
   CART_WRITE_FAILURE_COPY,
   cartMutationErrorCopy,
@@ -152,26 +152,28 @@ function proxyArgs(input: object): Record<string, unknown> {
   return input as Record<string, unknown>;
 }
 
-async function writeCart<I>(
-  input: I,
-  writeViaProxy: (input: I) => Promise<Cart | undefined>,
-  writeWithSession: (
-    auth: EpSessionContext | undefined,
-    input: I
-  ) => Promise<Cart>,
-  failureCopy: string
+interface CartWrite<I> {
+  input: I;
+  viaProxy: (input: I) => Promise<Cart | undefined>;
+  withSession: (auth: EpSessionContext | undefined, input: I) => Promise<Cart>;
+  failureCopy: string;
+  refetchOnFailure?: boolean;
+}
+
+async function sendCartWrite<I>(
+  auth: EpSessionContext | undefined,
+  { input, viaProxy, withSession, failureCopy }: CartWrite<I>
 ): Promise<Cart> {
-  const auth = getCurrentEpSession();
   let cart: Cart | undefined;
   if (!isUsableAuth(auth) && shouldUseProxy()) {
     try {
-      cart = await writeViaProxy(input);
+      cart = await viaProxy(input);
     } catch (err) {
       throw rejectionFromProxy(err, failureCopy);
     }
   } else {
     try {
-      cart = await writeWithSession(auth, input);
+      cart = await withSession(auth, input);
     } catch (err) {
       throw rejectionFromServer(err, failureCopy);
     }
@@ -184,8 +186,16 @@ async function writeCart<I>(
       message: code ? cartMutationErrorCopy({ code }, failureCopy) : failureCopy,
     });
   }
-  await seedEpCartCaches(cart);
   return cart;
+}
+
+function writeCart<I>(write: CartWrite<I>): Promise<Cart> {
+  const auth = getCurrentEpSession();
+  const send = () => sendCartWrite(auth, write);
+  // Elastic Path is never written at design time, so there is no write to sequence.
+  return currentEpDesignRealm()
+    ? send()
+    : sequenceEpCartWrite(send, { refetchOnFailure: write.refetchOnFailure });
 }
 
 /**
@@ -202,32 +212,50 @@ async function writeCart<I>(
  * route logged it.
  */
 export function epAddCartItem(input: EpAddCartItemInput): Promise<Cart> {
-  return writeCart(
+  return writeCart({
     input,
-    (i) => callEpProxy<Cart>("addCartItem", proxyArgs(i)),
-    addCartItemWithSession,
-    CART_WRITE_FAILURE_COPY.add
-  );
+    viaProxy: (i) => callEpProxy<Cart>("addCartItem", proxyArgs(i)),
+    withSession: addCartItemWithSession,
+    failureCopy: CART_WRITE_FAILURE_COPY.add,
+  });
 }
 
 /** Sets a cart line's quantity. Resolves, refreshes and rejects like {@link epAddCartItem}. */
 export function epUpdateCartItem(input: EpUpdateCartItemInput): Promise<Cart> {
-  return writeCart(
+  return updateCartItem(input, false);
+}
+
+/**
+ * Like {@link epUpdateCartItem}, but a failure has every cart reader read the
+ * cart again, in the one read its burst of writes makes.
+ */
+export function updateCartItemOrRefetch(
+  input: EpUpdateCartItemInput
+): Promise<Cart> {
+  return updateCartItem(input, true);
+}
+
+function updateCartItem(
+  input: EpUpdateCartItemInput,
+  refetchOnFailure: boolean
+): Promise<Cart> {
+  return writeCart({
     input,
-    (i) => callEpProxy<Cart>("updateCartItem", proxyArgs(i)),
-    updateCartItemWithSession,
-    CART_WRITE_FAILURE_COPY.update
-  );
+    viaProxy: (i) => callEpProxy<Cart>("updateCartItem", proxyArgs(i)),
+    withSession: updateCartItemWithSession,
+    failureCopy: CART_WRITE_FAILURE_COPY.update,
+    refetchOnFailure,
+  });
 }
 
 /** Removes a cart line. Resolves, refreshes and rejects like {@link epAddCartItem}. */
 export function epRemoveCartItem(input: EpRemoveCartItemInput): Promise<Cart> {
-  return writeCart(
+  return writeCart({
     input,
-    (i) => callEpProxy<Cart>("removeCartItem", proxyArgs(i)),
-    removeCartItemWithSession,
-    CART_WRITE_FAILURE_COPY.remove
-  );
+    viaProxy: (i) => callEpProxy<Cart>("removeCartItem", proxyArgs(i)),
+    withSession: removeCartItemWithSession,
+    failureCopy: CART_WRITE_FAILURE_COPY.remove,
+  });
 }
 
 async function addCartItemWithSession(
