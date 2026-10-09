@@ -44,6 +44,16 @@ export function carriesForwardedMessage(err: unknown): err is Error {
 }
 
 /**
+ * The failure's own reason: for an error this package wrapped in shopper
+ * copy, the message of the failure it wraps.
+ */
+export function epFailureReason(err: unknown): string | undefined {
+  const cause = brandOf(err) ? (err as { cause?: unknown }).cause : undefined;
+  if (cause instanceof Error) return cause.message;
+  return err instanceof Error ? err.message : undefined;
+}
+
+/**
  * Maps a server-side failure to a stable code. A code this package already
  * put on the error wins; another library's `code` (for example Node's
  * `ECONNREFUSED`) does not.

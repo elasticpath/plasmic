@@ -231,9 +231,11 @@ describe("cart writes from the root entry", () => {
   });
 
   it("keeps Elastic Path's own reason when the proxy sends it", async () => {
+    // A development proxy route's response; proxy-cart-write-errors.test.ts drives the real route.
     proxy.failWith(500, {
       error: "dispatch_failed",
       code: "insufficient_stock",
+      correlationId: "corr-1",
       message: "epAddCartItem: The requested quantity exceeds the available stock",
     });
 
