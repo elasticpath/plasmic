@@ -39,13 +39,15 @@ const { handleCreateSession } = require("../create-session") as {
   handleCreateSession: typeof import("../create-session").handleCreateSession;
 };
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { EP_SHIPPING_LINE_SKU } = require("../../../../checkout/session/set-shipping-line") as typeof import("../../../../checkout/session/set-shipping-line");
+
 import type {
   SessionHandlerContext,
   SessionRequest,
   CheckoutSession,
 } from "../../../../checkout/session/types";
 import { hashCart } from "../../../../checkout/session/cart-hash";
-import { EP_SHIPPING_LINE_SKU } from "../../../../checkout/session/set-shipping-line";
 import { EP_ACCOUNT_TOKEN_HEADER } from "../../../../auth/ep-plugin/envelope";
 import { headersSentBy } from "../../../../checkout/session/__tests__/fake-shopper-client";
 
@@ -317,6 +319,56 @@ describe("handleCreateSession", () => {
 
       const storedSession: CheckoutSession = store.set.mock.calls[0][1];
       expect(typeof storedSession.cartHash).toBe("string");
+    });
+  });
+
+  describe("the shopper's locale and currency", () => {
+    function pricedIn(currency: string, amount: number) {
+      return {
+        data: {
+          data: {
+            id: "cart-abc",
+            type: "cart",
+            meta: {
+              display_price: {
+                with_tax: { amount, currency },
+                without_tax: { amount, currency },
+                tax: { amount: 0, currency },
+              },
+            },
+          },
+          included: {
+            items: [{ id: "item-1", quantity: 1, unit_price: { amount } }],
+          },
+        },
+      };
+    }
+
+    beforeEach(() => {
+      epSdk.getACart.mockImplementation(async ({ headers }) =>
+        headers?.["X-Moltin-Currency"] === "EUR"
+          ? pricedIn("EUR", 900)
+          : pricedIn("USD", 1000)
+      );
+    });
+
+    it("totals the checkout in the currency the cart shows", async () => {
+      const res = await handleCreateSession(
+        createMockReq({ cartId: "cart-abc" }),
+        createMockCtx({ locale: "fr-FR", currency: "EUR" })
+      );
+
+      expect((res.body as any).data.session.totals).toEqual({
+        subtotal: 900,
+        tax: 0,
+        shipping: 0,
+        total: 900,
+        currency: "EUR",
+      });
+      expect(epSdk.getACart.mock.calls[0][0].headers).toEqual({
+        "Accept-Language": "fr-FR",
+        "X-Moltin-Currency": "EUR",
+      });
     });
   });
 

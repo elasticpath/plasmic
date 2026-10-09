@@ -5,7 +5,11 @@ import type { CurrencyDisplay } from "../utils/price";
 
 export interface EpCommerce {
   locale: string;
-  /** ISO 4217 currency for the cart read (X-Moltin-Currency). Storefront-resolved. */
+  /**
+   * Not sent to Elastic Path, and the registered Elastic Path Provider leaves
+   * it unset. `createEpAuth`'s `resolveLocaleAndCurrency` chooses the cart
+   * currency.
+   */
   currency?: string;
   /** Money display preference threaded into cart-data formatting. */
   currencyDisplay: CurrencyDisplay;

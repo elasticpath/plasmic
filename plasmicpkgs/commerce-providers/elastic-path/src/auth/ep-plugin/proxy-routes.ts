@@ -53,8 +53,12 @@ import type {
   EpRemovePromoCodeInput,
   EpUpdateCartItemInput,
 } from "../../ep-server-functions";
+import {
+  classifyEpFailure,
+  epFailureReason,
+} from "../../ep-server-functions/call-error";
 import { withEpSession } from "../../ep-server-functions/session-context";
-import type { EpCtx } from "../../ep-server-functions/build-ep-ctx";
+import { buildEpCtx } from "../../ep-server-functions/build-ep-ctx";
 import { parseCookieHeader } from "../../utils/cookie-header";
 import type { EpAuth } from "./create-ep-auth-better";
 import { enforceOriginGate, isTrustedOrigin } from "./origin-gate";
@@ -89,46 +93,9 @@ const CART_WRITE_FNS = new Set([
   "removePromoCode",
 ]);
 
-/**
- * Maps a dispatch failure to a stable code. `message` is withheld in
- * production, so the code is the only failure detail a browser caller can
- * branch on there.
- */
-function classifyDispatchError(err: unknown): string {
-  const message = err instanceof Error ? err.message : String(err ?? "");
-  if (/not enough stock|insufficient stock/i.test(message)) {
-    return "insufficient_stock";
-  }
-  if (/no cart on session|no EP session/i.test(message)) {
-    return "no_session";
-  }
-  // Production withholds `message`, so the code is the only thing that tells
-  // the promo input a code was rejected rather than the request failing.
-  if (/^epApplyPromoCode:|^epRemovePromoCode:/.test(message)) {
-    return "invalid_promo_code";
-  }
-  return "dispatch_failed";
-}
-
 /** Promised `params` only — see the note on `CartRouteContext`. */
 interface ProxyRouteContext {
   params: Promise<{ fn?: string }>;
-}
-
-interface SessionShape {
-  session: {
-    accessToken: string;
-    host: string;
-    clientId: string;
-    expires: number;
-    locale?: string;
-    account?: {
-      id: string;
-      name?: string;
-      token: string;
-    } | null;
-  } | null;
-  cart: { id: string } | null;
 }
 
 const FN_DISPATCH: Record<
@@ -247,10 +214,10 @@ export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes {
       >;
 
       const cookies = parseCookieHeader(request.headers.get("cookie") ?? "");
-      const sessionResult = (await epAuth.api.getSession({
+      const sessionResult = await epAuth.api.getSession({
         cookies,
         headers: Object.fromEntries(request.headers.entries()),
-      })) as SessionShape;
+      });
 
       const session = sessionResult.session;
       if (!session?.accessToken) {
@@ -271,20 +238,9 @@ export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes {
         });
       }
 
-      // Run the function inside `withEpSession` — same path SSR uses.
-      // The function reads its auth via `getCurrentEpSession()` and
-      // makes the EP REST call directly with the shopper's bearer.
-      // The session itself already carries host/clientId/accessToken,
-      // so we don't need to re-fetch the loader bundle to build ctx.
-      const epCtx: EpCtx = {
-        accessToken: session.accessToken,
-        host: session.host,
-        clientId: session.clientId,
-        cartId: sessionResult.cart?.id ?? undefined,
-        accountId: session.account?.id,
-        accountToken: session.account?.token,
-        locale: session.locale,
-      };
+      // Same context SSR builds, so a proxied call is priced and localised
+      // the way the server render was.
+      const epCtx = buildEpCtx(sessionResult);
 
       let result: unknown;
       try {
@@ -295,7 +251,7 @@ export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes {
           `[ep-commerce] proxy dispatch_failed fn=${fnName} correlationId=${correlationId}`,
           err
         );
-        const code = classifyDispatchError(err);
+        const code = classifyEpFailure(err);
         return new Response(
           JSON.stringify(
             isTrustedDevEnvironment()
@@ -303,7 +259,7 @@ export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes {
                   error: "dispatch_failed",
                   code,
                   correlationId,
-                  message: (err as Error)?.message,
+                  message: epFailureReason(err),
                 }
               : { error: "dispatch_failed", code, correlationId }
           ),

@@ -5,6 +5,7 @@ import {
   CommerceProviderComponent,
   commerceProviderMeta,
 } from "./registerCommerceProvider";
+import { useEpCommerce } from "./shopper-context/EpCommerceContext";
 
 describe("CommerceProviderComponent", () => {
   it("renders children without a clientId", () => {
@@ -35,18 +36,35 @@ describe("CommerceProviderComponent", () => {
     }
 
     const { rerender } = render(
-      <CommerceProviderComponent clientId="abc" locale="en-US" currency="USD">
+      <CommerceProviderComponent clientId="abc" locale="en-US">
         <Child />
       </CommerceProviderComponent>
     );
     expect(mounts).toBe(1);
 
     rerender(
-      <CommerceProviderComponent clientId="abc" locale="en-US" currency="GBP">
+      <CommerceProviderComponent clientId="abc" locale="en-GB">
         <Child />
       </CommerceProviderComponent>
     );
     expect(mounts).toBe(1);
+  });
+
+  it("does not pass the retired currency prop to useEpCommerce", () => {
+    let seen: ReturnType<typeof useEpCommerce> = null;
+    function Reader() {
+      seen = useEpCommerce();
+      return null;
+    }
+
+    render(
+      <CommerceProviderComponent clientId="abc" locale="en-GB" currency="GBP">
+        <Reader />
+      </CommerceProviderComponent>
+    );
+
+    expect(seen).toMatchObject({ locale: "en-GB" });
+    expect(seen!.currency).toBeUndefined();
   });
 
   it("survives a clientId being filled in", () => {
@@ -67,7 +85,7 @@ describe("CommerceProviderComponent", () => {
 });
 
 describe("commerceProviderMeta", () => {
-  it.each(["serverToken", "serverCartMode"])(
+  it.each(["serverToken", "serverCartMode", "currency"])(
     "keeps the retired %s prop registered and hidden",
     (propName) => {
       const prop = commerceProviderMeta.props[propName];

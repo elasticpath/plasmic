@@ -40,6 +40,11 @@ import {
 } from "./envelope";
 import type { EpAccountSlot, EpLapsedAccount } from "./envelope";
 import type { EpSessionCartResolver } from "./session-cart";
+import type {
+  EpLocaleAndCurrency,
+  EpLocaleAndCurrencyResolver,
+} from "../../types/locale-and-currency";
+import { resolveLocaleAndCurrency } from "./locale-and-currency";
 
 export interface CreateEpAuthBetterInput {
   clientId: string;
@@ -96,6 +101,28 @@ export interface CreateEpAuthBetterInput {
    * more than one, because nothing marks one of them as the default.
    */
   passwordProfileId?: string;
+  /**
+   * Chooses the shopper's locale and currency for a request, from the cookies
+   * and headers handed to `getSession`. A `getSession` call that passes no
+   * headers, such as a server render, hands it the page request's headers
+   * from `next/headers`. The session carries the result, so a server render
+   * and a browser call through the proxy route send Elastic Path the same
+   * `Accept-Language` and `X-Moltin-Currency`. A proxy request does not carry
+   * the page's URL, so derive both from a cookie or a header every request
+   * carries, such as `Accept-Language`:
+   *
+   *   resolveLocaleAndCurrency: ({ cookies, headers }) => ({
+   *     locale: headers["accept-language"],
+   *     currency: cookies["shop-currency"],
+   *   })
+   *
+   * `locale` takes a BCP 47 tag or an `Accept-Language` value such as
+   * `en-GB,en;q=0.9`; the package sends the first valid tag in preference
+   * order, skipping `*`, in its canonical form (`en-us` becomes `en-US`). A
+   * currency is sent in upper case. A locale with no valid tag, or a currency
+   * that is not three letters, is not sent, and the first one logs a warning.
+   */
+  resolveLocaleAndCurrency?: EpLocaleAndCurrencyResolver;
 }
 
 function defaultTrustedOrigins(baseURL: string): string[] {
@@ -157,7 +184,8 @@ export interface EpSessionData {
   lapsedAccount: EpLapsedAccount | null;
 }
 
-export interface EpSession {
+/** `locale` and `currency` come from `resolveLocaleAndCurrency`. */
+export interface EpSession extends EpLocaleAndCurrency {
   session: EpSessionData | null;
   user: any | null;
   cart: { id: string } | null;
@@ -168,9 +196,13 @@ export interface EpSession {
 
 export interface EpAuth {
   api: {
+    /**
+     * `headers` takes a plain record or a Node request's `IncomingHttpHeaders`.
+     * Header names are lower-cased and a repeated header is joined with ", ".
+     */
     getSession(req: {
       cookies: Record<string, string>;
-      headers?: Record<string, string>;
+      headers?: Record<string, string | string[] | undefined>;
     }): Promise<EpSession>;
   };
   /**
@@ -204,6 +236,18 @@ function cookiesToHeader(cookies: Record<string, string>): string {
   return Object.entries(cookies)
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
     .join("; ");
+}
+
+function plainHeaders(
+  headers: Record<string, string | string[] | undefined> | undefined
+): Record<string, string> | undefined {
+  if (!headers) return undefined;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers)) {
+    if (v === undefined) continue;
+    out[k.toLowerCase()] = Array.isArray(v) ? v.join(", ") : v;
+  }
+  return out;
 }
 
 function buildHeaders(
@@ -320,9 +364,15 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
 
   return {
     api: {
-      async getSession(req) {
+      async getSession(request) {
+        const req = {
+          cookies: request.cookies,
+          headers: plainHeaders(request.headers),
+        };
         const reqHeaders = buildHeaders(req.cookies, req.headers);
         const pendingSetCookies: string[] = [];
+        const localeAndCurrency = () =>
+          resolveLocaleAndCurrency(input.resolveLocaleAndCurrency, req);
 
         // First try to read an existing session from the cookies.
         let session: any = null;
@@ -344,7 +394,7 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
           if (!anonResponse.ok) {
             // Anonymous mint failed (e.g. EP unreachable). Return an empty
             // EpSession so callers fail-soft, same as the legacy impl.
-            return makeEmptyEpSession();
+            return makeEmptyEpSession(await localeAndCurrency());
           }
           for (const c of extractSetCookies(anonResponse)) {
             pendingSetCookies.push(c);
@@ -442,6 +492,7 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
           session: sessionData,
           user: epUser?.email?.endsWith("@anonymous.local") ? null : epUser,
           cart: epSession?.epCartId ? { id: epSession.epCartId } : null,
+          ...(await localeAndCurrency()),
           isAuthenticated: envelopeAccount.memberId != null,
           headers() {
             const h: Record<string, string> = {};
@@ -463,11 +514,14 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
   };
 }
 
-function makeEmptyEpSession(): EpSession {
+function makeEmptyEpSession(
+  localeAndCurrency: EpLocaleAndCurrency
+): EpSession {
   return {
     session: null,
     user: null,
     cart: null,
+    ...localeAndCurrency,
     isAuthenticated: false,
     headers: () => ({}),
     commitCookies: () => {},

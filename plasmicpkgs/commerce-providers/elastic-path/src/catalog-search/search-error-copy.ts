@@ -1,4 +1,4 @@
-import { epProxyErrorCode } from "../ep-server-functions/proxy-fetch";
+import { readEpErrorCode } from "../browser-call";
 
 /**
  * Stable proxy `code` → shopper-facing copy for a failed catalog search.
@@ -28,7 +28,7 @@ const GENERIC_CATALOG_SEARCH_ERROR =
  * the shopper cannot act on.
  */
 export function catalogSearchErrorCopy(err: unknown): string {
-  const code = epProxyErrorCode(err);
+  const code = readEpErrorCode(err);
   if (code) {
     return CATALOG_SEARCH_ERROR_COPY[code] ?? GENERIC_CATALOG_SEARCH_ERROR;
   }

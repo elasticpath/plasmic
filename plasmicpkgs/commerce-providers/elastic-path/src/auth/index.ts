@@ -25,6 +25,10 @@ export {
 } from "./ep-plugin/envelope";
 export type { EpAccountSlot, EpLapsedAccount } from "./ep-plugin/envelope";
 export type {
+  EpLocaleAndCurrency,
+  EpLocaleAndCurrencyResolver,
+} from "../types/locale-and-currency";
+export type {
   EpAccountCart,
   EpSessionCartResolver,
   EpSessionCartResolverInput,

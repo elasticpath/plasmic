@@ -24,7 +24,6 @@
  * account checkout body.
  */
 import {
-  getACart,
   getAnOrder,
   checkoutApi,
   confirmOrder,
@@ -50,6 +49,7 @@ import {
   mapTransactionResponse,
 } from "../../../checkout/session/payment-sequence";
 import { hashCart } from "../../../checkout/session/cart-hash";
+import { readCartResponse } from "../../../ep-server-functions/read-cart";
 import { buildGuestCheckoutBody } from "../../../checkout/session/checkout-body-builder";
 import { runCartCleanup } from "../../../checkout/session/cart-cleanup";
 import { clearCartPaymentIntentId } from "../../../checkout/session/clear-cart-payment-intent";
@@ -801,14 +801,14 @@ export async function handlePay(
   // for free with no charge.
   let cartMetaTotal: number | null = null;
   try {
-    const cartResponse = await getACart({
-      client: shopperClient,
-      path: { cartID: session.cartId },
-      query: { include: ["items"] },
-    });
+    const cartResponse = await readCartResponse(
+      shopperClient,
+      session.cartId,
+      ctx
+    );
     const items =
-      (cartResponse.data as any)?.included?.items ??
-      (cartResponse.data as any)?.data?.items ??
+      (cartResponse as any)?.included?.items ??
+      (cartResponse as any)?.data?.items ??
       [];
     // Exclude the storefront-managed shipping line (sentinel SKU) from BOTH the
     // hash and the physical-item lookup. It is server-written (during selection
@@ -818,7 +818,7 @@ export async function handlePay(
     freshCartItems = (Array.isArray(items) ? items : []).filter(
       (it: { sku?: string }) => it?.sku !== EP_SHIPPING_LINE_SKU
     );
-    const metaAmount = (cartResponse.data as any)?.data?.meta?.display_price
+    const metaAmount = (cartResponse as any)?.data?.meta?.display_price
       ?.with_tax?.amount;
     if (typeof metaAmount === "number" && Number.isFinite(metaAmount)) {
       cartMetaTotal = metaAmount;
@@ -1012,11 +1012,12 @@ export async function handlePay(
     // the hash-step cartMetaTotal authoritative.
     if (deletedCount > 0) {
       try {
-        const reread = await getACart({
-          client: shopperClient,
-          path: { cartID: session.cartId },
-        });
-        const metaAmount = (reread.data as any)?.data?.meta?.display_price
+        const reread = await readCartResponse(
+          shopperClient,
+          session.cartId,
+          ctx
+        );
+        const metaAmount = (reread as any)?.data?.meta?.display_price
           ?.with_tax?.amount;
         cartMetaTotal =
           typeof metaAmount === "number" && Number.isFinite(metaAmount)

@@ -10,7 +10,6 @@ const mockUsePlasmicCanvasContext = jest.fn();
 const mockUseFormContext = jest.fn();
 
 jest.mock("./ep-server-functions/proxy-fetch", () => ({
-  // `epProxyErrorCode` is pure — exercise the real one.
   ...jest.requireActual("./ep-server-functions/proxy-fetch"),
   callEpProxy: (...a: unknown[]) => mockCallEpProxy(...a),
   shouldUseProxy: () => true,
@@ -52,6 +51,15 @@ jest.mock("react-hook-form", () => ({
 
 const { EPAddToCartButton } = require("./registerEPAddToCartButton");
 const { EP_CART_CACHE_KEY } = require("./cart-provider/cache-keys");
+// The cart reader the root entry ships alongside the button.
+require("./cart-provider/use-ep-cart");
+
+const { makeEpCallError } = require("./ep-server-functions/call-error");
+
+/** What the proxy route's failure looks like when it sends Elastic Path's reason. */
+function forwardedReason(message: string): Error {
+  return makeEpCallError({ message, forwarded: true });
+}
 
 const SAMPLE_PRODUCT = {
   id: "prod-1",
@@ -103,9 +111,10 @@ describe("EPAddToCartButton", () => {
     );
   });
 
-  it("invalidates the EP cart SWR cache key after a successful add", async () => {
+  it("shows the added cart to the page's cart readers, once", async () => {
     setUp();
-    mockCallEpProxy.mockResolvedValue({ id: "cart-1", lineItems: [] });
+    const updatedCart = { id: "cart-1", items: [{ id: "li-1" }] };
+    mockCallEpProxy.mockResolvedValue(updatedCart);
 
     render(<EPAddToCartButton>Add</EPAddToCartButton>);
 
@@ -113,7 +122,9 @@ describe("EPAddToCartButton", () => {
       fireEvent.click(screen.getByText("Add"));
     });
 
-    expect(mockSWRMutate).toHaveBeenCalledWith(EP_CART_CACHE_KEY);
+    expect(mockSWRMutate.mock.calls).toEqual([
+      [EP_CART_CACHE_KEY, updatedCart, { revalidate: false }],
+    ]);
   });
 
   it("disables the button while the add is in flight (double-click prevention)", async () => {
@@ -173,9 +184,9 @@ describe("EPAddToCartButton", () => {
     expect(error).toMatch(/couldn't add this item/i);
   });
 
-  it("passes through a locally-raised error message unchanged", async () => {
+  it("passes through Elastic Path's reason when the proxy route sends it", async () => {
     setUp();
-    mockCallEpProxy.mockRejectedValue(new Error("out of stock"));
+    mockCallEpProxy.mockRejectedValue(forwardedReason("out of stock"));
 
     render(<EPAddToCartButton>Add</EPAddToCartButton>);
 
@@ -186,9 +197,45 @@ describe("EPAddToCartButton", () => {
     expect(readState().error).toMatch(/out of stock/);
   });
 
+  it("shows the write's rejection message for a coded failure, without mapping it again", async () => {
+    setUp();
+    mockCallEpProxy.mockRejectedValue(
+      makeEpCallError({
+        message: "epAddCartItem: The requested quantity exceeds the available stock",
+        code: "insufficient_stock",
+        forwarded: true,
+      })
+    );
+
+    render(<EPAddToCartButton>Add</EPAddToCartButton>);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Add"));
+    });
+
+    expect(readState().error).toBe(
+      "epAddCartItem: The requested quantity exceeds the available stock"
+    );
+  });
+
+  it("shows shopper copy, not the transport's message, for a failure with no reason", async () => {
+    setUp();
+    mockCallEpProxy.mockRejectedValue(new TypeError("Failed to fetch"));
+
+    render(<EPAddToCartButton>Add</EPAddToCartButton>);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Add"));
+    });
+
+    expect(readState().error).toBe(
+      "We couldn't add this item to your cart. Please try again."
+    );
+  });
+
   it("clears a previous addToCartState.error when a new attempt begins", async () => {
     setUp();
-    mockCallEpProxy.mockRejectedValueOnce(new Error("out of stock"));
+    mockCallEpProxy.mockRejectedValueOnce(forwardedReason("out of stock"));
 
     render(<EPAddToCartButton>Add</EPAddToCartButton>);
 
@@ -217,7 +264,7 @@ describe("EPAddToCartButton", () => {
   it("does not call onAddedToCart when the mutation fails", async () => {
     setUp();
     const onAddedToCart = jest.fn();
-    mockCallEpProxy.mockRejectedValue(new Error("out of stock"));
+    mockCallEpProxy.mockRejectedValue(forwardedReason("out of stock"));
 
     render(
       <EPAddToCartButton onAddedToCart={onAddedToCart}>Add</EPAddToCartButton>
@@ -330,7 +377,7 @@ describe("EPAddToCartButton", () => {
   describe("a failed add", () => {
     it("shows the shopper why, instead of swallowing it", async () => {
       setUp();
-      mockCallEpProxy.mockRejectedValue(new Error("Cart is locked"));
+      mockCallEpProxy.mockRejectedValue(forwardedReason("Cart is locked"));
 
       const { container } = render(<EPAddToCartButton>Add</EPAddToCartButton>);
       await act(async () => {
@@ -344,7 +391,7 @@ describe("EPAddToCartButton", () => {
 
     it("stays quiet when the consumer renders the error itself", async () => {
       setUp();
-      mockCallEpProxy.mockRejectedValue(new Error("Cart is locked"));
+      mockCallEpProxy.mockRejectedValue(forwardedReason("Cart is locked"));
 
       const { container } = render(
         <EPAddToCartButton showError={false}>Add</EPAddToCartButton>

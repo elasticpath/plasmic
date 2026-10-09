@@ -31,13 +31,21 @@ example does, resolves as before.
 | one `.d.ts` per source file under `dist/` | one rolled-up `dist/index.d.ts`, `dist/server.d.ts` and `dist/server.d.mts` |
 | `/server` types under a single `types` condition | `import` resolves `server.d.mts`, `require` resolves `server.d.ts` |
 
+On `/server`, `epAddCartItem`, `epUpdateCartItem` and `epRemoveCartItem` reject
+the same way as in the browser. A rejection's `message` is shopper copy, such
+as "There isn't enough stock to add that quantity. Try a smaller amount.", not
+Elastic Path's reason, and it always has a `code`. To migrate, read Elastic
+Path's reason from the rejection's `cause`, not its `message`, and branch on
+`code`. In development the proxy route still forwards Elastic Path's reason, so
+a rejection in the browser there has that reason as its `message`.
+
 ### Removed
 
 | Removed | Replacement |
 | --- | --- |
 | `useEpCommerce().client`, `EpCommerce.client` | None. Call an `ep.*` server function; it resolves the session the server holds. |
 | `createCartRoutes`, the `/api/ep/cart/*` routes | `createEpProxyRoutes`, already mounted at `/api/ep/proxy/[fn]`. Delete the cart route file. |
-| `useCart`, `useAddItem`, `useUpdateItem`, `useRemoveItem` | `useEpCart` to read. To write from the browser, use the cart components or the Elastic Path Provider's cart global actions; `epAddCartItem` / `epUpdateCartItem` / `epRemoveCartItem` are on `/server` for server code. |
+| `useCart`, `useAddItem`, `useUpdateItem`, `useRemoveItem` | `useEpCart` to read. To write, `epAddCartItem`, `epUpdateCartItem` and `epRemoveCartItem` from the root entry. Each returns a promise of the updated cart and rejects on failure. `epAddCartItem` takes `location`, `bundleConfiguration`, `customInputs` and `sku`. |
 | `useShopperFetch`, `useShopperContext`, `ShopperOverrides` | None. Nothing in the page carries shopper identity. |
 | `X-Shopper-Context`, `resolveCartId`, `parseShopperHeader` | None. The shopper envelope is the only identity input. |
 | `buildCartCookieHeader`, `buildClearCartCookieHeader`, the `ep_cart` cookie | The envelope's own cart pointer, written by `setCart`. |
@@ -47,6 +55,8 @@ example does, resolves as before.
 | `DEFAULT_EP_BASE_PATH` | `EP_AUTH_BASE_PATH`, the same `"/api/ep"`, renamed because it is the only mount, not a default. |
 | `providerProps()` on the session `getSession` returns | None. It carried only the mount path, and nothing read it. Drop any `globalContextsProps` entry that passes it. |
 | `cartMergeStrategy` on `createEpAuth` | `sessionCartResolver`. |
+| `buildEpCtx(session, { locale, currency })` | `createEpAuth({ resolveLocaleAndCurrency })`. It reads the request's cookies and headers, and `buildEpCtx(session)` takes the result from the session. |
+| Elastic Path Provider's `currency` | `createEpAuth({ resolveLocaleAndCurrency })`. The prop is hidden and ignored, and no longer reaches `useEpCommerce().currency`; nothing ever sent it to Elastic Path. |
 | `/ep/account/login` with `{ epMemberId, epAccountId, epAccountToken, epAccountExpires }` | `{ username, password }`. The package mints the account credential itself, so there is nothing left to verify. |
 
 Two capabilities go with them, not only their configuration:
@@ -57,8 +67,8 @@ Two capabilities go with them, not only their configuration:
   accepted one from the page would hand that cart to whoever sent it.
 - **Overriding the shopper from the page.** `X-Shopper-Context` and EP Shopper
   Context could set the cart, account, locale and currency for a request. The
-  session the server holds is now the only source; set locale and currency on
-  the Elastic Path Provider.
+  session the server holds is now the only source; set locale and currency
+  with `createEpAuth`'s `resolveLocaleAndCurrency`.
 
 ### Deprecated
 
@@ -70,6 +80,19 @@ removed component or a removed published prop. Both are empty instead.
 - **EP Promo Code Input**'s `Use Server Routes` is hidden and ignored.
 
 ### Added
+
+The root entry exports the cart writes `epAddCartItem`, `epUpdateCartItem` and
+`epRemoveCartItem`, their input types, and the `Cart` type they resolve with,
+so a storefront's own React component can write to the cart. The types `Cart`
+is built from, `CartResponse`, `CartMeta`, `CartItem`, `CartItemType` and
+`FormattedPrice`, are exported too. In the browser the writes call the
+storefront's proxy route, so no Elastic Path credential reaches the page. After
+a write, every `useEpCart()` consumer shows the new cart. A rejection is an
+`Error` whose `message` is text you can show the shopper and, when there is
+one, a stable `code` such as `insufficient_stock`. On the Studio canvas and in
+a configure panel a write does not run; it rejects with the code
+`design_fn_not_served` and a `message` that names where it ran. They are the
+same functions `/server` exports.
 
 `createEpDesignRoutes` serves Studio design time. It answers four catalog
 reads, `getProduct`, `getProductList`, `getProductPage` and
@@ -122,6 +145,12 @@ already does. Calls made with `getClientCredentialsToken` never carry it, and
 with no account selected no checkout call does.
 
 ### Changed
+
+EP Add To Cart Button, EP Cart Item Quantity Control and EP Cart Item Remove
+Button show the cart write's rejection message as their `error`. They show
+shopper copy for a network failure instead of the browser's own message, and on
+the Studio canvas they say that cart changes do not run there. In development,
+when the proxy route forwards Elastic Path's reason, they show that reason.
 
 A shopper's cart at sign-in is not merged with the account's. 0.8.0 replaced
 the documented `cartMergeStrategy: "merge"` default with keep-the-guest-cart,
@@ -182,6 +211,43 @@ only the ones that were already server-rendered. Nothing about the components
 changes: same props, same slots, same data.
 
 ### Fixed
+
+A cart write no longer resolves with a cart priced differently from the one
+`ep.getCart` reads. `epAddCartItem`, `epUpdateCartItem`, `epRemoveCartItem`,
+`epApplyPromoCode` and `epRemovePromoCode` read the cart back without the
+`Accept-Language` and `X-Moltin-Currency` headers that `ep.getCart` sent for the
+shopper's locale and currency. Every cart read now sends the same headers.
+
+A browser call through the proxy route is priced and localised the way the
+server render is. The proxy sent neither `Accept-Language` nor
+`X-Moltin-Currency`, so a cart a browser write returned could be in a different
+currency from the server-rendered cart. `createEpAuth`'s new
+`resolveLocaleAndCurrency` option, typed `EpLocaleAndCurrencyResolver`, now
+chooses both from the request's cookies and headers on every `getSession`, and
+the server render and the proxy route read them from that one session. A
+`getSession` call that passes no headers, such as a server render, hands the
+resolver the page request's headers from `next/headers`, so a resolver keyed on
+`Accept-Language` answers the same on both paths. Outside the App Router there
+is no `next/headers`, so pass the request's headers: `getSession` takes a Node
+request's `IncomingHttpHeaders`, and the resolver gets header names in lower
+case. Derive them from a cookie or
+a header every request carries: a proxy request does not carry the page's URL.
+The resolver can return the `Accept-Language` value as the browser sent it,
+such as `en-GB,en;q=0.9`: the package sends the first valid tag in preference
+order, honouring `q` weights and skipping `*`. A locale is sent in its
+canonical BCP 47 form (`en-us` becomes `en-US`). A locale with no tag that
+`Intl.getCanonicalLocales` accepts, such as `en-a`, or a currency that is not
+three letters, is not sent, and the first one logs a `console.warn`; later ones
+log nothing.
+
+Checkout totals are in the currency the cart shows. Checkout read the cart
+without `Accept-Language` or `X-Moltin-Currency`, so a currency the resolver
+chose showed on the cart but not in the checkout totals, and `/pay` compared
+the cart against the session in two currencies. `SessionHandlerContext` now
+takes `locale` and `currency`; pass the session's, as `shopperAccessToken`
+comes from it: `{ ...ctx, locale: session?.locale, currency: session?.currency }`.
+A checkout cart read that returns no cart now fails with `EP_ERROR` instead of
+hashing an empty cart.
 
 `/server` type declarations are generated from the entry point instead of a
 hand-kept list, so an export can no longer ship without its type. `/server`

@@ -7,7 +7,6 @@
  * with the client-visible session shape plus Set-Cookie headers.
  */
 import { randomUUID } from "crypto";
-import { getACart } from "@epcc-sdk/sdks-shopper";
 import type {
   SessionRequest,
   SessionResponse,
@@ -17,6 +16,7 @@ import type {
   SessionTotals,
 } from "../../../checkout/session/types";
 import { hashCart } from "../../../checkout/session/cart-hash";
+import { readCartResponse } from "../../../ep-server-functions/read-cart";
 import { buildAdminEpClient } from "../../../checkout/session/admin-client";
 import { buildShopperEpClient } from "../../../checkout/session/shopper-client";
 import { EP_SHIPPING_LINE_SKU } from "../../../checkout/session/set-shipping-line";
@@ -80,21 +80,17 @@ export async function handleCreateSession(
   let totals: SessionTotals | null = null;
 
   try {
-    const cartResponse = await getACart({
-      client,
-      path: { cartID: cartId },
-      query: { include: ["items"] },
-    });
+    const cartResponse = await readCartResponse(client, cartId, ctx);
     const items =
-      (cartResponse.data as any)?.included?.items ??
-      (cartResponse.data as any)?.data?.items ??
+      (cartResponse as any)?.included?.items ??
+      (cartResponse as any)?.data?.items ??
       [];
     // Match /pay: drop the storefront-managed shipping line so selecting a
     // rate cannot 409 the cart-hash check.
     cartItems = (Array.isArray(items) ? items : []).filter(
       (it: { sku?: string }) => it?.sku !== EP_SHIPPING_LINE_SKU
     );
-    totals = extractTotals((cartResponse.data as any)?.data);
+    totals = extractTotals((cartResponse as any)?.data);
   } catch (err) {
     log.error("Failed to fetch cart from EP", {
       cartId,

@@ -127,14 +127,15 @@ describe("ServerCartActionsProvider", () => {
     });
   });
 
-  it("refreshes the one cart cache after a write", async () => {
+  it("leaves the cart cache to the write, which refreshes it", async () => {
     const actions = renderProvider();
 
     await act(async () => {
       actions.addItem("prod-1", "", 1);
     });
 
-    expect(mockSwrMutate.mock.calls).toEqual([["ep-cart"]]);
+    expect(mockEpAddCartItem).toHaveBeenCalled();
+    expect(mockSwrMutate).not.toHaveBeenCalled();
   });
 
   it("does not throw when a write fails", async () => {

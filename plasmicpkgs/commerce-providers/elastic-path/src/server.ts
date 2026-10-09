@@ -93,6 +93,8 @@ export type {
   EpAuth,
   EpAuthConfig,
   EpLapsedAccount,
+  EpLocaleAndCurrency,
+  EpLocaleAndCurrencyResolver,
   EpPluginOptions,
   EpDesignRoutes,
   EpProviderBundleConfig,

@@ -101,10 +101,59 @@ const { cart, isLoading, error, refresh } = useEpCart();
 `useCheckoutCart()` reads the same cart for checkout, as
 `{ data, isEmpty, isLoading, error, mutate }`.
 
-The cart writes `epAddCartItem`, `epUpdateCartItem` and `epRemoveCartItem` are
-exported from `/server` for server code. The root entry exports no cart write,
-so browser code writes to the cart through the components or the global
-actions.
+To write to the cart, call `epAddCartItem`, `epUpdateCartItem` or
+`epRemoveCartItem`. They replace `useAddItem`, `useUpdateItem` and
+`useRemoveItem`, which this release removed. In the browser they call the
+storefront's proxy route, so no Elastic Path credential reaches the page. Each
+resolves with the updated cart, and every `useEpCart()` consumer, such as the
+cart drawer, the badge and the checkout summary, shows it without a reload:
+
+```tsx
+"use client";
+import { epAddCartItem } from "@elasticpath/plasmic-ep-commerce-elastic-path";
+
+async function addToCart(productId: string) {
+  try {
+    const cart = await epAddCartItem({
+      productId,
+      quantity: 1,
+      location: "warehouse-north",
+    });
+    console.log(`${cart.items.length} lines in the cart`);
+  } catch (err) {
+    const { message, code } = err as Error & { code?: string };
+    // code: "insufficient_stock", "no_session", "dispatch_failed",
+    // "route_not_found" or "design_fn_not_served"
+    showError(message);
+  }
+}
+```
+
+`epAddCartItem` takes `productId`, `quantity`, and optionally `sku`,
+`location`, `bundleConfiguration` and `customInputs`. `epUpdateCartItem` takes
+`itemId`, `quantity` and optionally `location`; without it, the line's own
+location is used. `epRemoveCartItem` takes `itemId`. The root entry also
+exports the types of the cart they resolve with: `Cart`, `CartItem`,
+`CartItemType`, `CartMeta`, `CartResponse` and `FormattedPrice`.
+
+A rejection is an `Error` whose `message` you can show the shopper. When the
+proxy route forwards Elastic Path's own reason, which it does only in
+development, the `message` is that reason. Otherwise it is fixed text for the
+failure, such as "We couldn't add this item to your cart. Please try again."
+Branch on `code`, not on the message text. A network failure or an error page
+with no code rejects with no `code`. `route_not_found` means the proxy route
+is not mounted. `cause` holds the original failure, and `correlationId`, when
+there is one, matches the proxy route's log line.
+
+On the Studio canvas and in a configure panel, a write does not run and the
+cart does not change. The write rejects with the code `design_fn_not_served`
+and a `message` that names where it ran. Preview the page to try the write.
+
+`/server` exports the same three functions. On the server they write with the
+request's session and reject the same way: the same shopper `message`, the same
+`code`, and Elastic Path's own reason in `cause`. A server rejection always has
+a `code`; a failure with no known cause is `dispatch_failed`. Only a call in the
+browser refreshes the `useEpCart()` cache.
 
 ---
 
@@ -504,7 +553,7 @@ Every count `ep.getStock` returns is a `number`, not the SDK's `BigInt` — the 
 
 Neither function takes a `sort`; see [Choosing a listing path](#3-choosing-a-listing-path).
 
-The session (`accessToken`, `host`, `clientId`, `cartId?`, `accountId?`, `accountToken?`, `locale?`, `currency?`) is **not** an argument. `withEpSession(epCtx, callback)` establishes a per-request `AsyncLocalStorage` scope; each `ep.*` function reads the active session via `getCurrentEpSession()` internally. On the server, outside any `withEpSession` scope, they fail-soft to `null` / `[]` without calling Elastic Path. On a published page in the browser, they post to the proxy route. In Studio they post to the design-time route, which serves the four catalog reads only: any other function returns its empty shape on the canvas and throws in the data-query Configure panel.
+The session (`accessToken`, `host`, `clientId`, `cartId?`, `accountId?`, `accountToken?`, `locale?`, `currency?`) is **not** an argument. `withEpSession(epCtx, callback)` establishes a per-request `AsyncLocalStorage` scope; each `ep.*` function reads the active session via `getCurrentEpSession()` internally. On the server, outside any `withEpSession` scope, they fail-soft to `null` / `[]` without calling Elastic Path. On a published page in the browser, they post to the proxy route. `locale` and `currency` come from `createEpAuth`'s `resolveLocaleAndCurrency`, which runs on every `getSession` with the request's cookies and headers (a server render that passes no headers gets the page request's), so the server render and the proxy route send Elastic Path the same `Accept-Language` and `X-Moltin-Currency`. Checkout reads the cart with the same pair when the host passes the session's `locale` and `currency` on `SessionHandlerContext`. In Studio they post to the design-time route, which serves the four catalog reads only: any other function returns its empty shape on the canvas and throws in the data-query Configure panel.
 
 ### Studio binding
 
@@ -534,7 +583,7 @@ Quantity and remove mutations expose the same pattern:
 
 `error` is `null` when there is no current failure, and clears when a new attempt begins. Studio provides an **error** preview state on both components. Neither renders a default toast or banner; designers choose how to display the bound value.
 
-Like Add to Cart, these values are shopper-facing copy derived from stable proxy error codes (`insufficient_stock`, `no_session`, …). Production responses sanitize raw messages to `dispatch_failed`, so components must not bind that token through to the UI.
+Like Add to Cart, these values are the cart write's rejection message (see [§4](#4-cart)): shopper-facing copy for the stable error code (`insufficient_stock`, `no_session`, …), or, in development only, Elastic Path's own reason when the proxy route forwards it.
 
 ### Required Next.js setup
 

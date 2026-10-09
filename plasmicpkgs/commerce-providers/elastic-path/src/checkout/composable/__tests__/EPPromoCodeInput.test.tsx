@@ -20,7 +20,7 @@ jest.mock("../../../cart-provider/use-ep-cart", () => ({
 const mockCallEpProxy = jest.fn();
 jest.mock("../../../ep-server-functions/proxy-fetch", () => ({
   __esModule: true,
-  // `epProxyErrorCode` is pure — exercise the real one.
+  // Only the network call is mocked; `shouldUseProxy` stays real.
   ...jest.requireActual("../../../ep-server-functions/proxy-fetch"),
   callEpProxy: (...args: unknown[]) => mockCallEpProxy(...args),
 }));

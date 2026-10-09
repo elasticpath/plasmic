@@ -6,6 +6,8 @@
  * on-demand from the session's cartId / orderId rather than duplicated.
  */
 
+import type { EpLocaleAndCurrency } from "../../types/locale-and-currency";
+
 // ---------------------------------------------------------------------------
 // Session status
 // ---------------------------------------------------------------------------
@@ -269,7 +271,12 @@ export interface EPCredentials {
   apiBaseUrl: string;
 }
 
-export interface SessionHandlerContext {
+/**
+ * `locale` and `currency` are the shopper's, from the same `getSession` as
+ * `shopperAccessToken`. Every cart read sends them, so the checkout totals
+ * match the cart the shopper saw.
+ */
+export interface SessionHandlerContext extends EpLocaleAndCurrency {
   epCredentials: EPCredentials;
   adapterRegistry: AdapterRegistry;
   sessionStore: SessionStore;

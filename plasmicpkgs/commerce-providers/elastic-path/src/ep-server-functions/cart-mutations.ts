@@ -6,11 +6,23 @@ import {
   manageCarts,
   updateACartItem,
 } from "@epcc-sdk/sdks-shopper";
+import { readEpErrorCode } from "../browser-call";
 import type { Cart } from "../types/cart";
-import { normalizeCart } from "../utils/normalize";
+import {
+  carriesForwardedMessage,
+  classifyEpFailure,
+  makeEpCallError,
+} from "./call-error";
+import { seedEpCartCaches } from "./cart-cache-seed";
+import {
+  CART_WRITE_FAILURE_COPY,
+  cartMutationErrorCopy,
+} from "./cart-mutation-error-copy";
+import { currentEpDesignRealm } from "./design-realm";
 import { buildEpClient, isUsableAuth } from "./ep-client";
-import { getCurrentEpSession } from "./session-context";
+import { getCurrentEpSession, type EpSessionContext } from "./session-context";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
+import { readCart } from "./read-cart";
 import {
   addCustomCartItem,
   type CartAdjustmentKind,
@@ -52,17 +64,15 @@ function assertEpSdkOk(
   }
 }
 
-async function fetchNormalizedCart(
+function readSessionCart(
   client: ReturnType<typeof buildEpClient>,
   auth: EpServerAuth,
   cartId: string
 ): Promise<Cart> {
-  const cart = await getACart({
-    client,
-    path: { cartID: cartId },
-    query: { include: ["items"] },
+  return readCart(client, cartId, {
+    locale: auth.locale,
+    currency: auth.currency,
   });
-  return normalizeCart(cart.data!, auth.locale ?? "en-US");
 }
 
 export interface EpAddCartItemInput {
@@ -112,13 +122,118 @@ export interface EpApplyCartAdjustmentInput {
   quantity?: number;
 }
 
-export async function epAddCartItem(input: EpAddCartItemInput): Promise<Cart> {
+function rejectionFromProxy(err: unknown, failureCopy: string): Error {
+  const code = readEpErrorCode(err);
+  const correlationId = (err as { correlationId?: unknown } | null)
+    ?.correlationId;
+  const message = carriesForwardedMessage(err)
+    ? err.message
+    : code
+      ? cartMutationErrorCopy(err, failureCopy)
+      : failureCopy;
+  return makeEpCallError({
+    message,
+    code,
+    correlationId: typeof correlationId === "string" ? correlationId : undefined,
+    cause: err,
+  });
+}
+
+function rejectionFromServer(err: unknown, failureCopy: string): Error {
+  const code = classifyEpFailure(err);
+  return makeEpCallError({
+    message: cartMutationErrorCopy({ code }, failureCopy),
+    code,
+    cause: err,
+  });
+}
+
+function proxyArgs(input: object): Record<string, unknown> {
+  return input as Record<string, unknown>;
+}
+
+async function writeCart<I>(
+  input: I,
+  writeViaProxy: (input: I) => Promise<Cart | undefined>,
+  writeWithSession: (
+    auth: EpSessionContext | undefined,
+    input: I
+  ) => Promise<Cart>,
+  failureCopy: string
+): Promise<Cart> {
   const auth = getCurrentEpSession();
-
+  let cart: Cart | undefined;
   if (!isUsableAuth(auth) && shouldUseProxy()) {
-    return callEpProxy<Cart>("addCartItem", input as unknown as Record<string, unknown>);
+    try {
+      cart = await writeViaProxy(input);
+    } catch (err) {
+      throw rejectionFromProxy(err, failureCopy);
+    }
+  } else {
+    try {
+      cart = await writeWithSession(auth, input);
+    } catch (err) {
+      throw rejectionFromServer(err, failureCopy);
+    }
   }
+  if (!cart) {
+    const code =
+      currentEpDesignRealm() === "artboard" ? "design_fn_not_served" : undefined;
+    throw makeEpCallError({
+      code,
+      message: code ? cartMutationErrorCopy({ code }, failureCopy) : failureCopy,
+    });
+  }
+  await seedEpCartCaches(cart);
+  return cart;
+}
 
+/**
+ * Adds an item to the shopper's cart and resolves with the updated cart. On
+ * the server it writes with the request's session; in the browser it calls
+ * the storefront's proxy route, then every `useEpCart()` consumer on the page
+ * shows the new cart.
+ *
+ * Rejects the same way on the server and in the browser: an `Error` whose
+ * `message` is shopper copy and whose `code` is stable to branch on —
+ * `insufficient_stock`, `no_session`, `dispatch_failed`, `route_not_found`,
+ * or `design_fn_not_served` on the Studio canvas and in a configure panel.
+ * `cause` holds the original failure; `correlationId` is set when a proxy
+ * route logged it.
+ */
+export function epAddCartItem(input: EpAddCartItemInput): Promise<Cart> {
+  return writeCart(
+    input,
+    (i) => callEpProxy<Cart>("addCartItem", proxyArgs(i)),
+    addCartItemWithSession,
+    CART_WRITE_FAILURE_COPY.add
+  );
+}
+
+/** Sets a cart line's quantity. Resolves, refreshes and rejects like {@link epAddCartItem}. */
+export function epUpdateCartItem(input: EpUpdateCartItemInput): Promise<Cart> {
+  return writeCart(
+    input,
+    (i) => callEpProxy<Cart>("updateCartItem", proxyArgs(i)),
+    updateCartItemWithSession,
+    CART_WRITE_FAILURE_COPY.update
+  );
+}
+
+/** Removes a cart line. Resolves, refreshes and rejects like {@link epAddCartItem}. */
+export function epRemoveCartItem(input: EpRemoveCartItemInput): Promise<Cart> {
+  return writeCart(
+    input,
+    (i) => callEpProxy<Cart>("removeCartItem", proxyArgs(i)),
+    removeCartItemWithSession,
+    CART_WRITE_FAILURE_COPY.remove
+  );
+}
+
+async function addCartItemWithSession(
+  auth: EpSessionContext | undefined,
+  input: EpAddCartItemInput
+): Promise<Cart> {
   if (!isUsableAuth(auth)) {
     throw new Error("epAddCartItem: no EP session");
   }
@@ -169,7 +284,7 @@ export async function epAddCartItem(input: EpAddCartItemInput): Promise<Cart> {
     );
   }
 
-  const cart = await fetchNormalizedCart(client, auth, cartId);
+  const cart = await readSessionCart(client, auth, cartId);
   // Soft EP failures (e.g. unpublished catalog product) can resolve without
   // `error` while leaving the cart empty — surface that instead of a quiet
   // empty success that looks like "add did nothing".
@@ -190,15 +305,10 @@ export async function epAddCartItem(input: EpAddCartItemInput): Promise<Cart> {
   return cart;
 }
 
-export async function epUpdateCartItem(
+async function updateCartItemWithSession(
+  auth: EpSessionContext | undefined,
   input: EpUpdateCartItemInput
 ): Promise<Cart> {
-  const auth = getCurrentEpSession();
-
-  if (!isUsableAuth(auth) && shouldUseProxy()) {
-    return callEpProxy<Cart>("updateCartItem", input as unknown as Record<string, unknown>);
-  }
-
   if (!isUsableAuth(auth)) {
     throw new Error("epUpdateCartItem: no EP session");
   }
@@ -252,7 +362,7 @@ export async function epUpdateCartItem(
   });
   assertEpSdkOk(updateRes, "epUpdateCartItem");
 
-  return fetchNormalizedCart(client, auth, auth.cartId);
+  return readSessionCart(client, auth, auth.cartId);
 }
 
 /**
@@ -310,15 +420,10 @@ export async function epApplyCartAdjustment(
   });
 }
 
-export async function epRemoveCartItem(
+async function removeCartItemWithSession(
+  auth: EpSessionContext | undefined,
   input: EpRemoveCartItemInput
 ): Promise<Cart> {
-  const auth = getCurrentEpSession();
-
-  if (!isUsableAuth(auth) && shouldUseProxy()) {
-    return callEpProxy<Cart>("removeCartItem", input as unknown as Record<string, unknown>);
-  }
-
   if (!isUsableAuth(auth)) {
     throw new Error("epRemoveCartItem: no EP session");
   }
@@ -333,7 +438,7 @@ export async function epRemoveCartItem(
   });
   assertEpSdkOk(deleteRes, "epRemoveCartItem");
 
-  return fetchNormalizedCart(client, auth, auth.cartId);
+  return readSessionCart(client, auth, auth.cartId);
 }
 
 /**
@@ -377,7 +482,7 @@ export async function epApplyPromoCode(
   });
   assertEpSdkOk(applyRes, "epApplyPromoCode");
 
-  const cart = await fetchNormalizedCart(client, auth, auth.cartId);
+  const cart = await readSessionCart(client, auth, auth.cartId);
   // A code the cart does not qualify for can come back 201 with no promotion
   // line written. Reporting that as success leaves the shopper looking at an
   // unchanged total with nothing said, so treat it as the rejection it is.
@@ -422,5 +527,5 @@ export async function epRemovePromoCode(
   });
   assertEpSdkOk(deleteRes, "epRemovePromoCode");
 
-  return fetchNormalizedCart(client, auth, auth.cartId);
+  return readSessionCart(client, auth, auth.cartId);
 }

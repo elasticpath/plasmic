@@ -7,7 +7,6 @@
  * SSR never reaches this: `getCurrentEpSession()` is already populated, so the
  * function fetches EP directly.
  */
-import { readEpErrorCode } from "../browser-call";
 import { EP_AUTH_BASE_PATH } from "../ep-auth-base-path";
 import { makeEpCallError, readEpCallError } from "./call-error";
 import { callEpDesign } from "./design-fetch";
@@ -21,15 +20,6 @@ export function shouldUseProxy(): boolean {
 
 function resolveProxyUrl(fnName: string): string {
   return `${PROXY_PATH}/${fnName}`;
-}
-
-/**
- * Reads the machine-readable `code` a thrown proxy error carries, or
- * `undefined` for errors from elsewhere. Branch on this rather than on message
- * text — the proxy route withholds `message` in production.
- */
-export function epProxyErrorCode(err: unknown): string | undefined {
-  return readEpErrorCode(err);
 }
 
 /**

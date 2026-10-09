@@ -11,9 +11,9 @@ import { mutate as swrMutate } from "swr";
 import { Registerable } from "../registerable";
 import { createLogger } from "../utils/logger";
 import { MOCK_CART_LINE_ITEMS } from "../utils/design-time-data";
-import { epProxyErrorCode } from "../ep-server-functions/proxy-fetch";
+import { readEpErrorCode } from "../browser-call";
 import { epUpdateCartItem } from "../ep-server-functions/cart-mutations";
-import { cartMutationErrorCopy } from "../ep-server-functions/cart-mutation-error-copy";
+import { cartWriteErrorText } from "../ep-server-functions/cart-mutation-error-copy";
 import { epCartCacheKey } from "../cart-provider/cache-keys";
 import {
   CartItemQuantityContext,
@@ -21,9 +21,6 @@ import {
 } from "./CartDrawerContext";
 
 const log = createLogger("EPCartItemQuantityControl");
-
-const GENERIC_QUANTITY_ERROR =
-  "We couldn't update the quantity. Please try again.";
 
 type PreviewState = "auto" | "withData" | "loading" | "minReached" | "error";
 
@@ -209,18 +206,11 @@ export function EPCartItemQuantityControl(
       setError(null);
       setIsLoading(true);
       try {
-        const updated = await epUpdateCartItem({
+        await epUpdateCartItem({
           itemId,
           quantity: newQuantity,
           ...(location ? { location } : {}),
         });
-        // Seeding the cache with an empty result would blank the cart, since
-        // `revalidate: false` leaves nothing to correct it. Revalidate instead.
-        if (updated) {
-          await swrMutate(epCartCacheKey(), updated, { revalidate: false });
-        } else {
-          await swrMutate(epCartCacheKey());
-        }
         setLocalQuantity(newQuantity);
         quantityRef.current = newQuantity;
         prevServerQuantity.current = newQuantity;
@@ -229,9 +219,9 @@ export function EPCartItemQuantityControl(
           err instanceof Error ? err.message : "Failed to update quantity";
         log.error("Quantity update failed", {
           error: message,
-          code: epProxyErrorCode(err),
+          code: readEpErrorCode(err),
         } as Record<string, unknown>);
-        setError(cartMutationErrorCopy(err, GENERIC_QUANTITY_ERROR));
+        setError(cartWriteErrorText(err, "update"));
 
         const revertTo = Math.max(minQuantity, Number(previousQty) || minQuantity);
         setLocalQuantity(revertTo);
@@ -243,7 +233,7 @@ export function EPCartItemQuantityControl(
         // must not permanently disable +. Branch on the code, not the message:
         // the proxy withholds messages in production.
         if (
-          epProxyErrorCode(err) === "insufficient_stock" &&
+          readEpErrorCode(err) === "insufficient_stock" &&
           newQuantity > previousQty
         ) {
           setStockCap(revertTo);

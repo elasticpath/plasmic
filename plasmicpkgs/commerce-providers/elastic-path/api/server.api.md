@@ -5,7 +5,6 @@
 ```ts
 
 import type { BetterAuthPlugin } from 'better-auth';
-import type { CartEntityResponse } from '@epcc-sdk/sdks-shopper';
 import type { CartItemObject } from '@epcc-sdk/sdks-shopper';
 import type { CartResponse } from '@epcc-sdk/sdks-shopper';
 import type { Client } from '@epcc-sdk/sdks-shopper';
@@ -48,10 +47,7 @@ export function assertProductionSecret(secret: string | undefined, opts: {
 }): void;
 
 // @public (undocumented)
-export function buildEpCtx(session: Pick<EpSession, "session" | "cart">, opts?: {
-    locale?: string;
-    currency?: string;
-}): EpCtx;
+export function buildEpCtx(session: Pick<EpSession, "session" | "cart" | "locale" | "currency">): EpCtx;
 
 // @public
 export const CART_ADJUSTMENT_KINDS: readonly ["fee", "handling", "shipping"];
@@ -174,7 +170,7 @@ export interface EpAccountSlot {
     token: string;
 }
 
-// @public (undocumented)
+// @public
 export function epAddCartItem(input: EpAddCartItemInput): Promise<Cart>;
 
 // @public (undocumented)
@@ -216,7 +212,7 @@ export interface EpAuth {
     api: {
         getSession(req: {
             cookies: Record<string, string>;
-            headers?: Record<string, string>;
+            headers?: Record<string, string | string[] | undefined>;
         }): Promise<EpSession>;
     };
     // (undocumented)
@@ -261,6 +257,7 @@ export interface EpAuthConfig {
     hostAllowlist?: readonly string[];
     passwordProfileId?: string;
     resolveConfig?: EpResolveConfig;
+    resolveLocaleAndCurrency?: EpLocaleAndCurrencyResolver;
     // (undocumented)
     secret?: string;
     sessionCartResolver?: EpSessionCartResolver;
@@ -417,6 +414,18 @@ export interface EpLapsedAccount {
     // (undocumented)
     name?: string;
 }
+
+// @public
+export interface EpLocaleAndCurrency {
+    currency?: string;
+    locale?: string;
+}
+
+// @public
+export type EpLocaleAndCurrencyResolver = (request: {
+    cookies: Record<string, string>;
+    headers: Record<string, string>;
+}) => EpLocaleAndCurrency | null | undefined | Promise<EpLocaleAndCurrency | null | undefined>;
 
 // @public
 export interface EpLocation {
@@ -588,7 +597,7 @@ export interface EpProxyRoutes {
     options: (request: Request) => Response;
 }
 
-// @public (undocumented)
+// @public
 export function epRemoveCartItem(input: EpRemoveCartItemInput): Promise<Cart>;
 
 // @public (undocumented)
@@ -627,8 +636,8 @@ export interface EpServerAuth {
     locale?: string;
 }
 
-// @public (undocumented)
-export interface EpSession {
+// @public
+export interface EpSession extends EpLocaleAndCurrency {
     // (undocumented)
     cart: {
         id: string;
@@ -688,7 +697,7 @@ export interface EpSessionData {
     memberId?: string;
 }
 
-// @public (undocumented)
+// @public
 export function epUpdateCartItem(input: EpUpdateCartItemInput): Promise<Cart>;
 
 // @public (undocumented)
@@ -837,8 +846,8 @@ export function resolveAuthSecret(secret: string | undefined, opts: {
 // @public
 export function seedCartFallback(): Promise<Record<string, Cart | null>>;
 
-// @public (undocumented)
-export interface SessionHandlerContext {
+// @public
+export interface SessionHandlerContext extends EpLocaleAndCurrency {
     accountToken?: string;
     // (undocumented)
     adapterRegistry: AdapterRegistry;

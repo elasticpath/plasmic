@@ -39,7 +39,7 @@ export const shopperContextMeta: GlobalContextMeta<ShopperContextProps> = {
     currency: {
       type: "string",
       displayName: "Currency",
-      description: `${DEPRECATED} Set Currency on the Elastic Path Provider.`,
+      description: `${DEPRECATED} The storefront server chooses the currency with createEpAuth's resolveLocaleAndCurrency.`,
       hidden: () => true,
       advanced: true,
     },

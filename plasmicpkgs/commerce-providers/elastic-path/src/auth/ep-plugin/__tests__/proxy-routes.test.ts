@@ -43,6 +43,7 @@ vi.mock("../../../ep-server-functions/getStock", () => ({
 const { createEpProxyRoutes } = await import("../proxy-routes");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const cartMutations = await import("../../../ep-server-functions/cart-mutations");
+import { makeEpCallError } from "../../../ep-server-functions/call-error";
 import { epGetCart } from "../../../ep-server-functions/getCart";
 import { epConfigureBundle } from "../../../ep-server-functions/configureBundle";
 import { epGetStock } from "../../../ep-server-functions/getStock";
@@ -718,6 +719,31 @@ describe("createEpProxyRoutes error sanitization", () => {
     const body = await res.json();
     expect(body.message).toBeUndefined();
     expect(body.code).toBe("insufficient_stock");
+  });
+
+  it("keeps the code a cart write rejected with", async () => {
+    (process.env as any).NODE_ENV = "production";
+    const res = await dispatchFailure({
+      error: makeEpCallError({
+        message:
+          "There isn't enough stock to add that quantity. Try a smaller amount.",
+        code: "insufficient_stock",
+        cause: new Error("epAddCartItem: The requested quantity exceeds the available stock"),
+      }),
+    });
+
+    expect((await res.json()).code).toBe("insufficient_stock");
+  });
+
+  it("does not take a Node system error's code for its own", async () => {
+    (process.env as any).NODE_ENV = "production";
+    const res = await dispatchFailure({
+      error: Object.assign(new Error("connect ECONNREFUSED"), {
+        code: "ECONNREFUSED",
+      }),
+    });
+
+    expect((await res.json()).code).toBe("dispatch_failed");
   });
 });
 

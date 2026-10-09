@@ -98,6 +98,19 @@ export {
 export { useEpCart } from "./cart-provider/use-ep-cart";
 export type { UseEpCartReturn } from "./cart-provider/use-ep-cart";
 export {
+  epAddCartItem,
+  epRemoveCartItem,
+  epUpdateCartItem,
+} from "./ep-server-functions/cart-mutations";
+export type { Cart, CartItem, CartItemType, CartMeta } from "./types/cart";
+export type { FormattedPrice } from "./utils/price";
+export type { CartResponse } from "@epcc-sdk/sdks-shopper";
+export type {
+  EpAddCartItemInput,
+  EpRemoveCartItemInput,
+  EpUpdateCartItemInput,
+} from "./ep-server-functions/cart-mutations";
+export {
   epCartCacheKey,
   EP_CART_CACHE_KEY,
 } from "./cart-provider/cache-keys";

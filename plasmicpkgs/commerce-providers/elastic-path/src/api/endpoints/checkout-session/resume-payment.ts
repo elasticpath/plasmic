@@ -9,11 +9,7 @@
  * Does not create a PaymentIntent, update the cart PI, re-assert shipping,
  * or use Clover handleConfirm.
  */
-import {
-  getACart,
-  checkoutApi,
-  confirmOrder,
-} from "@epcc-sdk/sdks-shopper";
+import { checkoutApi, confirmOrder } from "@epcc-sdk/sdks-shopper";
 import type {
   SessionRequest,
   SessionResponse,
@@ -22,6 +18,7 @@ import type {
   ClientCheckoutSession,
 } from "../../../checkout/session/types";
 import { hashCart } from "../../../checkout/session/cart-hash";
+import { readCartResponse } from "../../../ep-server-functions/read-cart";
 import { buildGuestCheckoutBody } from "../../../checkout/session/checkout-body-builder";
 import { persistOrderCustomFields } from "../../../checkout/session/order-custom-fields";
 import {
@@ -276,14 +273,14 @@ export async function handleResumePayment(
     product_id?: string;
   }> = [];
   try {
-    const cartResponse = await getACart({
-      client: shopperClient,
-      path: { cartID: session.cartId },
-      query: { include: ["items"] },
-    });
+    const cartResponse = await readCartResponse(
+      shopperClient,
+      session.cartId,
+      ctx
+    );
     const items =
-      (cartResponse.data as any)?.included?.items ??
-      (cartResponse.data as any)?.data?.items ??
+      (cartResponse as any)?.included?.items ??
+      (cartResponse as any)?.data?.items ??
       [];
     freshCartItems = (Array.isArray(items) ? items : []).filter(
       (it: { sku?: string }) => it?.sku !== EP_SHIPPING_LINE_SKU

@@ -21,11 +21,10 @@
  * buggy tenant function from producing a nonsensical order line; they are a
  * guard, not the trust boundary (the cart's pricing is).
  */
-import { getACart, manageCarts } from "@epcc-sdk/sdks-shopper";
+import { manageCarts } from "@epcc-sdk/sdks-shopper";
 import type { Cart } from "../types/cart";
-import { normalizeCart } from "../utils/normalize";
-import { buildCartReadHeaders } from "../utils/cart-read-headers";
 import type { buildEpClient } from "./ep-client";
+import { readCart } from "./read-cart";
 
 /** The adjustment families a `custom_item` line may represent in the MVP. */
 export const CART_ADJUSTMENT_KINDS = ["fee", "handling", "shipping"] as const;
@@ -107,14 +106,8 @@ export async function addCustomCartItem(
     },
   });
 
-  const cart = await getACart({
-    client,
-    path: { cartID: cartId },
-    query: { include: ["items"] },
-    headers: buildCartReadHeaders({
-      locale: input.locale,
-      currency: input.currency,
-    }),
+  return readCart(client, cartId, {
+    locale: input.locale,
+    currency: input.currency,
   });
-  return normalizeCart(cart.data!, input.locale ?? "en-US");
 }
