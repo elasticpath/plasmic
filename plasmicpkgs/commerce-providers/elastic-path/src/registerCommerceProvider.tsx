@@ -126,7 +126,6 @@ export function CommerceProviderComponent(props: CommerceProviderProps) {
     host,
     customHost,
     locale = "en-US",
-    currency,
     currencyDisplay = "platform",
   } = props;
 
@@ -145,7 +144,6 @@ export function CommerceProviderComponent(props: CommerceProviderProps) {
       clientId={clientId}
       host={host === "custom" ? customHost : host}
       locale={locale}
-      currency={currency}
       currencyDisplay={currencyDisplay}
     >
       {cartActions}
