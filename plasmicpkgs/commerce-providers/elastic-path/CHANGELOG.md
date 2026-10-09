@@ -31,6 +31,14 @@ example does, resolves as before.
 | one `.d.ts` per source file under `dist/` | one rolled-up `dist/index.d.ts`, `dist/server.d.ts` and `dist/server.d.mts` |
 | `/server` types under a single `types` condition | `import` resolves `server.d.mts`, `require` resolves `server.d.ts` |
 
+On `/server`, `epAddCartItem`, `epUpdateCartItem` and `epRemoveCartItem` reject
+the same way as in the browser. A rejection's `message` is shopper copy, such
+as "There isn't enough stock to add that quantity. Try a smaller amount.", not
+Elastic Path's reason, and it always has a `code`. To migrate, read Elastic
+Path's reason from the rejection's `cause`, not its `message`, and branch on
+`code`. In development the proxy route still forwards Elastic Path's reason, so
+a rejection in the browser there has that reason as its `message`.
+
 ### Removed
 
 | Removed | Replacement |
@@ -137,14 +145,11 @@ with no account selected no checkout call does.
 
 ### Changed
 
-`epAddCartItem`, `epUpdateCartItem` and `epRemoveCartItem` reject the same way
-on the server as in the browser. A server rejection's `message` is shopper copy,
-such as "There isn't enough stock to add that quantity. Try a smaller amount.",
-not Elastic Path's reason, and it always has a `code`. Server code that read the
-reason from `message` reads it from `cause`. EP Add To Cart Button, EP Cart Item
-Quantity Control and EP Cart Item Remove Button show shopper copy for a network
-failure instead of the browser's own message, and on the Studio canvas they say
-that cart changes do not run there.
+EP Add To Cart Button, EP Cart Item Quantity Control and EP Cart Item Remove
+Button show the cart write's rejection message as their `error`. They show
+shopper copy for a network failure instead of the browser's own message, and on
+the Studio canvas they say that cart changes do not run there. In development,
+when the proxy route forwards Elastic Path's reason, they show that reason.
 
 A shopper's cart at sign-in is not merged with the account's. 0.8.0 replaced
 the documented `cartMergeStrategy: "merge"` default with keep-the-guest-cart,
