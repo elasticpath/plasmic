@@ -5,9 +5,13 @@ import type {
 
 const CURRENCY = /^[A-Za-z]{3}$/;
 
+const intl = Intl as typeof Intl & {
+  getCanonicalLocales(locale: string): string[];
+};
+
 function canonicalLocale(value: string): string | undefined {
   try {
-    return Intl.getCanonicalLocales(value)[0];
+    return intl.getCanonicalLocales(value)[0];
   } catch {
     return undefined;
   }
