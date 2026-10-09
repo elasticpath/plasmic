@@ -240,7 +240,12 @@ export async function mintAccountTokens(input: {
         `Elastic Path rejected the member's credentials: ${detail}`
       );
     }
-    if (failure === "self_signup") {
+    if (
+      failure === "self_signup" &&
+      response.status >= 400 &&
+      response.status < 500 &&
+      response.status !== 401
+    ) {
       throw new EpAccountTokenError(
         "registration_rejected",
         response.status,
@@ -312,7 +317,7 @@ export async function mintAccountTokens(input: {
 export async function collectAccountTokens(input: {
   host: string;
   implicitToken: string;
-  credential: EpAccountCredential;
+  credential: Exclude<EpAccountCredential, { mechanism: "self_signup" }>;
 }): Promise<EpAccountTokenPage> {
   let offset = 0;
   const entries: EpAccountTokenEntry[] = [];

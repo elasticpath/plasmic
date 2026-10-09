@@ -220,8 +220,15 @@ describe("registering an account member", () => {
 
     expect(res.status).toBe(200);
     expect(settingsCalls).toBe(0);
-    expect(tokenCalls[0].body.data.password_profile_id).toBe(PROFILE);
-    expect(tokenCalls[0].body.data.authentication_mechanism).toBe("self_signup");
+    expect(tokenCalls[0].body.data).toEqual({
+      type: "account_management_authentication_token",
+      authentication_mechanism: "self_signup",
+      password_profile_id: PROFILE,
+      username: USERNAME,
+      password: PASSWORD,
+      name: NAME,
+      email: EMAIL,
+    });
   });
 
   it("discovers the store's only password profile when none is configured", async () => {
@@ -493,20 +500,38 @@ describe("the browser response", () => {
     expect(session?.session.epMemberId).toBeUndefined();
   });
 
-  it("keeps an Elastic Path 401 as a registration failure, not no_session", async () => {
-    signupFailure = { status: 401, detail: "token request was refused" };
+  it("keeps the member signed in on the session it wrote", async () => {
+    store.accounts = [ACCOUNTS[0]];
     const browser = browserFor(mountedAuth());
     await browser.client.signInAnonymously();
 
-    const err = await browser.client.register(REGISTER_BODY).catch((e) => e);
-
-    expect(err.status).toBe(401);
-    expect(err.code).toBe("registration_rejected");
-    expect(err.message).toBe("token request was refused");
-    expect(epIdentityErrorCode(err)).not.toBe("no_session");
-
+    await browser.client.register(REGISTER_BODY);
     const session = await browser.client.getSession();
-    expect(session?.session.id).toBeTruthy();
-    expect(session?.session.epMemberId).toBeUndefined();
+
+    expect(session?.session.epMemberId).toBe("member-1");
+    expect(session?.session.epAccount?.id).toBe("acct-north");
+    expect(session?.user).toMatchObject({ email: EMAIL, name: NAME });
   });
+
+  it.each([
+    [401, 401],
+    [503, 502],
+  ])(
+    "treats an Elastic Path %i as a failed token call, not a rejected registration",
+    async (upstream, expected) => {
+      signupFailure = { status: upstream, detail: "token request failed" };
+      const browser = browserFor(mountedAuth());
+      await browser.client.signInAnonymously();
+
+      const err = await browser.client.register(REGISTER_BODY).catch((e) => e);
+
+      expect(err.status).toBe(expected);
+      expect(err.code).toBe("account_token_mint_failed");
+      expect(epIdentityErrorCode(err)).not.toBe("no_session");
+
+      const session = await browser.client.getSession();
+      expect(session?.session.id).toBeTruthy();
+      expect(session?.session.epMemberId).toBeUndefined();
+    }
+  );
 });

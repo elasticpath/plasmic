@@ -49,7 +49,10 @@ import {
   mintAccountTokens,
   toAccountRoster,
 } from "./account-tokens";
-import type { EpAccountTokenPage } from "./account-tokens";
+import type {
+  EpAccountCredential,
+  EpAccountTokenPage,
+} from "./account-tokens";
 import { CHECKOUT_SESSION_COOKIE_NAME } from "../../checkout/session/cookie-name";
 import { resolveSessionCart } from "./session-cart";
 import type {
@@ -57,6 +60,12 @@ import type {
   EpSessionCartTrigger,
   EpTransitionCtx,
 } from "./session-cart";
+
+type MemberCredential = EpAccountCredential extends infer C
+  ? C extends { passwordProfileId: string }
+    ? Omit<C, "passwordProfileId">
+    : never
+  : never;
 
 export interface EpPluginOptions {
   /**
@@ -399,52 +408,25 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
     return cartId ? setSessionCart(cleared, cartId) : cleared;
   }
 
-  /**
-   * Signs a member in from a password or a self-signup. The caller has already
-   * required a session and checked its own body. Both mechanisms then share
-   * this path: mint, write the member, tear down checkout, and apply the
-   * session-cart rule.
-   */
   async function authenticateWithAccountCredential(
     ctx: any,
     existing: { user: any; session: any },
     prior: any,
-    attempt:
-      | { mechanism: "password"; username: string; password: string }
-      | {
-          mechanism: "self_signup";
-          username: string;
-          password: string;
-          name: string;
-          email: string;
-        },
-    member: { email: string; name: string },
-    operation: "login" | "register"
+    operation: "login" | "register",
+    credential: MemberCredential,
+    member: { email: string; name: string }
   ) {
     const host = prior.epHost;
     const implicitToken = prior.epAccessToken;
     let minted;
     try {
-      const profileId = await passwordProfileId(host, implicitToken);
       minted = await mintAccountTokens({
         host,
         implicitToken,
-        credential:
-          attempt.mechanism === "self_signup"
-            ? {
-                mechanism: "self_signup",
-                passwordProfileId: profileId,
-                username: attempt.username,
-                password: attempt.password,
-                name: attempt.name,
-                email: attempt.email,
-              }
-            : {
-                mechanism: "password",
-                passwordProfileId: profileId,
-                username: attempt.username,
-                password: attempt.password,
-              },
+        credential: {
+          ...credential,
+          passwordProfileId: await passwordProfileId(host, implicitToken),
+        },
       });
     } catch (err) {
       return accountTokenFailure(err);
@@ -489,11 +471,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
       accounts: toAccountRoster(minted.entries),
       total: minted.total,
     };
-    return ctx.json(
-      operation === "login"
-        ? epIdentityPayload("login", payload)
-        : epIdentityPayload("register", payload)
-    );
+    return ctx.json(epIdentityPayload(operation, payload));
   }
 
   return {
@@ -574,12 +552,12 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
               ctx,
               existing,
               prior,
+              "login",
               { mechanism: "password", username, password },
               {
                 email: username,
                 name: typeof body.name === "string" ? body.name : username,
-              },
-              "login"
+              }
             );
           }
 
@@ -613,9 +591,9 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
               ctx,
               existing,
               prior,
+              "register",
               { mechanism: "self_signup", username, password, name, email },
-              { email, name },
-              "register"
+              { email, name }
             );
           }
 
