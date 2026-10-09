@@ -16,7 +16,7 @@ import {
   useEpCart,
 } from "../../index";
 import * as serverFunctions from "../../ep-server-functions";
-import { registerEpCartCache } from "../../ep-server-functions/cart-cache-seed";
+import { registerEpCartCache } from "../../ep-server-functions/cart-cache-registry";
 import type { Cart } from "../../types/cart";
 import {
   latchEpCanvasArtboard,
@@ -224,10 +224,10 @@ describe("cart writes from the root entry", () => {
     await waitFor(() => expect(screen.getByTestId("badge").textContent).toBe("li-2x4"));
   });
 
-  it("resolves a write that succeeded when another cache fails to take the cart", async () => {
+  it("resolves a write that succeeded when another cache fails to show the cart", async () => {
     const brokenCache = {};
     registerEpCartCache(brokenCache, {
-      take: () => {
+      show: () => {
         throw new Error("cache gone");
       },
       refetch: () => undefined,
@@ -244,7 +244,7 @@ describe("cart writes from the root entry", () => {
       expect(cart?.items).toEqual([expect.objectContaining({ id: "li-new" })]);
       await waitFor(() => expect(screen.getByTestId("badge").textContent).toBe("li-newx1"));
     } finally {
-      registerEpCartCache(brokenCache, { take: () => undefined, refetch: () => undefined });
+      registerEpCartCache(brokenCache, { show: () => undefined, refetch: () => undefined });
     }
   });
 
@@ -488,15 +488,15 @@ describe("overlapping cart writes", () => {
     const otherCopysCache = {};
     afterEach(() =>
       registerEpCartCache(otherCopysCache, {
-        take: () => undefined,
+        show: () => undefined,
         refetch: () => undefined,
       })
     );
 
     it("are ordered together, and every copy's cache reads the cart once", async () => {
-      const take = jest.fn();
+      const show = jest.fn();
       const refetch = jest.fn();
-      registerEpCartCache(otherCopysCache, { take, refetch });
+      registerEpCartCache(otherCopysCache, { show, refetch });
       let otherCopy: typeof serverFunctions | undefined;
       jest.isolateModules(() => {
         otherCopy = require("../../ep-server-functions");
@@ -512,7 +512,7 @@ describe("overlapping cart writes", () => {
       await expectSettledOn("li-1x3", 1);
       expect(shown.badge).not.toContain("li-1x2");
       expect(refetch).toHaveBeenCalledTimes(1);
-      expect(take.mock.calls.map(([cart]) => cart.items[0].quantity)).toEqual([3]);
+      expect(show.mock.calls.map(([cart]) => cart.items[0].quantity)).toEqual([3]);
     });
   });
 });

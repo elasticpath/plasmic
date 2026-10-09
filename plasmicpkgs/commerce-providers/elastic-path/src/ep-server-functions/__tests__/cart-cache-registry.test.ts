@@ -2,22 +2,22 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
 import type { Cart } from "../../types/cart";
 
-type SeedModule = typeof import("../cart-cache-seed");
+type RegistryModule = typeof import("../cart-cache-registry");
 
-function loadCopy(): SeedModule {
-  let copy: SeedModule | undefined;
+function loadCopy(): RegistryModule {
+  let copy: RegistryModule | undefined;
   jest.isolateModules(() => {
-    copy = require("../cart-cache-seed");
+    copy = require("../cart-cache-registry");
   });
-  return copy as SeedModule;
+  return copy as RegistryModule;
 }
 
 const CART = { id: "cart-1", items: [], promotions: [] } as unknown as Cart;
 
 const write = () => Promise.resolve(CART);
 
-function cacheSpy(take: (cart: Cart) => unknown = jest.fn()) {
-  return { take: jest.fn(take), refetch: jest.fn() };
+function cacheSpy(show: (cart: Cart) => unknown = jest.fn()) {
+  return { show: jest.fn(show), refetch: jest.fn() };
 }
 
 describe("cart cache registry", () => {
@@ -29,10 +29,10 @@ describe("cart cache registry", () => {
 
     copy.registerEpCartCache(cache, first);
     copy.registerEpCartCache(cache, second);
-    await copy.orderEpCartWrite(write);
+    await copy.sequenceEpCartWrite(write);
 
-    expect(first.take).not.toHaveBeenCalled();
-    expect(second.take).toHaveBeenCalledTimes(1);
+    expect(first.show).not.toHaveBeenCalled();
+    expect(second.show).toHaveBeenCalledTimes(1);
   });
 
   it("reaches a cache another copy of the package registered", async () => {
@@ -43,10 +43,10 @@ describe("cart cache registry", () => {
 
     appCopy.registerEpCartCache({}, appCache);
     bundleCopy.registerEpCartCache({}, bundleCache);
-    await appCopy.orderEpCartWrite(write);
+    await appCopy.sequenceEpCartWrite(write);
 
-    expect(appCache.take).toHaveBeenCalledWith(CART);
-    expect(bundleCache.take).toHaveBeenCalledWith(CART);
+    expect(appCache.show).toHaveBeenCalledWith(CART);
+    expect(bundleCache.show).toHaveBeenCalledWith(CART);
   });
 
   it("does not fail the write when a cache throws, and still reaches the others", async () => {
@@ -66,7 +66,7 @@ describe("cart cache registry", () => {
     );
     copy.registerEpCartCache({}, healthy);
 
-    await expect(copy.orderEpCartWrite(write)).resolves.toBe(CART);
-    expect(healthy.take).toHaveBeenCalledWith(CART);
+    await expect(copy.sequenceEpCartWrite(write)).resolves.toBe(CART);
+    expect(healthy.show).toHaveBeenCalledWith(CART);
   });
 });

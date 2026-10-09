@@ -138,7 +138,7 @@ exports the types of the cart they resolve with: `Cart`, `CartItem`,
 
 The writes can overlap, for example when a shopper taps a quantity button
 twice. The consumers never go back to an older cart, and after the last of the
-overlapping writes settles, they read the cart once from Elastic Path. Each
+overlapping writes finishes, they read the cart once from Elastic Path. Each
 call still resolves with the cart it produced.
 
 A rejection is an `Error` whose `message` you can show the shopper. When the

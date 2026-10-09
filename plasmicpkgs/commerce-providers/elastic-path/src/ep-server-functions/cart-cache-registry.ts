@@ -1,10 +1,10 @@
 import type { Cart } from "../types/cart";
 import { createLogger } from "../utils/logger";
 
-const log = createLogger("EPCartCacheSeed");
+const log = createLogger("EPCartCacheRegistry");
 
 export interface EpCartCache {
-  take(cart: Cart): unknown;
+  show(cart: Cart): unknown;
   refetch(): unknown;
 }
 
@@ -64,9 +64,9 @@ async function eachCache(
  * Runs a browser cart write and puts its cart in every registered cache, unless
  * a write sent after it has already done so. Elastic Path may apply
  * overlapping writes in a different order from the one they were sent in, so
- * once the last of them settles every cache reads the cart again.
+ * once the last of them finishes, every cache reads the cart again.
  */
-export async function orderEpCartWrite(
+export async function sequenceEpCartWrite(
   write: () => Promise<Cart>
 ): Promise<Cart> {
   if (typeof window === "undefined") return write();
@@ -80,8 +80,8 @@ export async function orderEpCartWrite(
       registry.newestApplied = ticket;
       await eachCache(
         registry,
-        (cache) => cache.take(cart),
-        "A cart cache did not take the written cart"
+        (cache) => cache.show(cart),
+        "A cart cache did not show the written cart"
       );
     }
     return cart;

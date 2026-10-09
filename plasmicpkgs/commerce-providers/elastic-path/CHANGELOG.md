@@ -318,7 +318,7 @@ such as an add and then a quick remove, every `useEpCart()` consumer showed the
 cart from the response that arrived last. That could be the older cart, and it
 stayed until something else read the cart. Now a consumer never goes back to a
 cart older than one it has shown. When the last of the overlapping writes
-settles, the cart is read once from Elastic Path, so the consumers end on the
+finishes, the cart is read once from Elastic Path, so the consumers end on the
 cart Elastic Path holds. A single write still reads nothing, and each call
 still resolves with the cart it produced.
 
