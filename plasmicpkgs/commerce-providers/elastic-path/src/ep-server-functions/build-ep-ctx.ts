@@ -13,7 +13,7 @@
  *
  * An empty session, from a failed mint, yields an empty context, which the
  * server functions refuse to run with. Locale and currency come from
- * `createEpAuth`'s `resolveLocale`, which the proxy route reads too.
+ * `createEpAuth`'s `resolveLocaleAndCurrency`, which the proxy route reads too.
  */
 
 import type { EpSession } from "../auth/ep-plugin/create-ep-auth-better";

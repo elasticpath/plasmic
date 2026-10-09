@@ -82,7 +82,7 @@ export const commerceProviderMeta: any = {
       type: "string",
       displayName: "Currency",
       description:
-        "Deprecated — ignored. The storefront server chooses the currency with createEpAuth's resolveLocale, so a server render and a browser call price the cart the same way.",
+        "Deprecated — ignored. The storefront server chooses the currency with createEpAuth's resolveLocaleAndCurrency, so a server render and a browser call price the cart the same way.",
       hidden: () => true,
       advanced: true,
     },

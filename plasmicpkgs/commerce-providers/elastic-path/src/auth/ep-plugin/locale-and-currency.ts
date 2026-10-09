@@ -1,16 +1,7 @@
-export interface ShopperLocale {
-  locale?: string;
-  currency?: string;
-}
-
-type ShopperLocaleResolver = (request: {
-  cookies: Record<string, string>;
-  headers: Record<string, string>;
-}) =>
-  | ShopperLocale
-  | null
-  | undefined
-  | Promise<ShopperLocale | null | undefined>;
+import type {
+  EpLocaleAndCurrency,
+  EpLocaleAndCurrencyResolver,
+} from "../../types/locale-and-currency";
 
 const LOCALE = /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/;
 const CURRENCY = /^[A-Za-z]{3}$/;
@@ -23,7 +14,7 @@ function accepted(
   if (value == null || value === "") return undefined;
   if (typeof value === "string" && pattern.test(value)) return value;
   console.error(
-    `[ep-commerce] resolveLocale returned an invalid ${name} ${JSON.stringify(
+    `[ep-commerce] resolveLocaleAndCurrency returned an invalid ${name} ${JSON.stringify(
       value
     )}; it is not sent to Elastic Path`
   );
@@ -34,25 +25,25 @@ function accepted(
  * Every session read goes through here, so a server render and a proxied
  * browser call send the same `Accept-Language` and `X-Moltin-Currency`.
  */
-export async function resolveShopperLocale(
-  resolver: ShopperLocaleResolver | undefined,
+export async function resolveLocaleAndCurrency(
+  resolver: EpLocaleAndCurrencyResolver | undefined,
   request: {
     cookies: Record<string, string>;
     headers?: Record<string, string>;
   }
-): Promise<ShopperLocale> {
+): Promise<EpLocaleAndCurrency> {
   if (!resolver) return {};
-  let resolved: ShopperLocale | null | undefined;
+  let resolved: EpLocaleAndCurrency | null | undefined;
   try {
     resolved = await resolver({
       cookies: request.cookies,
       headers: request.headers ?? {},
     });
   } catch (err) {
-    console.error("[ep-commerce] resolveLocale threw", err);
+    console.error("[ep-commerce] resolveLocaleAndCurrency threw", err);
     return {};
   }
-  const out: ShopperLocale = {};
+  const out: EpLocaleAndCurrency = {};
   const locale = accepted(resolved?.locale, LOCALE, "locale");
   const currency = accepted(resolved?.currency, CURRENCY, "currency");
   if (locale) out.locale = locale;

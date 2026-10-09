@@ -1,9 +1,7 @@
 import { getACart } from "@epcc-sdk/sdks-shopper";
 import type { Cart } from "../types/cart";
-import {
-  buildCartReadHeaders,
-  type CartReadHeaderInput,
-} from "../utils/cart-read-headers";
+import type { EpLocaleAndCurrency } from "../types/locale-and-currency";
+import { buildCartReadHeaders } from "../utils/cart-read-headers";
 import { normalizeCart } from "../utils/normalize";
 
 type EpClient = Parameters<typeof getACart>[0]["client"];
@@ -16,7 +14,7 @@ type EpClient = Parameters<typeof getACart>[0]["client"];
 export async function readCart(
   client: EpClient,
   cartId: string,
-  pricing: CartReadHeaderInput
+  pricing: EpLocaleAndCurrency
 ): Promise<Cart> {
   const response = await getACart({
     client,

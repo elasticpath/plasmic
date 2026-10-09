@@ -1,3 +1,5 @@
+import type { EpLocaleAndCurrency } from "../types/locale-and-currency";
+
 /**
  * Builds the request headers for a locale- and currency-aware cart read.
  *
@@ -6,15 +8,8 @@
  * entirely when its value is absent, so the package stays policy-free — the
  * storefront resolves the locale→currency mapping and supplies the values.
  */
-export interface CartReadHeaderInput {
-  /** BCP-47 locale, e.g. "en-US". Sets `Accept-Language` when present. */
-  locale?: string;
-  /** ISO 4217 currency code, e.g. "USD". Sets `X-Moltin-Currency` when present. */
-  currency?: string;
-}
-
 export function buildCartReadHeaders(
-  input: CartReadHeaderInput = {}
+  input: EpLocaleAndCurrency = {}
 ): Record<string, string> {
   const headers: Record<string, string> = {};
   if (input.locale) {

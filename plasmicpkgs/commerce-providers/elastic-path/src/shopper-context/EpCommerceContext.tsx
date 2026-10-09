@@ -5,7 +5,7 @@ import type { CurrencyDisplay } from "../utils/price";
 
 export interface EpCommerce {
   locale: string;
-  /** Not sent to Elastic Path; `createEpAuth`'s `resolveLocale` chooses the cart currency. */
+  /** Not sent to Elastic Path; `createEpAuth`'s `resolveLocaleAndCurrency` chooses the cart currency. */
   currency?: string;
   /** Money display preference threaded into cart-data formatting. */
   currencyDisplay: CurrencyDisplay;

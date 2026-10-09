@@ -106,7 +106,7 @@ function storefrontAuth() {
     host: EP_HOST,
     secret: "x".repeat(48),
     baseURL: ORIGIN,
-    resolveLocale: ({ cookies }) => ({
+    resolveLocaleAndCurrency: ({ cookies }) => ({
       locale: cookies["shop-locale"],
       currency: cookies["shop-currency"],
     }),
@@ -215,16 +215,16 @@ describe("proxy locale and currency", () => {
   });
 });
 
-describe("resolveLocale validation", () => {
+describe("resolveLocaleAndCurrency validation", () => {
   function sessionFor(
-    resolveLocale: Parameters<typeof createEpAuth>[0]["resolveLocale"]
+    resolveLocaleAndCurrency: Parameters<typeof createEpAuth>[0]["resolveLocaleAndCurrency"]
   ) {
     const auth = createEpAuth({
       clientId: "test-client-id",
       host: EP_HOST,
       secret: "x".repeat(48),
       baseURL: ORIGIN,
-      resolveLocale,
+      resolveLocaleAndCurrency,
     });
     return auth.api.getSession({ cookies: {} });
   }
