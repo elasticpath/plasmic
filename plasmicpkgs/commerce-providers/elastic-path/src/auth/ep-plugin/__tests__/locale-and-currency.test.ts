@@ -242,6 +242,28 @@ describe("resolveLocaleAndCurrency validation", () => {
     expect(session.session?.accessToken).toBe("anon-token");
   });
 
+  it.each(["en-a", "de-1", "en-x", "abcd", "en--US", "en_US"])(
+    "drops %s, which is not a BCP 47 tag",
+    async (locale) => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const session = await sessionFor(() => ({ locale, currency: "EUR" }));
+
+      expect(session.locale).toBeUndefined();
+      expect(session.currency).toBe("EUR");
+    }
+  );
+
+  it.each([
+    ["EN-us", "en-US"],
+    ["zh-hant-tw", "zh-Hant-TW"],
+    ["de-CH", "de-CH"],
+  ])("sends %s in its canonical form %s", async (locale, canonical) => {
+    const session = await sessionFor(() => ({ locale }));
+
+    expect(session.locale).toBe(canonical);
+  });
+
   it("upper-cases a lower-case currency code", async () => {
     const session = await sessionFor(() => ({ locale: "de-CH", currency: "chf" }));
 

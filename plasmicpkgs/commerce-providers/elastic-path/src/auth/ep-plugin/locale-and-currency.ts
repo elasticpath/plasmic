@@ -3,16 +3,28 @@ import type {
   EpLocaleAndCurrencyResolver,
 } from "../../types/locale-and-currency";
 
-const LOCALE = /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/;
 const CURRENCY = /^[A-Za-z]{3}$/;
+
+function canonicalLocale(value: string): string | undefined {
+  try {
+    return Intl.getCanonicalLocales(value)[0];
+  } catch {
+    return undefined;
+  }
+}
+
+function canonicalCurrency(value: string): string | undefined {
+  return CURRENCY.test(value) ? value.toUpperCase() : undefined;
+}
 
 function accepted(
   value: unknown,
-  pattern: RegExp,
+  canonical: (value: string) => string | undefined,
   name: string
 ): string | undefined {
   if (value == null || value === "") return undefined;
-  if (typeof value === "string" && pattern.test(value)) return value;
+  const out = typeof value === "string" ? canonical(value) : undefined;
+  if (out) return out;
   console.error(
     `[ep-commerce] resolveLocaleAndCurrency returned an invalid ${name} ${JSON.stringify(
       value
@@ -44,9 +56,9 @@ export async function resolveLocaleAndCurrency(
     return {};
   }
   const out: EpLocaleAndCurrency = {};
-  const locale = accepted(resolved?.locale, LOCALE, "locale");
-  const currency = accepted(resolved?.currency, CURRENCY, "currency");
+  const locale = accepted(resolved?.locale, canonicalLocale, "locale");
+  const currency = accepted(resolved?.currency, canonicalCurrency, "currency");
   if (locale) out.locale = locale;
-  if (currency) out.currency = currency.toUpperCase();
+  if (currency) out.currency = currency;
   return out;
 }
