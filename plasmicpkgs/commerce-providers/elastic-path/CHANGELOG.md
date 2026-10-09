@@ -56,7 +56,7 @@ a rejection in the browser there has that reason as its `message`.
 | `providerProps()` on the session `getSession` returns | None. It carried only the mount path, and nothing read it. Drop any `globalContextsProps` entry that passes it. |
 | `cartMergeStrategy` on `createEpAuth` | `sessionCartResolver`. |
 | `buildEpCtx(session, { locale, currency })` | `createEpAuth({ resolveLocaleAndCurrency })`. It reads the request's cookies and headers, and `buildEpCtx(session)` takes the result from the session. |
-| Elastic Path Provider's `currency` | `createEpAuth({ resolveLocaleAndCurrency })`. The prop is hidden and ignored; nothing ever sent it to Elastic Path. |
+| Elastic Path Provider's `currency` | `createEpAuth({ resolveLocaleAndCurrency })`. The prop is hidden and ignored, and no longer reaches `useEpCommerce().currency`; nothing ever sent it to Elastic Path. |
 | `/ep/account/login` with `{ epMemberId, epAccountId, epAccountToken, epAccountExpires }` | `{ username, password }`. The package mints the account credential itself, so there is nothing left to verify. |
 
 Two capabilities go with them, not only their configuration:
@@ -220,12 +220,26 @@ shopper's locale and currency. Every cart read now sends the same headers.
 A browser call through the proxy route is priced and localised the way the
 server render is. The proxy sent neither `Accept-Language` nor
 `X-Moltin-Currency`, so a cart a browser write returned could be in a different
-currency from the server-rendered cart. `createEpAuth`'s `resolveLocaleAndCurrency` now
+currency from the server-rendered cart. `createEpAuth`'s new
+`resolveLocaleAndCurrency` option, typed `EpLocaleAndCurrencyResolver`, now
 chooses both from the request's cookies and headers on every `getSession`, and
-the server render and the proxy route read them from that one session. Derive
-them from something every request carries, such as a cookie: a proxy request
-does not carry the page's URL. A locale that is not a BCP 47 tag, or a currency
+the server render and the proxy route read them from that one session. A
+`getSession` call that passes no headers, such as a server render, hands the
+resolver the page request's headers from `next/headers`, so a resolver keyed on
+`Accept-Language` answers the same on both paths. Derive them from a cookie or
+a header every request carries: a proxy request does not carry the page's URL.
+A locale is sent in its canonical BCP 47 form (`en-us` becomes `en-US`). A
+locale that `Intl.getCanonicalLocales` rejects, such as `en-a`, or a currency
 that is not three letters, is not sent.
+
+Checkout totals are in the currency the cart shows. Checkout read the cart
+without `Accept-Language` or `X-Moltin-Currency`, so a currency the resolver
+chose showed on the cart but not in the checkout totals, and `/pay` compared
+the cart against the session in two currencies. `SessionHandlerContext` now
+takes `locale` and `currency`; pass the session's, as `shopperAccessToken`
+comes from it: `{ ...ctx, locale: session?.locale, currency: session?.currency }`.
+A checkout cart read that returns no cart now fails with `EP_ERROR` instead of
+hashing an empty cart.
 
 `/server` type declarations are generated from the entry point instead of a
 hand-kept list, so an export can no longer ship without its type. `/server`
