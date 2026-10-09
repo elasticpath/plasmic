@@ -227,7 +227,10 @@ chooses both from the request's cookies and headers on every `getSession`, and
 the server render and the proxy route read them from that one session. A
 `getSession` call that passes no headers, such as a server render, hands the
 resolver the page request's headers from `next/headers`, so a resolver keyed on
-`Accept-Language` answers the same on both paths. Derive them from a cookie or
+`Accept-Language` answers the same on both paths. Outside the App Router there
+is no `next/headers`, so pass the request's headers: `getSession` takes a Node
+request's `IncomingHttpHeaders`, and the resolver gets header names in lower
+case. Derive them from a cookie or
 a header every request carries: a proxy request does not carry the page's URL.
 The resolver can return the `Accept-Language` value as the browser sent it,
 such as `en-GB,en;q=0.9`: the package sends the first valid tag in preference

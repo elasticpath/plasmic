@@ -33,6 +33,15 @@ export const epAuth = createEpAuth({
   // Optional: choose the shopper's cart when they sign in or switch
   // organisation. See "Which cart wins at sign-in" below.
   // sessionCartResolver: ({ guestCartId, accountCarts }) => ...,
+
+  // Optional: the shopper's locale and currency, sent to Elastic Path as
+  // Accept-Language and X-Moltin-Currency. The only way to set a currency.
+  // Read cookies and headers only: a proxied browser call has no page URL.
+  // `locale` takes a tag or the raw Accept-Language value.
+  // resolveLocaleAndCurrency: ({ cookies, headers }) => ({
+  //   locale: headers["accept-language"],
+  //   currency: cookies["shop-currency"],
+  // }),
 });
 ```
 
@@ -208,8 +217,11 @@ export const getServerSideProps: GetServerSideProps = async ({ req, res, params 
   if (!plasmicData) return { notFound: true };
 
   // Resolve EP session from cookies (returning visitor) or OAuth (first visit)
+  // Pass the headers: outside the App Router there is no `next/headers` to
+  // fall back on, and `resolveLocaleAndCurrency` must see what the proxy sees.
   const session = await epAuth.api.getSession({
     cookies: req.cookies as Record<string, string>,
+    headers: req.headers,
   });
 
   // Each ep.* function reads the session from this scope. The session stays
@@ -505,6 +517,12 @@ checkout-session handlers carry it on every call made as the shopper: pass the
 selected account's token as `accountToken` on `SessionHandlerContext`, resolved
 from `session.session.account?.token` next to `shopperAccessToken`. Calls made
 with `getClientCredentialsToken` never carry it.
+
+Pass the session's `locale` and `currency` on `SessionHandlerContext` as well,
+from the same `getSession`:
+`{ ...ctx, locale: session.locale, currency: session.currency }`. Checkout
+reads the cart with them. Without them, checkout totals do not match the cart
+the shopper saw.
 
 `POST /ep/account/login` takes `{ username, password }`. The server calls
 Elastic Path's `/v2/account-members/tokens` itself, so no Elastic Path

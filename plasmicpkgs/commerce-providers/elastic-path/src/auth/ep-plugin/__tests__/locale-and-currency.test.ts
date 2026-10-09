@@ -1,3 +1,4 @@
+import type { IncomingHttpHeaders } from "http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createEpAuth } from "../create-ep-auth-better";
 import { createEpProxyRoutes } from "../proxy-routes";
@@ -274,6 +275,36 @@ describe("a resolver keyed on request headers", () => {
     });
 
     expect(session.locale).toBe("fr-FR");
+  });
+
+  it("takes a Node request's headers, as the Pages Router passes them", async () => {
+    let seen: Record<string, string> | undefined;
+    const auth = storefrontAuth(({ headers }) => {
+      seen = headers;
+      return { locale: headers["accept-language"] };
+    });
+    const nodeHeaders: IncomingHttpHeaders = {
+      "accept-language": "fr-CH,fr;q=0.9,en;q=0.8",
+      "x-shop": ["north", "south"],
+      "if-none-match": undefined,
+    };
+
+    const session = await auth.api.getSession({ cookies: {}, headers: nodeHeaders });
+
+    expect(session.locale).toBe("fr-CH");
+    expect(seen).toEqual({
+      "accept-language": "fr-CH,fr;q=0.9,en;q=0.8",
+      "x-shop": "north, south",
+    });
+  });
+
+  it("hands the resolver header names in lower case", async () => {
+    const session = await byAcceptLanguage().api.getSession({
+      cookies: {},
+      headers: { "Accept-Language": "it-IT" },
+    });
+
+    expect(session.locale).toBe("it-IT");
   });
 
   it("gets no headers outside a request", async () => {

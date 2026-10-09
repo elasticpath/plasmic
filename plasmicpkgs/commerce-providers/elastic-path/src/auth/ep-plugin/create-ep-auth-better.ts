@@ -196,9 +196,13 @@ export interface EpSession extends EpLocaleAndCurrency {
 
 export interface EpAuth {
   api: {
+    /**
+     * `headers` takes a plain record or a Node request's `IncomingHttpHeaders`.
+     * Header names are lower-cased and a repeated header is joined with ", ".
+     */
     getSession(req: {
       cookies: Record<string, string>;
-      headers?: Record<string, string>;
+      headers?: Record<string, string | string[] | undefined>;
     }): Promise<EpSession>;
   };
   /**
@@ -232,6 +236,18 @@ function cookiesToHeader(cookies: Record<string, string>): string {
   return Object.entries(cookies)
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
     .join("; ");
+}
+
+function plainHeaders(
+  headers: Record<string, string | string[] | undefined> | undefined
+): Record<string, string> | undefined {
+  if (!headers) return undefined;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers)) {
+    if (v === undefined) continue;
+    out[k.toLowerCase()] = Array.isArray(v) ? v.join(", ") : v;
+  }
+  return out;
 }
 
 function buildHeaders(
@@ -348,7 +364,11 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
 
   return {
     api: {
-      async getSession(req) {
+      async getSession(request) {
+        const req = {
+          cookies: request.cookies,
+          headers: plainHeaders(request.headers),
+        };
         const reqHeaders = buildHeaders(req.cookies, req.headers);
         const pendingSetCookies: string[] = [];
         const localeAndCurrency = () =>
