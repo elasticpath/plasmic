@@ -229,9 +229,13 @@ the server render and the proxy route read them from that one session. A
 resolver the page request's headers from `next/headers`, so a resolver keyed on
 `Accept-Language` answers the same on both paths. Derive them from a cookie or
 a header every request carries: a proxy request does not carry the page's URL.
-A locale is sent in its canonical BCP 47 form (`en-us` becomes `en-US`). A
-locale that `Intl.getCanonicalLocales` rejects, such as `en-a`, or a currency
-that is not three letters, is not sent.
+The resolver can return the `Accept-Language` value as the browser sent it,
+such as `en-GB,en;q=0.9`: the package sends the first valid tag in preference
+order, honouring `q` weights and skipping `*`. A locale is sent in its
+canonical BCP 47 form (`en-us` becomes `en-US`). A locale with no tag that
+`Intl.getCanonicalLocales` accepts, such as `en-a`, or a currency that is not
+three letters, is not sent, and the first one logs a `console.warn`; later ones
+log nothing.
 
 Checkout totals are in the currency the cart shows. Checkout read the cart
 without `Accept-Language` or `X-Moltin-Currency`, so a currency the resolver

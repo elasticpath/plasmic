@@ -4,6 +4,7 @@ import { createEpProxyRoutes } from "../proxy-routes";
 import { buildEpCtx } from "../../../ep-server-functions/build-ep-ctx";
 import { epGetCart } from "../../../ep-server-functions/getCart";
 import { withEpSession } from "../../../ep-server-functions/session-context";
+import { resetEpLocaleAndCurrencyWarnings } from "../locale-and-currency";
 
 const nextRequest = vi.hoisted(() => ({
   headers: undefined as Headers | undefined,
@@ -78,6 +79,7 @@ function json(body: unknown): Response {
 }
 
 beforeEach(() => {
+  resetEpLocaleAndCurrencyWarnings();
   nextRequest.headers = undefined;
   originalFetch = globalThis.fetch;
   cartReads = [];
@@ -297,7 +299,7 @@ describe("resolveLocaleAndCurrency validation", () => {
   }
 
   it("drops a currency or locale that is not a valid header value", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const session = await sessionFor(() => ({
       locale: "fr-FR\r\nX-Injected: 1",
@@ -312,7 +314,7 @@ describe("resolveLocaleAndCurrency validation", () => {
   it.each(["en-a", "de-1", "en-x", "abcd", "en--US", "en_US"])(
     "drops %s, which is not a BCP 47 tag",
     async (locale) => {
-      vi.spyOn(console, "error").mockImplementation(() => {});
+      vi.spyOn(console, "warn").mockImplementation(() => {});
 
       const session = await sessionFor(() => ({ locale, currency: "EUR" }));
 
@@ -347,5 +349,72 @@ describe("resolveLocaleAndCurrency validation", () => {
 
     expect(session.session?.accessToken).toBe("anon-token");
     expect(session.currency).toBeUndefined();
+  });
+});
+
+describe("a resolver that returns the Accept-Language header as it is", () => {
+  function sessionFor(acceptLanguage: string) {
+    const auth = createEpAuth({
+      clientId: "test-client-id",
+      host: EP_HOST,
+      secret: "x".repeat(48),
+      baseURL: ORIGIN,
+      resolveLocaleAndCurrency: ({ headers }) => ({
+        locale: headers["accept-language"],
+      }),
+    });
+    return auth.api.getSession({
+      cookies: {},
+      headers: { "accept-language": acceptLanguage },
+    });
+  }
+
+  it.each([
+    ["en-GB,en-US;q=0.9,en;q=0.8", "en-GB"],
+    ["de,en-US;q=0.7,en;q=0.3", "de"],
+    ["fr-FR,fr;q=0.9", "fr-FR"],
+    ["en-us", "en-US"],
+    ["en;q=0.5, fr-CH", "fr-CH"],
+    ["*;q=0.9, ja-JP;q=0.5", "ja-JP"],
+    ["en-US;q=0, de-AT;q=0.4", "de-AT"],
+    ["en_US,de-DE;q=0.9", "de-DE"],
+  ])("sends %s as %s", async (header, locale) => {
+    const session = await sessionFor(header);
+
+    expect(session.locale).toBe(locale);
+  });
+
+  it("logs nothing for a header it can use", async () => {
+    const warn = vi.spyOn(console, "warn");
+    const error = vi.spyOn(console, "error");
+
+    await sessionFor("en-GB,en;q=0.9");
+
+    expect(warn).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it("sends no locale and logs nothing for a wildcard", async () => {
+    const warn = vi.spyOn(console, "warn");
+    const error = vi.spyOn(console, "error");
+
+    const session = await sessionFor("*");
+
+    expect(session.locale).toBeUndefined();
+    expect(warn).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it("warns once, not on every request, about a header it cannot use", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error");
+
+    const first = await sessionFor("en_US");
+    const second = await sessionFor("12345");
+
+    expect(first.locale).toBeUndefined();
+    expect(second.locale).toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(error).not.toHaveBeenCalled();
   });
 });

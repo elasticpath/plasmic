@@ -109,10 +109,18 @@ export interface CreateEpAuthBetterInput {
    * and a browser call through the proxy route send Elastic Path the same
    * `Accept-Language` and `X-Moltin-Currency`. A proxy request does not carry
    * the page's URL, so derive both from a cookie or a header every request
-   * carries, such as `Accept-Language`. A locale is sent in its canonical form
-   * (`en-us` becomes `en-US`) and a currency in upper case. A locale that is
-   * not a valid BCP 47 tag, or a currency that is not three letters, is not
-   * sent.
+   * carries, such as `Accept-Language`:
+   *
+   *   resolveLocaleAndCurrency: ({ cookies, headers }) => ({
+   *     locale: headers["accept-language"],
+   *     currency: cookies["shop-currency"],
+   *   })
+   *
+   * `locale` takes a BCP 47 tag or an `Accept-Language` value such as
+   * `en-GB,en;q=0.9`; the package sends the first valid tag in preference
+   * order, skipping `*`, in its canonical form (`en-us` becomes `en-US`). A
+   * currency is sent in upper case. A locale with no valid tag, or a currency
+   * that is not three letters, is not sent, and the first one logs a warning.
    */
   resolveLocaleAndCurrency?: EpLocaleAndCurrencyResolver;
 }

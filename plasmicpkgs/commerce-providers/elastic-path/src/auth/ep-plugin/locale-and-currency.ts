@@ -9,30 +9,62 @@ const intl = Intl as typeof Intl & {
   getCanonicalLocales(locale: string): string[];
 };
 
-function canonicalLocale(value: string): string | undefined {
+const Q_VALUE = /^q=(0(\.\d{0,3})?|1(\.0{0,3})?)$/i;
+
+function canonicalTag(tag: string): string | undefined {
   try {
-    return intl.getCanonicalLocales(value)[0];
+    return intl.getCanonicalLocales(tag)[0];
   } catch {
     return undefined;
   }
+}
+
+function canonicalLocale(value: string): string | null | undefined {
+  const ranges: Array<{ tag: string; q: number }> = [];
+  for (const part of value.split(",")) {
+    const [tag, ...params] = part.split(";").map((s) => s.trim());
+    if (!tag) continue;
+    let q = 1;
+    const weight = params.find((p) => /^q=/i.test(p));
+    if (weight !== undefined) {
+      if (!Q_VALUE.test(weight)) continue;
+      q = Number(weight.slice(2));
+    }
+    if (q > 0) ranges.push({ tag, q });
+  }
+  ranges.sort((a, b) => b.q - a.q);
+  const wanted = ranges.filter((r) => r.tag !== "*");
+  for (const { tag } of wanted) {
+    const out = canonicalTag(tag);
+    if (out) return out;
+  }
+  return wanted.length ? undefined : null;
 }
 
 function canonicalCurrency(value: string): string | undefined {
   return CURRENCY.test(value) ? value.toUpperCase() : undefined;
 }
 
+const warned = new Set<string>();
+
+export function resetEpLocaleAndCurrencyWarnings(): void {
+  warned.clear();
+}
+
 function accepted(
   value: unknown,
-  canonical: (value: string) => string | undefined,
-  name: string
+  canonical: (value: string) => string | null | undefined,
+  name: "locale" | "currency"
 ): string | undefined {
   if (value == null || value === "") return undefined;
   const out = typeof value === "string" ? canonical(value) : undefined;
   if (out) return out;
-  console.error(
-    `[ep-commerce] resolveLocaleAndCurrency returned an invalid ${name} ${JSON.stringify(
+  if (out === null || warned.has(name)) return undefined;
+  warned.add(name);
+  console.warn(
+    `[ep-commerce] resolveLocaleAndCurrency returned an unusable ${name} ${JSON.stringify(
       value
-    )}; it is not sent to Elastic Path`
+    )}; it is not sent to Elastic Path. This warning is not repeated.`
   );
   return undefined;
 }

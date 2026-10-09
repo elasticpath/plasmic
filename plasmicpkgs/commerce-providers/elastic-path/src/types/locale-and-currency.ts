@@ -12,6 +12,8 @@ export interface EpLocaleAndCurrency {
 /**
  * Chooses the shopper's locale and currency for a request. `createEpAuth`
  * calls it on every `getSession` with the request's cookies and headers.
+ * `locale` may be an `Accept-Language` value as the browser sent it; the
+ * session carries the first valid tag.
  */
 export type EpLocaleAndCurrencyResolver = (request: {
   cookies: Record<string, string>;
