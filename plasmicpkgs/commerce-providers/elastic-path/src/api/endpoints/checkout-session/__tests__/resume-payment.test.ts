@@ -511,6 +511,42 @@ describe("handleResumePayment — success", () => {
   });
 });
 
+describe("handleResumePayment — the shopper's locale and currency", () => {
+  it("re-reads the cart in the currency the session was created in", async () => {
+    const EUR_ITEMS = [
+      { id: "item-1", quantity: 2, unit_price: { amount: 1350 } },
+      { id: "item-2", quantity: 1, unit_price: { amount: 2160 } },
+    ];
+    epSdk.getACart.mockImplementation(
+      async (args: { headers?: Record<string, string> }) => ({
+        data: {
+          included: {
+            items:
+              args.headers?.["X-Moltin-Currency"] === "EUR"
+                ? EUR_ITEMS
+                : CART_ITEMS,
+          },
+          data: { id: "cart-abc" },
+        },
+      })
+    );
+
+    const res = await handleResumePayment(
+      createMockReq(),
+      createMockCtx(makeSession({ cartHash: hashCart(EUR_ITEMS) }), {
+        locale: "fr-FR",
+        currency: "EUR",
+      })
+    );
+
+    expect(res.status).toBe(200);
+    expect(epSdk.getACart.mock.calls[0][0].headers).toEqual({
+      "Accept-Language": "fr-FR",
+      "X-Moltin-Currency": "EUR",
+    });
+  });
+});
+
 describe("handleResumePayment — selected account", () => {
   const DIGITAL_ITEMS = [
     { id: "item-1", product_id: "prod-1", quantity: 1, unit_price: { amount: 1500 } },

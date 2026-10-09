@@ -43,6 +43,9 @@ const { handlePay } = require("../pay") as {
   handlePay: typeof import("../pay").handlePay;
 };
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { EP_SHIPPING_LINE_SKU } = require("../../../../checkout/session/set-shipping-line") as typeof import("../../../../checkout/session/set-shipping-line");
+
 import type {
   SessionHandlerContext,
   SessionRequest,
@@ -541,6 +544,95 @@ describe("handlePay", () => {
         )
       );
       expect((res.body as any).data.session.payment.gateway).toBe("stripe");
+    });
+  });
+
+  describe("the shopper's locale and currency", () => {
+    const EUR_ITEMS = [
+      { id: "item-1", quantity: 2, unit_price: { amount: 1350 } },
+      { id: "item-2", quantity: 1, unit_price: { amount: 2160 } },
+    ];
+
+    function cartIn(currency: string, items: unknown[], total: number) {
+      return {
+        data: {
+          included: { items },
+          data: {
+            id: "cart-abc",
+            meta: { display_price: { with_tax: { amount: total, currency } } },
+          },
+        },
+      };
+    }
+
+    const isEur = (args: { headers?: Record<string, string> }) =>
+      args.headers?.["X-Moltin-Currency"] === "EUR";
+
+    it("re-reads the cart in the currency the session was created in", async () => {
+      epSdk.getACart.mockImplementation(async (args) =>
+        isEur(args)
+          ? cartIn("EUR", EUR_ITEMS, 4860)
+          : cartIn("USD", CART_ITEMS, 5400)
+      );
+      const session = makeSession({
+        cartHash: hashCart(EUR_ITEMS),
+        availableShippingRates: [
+          { id: "rate-standard", name: "Standard", amount: 450, currency: "EUR" },
+        ],
+      });
+
+      const res = await handlePay(
+        createMockReq({ gateway: "stripe", confirmation_token: "ct" }),
+        createMockCtx(session, createMockAdapter(), {
+          locale: "fr-FR",
+          currency: "EUR",
+        })
+      );
+
+      expect(res.status).toBe(200);
+      expect(epSdk.getACart.mock.calls[0][0].headers).toEqual({
+        "Accept-Language": "fr-FR",
+        "X-Moltin-Currency": "EUR",
+      });
+    });
+
+    it("reads the total after clearing a stale shipping line in the session's currency", async () => {
+      const FREE_ITEMS = [{ id: "free-1", quantity: 1 }];
+      const withStaleShip = [
+        ...FREE_ITEMS,
+        {
+          id: "ship-stale",
+          sku: EP_SHIPPING_LINE_SKU,
+          quantity: 1,
+          unit_price: { amount: 450 },
+        },
+      ];
+      let call = 0;
+      epSdk.getACart.mockImplementation(async (args) => {
+        call += 1;
+        if (call <= 2) return cartIn("EUR", withStaleShip, 450);
+        return isEur(args)
+          ? cartIn("EUR", FREE_ITEMS, 0)
+          : cartIn("USD", FREE_ITEMS, 700);
+      });
+      const adapter = createMockAdapter();
+
+      const res = await handlePay(
+        createMockReq({}),
+        createMockCtx(
+          makeSession({
+            cartHash: hashCart(FREE_ITEMS),
+            requiresShipping: false,
+            selectedShippingRateId: null,
+          }),
+          adapter,
+          { locale: "fr-FR", currency: "EUR" }
+        )
+      );
+
+      expect(res.status).toBe(200);
+      expect((res.body as any).data.session.status).toBe("complete");
+      expect(adapter.initializePayment).not.toHaveBeenCalled();
     });
   });
 
