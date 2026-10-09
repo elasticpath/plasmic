@@ -94,6 +94,13 @@ a configure panel a write does not run; it rejects with the code
 `design_fn_not_served` and a `message` that names where it ran. They are the
 same functions `/server` exports.
 
+`identity.register({ username, password, name, email })` and
+`POST /ep/account/register` register an account member. The server sends
+Elastic Path a self-signup token request, using the password profile from
+`createEpAuth`, then follows login's session, checkout and cart path. The
+response matches login. Account tokens stay on the server. A rejected signup
+keeps Elastic Path's status and error detail.
+
 `createEpDesignRoutes` serves Studio design time. It answers four catalog
 reads, `getProduct`, `getProductList`, `getProductPage` and
 `getRelatedProducts`, under the store's public credential, and refuses every

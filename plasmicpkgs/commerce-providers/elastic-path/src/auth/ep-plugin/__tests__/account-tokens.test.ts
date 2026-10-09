@@ -137,6 +137,7 @@ describe("mintAccountTokens with a password", () => {
       host: HOST,
       implicitToken: IMPLICIT,
       credential: {
+        mechanism: "password",
         passwordProfileId: "profile-1",
         username: "buyer@example.com",
         password: "secret",
@@ -169,6 +170,7 @@ describe("mintAccountTokens with a password", () => {
       host: HOST,
       implicitToken: IMPLICIT,
       credential: {
+        mechanism: "password",
         passwordProfileId: "profile-1",
         username: "buyer@example.com",
         password: "secret",
@@ -177,10 +179,12 @@ describe("mintAccountTokens with a password", () => {
 
     const [url, init] = fetchMock.mock.calls[0] as any;
     expect(String(url)).toContain("/v2/account-members/tokens");
-    expect(JSON.parse(init.body).data).toMatchObject({
+    expect(JSON.parse(init.body).data).toEqual({
+      type: "account_management_authentication_token",
       authentication_mechanism: "password",
       password_profile_id: "profile-1",
       username: "buyer@example.com",
+      password: "secret",
     });
     expect(
       init.headers["EP-Account-Management-Authentication-Token"]
@@ -197,6 +201,7 @@ describe("mintAccountTokens with a password", () => {
         host: HOST,
         implicitToken: IMPLICIT,
         credential: {
+          mechanism: "password",
           passwordProfileId: "profile-1",
           username: "buyer@example.com",
           password: "wrong",
@@ -212,6 +217,7 @@ describe("mintAccountTokens with a password", () => {
       host: HOST,
       implicitToken: IMPLICIT,
       credential: {
+        mechanism: "password",
         passwordProfileId: "profile-1",
         username: "buyer@example.com",
         password: "secret",
@@ -221,6 +227,46 @@ describe("mintAccountTokens with a password", () => {
     expect(page.memberId).toBe("member-1");
     expect(page.total).toBe(0);
     expect(page.entries).toEqual([]);
+  });
+});
+
+describe("mintAccountTokens with self-signup", () => {
+  it("sends the self-signup mechanism and no account header", async () => {
+    const fetchMock = vi.fn(async () => tokenResponse([{ id: "acct-a" }]));
+    globalThis.fetch = fetchMock as any;
+
+    await mintAccountTokens({
+      host: HOST,
+      implicitToken: IMPLICIT,
+      credential: {
+        mechanism: "self_signup",
+        passwordProfileId: "profile-1",
+        username: "buyer",
+        password: "secret",
+        name: "Buyer",
+        email: "buyer@example.com",
+      },
+    });
+
+    const [url, init] = fetchMock.mock.calls[0] as any;
+    expect(String(url)).toContain("/v2/account-members/tokens");
+    expect(init.method).toBe("POST");
+    expect(init.headers.Authorization).toBe(`Bearer ${IMPLICIT}`);
+    expect(init.headers["Content-Type"]).toBe("application/json");
+    expect(
+      init.headers["EP-Account-Management-Authentication-Token"]
+    ).toBeUndefined();
+    expect(JSON.parse(init.body)).toEqual({
+      data: {
+        type: "account_management_authentication_token",
+        authentication_mechanism: "self_signup",
+        password_profile_id: "profile-1",
+        username: "buyer",
+        password: "secret",
+        name: "Buyer",
+        email: "buyer@example.com",
+      },
+    });
   });
 });
 
@@ -240,9 +286,10 @@ describe("mintAccountTokens from an account token", () => {
       "held-token"
     );
     const body = JSON.parse(init.body).data;
-    expect(body.authentication_mechanism).toBe(
-      "account_management_authentication_token"
-    );
+    expect(body).toEqual({
+      type: "account_management_authentication_token",
+      authentication_mechanism: "account_management_authentication_token",
+    });
     expect(body).not.toHaveProperty("password");
   });
 

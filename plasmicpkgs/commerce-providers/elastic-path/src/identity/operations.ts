@@ -11,6 +11,13 @@ export interface EpAccountLoginResult extends EpSessionEnvelope {
   total: number;
 }
 
+export interface EpAccountRegisterRequest {
+  username: string;
+  password: string;
+  name: string;
+  email: string;
+}
+
 export interface EpAccountRosterResult {
   accounts: EpAccountSummary[];
   /** Across all pages, not the length of `accounts`. */
@@ -41,6 +48,10 @@ export interface EpIdentityOperations {
   refresh: { request: void; response: EpSessionEnvelope };
   setCart: { request: EpSetCartRequest; response: EpSessionEnvelope };
   login: { request: EpAccountLoginRequest; response: EpAccountLoginResult };
+  register: {
+    request: EpAccountRegisterRequest;
+    response: EpAccountLoginResult;
+  };
   roster: {
     request: EpAccountRosterRequest | void;
     response: EpAccountRosterResult;
@@ -72,6 +83,7 @@ export const EP_IDENTITY_ROUTES: {
   refresh: { path: "/ep/refresh", method: "POST" },
   setCart: { path: "/ep/cart", method: "POST" },
   login: { path: "/ep/account/login", method: "POST" },
+  register: { path: "/ep/account/register", method: "POST" },
   roster: { path: "/ep/account/roster", method: "POST" },
   selectAccount: { path: "/ep/account/select", method: "POST" },
   rollAccount: { path: "/ep/account/roll", method: "POST" },
