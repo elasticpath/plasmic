@@ -257,16 +257,7 @@ export interface EpAuthConfig {
     hostAllowlist?: readonly string[];
     passwordProfileId?: string;
     resolveConfig?: EpResolveConfig;
-    resolveLocale?: (request: {
-        cookies: Record<string, string>;
-        headers: Record<string, string>;
-    }) => {
-        locale?: string;
-        currency?: string;
-    } | null | undefined | Promise<{
-        locale?: string;
-        currency?: string;
-    } | null | undefined>;
+    resolveLocaleAndCurrency?: EpLocaleAndCurrencyResolver;
     // (undocumented)
     secret?: string;
     sessionCartResolver?: EpSessionCartResolver;
@@ -423,6 +414,18 @@ export interface EpLapsedAccount {
     // (undocumented)
     name?: string;
 }
+
+// @public
+export interface EpLocaleAndCurrency {
+    currency?: string;
+    locale?: string;
+}
+
+// @public
+export type EpLocaleAndCurrencyResolver = (request: {
+    cookies: Record<string, string>;
+    headers: Record<string, string>;
+}) => EpLocaleAndCurrency | null | undefined | Promise<EpLocaleAndCurrency | null | undefined>;
 
 // @public
 export interface EpLocation {
@@ -633,8 +636,8 @@ export interface EpServerAuth {
     locale?: string;
 }
 
-// @public (undocumented)
-export interface EpSession {
+// @public
+export interface EpSession extends EpLocaleAndCurrency {
     // (undocumented)
     cart: {
         id: string;
@@ -643,12 +646,10 @@ export interface EpSession {
     commitCookies(res: {
         appendHeader(name: string, value: string): void;
     }): void;
-    currency?: string;
     // (undocumented)
     headers(): Record<string, string>;
     // (undocumented)
     isAuthenticated: boolean;
-    locale?: string;
     // (undocumented)
     session: EpSessionData | null;
     // (undocumented)
@@ -845,8 +846,8 @@ export function resolveAuthSecret(secret: string | undefined, opts: {
 // @public
 export function seedCartFallback(): Promise<Record<string, Cart | null>>;
 
-// @public (undocumented)
-export interface SessionHandlerContext {
+// @public
+export interface SessionHandlerContext extends EpLocaleAndCurrency {
     accountToken?: string;
     // (undocumented)
     adapterRegistry: AdapterRegistry;
