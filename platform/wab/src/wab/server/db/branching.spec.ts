@@ -24,12 +24,15 @@ import {
   PkgVersionId,
   ProjectId,
 } from "@/wab/shared/ApiSchema";
+import { Bundler } from "@/wab/shared/bundler";
 import { assert, ensure, sortBy, tuple } from "@/wab/shared/common";
 import { ProjectDependency, Site } from "@/wab/shared/model/classes";
 import { withoutUids } from "@/wab/shared/model/model-meta";
 import { BranchSide } from "@/wab/shared/site-diffs/merge-core";
 import { omit } from "lodash";
 import { Connection } from "typeorm";
+import v8 from "v8";
+import vm from "vm";
 
 describe("branching", () => {
   it("CRUD a branch works", () =>
@@ -833,7 +836,139 @@ describe("merging", () => {
         )
       );
     }));
+
+  it("merging publishes the source, then the destination, then the merge commit", () =>
+    withBranch(async (branch, helpers, sudo, [user1], [db1], project) => {
+      await setupMainAndBranch(helpers, {
+        data1: { x: 1, y: 1 },
+        data2: { x: 1, z: 1 },
+        skipPublishMain: true,
+      });
+
+      const publishProject = jest.spyOn(DbMgr.prototype, "publishProject");
+      let publishCalls: Parameters<DbMgr["publishProject"]>[];
+      try {
+        await db1().tryMergeBranch({
+          toBranchId: MainBranchId,
+          fromBranchId: branch.id,
+          autoCommitOnToBranch: true,
+        });
+        publishCalls = [...publishProject.mock.calls];
+      } finally {
+        publishProject.mockRestore();
+      }
+
+      const pkg = ensure(await db1().getPkgByProjectId(project.id), "");
+      const [preMergeOnBranch] = await db1().listPkgVersions(pkg.id, {
+        branchId: branch.id,
+      });
+      expect(
+        publishCalls.map(
+          ([, , tags, description, , , branchId, secondParentId, picks]) => ({
+            tags,
+            description,
+            branchId,
+            secondParentId,
+            picks,
+          })
+        )
+      ).toEqual([
+        {
+          tags: [],
+          description: "Auto-generated commit pre-merge",
+          branchId: branch.id,
+        },
+        {
+          tags: [],
+          description: "Auto-generated commit pre-merge",
+          branchId: undefined,
+        },
+        {
+          tags: [],
+          description: "Auto-generated commit post-merge",
+          branchId: undefined,
+          secondParentId: preMergeOnBranch.id,
+        },
+      ]);
+    }));
+
+  it("merging accepts a resolved site given as a bundle string", () =>
+    withBranch(async (branch, helpers, sudo, [user1], [db1], project) => {
+      await setupMainAndBranch(helpers, {
+        data1: { x: 1 },
+        data2: { x: 2 },
+      });
+      const preview = await db1().previewMergeBranch({
+        fromBranchId: branch.id,
+        toBranchId: MainBranchId,
+      });
+      assert(preview.status === "has conflicts", "");
+      const branchRev = await db1().getLatestProjectRev(project.id, {
+        branchId: branch.id,
+      });
+
+      expect(
+        await db1().tryMergeBranch({
+          fromBranchId: branch.id,
+          toBranchId: MainBranchId,
+          resolution: {
+            resolvedSite: branchRev.data,
+            expectedToRevisionNum: preview.toRevisionNum,
+            expectedFromRevisionNum: preview.fromRevisionNum,
+          },
+        })
+      ).toMatchObject({ status: "resolution accepted" });
+
+      expect(
+        extractTokensRev(await db1().getLatestProjectRev(project.id))
+      ).toEqual({ x: 2, y: 0, z: 0 });
+    }));
+
+  it("merging releases the merge's sites before the first publish", () =>
+    withBranch(async (branch, helpers, sudo, [user1], [db1], project) => {
+      await setupMainAndBranch(helpers, {
+        data1: { x: 1, y: 1 },
+        data2: { x: 1, z: 1 },
+      });
+
+      const unbundle = jest.spyOn(Bundler.prototype, "unbundle");
+      const realPublish = DbMgr.prototype.publishProject;
+      let sites: { loaded: number; alive: number } | undefined;
+      jest
+        .spyOn(DbMgr.prototype, "publishProject")
+        .mockImplementationOnce(async function (this: DbMgr, ...args) {
+          // The spy records every site it returned, which would keep them alive.
+          const refs = unbundle.mock.results.map((r) => new WeakRef(r.value));
+          unbundle.mockClear();
+          // The sites are released shortly after the merge phase returns, not
+          // necessarily within one tick, so collect until none are left.
+          let alive = refs.length;
+          for (let i = 0; i < 20 && alive > 0; i++) {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            collectGarbage();
+            alive = refs.filter((ref) => ref.deref()).length;
+          }
+          sites = { loaded: refs.length, alive };
+          return realPublish.apply(this, args);
+        });
+      try {
+        await db1().tryMergeBranch({
+          toBranchId: MainBranchId,
+          fromBranchId: branch.id,
+        });
+      } finally {
+        jest.restoreAllMocks();
+      }
+
+      expect(sites?.loaded).toBeGreaterThan(0);
+      expect(sites?.alive).toBe(0);
+    }));
 });
+
+function collectGarbage() {
+  v8.setFlagsFromString("--expose-gc");
+  vm.runInNewContext("gc")();
+}
 
 function deferred<T = void>() {
   let resolve!: (value: T) => void;

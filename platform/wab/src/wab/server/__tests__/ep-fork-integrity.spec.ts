@@ -703,6 +703,12 @@ describe("EP Fork Integrity", () => {
       expect(src).toContain("await this.getPkgVersionHead(pkg.id, toBranchId)");
     });
 
+    it("tryMergeBranch loads the merge's sites in a separate method", () => {
+      const src = readFile("platform/wab/src/wab/server/db/DbMgr.ts");
+      expect(src).toContain("private async _prepareMerge(");
+      expect(src).toContain("await this._prepareMerge(");
+    });
+
     it("final style tokens are classified with set lookups", () => {
       expect(
         readFile("platform/wab/src/wab/shared/core/tokens.ts")
