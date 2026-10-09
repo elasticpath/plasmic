@@ -74,26 +74,37 @@ export async function sequenceEpCartWrite(
   const ticket = ++registry.lastTicket;
   registry.inFlight += 1;
   if (registry.inFlight > 1) registry.overlapped = true;
+  let cart: Cart;
   try {
-    const cart = await write();
-    if (ticket > registry.newestApplied) {
-      registry.newestApplied = ticket;
-      await eachCache(
-        registry,
-        (cache) => cache.show(cart),
-        "A cart cache did not show the written cart"
-      );
-    }
-    return cart;
-  } finally {
-    registry.inFlight -= 1;
-    if (registry.inFlight === 0 && registry.overlapped) {
-      registry.overlapped = false;
-      void eachCache(
-        registry,
-        (cache) => cache.refetch(),
-        "A cart cache did not read the cart again"
-      );
-    }
+    cart = await write();
+  } catch (err) {
+    finishWrite(registry);
+    throw err;
+  }
+  let shown: Promise<void> | undefined;
+  if (ticket > registry.newestApplied) {
+    registry.newestApplied = ticket;
+    shown = eachCache(
+      registry,
+      (cache) => cache.show(cart),
+      "A cart cache did not show the written cart"
+    );
+  }
+  // The caches already hold this cart, so a refetch cannot be overtaken by it,
+  // and a write sent while they settle does not overlap this one.
+  finishWrite(registry);
+  await shown;
+  return cart;
+}
+
+function finishWrite(registry: CartCacheRegistry): void {
+  registry.inFlight -= 1;
+  if (registry.inFlight === 0 && registry.overlapped) {
+    registry.overlapped = false;
+    void eachCache(
+      registry,
+      (cache) => cache.refetch(),
+      "A cart cache did not read the cart again"
+    );
   }
 }

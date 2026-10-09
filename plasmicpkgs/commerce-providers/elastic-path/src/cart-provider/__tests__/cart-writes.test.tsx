@@ -514,6 +514,27 @@ describe("overlapping cart writes", () => {
       expect(refetch).toHaveBeenCalledTimes(1);
       expect(show.mock.calls.map(([cart]) => cart.items[0].quantity)).toEqual([3]);
     });
+
+    it("do not count a write sent after the last one returned, while a slow copy still shows its cart", async () => {
+      let finishShowing: () => void = () => {};
+      const slowShow = jest.fn(
+        () => new Promise<void>((resolve) => (finishShowing = resolve))
+      );
+      registerEpCartCache(otherCopysCache, { show: slowShow, refetch: () => undefined });
+      await renderReaders("li-1x1");
+
+      const first = start(setQuantity(2));
+      await waitFor(() => expect(slowShow).toHaveBeenCalledTimes(1));
+      registerEpCartCache(otherCopysCache, { show: () => undefined, refetch: () => undefined });
+      const second = start(setQuantity(3));
+      await act(async () => {
+        await second;
+        finishShowing();
+        await first;
+      });
+
+      await expectSettledOn("li-1x3", 0);
+    });
   });
 });
 
