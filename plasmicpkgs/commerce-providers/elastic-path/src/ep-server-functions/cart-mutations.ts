@@ -14,7 +14,10 @@ import {
   makeEpCallError,
 } from "./call-error";
 import { seedEpCartCaches } from "./cart-cache-seed";
-import { cartMutationErrorCopy } from "./cart-mutation-error-copy";
+import {
+  CART_WRITE_FAILURE_COPY,
+  cartMutationErrorCopy,
+} from "./cart-mutation-error-copy";
 import { currentEpDesignRealm } from "./design-realm";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession, type EpSessionContext } from "./session-context";
@@ -202,7 +205,7 @@ export function epAddCartItem(input: EpAddCartItemInput): Promise<Cart> {
     input,
     (i) => callEpProxy<Cart>("addCartItem", proxyArgs(i)),
     addCartItemWithSession,
-    "We couldn't add this item to your cart. Please try again."
+    CART_WRITE_FAILURE_COPY.add
   );
 }
 
@@ -212,7 +215,7 @@ export function epUpdateCartItem(input: EpUpdateCartItemInput): Promise<Cart> {
     input,
     (i) => callEpProxy<Cart>("updateCartItem", proxyArgs(i)),
     updateCartItemWithSession,
-    "We couldn't update the quantity. Please try again."
+    CART_WRITE_FAILURE_COPY.update
   );
 }
 
@@ -222,7 +225,7 @@ export function epRemoveCartItem(input: EpRemoveCartItemInput): Promise<Cart> {
     input,
     (i) => callEpProxy<Cart>("removeCartItem", proxyArgs(i)),
     removeCartItemWithSession,
-    "We couldn't remove this item. Please try again."
+    CART_WRITE_FAILURE_COPY.remove
   );
 }
 

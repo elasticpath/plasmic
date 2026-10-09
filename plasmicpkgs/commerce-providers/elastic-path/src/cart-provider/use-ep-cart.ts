@@ -4,7 +4,7 @@ import { registerEpCartCacheSeed } from "../ep-server-functions/cart-cache-seed"
 import { epGetCart } from "../ep-server-functions/getCart";
 import { epCartCacheKey } from "./cache-keys";
 
-registerEpCartCacheSeed((cart) =>
+registerEpCartCacheSeed(mutate, (cart) =>
   mutate(epCartCacheKey(), cart, { revalidate: false })
 );
 

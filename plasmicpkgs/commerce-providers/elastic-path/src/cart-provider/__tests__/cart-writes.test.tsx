@@ -16,6 +16,7 @@ import {
   useEpCart,
 } from "../../index";
 import * as serverFunctions from "../../ep-server-functions";
+import { registerEpCartCacheSeed } from "../../ep-server-functions/cart-cache-seed";
 import {
   latchEpCanvasArtboard,
   resetEpCanvasArtboard,
@@ -183,6 +184,27 @@ describe("cart writes from the root entry", () => {
     await waitFor(() => expect(screen.getByTestId("badge").textContent).toBe("li-2x4"));
   });
 
+  it("resolves a write that succeeded when another cache fails to take the cart", async () => {
+    const brokenCache = {};
+    registerEpCartCacheSeed(brokenCache, () => {
+      throw new Error("cache gone");
+    });
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await renderBadge("empty");
+
+      let cart: Awaited<ReturnType<typeof epAddCartItem>> | undefined;
+      await act(async () => {
+        cart = await epAddCartItem({ productId: "prod-1", quantity: 1 });
+      });
+
+      expect(cart?.items).toEqual([expect.objectContaining({ id: "li-new" })]);
+      await waitFor(() => expect(screen.getByTestId("badge").textContent).toBe("li-newx1"));
+    } finally {
+      registerEpCartCacheSeed(brokenCache, () => undefined);
+    }
+  });
+
   it("rejects an out-of-stock add with a readable error and leaves the cart as it was", async () => {
     proxy.seed([{ id: "li-1", quantity: 1 }]);
     await renderBadge("li-1x1");
@@ -209,9 +231,11 @@ describe("cart writes from the root entry", () => {
   });
 
   it("keeps Elastic Path's own reason when the proxy sends it", async () => {
+    // A development proxy route's response; proxy-cart-write-errors.test.ts drives the real route.
     proxy.failWith(500, {
       error: "dispatch_failed",
       code: "insufficient_stock",
+      correlationId: "corr-1",
       message: "epAddCartItem: The requested quantity exceeds the available stock",
     });
 

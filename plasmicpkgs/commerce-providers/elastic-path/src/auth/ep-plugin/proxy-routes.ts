@@ -53,7 +53,10 @@ import type {
   EpRemovePromoCodeInput,
   EpUpdateCartItemInput,
 } from "../../ep-server-functions";
-import { classifyEpFailure } from "../../ep-server-functions/call-error";
+import {
+  classifyEpFailure,
+  epFailureReason,
+} from "../../ep-server-functions/call-error";
 import { withEpSession } from "../../ep-server-functions/session-context";
 import { buildEpCtx } from "../../ep-server-functions/build-ep-ctx";
 import { parseCookieHeader } from "../../utils/cookie-header";
@@ -256,7 +259,7 @@ export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes {
                   error: "dispatch_failed",
                   code,
                   correlationId,
-                  message: (err as Error)?.message,
+                  message: epFailureReason(err),
                 }
               : { error: "dispatch_failed", code, correlationId }
           ),

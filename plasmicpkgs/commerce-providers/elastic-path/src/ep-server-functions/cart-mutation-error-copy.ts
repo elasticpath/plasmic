@@ -18,6 +18,25 @@ const CART_MUTATION_ERROR_COPY: Record<string, string> = {
     "Cart changes don't run on the Studio canvas. Preview the page to try them.",
 };
 
+/** Fixed shopper copy for a cart write that failed with no more specific copy. */
+export const CART_WRITE_FAILURE_COPY = {
+  add: "We couldn't add this item to your cart. Please try again.",
+  update: "We couldn't update the quantity. Please try again.",
+  remove: "We couldn't remove this item. Please try again.",
+} as const;
+
+/**
+ * The text a cart component shows for a rejected cart write. The write
+ * already rejects with shopper copy, so its message is shown as it is.
+ */
+export function cartWriteErrorText(
+  err: unknown,
+  write: keyof typeof CART_WRITE_FAILURE_COPY
+): string {
+  const message = err instanceof Error ? err.message.trim() : "";
+  return message || CART_WRITE_FAILURE_COPY[write];
+}
+
 /**
  * Resolves designer-facing error text for a cart mutation failure.
  *

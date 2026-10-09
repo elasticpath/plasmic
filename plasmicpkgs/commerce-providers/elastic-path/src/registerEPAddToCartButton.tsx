@@ -15,14 +15,11 @@ import {
   extractCartItemFromForm,
   validateAndParseQuantity,
 } from "./cart/utils/cartDataBuilder";
-import { epProxyErrorCode } from "./ep-server-functions/proxy-fetch";
+import { readEpErrorCode } from "./browser-call";
 import { epAddCartItem } from "./ep-server-functions/cart-mutations";
-import { cartMutationErrorCopy } from "./ep-server-functions/cart-mutation-error-copy";
+import { cartWriteErrorText } from "./ep-server-functions/cart-mutation-error-copy";
 
 const log = createLogger("EPAddToCartButton");
-
-const GENERIC_ADD_TO_CART_ERROR =
-  "We couldn't add this item to your cart. Please try again.";
 
 type PreviewState = "auto" | "enabled" | "loading" | "error";
 
@@ -181,9 +178,9 @@ export function EPAddToCartButton(props: EPAddToCartButtonProps) {
         err instanceof Error ? err.message : "Failed to add item to cart";
       log.error("Add to cart failed", {
         error: message,
-        code: epProxyErrorCode(err),
+        code: readEpErrorCode(err),
       } as Record<string, unknown>);
-      setError(cartMutationErrorCopy(err, GENERIC_ADD_TO_CART_ERROR));
+      setError(cartWriteErrorText(err, "add"));
     } finally {
       setIsLoading(false);
     }

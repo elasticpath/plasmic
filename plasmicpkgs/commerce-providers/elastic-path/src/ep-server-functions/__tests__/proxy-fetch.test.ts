@@ -14,7 +14,9 @@ const mockFetch = jest.fn();
 (globalThis as any).fetch = mockFetch;
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { callEpProxy, epProxyErrorCode } = require("../proxy-fetch");
+const { callEpProxy } = require("../proxy-fetch");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { readEpErrorCode } = require("../../browser-call");
 
 beforeEach(() => {
   mockFetch.mockReset();
@@ -125,7 +127,7 @@ describe("callEpProxy error codes", () => {
       (e: unknown) => e
     );
 
-    expect(epProxyErrorCode(err)).toBe("insufficient_stock");
+    expect(readEpErrorCode(err)).toBe("insufficient_stock");
     expect((err as { correlationId?: string }).correlationId).toBe("abc-123");
   });
 
@@ -145,7 +147,7 @@ describe("callEpProxy error codes", () => {
     );
 
     expect((err as Error).message).toBe("dispatch_failed");
-    expect(epProxyErrorCode(err)).toBe("insufficient_stock");
+    expect(readEpErrorCode(err)).toBe("insufficient_stock");
   });
 
   it("surfaces no_session as a code on a 401 mutation rejection", async () => {
@@ -159,7 +161,7 @@ describe("callEpProxy error codes", () => {
       (e: unknown) => e
     );
 
-    expect(epProxyErrorCode(err)).toBe("no_session");
+    expect(readEpErrorCode(err)).toBe("no_session");
   });
 
   it("returns undefined for errors that carry no code", async () => {
@@ -169,9 +171,9 @@ describe("callEpProxy error codes", () => {
       (e: unknown) => e
     );
 
-    expect(epProxyErrorCode(err)).toBeUndefined();
-    expect(epProxyErrorCode(new Error("plain"))).toBeUndefined();
-    expect(epProxyErrorCode(undefined)).toBeUndefined();
+    expect(readEpErrorCode(err)).toBeUndefined();
+    expect(readEpErrorCode(new Error("plain"))).toBeUndefined();
+    expect(readEpErrorCode(undefined)).toBeUndefined();
   });
 });
 
@@ -194,7 +196,7 @@ describe("callEpProxy unknown fn", () => {
 
     expect((err as Error).message).toContain("placeOrder");
     expect((err as Error).message).not.toBe("unknown_fn");
-    expect(epProxyErrorCode(err)).toBe("unknown_fn");
+    expect(readEpErrorCode(err)).toBe("unknown_fn");
   });
 });
 
@@ -214,7 +216,7 @@ describe("callEpProxy route not mounted", () => {
       (e: unknown) => e
     );
 
-    expect(epProxyErrorCode(err)).toBe("route_not_found");
+    expect(readEpErrorCode(err)).toBe("route_not_found");
   });
 
   it("keeps the route's own code when the 404 carries one", async () => {
@@ -226,6 +228,6 @@ describe("callEpProxy route not mounted", () => {
 
     const err = await callEpProxy("placeOrder", {}).catch((e: unknown) => e);
 
-    expect(epProxyErrorCode(err)).toBe("unknown_fn");
+    expect(readEpErrorCode(err)).toBe("unknown_fn");
   });
 });
