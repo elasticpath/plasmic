@@ -96,10 +96,12 @@ same functions `/server` exports.
 
 `identity.register({ username, password, name, email })` and
 `POST /ep/account/register` register an account member. The server sends
-Elastic Path a self-signup token request, using the password profile from
-`createEpAuth`, then follows login's session, checkout and cart path. The
-response matches login. Account tokens stay on the server. A rejected signup
-keeps Elastic Path's status and error detail.
+Elastic Path a self-signup token request, using the password profile
+configured on `createEpAuth` or the store's only one, then follows login's
+session, checkout and cart path. The response matches login. Account tokens
+stay on the server. An Elastic Path `4xx` other than `401` is
+`registration_rejected` with Elastic Path's status and error detail; a `401` or
+`5xx` is `account_token_mint_failed`, as for login.
 
 `createEpDesignRoutes` serves Studio design time. It answers four catalog
 reads, `getProduct`, `getProductList`, `getProductPage` and

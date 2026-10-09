@@ -187,7 +187,7 @@ not)
 
 **Identity transition**:
 The moment the envelope's Elastic Path identity changes — a member sign-in
-(registration or login) or an account switch. The only moment the **session
+(sign-up or login) or an account switch. The only moment the **session
 cart** is reselected.
 
 **Session cart**:
@@ -215,7 +215,7 @@ package keeps the guest cart, or adopts the account cart with the most recent
 update when there is no guest cart. The cart that loses is never deleted. It is
 told which transition this is in these same terms, so a member of several
 accounts choosing their first one is a **login** and not an **account switch**,
-however it reaches the package.
+however it reaches the package. A sign-up reaches it as a **login**.
 
 **Forwarded call**:
 A browser-originated request whose path and parameters come from the browser

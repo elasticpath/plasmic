@@ -534,10 +534,11 @@ renders with no second call.
 
 `POST /ep/account/register` takes `{ username, password, name, email }`. The
 server posts a self-signup request to Elastic Path's `/v2/account-members/tokens`,
-with the password profile from `createEpAuth`, then follows login's session,
-checkout and cart path.
-The response has login's shape. A rejected signup keeps Elastic Path's status
-and `errors[0].detail`.
+with the same password profile as login, then follows login's session,
+checkout and cart path. The response has login's shape. An Elastic Path `4xx`
+other than `401` is `registration_rejected` with Elastic Path's status and
+`errors[0].detail` as the message; a `401` or `5xx` is
+`account_token_mint_failed`, as for login.
 
 Selection follows from the count. Exactly one account and the member is placed
 in it; several and **none** is chosen for them; none at all and the member is
