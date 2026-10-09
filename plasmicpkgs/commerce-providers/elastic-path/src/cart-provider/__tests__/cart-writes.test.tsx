@@ -349,3 +349,29 @@ describe("cart writes on the Studio artboard", () => {
     expect(screen.getByTestId("badge").textContent).toBe("li-1x1");
   });
 });
+
+describe("cart writes in the configure panel", () => {
+  beforeEach(() => {
+    (window as unknown as { __CanvasPkgs?: unknown }).__CanvasPkgs = {};
+  });
+  afterEach(() => {
+    delete (window as unknown as { __CanvasPkgs?: unknown }).__CanvasPkgs;
+  });
+
+  it.each([
+    ["an add", () => epAddCartItem({ productId: "prod-1", quantity: 1 })],
+    ["an update", () => epUpdateCartItem({ itemId: "li-1", quantity: 2 })],
+    ["a remove", () => epRemoveCartItem({ itemId: "li-1" })],
+  ])("rejects %s with copy that names the configure panel", async (_, writeCart) => {
+    const caught: (Error & { code?: string }) | undefined = await writeCart().then(
+      () => undefined,
+      (err) => err
+    );
+
+    expect(caught?.message).toBe(
+      "Cart changes don't run in the configure panel. Preview the page to try them."
+    );
+    expect(caught?.code).toBe("design_fn_not_served");
+    expect(proxy.calls).toEqual([]);
+  });
+});

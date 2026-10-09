@@ -89,8 +89,9 @@ is built from, `CartResponse`, `CartMeta`, `CartItem`, `CartItemType` and
 storefront's proxy route, so no Elastic Path credential reaches the page. After
 a write, every `useEpCart()` consumer shows the new cart. A rejection is an
 `Error` whose `message` is text you can show the shopper and, when there is
-one, a stable `code` such as `insufficient_stock`. On the Studio canvas a write
-does not run; it rejects with the code `design_fn_not_served`. They are the
+one, a stable `code` such as `insufficient_stock`. On the Studio canvas and in
+a configure panel a write does not run; it rejects with the code
+`design_fn_not_served` and a `message` that names where it ran. They are the
 same functions `/server` exports.
 
 `createEpDesignRoutes` serves Studio design time. It answers four catalog

@@ -1,4 +1,5 @@
 import { readEpErrorCode } from "../browser-call";
+import { currentEpDesignRealm } from "./design-realm";
 
 /**
  * Stable proxy `code` → shopper-facing copy for cart mutation DataProviders
@@ -17,6 +18,9 @@ const CART_MUTATION_ERROR_COPY: Record<string, string> = {
   design_fn_not_served:
     "Cart changes don't run on the Studio canvas. Preview the page to try them.",
 };
+
+const CONFIGURE_PANEL_COPY =
+  "Cart changes don't run in the configure panel. Preview the page to try them.";
 
 /** Fixed shopper copy for a cart write that failed with no more specific copy. */
 export const CART_WRITE_FAILURE_COPY = {
@@ -49,6 +53,9 @@ export function cartMutationErrorCopy(
   genericFallback: string
 ): string {
   const code = readEpErrorCode(err);
+  if (code === "design_fn_not_served" && currentEpDesignRealm() === "app-host") {
+    return CONFIGURE_PANEL_COPY;
+  }
   if (code) {
     return CART_MUTATION_ERROR_COPY[code] ?? genericFallback;
   }

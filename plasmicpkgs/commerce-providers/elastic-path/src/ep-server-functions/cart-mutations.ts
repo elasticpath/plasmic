@@ -197,8 +197,9 @@ async function writeCart<I>(
  * Rejects the same way on the server and in the browser: an `Error` whose
  * `message` is shopper copy and whose `code` is stable to branch on —
  * `insufficient_stock`, `no_session`, `dispatch_failed`, `route_not_found`,
- * or `design_fn_not_served` on the Studio canvas. `cause` holds the original
- * failure; `correlationId` is set when a proxy route logged it.
+ * or `design_fn_not_served` on the Studio canvas and in a configure panel.
+ * `cause` holds the original failure; `correlationId` is set when a proxy
+ * route logged it.
  */
 export function epAddCartItem(input: EpAddCartItemInput): Promise<Cart> {
   return writeCart(
