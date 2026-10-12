@@ -104,12 +104,15 @@ const antdModules = {
   "antd/es/upload/style": "__Sub._antd_es_upload_style_",
 };
 
-const nextShims = {
-  "next/headers": path.join(process.cwd(), "next-shims/headers.js"),
-  "next/headers.js": path.join(process.cwd(), "next-shims/headers.js"),
-  "next/navigation": path.join(process.cwd(), "next-shims/navigation.js"),
-  "next/navigation.js": path.join(process.cwd(), "next-shims/navigation.js"),
-};
+const nextShims = Object.fromEntries(
+  ["headers", "navigation"].flatMap((name) => {
+    const shim = path.join(process.cwd(), `next-shims/${name}.js`);
+    return [
+      [`next/${name}`, shim],
+      [`next/${name}.js`, shim],
+    ];
+  })
+);
 
 // We will be bundling the canvas-packages in two different ways:
 // 1. Accessing react/jsx-runtime from node_modules/jsx-runtime

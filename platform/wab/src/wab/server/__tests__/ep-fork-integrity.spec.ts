@@ -613,14 +613,9 @@ describe("EP Fork Integrity", () => {
 
     it("the canvas bundles resolve both modules to shims", () => {
       const canvasBuild = readFile("platform/canvas-packages/esbuild.js");
-      for (const name of [
-        "next/headers",
-        "next/headers.js",
-        "next/navigation",
-        "next/navigation.js",
-      ]) {
-        expect(canvasBuild).toContain(`"${name}": path.join(`);
-      }
+      expect(canvasBuild).toContain('["headers", "navigation"].flatMap(');
+      expect(canvasBuild).toContain("[`next/${name}`, shim],");
+      expect(canvasBuild).toContain("[`next/${name}.js`, shim],");
       expect(canvasBuild).toContain("...nextShims,");
       expect(canvasBuild).toContain("plugins: [alias(nextShims)],");
       expect(

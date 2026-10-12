@@ -96,8 +96,8 @@ library fails to build on non-Next platforms and asks a Next.js loader for
 **`platform/canvas-packages/esbuild.js` — next/headers and next/navigation (#547)**
 
 EP additions to preserve:
-- The `nextShims` map: `next/headers`, `next/headers.js`, `next/navigation` and
-  `next/navigation.js`, pointing at `next-shims/headers.js` and `next-shims/navigation.js`
+- The `nextShims` map, built from `["headers", "navigation"]`: `next/<name>` and
+  `next/<name>.js` both point at `next-shims/<name>.js`
 - `...nextShims` in the client configs' `alias({...})`
 - `plugins: [alias(nextShims)]` on the server configs (`build-server/`, used by
   publish-hostless)
