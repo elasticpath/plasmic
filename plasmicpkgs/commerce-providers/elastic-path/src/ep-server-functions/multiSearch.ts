@@ -1,7 +1,8 @@
 import { postMultiSearch } from "@epcc-sdk/sdks-shopper";
 import { buildEpClient, isUsableAuth } from "./ep-client";
-import { getCurrentEpSession } from "./session-context";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
+import { getCurrentEpSession } from "./session-context";
+import type { EpServerAuth } from "./types";
 
 /**
  * One search in a multi-search body, passed through as written.
@@ -63,11 +64,23 @@ export async function epMultiSearch({
   }
 
   if (!isUsableAuth(auth)) return {};
+  return epMultiSearchWithAuth(auth, { searches: body.searches, include });
+}
+
+/**
+ * The search itself, with the session passed in rather than read from the
+ * active `withEpSession` scope. For a caller that holds a session no scope
+ * carries, such as catalog search's server pass.
+ */
+export async function epMultiSearchWithAuth(
+  auth: EpServerAuth,
+  { searches, include }: EpMultiSearchInput
+): Promise<EpMultiSearchResponse> {
   const client = buildEpClient(auth);
 
   const response = await postMultiSearch({
     client,
-    body: body as any,
+    body: { searches: searches ?? [] } as any,
     ...(include && include.length > 0 ? { query: { include } } : {}),
   } as any);
   if (response.error) {

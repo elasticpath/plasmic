@@ -24,27 +24,26 @@
  */
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
-import { epPlugin } from "./ep-plugin";
-import type { EpResolveConfig } from "./ep-plugin";
-import { DEFAULT_HOST_ALLOWLIST } from "../host-allowlist";
 import { EP_AUTH_BASE_PATH } from "../../ep-auth-base-path";
-import {
-  assertNonSentinelSecret,
-  resolveAuthSecret,
-} from "./production-guard";
+import { registerEpRequestBridge } from "../../ep-server-functions/request-bridge";
+import type {
+  EpLocaleAndCurrency,
+  EpLocaleAndCurrencyResolver,
+} from "../../types/locale-and-currency";
+import { DEFAULT_HOST_ALLOWLIST } from "../host-allowlist";
+import type { EpAccountSlot, EpLapsedAccount } from "./envelope";
 import {
   ENVELOPE_LIFETIME_SECONDS,
   accountNeedsRoll,
   applyAccountLapse,
   readEnvelopeAccount,
 } from "./envelope";
-import type { EpAccountSlot, EpLapsedAccount } from "./envelope";
-import type { EpSessionCartResolver } from "./session-cart";
-import type {
-  EpLocaleAndCurrency,
-  EpLocaleAndCurrencyResolver,
-} from "../../types/locale-and-currency";
+import type { EpResolveConfig } from "./ep-plugin";
+import { epPlugin } from "./ep-plugin";
 import { resolveLocaleAndCurrency } from "./locale-and-currency";
+import { createEpRequestBridge } from "./page-request";
+import { assertNonSentinelSecret, resolveAuthSecret } from "./production-guard";
+import type { EpSessionCartResolver } from "./session-cart";
 
 export interface CreateEpAuthBetterInput {
   clientId: string;
@@ -292,7 +291,6 @@ function cookieHeaderFromSetCookies(setCookies: string[]): string {
     .join("; ");
 }
 
-
 export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
   if ("basePath" in input) {
     throw new Error(
@@ -304,9 +302,7 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
     input.checkout?.sessionSecret &&
     input.checkout.sessionSecret.length < 16
   ) {
-    throw new Error(
-      "checkout.sessionSecret must be at least 16 characters"
-    );
+    throw new Error("checkout.sessionSecret must be at least 16 characters");
   }
   assertNonSentinelSecret(input.checkout?.sessionSecret, {
     label: "createEpAuth checkout.sessionSecret",
@@ -362,7 +358,7 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
     adapters: input.adapters,
   });
 
-  return {
+  const epAuth: EpAuth = {
     api: {
       async getSession(request) {
         const req = {
@@ -512,11 +508,11 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
     handler: auth,
     config,
   };
+  registerEpRequestBridge(createEpRequestBridge(epAuth.api.getSession));
+  return epAuth;
 }
 
-function makeEmptyEpSession(
-  localeAndCurrency: EpLocaleAndCurrency
-): EpSession {
+function makeEmptyEpSession(localeAndCurrency: EpLocaleAndCurrency): EpSession {
   return {
     session: null,
     user: null,

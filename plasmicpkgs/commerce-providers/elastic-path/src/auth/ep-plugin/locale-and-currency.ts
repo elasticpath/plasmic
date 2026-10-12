@@ -2,6 +2,7 @@ import type {
   EpLocaleAndCurrency,
   EpLocaleAndCurrencyResolver,
 } from "../../types/locale-and-currency";
+import { readPageRequestHeaders } from "./page-request";
 
 const CURRENCY = /^[A-Za-z]{3}$/;
 
@@ -69,15 +70,6 @@ function accepted(
   return undefined;
 }
 
-async function pageRequestHeaders(): Promise<Record<string, string>> {
-  try {
-    const { headers } = await import("next/headers.js");
-    return Object.fromEntries((await headers()).entries());
-  } catch {
-    return {};
-  }
-}
-
 /**
  * Every session read goes through here, so a server render and a proxied
  * browser call send the same `Accept-Language` and `X-Moltin-Currency`. A
@@ -96,7 +88,7 @@ export async function resolveLocaleAndCurrency(
   try {
     resolved = await resolver({
       cookies: request.cookies,
-      headers: request.headers ?? (await pageRequestHeaders()),
+      headers: request.headers ?? (await readPageRequestHeaders()) ?? {},
     });
   } catch (err) {
     console.error("[ep-commerce] resolveLocaleAndCurrency threw", err);
