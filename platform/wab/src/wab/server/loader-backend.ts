@@ -1,3 +1,4 @@
+import "@/wab/server/instrument";
 import { addLoaderRoutes, createApp } from "@/wab/server/AppServer";
 import { Config } from "@/wab/server/config";
 import { ensureDbConnections } from "@/wab/server/db/DbCon";

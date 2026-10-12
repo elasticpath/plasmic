@@ -8,6 +8,8 @@ tracer.init({
   runtimeMetrics: true,
 });
 
+new tracer.TracerProvider().register();
+
 // Replicate what @sentry/node did automatically: intercept unhandled rejections
 // (like the upstream `spawn(async () => throw)` pattern in bundles.ts) and
 // report them instead of letting Node.js v24 terminate the process.
