@@ -15,6 +15,9 @@ jest.mock("react-instantsearch", () => ({
   },
   Configure: () => null,
   useInstantSearch: () => ({ status: "idle", error: undefined }),
+  useInstantSearchContext: () => ({}),
+  useRSCContext: () => ({}),
+  useSearchBox: () => ({}),
 }));
 
 jest.mock("react-instantsearch-nextjs", () => ({
@@ -64,8 +67,14 @@ describe("EPCatalogSearchProvider on the Studio canvas", () => {
   });
 
   describe.each([
-    ["design mode", { componentName: null, globalVariants: {}, interactive: false }],
-    ["interactive mode", { componentName: null, globalVariants: {}, interactive: true }],
+    [
+      "design mode",
+      { componentName: null, globalVariants: {}, interactive: false },
+    ],
+    [
+      "interactive mode",
+      { componentName: null, globalVariants: {}, interactive: true },
+    ],
   ])("in %s", (_mode, canvas) => {
     it.each([undefined, ...PREVIEW_STATES])(
       "never mounts the search runtime with previewState %s",
@@ -80,7 +89,7 @@ describe("EPCatalogSearchProvider on the Studio canvas", () => {
   it("mounts the search runtime outside the canvas", () => {
     const { getByText } = renderProvider(false);
 
-    expect(mockSearchRuntimeMounts).toEqual(["adapter", "InstantSearch"]);
+    expect(mockSearchRuntimeMounts).toEqual(["adapter", "InstantSearchNext"]);
     expect(getByText("search surface")).toBeTruthy();
   });
 });
