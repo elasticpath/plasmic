@@ -1,9 +1,5 @@
 /**
  * @jest-environment jsdom
- *
- * The Studio canvas is not a Next.js app: its bundle resolves next/navigation
- * to a stand-in whose hooks throw. Catalog search is safe there only because
- * EPCatalogSearchProvider never mounts its runtime search tree on the canvas.
  */
 
 import { PlasmicCanvasContext } from "@plasmicapp/host";
