@@ -2145,14 +2145,16 @@ export async function createApp(
     spawn(pruneOldBundleBackupsCache(conn.manager));
   };
 
-  // Call it before `setInterval` so there's no initial delay
-  pruneCache();
-
-  // Prune old cache every 2 hours
-  cron.schedule("0 */2 * * *", () => {
-    logger().info("Pruning cache");
+  if (config.enablePruneCacheJob) {
+    // Call it before `setInterval` so there's no initial delay
     pruneCache();
-  });
+
+    // Prune old cache every 2 hours
+    cron.schedule("0 */2 * * *", () => {
+      logger().info("Pruning cache");
+      pruneCache();
+    });
+  }
 
   // Don't leak infra info
   app.disable("x-powered-by");

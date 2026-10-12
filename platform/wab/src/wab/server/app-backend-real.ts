@@ -77,13 +77,15 @@ export async function runAppServer(config: Config) {
     }
   );
 
-  // runs every 10 minutes
-  cron.schedule("*/10 * * * *", async () => {
-    await withSpan("[Comments] notifications emails", async () => {
-      await sendCommentsNotificationEmails(config);
-      logger().info("Notification emails sent");
+  if (config.enableCommentNotificationJob) {
+    // runs every 10 minutes
+    cron.schedule("*/10 * * * *", async () => {
+      await withSpan("[Comments] notifications emails", async () => {
+        await sendCommentsNotificationEmails(config);
+        logger().info("Notification emails sent");
+      });
     });
-  });
+  }
 
   return runExpressApp(app, (server) => {
     // Upon upgrading to websocket, also proxy to socket server
