@@ -77,6 +77,39 @@ check (`tryGetS3CacheEntry`), `htmlPreviewSemaphore` + `timedProxy` +
 `runWithServerTiming`. Collides regularly with upstream's OTel/metrics work in the same
 functions — layer upstream's additions inside EP's wrappers, don't choose sides.
 
+**`platform/wab/src/wab/server/loader/module-bundler.ts` — next/headers and next/navigation (#547)**
+
+EP additions to preserve:
+- Import of `loaderProvidesNextNavigation` and `nextModulesPlugin` from
+  `@/wab/server/loader/next-modules`
+- `nextModulesPlugin(opts)` in the esbuild `plugins` list of `bundleModulesEsbuild`
+- In `deriveExternals`, inside the `nextjs` branch: `external.push("next/navigation")`
+  when `loaderProvidesNextNavigation(opts)` (loader version 10 or later)
+
+The plugin resolves `next/headers` to an empty-headers shim for every platform, and
+`next/navigation` to the loader's copy for a Next.js loader at version 10 or later, or to a
+shim for everything else. The shim's hooks read the browser location (`/`, empty search
+params and `{}` on a server). `react-instantsearch-nextjs` needs both, and
+`next` is not installed in `loader-bundle-env`. Without the plugin, a bundle with that
+library fails to build on non-Next platforms and asks a Next.js loader for
+`next/headers.js`, which no loader registers. Both headers shims are plain objects, not
+`new Headers()`: loader 1.x supports Node 10 and later, and Node has no global `Headers`
+before 18.
+
+**`platform/canvas-packages/esbuild.js` — next/headers and next/navigation (#547)**
+
+EP additions to preserve:
+- The `nextShims` map, built from `["headers", "navigation"]`: `next/<name>` and
+  `next/<name>.js` both point at `next-shims/<name>.js`
+- `...nextShims` in the client configs' `alias({...})`
+- `plugins: [alias(nextShims)]` on the server configs (`build-server/`, used by
+  publish-hostless)
+
+The canvas is not a Next.js app and does not install `next`.
+The navigation shim's hooks read the browser location. The design canvas never mounts the
+catalog-search runtime, which `canvas-search-runtime.test.tsx` in the EP package pins.
+Studio's live preview does mount it, so the hooks must not throw.
+
 **Branch-merge performance (fork-first)**
 
 Elastic Path speedups from the "Branch merge performance" milestone (#642–#654). Each one
@@ -174,6 +207,9 @@ If upstream somehow conflicts with these, always keep our version entirely:
 | `platform/wab/src/wab/server/routes/project-provisioning.ts` | Project provisioning |
 | `plasmicpkgs/commerce-providers/elastic-path/` | EP commerce package |
 | `platform/canvas-packages/src/commerce-elastic-path.ts` | Canvas registration |
+| `platform/canvas-packages/next-shims/` | Canvas shims for `next/headers` and `next/navigation` (#547) |
+| `platform/wab/src/wab/server/loader/next-modules.ts` | Loader-bundle esbuild plugin for `next/headers` and `next/navigation` (#547) |
+| `platform/wab/src/wab/server/loader/next-modules.spec.ts` | Tests for that plugin through `bundleModules` |
 | `packages/plasmic-mcp/` | MCP server |
 | `packages/plasmic-mcp-registry/` | MCP registry |
 | `.github/workflows/` | All CI/CD workflows |
