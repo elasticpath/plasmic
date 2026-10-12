@@ -87,7 +87,9 @@ the HTML of a category page contains its products. It uses
 as on the Pages Router, search runs in the browser as before.
 
 - The server search uses the page request's session, which `createEpAuth`
-  makes available, so a storefront adds no route, property or component.
+  makes available, so a storefront adds no route, property or component. The
+  storefront's own copy of the package must be this version or later; with an
+  older one, catalog search runs in the browser only.
 - The browser uses the server's results without searching again. Each provider
   on a page uses its own results. After hydration, searches go through the
   storefront's proxy route as before.

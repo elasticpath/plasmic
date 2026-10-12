@@ -74,6 +74,9 @@ shopper's session, and the browser uses those results without searching again.
   it.
 - Outside the App Router, for example on the Pages Router, catalog search runs
   in the browser only.
+- The session reaches the server render through `createEpAuth`, so the
+  storefront's own installed copy of this package must be this version or
+  later. With an older copy, catalog search runs in the browser only.
 
 **Content Security Policy.** The server render adds one inline script for each
 catalog search provider. The script carries that provider's results. If your

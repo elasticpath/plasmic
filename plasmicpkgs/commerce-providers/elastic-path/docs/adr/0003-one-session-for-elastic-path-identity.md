@@ -259,7 +259,10 @@ not hold once built. `react-instantsearch-nextjs` 1.4 builds the server pass's
 location from the real `useSearchParams()`, so URL routing state reaches it for
 every widget mounted on the page, and a deep-linked query or page number renders
 refined on the server. The `baseFilter` dev warning that compensated for the
-limitation was not built.
+limitation was not built. The "require only" rule for the InstantSearch family
+was written for the tsdx build; the shared `build.mjs` build imports every
+InstantSearch package with `import`, so the invariant is now "never mix the
+two", and a test fails on any `require` of them.
 
 **The SSR library stays a declared dependency and needs fork patches to the
 loader.** Hostless bundles resolve dependencies at bundle time and the externals
