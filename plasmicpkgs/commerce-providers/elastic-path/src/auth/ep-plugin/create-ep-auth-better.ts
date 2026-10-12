@@ -41,7 +41,7 @@ import {
 import type { EpResolveConfig } from "./ep-plugin";
 import { epPlugin } from "./ep-plugin";
 import { resolveLocaleAndCurrency } from "./locale-and-currency";
-import { createEpRequestBridge } from "./page-request";
+import { createEpRequestBridge, memoizePerPageRequest } from "./page-request";
 import { assertNonSentinelSecret, resolveAuthSecret } from "./production-guard";
 import type { EpSessionCartResolver } from "./session-cart";
 
@@ -358,7 +358,7 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
     adapters: input.adapters,
   });
 
-  const epAuth: EpAuth = {
+  const perCall: EpAuth = {
     api: {
       async getSession(request) {
         const req = {
@@ -507,6 +507,10 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
     },
     handler: auth,
     config,
+  };
+  const epAuth: EpAuth = {
+    ...perCall,
+    api: { getSession: memoizePerPageRequest(perCall.api.getSession) },
   };
   registerEpRequestBridge(createEpRequestBridge(epAuth.api.getSession));
   return epAuth;

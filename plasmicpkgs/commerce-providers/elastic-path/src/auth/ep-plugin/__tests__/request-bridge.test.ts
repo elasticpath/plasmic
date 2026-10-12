@@ -118,4 +118,62 @@ describe("the request bridge", () => {
 
     expect(await readEpRequestBridge()?.requestNonce()).toBeUndefined();
   });
+
+  it("hands a server render the session the page already read, minting no second token", async () => {
+    const auth = storefrontAuth();
+    nextRequest.headers = new Headers();
+
+    const page = await auth.api.getSession({ cookies: {} });
+    const bridged = await readEpRequestBridge()?.requestSession();
+
+    expect(tokensMinted).toBe(1);
+    expect(bridged?.accessToken).toBe(page.session?.accessToken);
+  });
+});
+
+describe("getSession within one page request", () => {
+  it("reads the session once for every caller", async () => {
+    const auth = storefrontAuth();
+    nextRequest.headers = new Headers();
+
+    const [first, second] = await Promise.all([
+      auth.api.getSession({ cookies: {} }),
+      auth.api.getSession({ cookies: {} }),
+    ]);
+    const third = await auth.api.getSession({ cookies: {} });
+
+    expect(tokensMinted).toBe(1);
+    expect(second.session?.accessToken).toBe(first.session?.accessToken);
+    expect(third.session?.accessToken).toBe(first.session?.accessToken);
+  });
+
+  it("reads again for different cookies", async () => {
+    const auth = storefrontAuth();
+    nextRequest.headers = new Headers();
+
+    await auth.api.getSession({ cookies: { "shop-currency": "EUR" } });
+    await auth.api.getSession({ cookies: { "shop-currency": "GBP" } });
+
+    expect(tokensMinted).toBe(2);
+  });
+
+  it("reads again in the next page request", async () => {
+    const auth = storefrontAuth();
+
+    nextRequest.headers = new Headers();
+    await auth.api.getSession({ cookies: {} });
+    nextRequest.headers = new Headers();
+    await auth.api.getSession({ cookies: {} });
+
+    expect(tokensMinted).toBe(2);
+  });
+
+  it("reads every time outside a request scope", async () => {
+    const auth = storefrontAuth();
+
+    await auth.api.getSession({ cookies: {} });
+    await auth.api.getSession({ cookies: {} });
+
+    expect(tokensMinted).toBe(2);
+  });
 });
