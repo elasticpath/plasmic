@@ -14,6 +14,7 @@ import {
 } from "@/wab/shared/core/components";
 import { stripParens, tryExtractJson } from "@/wab/shared/core/exprs";
 import { JsonValue } from "@/wab/shared/core/lang";
+import { renderRichTextChildren } from "@/wab/shared/core/rich-text-util";
 import {
   UpdateVariableOperations,
   UpdateVariantOperations,
@@ -43,6 +44,7 @@ import {
   ImageAssetRef,
   Interaction,
   ObjectPath,
+  PageHref,
   RuleSet,
   Site,
   StyleTokenRef,
@@ -51,6 +53,7 @@ import {
   TplNode,
   TplSlot,
   TplTag,
+  VarRef,
   Variant,
   VariantSetting,
   isKnownCollectionExpr,
@@ -59,11 +62,13 @@ import {
   isKnownExprText,
   isKnownFunctionArg,
   isKnownFunctionExpr,
+  isKnownImageAssetRef,
   isKnownObjectPath,
   isKnownPageHref,
   isKnownPropParam,
   isKnownRawText,
   isKnownRenderExpr,
+  isKnownStyleTokenRef,
   isKnownTemplatedString,
   isKnownTplRef,
   isKnownVarRef,
@@ -74,6 +79,7 @@ import {
   isBoolType,
   isNumType,
   isOptionsType,
+  normalizeToChoiceObjects,
 } from "@/wab/shared/model/model-util";
 import {
   TplVisibility,
@@ -103,6 +109,7 @@ import {
 } from "@/wab/shared/web-exporter/schema";
 import {
   XmlAttrs,
+  XmlChild,
   XmlElement,
   mkXmlElement,
   toXml,
@@ -140,6 +147,7 @@ function serializeExprValue(expr: Expr): JsonValue | undefined {
         ? jsonValue
         : exprToInterpolatedString(valueExpr);
     })
+    .when([VarRef, PageHref], (refExpr) => exprToInterpolatedString(refExpr))
     .elseUnsafe(() => undefined);
 }
 
@@ -169,7 +177,7 @@ export function getStylesFromRuleSet(rs: RuleSet): Record<string, string> {
 
 function getStylesFromVariantSetting(
   vs: VariantSetting,
-  tpl: TplNode
+  tpl: TplNode,
 ): Record<string, string> {
   const styles: Record<string, string> = getStylesFromRuleSet(vs.rs);
 
@@ -192,8 +200,8 @@ function getStylesFromVariantSetting(
   return Object.fromEntries(
     Object.entries(styles).filter(
       ([prop]) =>
-        prop !== PLASMIC_DISPLAY_NONE && isStylePropApplicable(tpl, prop)
-    )
+        prop !== PLASMIC_DISPLAY_NONE && isStylePropApplicable(tpl, prop),
+    ),
   );
 }
 
@@ -203,7 +211,7 @@ function getStylesFromVariantSetting(
 const RESERVED_ATTR_KEYS = new Set(["id", "style", "children", "outerHTML"]);
 
 function getAttrsFromVariantSetting(
-  vs: VariantSetting
+  vs: VariantSetting,
 ): Record<string, string> {
   const attrs: Record<string, string> = {};
   for (const [key, expr] of Object.entries(vs.attrs)) {
@@ -225,7 +233,7 @@ function getAttrsFromVariantSetting(
  */
 function getVisibilityAttrs(
   vs: VariantSetting,
-  opts?: { explicitVisible?: boolean }
+  opts?: { explicitVisible?: boolean },
 ): Record<string, string> {
   switch (getVariantSettingVisibility(vs)) {
     case TplVisibility.CustomExpr: {
@@ -245,15 +253,22 @@ function getVisibilityAttrs(
   }
 }
 
+function getMixinAttrs(vs: VariantSetting): Record<string, string> {
+  return vs.rs.mixins.length > 0
+    ? { "data-mixins": vs.rs.mixins.map((m) => m.uuid).join(" ") }
+    : {};
+}
+
 /**
- * Serializes repetition + visibility bindings as `data-*` attributes so they survive
- * read -> insertHtml (mirrors html-to-tpl's parsing):
+ * Serializes repetition + mixin + visibility bindings as `data-*` attributes
+ * (mirrors html-to-tpl's parsing):
  * - Repetition (base-vs only): `data-repeat` / `data-repeat-item` / `data-repeat-index`.
+ * - Mixins (the given vs): see getMixinAttrs.
  * - Visibility (the given vs): see getVisibilityAttrs.
  */
 function getStructuralBindingAttrs(
   tpl: TplNode,
-  vs: VariantSetting
+  vs: VariantSetting,
 ): Record<string, string> {
   const attrs: Record<string, string> = {};
 
@@ -270,16 +285,22 @@ function getStructuralBindingAttrs(
     }
   }
 
-  return { ...attrs, ...getVisibilityAttrs(vs) };
+  return { ...attrs, ...getMixinAttrs(vs), ...getVisibilityAttrs(vs) };
+}
+
+/** Serializes a styles record to a style attribute value. */
+function stylesToStyleAttr(styles: Record<string, unknown>): string {
+  return Object.entries(styles)
+    .map(([prop, value]) => `${normProp(prop)}: ${value}`)
+    .join("; ");
 }
 
 function getStyleString(vs: VariantSetting, tpl: TplNode): string | undefined {
   const styles = getStylesFromVariantSetting(vs, tpl);
-  const entries = Object.entries(styles);
-  if (entries.length === 0) {
+  if (Object.keys(styles).length === 0) {
     return undefined;
   }
-  return entries.map(([prop, value]) => `${prop}: ${value}`).join("; ");
+  return stylesToStyleAttr(styles);
 }
 
 function buildTplTag(tpl: TplTag, site: Site): XmlElement {
@@ -306,16 +327,31 @@ function buildTplTag(tpl: TplTag, site: Site): XmlElement {
 
   // Include repetition + visibility (data-*) bindings.
   for (const [key, value] of Object.entries(
-    getStructuralBindingAttrs(tpl, vs)
+    getStructuralBindingAttrs(tpl, vs),
   )) {
     attrs[key] = value;
   }
 
   // For text blocks, render inline with text content
   if (isTplTextBlock(tpl)) {
-    // Try to get text from vsettings.text (RawText)
+    // RawText: serialize the marker structure — plain runs as text, styled
+    // runs as <span style>, nested elements (NodeMarkers) recursively.
     if (isKnownRawText(vs.text)) {
-      return mkXmlElement(tpl.tag, attrs, [vs.text.text]);
+      const children = renderRichTextChildren<XmlChild>(
+        vs.text,
+        {
+          text: (text) => text,
+          styledRun: (text, cssRules) =>
+            mkXmlElement("span", { style: stylesToStyleAttr(cssRules) }, [
+              text,
+            ]),
+          nodeMarker: (markerTpl) => buildTplNode(markerTpl, site),
+        },
+        { spanClassName: "" },
+      );
+      const el = mkXmlElement(tpl.tag, attrs, children);
+      el.noPrettyPrint = true;
+      return el;
     }
     // Dynamic text (ExprText) -> `{{ jsExpr }}` interpolation.
     if (isKnownExprText(vs.text)) {
@@ -390,7 +426,7 @@ function buildTplComponent(tpl: TplComponent, site: Site): XmlElement {
 
   // Include repetition + visibility (data-*) bindings.
   for (const [key, value] of Object.entries(
-    getStructuralBindingAttrs(tpl, vs)
+    getStructuralBindingAttrs(tpl, vs),
   )) {
     attrs[key] = value;
   }
@@ -426,7 +462,7 @@ function buildTplSlot(tpl: TplSlot, site: Site): XmlElement {
 function getParamType(component: Component, param: any): string {
   // Check if this param is a variant group
   const variantGroup = component.variantGroups.find(
-    (group) => group.param === param
+    (group) => group.param === param,
   );
 
   if (variantGroup) {
@@ -466,7 +502,7 @@ interface TplOverride {
 /** Extracts per-element style/attr overrides for a specific variant. */
 function getTplOverrides(
   component: Component,
-  variant: Variant
+  variant: Variant,
 ): TplOverride[] {
   if (!component.tplTree) {
     return [];
@@ -483,6 +519,7 @@ function getTplOverrides(
     const styles = getStylesFromVariantSetting(vs, tpl);
     const attrs = {
       ...getAttrsFromVariantSetting(vs),
+      ...getMixinAttrs(vs),
       ...getVisibilityAttrs(vs, { explicitVisible: true }),
     };
 
@@ -498,8 +535,11 @@ function buildComponentProps(component: Component): PropJson[] {
   return component.params
     .filter((param) => isKnownPropParam(param))
     .map((param) => {
+      // Options are stored either as plain values or as {label, value}
+      // objects; read always shows the labeled form so the tools have one
+      // shape to write back.
       const options = isOptionsType(param.type)
-        ? (param.type.options as string[])
+        ? normalizeToChoiceObjects(param.type.options)
         : undefined;
       const prop: PropJson = {
         __type: "Prop",
@@ -511,7 +551,7 @@ function buildComponentProps(component: Component): PropJson[] {
         prop.options = options;
       }
       if (param.defaultExpr) {
-        const defaultValue = serializeExprValue(param.defaultExpr);
+        const defaultValue = buildExprValueJson(component, param.defaultExpr);
         if (defaultValue !== undefined) {
           prop.default = defaultValue;
         }
@@ -525,7 +565,7 @@ function buildComponentProps(component: Component): PropJson[] {
  */
 export function buildExprJson(
   component: Component,
-  expr: Expr
+  expr: Expr,
 ): ExprJson | undefined {
   if (isKnownCustomCode(expr) || isKnownObjectPath(expr)) {
     return buildFallbackableExprJson(component, expr);
@@ -536,7 +576,7 @@ export function buildExprJson(
       text: expr.text.map((part) =>
         typeof part === "string"
           ? part
-          : buildFallbackableExprJson(component, part)
+          : buildFallbackableExprJson(component, part),
       ),
     };
   }
@@ -572,7 +612,7 @@ export function buildExprJson(
   }
   if (isKnownCollectionExpr(expr)) {
     return expr.exprs.map((item) =>
-      item ? buildExprValueJson(component, item) ?? null : null
+      item ? (buildExprValueJson(component, item) ?? null) : null,
     );
   }
   if (isKnownFunctionExpr(expr)) {
@@ -584,13 +624,27 @@ export function buildExprJson(
         : undefined,
     };
   }
+  if (isKnownImageAssetRef(expr)) {
+    return {
+      __type: "ImageAssetRef",
+      uuid: expr.asset.uuid,
+      name: expr.asset.name,
+    };
+  }
+  if (isKnownStyleTokenRef(expr)) {
+    return {
+      __type: "StyleTokenRef",
+      uuid: expr.token.uuid,
+      name: expr.token.name,
+    };
+  }
   return undefined;
 }
 
 /** Plain typed JSON when statically known, else the structural form. */
 function buildExprValueJson(
   component: Component,
-  expr: Expr
+  expr: Expr,
 ): ExprValueJson | undefined {
   const staticValue = tryExtractJson(expr);
   return staticValue !== undefined
@@ -600,10 +654,10 @@ function buildExprValueJson(
 
 function buildFallbackableExprJson(
   component: Component,
-  expr: CustomCode | ObjectPath
+  expr: CustomCode | ObjectPath,
 ): CustomCodeExprJson | ObjectPathExprJson {
   const exprJson: CustomCodeExprJson | ObjectPathExprJson = isKnownObjectPath(
-    expr
+    expr,
   )
     ? { __type: "ObjectPath", path: [...expr.path] }
     : { __type: "CustomCode", code: stripParens(expr.code) };
@@ -664,7 +718,7 @@ function buildComponentInteractions(component: Component): InteractionJson[] {
           ) {
             const condition = buildExprValueJson(
               component,
-              interaction.condExpr
+              interaction.condExpr,
             );
             if (condition !== undefined) {
               entry.condition = condition;
@@ -685,8 +739,8 @@ function extractInteractionCode(interaction: Interaction): string | undefined {
   return isKnownCustomCode(body)
     ? stripParens(body.code)
     : isKnownObjectPath(body)
-    ? body.path.join(".")
-    : undefined;
+      ? body.path.join(".")
+      : undefined;
 }
 
 /**
@@ -697,7 +751,7 @@ function extractInteractionCode(interaction: Interaction): string | undefined {
  */
 function buildInteractionArgs(
   component: Component,
-  interaction: Interaction
+  interaction: Interaction,
 ): Record<string, unknown> {
   const args: Record<string, unknown> = {};
   for (const arg of interaction.args) {
@@ -707,8 +761,8 @@ function buildInteractionArgs(
         interaction.actionName === "updateVariable"
           ? UpdateVariableOperations
           : interaction.actionName === "updateVariant"
-          ? UpdateVariantOperations
-          : undefined;
+            ? UpdateVariantOperations
+            : undefined;
       if (operations && typeof num === "number" && operations[num]) {
         args[arg.name] = operations[num];
         continue;
@@ -736,7 +790,7 @@ function buildComponentStates(component: Component): StateJson[] {
       // dynamic bindings structurally (ObjectPath/CustomCode/TemplatedString).
       const initialValue = buildExprValueJson(
         component,
-        state.param.defaultExpr
+        state.param.defaultExpr,
       );
       if (initialValue !== undefined) {
         stateJson.initialValue = initialValue;
@@ -774,8 +828,8 @@ function getComponentVariants(component: Component): SerializableVariant[] {
     const type = isStandaloneVariantGroup(variantGroup)
       ? "boolean"
       : variantGroup.multi
-      ? "multi"
-      : "single";
+        ? "multi"
+        : "single";
     for (const variant of variantGroup.variants) {
       result.push({
         variant,
@@ -816,7 +870,7 @@ function buildComponentVariantDefs(component: Component): VariantDefJson[] {
 }
 
 function buildVariantOverrides(
-  component: Component
+  component: Component,
 ): VariantOverrideJson[] | undefined {
   const variantOverrides: VariantOverrideJson[] = [];
   for (const { variant, variantDef } of getComponentVariants(component)) {
@@ -859,8 +913,8 @@ function buildPageMeta(component: Component): PageMetaJson | undefined {
     value == null
       ? undefined
       : typeof value === "string"
-      ? value
-      : serializeExprToString(value);
+        ? value
+        : serializeExprToString(value);
   const title = serializeMetaField(pm.title);
   const description = serializeMetaField(pm.description);
   const canonical = serializeMetaField(pm.canonical);
@@ -890,7 +944,7 @@ export function buildComponentResource(
     // an async lookup) and injected here, so this stays free of studioCtx.
     dataQueries?: DataQueryJson[];
     legacyDataQueries?: LegacyDataQueryJson[];
-  }
+  },
 ): ComponentJson {
   const pageMeta = buildPageMeta(component);
   const fromProject = getDataPlasmicProject(opts.site, component);
@@ -922,7 +976,7 @@ export function buildComponentResource(
 /** Build the canonical JSON model for a standalone element (tpl subtree). */
 export function buildElementResource(
   tpl: TplNode,
-  opts: { site: Site }
+  opts: { site: Site },
 ): ElementJson {
   return {
     __type: "Element",

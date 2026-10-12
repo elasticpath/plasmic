@@ -8,7 +8,6 @@ import {
   getReactWebBundle,
 } from "@/wab/client/components/studio/studio-bundles";
 import { fixStudioIframePositionAndOverflow } from "@/wab/client/dom-utils";
-import { IntercomProviderWrapper } from "@/wab/client/intercom";
 import { analytics } from "@/wab/client/observability";
 import RocketsvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__RocketSvg";
 import { bindStudioShortcutHandlers } from "@/wab/client/shortcuts/studio/studio-shortcut-handlers";
@@ -47,11 +46,7 @@ export class Studio extends React.Component<StudioProps, {}> {
     spawn(getReactWebBundle());
     spawn(getLiveFrameClientJs());
     spawn(maybeConvertToHostLessProject(studioCtx));
-    if (
-      !appConfig.usePlasmicImg &&
-      appConfig.showPlasmicImgModal &&
-      studioCtx.canEditProject()
-    ) {
+    if (!appConfig.usePlasmicImg && studioCtx.canEditProject()) {
       const id = mkShortId();
       notification.info({
         key: id,
@@ -60,7 +55,7 @@ export class Studio extends React.Component<StudioProps, {}> {
           <p>
             <a
               onClick={() => {
-                notification.close(id);
+                notification.destroy(id);
                 return showPlasmicImgModal(studioCtx);
               }}
             >
@@ -92,11 +87,9 @@ export class Studio extends React.Component<StudioProps, {}> {
           provider={() => this.props.studioCtx.hostQuerySwrCache}
         >
           <BottomModalsProvider>
-            <IntercomProviderWrapper>
-              <div className={"studio"}>
-                <div className={"studio__main-area"}>{this.props.children}</div>
-              </div>
-            </IntercomProviderWrapper>
+            <div className={"studio"}>
+              <div className={"studio__main-area"}>{this.props.children}</div>
+            </div>
             <React.Suspense fallback={null}>
               <TopProjectNavTour />
               <StudioTutorialTours />

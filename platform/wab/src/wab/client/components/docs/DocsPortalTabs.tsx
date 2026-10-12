@@ -10,7 +10,6 @@ import {
   PlasmicDocsPortalTabs,
 } from "@/wab/client/plasmic/plasmic_kit_docs_portal/PlasmicDocsPortalTabs";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
 import { Tooltip } from "antd";
 import * as React from "react";
 
@@ -26,16 +25,16 @@ function DocsPortalTabs(props: DocsPortalTabsProps) {
       wrap: (e) => {
         const to =
           key === "intro"
-            ? fillRoute(APP_ROUTES.projectDocs, { projectId })
+            ? APP_ROUTES.projectDocs.fill({ projectId })
             : key === "components"
-            ? fillRoute(APP_ROUTES.projectDocsComponents, {
-                projectId: projectId,
-                codegenType,
-              })
-            : fillRoute(APP_ROUTES.projectDocsIcons, {
-                projectId: projectId,
-                codegenType,
-              });
+              ? APP_ROUTES.projectDocsComponents.fill({
+                  projectId: projectId,
+                  codegenType,
+                })
+              : APP_ROUTES.projectDocsIcons.fill({
+                  projectId: projectId,
+                  codegenType,
+                });
         if (shouldHide) {
           return null;
         }

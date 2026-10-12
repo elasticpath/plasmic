@@ -11,10 +11,11 @@ import {
 } from "@/wab/shared/fonts";
 import { getGoogFontsMeta, makeGoogleFontApiUrl } from "@/wab/shared/googfonts";
 import { ProjectDependency, Site } from "@/wab/shared/model/classes";
+import { maybeUnquote } from "@/wab/shared/strs";
 import { notification } from "antd";
 import $ from "jquery";
 import L from "lodash";
-import { computed, observable } from "mobx";
+import { computed, observable, reaction, runInAction } from "mobx";
 import * as US from "underscore.string";
 
 // From http://www.ampsoft.net/webdesign-l/WindowsMacFonts.html
@@ -55,8 +56,8 @@ Webdings
 Wingdings
 MS Sans Serif
 system-ui\
-`.trim()
-  ) as string[]
+`.trim(),
+  ) as string[],
 )
   .uniq()
   .sort()
@@ -73,7 +74,7 @@ class ThrottledNotification {
   private doNotify: () => void;
   constructor(argsProps: NotificationArgs, waitMs: number) {
     const warnMissingFont = () => {
-      notification.warn(argsProps);
+      notification.warning(argsProps);
     };
     this.doNotify = L.throttle(warnMissingFont, waitMs);
   }
@@ -86,6 +87,7 @@ export class FontManager {
   // All available fonts (e.g. from Google, user-managed, common local fonts)
   private _availPlasmicManagedFonts = observable.array<FontInstallSpec>();
   private _availLocalFonts = observable.set<string>();
+  private _availHostManagedFonts = observable.set<string>();
   private _loaded = false;
   private localFontInstallAttempts = new Set<FontInstallSpec>();
   private notifiers = new Map<string, ThrottledNotification>();
@@ -95,21 +97,21 @@ export class FontManager {
     L.uniq([
       ...this.site.userManagedFonts,
       ...this.site.projectDependencies.flatMap(
-        (pd) => pd.site.userManagedFonts
+        (pd) => pd.site.userManagedFonts,
       ),
-    ])
+    ]),
   );
 
   constructor(readonly site: Site) {
     this.usedFonts.push(
       ...extractUsedFontsFromComponents(site, site.components),
       ...walkDependencyTree(site, "all").flatMap((dep) =>
-        extractUsedFontsFromComponents(dep.site, dep.site.components)
-      )
+        extractUsedFontsFromComponents(dep.site, dep.site.components),
+      ),
     );
 
     const googleFonts = getGoogFontsMeta().items.map((m) =>
-      toGoogleFontInstallSpec(m)
+      toGoogleFontInstallSpec(m),
     );
     this._availPlasmicManagedFonts.push(...googleFonts);
 
@@ -119,11 +121,11 @@ export class FontManager {
           ...commonLocalFonts,
           ...this.userManagedFonts(),
           ...this.usedFonts.map((f) => f.fontFamily),
-        ])
+        ]),
       ).then((avails) => {
         // Add installed commonLocalFonts to this._availPlasmicManagedFonts
         const availCommonLocalFonts = commonLocalFonts.filter((f) =>
-          avails.includes(f)
+          avails.includes(f),
         );
         this._availPlasmicManagedFonts.push(
           ...availCommonLocalFonts.map((fontFamily) => {
@@ -131,24 +133,119 @@ export class FontManager {
               fontType: "local" as const,
               fontFamily,
             };
-          })
+          }),
         );
         this.localFontInstallAttempts.forEach((spec) =>
-          this.tryWarnMissingPlasmicManagedFont(spec.fontFamily)
+          this.tryWarnMissingPlasmicManagedFont(spec.fontFamily),
         );
         this._loaded = true;
         avails
           .filter(
-            (f) => !googleFonts.map((spec) => spec.fontFamily).includes(f)
+            (f) => !googleFonts.map((spec) => spec.fontFamily).includes(f),
           )
           .forEach((f) => this._availLocalFonts.add(f));
-      })
+      }),
     );
   }
 
   isUserManagedFontInstalled = (f: string) => {
-    return !!this._availLocalFonts.has(f);
+    return this._availLocalFonts.has(f) || this._availHostManagedFonts.has(f);
   };
+
+  /** Track web fonts declared by the host app, which canvas frames also load. */
+  observeHostFonts(win: Window) {
+    const doc = win.document;
+    const fonts = doc.fonts;
+    if (!fonts) {
+      return () => undefined;
+    }
+    let disposed = false;
+    const families = () =>
+      L.uniq([
+        ...this.userManagedFonts(),
+        ...this.usedFonts.map((font) => font.fontFamily),
+      ]);
+    const refresh = () => {
+      if (disposed) {
+        return;
+      }
+      const hostFamilies = new Set<string>();
+      fonts.forEach((face) => {
+        // A declaration is enough to make a host font available. Loading each
+        // face here would fetch unused weights and Unicode subsets.
+        if (face.status !== "error") {
+          hostFamilies.add(maybeUnquote(face.family).toLowerCase());
+        }
+      });
+      const available = families().filter((family) =>
+        hostFamilies.has(family.toLowerCase()),
+      );
+      if (L.xor([...this._availHostManagedFonts], available).length > 0) {
+        runInAction(() => this._availHostManagedFonts.replace(available));
+      }
+    };
+    const stop = reaction(families, refresh, { fireImmediately: true });
+    fonts.addEventListener("loadingdone", refresh);
+    fonts.addEventListener("loadingerror", refresh);
+    // Declaring an unused @font-face changes document.fonts without starting
+    // a load, so FontFaceSet emits no event. Watch host styles as they arrive.
+    const stylesObserver = new MutationObserver(refresh);
+    if (doc.head) {
+      stylesObserver.observe(doc.head, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+        attributeFilter: ["href", "media", "disabled"],
+      });
+    }
+    // A linked stylesheet may not expose its faces until its load completes.
+    const onStylesheetLoad = (event: Event) => {
+      if ((event.target as Element).tagName === "LINK") {
+        refresh();
+      }
+    };
+    doc.addEventListener("load", onStylesheetLoad, true);
+    // CSSOM rule changes trigger no mutation or FontFaceSet event, and often
+    // come in bulk, so refresh once per batch.
+    const proto = (win as typeof window).CSSStyleSheet.prototype;
+    let refreshQueued = false;
+    const unpatches = (["insertRule", "deleteRule"] as const).map((method) => {
+      const original = proto[method] as (...args: unknown[]) => unknown;
+      const patched = function (this: CSSStyleSheet, ...args: unknown[]) {
+        const result = original.apply(this, args);
+        if (!refreshQueued) {
+          refreshQueued = true;
+          queueMicrotask(() => {
+            refreshQueued = false;
+            refresh();
+          });
+        }
+        return result;
+      };
+      proto[method] = patched as any;
+      return () => {
+        if (proto[method] === (patched as unknown)) {
+          proto[method] = original as any;
+        }
+      };
+    });
+    spawn(
+      fonts.ready.then(() => {
+        refresh();
+      }),
+    );
+    return () => {
+      disposed = true;
+      stop();
+      fonts.removeEventListener("loadingdone", refresh);
+      fonts.removeEventListener("loadingerror", refresh);
+      stylesObserver.disconnect();
+      doc.removeEventListener("load", onStylesheetLoad, true);
+      unpatches.forEach((unpatch) => unpatch());
+      runInAction(() => this._availHostManagedFonts.clear());
+    };
+  }
 
   private _availFonts = computed(() => {
     const r = [...this._availPlasmicManagedFonts];
@@ -177,7 +274,7 @@ export class FontManager {
 
   private tryWarnMissingPlasmicManagedFont = (fontFamily: string) => {
     const availableFontFamilies = this._availPlasmicManagedFonts.map(
-      (s) => s.fontFamily
+      (s) => s.fontFamily,
     );
     if (!availableFontFamilies.includes(fontFamily)) {
       const notifier = this.notifiers.get(fontFamily);
@@ -192,8 +289,8 @@ export class FontManager {
               description: "This font won't be rendered correctly.",
             },
             // 1 day
-            24 * 3600 * 1000
-          )
+            24 * 3600 * 1000,
+          ),
         );
       }
     }
@@ -208,7 +305,7 @@ export class FontManager {
 
   private installFont = (
     htmlHeads: Array<JQuery>,
-    fontSpec: FontInstallSpec
+    fontSpec: FontInstallSpec,
   ) => {
     if (fontSpec.fontType === "local") {
       if (!this.site.userManagedFonts.includes(fontSpec.fontFamily)) {
@@ -246,7 +343,8 @@ export class FontManager {
     return this.usedFonts
       .filter(
         (f) =>
-          f.fontType === "local" && !this._availLocalFonts.has(f.fontFamily)
+          f.fontType === "local" &&
+          !this.isUserManagedFontInstalled(f.fontFamily),
       )
       .map((f) => f.fontFamily);
   };
@@ -254,7 +352,7 @@ export class FontManager {
   useFont = (studioCtx: StudioCtx, fontFamily: string) => {
     fontFamily = derefTokenRefs(
       siteFinalStyleTokensAllDeps(studioCtx.site),
-      fontFamily
+      fontFamily,
     );
     if (this.usedFonts.find((fs) => fs.fontFamily === fontFamily)) {
       // already installed
@@ -264,7 +362,7 @@ export class FontManager {
     this.usedFonts.push(installSpec);
     this.installFont(
       studioCtx.viewCtxs.map((vc) => vc.canvasCtx.$head()),
-      installSpec
+      installSpec,
     );
     if (installSpec.fontType === "local") {
       // This is mostly used by paste from Figma, where fonts are not added
@@ -274,7 +372,7 @@ export class FontManager {
           if (avails.length === 1) {
             this._availLocalFonts.add(installSpec.fontFamily);
           }
-        })
+        }),
       );
     }
     // Install font globally for style tokens.
@@ -284,7 +382,7 @@ export class FontManager {
   installDepFonts(studioCtx: StudioCtx, dep: ProjectDependency) {
     const usages = extractUsedFontsFromComponents(
       dep.site,
-      dep.site.components
+      dep.site.components,
     );
     for (const usage of usages) {
       this.useFont(studioCtx, usage.fontFamily);

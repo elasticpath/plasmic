@@ -121,7 +121,7 @@ export class DbCtx {
   setSite(
     site: Site,
     branch: ApiBranch | undefined,
-    projectVersion: PkgVersionInfoMeta | ProjectRevision | undefined
+    projectVersion: PkgVersionInfoMeta | ProjectRevision | undefined,
   ) {
     this._site.set(site);
     this._branchInfo.set(branch);
@@ -155,19 +155,15 @@ export class DbCtx {
    */
   maybeObserveComponents(
     components: Component[],
-    componentContext?: ComponentContext
+    componentContext?: ComponentContext,
   ) {
-    if (!this.appCtx.appConfig.incrementalObservables) {
-      return false;
-    }
     return this.recorder.maybeObserveComponents(
       uniqBy(components, "uuid"),
-      componentContext
+      componentContext,
     );
   }
 
   private createRecorder(site: Site) {
-    const incrementalObservables = this.appCtx.appConfig.incrementalObservables;
     return new ChangeRecorder({
       inst: site,
       _instUtil: instUtil,
@@ -193,13 +189,11 @@ export class DbCtx {
       isExternalRef: (obj) =>
         !!maybe(
           this.bundler().addrOf(obj),
-          (addr) => addr.uuid !== this.siteInfo.id
+          (addr) => addr.uuid !== this.siteInfo.id,
         ),
       visitNodeListener: undefined,
-      skipInitialObserveFields: incrementalObservables
-        ? [meta.getFieldByName("Component", "tplTree")]
-        : undefined,
-      incremental: incrementalObservables,
+      skipInitialObserveFields: [meta.getFieldByName("Component", "tplTree")],
+      incremental: true,
     });
   }
 }

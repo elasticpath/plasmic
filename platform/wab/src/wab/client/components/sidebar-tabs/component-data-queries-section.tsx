@@ -5,7 +5,7 @@ import {
   useDataSourceOpExprBottomModal,
 } from "@/wab/client/components/sidebar-tabs/DataSource/DataSourceOpPicker";
 import { SidebarSection } from "@/wab/client/components/sidebar/SidebarSection";
-import { IconLinkButton } from "@/wab/client/components/widgets";
+import { IconLinkButton, LinkButton } from "@/wab/client/components/widgets";
 import {
   DataQueriesDeprecatedTooltip,
   DataQueriesTooltip,
@@ -13,11 +13,26 @@ import {
 import { Icon } from "@/wab/client/components/widgets/Icon";
 import { LabelWithDetailedTooltip } from "@/wab/client/components/widgets/LabelWithDetailedTooltip";
 import { LabeledListItem } from "@/wab/client/components/widgets/LabeledListItem";
+import { useDataSource } from "@/wab/client/contexts/AppContexts";
+import {
+  makeAllLegacyQueriesMigrationPrompt,
+  makeLegacyQueryMigrationPrompt,
+} from "@/wab/client/copilot/query-migration";
 import PlusIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Plus";
-import { RightTabKey, useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
+import { SparklesSvgIcon } from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__SparklesSvg";
+import {
+  RightTabKey,
+  StudioCtx,
+  useStudioCtx,
+} from "@/wab/client/studio-ctx/StudioCtx";
 import { mkModelUiId } from "@/wab/client/studio-ctx/ui/studio-ui-ids";
 import { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
-import { DATA_QUERY_LOWER, DATA_QUERY_PLURAL_CAP } from "@/wab/shared/Labels";
+import {
+  CONFIGURE_ACTION,
+  DATA_QUERY_LOWER,
+  DATA_QUERY_PLURAL_CAP,
+  DELETE_ACTION,
+} from "@/wab/shared/Labels";
 import { addEmptyQuery } from "@/wab/shared/TplMgr";
 import { getTplComponentFetchers } from "@/wab/shared/cached-selectors";
 import { toVarName } from "@/wab/shared/codegen/util";
@@ -25,6 +40,7 @@ import { spawn } from "@/wab/shared/common";
 import { isPageComponent } from "@/wab/shared/core/components";
 import { ExprCtx, asCode } from "@/wab/shared/core/exprs";
 import { tryGetTplOwnerComponent } from "@/wab/shared/core/tpls";
+import { checkLegacyQueryMigratable } from "@/wab/shared/data-sources-meta/legacy-query-migration";
 import {
   Component,
   ComponentDataQuery,
@@ -33,7 +49,11 @@ import {
   isKnownDataSourceOpExpr,
   isKnownTemplatedString,
 } from "@/wab/shared/model/classes";
-import { renameQueryAndFixExprs } from "@/wab/shared/refactoring";
+import {
+  findLegacyQueriesReadByOp,
+  findQueryInvalidationRefs,
+  renameQueryAndFixExprs,
+} from "@/wab/shared/refactoring";
 import { PlasmicDataSourceContextProvider } from "@plasmicapp/react-web";
 import { Menu } from "antd";
 import { autorun } from "mobx";
@@ -41,17 +61,55 @@ import { observer } from "mobx-react";
 import { ok } from "neverthrow";
 import React from "react";
 
+// Opens Chat Copilot and sends the migration prompt right away.
+function startQueryMigrationChat(studioCtx: StudioCtx, prompt: string) {
+  spawn(
+    studioCtx.appCtx.topFrameApi?.openCopilotChat({
+      prompt,
+      mode: "query-migration",
+    }),
+  );
+}
+
 const DataQueryRow = observer(
   ({
     query,
     viewCtx,
     component,
+    isDeprecated,
   }: {
     component: Component;
     query: ComponentDataQuery;
     viewCtx: ViewCtx;
+    isDeprecated: boolean;
   }) => {
     const studioCtx = viewCtx.studioCtx;
+    const showMigrateItem =
+      isDeprecated && studioCtx.queryMigrationCopilotEnabled();
+    // The integration is only needed for the migrate menu item; don't fetch
+    // (and on 403, retry) it otherwise.
+    const {
+      data: dataSource,
+      error: dataSourceError,
+      isLoading: isLoadingDataSource,
+    } = useDataSource(showMigrateItem ? query.op?.sourceId : undefined);
+    const invalidationRefCount = showMigrateItem
+      ? findQueryInvalidationRefs(studioCtx.site).filter(
+          ({ ref }) => ref === query,
+        ).length
+      : 0;
+    const migration = checkLegacyQueryMigratable(
+      query.op,
+      dataSource,
+      invalidationRefCount,
+      showMigrateItem
+        ? findLegacyQueriesReadByOp(query, component.dataQueries).map(
+            (q) => q.name,
+          )
+        : [],
+      dataSourceError,
+    );
+    const canMigrate = !isLoadingDataSource && migration.migratable;
     const exprCtx: ExprCtx = {
       projectFlags: studioCtx.projectFlags(),
       component,
@@ -60,7 +118,7 @@ const DataQueryRow = observer(
 
     const handleDataSourceOpChange = async (
       newOp: DataSourceOpExpr,
-      opExprName?: string
+      opExprName?: string,
     ) => {
       await studioCtx.change(() => {
         query.op = newOp;
@@ -90,15 +148,36 @@ const DataQueryRow = observer(
       return (
         <Menu>
           <Menu.Item onClick={() => openDataSourceModal()}>
-            Configure {DATA_QUERY_LOWER}
+            {CONFIGURE_ACTION}
           </Menu.Item>
+          {showMigrateItem && (
+            <Menu.Item
+              disabled={!canMigrate}
+              title={
+                isLoadingDataSource
+                  ? undefined
+                  : [...migration.blockers, ...migration.warnings].join(" ")
+              }
+              onClick={() =>
+                startQueryMigrationChat(
+                  studioCtx,
+                  makeLegacyQueryMigrationPrompt(component, query),
+                )
+              }
+            >
+              <span className="inline-flex flex-vcenter gap-xsm">
+                <SparklesSvgIcon />
+                Migrate
+              </span>
+            </Menu.Item>
+          )}
           <Menu.Divider />
           <Menu.Item
             onClick={() =>
               studioCtx.siteOps().removeComponentQuery(component, query)
             }
           >
-            Remove {DATA_QUERY_LOWER}
+            {DELETE_ACTION}
           </Menu.Item>
         </Menu>
       );
@@ -157,7 +236,7 @@ const DataQueryRow = observer(
         </LabeledListItem>
       </WithContextMenu>
     );
-  }
+  },
 );
 
 function ComponentQueriesSection_(props: {
@@ -172,15 +251,26 @@ function ComponentQueriesSection_(props: {
 
   const componentType = isPageComponent(component) ? "page" : "component";
 
+  const showMigrate =
+    isDeprecated &&
+    studioCtx.queryMigrationCopilotEnabled() &&
+    component.dataQueries.length > 0;
+
   const handleAddDataQuery = () => {
     spawn(
       studioCtx.change(() => {
         const query = addEmptyQuery(component);
         studioCtx.newlyAddedQuery = query;
         return ok();
-      })
+      }),
     );
   };
+
+  const handleMigrateAll = () =>
+    startQueryMigrationChat(
+      studioCtx,
+      makeAllLegacyQueriesMigrationPrompt(component, component.dataQueries),
+    );
 
   return (
     <SidebarSection
@@ -188,7 +278,11 @@ function ComponentQueriesSection_(props: {
       title={
         <LabelWithDetailedTooltip
           tooltip={
-            isDeprecated ? DataQueriesDeprecatedTooltip : DataQueriesTooltip
+            isDeprecated ? (
+              <DataQueriesDeprecatedTooltip showMigrate={showMigrate} />
+            ) : (
+              DataQueriesTooltip
+            )
           }
         >
           {DATA_QUERY_PLURAL_CAP}
@@ -196,15 +290,27 @@ function ComponentQueriesSection_(props: {
         </LabelWithDetailedTooltip>
       }
       emptyBody={component.dataQueries.length === 0 && tplFetchers.length === 0}
+      emptyDescription="Fetch data from an integration."
       zeroBodyPadding
       controls={
-        <IconLinkButton
-          id="data-queries-add-btn"
-          tooltip={`Add ${DATA_QUERY_LOWER} to ${componentType}`}
-          onClick={handleAddDataQuery}
-        >
-          <Icon icon={PlusIcon} />
-        </IconLinkButton>
+        <div className="inline-flex flex-vcenter gap-m">
+          {showMigrate && (
+            <LinkButton
+              className="inline-flex flex-vcenter gap-xsm"
+              onClick={handleMigrateAll}
+            >
+              <SparklesSvgIcon />
+              Migrate all
+            </LinkButton>
+          )}
+          <IconLinkButton
+            id="data-queries-add-btn"
+            tooltip={`Add ${DATA_QUERY_LOWER} to ${componentType}`}
+            onClick={handleAddDataQuery}
+          >
+            <Icon icon={PlusIcon} />
+          </IconLinkButton>
+        </div>
       }
     >
       {component.dataQueries.map((query) => (
@@ -213,6 +319,7 @@ function ComponentQueriesSection_(props: {
           component={component}
           query={query}
           viewCtx={viewCtx}
+          isDeprecated={isDeprecated}
         />
       ))}
       {tplFetchers.map((tpl) => {
@@ -237,17 +344,17 @@ const TplFetcherRow = observer(function TplFetcherRow(props: {
   const effectiveVs = viewCtx.variantTplMgr().effectiveVariantSetting(tpl);
 
   const nameExpr = effectiveVs.args.find(
-    (arg) => arg.param.variable.name === "name"
+    (arg) => arg.param.variable.name === "name",
   )?.expr;
 
   const name = !nameExpr
     ? "Unnamed query"
     : isKnownTemplatedString(nameExpr)
-    ? asCode(nameExpr, exprCtx).code.slice(1, -1)
-    : JSON.parse(asCode(nameExpr, exprCtx).code);
+      ? asCode(nameExpr, exprCtx).code.slice(1, -1)
+      : JSON.parse(asCode(nameExpr, exprCtx).code);
 
   const dataOpExpr = effectiveVs.args.find(
-    (arg) => arg.param.variable.name === "dataOp"
+    (arg) => arg.param.variable.name === "dataOp",
   )?.expr;
 
   const env = viewCtx.getCanvasEnvForTpl(tpl);

@@ -33,12 +33,6 @@ export class App {
       this._view.setState({ showSpinner: wasShowingSpinner });
     }
   }
-  showSpinner() {
-    this._view.setState({ showSpinner: true });
-  }
-  hideSpinner() {
-    this._view.setState({ showSpinner: false });
-  }
 }
 type AppViewProps = {
   contents: (app: App) => ReactNode;
@@ -73,9 +67,9 @@ export class AppView extends React.Component<AppViewProps, AppViewState> {
                 <ScreenDimmer>
                   <Spin size={"large"} />
                 </ScreenDimmer>,
-                document.body
+                document.body,
               )}
-          </div>
+          </div>,
         )}
       </IconContext.Provider>
     );

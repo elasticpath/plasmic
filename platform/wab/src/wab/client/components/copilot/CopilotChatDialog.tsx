@@ -1,9 +1,12 @@
 import { DefaultCopilotChatDialogProps } from "@/wab/client/plasmic/plasmic_kit_data_binding/PlasmicCopilotChatDialog";
-import { ProjectId } from "@/wab/shared/ApiSchema";
+import { ApiProject, CopilotChatOpenOpts } from "@/wab/shared/ApiSchema";
 
 export interface CopilotChatDialogProps extends DefaultCopilotChatDialogProps {
-  projectId: ProjectId;
+  project: ApiProject;
+  chatOpenOpts?: CopilotChatOpenOpts;
+  canStartNewChat: boolean;
   onClose: () => void;
+  onPlanReady: () => void;
 }
 
 /**

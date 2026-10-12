@@ -38,6 +38,7 @@ import {
 import {
   isBlockScope,
   isScope,
+  isValidJavaScriptCode,
   parseJsCode,
   wrapJavaScriptCodeInParens,
   writeJs,
@@ -95,13 +96,13 @@ export type ParsedExprInfo = {
 export function emptyParsedExprInfo(): ParsedExprInfo {
   return {
     usesDollarVars: Object.fromEntries(
-      DOLLAR_VARS.map((key) => [key, false])
+      DOLLAR_VARS.map((key) => [key, false]),
     ) as Record<DollarVar, boolean>,
     usesUnknownDollarVarKeys: Object.fromEntries(
-      DOLLAR_VARS.map((key) => [key, false])
+      DOLLAR_VARS.map((key) => [key, false]),
     ) as Record<DollarVar, boolean>,
     usedDollarVarKeys: Object.fromEntries(
-      DOLLAR_VARS.map((key) => [key, new Set<string>()])
+      DOLLAR_VARS.map((key) => [key, new Set<string>()]),
     ) as Record<DollarVar, Set<string>>,
     usedFreeVars: new Set<string>(),
   };
@@ -117,7 +118,7 @@ export function emptyParsedExprInfo(): ParsedExprInfo {
  * Numeric literal keys are preserved as numbers (e.g. `arr[0]` → 0, not "0").
  */
 function getMemberExpressionKey(
-  node: ast.MemberExpression
+  node: ast.MemberExpression,
 ): string | number | undefined {
   if (!node.computed && node.property.type === "Identifier") {
     // This is an expression like `obj.name`.
@@ -145,7 +146,7 @@ function getMemberExpressionKey(
  * stringified (e.g. `arr[0]` → "0").
  */
 function parseMemberExpression(
-  node: ast.MemberExpression
+  node: ast.MemberExpression,
 ): Array<string | undefined> {
   const right = getMemberExpressionKey(node)?.toString();
   if (node.object.type === "Identifier") {
@@ -163,7 +164,7 @@ function parseMemberExpression(
  * dynamic accessors or non-identifier roots.
  */
 function parseMemberExpressionPreservingType(
-  node: ast.MemberExpression
+  node: ast.MemberExpression,
 ): Array<string | number | undefined> {
   const right = getMemberExpressionKey(node);
   if (node.object.type === "Identifier") {
@@ -173,6 +174,21 @@ function parseMemberExpressionPreservingType(
   } else {
     return [undefined, right];
   }
+}
+
+/**
+ * Like parseMemberExpression, but truncated at the first statically unknown
+ * part; e.g. `$state.a[b].c` → ["$state", "a"].
+ */
+function parseVisibleMemberExpression(node: ast.MemberExpression): string[] {
+  const parts: string[] = [];
+  for (const part of parseMemberExpression(node)) {
+    if (part === undefined) {
+      break;
+    }
+    parts.push(part);
+  }
+  return parts;
 }
 
 /**
@@ -188,7 +204,7 @@ function parseMemberExpressionPreservingType(
  * stores ObjectPath.path for array accessors).
  */
 export function tryParseAsObjectPath(
-  code: string
+  code: string,
 ): (string | number)[] | undefined {
   let parsed: ast.Program;
   try {
@@ -228,27 +244,21 @@ interface ParseCodeExpressionOptions {
   disableGlobals?: string[];
 }
 
-export function parseCodeExpression(
-  code: string,
-  options?: ParseCodeExpressionOptions
-): ParsedExprInfo {
-  code = wrapJavaScriptCodeInParens(code);
+type WithLocals<T extends ast.Node> = T & {
+  locals?: Record<string, boolean>;
+};
 
-  type WithLocals<T extends ast.Node> = T & {
-    locals?: Record<string, boolean>;
-  };
+const declaresArguments = (node: ast.Node) =>
+  node.type === "FunctionExpression" || node.type === "FunctionDeclaration";
 
-  const enabledGlobals = options?.disableGlobals
-    ? xDifference(ENABLED_GLOBALS, options.disableGlobals)
-    : ENABLED_GLOBALS;
-
-  // Based on https://github.com/ForbesLindesay/acorn-globals/blob/master/index.js
-  const ast: WithLocals<ast.Program> = parseCode(code);
-  const info = emptyParsedExprInfo();
-
-  const declaresArguments = (node: ast.Node) =>
-    node.type === "FunctionExpression" || node.type === "FunctionDeclaration";
-
+/**
+ * Annotates each scope node of `program` with the names it declares, so that a
+ * name can be told apart from the global of the same name (e.g. a `$queries`
+ * function parameter shadowing the dollar var).
+ *
+ * Based on https://github.com/ForbesLindesay/acorn-globals/blob/master/index.js
+ */
+function annotateScopeLocals(program: WithLocals<ast.Program>) {
   const declareFunction = (node: WithLocals<ast.Function>) => {
     node.locals = node.locals ?? {};
     node.params.forEach((child) => {
@@ -274,7 +284,7 @@ export function parseCodeExpression(
         node.properties.forEach((prop) => {
           declarePattern(
             prop.type === "Property" ? prop.value : prop.argument,
-            parent
+            parent,
           );
         });
         break;
@@ -296,10 +306,10 @@ export function parseCodeExpression(
     }
   };
   const declareModuleSpecifier = (node) => {
-    ast.locals = ast.locals || {};
-    ast.locals[node.local.name] = true;
+    program.locals = program.locals || {};
+    program.locals[node.local.name] = true;
   };
-  traverse(ast, {
+  traverse(program, {
     VariableDeclaration: (node, parents) => {
       let maybeParent: WithLocals<ast.Node> | null = null;
       for (let i = parents.length - 1; i >= 0 && maybeParent === null; i--) {
@@ -321,7 +331,7 @@ export function parseCodeExpression(
     FunctionDeclaration: (node, parents) => {
       let maybeParent: WithLocals<ast.Node> | null = null;
       for (let i = parents.length - 2; i >= 0 && maybeParent === null; i--) {
-        if (isScope(parents[i])) {
+        if (isBlockScope(parents[i])) {
           maybeParent = parents[i];
         }
       }
@@ -366,46 +376,61 @@ export function parseCodeExpression(
     ImportSpecifier: declareModuleSpecifier,
     ImportNamespaceSpecifier: declareModuleSpecifier,
   });
+}
+
+/**
+ * Whether `name` resolves to a declaration in one of `parents` rather than to a
+ * global. Only meaningful once `annotateScopeLocals()` has run on the program.
+ */
+function resolvesToLocal(
+  name: string,
+  parents: WithLocals<ast.Node>[],
+): boolean {
+  return parents.some(
+    (parent) =>
+      (name === "arguments" && declaresArguments(parent)) ||
+      (!!parent.locals && name in parent.locals),
+  );
+}
+
+export function parseCodeExpression(
+  code: string,
+  options?: ParseCodeExpressionOptions,
+): ParsedExprInfo {
+  code = wrapJavaScriptCodeInParens(code);
+
+  const enabledGlobals = options?.disableGlobals
+    ? xDifference(ENABLED_GLOBALS, options.disableGlobals)
+    : ENABLED_GLOBALS;
+
+  const ast: WithLocals<ast.Program> = parseCode(code);
+  const info = emptyParsedExprInfo();
+  annotateScopeLocals(ast);
+
   const identifier = (
     node: ast.Identifier,
-    parents: WithLocals<ast.Node>[]
+    parents: WithLocals<ast.Node>[],
   ) => {
     const name = node.name;
-    if (name === "undefined") {
+    if (name === "undefined" || resolvesToLocal(name, parents)) {
       return;
-    }
-    for (const parent of parents) {
-      if (name === "arguments" && declaresArguments(parent)) {
-        return;
-      }
-      if (parent.locals && name in parent.locals) {
-        return;
-      }
     }
     if (isDollarVar(name)) {
       info.usesDollarVars[name] = true;
+      // A dollar var used outside a member expression (`Object.keys($queries)`)
+      // can reach any key; `$queries.foo` is keyed by the MemberExpression visitor.
+      const parent = parents[parents.length - 2];
+      if (!(parent?.type === "MemberExpression" && parent.object === node)) {
+        info.usesUnknownDollarVarKeys[name] = true;
+      }
     } else if (!enabledGlobals.has(name)) {
       info.usedFreeVars.add(name);
     }
   };
   traverse(ast, {
     MemberExpression: (node, parents: WithLocals<ast.Node>[]) => {
-      let parts = parseMemberExpression(node);
-      const firstUndefinedIdx = parts.findIndex((part) => part === undefined);
-      if (firstUndefinedIdx !== -1) {
-        parts = parts.slice(0, firstUndefinedIdx);
-      }
-
-      if (parts[0]) {
-        for (const parent of parents) {
-          if (parts[0] === "arguments" && declaresArguments(parent)) {
-            return;
-          }
-          if (parent.locals && parts[0] in parent.locals) {
-            return;
-          }
-        }
-
+      const parts = parseVisibleMemberExpression(node);
+      if (parts[0] && !resolvesToLocal(parts[0], parents)) {
         if (isDollarVar(parts[0])) {
           info.usesDollarVars[parts[0]] = true;
           if (parts[1]) {
@@ -459,7 +484,7 @@ export function mergeParsedExprInfos(infos: ParsedExprInfo[]): ParsedExprInfo {
         info.usesUnknownDollarVarKeys[key];
       full.usedDollarVarKeys[key] = xUnion(
         full.usedDollarVarKeys[key],
-        info.usedDollarVarKeys[key]
+        info.usedDollarVarKeys[key],
       );
     }
     full.usedFreeVars = xUnion(full.usedFreeVars, info.usedFreeVars);
@@ -475,18 +500,21 @@ function generateCode(ast: ast.Program): string {
   return newCode.endsWith(";") ? newCode.slice(0, -1) : newCode;
 }
 
-function mkMemberExpression(parts: string[]): ast.MemberExpression {
+function mkMemberExpression(
+  parts: string[],
+  optional = false,
+): ast.MemberExpression {
   const key = parts[parts.length - 1];
   return {
     type: "MemberExpression",
     object:
       parts.length > 2
-        ? mkMemberExpression(parts.slice(0, -1))
+        ? mkMemberExpression(parts.slice(0, -1), optional)
         : {
             type: "Identifier",
             name: parts[0],
           },
-    optional: false,
+    optional: optional && parts.length > 2,
     ...(!key.match(/^[A-Za-z_$]/) || !key.match(/^[A-Za-z_0-9$]*$/)
       ? {
           property: {
@@ -506,9 +534,17 @@ function mkMemberExpression(parts: string[]): ast.MemberExpression {
   };
 }
 
+/** Whether any access in the member chain rooted at `node` is optional (`?.`). */
+function hasOptionalAccess(node: ast.MemberExpression): boolean {
+  return (
+    node.optional ||
+    (node.object.type === "MemberExpression" && hasOptionalAccess(node.object))
+  );
+}
+
 export function replaceMemberExpression(
   node: ast.MemberExpression,
-  newPath: string[]
+  newPath: string[],
 ) {
   const newExpr = mkMemberExpression(newPath);
   node.object = newExpr.object;
@@ -521,31 +557,109 @@ export function replaceMemberExpression(
  * renamed to `newObject.newKey`. Also works in deep objects; e.g. if
  * `oldKey` is "old.deep.key" and `newKey` is "new.key" it will replace
  * `oldObject.old.deep.key` with `newObject.new.key`.
+ *
+ * A locally declared `oldObject` (e.g. `($queries) => $queries.foo`) shadows the
+ * global of that name and is left alone, as is a reference whose scope locally
+ * declares `newObject` and would capture the rewrite.
  */
 export function renameObjectKey(
   code: string,
   oldObject: string,
   newObject: string,
   oldKey: string,
-  newKey: string
+  newKey: string,
 ): string {
-  code = wrapJavaScriptCodeInParens(code);
   const oldParts = [oldObject, ...oldKey.split(".")];
   const newParts = [newObject, ...newKey.split(".")];
 
-  const ast = traverseCode(code, {
-    MemberExpression: (node) => {
-      const parts = parseMemberExpression(node);
-      if (arrayEq(oldParts, parts)) {
-        const newMemberExpression = mkMemberExpression(newParts);
-        node.object = newMemberExpression.object;
-        node.property = newMemberExpression.property;
-        node.computed = false;
+  let renamed = false;
+  const ast = traverseCode(
+    wrapJavaScriptCodeInParens(code),
+    {
+      MemberExpression: (node, parents: WithLocals<ast.Node>[]) => {
+        const parts = parseMemberExpression(node);
+        if (
+          arrayEq(oldParts, parts) &&
+          !resolvesToLocal(oldObject, parents) &&
+          // A local `newObject` would capture the rewrite, pointing the read at
+          // an unrelated object while the old reference counts as gone.
+          !resolvesToLocal(newObject, parents)
+        ) {
+          const newMemberExpression = mkMemberExpression(
+            newParts,
+            hasOptionalAccess(node),
+          );
+          node.object = newMemberExpression.object;
+          node.property = newMemberExpression.property;
+          node.computed = newMemberExpression.computed;
+          node.optional = node.optional || newMemberExpression.optional;
+          renamed = true;
+        }
+      },
+    },
+    true,
+  );
+
+  // Leave code as is if there's nothing to rename.
+  return renamed ? generateCode(ast) : code;
+}
+
+/**
+ * The statically visible member chains under `<object>.<key>` in `code`; e.g.
+ * `$queries.getUsers.data.length + $queries.getUsers.error` yields
+ * `[["data", "length"], ["error"]]`. Each occurrence reports its outermost
+ * chain, truncated at the first dynamic accessor (`[someVar]`). A locally
+ * declared `object` shadows the global of that name and is skipped.
+ */
+export function findMemberChainsInCode(
+  code: string,
+  object: string,
+  key: string,
+): string[][] {
+  const chains: string[][] = [];
+  traverseCode(
+    wrapJavaScriptCodeInParens(code),
+    {
+      MemberExpression: (node, parents: WithLocals<ast.Node>[]) => {
+        const parent = parents[parents.length - 2];
+        if (parent?.type === "MemberExpression" && parent.object === node) {
+          // An inner node; the outermost node reports the full chain.
+          return;
+        }
+        const parts = parseVisibleMemberExpression(node);
+        if (
+          parts[0] === object &&
+          parts[1] === key &&
+          !resolvesToLocal(object, parents)
+        ) {
+          chains.push(parts.slice(2));
+        }
+      },
+    },
+    true,
+  );
+  return chains;
+}
+
+/**
+ * Every string literal in `code`, template-literal text included; e.g.
+ * `` `/users?key=${$props.k}` + "&v=1" `` yields `["/users?key=", "", "&v=1"]`.
+ */
+export function extractStringLiteralsFromCode(code: string): string[] {
+  const literals: string[] = [];
+  traverseCode(wrapJavaScriptCodeInParens(code), {
+    Literal: (node) => {
+      if (typeof node.value === "string") {
+        literals.push(node.value);
       }
     },
+    TemplateLiteral: (node) => {
+      node.quasis.forEach((quasi) =>
+        literals.push(quasi.value.cooked ?? quasi.value.raw),
+      );
+    },
   });
-
-  return generateCode(ast);
+  return literals;
 }
 
 /**
@@ -555,7 +669,7 @@ export function renameObjectKey(
 export function replaceVarWithProp(
   code: string,
   varName: string,
-  propName: string
+  propName: string,
 ): string {
   code = wrapJavaScriptCodeInParens(code);
 
@@ -587,7 +701,7 @@ export function pathToString(path: (string | number)[]) {
 }
 
 export function isPathDataToken(
-  path: (string | number | undefined)[]
+  path: (string | number | undefined)[],
 ): path is string[] {
   return typeof path[0] === "string" && path[0].startsWith("$dataTokens_");
 }
@@ -609,14 +723,15 @@ export function parseObjectPath(obj: ObjectPath): ParsedExprInfo {
   if (typeof obj.path[0] === "string") {
     if (isDollarVar(obj.path[0])) {
       info.usesDollarVars[obj.path[0]] = true;
-      if (obj.path[0] === "$state") {
-        if (obj.path.length >= 2) {
-          const toAdd = [obj.path[1].toString()];
-          for (let i = 2; i < obj.path.length; i++) {
-            toAdd.push(`${toAdd[toAdd.length - 1]}.${obj.path[i].toString()}`);
-          }
-          toAdd.forEach((key) => info.usedDollarVarKeys[obj.path[0]].add(key));
+      if (obj.path.length < 2) {
+        // The path stops at the dollar var itself, exposing every key.
+        info.usesUnknownDollarVarKeys[obj.path[0]] = true;
+      } else if (obj.path[0] === "$state") {
+        const toAdd = [obj.path[1].toString()];
+        for (let i = 2; i < obj.path.length; i++) {
+          toAdd.push(`${toAdd[toAdd.length - 1]}.${obj.path[i].toString()}`);
         }
+        toAdd.forEach((key) => info.usedDollarVarKeys[obj.path[0]].add(key));
       } else if (typeof obj.path[1] === "string") {
         info.usedDollarVarKeys[obj.path[0]].add(obj.path[1]);
       }
@@ -630,7 +745,7 @@ export function parseObjectPath(obj: ObjectPath): ParsedExprInfo {
 
 export function parseTemplatedString(expr: TemplatedString): ParsedExprInfo {
   const infos = expr.text.map((part) =>
-    isKnownExpr(part) ? parseExpr(part) : emptyParsedExprInfo()
+    isKnownExpr(part) ? parseExpr(part) : emptyParsedExprInfo(),
   );
   return mergeParsedExprInfos(infos);
 }
@@ -649,7 +764,7 @@ export function parseExpr(expr: Expr): ParsedExprInfo {
         component: null,
         projectFlags: DEVFLAGS,
         inStudio: true,
-      }).code
+      }).code,
     );
   }
   return emptyParsedExprInfo();
@@ -667,10 +782,86 @@ export function parseCode(code: string) {
   }
 }
 
-function traverseCode(code: string, visitors: Visitors) {
+function traverseCode(code: string, visitors: Visitors, withLocals = false) {
   const ast = parseCode(code);
+  if (withLocals) {
+    annotateScopeLocals(ast);
+  }
   traverse(ast, visitors);
   return ast;
+}
+
+/**
+ * Whether `code` writes to an identifier that resolves outside of its scope.
+ * Member writes like `$state.count = 1` are not included. Returns undefined if
+ * Acorn cannot parse syntax that the JavaScript runtime accepts.
+ */
+export function tryCodeWritesToGlobalVariable(
+  code: string,
+  name: string,
+): boolean | undefined {
+  let foundWrite = false;
+  const targetContainsName = (target: ast.Node): boolean => {
+    switch (target.type) {
+      case "Identifier":
+        return target.name === name;
+      case "ObjectPattern":
+        return target.properties.some((property) =>
+          targetContainsName(
+            property.type === "Property" ? property.value : property.argument,
+          ),
+        );
+      case "ArrayPattern":
+        return target.elements.some(
+          (element) => !!element && targetContainsName(element),
+        );
+      case "AssignmentPattern":
+        return targetContainsName(target.left);
+      case "RestElement":
+        return targetContainsName(target.argument);
+      case "MemberExpression":
+        return false;
+      default:
+        return false;
+    }
+  };
+  const writesNonLocalTarget = (
+    target: ast.Node,
+    parents: WithLocals<ast.Node>[],
+  ) => targetContainsName(target) && !resolvesToLocal(name, parents);
+
+  try {
+    traverseCode(
+      isValidJavaScriptCode(code)
+        ? `(async function () {\n${code}\n})`
+        : wrapJavaScriptCodeInParens(code),
+      {
+        AssignmentExpression: (node, parents: WithLocals<ast.Node>[]) => {
+          foundWrite ||= writesNonLocalTarget(node.left, parents);
+        },
+        UpdateExpression: (node, parents: WithLocals<ast.Node>[]) => {
+          foundWrite ||= writesNonLocalTarget(node.argument, parents);
+        },
+        ForInStatement: (node, parents: WithLocals<ast.Node>[]) => {
+          if (node.left.type !== "VariableDeclaration") {
+            foundWrite ||= writesNonLocalTarget(node.left, parents);
+          }
+        },
+        ForOfStatement: (node, parents: WithLocals<ast.Node>[]) => {
+          if (node.left.type !== "VariableDeclaration") {
+            foundWrite ||= writesNonLocalTarget(node.left, parents);
+          }
+        },
+      },
+      true,
+    );
+  } catch (error) {
+    if (error instanceof EvaluationError) {
+      return undefined;
+    }
+    throw error;
+  }
+  return foundWrite;
 }
 
 export function exprUsesCtxOrFreeVars(expr: Expr) {
@@ -716,7 +907,7 @@ export interface ParsedDataToken {
  * Parses a data token identifier with format $dataTokens_<projectShortId>_<tokenName>
  */
 export function parseDataTokenIdentifier(
-  identifier: string | undefined
+  identifier: string | undefined,
 ): ParsedDataToken | undefined {
   if (!identifier || !identifier.startsWith("$dataTokens_")) {
     return undefined;
@@ -736,7 +927,7 @@ export function parseDataTokenIdentifier(
 type TransforDataTokenFunction = (
   node: ast.MemberExpression | ast.Identifier,
   token: ParsedDataToken,
-  nestedProps: string[]
+  nestedProps: string[],
 ) => void;
 
 /**
@@ -744,7 +935,7 @@ type TransforDataTokenFunction = (
  */
 export function transformDataTokensInExpr(
   expr: CustomCode,
-  visitor: TransforDataTokenFunction
+  visitor: TransforDataTokenFunction,
 ) {
   const newCode = transformDataTokens(expr.code, visitor);
 
@@ -763,7 +954,7 @@ export function transformDataTokensInExpr(
  */
 export function transformDataTokens(
   code: string,
-  visitor: TransforDataTokenFunction
+  visitor: TransforDataTokenFunction,
 ) {
   if (!code.includes("$dataTokens_")) {
     return undefined;
@@ -809,10 +1000,10 @@ export function transformDataTokens(
 export function extractDataTokenIdentifiers(expr: DataTokenExpr): string[] {
   return switchType(expr)
     .when(ObjectPath, (objectPath) =>
-      isPathDataToken(objectPath.path) ? [objectPath.path[0]] : []
+      isPathDataToken(objectPath.path) ? [objectPath.path[0]] : [],
     )
     .when(CustomCode, (customCode) =>
-      extractDataTokenIdentifiersFromCode(customCode.code)
+      extractDataTokenIdentifiersFromCode(customCode.code),
     )
     .result();
 }
@@ -852,7 +1043,7 @@ export function extractDataTokenIdentifiersFromCode(code: string): string[] {
  */
 export function makeDataTokenIdentifier(
   projectShortId: string,
-  tokenName: string
+  tokenName: string,
 ): string {
   return `$dataTokens_${projectShortId}_${tokenName}`;
 }
@@ -865,7 +1056,7 @@ export function makeDataTokenIdentifier(
  */
 function replaceWithIdentifier(
   _node: ast.MemberExpression,
-  identifier: string
+  identifier: string,
 ) {
   const node = _node as any;
   node.type = "Identifier";
@@ -916,7 +1107,7 @@ function replaceIdentifierWithMemberExpr(node: ast.Identifier, path: string[]) {
 export function transformDataTokensInCode(
   code: string,
   site: Site,
-  projectId: ProjectId
+  projectId: ProjectId,
 ): { code: string; error?: Error } {
   try {
     return { code: transformDataTokensInCodeUnsafe(code, site, projectId) };
@@ -928,7 +1119,7 @@ export function transformDataTokensInCode(
 function transformDataTokensInCodeUnsafe(
   code: string,
   site: Site,
-  projectId: ProjectId
+  projectId: ProjectId,
 ): string {
   code = wrapJavaScriptCodeInParens(code);
   const shortProjectId = makeShortProjectId(projectId);
@@ -955,7 +1146,7 @@ function transformDataTokensInCodeUnsafe(
         // Local token: $dataTokens.tokenName → $dataTokens_12345_tokenName
         replaceWithIdentifier(
           node,
-          makeDataTokenIdentifier(shortProjectId, tokenName)
+          makeDataTokenIdentifier(shortProjectId, tokenName),
         );
       } else if (parts.length >= 3) {
         // $dataTokens.depName.tokenName.a.b OR $dataTokens.tokenName.a.b
@@ -1010,7 +1201,7 @@ function transformDataTokensInCodeUnsafe(
 export function transformDataTokensToDisplay(
   code: string,
   site: Site,
-  currentProjectId: ProjectId
+  currentProjectId: ProjectId,
 ): string {
   const shortProjectId = makeShortProjectId(currentProjectId);
 
@@ -1059,7 +1250,7 @@ export function transformDataTokensToDisplay(
 export function transformDataTokenPathToDisplay(
   path: (string | number)[],
   site: Site,
-  projectId: ProjectId
+  projectId: ProjectId,
 ): (string | number)[] {
   if (path.length === 0 || typeof path[0] !== "string") {
     return path;
@@ -1092,7 +1283,7 @@ export function transformDataTokenPathToDisplay(
 export function pathToDisplayString(
   path: (string | number)[],
   site: Site,
-  projectId: ProjectId
+  projectId: ProjectId,
 ): string {
   return pathToString(transformDataTokenPathToDisplay(path, site, projectId));
 }
@@ -1109,7 +1300,7 @@ export function pathToDisplayString(
 export function transformDataTokenPathToBundle(
   path: (string | number)[],
   site: Site,
-  projectId: ProjectId
+  projectId: ProjectId,
 ): (string | number)[] {
   if (path.length < 2 || path[0] !== "$dataTokens") {
     return path;

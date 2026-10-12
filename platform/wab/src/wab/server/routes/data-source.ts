@@ -31,18 +31,24 @@ import {
 } from "@/wab/shared/data-sources-meta/data-source-registry";
 import {
   coerceArgStringToType,
+  DataSourceMeta,
   OperationTemplate,
   SettingFieldMeta,
 } from "@/wab/shared/data-sources-meta/data-sources";
 import { dropFakeDatabase } from "@/wab/shared/data-sources-meta/fake-meta";
+import {
+  generatedDefaultHeaders,
+  isGeneratedDefaultHeader,
+} from "@/wab/shared/data-sources-meta/legacy-query-migration";
 import { DATA_SOURCE_LOWER } from "@/wab/shared/Labels";
 import { canEditDataSource } from "@/wab/shared/perms";
 import { captureException } from "@/wab/server/observability/datadog";
 import { Request, Response } from "express-serve-static-core";
+import { isEmpty, omitBy } from "lodash";
 
 export function mkApiDataSource(
   dataSource: DataSource,
-  excludeSettings?: boolean
+  excludeSettings?: boolean,
 ): ApiDataSource {
   const meta = getDataSourceMeta(dataSource.source);
   return {
@@ -53,12 +59,46 @@ export function mkApiDataSource(
     settings: !excludeSettings
       ? dataSource.settings
       : Object.fromEntries(
-          Object.entries(dataSource.settings).filter(
-            ([key, _]) => meta.settings[key].public
-          )
+          Object.entries(dataSource.settings).flatMap(([key, value]) => {
+            if (meta.settings[key]?.public) {
+              return [[key, value]];
+            }
+            const generated =
+              key === "commonHeaders" ? generatedDefaultHeaders(value) : {};
+            return isEmpty(generated) ? [] : [[key, generated]];
+          }),
         ),
     ownerId: dataSource.createdById ?? undefined,
+    hasPrivateConfig: hasPrivateConfig(dataSource, meta),
   } as const;
+}
+
+/**
+ * Whether the integration has auth data that only the server proxy applies.
+ * Credentials, or private settings like default headers.
+ */
+function hasPrivateConfig(
+  dataSource: DataSource,
+  meta: DataSourceMeta,
+): boolean {
+  const isSet = (value: unknown) =>
+    value != null &&
+    value !== "" &&
+    !(typeof value === "object" && isEmpty(value));
+  const privatePart = (key: string, value: unknown) =>
+    key === "commonHeaders" && typeof value === "object" && value != null
+      ? omitBy(value, (v, header) => isGeneratedDefaultHeader(header, v))
+      : value;
+  return (
+    // Credentials never reach the client, so nothing in them is exempt.
+    Object.entries(dataSource.credentials ?? {}).some(([_key, value]) =>
+      isSet(value),
+    ) ||
+    Object.entries(dataSource.settings ?? {}).some(
+      ([key, value]) =>
+        !meta.settings[key]?.public && isSet(privatePart(key, value)),
+    )
+  );
 }
 
 export async function listDataSources(req: Request, res: Response) {
@@ -72,17 +112,23 @@ export async function listDataSources(req: Request, res: Response) {
   const sources = await Promise.all(
     workspaces.map(async (workspace) => {
       const dataSources = await mgr.getWorkspaceDataSources(workspace.id);
-      const accessLevel = await mgr.getActorAccessLevelToWorkspace(workspace.id);
+      const accessLevel = await mgr.getActorAccessLevelToWorkspace(
+        workspace.id,
+      );
       return {
         workspace: mkApiWorkspace(workspace),
         dataSources: dataSources.map((dataSource) =>
           mkApiDataSource(
             dataSource,
-            !canEditDataSource(dataSource.createdById, req.user?.id, accessLevel)
-          )
+            !canEditDataSource(
+              dataSource.createdById,
+              req.user?.id,
+              accessLevel,
+            ),
+          ),
         ),
       };
-    })
+    }),
   );
   res.json(ensureType<ListDataSourcesResponse>(sources));
 }
@@ -97,7 +143,7 @@ export async function createDataSource(req: Request, res: Response) {
   }
   if (!fields.source || !getAllDataSourceTypes().includes(fields.source)) {
     throw new BadRequestError(
-      `Invalid ${DATA_SOURCE_LOWER} type ${fields.source}`
+      `Invalid ${DATA_SOURCE_LOWER} type ${fields.source}`,
     );
   }
   let workspaceId: WorkspaceId | undefined = fields.workspaceId;
@@ -131,7 +177,7 @@ export async function testDataSourceConnection(req: Request, res: Response) {
 
   if (!fields.source || !getAllDataSourceTypes().includes(fields.source)) {
     throw new BadRequestError(
-      `Invalid ${DATA_SOURCE_LOWER} type ${fields.source}`
+      `Invalid ${DATA_SOURCE_LOWER} type ${fields.source}`,
     );
   }
 
@@ -176,7 +222,7 @@ function ensureDataSourceSettings(
   metas: Record<string, SettingFieldMeta>,
   opts?: {
     skipRequiredCheck: boolean;
-  }
+  },
 ) {
   for (const [key, fieldMeta] of Object.entries(metas)) {
     if (!opts?.skipRequiredCheck && fieldMeta.required && !settings[key]) {
@@ -233,12 +279,12 @@ export async function getDataSourceOperationId(req: Request, res: Response) {
   // to issue an operation id for a data source that it is not allowed to use.
   const isAllowedToIssueOpId = await mgr.isProjectAllowedToUseDataSource(
     projectId,
-    dataSourceId as DataSourceId
+    dataSourceId as DataSourceId,
   );
 
   if (!isAllowedToIssueOpId) {
     throw new ForbiddenError(
-      `Project ${projectId} is not allowed to use data source ${dataSourceId}`
+      `Project ${projectId} is not allowed to use data source ${dataSourceId}`,
     );
   }
 
@@ -255,7 +301,7 @@ export async function getDataSourceOperationId(req: Request, res: Response) {
 
 export async function executeDataSourceStudioOperationHandler(
   req: Request,
-  res: Response
+  res: Response,
 ) {
   const dataSourceId = req.params.dataSourceId;
   const mgr = userDbMgr(req);
@@ -266,14 +312,14 @@ export async function executeDataSourceStudioOperationHandler(
 
   const isAllowedToIssueOpId = await mgr.isProjectAllowedToUseDataSource(
     projectId as ProjectId,
-    dataSourceId as DataSourceId
+    dataSourceId as DataSourceId,
   );
 
   // If a project is not allowed to issue an operation id, it shouldn't be allowed
   // to execute studio operations either.
   if (!isAllowedToIssueOpId) {
     throw new ForbiddenError(
-      `Project ${projectId} is not allowed to use data source ${dataSourceId}`
+      `Project ${projectId} is not allowed to use data source ${dataSourceId}`,
     );
   }
 
@@ -291,7 +337,7 @@ export async function executeDataSourceStudioOperationHandler(
       paginate: request.paginate,
     },
     undefined,
-    true
+    true,
   );
   res.header("Access-Control-Allow-Origin", "*");
   res.json(data);
@@ -319,7 +365,7 @@ export async function getDataSourceById(req: Request, res: Response) {
     ? (JSON.parse(req.query.excludeSettings as string) as boolean)
     : false;
   const accessLevel = await mgr.getActorAccessLevelToWorkspace(
-    dataSource.workspaceId
+    dataSource.workspaceId,
   );
   const excludeSettings =
     explicitExcludeSettings ||

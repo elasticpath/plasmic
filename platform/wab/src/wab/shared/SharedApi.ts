@@ -53,6 +53,7 @@ import {
   BillingFrequency,
   BranchId,
   BranchStatus,
+  CAPTCHA_TOKEN_HEADER,
   CheckDomainRequest,
   CheckDomainResponse,
   CloneProjectRequest,
@@ -125,7 +126,6 @@ import {
   NextPublishVersionRequest,
   NextPublishVersionResponse,
   PersonalApiToken,
-  PlasmicHostingSettings,
   PostCommentResponse,
   ProcessSvgRequest,
   ProcessSvgResponse,
@@ -142,8 +142,6 @@ import {
   QueryCopilotFeedbackResponse,
   QueryCopilotRequest,
   QueryCopilotResponse,
-  QueryCopilotUiRequest,
-  QueryCopilotUiResponse,
   ResetPasswordRequest,
   ResetPasswordResponse,
   ResolveThreadRequest,
@@ -161,6 +159,7 @@ import {
   SetSiteInfoReq,
   SetSubdomainForProjectRequest,
   SetSubdomainForProjectResponse,
+  SetupIntent,
   SignUpRequest,
   SignUpResponse,
   StartFreeTrialResponse,
@@ -204,10 +203,10 @@ import { GrantableAccessLevel } from "@/wab/shared/EntUtil";
 import { LowerHttpMethod } from "@/wab/shared/HttpClientUtil";
 import { modelSchemaHash } from "@/wab/shared/model/classes-metas";
 import { UiConfig } from "@/wab/shared/ui-config-utils";
+import type { PlasmicHostingSettings } from "@plasmic-shared/hosting";
 import { executePlasmicDataOp } from "@plasmicapp/data-sources";
 import L, { pick, uniq } from "lodash";
 import semver from "semver";
-import Stripe from "stripe";
 
 export interface SiteInfo {
   createdAt: string | Date;
@@ -307,7 +306,7 @@ export abstract class SharedApi {
       headers: { [name: string]: string };
     },
     hideDataOnError?: boolean,
-    noErrorTransform?: boolean
+    noErrorTransform?: boolean,
   ): Promise<any>;
 
   async get(url: string, data?: {}, extraHeaders?: {}) {
@@ -324,7 +323,7 @@ export abstract class SharedApi {
     data?: {},
     hideDataOnError?: boolean,
     extraHeaders?: {},
-    noErrorTransform?: boolean
+    noErrorTransform?: boolean,
   ) {
     return this.req(
       "post",
@@ -337,7 +336,7 @@ export abstract class SharedApi {
         },
       },
       hideDataOnError,
-      noErrorTransform
+      noErrorTransform,
     );
   }
 
@@ -345,7 +344,7 @@ export abstract class SharedApi {
     url: string,
     data?: {},
     hideDataOnError?: boolean,
-    extraHeaders?: {}
+    extraHeaders?: {},
   ) {
     return this.req(
       "put",
@@ -357,7 +356,7 @@ export abstract class SharedApi {
           ...(extraHeaders ?? {}),
         },
       },
-      hideDataOnError
+      hideDataOnError,
     );
   }
 
@@ -389,7 +388,7 @@ export abstract class SharedApi {
   }
 
   getProjects(
-    data: ProjectsRequest = { query: "all" }
+    data: ProjectsRequest = { query: "all" },
   ): Promise<ProjectsResponse> {
     return this.get("/projects", data);
   }
@@ -407,7 +406,7 @@ export abstract class SharedApi {
     projectId: string,
     revisionNum: number,
     installedDeps: string[],
-    branchId: BranchId | undefined
+    branchId: BranchId | undefined,
   ): Promise<
     | {
         data: string;
@@ -439,7 +438,7 @@ export abstract class SharedApi {
       revisionId?: string;
       revisionNum?: number;
       dontMigrateProject?: boolean;
-    }
+    },
   ): Promise<GetProjectResponse> {
     return this.get(
       `/projects/${showProjectBranchId(toOpaque(siteId), opts?.branchId)}`,
@@ -453,7 +452,7 @@ export abstract class SharedApi {
         ...(opts?.dontMigrateProject !== undefined
           ? { dontMigrateProject: opts.dontMigrateProject }
           : {}),
-      }
+      },
     );
   }
 
@@ -462,7 +461,7 @@ export abstract class SharedApi {
    */
   getFullProjectData(
     projectId: string,
-    branchIds: string[]
+    branchIds: string[],
   ): Promise<ProjectFullDataResponse> {
     return this.get(`/project-data/${projectId}`, {
       branchIds,
@@ -471,11 +470,11 @@ export abstract class SharedApi {
 
   cloneProject(
     projectId: string,
-    opts?: { name?: string; workspaceId?: WorkspaceId; branchName?: string }
+    opts?: { name?: string; workspaceId?: WorkspaceId; branchName?: string },
   ): Promise<CloneProjectResponse> {
     return this.post(
       `/projects/${projectId}/clone`,
-      ensureType<CloneProjectRequest>({ ...(opts ?? {}) })
+      ensureType<CloneProjectRequest>({ ...(opts ?? {}) }),
     );
   }
 
@@ -487,11 +486,11 @@ export abstract class SharedApi {
     projectId: string,
     name?: string,
     workspaceId?: WorkspaceId,
-    version?: string
+    version?: string,
   ): Promise<CloneProjectResponse> {
     return this.post(
       `/templates/${projectId}/clone`,
-      ensureType<CloneProjectRequest>({ name, workspaceId, version })
+      ensureType<CloneProjectRequest>({ name, workspaceId, version }),
     );
   }
 
@@ -500,8 +499,8 @@ export abstract class SharedApi {
     opts?: {
       keepProjectIdsAndNames?: boolean;
       projectName?: string;
-    }
-  ): Promise<{ projectId: string }> {
+    },
+  ): Promise<{ projectId: ProjectId }> {
     return this.post(`/projects/import`, {
       data,
       keepProjectIdsAndNames: opts?.keepProjectIdsAndNames,
@@ -524,31 +523,31 @@ export abstract class SharedApi {
       toDeleteIids: string[];
       modifiedComponentIids: string[];
       branchId?: BranchId;
-    }
+    },
   ) {
     const { branchId, revisionNum, ...rest } = rev;
     return this.post(
       `/projects/${showProjectBranchId(
         toOpaque(projectId),
-        branchId
+        branchId,
       )}/revisions/${revisionNum}`,
       {
         modelSchemaHash,
         ...rest,
-      }
+      },
     );
   }
 
   setSiteInfo(
     siteId: string,
-    data: SetSiteInfoReq
+    data: SetSiteInfoReq,
   ): Promise<MayTriggerPaywall<UpdateProjectResponse>> {
     return this.put(`/projects/${siteId}`, data);
   }
 
   updateProjectMeta(
     projectId: string,
-    data: UpdateProjectMetaRequest
+    data: UpdateProjectMetaRequest,
   ): Promise<ApiProjectMeta> {
     return this.put(`/projects/${projectId}/meta`, data);
   }
@@ -575,27 +574,33 @@ export abstract class SharedApi {
   }
 
   async forgotPassword(
-    data: ForgotPasswordRequest
+    data: ForgotPasswordRequest,
   ): Promise<ForgotPasswordResponse> {
     const res: ForgotPasswordResponse = await this.post(
       "/auth/forgotPassword",
       data,
-      true
+      true,
+      await this.captchaToken("forgot_password"),
     );
     return res;
   }
 
   async isValidSsoEmail(
-    email: string
+    email: string,
   ): Promise<{ valid: boolean; tenantId?: string }> {
     const res = await this.get(
-      `/auth/sso/test?${new URLSearchParams({ email }).toString()}`
+      `/auth/sso/test?${new URLSearchParams({ email }).toString()}`,
     );
     return res;
   }
 
   async signUp(data: SignUpRequest): Promise<SignUpResponse> {
-    const res: LoginResponse = await this.post("/auth/sign-up", data, true);
+    const res: LoginResponse = await this.post(
+      "/auth/sign-up",
+      data,
+      true,
+      await this.captchaToken("sign_up"),
+    );
     if (res.status) {
       await this.refreshCsrfToken();
       this.setUser(res.user);
@@ -619,13 +624,13 @@ export abstract class SharedApi {
 
   async changePassword(
     oldPassword: string,
-    newPassword: string
+    newPassword: string,
   ): Promise<UpdatePasswordResponse> {
     return this.post("/auth/self/password", { oldPassword, newPassword }, true);
   }
 
   async resetPassword(
-    data: ResetPasswordRequest
+    data: ResetPasswordRequest,
   ): Promise<ResetPasswordResponse> {
     return this.post("/auth/resetPassword", data, true);
   }
@@ -639,7 +644,7 @@ export abstract class SharedApi {
   }
 
   sendEmailVerification(
-    data: SendEmailVerificationRequest
+    data: SendEmailVerificationRequest,
   ): Promise<SendEmailVerificationResponse> {
     return this.post("/auth/sendEmailVerification", data);
   }
@@ -668,7 +673,7 @@ export abstract class SharedApi {
 
   getPkgVersionByProjectId(
     projectId: string,
-    version
+    version,
   ): Promise<{ pkg: PkgVersionInfo; depPkgs: PkgVersionInfo[]; etag: string }> {
     return this.get(`/pkgs/projectId/${projectId}`, { version });
   }
@@ -682,7 +687,7 @@ export abstract class SharedApi {
   getPkgVersion(
     pkgId: string,
     version?: string,
-    branchId?: string
+    branchId?: string,
   ): Promise<{ pkg: PkgVersionInfo; depPkgs: PkgVersionInfo[]; etag: string }> {
     return this.get(`/pkgs/${pkgId}`, {
       version: version ?? "latest",
@@ -694,7 +699,7 @@ export abstract class SharedApi {
   listUnpublishedProjectRevisions(
     projectId: ProjectId,
     branchId?: string,
-    revisionNumGt?: number
+    revisionNumGt?: number,
   ): Promise<{ revisions: ProjectRevision[] }> {
     return this.get(`/projects/${projectId}/revs/unpublished`, {
       ...(branchId ? { branchId } : {}),
@@ -704,7 +709,7 @@ export abstract class SharedApi {
 
   getProjectRevision(
     projectId: ProjectId,
-    revisionId: string
+    revisionId: string,
   ): Promise<{
     rev: ProjectRevision;
     depPkgs: PkgVersionInfo[];
@@ -716,7 +721,7 @@ export abstract class SharedApi {
   revertProjectToRevision(
     projectId: ProjectId,
     revisionId: string,
-    branchId?: string
+    branchId?: string,
   ): Promise<{ projectId: ProjectId }> {
     return this.post(`/projects/${projectId}/revert-to-revision`, {
       revisionId,
@@ -733,7 +738,7 @@ export abstract class SharedApi {
   getPkgVersionMeta(
     pkgId: string,
     version?: string,
-    branchId?: BranchId
+    branchId?: BranchId,
   ): Promise<{ pkg: PkgVersionInfoMeta; depPkgs: PkgVersionInfoMeta[] }> {
     return this.get(`/pkgs/${pkgId}`, {
       version: version ?? "latest",
@@ -744,7 +749,7 @@ export abstract class SharedApi {
 
   async computeNextProjectVersion(
     projectId,
-    { branchId, revisionNum }: NextPublishVersionRequest
+    { branchId, revisionNum }: NextPublishVersionRequest,
   ): Promise<NextPublishVersionResponse> {
     return this.post(`/projects/${projectId}/next-publish-version`, {
       projectId,
@@ -761,7 +766,7 @@ export abstract class SharedApi {
     description: string,
     hostLessPackage = false,
     branchId: BranchId | undefined,
-    waitPrefill = true
+    waitPrefill = true,
   ): Promise<PublishProjectResponse> {
     return this.post(`/projects/${projectId}/publish`, {
       projectId,
@@ -777,24 +782,24 @@ export abstract class SharedApi {
 
   async getPkgVersionPublishStatus(
     projectId: string,
-    pkgVersionId: string
+    pkgVersionId: string,
   ): Promise<{ status: "ready" | "pre-filling" }> {
     return this.get(`/projects/${projectId}/pkgs/${pkgVersionId}/status`);
   }
 
   async listPkgVersionsWithoutData(
     pkgId: string,
-    opts?: { branchId?: BranchId | null }
+    opts?: { branchId?: BranchId | null },
   ): Promise<{
     pkgVersions: PkgVersionInfoMeta[];
   }> {
     const result = await this.get(
       `/pkgs/${pkgId}/versions-without-data`,
-      opts?.branchId ? opts : undefined
+      opts?.branchId ? opts : undefined,
     );
     // Ensure it's sorted in reverse chronological order
     const sorted = (result.pkgVersions as PkgVersionInfoMeta[]).sort((a, b) =>
-      semver.gt(a.version, b.version) ? -1 : +1
+      semver.gt(a.version, b.version) ? -1 : +1,
     );
     return {
       ...result,
@@ -806,7 +811,7 @@ export abstract class SharedApi {
     pkgId: string,
     version: string,
     branchId: BranchId | null,
-    toMerge: Partial<PkgVersionInfo>
+    toMerge: Partial<PkgVersionInfo>,
   ): Promise<{ pkg: PkgVersionInfo }> {
     return await this.post(`/pkgs/${pkgId}/update-version`, {
       version,
@@ -821,11 +826,11 @@ export abstract class SharedApi {
       branchId: BranchId | undefined;
       pkgId: string;
       version: string;
-    }
+    },
   ) {
     return await this.put(
       `/projects/${projectId}/revert-to-version`,
-      pick(data, ["branchId", "pkgId", "version"])
+      pick(data, ["branchId", "pkgId", "version"]),
     );
   }
 
@@ -864,7 +869,7 @@ export abstract class SharedApi {
   async getProjectRevWithoutData(
     projectId: string,
     revisionId?: string,
-    branchId?: string
+    branchId?: string,
   ): Promise<ProjectRevWithoutDataResponse> {
     return this.get(`/projects/${projectId}/revision-without-data`, {
       ...(revisionId !== undefined ? { revisionId } : {}),
@@ -911,7 +916,7 @@ export abstract class SharedApi {
     assert(
       new URL(url).origin === window.origin &&
         url.startsWith(window.origin + "/api/v1/"),
-      "Unexpected URL " + url
+      "Unexpected URL " + url,
     );
     return this.get(url.substring((window.origin + "/api/v1/").length));
   }
@@ -932,7 +937,7 @@ export abstract class SharedApi {
 
   async updateTeam(
     id: TeamId,
-    data: UpdateTeamRequest
+    data: UpdateTeamRequest,
   ): Promise<CreateTeamResponse> {
     return this.put(`/teams/${id}`, data);
   }
@@ -954,7 +959,7 @@ export abstract class SharedApi {
   }
 
   async createTeamCustomerPortalSession(
-    teamId: TeamId
+    teamId: TeamId,
   ): Promise<{ url: string }> {
     return this.post(`/teams/${teamId}/billing/customer-portal-session`);
   }
@@ -974,14 +979,14 @@ export abstract class SharedApi {
   }
 
   async createWorkspace(
-    data: CreateWorkspaceRequest
+    data: CreateWorkspaceRequest,
   ): Promise<MayTriggerPaywall<CreateWorkspaceResponse>> {
     return this.post("/workspaces", data);
   }
 
   async updateWorkspace(
     id: WorkspaceId,
-    data: UpdateWorkspaceRequest
+    data: UpdateWorkspaceRequest,
   ): Promise<MayTriggerPaywall<CreateWorkspaceResponse>> {
     return this.put(`/workspaces/${id}`, data);
   }
@@ -1007,7 +1012,7 @@ export abstract class SharedApi {
   }
 
   async grantRevoke(
-    data: GrantRevokeRequest
+    data: GrantRevokeRequest,
   ): Promise<MayTriggerPaywall<GrantRevokeResponse>> {
     return this.post(`/grant-revoke`, data);
   }
@@ -1039,30 +1044,38 @@ export abstract class SharedApi {
   }
 
   async createSubscription(
-    args: SubscriptionIntentRequest
+    args: SubscriptionIntentRequest,
   ): Promise<SubscriptionIntentResponse> {
     return this.post(`/billing/subscription/create`, args);
   }
 
   async changeSubscription(
-    args: SubscriptionIntentRequest
+    args: SubscriptionIntentRequest,
   ): Promise<GetSubscriptionResponse> {
     return this.put(`/billing/subscription/${args.teamId}`, args);
   }
 
   async cancelSubscription(
     teamId: TeamId,
-    { reason }: { reason?: string } = {}
+    { reason }: { reason?: string } = {},
   ): Promise<{}> {
     return this.delete(`/billing/subscription/${teamId}`, { reason });
   }
 
-  async createSetupIntent(teamId: TeamId): Promise<Stripe.SetupIntent> {
+  async createSetupIntent(teamId: TeamId): Promise<SetupIntent> {
     return this.post(`/billing/setup-intent/${teamId}`);
   }
 
-  async changeTeamOwner(teamId: string, newOwner: string): Promise<{}> {
-    return this.post(`/admin/change-team-owner`, { teamId, newOwner });
+  async changeTeamOwner(
+    teamId: string,
+    newOwner: string,
+    { allowUnpaidTransfer = false }: { allowUnpaidTransfer?: boolean } = {},
+  ): Promise<{}> {
+    return this.post(`/admin/change-team-owner`, {
+      teamId,
+      newOwner,
+      allowUnpaidTransfer,
+    });
   }
 
   async upgradePersonalTeam(teamId: string): Promise<{}> {
@@ -1080,7 +1093,7 @@ export abstract class SharedApi {
         }
       | {
           featureTierIds: string[];
-        }
+        },
   ): Promise<ListTeamsResponse> {
     return this.post(`/admin/teams`, data);
   }
@@ -1091,13 +1104,13 @@ export abstract class SharedApi {
 
   async syncTeamDiscourseInfo(
     teamId: TeamId,
-    data: { slug: string; name: string }
+    data: { slug: string; name: string },
   ): Promise<ApiTeamDiscourseInfo> {
     return this.put(`/admin/teams/${teamId}/sync-discourse-info`, data);
   }
 
   async sendTeamSupportWelcomeEmail(
-    teamId: TeamId
+    teamId: TeamId,
   ): Promise<SendEmailsResponse> {
     return this.post(`/admin/teams/${teamId}/send-support-welcome-email`);
   }
@@ -1116,64 +1129,64 @@ export abstract class SharedApi {
   }
 
   async listBranchesForProject(
-    projectId: ProjectId
+    projectId: ProjectId,
   ): Promise<ListBranchesResponse> {
     return this.get(`/projects/${encodeURIComponent(projectId)}/branches`);
   }
 
   async tryMergeBranch(
     projectId: ProjectId,
-    data: TryMergeRequest
+    data: TryMergeRequest,
   ): Promise<TryMergeResponse> {
     return this.post(`/projects/${encodeURIComponent(projectId)}/merge`, data);
   }
 
   async createBranch(
     projectId: ProjectId,
-    data: CreateBranchRequest
+    data: CreateBranchRequest,
   ): Promise<CreateBranchResponse> {
     return this.post(
       `/projects/${encodeURIComponent(projectId)}/branches`,
-      data
+      data,
     );
   }
 
   async updateBranch(
     projectId: ProjectId,
     branchId: BranchId,
-    data: { name?: string; status?: BranchStatus }
+    data: { name?: string; status?: BranchStatus },
   ): Promise<{}> {
     return this.put(
       `/projects/${encodeURIComponent(projectId)}/branches/${encodeURIComponent(
-        branchId
+        branchId,
       )}`,
-      data
+      data,
     );
   }
 
   async deleteBranch(projectId: ProjectId, branchId: BranchId): Promise<{}> {
     return this.delete(
       `/projects/${encodeURIComponent(projectId)}/branches/${encodeURIComponent(
-        branchId
-      )}`
+        branchId,
+      )}`,
     );
   }
 
   async setMainBranchProtection(
     projectId: ProjectId,
-    mainBranchProtection: boolean
+    mainBranchProtection: boolean,
   ): Promise<{}> {
     return this.post(
       `/projects/${encodeURIComponent(projectId)}/main-branch-protection`,
       {
         protected: mainBranchProtection,
-      }
+      },
     );
   }
 
   async updateHostUrl(
     projectId: ProjectId,
-    data: UpdateHostUrlRequest
+    data: UpdateHostUrlRequest,
   ): Promise<UpdateHostUrlResponse> {
     return this.put(`/projects/${projectId}/update-host`, data);
   }
@@ -1188,7 +1201,7 @@ export abstract class SharedApi {
 
   async getSsoConfigByTeamId(teamId: TeamId): Promise<any> {
     return await this.get(
-      `/admin/get-sso?${new URLSearchParams({ teamId }).toString()}`
+      `/admin/get-sso?${new URLSearchParams({ teamId }).toString()}`,
     );
   }
 
@@ -1196,14 +1209,14 @@ export abstract class SharedApi {
     const res = await this.get(
       `/admin/get-team-by-white-label-name?${new URLSearchParams({
         name,
-      }).toString()}`
+      }).toString()}`,
     );
     return res.team;
   }
 
   async updateTeamWhiteLabelInfo(
     teamId: TeamId,
-    info: TeamWhiteLabelInfo
+    info: TeamWhiteLabelInfo,
   ): Promise<ApiTeam> {
     const res = await this.post(
       `/admin/update-team-white-label-info`,
@@ -1211,14 +1224,14 @@ export abstract class SharedApi {
         id: teamId,
         whiteLabelInfo: info,
       },
-      true
+      true,
     );
     return res.team;
   }
 
   async updateTeamWhiteLabelName(
     teamId: TeamId,
-    name: string | null
+    name: string | null,
   ): Promise<ApiTeam> {
     const res = await this.post(`/admin/update-team-white-label-name`, {
       id: teamId,
@@ -1227,15 +1240,11 @@ export abstract class SharedApi {
     return res.team;
   }
 
-  async createTutorialDb(type: any): Promise<any> {
-    return await this.post(`/admin/create-tutorial-db`, { type });
-  }
-
   async createPromotionCode(
     id: string,
     message?: string,
     trialDays?: number,
-    expirationDate?: Date
+    expirationDate?: Date,
   ): Promise<any> {
     return await this.post(`/admin/promotion-code`, {
       id,
@@ -1243,10 +1252,6 @@ export abstract class SharedApi {
       expirationDate,
       trialDays,
     });
-  }
-
-  async resetTutorialDb(sourceId: string): Promise<any> {
-    return await this.post(`/admin/reset-tutorial-db`, { sourceId });
   }
 
   async adminLoginAs(args: { email: string }): Promise<LoginResponse> {
@@ -1262,28 +1267,28 @@ export abstract class SharedApi {
   }
 
   async setDevFlagOverrides(
-    data: string
+    data: string,
   ): Promise<SetDevFlagOverridesResponse> {
     return this.put("/admin/devflags", { data });
   }
 
   async cloneProjectAsAdmin(
     projectId: string,
-    revisionNum?: number
+    revisionNum?: number,
   ): Promise<CloneProjectResponse> {
     return this.post("/admin/clone", { projectId, revisionNum });
   }
 
   async revertProjectRevision(
     projectId: string,
-    revision: number
+    revision: number,
   ): Promise<void> {
     return this.post("/admin/revert-project-revision", { projectId, revision });
   }
 
   async getLatestProjectRevisionAsAdmin(
     projectId: string,
-    branchId?: string
+    branchId?: string,
   ): Promise<ApiProjectRevision> {
     const search = new URLSearchParams();
     if (branchId) {
@@ -1291,7 +1296,7 @@ export abstract class SharedApi {
     }
 
     const res = await this.get(
-      `/admin/project/${projectId}/rev?${search.toString()}`
+      `/admin/project/${projectId}/rev?${search.toString()}`,
     );
     return res.rev;
   }
@@ -1329,7 +1334,7 @@ export abstract class SharedApi {
     projectId: string,
     revision: number,
     data: string,
-    branchId: BranchId | null
+    branchId: BranchId | null,
   ) {
     const res = await this.post(`/admin/project/${projectId}/rev`, {
       revision,
@@ -1371,23 +1376,28 @@ export abstract class SharedApi {
   }
 
   async getProjectRepositories(
-    projectId: string
+    projectId: string,
   ): Promise<{ projectRepositories: Array<ApiProjectRepository> }> {
     return this.get(`/projects/${projectId}/repositories`);
+  }
+
+  protected async captchaToken(
+    _action: string,
+  ): Promise<{ [CAPTCHA_TOKEN_HEADER]: string } | undefined> {
+    return undefined;
   }
 
   protected githubToken(): { "x-plasmic-github-token": string } {
     throw new NotImplementedError();
   }
-
   async setupNewGithubRepo(
-    args: Omit<NewGithubRepoRequest, "token">
+    args: Omit<NewGithubRepoRequest, "token">,
   ): Promise<NewGithubRepoResponse> {
     return this.post(`/github/repos`, args, undefined, this.githubToken());
   }
 
   async setupExistingGithubRepo(
-    args: Omit<ExistingGithubRepoRequest, "token">
+    args: Omit<ExistingGithubRepoRequest, "token">,
   ) {
     await this.put(`/github/repos`, args, undefined, this.githubToken());
   }
@@ -1395,7 +1405,7 @@ export abstract class SharedApi {
   async detectOptionsFromDirectory(
     repository: GitRepository,
     branch: string,
-    dir: string
+    dir: string,
   ): Promise<Partial<GitSyncOptions>> {
     const { name, installationId } = repository;
     const res = await this.get(
@@ -1405,19 +1415,19 @@ export abstract class SharedApi {
         installationId,
         dir,
       },
-      this.githubToken()
+      this.githubToken(),
     );
     return res.syncOptions;
   }
 
   async addProjectRepository(
-    pr: Omit<ApiProjectRepository, "id">
+    pr: Omit<ApiProjectRepository, "id">,
   ): Promise<ApiProjectRepository> {
     const { repo } = await this.post(
       `/project_repositories`,
       pr,
       undefined,
-      this.githubToken()
+      this.githubToken(),
     );
     return repo;
   }
@@ -1435,7 +1445,7 @@ export abstract class SharedApi {
   }
 
   async fetchGitBranches(
-    repository: GitRepository
+    repository: GitRepository,
   ): Promise<GitBranchesResponse> {
     return this.get(`/github/branches`, repository, this.githubToken());
   }
@@ -1459,7 +1469,7 @@ export abstract class SharedApi {
 
   async getGitLatestWorkflowRun(
     projectRepositoryId: string,
-    projectId: string
+    projectId: string,
   ): Promise<GitWorkflowJobStatus> {
     return this.get(`/project_repositories/${projectRepositoryId}/latest-run`, {
       projectId,
@@ -1469,27 +1479,27 @@ export abstract class SharedApi {
   async getGitWorkflowJob(
     projectRepositoryId: string,
     projectId: string,
-    workflowRunId: number
+    workflowRunId: number,
   ): Promise<{ job: GitWorkflowJob | undefined }> {
     return this.get(
       `/project_repositories/${projectRepositoryId}/runs/${workflowRunId}`,
-      { projectId }
+      { projectId },
     );
   }
 
   async createProjectWebhook(
-    projectId: string
+    projectId: string,
   ): Promise<{ webhook: ApiProjectWebhook }> {
     return this.post(`/projects/${projectId}/webhooks`);
   }
 
   async updateProjectWebhook(
     projectId: string,
-    webhook: ApiProjectWebhook
+    webhook: ApiProjectWebhook,
   ): Promise<{ webhook: ApiProjectWebhook }> {
     return this.put(
       `/projects/${projectId}/webhooks/${webhook.id}`,
-      L.omit(webhook, "id")
+      L.omit(webhook, "id"),
     );
   }
 
@@ -1498,24 +1508,24 @@ export abstract class SharedApi {
   }
 
   async getProjectWebhooks(
-    projectId: string
+    projectId: string,
   ): Promise<{ webhooks: ApiProjectWebhook[] }> {
     return this.get(`/projects/${projectId}/webhooks`);
   }
 
   async triggerProjectWebhook(
     projectId: string,
-    webhook: ApiProjectWebhook
+    webhook: ApiProjectWebhook,
   ): Promise<ApiProjectWebhookEvent> {
     const { event } = await this.post(
       `/projects/${projectId}/trigger-webhook`,
-      webhook
+      webhook,
     );
     return event;
   }
 
   async getProjectWebhookEvents(
-    projectId: string
+    projectId: string,
   ): Promise<ProjectWebhookEventsResponse> {
     return this.get(`/projects/${projectId}/webhooks/events`);
   }
@@ -1540,7 +1550,7 @@ export abstract class SharedApi {
   }
 
   async listDataSources(
-    workspaceId?: string
+    workspaceId?: string,
   ): Promise<ListDataSourcesResponse> {
     return this.get(`/data-source/sources`, { workspaceId });
   }
@@ -1552,30 +1562,30 @@ export abstract class SharedApi {
   async executeDataSourceStudioOp(
     projectId: string,
     sourceId: string,
-    opts: Omit<ApiExecuteDataSourceStudioOpRequest, "projectId">
+    opts: Omit<ApiExecuteDataSourceStudioOpRequest, "projectId">,
   ): Promise<any> {
     return this.post(
       `/data-source/sources/${sourceId}`,
       { ...opts, projectId },
-      false
+      false,
     );
   }
 
   async createDataSource(
-    opts: ApiCreateDataSourceRequest
+    opts: ApiCreateDataSourceRequest,
   ): Promise<ApiDataSource> {
     return this.post("/data-source/sources", opts, true);
   }
 
   async testDataSource(
-    opts: ApiCreateDataSourceRequest
+    opts: ApiCreateDataSourceRequest,
   ): Promise<ApiDataSourceTest> {
     return this.post("/data-source/sources/test", opts, true);
   }
 
   async updateDataSource(
     id: string,
-    opts: ApiUpdateDataSourceRequest
+    opts: ApiUpdateDataSourceRequest,
   ): Promise<ApiDataSource> {
     return this.put(`/data-source/sources/${id}`, { ...opts }, true);
   }
@@ -1588,7 +1598,7 @@ export abstract class SharedApi {
     id: string,
     opts?: {
       excludeSettings?: boolean;
-    }
+    },
   ): Promise<ApiDataSource> {
     return this.get(`/data-source/sources/${id}`, opts);
   }
@@ -1596,7 +1606,7 @@ export abstract class SharedApi {
   async getDataSourceOpId(
     projectId: string,
     dataSourceId: string,
-    op: OperationTemplate
+    op: OperationTemplate,
   ): Promise<{ opId: string }> {
     return this.post(`/data-source/sources/${dataSourceId}/op-id`, {
       ...op,
@@ -1606,7 +1616,7 @@ export abstract class SharedApi {
 
   async allowProjectToDataSource(
     dataSourceId: string,
-    projectId: string
+    projectId: string,
   ): Promise<{}> {
     return this.post(`/data-source/sources/${dataSourceId}/allow`, {
       projectId,
@@ -1664,7 +1674,7 @@ export abstract class SharedApi {
         locales: string[];
       };
       workspaceId: string;
-    }>
+    }>,
   ) {
     const res = await this.put(`/cmse/databases/${databaseId}`, data);
     return res as ApiCmsDatabase;
@@ -1674,7 +1684,7 @@ export abstract class SharedApi {
     databaseId: CmsDatabaseId,
     data?: Partial<{
       name: string;
-    }>
+    }>,
   ) {
     const res = await this.post(`/cmse/databases/${databaseId}/clone`, data);
     return res as ApiCmsDatabase;
@@ -1690,11 +1700,11 @@ export abstract class SharedApi {
       name: string;
       identifier: string;
       schema?: CmsTableSchema;
-    }
+    },
   ) {
     return (await this.post(
       `/cmse/databases/${databaseId}/tables`,
-      opts
+      opts,
     )) as ApiCmsTable;
   }
 
@@ -1706,7 +1716,7 @@ export abstract class SharedApi {
       description?: string;
       settings?: CmsTableSettings;
       isArchived?: boolean;
-    }
+    },
   ) {
     return (await this.put(`/cmse/tables/${tableId}`, opts)) as ApiCmsTable;
   }
@@ -1717,7 +1727,7 @@ export abstract class SharedApi {
 
   async triggerCmsTableWebhooks(tableId: CmsTableId, event: "publish") {
     return this.post(
-      `/cmse/tables/${tableId}/trigger-webhook?event=${event}`
+      `/cmse/tables/${tableId}/trigger-webhook?event=${event}`,
     ) as Promise<{
       responses: { status: number; data: string }[];
     }>;
@@ -1729,7 +1739,7 @@ export abstract class SharedApi {
       identifier?: string;
       data: CmsRowData | null;
       draftData: CmsRowData | null;
-    }
+    },
   ) {
     const { rows } = await this.createCmsRows(tableId, [opts]);
     return rows[0];
@@ -1741,7 +1751,7 @@ export abstract class SharedApi {
       identifier?: string;
       data: CmsRowData | null;
       draftData: CmsRowData | null;
-    }[]
+    }[],
   ): Promise<ApiCreateCmsRowsResponse> {
     return await this.post(`/cmse/tables/${tableId}/rows`, {
       rows: rowInputs,
@@ -1760,7 +1770,7 @@ export abstract class SharedApi {
       draftData?: CmsRowData | null;
       revision?: number | null;
       noMerge?: boolean;
-    }
+    },
   ) {
     return (await this.put(`/cmse/rows/${rowId}`, opts)) as ApiCmseRow;
   }
@@ -1769,14 +1779,14 @@ export abstract class SharedApi {
     rowId: CmsRowId,
     opts: {
       identifier: string;
-    }
+    },
   ) {
     return (await this.post(`/cmse/rows/${rowId}/clone`, opts)) as ApiCmseRow;
   }
 
   async checkUniqueFields(
     tableId: CmsTableId,
-    opts: { rowId: CmsRowId; uniqueFieldsData: Dict<unknown> }
+    opts: { rowId: CmsRowId; uniqueFieldsData: Dict<unknown> },
   ): Promise<UniqueFieldCheck[]> {
     return await this.post(`/cmse/tables/${tableId}/check-unique-fields`, opts);
   }
@@ -1800,14 +1810,14 @@ export abstract class SharedApi {
   }
 
   async listCmsRowRevisions(
-    rowId: CmsRowId
+    rowId: CmsRowId,
   ): Promise<ApiCmseRowRevisionMeta[]> {
     const { revisions } = await this.get(`/cmse/rows/${rowId}/revisions`);
     return revisions;
   }
 
   async getCmsRowRevision(
-    revId: CmsRowRevisionId
+    revId: CmsRowRevisionId,
   ): Promise<ApiCmseRowRevision> {
     const { revision } = await this.get(`/cmse/row-revisions/${revId}`);
     return revision;
@@ -1824,68 +1834,82 @@ export abstract class SharedApi {
       "/check-domain",
       ensureType<CheckDomainRequest>({
         domain,
-      })
+      }),
     );
   }
   async getDomainsForProject(
-    projectId: string
+    projectId: string,
   ): Promise<DomainsForProjectResponse> {
     return this.get(`/domains-for-project/${encodeURIComponent(projectId)}`);
   }
   async setSubdomainForProject(
     subdomain: string | undefined,
-    projectId: ProjectId
+    projectId: ProjectId,
   ): Promise<SetSubdomainForProjectResponse> {
     return this.put(
       "/subdomain-for-project",
       ensureType<SetSubdomainForProjectRequest>({
         subdomain,
         projectId,
-      })
+      }),
     );
   }
   async setCustomDomainForProject(
     customDomain: string | undefined,
-    projectId: ProjectId
+    projectId: ProjectId,
   ): Promise<SetCustomDomainForProjectResponse> {
     return this.put(
       "/custom-domain-for-project",
       ensureType<SetCustomDomainForProjectRequest>({
         customDomain,
         projectId,
-      })
+      }),
     );
   }
   async revalidatePlasmicHosting(
-    projectId: ProjectId
+    projectId: ProjectId,
   ): Promise<RevalidatePlasmicHostingResponse> {
     return this.post(
       "/revalidate-hosting",
       ensureType<RevalidatePlasmicHostingRequest>({
         projectId,
-      })
+      }),
     );
   }
   async getPlasmicHostingSettings(projectId: ProjectId) {
     return this.get(
-      `/plasmic-hosting/${projectId}`
+      `/plasmic-hosting/${projectId}`,
     ) as Promise<PlasmicHostingSettings>;
   }
   async updatePlasmicHostingSettings(
     projectId: ProjectId,
-    opts: {
-      favicon?: { url: string; mimeType?: string };
-    }
+    opts: PlasmicHostingSettings,
   ) {
     return this.put(
       `/plasmic-hosting/${projectId}`,
-      opts
+      opts,
     ) as Promise<PlasmicHostingSettings>;
+  }
+
+  /** Sets the text served at path (e.g. /robots.txt), or removes it with null. */
+  async setPlasmicHostingTextFile(
+    projectId: ProjectId,
+    path: string,
+    content: string | null,
+  ) {
+    const settings = await this.getPlasmicHostingSettings(projectId);
+    const textFiles = { ...settings.textFiles };
+    if (content === null) {
+      delete textFiles[path];
+    } else {
+      textFiles[path] = content;
+    }
+    return this.updatePlasmicHostingSettings(projectId, { textFiles });
   }
 
   async getComments(
     projectId: ProjectId,
-    branchId?: BranchId
+    branchId?: BranchId,
   ): Promise<GetCommentsResponse> {
     const projectBranchId = showProjectBranchId(toOpaque(projectId), branchId);
     return this.get(`/comments/${projectBranchId}`);
@@ -1895,24 +1919,24 @@ export abstract class SharedApi {
     projectId: ProjectId,
     branchId: BranchId | undefined,
     threadId: CommentThreadId,
-    data: ThreadCommentData
+    data: ThreadCommentData,
   ): Promise<PostCommentResponse> {
     const projectBranchId = showProjectBranchId(toOpaque(projectId), branchId);
     return this.post(
       `/comments/${projectBranchId}/thread/${threadId}`,
-      ensureType<ThreadCommentData>(data)
+      ensureType<ThreadCommentData>(data),
     );
   }
 
   async postRootComment(
     projectId: ProjectId,
     branchId: BranchId | undefined,
-    data: RootCommentData
+    data: RootCommentData,
   ): Promise<PostCommentResponse> {
     const projectBranchId = showProjectBranchId(toOpaque(projectId), branchId);
     return this.post(
       `/comments/${projectBranchId}`,
-      ensureType<RootCommentData>(data)
+      ensureType<RootCommentData>(data),
     );
   }
 
@@ -1922,14 +1946,14 @@ export abstract class SharedApi {
     commentId: CommentId,
     data: {
       body: string;
-    }
+    },
   ): Promise<{}> {
     return this.put(
       `/comments/${showProjectBranchId(
         toOpaque(projectId),
-        branchId
+        branchId,
       )}/comment/${commentId}`,
-      ensureType<EditCommentRequest>(data)
+      ensureType<EditCommentRequest>(data),
     );
   }
 
@@ -1940,21 +1964,21 @@ export abstract class SharedApi {
     data: {
       id: ThreadHistoryId;
       resolved: boolean;
-    }
+    },
   ): Promise<{}> {
     return this.put(
       `/comments/${showProjectBranchId(
         toOpaque(projectId),
-        branchId
+        branchId,
       )}/thread/${commentThreadId}`,
-      ensureType<ResolveThreadRequest>(data)
+      ensureType<ResolveThreadRequest>(data),
     );
   }
 
   async deleteComment(
     projectId: ProjectId,
     branchId: BranchId | undefined,
-    commentId: string
+    commentId: string,
   ): Promise<DeleteCommentResponse> {
     const projectBranchId = showProjectBranchId(toOpaque(projectId), branchId);
     return this.delete(`/comments/${projectBranchId}/comment/${commentId}`);
@@ -1963,7 +1987,7 @@ export abstract class SharedApi {
   async deleteThread(
     projectId: ProjectId,
     branchId: BranchId | undefined,
-    threadId: string
+    threadId: string,
   ): Promise<DeleteCommentResponse> {
     const projectBranchId = showProjectBranchId(toOpaque(projectId), branchId);
     return this.delete(`/comments/${projectBranchId}/thread/${threadId}`);
@@ -1972,12 +1996,12 @@ export abstract class SharedApi {
   async updateNotificationSettings(
     projectId: ProjectId,
     branchId: BranchId | undefined,
-    data: ApiNotificationSettings
+    data: ApiNotificationSettings,
   ): Promise<PostCommentResponse> {
     const projectBranchId = showProjectBranchId(toOpaque(projectId), branchId);
     return this.put(
       `/comments/${projectBranchId}/notification-settings`,
-      ensureType<UpdateNotificationSettingsRequest>(data)
+      ensureType<UpdateNotificationSettingsRequest>(data),
     );
   }
 
@@ -1986,25 +2010,25 @@ export abstract class SharedApi {
     projectId: ProjectId,
     branchId: BranchId | undefined,
     commentId: CommentId,
-    data: CommentReactionData
+    data: CommentReactionData,
   ): Promise<AddCommentReactionResponse> {
     const projectBranchId = showProjectBranchId(toOpaque(projectId), branchId);
     return this.post(
       `/comments/${projectBranchId}/comment/${encodeURIComponent(
-        commentId
+        commentId,
       )}/reactions`,
-      ensureType<AddCommentReactionRequest>({ id, data })
+      ensureType<AddCommentReactionRequest>({ id, data }),
     );
   }
 
   async removeReactionFromComment(
     projectId: ProjectId,
     branchId: BranchId | undefined,
-    reactionId: CommentReactionId
+    reactionId: CommentReactionId,
   ): Promise<{}> {
     const projectBranchId = showProjectBranchId(toOpaque(projectId), branchId);
     return this.delete(
-      `/comments/${projectBranchId}/reactions/${encodeURIComponent(reactionId)}`
+      `/comments/${projectBranchId}/reactions/${encodeURIComponent(reactionId)}`,
     );
   }
 
@@ -2015,11 +2039,11 @@ export abstract class SharedApi {
       to: string;
       timezone: string;
       period?: string;
-    }
+    },
   ): Promise<ApiAnalyticsImpressionResponse> {
     const search = new URLSearchParams(omitNils(opts));
     const result = await this.get(
-      `/analytics/team/${teamId}?${search.toString()}`
+      `/analytics/team/${teamId}?${search.toString()}`,
     );
     return result;
   }
@@ -2035,21 +2059,21 @@ export abstract class SharedApi {
       timezone: string;
       type: ApiAnalyticsQueryType;
       period?: string;
-    }
+    },
   ): Promise<ApiAnalyticsResponse> {
     const search = new URLSearchParams(omitNils(opts));
     const result = await this.get(
-      `/analytics/team/${teamId}/project/${projectId}?${search.toString()}`
+      `/analytics/team/${teamId}/project/${projectId}?${search.toString()}`,
     );
     return result;
   }
 
   async getProjectAnalayticsMeta(
     teamId: string,
-    projectId: string
+    projectId: string,
   ): Promise<ApiAnalyticsProjectMeta> {
     const meta = await this.get(
-      `/analytics/team/${teamId}/project/${projectId}/meta`
+      `/analytics/team/${teamId}/project/${projectId}/meta`,
     );
     return meta;
   }
@@ -2076,14 +2100,14 @@ export abstract class SharedApi {
 
   async updateEndUserDirectory(
     directoryId: string,
-    changes: Partial<ApiEndUserDirectory>
+    changes: Partial<ApiEndUserDirectory>,
   ): Promise<ApiEndUserDirectory> {
     return this.put(`/end-user/directories/${directoryId}`, changes);
   }
 
   async addDirectoryEndUsers(
     directoryId: string,
-    emails: string[]
+    emails: string[],
   ): Promise<ApiEndUser[]> {
     return this.post(`/end-user/directories/${directoryId}/users`, {
       emails,
@@ -2092,22 +2116,22 @@ export abstract class SharedApi {
 
   async removeEndUserFromDirectory(
     directoryId: string,
-    endUserId: string
+    endUserId: string,
   ): Promise<{}> {
     return this.delete(
-      `/end-user/directories/${directoryId}/users/${endUserId}`
+      `/end-user/directories/${directoryId}/users/${endUserId}`,
     );
   }
 
   async listDirectoryGroups(
-    directoryId: string
+    directoryId: string,
   ): Promise<ApiDirectoryEndUserGroup[]> {
     return this.get(`/end-user/directories/${directoryId}/groups`);
   }
 
   async createDirectoryGroup(
     directoryId: string,
-    name: string
+    name: string,
   ): Promise<ApiDirectoryEndUserGroup> {
     return this.post(`/end-user/directories/${directoryId}/groups`, {
       name,
@@ -2116,17 +2140,17 @@ export abstract class SharedApi {
 
   async deleteDirectoryGroup(
     directoryId: string,
-    groupId: string
+    groupId: string,
   ): Promise<{}> {
     return this.delete(
-      `/end-user/directories/${directoryId}/groups/${groupId}`
+      `/end-user/directories/${directoryId}/groups/${groupId}`,
     );
   }
 
   async updateDirectoryGroup(
     directoryId: string,
     groupId: string,
-    name: string
+    name: string,
   ): Promise<ApiDirectoryEndUserGroup> {
     return this.put(`/end-user/directories/${directoryId}/groups/${groupId}`, {
       name,
@@ -2136,19 +2160,19 @@ export abstract class SharedApi {
   async updateEndUserGroups(
     directoryId: string,
     userId: string,
-    groupIds: string[]
+    groupIds: string[],
   ): Promise<ApiEndUser> {
     return this.put(
       `/end-user/directories/${directoryId}/users/${userId}/groups`,
       {
         groupIds,
-      }
+      },
     );
   }
 
   async createEndUserDirectory(
     teamId: string,
-    name: string
+    name: string,
   ): Promise<ApiEndUserDirectory> {
     return this.post(`/end-user/teams/${teamId}/directory`, { name });
   }
@@ -2162,7 +2186,7 @@ export abstract class SharedApi {
   }
 
   async getAppCurrentUserOpConfig(
-    appId: string
+    appId: string,
   ): Promise<ApiAppUserOpConfig | null> {
     return this.get(`/end-user/app/${appId}/user-props-config`);
   }
@@ -2173,14 +2197,14 @@ export abstract class SharedApi {
 
   async upsertAppAuthConfig(
     appId: string,
-    config: ApiAppAuthConfig
+    config: ApiAppAuthConfig,
   ): Promise<ApiAppAuthConfig> {
     return this.post(`/end-user/app/${appId}/config`, config);
   }
 
   async upsertAppCurrentUserOpConfig(
     appId: string,
-    config: ApiAppUserOpConfig
+    config: ApiAppUserOpConfig,
   ): Promise<ApiAppUserOpConfig> {
     return this.post(`/end-user/app/${appId}/user-props-config`, config);
   }
@@ -2258,7 +2282,7 @@ export abstract class SharedApi {
       pageSize: number;
       pageIndex: number;
       search?: string;
-    }
+    },
   ): Promise<{
     accesses: ApiAppAccessRegistry[];
     total: number;
@@ -2279,7 +2303,7 @@ export abstract class SharedApi {
 
   async getEndUserRoleInApp(
     projectId: string,
-    endUserId: string
+    endUserId: string,
   ): Promise<ApiAppRole | undefined> {
     return this.get(`/end-user/app/${projectId}/user-role/${endUserId}`);
   }
@@ -2301,7 +2325,7 @@ export abstract class SharedApi {
         email?: string;
         externalId?: string;
       };
-    }
+    },
   ): Promise<any> {
     return this.post(
       `/data-source/sources/${sourceId}/execute-studio`,
@@ -2311,26 +2335,14 @@ export abstract class SharedApi {
       },
       undefined,
       undefined,
-      true
+      true,
     );
   }
 
   async queryCopilot(
-    request: QueryCopilotRequest
+    request: QueryCopilotRequest,
   ): Promise<QueryCopilotResponse> {
     return this.post(`/copilot`, request, true);
-  }
-
-  async queryUiCopilot(
-    request: QueryCopilotUiRequest
-  ): Promise<QueryCopilotUiResponse> {
-    return this.post(`/copilot/ui`, request, true);
-  }
-
-  async queryPublicUiCopilot(
-    request: QueryCopilotUiRequest
-  ): Promise<QueryCopilotUiResponse> {
-    return this.post(`/copilot/ui/public`, request, true);
   }
 
   async sendCopilotFeedback(request: SendCopilotFeedbackRequest) {
@@ -2338,7 +2350,7 @@ export abstract class SharedApi {
   }
 
   async queryCopilotFeedback(
-    request: QueryCopilotFeedbackRequest
+    request: QueryCopilotFeedbackRequest,
   ): Promise<QueryCopilotFeedbackResponse> {
     return this.get(`/copilot-feedback`, {
       pageSize: request.pageSize,
@@ -2352,7 +2364,7 @@ export abstract class SharedApi {
     identifier: {
       email?: string;
       externalId?: string;
-    }
+    },
   ): Promise<Record<string, any>> {
     return this.post(`/end-user/app/${appId}/user-props`, {
       identifier,

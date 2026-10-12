@@ -179,16 +179,16 @@ export interface ExternalChangeData {
 }
 
 export function mkSemVerSiteElement(
-  node: AllowedSemVerSiteElement
+  node: AllowedSemVerSiteElement,
 ): SemVerSiteElement {
   return ensure(
     maybeMkSemVerSiteElement(node),
-    "mkSemVerSiteElement: node is not a valid SemVerSiteElement"
+    "mkSemVerSiteElement: node is not a valid SemVerSiteElement",
   );
 }
 
 export function maybeMkSemVerSiteElement(
-  node: ObjInst
+  node: ObjInst,
 ): SemVerSiteElement | undefined {
   if (isKnownComponent(node)) {
     return {
@@ -257,7 +257,9 @@ export function maybeMkSemVerSiteElement(
       const tpl = node as SemVerAllowedTplTypes;
       return {
         type: "Element" as const,
-        name: isKnownTplSlot(tpl) ? tpl.param.variable.name : tpl.name ?? null,
+        name: isKnownTplSlot(tpl)
+          ? tpl.param.variable.name
+          : (tpl.name ?? null),
       };
     })
     .when(ProjectDependency, (d) => ({
@@ -274,7 +276,7 @@ export function maybeMkSemVerSiteElement(
  * major, minor, or patch version bump wrt semantic versioning
  **/
 export function calculateSemVer(
-  changeLog: ChangeLogEntry[]
+  changeLog: ChangeLogEntry[],
 ): SemVerReleaseType {
   const types = L.map(changeLog, (e) => e.releaseType);
 
@@ -299,7 +301,7 @@ function formatParentComponent(c: Component): ParentComponent {
 
 export function extractSplitStatusDiff(
   curr: Site,
-  getPrevStatus: (name: string) => SplitStatus
+  getPrevStatus: (name: string) => SplitStatus,
 ): ChangeLogEntry[] {
   return withoutNils(
     curr.splits.map((split) => {
@@ -325,12 +327,12 @@ export function extractSplitStatusDiff(
         description: "split-status-update",
       };
       return change;
-    })
+    }),
   );
 }
 
 function stringifyVariantedValues(
-  tokenOrOverride: StyleToken | StyleTokenOverride
+  tokenOrOverride: StyleToken | StyleTokenOverride,
 ) {
   return tokenOrOverride.variantedValues
     .map((vv) => `${vv.variants.map((v) => v.uuid).join("")}${vv.value}`)
@@ -340,7 +342,7 @@ function stringifyVariantedValues(
 function fixParamNames(
   prevComponent: Component,
   currComponent: Component,
-  diffs: ChangeLogEntry[]
+  diffs: ChangeLogEntry[],
 ) {
   return diffs.map((diff) => {
     if (diff.oldValue?.type === "Param") {
@@ -348,10 +350,10 @@ function fixParamNames(
         prevComponent,
         ensure(
           prevComponent.params.find(
-            (p) => p.variable.name === diff.oldValue?.name
+            (p) => p.variable.name === diff.oldValue?.name,
           ),
-          "Param should exist in prevComponent"
-        )
+          "Param should exist in prevComponent",
+        ),
       );
     }
     if (diff.newValue?.type === "Param") {
@@ -359,10 +361,10 @@ function fixParamNames(
         currComponent,
         ensure(
           currComponent.params.find(
-            (p) => p.variable.name === diff.newValue?.name
+            (p) => p.variable.name === diff.newValue?.name,
           ),
-          "Param should exist in currComponent"
-        )
+          "Param should exist in currComponent",
+        ),
       );
     }
     return diff;
@@ -394,6 +396,7 @@ export function compareSites(prev: Site, curr: Site): ChangeLogEntry[] {
   };
 
   const projectFlags = computedProjectFlags(curr);
+  const tokenDicts: TokenDicts = new Map();
 
   // site.components
   results.push(
@@ -415,8 +418,8 @@ export function compareSites(prev: Site, curr: Site): ChangeLogEntry[] {
         },
       ],
       "global",
-      namedEntityDiffSpecs
-    )
+      namedEntityDiffSpecs,
+    ),
   );
 
   // site.components[i]
@@ -428,10 +431,10 @@ export function compareSites(prev: Site, curr: Site): ChangeLogEntry[] {
     const currComponent = currComponentMap[prevComponent.uuid];
 
     const prevVariantGroupParams = new Set<Param>(
-      prevComponent.variantGroups.map((vg) => vg.param)
+      prevComponent.variantGroups.map((vg) => vg.param),
     );
     const currVariantGroupParams = new Set<Param>(
-      currComponent.variantGroups.map((vg) => vg.param)
+      currComponent.variantGroups.map((vg) => vg.param),
     );
     // site.components[i].params (Slots and States)
     results.push(
@@ -444,12 +447,12 @@ export function compareSites(prev: Site, curr: Site): ChangeLogEntry[] {
           prevComponent.params.filter(
             (p) =>
               !prevVariantGroupParams.has(p) &&
-              !(isKnownStateChangeHandlerParam(p) && isPrivateState(p.state))
+              !(isKnownStateChangeHandlerParam(p) && isPrivateState(p.state)),
           ),
           currComponent.params.filter(
             (p) =>
               !currVariantGroupParams.has(p) &&
-              !(isKnownStateChangeHandlerParam(p) && isPrivateState(p.state))
+              !(isKnownStateChangeHandlerParam(p) && isPrivateState(p.state)),
           ),
           (p) => p.variable.uuid,
           [
@@ -469,7 +472,11 @@ export function compareSites(prev: Site, curr: Site): ChangeLogEntry[] {
                           component: currComponent,
                           inStudio: true,
                         },
+<<<<<<< HEAD
                         getTokensDict
+=======
+                        tokenDicts,
+>>>>>>> upstream/master
                       )
                     : ""
                 }:${
@@ -482,7 +489,11 @@ export function compareSites(prev: Site, curr: Site): ChangeLogEntry[] {
                           component: currComponent,
                           inStudio: true,
                         },
+<<<<<<< HEAD
                         getTokensDict
+=======
+                        tokenDicts,
+>>>>>>> upstream/master
                       )
                     : ""
                 }`,
@@ -490,9 +501,9 @@ export function compareSites(prev: Site, curr: Site): ChangeLogEntry[] {
             },
           ],
           formatParentComponent(currComponent),
-          namedEntityDiffSpecs
-        )
-      )
+          namedEntityDiffSpecs,
+        ),
+      ),
     );
 
     // site.components[i].variants
@@ -511,8 +522,8 @@ export function compareSites(prev: Site, curr: Site): ChangeLogEntry[] {
           },
         ],
         formatParentComponent(currComponent),
-        namelessEntityDiffSpecs
-      )
+        namelessEntityDiffSpecs,
+      ),
     );
 
     // site.components[i].variantGroups
@@ -523,8 +534,8 @@ export function compareSites(prev: Site, curr: Site): ChangeLogEntry[] {
         curr,
         prevComponent.variantGroups,
         currComponent.variantGroups,
-        formatParentComponent(currComponent)
-      )
+        formatParentComponent(currComponent),
+      ),
     );
 
     // site.components[i].tplTree
@@ -539,8 +550,13 @@ export function compareSites(prev: Site, curr: Site): ChangeLogEntry[] {
           component: currComponent,
           inStudio: true,
         },
+<<<<<<< HEAD
         getTokensDict
       )
+=======
+        tokenDicts,
+      ),
+>>>>>>> upstream/master
     );
   });
 
@@ -553,8 +569,8 @@ export function compareSites(prev: Site, curr: Site): ChangeLogEntry[] {
         curr,
         prev.globalVariantGroups,
         curr.globalVariantGroups,
-        "global"
-      )
+        "global",
+      ),
     );
   }
 
@@ -572,13 +588,17 @@ export function compareSites(prev: Site, curr: Site): ChangeLogEntry[] {
           ...nameValueDiffSpecs,
         },
         {
+<<<<<<< HEAD
           selector: (m, site) => hashRuleSet(site, m.rs, getTokensDict),
+=======
+          selector: (m, site) => hashRuleSet(site, m.rs, tokenDicts),
+>>>>>>> upstream/master
           ...patchUpdateDiffSpecs,
         },
       ],
       "global",
-      namedEntityDiffSpecs
-    )
+      namedEntityDiffSpecs,
+    ),
   );
 
   // site.styleTokens
@@ -604,8 +624,8 @@ export function compareSites(prev: Site, curr: Site): ChangeLogEntry[] {
         },
       ],
       "global",
-      namedEntityDiffSpecs
-    )
+      namedEntityDiffSpecs,
+    ),
   );
 
   // site.styleTokensOverrides
@@ -627,8 +647,8 @@ export function compareSites(prev: Site, curr: Site): ChangeLogEntry[] {
         },
       ],
       "global",
-      namedEntityDiffSpecs
-    )
+      namedEntityDiffSpecs,
+    ),
   );
 
   // site.dataTokens
@@ -650,8 +670,8 @@ export function compareSites(prev: Site, curr: Site): ChangeLogEntry[] {
         },
       ],
       "global",
-      namedEntityDiffSpecs
-    )
+      namedEntityDiffSpecs,
+    ),
   );
 
   // site.customFunctions
@@ -669,8 +689,8 @@ export function compareSites(prev: Site, curr: Site): ChangeLogEntry[] {
         },
       ],
       "global",
-      namedEntityDiffSpecs
-    )
+      namedEntityDiffSpecs,
+    ),
   );
 
   // site.imageAssets
@@ -692,8 +712,8 @@ export function compareSites(prev: Site, curr: Site): ChangeLogEntry[] {
         },
       ],
       "global",
-      namedEntityDiffSpecs
-    )
+      namedEntityDiffSpecs,
+    ),
   );
 
   // site.splits
@@ -711,8 +731,8 @@ export function compareSites(prev: Site, curr: Site): ChangeLogEntry[] {
         },
       ],
       "global",
-      namedEntityDiffSpecs
-    )
+      namedEntityDiffSpecs,
+    ),
   );
   // site.splits > status
   results.push(
@@ -722,7 +742,7 @@ export function compareSites(prev: Site, curr: Site): ChangeLogEntry[] {
         return SplitStatus.New;
       }
       return prevSplit.status as SplitStatus;
-    })
+    }),
   );
 
   results.push(
@@ -739,8 +759,8 @@ export function compareSites(prev: Site, curr: Site): ChangeLogEntry[] {
         },
       ],
       "global",
-      namedEntityDiffSpecs
-    )
+      namedEntityDiffSpecs,
+    ),
   );
   // site.arenas - ignore
   // site.themes - ignore
@@ -750,14 +770,14 @@ export function compareSites(prev: Site, curr: Site): ChangeLogEntry[] {
   const modifiedComponentUuids = new Set(
     withoutNils(
       results.map((v) =>
-        v.parentComponent !== "global" ? v.parentComponent.uuid : undefined
-      )
-    )
+        v.parentComponent !== "global" ? v.parentComponent.uuid : undefined,
+      ),
+    ),
   );
 
   curr.components.forEach((currComponent) => {
     results.push(
-      ...checkIndirectTplUsage(currComponent, modifiedComponentUuids)
+      ...checkIndirectTplUsage(currComponent, modifiedComponentUuids),
     );
   });
 
@@ -791,7 +811,7 @@ function genericCheck<T extends AllowedSemVerSiteElement>(
   opts: {
     removed: DiffSpec;
     added: DiffSpec;
-  }
+  },
 ) {
   const partialResults: ChangeLogEntry[] = [];
   const visitedKeys: string[] = [];
@@ -859,14 +879,18 @@ function checkTplNodes(
   aComp: Component,
   bComp: Component,
   exprCtx: ExprCtx,
+<<<<<<< HEAD
   getTokensDict: GetTokensDict
+=======
+  tokenDicts: TokenDicts,
+>>>>>>> upstream/master
 ): ChangeLogEntry[] {
   const results: ChangeLogEntry[] = [];
   const aNodes = flattenTpls(aComp.tplTree).filter(
-    (n): n is SemVerAllowedTplTypes => isTplNamable(n) || isTplSlot(n)
+    (n): n is SemVerAllowedTplTypes => isTplNamable(n) || isTplSlot(n),
   );
   const bNodes = flattenTpls(bComp.tplTree).filter(
-    (n): n is SemVerAllowedTplTypes => isTplNamable(n) || isTplSlot(n)
+    (n): n is SemVerAllowedTplTypes => isTplNamable(n) || isTplSlot(n),
   );
   const aNodeMap = L.keyBy(aNodes, (n) => n.uuid);
   const bNodeMap = L.keyBy(bNodes, (n) => n.uuid);
@@ -901,12 +925,12 @@ function checkTplNodes(
           aName && !bNames.has(aName)
             ? "major"
             : // The new name is not in the old set of names, so we've added
-            // a new name; a minor revision
-            bName && !aNames.has(bName)
-            ? "minor"
-            : // Else, the set of names hasn't been altered by this node's renaming,
-              // so it's a patch revision
-              "patch";
+              // a new name; a minor revision
+              bName && !aNames.has(bName)
+              ? "minor"
+              : // Else, the set of names hasn't been altered by this node's renaming,
+                // so it's a patch revision
+                "patch";
         results.push({
           releaseType,
           parentComponent: formatParentComponent(bComp),
@@ -919,8 +943,13 @@ function checkTplNodes(
       if (
         isTplVariantable(aNode) &&
         isTplVariantable(bNode) &&
+<<<<<<< HEAD
         hashVariantSettings(prev, aNode, exprCtx, getTokensDict) !==
           hashVariantSettings(curr, bNode, exprCtx, getTokensDict)
+=======
+        hashVariantSettings(prev, aNode, exprCtx, tokenDicts) !==
+          hashVariantSettings(curr, bNode, exprCtx, tokenDicts)
+>>>>>>> upstream/master
       ) {
         // Style has been updated
         results.push({
@@ -957,7 +986,7 @@ function checkTplNodes(
  */
 function checkIndirectTplUsage(
   comp: Component,
-  modifiedComponentUuids: Set<string>
+  modifiedComponentUuids: Set<string>,
 ): ChangeLogEntry[] {
   const results: ChangeLogEntry[] = [];
 
@@ -987,7 +1016,7 @@ function checkVariantGroups(
   curr: Site,
   aVgs: Array<VariantGroup>,
   bVgs: Array<VariantGroup>,
-  parentComponent: "global" | ParentComponent
+  parentComponent: "global" | ParentComponent,
 ): ChangeLogEntry[] {
   const partialResults: ChangeLogEntry[] = [];
   const _aVgMap = L.keyBy(aVgs, (o) => o.uuid);
@@ -1008,8 +1037,8 @@ function checkVariantGroups(
         },
       ],
       parentComponent,
-      namedEntityDiffSpecs
-    )
+      namedEntityDiffSpecs,
+    ),
   );
 
   // variantGroups[i].variants
@@ -1036,8 +1065,8 @@ function checkVariantGroups(
           },
         ],
         parentComponent,
-        namedEntityDiffSpecs
-      )
+        namedEntityDiffSpecs,
+      ),
     );
   });
   return partialResults;
@@ -1063,17 +1092,29 @@ const patchUpdateDiffSpecs = {
   valueChanged: { releaseType: "patch", description: "updated" },
 } as const;
 
+<<<<<<< HEAD
 type TokensDict = Readonly<{ [uuid: string]: FinalToken<StyleToken> }>;
 type GetTokensDict = (site: Site) => TokensDict;
+=======
+// Owned by one comparison (or standalone hashExpr call), never retained across edits.
+type TokenDicts = Map<Site, ReturnType<typeof siteFinalStyleTokensAllDepsDict>>;
+>>>>>>> upstream/master
 
 function hashVariantSettings(
   site: Site,
   tpl: TplNode,
   exprCtx: ExprCtx,
+<<<<<<< HEAD
   getTokensDict: GetTokensDict
 ) {
   return tpl.vsettings
     .map((vs) => hashVariantSetting(site, vs, exprCtx, getTokensDict))
+=======
+  tokenDicts: TokenDicts,
+) {
+  return tpl.vsettings
+    .map((vs) => hashVariantSetting(site, vs, exprCtx, tokenDicts))
+>>>>>>> upstream/master
     .join("");
 }
 
@@ -1081,13 +1122,18 @@ function hashVariantSetting(
   site: Site,
   vs: VariantSetting,
   exprCtx: ExprCtx,
+<<<<<<< HEAD
   getTokensDict: GetTokensDict
+=======
+  tokenDicts: TokenDicts,
+>>>>>>> upstream/master
 ) {
   return `
   ${vs.variants.map((v) => v.uuid).join("")}
   ${vs.args
     .map(
       (arg) =>
+<<<<<<< HEAD
         `${arg.param.variable.uuid}=${hashExpr(
           site,
           arg.expr,
@@ -1109,12 +1155,32 @@ function hashVariantSetting(
 
 function hashRuleSet(site: Site, rs: RuleSet, getTokensDict: GetTokensDict) {
   const allTokensDict = getTokensDict(site);
+=======
+        `${arg.param.variable.uuid}=${hashExpr(site, arg.expr, exprCtx, tokenDicts)}`,
+    )
+    .join("")}
+  ${Object.entries(vs.attrs)
+    .map(([key, val]) => `${key}=${hashExpr(site, val, exprCtx, tokenDicts)}`)
+    .join("")}
+  ${vs.dataCond ? hashExpr(site, vs.dataCond, exprCtx, tokenDicts) : ""}
+  ${vs.text ? hashText(site, vs.text, exprCtx, tokenDicts) : ""}
+  ${hashRuleSet(site, vs.rs, tokenDicts)}
+  `;
+}
+
+function hashRuleSet(site: Site, rs: RuleSet, tokenDicts: TokenDicts) {
+>>>>>>> upstream/master
   const rsValues = Object.entries(rs.values)
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([key, val]) => {
       const refTokenIds = extractAllReferencedTokenIds(val);
       if (refTokenIds.length === 0) {
         return [key, val];
+      }
+      let allTokensDict = tokenDicts.get(site);
+      if (!allTokensDict) {
+        allTokensDict = siteFinalStyleTokensAllDepsDict(site);
+        tokenDicts.set(site, allTokensDict);
       }
       const refTokens = withoutNils(refTokenIds.map((x) => allTokensDict[x]));
       return [key, refTokens.map((t) => t.value).join("")];
@@ -1123,7 +1189,11 @@ function hashRuleSet(site: Site, rs: RuleSet, getTokensDict: GetTokensDict) {
     ${JSON.stringify(rsValues)}
     ${[...rs.mixins]
       .sort((a, b) => a.uuid.localeCompare(b.uuid))
+<<<<<<< HEAD
       .map((m) => hashRuleSet(site, m.rs, getTokensDict))
+=======
+      .map((m) => hashRuleSet(site, m.rs, tokenDicts))
+>>>>>>> upstream/master
       .join("")}
   `;
 }
@@ -1132,7 +1202,11 @@ export function hashExpr(
   site: Site,
   _expr: Expr,
   exprCtx: ExprCtx,
+<<<<<<< HEAD
   getTokensDict: GetTokensDict = siteFinalStyleTokensAllDepsDict
+=======
+  tokenDicts: TokenDicts = new Map(),
+>>>>>>> upstream/master
 ) {
   return switchType(_expr)
     .when(
@@ -1140,37 +1214,78 @@ export function hashExpr(
       (expr) =>
         expr.code +
         (expr.fallback
+<<<<<<< HEAD
           ? hashExpr(site, expr.fallback, exprCtx, getTokensDict)
           : "")
+=======
+          ? hashExpr(site, expr.fallback, exprCtx, tokenDicts)
+          : ""),
+>>>>>>> upstream/master
     )
     .when(RenderExpr, (expr) => expr.tpl.map((x) => x.uuid).join(""))
     .when(VarRef, (expr) => expr.variable.uuid)
     .when(StyleTokenRef, (expr) => expr.token.value)
     .when(ImageAssetRef, (expr) => expr.asset.dataUri)
-    .when(PageHref, (expr) => expr.page.uuid)
+    .when(
+      PageHref,
+      (expr) =>
+        `${expr.page.uuid}` +
+        `?encode=${expr.encode}` +
+        Object.entries(expr.params)
+          .map(
+            ([key, val]) =>
+              `[${key}]=${hashExpr(site, val, exprCtx, tokenDicts)}`,
+          )
+          .join("") +
+        Object.entries(expr.query)
+          .map(
+            ([key, val]) =>
+              `&${key}=${hashExpr(site, val, exprCtx, tokenDicts)}`,
+          )
+          .join("") +
+        (expr.fragment
+          ? `#${hashExpr(site, expr.fragment, exprCtx, tokenDicts)}`
+          : ""),
+    )
     .when(VariantsRef, (expr) => expr.variants.map((v) => v.uuid).join(""))
     .when(
       ObjectPath,
       (expr) =>
         expr.path.join(".") +
         (expr.fallback
+<<<<<<< HEAD
           ? hashExpr(site, expr.fallback, exprCtx, getTokensDict)
           : "")
+=======
+          ? hashExpr(site, expr.fallback, exprCtx, tokenDicts)
+          : ""),
+>>>>>>> upstream/master
     )
     .when(DataSourceOpExpr, (expr) => asCode(expr, exprCtx).code)
     .when(EventHandler, (expr) => expr.interactions.map((i) => i.uuid).join(""))
     .when(CollectionExpr, (collectionExpr) =>
       collectionExpr.exprs
         .map((expr) =>
+<<<<<<< HEAD
           expr ? hashExpr(site, expr, exprCtx, getTokensDict) : "undefined"
         )
         .join("#")
+=======
+          expr ? hashExpr(site, expr, exprCtx, tokenDicts) : "undefined",
+        )
+        .join("#"),
+>>>>>>> upstream/master
     )
     .when(MapExpr, (mapExpr) =>
       Object.entries(mapExpr.mapExpr).map(
         ([name, expr]) =>
+<<<<<<< HEAD
           `{${name}}:{${hashExpr(site, expr, exprCtx, getTokensDict)}}#`
       )
+=======
+          `{${name}}:{${hashExpr(site, expr, exprCtx, tokenDicts)}}#`,
+      ),
+>>>>>>> upstream/master
     )
     .when(FunctionArg, (functionArg) => functionArg.uuid)
     .when(FunctionExpr, (functionExpr) => asCode(functionExpr, exprCtx).code)
@@ -1178,30 +1293,45 @@ export function hashExpr(
       StyleExpr,
       (expr) =>
         `${expr.uuid}-${expr.styles.map(
+<<<<<<< HEAD
           (s) => `${s.selector}-${hashRuleSet(site, s.rs, getTokensDict)}`
         )}`
+=======
+          (s) => `${s.selector}-${hashRuleSet(site, s.rs, tokenDicts)}`,
+        )}`,
+>>>>>>> upstream/master
     )
     .when(TemplatedString, (templatedString) =>
       templatedString.text
         .map((t) =>
+<<<<<<< HEAD
           isString(t)
             ? t
             : `{{ ${hashExpr(site, t, exprCtx, getTokensDict)} }} `
         )
         .join("")
+=======
+          isString(t) ? t : `{{ ${hashExpr(site, t, exprCtx, tokenDicts)} }} `,
+        )
+        .join(""),
+>>>>>>> upstream/master
     )
     .when(TplRef, (ref) => `ref=${ref.tpl.uuid}`)
     .when(
       QueryInvalidationExpr,
-      (queryInvalidation) => asCode(queryInvalidation, exprCtx).code
+      (queryInvalidation) => asCode(queryInvalidation, exprCtx).code,
     )
     .when(CompositeExpr, (expr) =>
       JSON.stringify({
         hostLiteral: expr.hostLiteral,
         substitutions: mapValues(expr.substitutions, (subexpr) =>
+<<<<<<< HEAD
           hashExpr(site, subexpr, exprCtx, getTokensDict)
+=======
+          hashExpr(site, subexpr, exprCtx, tokenDicts),
+>>>>>>> upstream/master
         ),
-      })
+      }),
     )
     .when(CustomFunctionExpr, (expr) => asCode(expr, exprCtx).code)
     .result();
@@ -1211,14 +1341,22 @@ function hashText(
   site: Site,
   text: RichText,
   exprCtx: ExprCtx,
+<<<<<<< HEAD
   getTokensDict: GetTokensDict
+=======
+  tokenDicts: TokenDicts,
+>>>>>>> upstream/master
 ) {
   function hashMarker(marker: Marker) {
     if (isKnownStyleMarker(marker)) {
       return `${marker.position}${marker.length}${hashRuleSet(
         site,
         marker.rs,
+<<<<<<< HEAD
         getTokensDict
+=======
+        tokenDicts,
+>>>>>>> upstream/master
       )}`;
     } else if (isKnownNodeMarker(marker)) {
       return `${marker.tpl.uuid}${marker.position}${marker.length}`;
@@ -1230,7 +1368,11 @@ function hashText(
   if (isKnownRawText(text)) {
     return `${text.text}${text.markers.map(hashMarker).join("")}`;
   } else if (isKnownExprText(text)) {
+<<<<<<< HEAD
     return hashExpr(site, text.expr, exprCtx, getTokensDict);
+=======
+    return hashExpr(site, text.expr, exprCtx, tokenDicts);
+>>>>>>> upstream/master
   } else {
     throw new Error(`Unexpected text ${text}`);
   }
@@ -1242,10 +1384,10 @@ export function compareVersionNumbers(a: string, b: string) {
 }
 
 export function getExternalChangeData(
-  changeLog: ChangeLogEntry[]
+  changeLog: ChangeLogEntry[],
 ): ExternalChangeData {
   const isPageComponentChange = (
-    value: SemVerSiteElement | null
+    value: SemVerSiteElement | null,
   ): value is SemVerSiteComponent => {
     return value?.type === "Component" && value?.componentType === "page";
   };
@@ -1263,8 +1405,8 @@ export function getExternalChangeData(
               result.push(entry.oldValue.name);
             }
             return result;
-          })
-        )
+          }),
+        ),
       ),
     ],
     pagesChanged: [
@@ -1285,8 +1427,8 @@ export function getExternalChangeData(
               result.push(entry.parentComponent.path);
             }
             return result;
-          })
-        )
+          }),
+        ),
       ),
     ],
   };

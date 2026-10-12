@@ -3,7 +3,6 @@ import { Matcher } from "@/wab/client/components/view-common";
 import { Modal } from "@/wab/client/components/widgets/Modal";
 import ShareDialogContent from "@/wab/client/components/widgets/plasmic/ShareDialogContent";
 import Select from "@/wab/client/components/widgets/Select";
-import { useAppCtx } from "@/wab/client/contexts/AppContexts";
 import {
   DefaultTeamMemberListProps,
   PlasmicTeamMemberList,
@@ -21,7 +20,7 @@ import { sortBy } from "lodash";
 import * as React from "react";
 
 interface TeamMemberListProps extends DefaultTeamMemberListProps {
-  team?: ApiTeam;
+  team: ApiTeam;
   members: TeamMember[];
   perms: ApiPermission[];
   tier: ApiFeatureTier;
@@ -33,7 +32,7 @@ interface TeamMemberListProps extends DefaultTeamMemberListProps {
 
 function TeamMemberList_(
   props: TeamMemberListProps,
-  ref: HTMLElementRefOf<"div">
+  ref: HTMLElementRefOf<"div">,
 ) {
   const {
     members,
@@ -46,7 +45,6 @@ function TeamMemberList_(
     tier,
     ...rest
   } = props;
-  const appCtx = useAppCtx();
 
   // Shared Modal
   const [sharedModal, setSharedModal] = React.useState(false);
@@ -59,7 +57,7 @@ function TeamMemberList_(
     .filter(
       (m) =>
         (m.type === "user" && matcher.matches(fullName(m))) ||
-        matcher.matches(m.email)
+        matcher.matches(m.email),
     )
     .filter((m) => {
       if (filterSelect === "all") {
@@ -72,20 +70,20 @@ function TeamMemberList_(
       return perms.some(
         (p) =>
           (p.user?.email || p?.email) === m.email &&
-          p.accessLevel === filterSelect
+          p.accessLevel === filterSelect,
       );
     });
   // The following lines perform 2 stable sorts so the members are sorted by
   // access level rank -> name (or email, if it's a member with no user).
   displayedMembers = sortBy(displayedMembers, (m) =>
-    m.type === "user" ? fullName(m) : m.email
+    m.type === "user" ? fullName(m) : m.email,
   );
   displayedMembers = sortBy(
     displayedMembers,
     (m) =>
       -accessLevelRank(
-        perms.find((p) => p.user?.email === m.email)?.accessLevel ?? "blocked"
-      )
+        perms.find((p) => p.user?.email === m.email)?.accessLevel ?? "blocked",
+      ),
   );
   return (
     <>
@@ -109,19 +107,8 @@ function TeamMemberList_(
             <Select.Option value="all">All Roles</Select.Option>,
             <Select.Option value="owner">Owners</Select.Option>,
             <Select.Option value="editor">Developers</Select.Option>,
-            ...(appCtx.appConfig.contentOnly ||
-            perms.some(
-              (perm) =>
-                perm.accessLevel === "designer" ||
-                perm.accessLevel === "content"
-            )
-              ? [
-                  <Select.Option value="designer">Designers</Select.Option>,
-                  <Select.Option value="content">
-                    Content Creators
-                  </Select.Option>,
-                ]
-              : []),
+            <Select.Option value="designer">Designers</Select.Option>,
+            <Select.Option value="content">Content Creators</Select.Option>,
             ...(perms.some((perm) => perm.accessLevel === "commenter")
               ? [<Select.Option value="commenter">Commenters</Select.Option>]
               : []),
@@ -136,18 +123,17 @@ function TeamMemberList_(
             user={user}
             matcher={matcher}
             perm={perms.find(
-              (p) => p.user?.email === user.email || p.email === user.email
+              (p) => p.user?.email === user.email || p.email === user.email,
             )}
             tier={tier}
             changeRole={onChangeRole}
             removeUser={onRemoveUser}
             disabled={disabled}
-            teamId={team?.id}
             perms={perms}
           />
         ))}
       </PlasmicTeamMemberList>
-      {sharedModal && team && (
+      {sharedModal && (
         <Modal
           visible={true}
           onCancel={() => setSharedModal(false)}

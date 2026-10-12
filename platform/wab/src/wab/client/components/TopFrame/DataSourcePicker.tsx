@@ -19,7 +19,6 @@ import {
   DATA_SOURCE_PLURAL_LOWER,
 } from "@/wab/shared/Labels";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
 import { Form } from "antd";
 import React from "react";
 import useSWR from "swr";
@@ -51,7 +50,7 @@ export function DataSourcePicker({
       thisProjectsWorkspace
         ? `/data-source/sources?workspaceId=${thisProjectsWorkspace!.id}`
         : null,
-    async () => await appCtx.api.listDataSources(thisProjectsWorkspace!.id)
+    async () => await appCtx.api.listDataSources(thisProjectsWorkspace!.id),
   );
 
   const [addNewDataSourceForWorkspace, setAddNewDataSourceForWorkspace] =
@@ -68,7 +67,7 @@ export function DataSourcePicker({
         footer={null}
         onOk={() =>
           onSelected(
-            selectedSourceId ? { sourceId: selectedSourceId } : undefined
+            selectedSourceId ? { sourceId: selectedSourceId } : undefined,
           )
         }
       >
@@ -81,7 +80,7 @@ export function DataSourcePicker({
           }}
           onFinish={async () => {
             await onSelected(
-              selectedSourceId ? { sourceId: selectedSourceId } : undefined
+              selectedSourceId ? { sourceId: selectedSourceId } : undefined,
             );
           }}
         >
@@ -98,15 +97,8 @@ export function DataSourcePicker({
             (() => {
               const sources =
                 data.find(
-                  ({ workspace, dataSources }) =>
-                    workspace.id === thisProjectsWorkspace.id
+                  ({ workspace }) => workspace.id === thisProjectsWorkspace.id,
                 )?.dataSources ?? [];
-              const nonTutorialSources = sources.filter(
-                (source) => source.source !== "tutorialdb"
-              );
-              const tutorialSources = sources.filter(
-                (source) => source.source === "tutorialdb"
-              );
               return (
                 <Form.Item label={DATA_SOURCE_CAP} name={"sourceId"}>
                   <div className="flex">
@@ -116,7 +108,7 @@ export function DataSourcePicker({
                       onChange={(selectedId) => {
                         if (selectedId === "create") {
                           setAddNewDataSourceForWorkspace(
-                            thisProjectsWorkspace.id
+                            thisProjectsWorkspace.id,
                           );
                         } else {
                           setSelectedSourceId(selectedId ?? undefined);
@@ -134,13 +126,13 @@ export function DataSourcePicker({
                       >
                         Create a new {DATA_SOURCE_LOWER}...
                       </Select.Option>
-                      {nonTutorialSources
+                      {sources
                         .filter(
                           (source) =>
                             !readOpsOnly ||
                             getDataSourceMeta(source.source).ops.some(
-                              (op) => op.type === "read"
-                            )
+                              (op) => op.type === "read",
+                            ),
                         )
                         .map((source) => (
                           <Select.Option
@@ -151,27 +143,6 @@ export function DataSourcePicker({
                             {source.name}
                           </Select.Option>
                         ))}
-                      {tutorialSources.length > 0 && (
-                        <Select.OptionGroup title="Plasmic Tutorial Integrations">
-                          {tutorialSources
-                            .filter(
-                              (source) =>
-                                !readOpsOnly ||
-                                getDataSourceMeta(source.source).ops.some(
-                                  (op) => op.type === "read"
-                                )
-                            )
-                            .map((source) => (
-                              <Select.Option
-                                key={source.id}
-                                textValue={source.name}
-                                value={source.id}
-                              >
-                                {source.name}
-                              </Select.Option>
-                            ))}
-                        </Select.OptionGroup>
-                      )}
                     </Select>
                     <IconButton onClick={() => mutate()}>
                       <Icon icon={RefreshsvgIcon} />
@@ -198,7 +169,7 @@ export function DataSourcePicker({
               <a
                 target={"_blank"}
                 href={
-                  fillRoute(APP_ROUTES.workspace, {
+                  APP_ROUTES.workspace.fill({
                     workspaceId: thisProjectsWorkspace.id,
                   }) + "#tab=dataSources"
                 }
