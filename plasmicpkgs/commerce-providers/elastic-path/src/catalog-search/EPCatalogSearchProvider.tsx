@@ -272,7 +272,6 @@ function EPCatalogSearchProviderInner(props: {
   const outerInsertHTML = useContext(ServerInsertedHTMLContext);
   const slotKey = useId();
   const [serverPass] = useState<CatalogSearchServerPass>(() => ({
-    canInsertHTML: outerInsertHTML != null,
     outcome: "pending",
   }));
   const insertHTML = useCallback(
@@ -342,32 +341,46 @@ function EPCatalogSearchProviderInner(props: {
     );
   }
 
-  return (
-    <ServerInsertedHTMLContext.Provider value={insertHTML}>
-      <InstantSearchNext
-        searchClient={searchClient}
-        indexName={indexName}
-        routing={enableUrlSync}
-      >
-        <ServerPassRelease serverPass={serverPass} />
-        {/* `filters` rides through the adapter's _adaptFilters, which always
+  const searchTree = (
+    <>
+      <ServerPassRelease serverPass={serverPass} />
+      {/* `filters` rides through the adapter's _adaptFilters, which always
           joins it (&&) with facet refinements — unlike the adapter-level
           `additionalSearchParameters.filter_by`, which is silently DROPPED
           whenever InstantSearch generates its own filters (i.e. as soon as
           any facet is refined). Must be Typesense filter_by syntax. */}
-        <Configure
-          hitsPerPage={hitsPerPage}
-          {...(baseFilter ? { filters: baseFilter } : {})}
-        />
-        <QueryState />
-        <EPCatalogSearchBody
-          className={className}
-          currencyCode={currencyCode}
-          errorContent={errorContent}
+      <Configure
+        hitsPerPage={hitsPerPage}
+        {...(baseFilter ? { filters: baseFilter } : {})}
+      />
+      <QueryState />
+      <EPCatalogSearchBody
+        serverPass={serverPass}
+        className={className}
+        currencyCode={currencyCode}
+        errorContent={errorContent}
+      >
+        {children}
+      </EPCatalogSearchBody>
+    </>
+  );
+
+  // Outside the App Router InstantSearchNext cannot render on the server: it
+  // reads `next/headers`, which throws there. Rendering nothing matches the
+  // browser's first render, which is empty until InstantSearch starts.
+  const renderable = typeof window !== "undefined" || outerInsertHTML != null;
+
+  return (
+    <ServerInsertedHTMLContext.Provider value={insertHTML}>
+      {renderable ? (
+        <InstantSearchNext
+          searchClient={searchClient}
+          indexName={indexName}
+          routing={enableUrlSync}
         >
-          {children}
-        </EPCatalogSearchBody>
-      </InstantSearchNext>
+          {searchTree}
+        </InstantSearchNext>
+      ) : null}
     </ServerInsertedHTMLContext.Provider>
   );
 }
@@ -443,6 +456,15 @@ function useHydrateFromSlot(slotKey: string) {
  * it rethrow into the render. Clearing `_hasSearchWidget` first makes it
  * serialize nothing instead.
  */
+function suspendOn(promise: Promise<unknown>): void {
+  const use = (React as { use?: (p: Promise<unknown>) => unknown }).use;
+  if (use) {
+    use(promise);
+    return;
+  }
+  throw promise;
+}
+
 function ServerPassRelease(props: { serverPass: CatalogSearchServerPass }) {
   const { resolveWaitForResultsRef } = useRSCContext();
   const search = useInstantSearchContext();
@@ -476,9 +498,18 @@ function EPCatalogSearchBody(props: {
   errorContent?: React.ReactNode;
   className?: string;
   currencyCode: string;
+  serverPass: CatalogSearchServerPass;
 }) {
-  const { children, errorContent, className, currencyCode } = props;
+  const { children, errorContent, className, currencyCode, serverPass } = props;
+  const { waitForResultsRef } = useRSCContext();
   const { status, error } = useInstantSearch({ catchError: true });
+  if (typeof window === "undefined") {
+    // The browser's first render without server results is empty, so a
+    // server pass that found none renders nothing either.
+    const serverResults = waitForResultsRef?.current;
+    if (serverResults?.status === "pending") suspendOn(serverResults);
+    if (serverPass.outcome !== "success") return null;
+  }
   const failed = status === "error";
 
   const catalogSearchData: CatalogSearchData = {

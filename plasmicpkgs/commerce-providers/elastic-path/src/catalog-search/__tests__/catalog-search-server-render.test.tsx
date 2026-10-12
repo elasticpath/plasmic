@@ -34,7 +34,16 @@ jest.mock("next/navigation.js", () => {
   };
 });
 
-jest.mock("next/headers.js", () => ({ headers: () => new Headers() }));
+// Outside the App Router, Next's own `headers()` throws.
+const mockNextRequest = { inScope: true };
+jest.mock("next/headers.js", () => ({
+  headers: () => {
+    if (!mockNextRequest.inScope) {
+      throw new Error("`headers` was called outside a request scope.");
+    }
+    return new Headers();
+  },
+}));
 
 jest.mock("@plasmicapp/host", () => ({
   DataProvider: ({ children }: { children: React.ReactNode }) => (
@@ -141,6 +150,15 @@ interface ServerRender {
   errors: unknown[];
 }
 
+/**
+ * Puts `tree` inside a host element, as on any real page. React does not
+ * check server nodes left over directly inside the root container, so a
+ * mismatch at the top level would otherwise pass unseen.
+ */
+function onPage(tree: React.ReactElement) {
+  return <main>{tree}</main>;
+}
+
 async function serverRender(
   tree: React.ReactElement,
   opts: { insertContext?: boolean } = {}
@@ -149,12 +167,12 @@ async function serverRender(
   const errors: unknown[] = [];
   const page =
     opts.insertContext === false ? (
-      tree
+      onPage(tree)
     ) : (
       <ServerInsertedHTMLContext.Provider
         value={(cb: () => React.ReactNode) => callbacks.push(cb)}
       >
-        {tree}
+        {onPage(tree)}
       </ServerInsertedHTMLContext.Provider>
     );
   const html = await new Promise<string>((resolve, reject) => {
@@ -213,7 +231,12 @@ function hitNamesIn(initialResults: any): string[] {
   );
 }
 
+function IdProbe() {
+  return <span data-probe-id={React.useId()} />;
+}
+
 beforeEach(() => {
+  mockNextRequest.inScope = true;
   fetchMock.mockReset();
   (globalThis as any).fetch = fetchMock;
   delete (globalThis as any)[BRIDGE_KEY];
@@ -280,11 +303,10 @@ describe("catalog search server pass", () => {
 });
 
 describe("a server pass that cannot search", () => {
+  // Nothing, as in the browser's first render before InstantSearch starts.
   function expectBrowserFallback({ html, inserted, errors }: ServerRender) {
     expect(errors).toEqual([]);
-    expect(html).toContain("data-ep-catalog-search-provider");
-    expect(html).not.toContain("<li>");
-    expect(html).not.toContain("data-ep-catalog-search-error");
+    expect(html).toBe("<main></main>");
     expect(inserted).not.toContain("<script");
   }
 
@@ -350,7 +372,8 @@ describe("a server pass that cannot search", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("renders without results where the page cannot take inserted HTML", async () => {
+  it("renders without results outside the App Router, where next/headers throws", async () => {
+    mockNextRequest.inScope = false;
     installBridge();
     answerSearches(() => ["Trail Boot"]);
 
@@ -408,7 +431,7 @@ async function hydrateInBrowser(
       if (String(args[0]).includes("multiple renderers concurrently")) return;
       hydrationErrors.push(args);
     });
-  const root = hydrateRoot(container, tree, {
+  const root = hydrateRoot(container, onPage(tree), {
     onRecoverableError: (error: unknown) => hydrationErrors.push(error),
   });
   await settle();
@@ -500,6 +523,29 @@ describe("in the browser", () => {
     const rendered = await serverRender(page);
 
     const browser = await hydrateInBrowser(rendered, page);
+    try {
+      expect(browser.hydrationErrors).toEqual([]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][0]).toBe("/api/ep/proxy/multiSearch");
+      expect(browser.container.innerHTML).toContain("<li>Trail Boot</li>");
+    } finally {
+      await browser.leave();
+    }
+  });
+
+  it("hydrates a page rendered outside the App Router, then searches through the proxy", async () => {
+    mockNextRequest.inScope = false;
+    answerSearches(() => ["Trail Boot"]);
+    const withProbe = (
+      <EPCatalogSearchProvider baseFilter="categories:=boots">
+        <IdProbe />
+        <HitNames />
+      </EPCatalogSearchProvider>
+    );
+    const rendered = await serverRender(withProbe, { insertContext: false });
+    expect(rendered.errors).toEqual([]);
+
+    const browser = await hydrateInBrowser(rendered, withProbe);
     try {
       expect(browser.hydrationErrors).toEqual([]);
       expect(fetchMock).toHaveBeenCalledTimes(1);
