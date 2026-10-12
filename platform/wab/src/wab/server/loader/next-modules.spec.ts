@@ -74,7 +74,11 @@ describe("bundling next/headers and next/navigation", () => {
       }
       return registered[name];
     };
-    new Function("require", "exports", mod.code)(requireFn, exports);
+    new Function("require", "exports", "Headers", mod.code)(
+      requireFn,
+      exports,
+      undefined
+    );
     return { exports, required };
   }
 
@@ -97,7 +101,7 @@ describe("bundling next/headers and next/navigation", () => {
     }
   });
 
-  it("gives browser and server bundles an empty next/headers", async () => {
+  it("gives browser and server bundles an empty next/headers without a global Headers", async () => {
     const output = await bundle("nextjs", 10);
 
     expect(output.external).not.toContain("next/headers");

@@ -12,8 +12,18 @@ export function loaderProvidesNextNavigation(opts: NextModulesOpts) {
 const SHIM_NAMESPACE = "next-module-shim";
 
 const NEXT_HEADERS_SHIM = `
+const emptyHeaders = {
+  get: () => null,
+  has: () => false,
+  keys: () => [][Symbol.iterator](),
+  values: () => [][Symbol.iterator](),
+  entries: () => [][Symbol.iterator](),
+  forEach: () => {},
+  [Symbol.iterator]: () => [][Symbol.iterator](),
+};
+
 export function headers() {
-  return new Headers();
+  return emptyHeaders;
 }
 `;
 

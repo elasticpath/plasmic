@@ -86,12 +86,14 @@ EP additions to preserve:
 - In `deriveExternals`, inside the `nextjs` branch: `external.push("next/navigation")`
   when `loaderProvidesNextNavigation(opts)` (loader version 10 or later)
 
-The plugin resolves `next/headers` to an empty-`Headers` shim for every platform, and
+The plugin resolves `next/headers` to an empty-headers shim for every platform, and
 `next/navigation` to the loader's copy for a Next.js loader at version 10 or later, or to a
 shim whose hooks throw for everything else. `react-instantsearch-nextjs` needs both, and
 `next` is not installed in `loader-bundle-env`. Without the plugin, a bundle with that
 library fails to build on non-Next platforms and asks a Next.js loader for
-`next/headers.js`, which no loader registers.
+`next/headers.js`, which no loader registers. Both headers shims are plain objects, not
+`new Headers()`: loader 1.x supports Node 10 and later, and Node has no global `Headers`
+before 18.
 
 **`platform/canvas-packages/esbuild.js` — next/headers and next/navigation (#547)**
 
