@@ -594,6 +594,52 @@ describe("EP Fork Integrity", () => {
     });
   });
 
+  describe("next/headers and next/navigation bundle for catalog search", () => {
+    it("the loader bundler runs the next-modules plugin", () => {
+      const bundler = readFile(
+        "platform/wab/src/wab/server/loader/module-bundler.ts"
+      );
+      expect(bundler).toContain("nextModulesPlugin(opts)");
+      expect(bundler).toMatch(
+        /if \(loaderProvidesNextNavigation\(opts\)\) \{\s*external\.push\("next\/navigation"\);/
+      );
+      expect(
+        fileExists("platform/wab/src/wab/server/loader/next-modules.ts")
+      ).toBe(true);
+      expect(
+        fileExists("platform/wab/src/wab/server/loader/next-modules.spec.ts")
+      ).toBe(true);
+    });
+
+    it("the canvas bundles resolve both modules to shims", () => {
+      const canvasBuild = readFile("platform/canvas-packages/esbuild.js");
+      for (const name of [
+        "next/headers",
+        "next/headers.js",
+        "next/navigation",
+        "next/navigation.js",
+      ]) {
+        expect(canvasBuild).toContain(`"${name}": path.join(`);
+      }
+      expect(canvasBuild).toContain("...nextShims,");
+      expect(canvasBuild).toContain("plugins: [alias(nextShims)],");
+      expect(
+        fileExists("platform/canvas-packages/next-shims/headers.js")
+      ).toBe(true);
+      expect(
+        fileExists("platform/canvas-packages/next-shims/navigation.js")
+      ).toBe(true);
+    });
+
+    it("a test pins that the canvas never mounts the search runtime", () => {
+      expect(
+        fileExists(
+          `${EP_PKG}/src/catalog-search/__tests__/canvas-search-runtime.test.tsx`
+        )
+      ).toBe(true);
+    });
+  });
+
   describe("registrations that cannot be removed are inert", () => {
     it("EP Shopper Context says so in its display name", () => {
       expect(
