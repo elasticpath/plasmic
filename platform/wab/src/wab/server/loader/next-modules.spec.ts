@@ -17,12 +17,12 @@ type Platform = "react" | "nextjs" | "gatsby" | "tanstack";
 
 const SEARCH_LIBRARY_SOURCE = `
 import { headers } from "next/headers.js";
-import { usePathname, useSearchParams } from "next/navigation.js";
+import { useParams, usePathname, useSearchParams } from "next/navigation.js";
 const cjsHeaders = require("next/headers");
 const cjsNavigation = require("next/navigation");
 export const readHeaders = () => headers();
 export const readCjsHeaders = () => cjsHeaders.headers();
-export const navigation = { usePathname, useSearchParams, cjsNavigation };
+export const navigation = { useParams, usePathname, useSearchParams, cjsNavigation };
 `;
 
 describe("bundling next/headers and next/navigation", () => {
@@ -64,7 +64,11 @@ describe("bundling next/headers and next/navigation", () => {
     )!;
   }
 
-  function evaluate(mod: CodeModule, registered: Record<string, unknown>) {
+  function evaluate(
+    mod: CodeModule,
+    registered: Record<string, unknown>,
+    window?: { location: { pathname: string; search: string } }
+  ) {
     const required: string[] = [];
     const exports: Record<string, any> = {};
     const requireFn = (name: string) => {
@@ -74,10 +78,11 @@ describe("bundling next/headers and next/navigation", () => {
       }
       return registered[name];
     };
-    new Function("require", "exports", "Headers", mod.code)(
+    new Function("require", "exports", "Headers", "window", mod.code)(
       requireFn,
       exports,
-      undefined
+      undefined,
+      window
     );
     return { exports, required };
   }
@@ -137,10 +142,31 @@ describe("bundling next/headers and next/navigation", () => {
           []
         );
         expect(exports.readHeaders().get("host")).toBeNull();
-        expect(() => exports.navigation.usePathname()).toThrow(
-          /next\/navigation/
-        );
+        expect(exports.navigation.usePathname()).toBe("/");
+        expect(exports.navigation.useSearchParams().toString()).toBe("");
+        expect(exports.navigation.useParams()).toEqual({});
       }
+    }
+  );
+
+  it.each([
+    ["react", 10],
+    ["gatsby", 10],
+    ["tanstack", 10],
+    ["nextjs", 9],
+  ] as const)(
+    "reads next/navigation from the browser location for a %s loader at version %i",
+    async (platform, loaderVersion) => {
+      const output = await bundle(platform, loaderVersion);
+
+      const { exports } = evaluate(
+        rootProvider(output, "browser"),
+        { react: React },
+        { location: { pathname: "/search", search: "?q=shoe" } }
+      );
+      expect(exports.navigation.usePathname()).toBe("/search");
+      expect(exports.navigation.useSearchParams().get("q")).toBe("shoe");
+      expect(exports.navigation.useParams()).toEqual({});
     }
   );
 });

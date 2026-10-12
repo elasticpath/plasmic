@@ -88,7 +88,8 @@ EP additions to preserve:
 
 The plugin resolves `next/headers` to an empty-headers shim for every platform, and
 `next/navigation` to the loader's copy for a Next.js loader at version 10 or later, or to a
-shim whose hooks throw for everything else. `react-instantsearch-nextjs` needs both, and
+shim for everything else. The shim's hooks read the browser location (`/`, empty search
+params and `{}` on a server). `react-instantsearch-nextjs` needs both, and
 `next` is not installed in `loader-bundle-env`. Without the plugin, a bundle with that
 library fails to build on non-Next platforms and asks a Next.js loader for
 `next/headers.js`, which no loader registers. Both headers shims are plain objects, not
@@ -105,8 +106,9 @@ EP additions to preserve:
   publish-hostless)
 
 The canvas is not a Next.js app and does not install `next`.
-The navigation shim's hooks throw; that is safe only because the canvas never mounts the
+The navigation shim's hooks read the browser location. The design canvas never mounts the
 catalog-search runtime, which `canvas-search-runtime.test.tsx` in the EP package pins.
+Studio's live preview does mount it, so the hooks must not throw.
 
 **Branch-merge performance (fork-first)**
 

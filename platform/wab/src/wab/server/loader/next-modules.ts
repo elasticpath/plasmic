@@ -30,18 +30,21 @@ export function headers() {
 const NEXT_NAVIGATION_SHIM = `
 import { createContext } from "react";
 
-function unavailable(name) {
-  return function () {
-    throw new Error(
-      "next/navigation " + name + "() is not available here. It needs a Next.js loader at loader version 10 or later."
-    );
-  };
+export const ServerInsertedHTMLContext = createContext(null);
+
+export function usePathname() {
+  return typeof window === "undefined" ? "/" : window.location.pathname;
 }
 
-export const ServerInsertedHTMLContext = createContext(null);
-export const useParams = unavailable("useParams");
-export const usePathname = unavailable("usePathname");
-export const useSearchParams = unavailable("useSearchParams");
+export function useSearchParams() {
+  return new URLSearchParams(
+    typeof window === "undefined" ? "" : window.location.search
+  );
+}
+
+export function useParams() {
+  return {};
+}
 `;
 
 export function nextModulesPlugin(opts: NextModulesOpts): EsbuildPlugin {
