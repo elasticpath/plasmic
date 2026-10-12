@@ -23,13 +23,14 @@ jest.mock("react-dom/client", () =>
   jest.requireActual("next/dist/compiled/react-dom/client")
 );
 
+const mockPageUrl = { search: "" };
 jest.mock("next/navigation.js", () => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { createContext } = require("react");
   return {
     ServerInsertedHTMLContext: createContext(null),
     usePathname: () => "/category/boots",
-    useSearchParams: () => new URLSearchParams(""),
+    useSearchParams: () => new URLSearchParams(mockPageUrl.search),
     useParams: () => ({}),
   };
 });
@@ -71,7 +72,7 @@ const { JSDOM } = require("jsdom");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { ServerInsertedHTMLContext } = require("next/navigation.js");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { useHits } = require("react-instantsearch");
+const { useHits, useSearchBox } = require("react-instantsearch");
 const { EPCatalogSearchProvider } =
   require("../EPCatalogSearchProvider") as typeof import("../EPCatalogSearchProvider");
 const { SERVER_SEARCH_TIMEOUT_MS } =
@@ -102,15 +103,29 @@ function searchResult(names: string[]) {
 
 const fetchMock = jest.fn();
 
-function answerSearches(namesFor: (filterBy: string) => string[]) {
+async function requestBody(input: Request | string, init?: any) {
+  return JSON.parse(
+    typeof input === "string" ? init.body : await input.clone().text()
+  );
+}
+
+/** The `q` of every search sent, in order. */
+async function searchedQueries(): Promise<string[]> {
+  const bodies = await Promise.all(
+    fetchMock.mock.calls.map(([input, init]) => requestBody(input, init))
+  );
+  return bodies.flatMap((body) => body.searches.map((s: any) => s.q));
+}
+
+function answerSearches(
+  namesFor: (filterBy: string, query: string) => string[]
+) {
   fetchMock.mockImplementation(async (input: Request | string, init?: any) => {
-    const body = JSON.parse(
-      typeof input === "string" ? init.body : await input.clone().text()
-    );
+    const body = await requestBody(input, init);
     return new Response(
       JSON.stringify({
         results: body.searches.map((s: any) =>
-          searchResult(namesFor(String(s.filter_by ?? "")))
+          searchResult(namesFor(String(s.filter_by ?? ""), String(s.q ?? "")))
         ),
         included: {},
       }),
@@ -235,7 +250,13 @@ function IdProbe() {
   return <span data-probe-id={React.useId()} />;
 }
 
+function SearchFor(props: { query: string }) {
+  const { refine } = useSearchBox();
+  return <button onClick={() => refine(props.query)}>search</button>;
+}
+
 beforeEach(() => {
+  mockPageUrl.search = "";
   mockNextRequest.inScope = true;
   fetchMock.mockReset();
   (globalThis as any).fetch = fetchMock;
@@ -274,6 +295,24 @@ describe("catalog search server pass", () => {
     const request: Request = fetchMock.mock.calls[0][0];
     expect(new URL(request.url).origin).toBe(AUTH.host);
     expect(request.headers.get("authorization")).toBe("Bearer server-token");
+  });
+
+  it("renders the results for the search in the page URL", async () => {
+    installBridge();
+    mockPageUrl.search = "search%5Bquery%5D=shirt";
+    answerSearches((_filterBy, query) =>
+      query === "shirt" ? ["Linen Shirt"] : ["Trail Boot"]
+    );
+
+    const { html, errors } = await serverRender(
+      <EPCatalogSearchProvider baseFilter="categories:=boots">
+        <HitNames />
+      </EPCatalogSearchProvider>
+    );
+
+    expect(errors).toEqual([]);
+    expect(await searchedQueries()).toEqual(["shirt"]);
+    expect(html).toContain("<li>Linen Shirt</li>");
   });
 
   it("keeps each provider's results apart on a page with two", async () => {
@@ -475,6 +514,35 @@ describe("in the browser", () => {
       expect(browser.hydrationErrors).toEqual([]);
       expect(browser.container.innerHTML).toContain("<li>Trail Boot</li>");
       expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      await browser.leave();
+    }
+  });
+
+  it("sends a search after hydration through the storefront's own origin", async () => {
+    installBridge();
+    answerSearches((_filterBy, query) =>
+      query === "shirt" ? ["Linen Shirt"] : ["Trail Boot"]
+    );
+    const withSearch = (
+      <EPCatalogSearchProvider baseFilter="categories:=boots">
+        <SearchFor query="shirt" />
+        <HitNames />
+      </EPCatalogSearchProvider>
+    );
+    const rendered = await serverRender(withSearch);
+    fetchMock.mockClear();
+
+    const browser = await hydrateInBrowser(rendered, withSearch);
+    try {
+      browser.container.querySelector("button")!.click();
+      await settle();
+
+      expect(browser.hydrationErrors).toEqual([]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][0]).toBe("/api/ep/proxy/multiSearch");
+      expect(await searchedQueries()).toEqual(["shirt"]);
+      expect(browser.container.innerHTML).toContain("<li>Linen Shirt</li>");
     } finally {
       await browser.leave();
     }
