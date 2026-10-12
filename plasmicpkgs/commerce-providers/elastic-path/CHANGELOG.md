@@ -312,6 +312,16 @@ following page on the server until the list is complete, and still answers
 `{ accounts, total }` with no tokens. A request that sets `limit` or `offset`
 still returns that one page.
 
+Overlapping cart writes no longer leave the page on an older cart. When two
+`epAddCartItem`, `epUpdateCartItem` or `epRemoveCartItem` calls overlapped,
+such as an add and then a quick remove, every `useEpCart()` consumer showed the
+cart from the response that arrived last. That could be the older cart, and it
+stayed until something else read the cart. Now a consumer never goes back to a
+cart older than one it has shown. When the last of the overlapping writes
+finishes, the cart is read once from Elastic Path, so the consumers end on the
+cart Elastic Path holds. A single write still reads nothing, and each call
+still resolves with the cart it produced.
+
 ## 0.8.0
 
 ### Breaking
