@@ -52,12 +52,15 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function storefrontAuth() {
+function storefrontAuth(
+  overrides: Partial<Parameters<typeof createEpAuth>[0]> = {}
+) {
   return createEpAuth({
     clientId: "test-client-id",
     host: EP_HOST,
     secret: "x".repeat(48),
     baseURL: ORIGIN,
+    ...overrides,
   });
 }
 
@@ -173,6 +176,43 @@ describe("getSession within one page request", () => {
 
     await auth.api.getSession({ cookies: {} });
     await auth.api.getSession({ cookies: {} });
+
+    expect(tokensMinted).toBe(2);
+  });
+
+  // A storefront evaluates its `createEpAuth` module once per module graph:
+  // the page, route handlers and middleware each get their own instance.
+  it("reads once across instances the storefront created with one config", async () => {
+    const page = storefrontAuth();
+    const bridged = storefrontAuth();
+    nextRequest.headers = new Headers();
+
+    const first = await page.api.getSession({ cookies: {} });
+    const second = await bridged.api.getSession({ cookies: {} });
+
+    expect(tokensMinted).toBe(1);
+    expect(second.session?.accessToken).toBe(first.session?.accessToken);
+  });
+
+  it("hands the bridge the session a page read on another instance", async () => {
+    const page = storefrontAuth();
+    storefrontAuth();
+    nextRequest.headers = new Headers();
+
+    const read = await page.api.getSession({ cookies: {} });
+    const bridged = await readEpRequestBridge()?.requestSession();
+
+    expect(tokensMinted).toBe(1);
+    expect(bridged?.accessToken).toBe(read.session?.accessToken);
+  });
+
+  it("reads separately for instances configured for different stores", async () => {
+    const first = storefrontAuth();
+    const second = storefrontAuth({ clientId: "other-client-id" });
+    nextRequest.headers = new Headers();
+
+    await first.api.getSession({ cookies: {} });
+    await second.api.getSession({ cookies: {} });
 
     expect(tokensMinted).toBe(2);
   });

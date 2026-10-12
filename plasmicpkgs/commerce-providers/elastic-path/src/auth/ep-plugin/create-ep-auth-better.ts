@@ -510,7 +510,12 @@ export function createEpAuth(input: CreateEpAuthBetterInput): EpAuth {
   };
   const epAuth: EpAuth = {
     ...perCall,
-    api: { getSession: memoizePerPageRequest(perCall.api.getSession) },
+    api: {
+      getSession: memoizePerPageRequest(
+        JSON.stringify([input.clientId, input.host, baseURL]),
+        perCall.api.getSession
+      ),
+    },
   };
   registerEpRequestBridge(createEpRequestBridge(epAuth.api.getSession));
   return epAuth;

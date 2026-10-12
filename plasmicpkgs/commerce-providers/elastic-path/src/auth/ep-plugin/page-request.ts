@@ -31,10 +31,31 @@ export async function readPageRequestHeaders(): Promise<Record<
   return scope ? Object.fromEntries(scope.entries()) : null;
 }
 
+const SESSIONS_KEY = Symbol.for(
+  "@elasticpath/plasmic-ep-commerce-elastic-path/page-request-sessions"
+);
+
+/**
+ * On globalThis, not in module scope: a storefront evaluates its
+ * `createEpAuth` module once per module graph (page, route handlers,
+ * middleware), and the catalog-search bridge may come from any of them.
+ */
+function sessionsByPageRequest(): WeakMap<
+  object,
+  Map<string, Promise<unknown>>
+> {
+  const scope = globalThis as {
+    [SESSIONS_KEY]?: WeakMap<object, Map<string, Promise<unknown>>>;
+  };
+  return (scope[SESSIONS_KEY] ??= new WeakMap());
+}
+
 /**
  * Shares one `getSession` result among the callers in one page request, such
  * as the page and the catalog-search server pass, so a request mints and
  * refreshes its session once. Outside a request scope every call reads anew.
+ * `store` names the store an instance was configured for, so instances for
+ * different stores never share.
  */
 export function memoizePerPageRequest<
   Req extends {
@@ -42,17 +63,22 @@ export function memoizePerPageRequest<
     headers?: Record<string, string | string[] | undefined>;
   },
   Result
->(read: (req: Req) => Promise<Result>): (req: Req) => Promise<Result> {
-  const byScope = new WeakMap<object, Map<string, Promise<Result>>>();
+>(
+  store: string,
+  read: (req: Req) => Promise<Result>
+): (req: Req) => Promise<Result> {
   return async (req) => {
     const scope = await readPageRequestScope();
     if (!scope) return read(req);
-    let byRequest = byScope.get(scope);
+    const byScope = sessionsByPageRequest();
+    let byRequest = byScope.get(scope) as
+      | Map<string, Promise<Result>>
+      | undefined;
     if (!byRequest) {
       byRequest = new Map();
       byScope.set(scope, byRequest);
     }
-    const key = requestKey(req);
+    const key = JSON.stringify([store, requestKey(req)]);
     let result = byRequest.get(key);
     if (!result) {
       result = read(req);
