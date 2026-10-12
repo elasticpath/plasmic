@@ -15,6 +15,7 @@ jest.mock("react-instantsearch", () => ({
   },
   Configure: () => null,
   useInstantSearch: () => ({ status: "idle", error: undefined }),
+  useSearchBox: () => ({ query: "", refine: () => {}, clear: () => {} }),
 }));
 
 jest.mock("react-instantsearch-nextjs", () => ({
