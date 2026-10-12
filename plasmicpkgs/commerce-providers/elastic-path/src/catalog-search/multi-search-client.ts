@@ -127,15 +127,10 @@ export function createMultiSearchClient(
     async post(options) {
       const searches = (options?.body?.searches ?? []).map(groupFilterBy);
       const include = options?.query?.include;
-      const withInclude = include && include.length > 0 ? include : undefined;
       if (serverPass && typeof window === "undefined") {
-        return serverPassSearch(serverPass, searches, withInclude);
+        return serverPassSearch(serverPass, searches, include);
       }
-      const data = await epMultiSearch({
-        searches,
-        ...(withInclude ? { include: withInclude } : {}),
-      });
-      return { data };
+      return { data: await epMultiSearch({ searches, include }) };
     },
   };
 }

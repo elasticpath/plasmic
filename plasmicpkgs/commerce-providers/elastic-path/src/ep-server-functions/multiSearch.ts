@@ -51,26 +51,26 @@ export async function epMultiSearch({
   searches,
   include,
 }: EpMultiSearchInput): Promise<EpMultiSearchResponse> {
-  const body = { searches: searches ?? [] };
   const auth = getCurrentEpSession();
 
   if (!isUsableAuth(auth) && shouldUseProxy()) {
     return (
       (await callEpProxy<EpMultiSearchResponse | null>("multiSearch", {
-        searches: body.searches,
-        ...(include && include.length > 0 ? { include } : {}),
+        searches: searches ?? [],
+        include,
       })) ?? {}
     );
   }
 
   if (!isUsableAuth(auth)) return {};
-  return epMultiSearchWithAuth(auth, { searches: body.searches, include });
+  return epMultiSearchWithAuth(auth, { searches, include });
 }
 
 /**
  * The search itself, with the session passed in rather than read from the
  * active `withEpSession` scope. For a caller that holds a session no scope
- * carries, such as catalog search's server pass.
+ * carries, such as catalog search's server pass. An empty `include` is the
+ * same as none.
  */
 export async function epMultiSearchWithAuth(
   auth: EpServerAuth,

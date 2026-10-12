@@ -448,14 +448,7 @@ function useHydrateFromSlot(slotKey: string) {
   }, [slotKey]);
 }
 
-/**
- * Gives the search client a way to end the server render with no results.
- *
- * Resolving InstantSearchNext's wait alone is not enough: with a search sent
- * and no results, its `getInitialResults` throws, and the widgets waiting on
- * it rethrow into the render. Clearing `_hasSearchWidget` first makes it
- * serialize nothing instead.
- */
+/** `React.use` where it exists, else the older thrown-promise suspend. */
 function suspendOn(promise: Promise<unknown>): void {
   const use = (React as { use?: (p: Promise<unknown>) => unknown }).use;
   if (use) {
@@ -465,6 +458,14 @@ function suspendOn(promise: Promise<unknown>): void {
   throw promise;
 }
 
+/**
+ * Gives the search client a way to end the server render with no results.
+ *
+ * Resolving InstantSearchNext's wait alone is not enough: with a search sent
+ * and no results, its `getInitialResults` throws, and the widgets waiting on
+ * it rethrow into the render. Clearing `_hasSearchWidget` first makes it
+ * serialize nothing instead.
+ */
 function ServerPassRelease(props: { serverPass: CatalogSearchServerPass }) {
   const { resolveWaitForResultsRef } = useRSCContext();
   const search = useInstantSearchContext();
