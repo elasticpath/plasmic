@@ -23,7 +23,12 @@ import { useHeadlessStyling } from "./headless-styling";
 import { createMultiSearchClient } from "./multi-search-client";
 import { catalogSearchErrorCopy } from "./search-error-copy";
 import { readEpErrorCode } from "../browser-call";
-import { Configure, InstantSearch, useInstantSearch } from "react-instantsearch";
+import {
+  Configure,
+  InstantSearch,
+  useInstantSearch,
+  useSearchBox,
+} from "react-instantsearch";
 import * as catalogSearchAdapterModule from "@elasticpath/catalog-search-instantsearch-adapter";
 
 type PreviewState = "auto" | "withData" | "loading" | "empty" | "error";
@@ -321,6 +326,7 @@ function EPCatalogSearchProviderInner(props: {
         hitsPerPage={hitsPerPage}
         {...(baseFilter ? { filters: baseFilter } : {})}
       />
+      <QueryState />
       <EPCatalogSearchBody
         className={className}
         currencyCode={currencyCode}
@@ -330,6 +336,15 @@ function EPCatalogSearchProviderInner(props: {
       </EPCatalogSearchBody>
     </InstantSearch>
   );
+}
+
+/**
+ * InstantSearch applies a URL's `query` only while a search-box widget is
+ * mounted, and a page needs no search box to show results for a shared link.
+ */
+function QueryState() {
+  useSearchBox();
+  return null;
 }
 
 /**
