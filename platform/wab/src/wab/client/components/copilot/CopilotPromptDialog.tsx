@@ -7,31 +7,21 @@ import { Tooltip } from "antd";
 import * as React from "react";
 import { FocusScope } from "react-aria";
 
-import { CopilotPromptImage } from "@/wab/client/components/copilot/CopilotPromptImage";
 import {
   CopilotData,
   useCopilot,
 } from "@/wab/client/components/copilot/useCopilot";
-import { ImageUploader } from "@/wab/client/components/style-controls/ImageSelector";
-import ImageUploadsIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__ImageUploads";
+import { useAutoFocus } from "@/wab/client/hooks/useAutoFocus";
 import { isSubmitKeyCombo } from "@/wab/client/shortcuts/shortcut";
-import {
-  CopilotPrompt,
-  CopilotType,
-  useStudioCtx,
-} from "@/wab/client/studio-ctx/StudioCtx";
-import { CopilotImageType, copilotImageTypes } from "@/wab/shared/ApiSchema";
-import { spawn } from "@/wab/shared/common";
-import { asDataUrl, parseDataUrl } from "@/wab/shared/data-urls";
-import { isAdminTeamEmail } from "@/wab/shared/devflag-utils";
+import { CopilotPrompt, CopilotType } from "@/wab/client/studio-ctx/StudioCtx";
 import cn from "classnames";
 import defer = setTimeout;
 
-export interface CopilotPromptDialogProps<Response>
-  extends DefaultCopilotPromptDialogProps {
+export interface CopilotPromptDialogProps<
+  Response,
+> extends DefaultCopilotPromptDialogProps {
   type: CopilotType;
   maxLength?: number;
-  showImageUpload?: boolean;
   dialogOpen: boolean;
   onDialogOpenChange: (open: boolean) => void;
   onCopilotSubmit: (args: CopilotPrompt) => Promise<CopilotData<Response>>;
@@ -44,7 +34,6 @@ function CopilotPromptDialog<Response>({
   className,
   dialogOpen,
   onDialogOpenChange,
-  showImageUpload,
   maxLength,
   onCopilotSubmit,
 }: CopilotPromptDialogProps<Response>) {
@@ -52,22 +41,13 @@ function CopilotPromptDialog<Response>({
   const [copilotPrompt, setCopilotPrompt] = React.useState<CopilotPrompt>({
     prompt: "",
     images: [],
-    modelProviderOverride: "",
-    copilotSystemPromptOverride: "",
   });
-  const studioCtx = useStudioCtx();
-  const appCtx = studioCtx.appCtx;
 
-  const promptInputRef: React.Ref<HTMLTextAreaElement> =
-    React.useRef<HTMLTextAreaElement>(null);
+  const promptInputRef = React.useRef<HTMLTextAreaElement>(null);
   const applyBtnRef: React.Ref<HTMLDivElement> =
     React.useRef<HTMLDivElement>(null);
 
-  React.useEffect(() => {
-    if (dialogOpen && promptInputRef.current) {
-      promptInputRef.current.focus();
-    }
-  }, [dialogOpen, promptInputRef.current]);
+  useAutoFocus(dialogOpen && promptInputRef);
 
   const {
     response,
@@ -82,30 +62,10 @@ function CopilotPromptDialog<Response>({
     onCopilotSubmit,
   });
 
-  const starterPrompt = studioCtx.copilotStarterPrompt;
-
-  React.useEffect(() => {
-    if (starterPrompt) {
-      const newCopilotPrompt = {
-        prompt: starterPrompt,
-        images: [],
-      };
-      setCopilotPrompt(newCopilotPrompt);
-      spawn(submitPrompt(newCopilotPrompt));
-      studioCtx.app.showSpinner();
-    }
-  }, [starterPrompt]);
-
   React.useEffect(() => {
     defer(() => {
       if (response && applyBtnRef.current) {
-        if (starterPrompt) {
-          studioCtx.app.hideSpinner();
-          applyResponse(response);
-          studioCtx.copilotStarterPrompt = "";
-        } else {
-          applyBtnRef.current.focus();
-        }
+        applyBtnRef.current.focus();
       }
     });
   }, [response]);
@@ -122,84 +82,19 @@ function CopilotPromptDialog<Response>({
     <PlasmicCopilotPromptDialog
       type={type}
       promptInput={{
-        withAdminOverrides:
-          type === "ui" &&
-          isAdminTeamEmail(appCtx.selfInfo?.email, appCtx.appConfig),
-        modelOverrideInput: {
-          onChange: (value) =>
-            setCopilotPrompt({
-              ...copilotPrompt,
-              modelProviderOverride: value,
-            }),
-        },
-        systemPromptInput: {
-          onChange: (value) =>
-            setCopilotPrompt({
-              ...copilotPrompt,
-              copilotSystemPromptOverride: value,
-            }),
-        },
-        imageUploadIcon: {
-          render: () =>
-            showImageUpload ? (
-              <ImageUploader
-                onUploaded={async (image, _file) => {
-                  const dataUrl = parseDataUrl(image.url);
-                  setCopilotPrompt((prev) => ({
-                    ...prev,
-                    images: [
-                      ...prev.images,
-                      {
-                        type: dataUrl.mediaType.split(
-                          "/"
-                        )[1] as CopilotImageType,
-                        base64: dataUrl.data,
-                      },
-                    ],
-                  }));
-                }}
-                accept={copilotImageTypes.map((t) => `.${t}`).join(",")}
-                isDisabled={false}
-              >
-                <div className="flex dimfg p-sm">
-                  <ImageUploadsIcon />
-                </div>
-              </ImageUploader>
-            ) : null,
-        },
-        imageUploadContainer: {
-          wrapChildren: () => {
-            return copilotPrompt.images.map((image) => (
-              <CopilotPromptImage
-                img={{
-                  src: asDataUrl(image.base64, `image/${image.type}`, "base64"),
-                }}
-                closeIconContainer={{
-                  onClick: () => {
-                    setCopilotPrompt((prev) => ({
-                      ...prev,
-                      images: prev.images.filter(
-                        (img) => img.base64 !== image.base64
-                      ),
-                    }));
-                  },
-                }}
-              />
-            ));
-          },
-        },
+        imageUploadIcon: { render: () => null },
+        imageUploadContainer: { render: () => null },
         runPromptBtn: {
           props: {
             onClick: () => submitPrompt(copilotPrompt),
             disabled: !isValidPrompt,
           },
           wrap: (elt) => (
-            <Tooltip title={"Run Copilot"} mouseEnterDelay={0.5}>
+            <Tooltip title={"Run Plasmic AI"} mouseEnterDelay={0.5}>
               {elt}
             </Tooltip>
           ),
         },
-        showImageUpload,
         textAreaInput: {
           value: copilotPrompt.prompt,
           maxLength,
@@ -271,7 +166,7 @@ function CopilotPromptDialog<Response>({
                 }}
               />
             </>
-          )
+          ),
         ),
       }}
       promptDialog={{

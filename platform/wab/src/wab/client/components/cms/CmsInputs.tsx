@@ -1,4 +1,3 @@
-import { useRRouteMatch } from "@/wab/client/cli-routes";
 import { PublicLink } from "@/wab/client/components/PublicLink";
 import {
   UniqueFieldStatus,
@@ -24,6 +23,8 @@ import PlusIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Plus";
 import Trash2Icon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Trash2";
 import ArrowDownSvg from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__ArrowDownSvg";
 import ArrowUpSvg from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__ArrowUpSvg";
+import { useHistory } from "@/wab/client/route/HistoryProvider";
+import { useMatchedRoute } from "@/wab/client/route/useMatchedRoute";
 import {
   ApiCmsDatabase,
   CmsDatabaseId,
@@ -36,7 +37,6 @@ import {
 } from "@/wab/shared/ApiSchema";
 import { assert, ensure, ensureType } from "@/wab/shared/common";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
 import { naturalSort } from "@/wab/shared/sort";
 import { PlasmicImg } from "@plasmicapp/react-web";
 import Pickr from "@simonwep/pickr";
@@ -51,15 +51,14 @@ import {
 } from "antd";
 import { FormItemProps } from "antd/lib/form";
 import TextArea from "antd/lib/input/TextArea";
+import dayjs, { Dayjs } from "dayjs";
 import { upperFirst } from "lodash";
-import moment from "moment";
 import * as React from "react";
 import { ReactElement, ReactNode, createContext, useContext } from "react";
 import { useHover } from "react-aria";
 import { GrNewWindow } from "react-icons/all";
-import { useHistory } from "react-router";
 const LazyRichTextEditor = React.lazy(
-  () => import("@/wab/client/components/RichTextEditor")
+  () => import("@/wab/client/components/RichTextEditor"),
 );
 
 type NamePathz = (string | number)[];
@@ -79,12 +78,12 @@ export const ContentEntryFormContext = createContext<
 export function useContentEntryFormContext(): ContentEntryFormContextValue {
   return ensure(
     useContext(ContentEntryFormContext),
-    "ContentEntryFormContext is unset"
+    "ContentEntryFormContext is unset",
   );
 }
 
 export function ValueSwitch(
-  props: SwitchProps & { disabled?: boolean; value?: boolean }
+  props: SwitchProps & { disabled?: boolean; value?: boolean },
 ) {
   return (
     <Switch {...props} isDisabled={props.disabled} isChecked={props.value} />
@@ -98,10 +97,10 @@ export function StringDateTimePicker(props: any) {
       showTime
       format="YYYY-MM-DDTHH:mm:ss"
       {...props}
-      value={props.value ? moment(new Date(props.value)) : undefined}
+      value={props.value ? dayjs(new Date(props.value)) : undefined}
       onChange={
         props.onChange
-          ? (date: moment.Moment | null) => {
+          ? (date: Dayjs | null) => {
               const curDate = date?.toDate();
               curDate?.setMilliseconds(0);
               return props.onChange(curDate?.toISOString());
@@ -137,7 +136,7 @@ export function CmsRefInput(props: any) {
             const label = identifier || rowPlaceholder || "Untitled entry";
             return { label, rowId: row.id };
           }),
-          (rowData) => rowData.label
+          (rowData) => rowData.label,
         ).map((rowData) => (
           <MenuItem
             key={rowData.rowId}
@@ -283,7 +282,7 @@ export function CmsListInput(props: any) {
   } = useContentEntryFormContext();
   const { label } = ensure(
     useContext(FormNameContext),
-    "Must have form name available"
+    "Must have form name available",
   );
   const form = Form.useFormInstance();
   const [expandedKeys, setExpandedKeys] = React.useState<string[] | string>([]);
@@ -310,7 +309,7 @@ export function CmsListInput(props: any) {
                       <Button
                         onClick={() => {
                           setExpandedKeys(
-                            items.map((item) => String(item.key))
+                            items.map((item) => String(item.key)),
                           );
                         }}
                         type="secondary"
@@ -396,7 +395,7 @@ function MaybeFormItem({
   uniqueStatus?: UniqueFieldStatus;
 }) {
   const history = useHistory();
-  const match = useRRouteMatch(APP_ROUTES.cmsEntry);
+  const match = useMatchedRoute(APP_ROUTES.cmsEntry);
   const commonRules = [
     { required: props.required, message: "Field is required" },
     {
@@ -407,8 +406,8 @@ function MaybeFormItem({
           uniqueStatus.status === "violation" &&
           uniqueStatus.conflictRowId
         ) {
-          const conflictingRowRoute = fillRoute(APP_ROUTES.cmsEntry, {
-            ...match!.params,
+          const conflictingRowRoute = APP_ROUTES.cmsEntry.fill({
+            ...match!.pathParams,
             rowId: uniqueStatus.conflictRowId,
           });
           return Promise.reject(
@@ -422,7 +421,7 @@ function MaybeFormItem({
                 this entry
               </a>
               .
-            </>
+            </>,
           );
         }
         return Promise.resolve();
@@ -542,7 +541,7 @@ export function CmsImageInput(props: {
         <FileUploader
           style={{
             alignSelf: "auto",
-            width: 100,
+            width: 200,
           }}
           onChange={async (fileList: FileList | null) => {
             if (!fileList || fileList.length === 0) {
@@ -555,7 +554,7 @@ export function CmsImageInput(props: {
             setUploading(false);
             onChange?.(result.files[0]);
           }}
-          accept={".gif,.jpg,.jpeg,.png,.avif,.tif,.svg,.webp"}
+          accept={"image"}
         />
       )}
       {isUploading && <em>Uploading...</em>}
@@ -584,9 +583,10 @@ export function CmsFileInput(props: {
       )}
       {!disabled && (
         <FileUploader
+          accept={"any"}
           style={{
             alignSelf: "auto",
-            width: 100,
+            width: 200,
           }}
           onChange={async (fileList: FileList | null) => {
             if (!fileList || fileList.length === 0) {
@@ -684,7 +684,7 @@ export function CmsRichTextInput({
         value={value ?? ""}
         onChange={ensure(
           onChange,
-          "Rich text editor requires onChange callback"
+          "Rich text editor requires onChange callback",
         )}
         readOnly={disabled}
       />
@@ -838,7 +838,7 @@ export function renderMaybeLocalizedInput({
               ))}
               <div>
                 <PublicLink
-                  href={fillRoute(APP_ROUTES.cmsSettings, { databaseId })}
+                  href={APP_ROUTES.cmsSettings.fill({ databaseId })}
                   target={"_blank"}
                 >
                   Setup locales <GrNewWindow />

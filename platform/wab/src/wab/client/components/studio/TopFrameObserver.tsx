@@ -1,43 +1,50 @@
 import {
-  MentionableResource,
+  MentionableResources,
+  findMissingMentions,
   getMentionUiId,
-  resolveMentions,
+  mkMentionableResources,
 } from "@/wab/client/components/copilot/resource-mention-utils";
 import { usePreviewCtx } from "@/wab/client/components/live/PreviewCtx";
+import { isAnyModalOpen } from "@/wab/client/components/widgets/open-modals";
 import { COPILOT_TOOLS } from "@/wab/client/copilot";
+import { fileDragMonitor } from "@/wab/client/file-drag/file-drag-monitor";
 import {
   CopilotToolCallResult,
   HostFrameApi,
-  serializeCopilotError,
 } from "@/wab/client/frame-ctx/host-frame-api";
 import { useHostFrameCtx } from "@/wab/client/frame-ctx/host-frame-ctx";
-import { StudioAppUser, useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
-import { ApiBranch } from "@/wab/shared/ApiSchema";
-import { isComponentArena, isPageArena } from "@/wab/shared/Arenas";
-import { getBaseVariant, getVariantGroupName } from "@/wab/shared/Variants";
+import {
+  StudioAppUser,
+  StudioCtx,
+  aiStudioCtx,
+  useStudioCtx,
+} from "@/wab/client/studio-ctx/StudioCtx";
+import type { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
+import { ApiBranch, ArenaRef } from "@/wab/shared/ApiSchema";
+import {
+  getArenaRef,
+  isComponentArena,
+  isPageArena,
+} from "@/wab/shared/Arenas";
 import { findAllDataSourceOpExprForComponent } from "@/wab/shared/cached-selectors";
 import { getNormalizedComponentName } from "@/wab/shared/codegen/react-p/serialize-utils";
-import { filterFalsy, jsonClone, spawn } from "@/wab/shared/common";
-import type { AiOutputFormat } from "@/wab/shared/copilot/copilot-tool-types";
 import {
-  allComponentVariants,
+  filterFalsy,
+  jsonClone,
+  maybe,
+  spawn,
+  withoutNils,
+} from "@/wab/shared/common";
+import type { AiIdentity } from "@/wab/shared/copilot/copilot-tool-types";
+import {
   isFrameComponent,
   isPageComponent,
-  isPlasmicComponent,
   isReusableComponent,
 } from "@/wab/shared/core/components";
-import { allGlobalVariants } from "@/wab/shared/core/sites";
-import {
-  flattenTpls,
-  getTplType,
-  isTplComponent,
-  isTplNamable,
-} from "@/wab/shared/core/tpls";
-import { getEffectiveVariantSetting } from "@/wab/shared/effective-variant-setting";
+import { formatErrorMessage } from "@/wab/shared/error-handling";
 import { Component } from "@/wab/shared/model/classes";
-import { naturalSort, naturalSortByName } from "@/wab/shared/sort";
 import { notification } from "antd";
-import { partition, sortBy } from "lodash";
+import { sortBy } from "lodash";
 import { autorun, computed } from "mobx";
 import { observer } from "mobx-react";
 import { ok } from "neverthrow";
@@ -56,6 +63,31 @@ function notifyMentionedResourceGone() {
     message: "That resource no longer exists",
     description: "It may have been deleted since it was mentioned.",
   });
+}
+
+function trackArtboardFileDrags(studioCtx: StudioCtx): () => void {
+  const untrackByViewCtx = new Map<ViewCtx, () => void>();
+  const dispose = autorun(() => {
+    const viewCtxs = new Set(studioCtx.viewCtxs);
+    for (const [vc, untrack] of untrackByViewCtx) {
+      if (!viewCtxs.has(vc)) {
+        untrack();
+        untrackByViewCtx.delete(vc);
+      }
+    }
+    for (const vc of viewCtxs) {
+      if (!untrackByViewCtx.has(vc)) {
+        untrackByViewCtx.set(
+          vc,
+          fileDragMonitor.addWindowListeners(vc.canvasCtx.win()),
+        );
+      }
+    }
+  });
+  return () => {
+    dispose();
+    untrackByViewCtx.forEach((untrack) => untrack());
+  };
 }
 
 export const TopFrameObserver = observer(function _TopFrameObserver({
@@ -106,7 +138,7 @@ export const TopFrameObserver = observer(function _TopFrameObserver({
             metaKey,
             shiftKey,
             keyCode,
-          })
+          }),
         );
         document.body.dispatchEvent(
           new KeyboardEvent("keypress", {
@@ -116,13 +148,13 @@ export const TopFrameObserver = observer(function _TopFrameObserver({
             metaKey,
             shiftKey,
             keyCode,
-          })
+          }),
         );
       },
       updateLocalizationProjectFlags: async (
         localization,
         keyScheme,
-        tagPrefix
+        tagPrefix,
       ) => {
         await studioCtx.change(() => {
           studioCtx.site.flags.usePlasmicTranslation = localization;
@@ -175,7 +207,7 @@ export const TopFrameObserver = observer(function _TopFrameObserver({
         return roleUsage;
       },
       async setDefaultPageRoleId(
-        roleId: string | null | undefined
+        roleId: string | null | undefined,
       ): Promise<void> {
         await studioCtx.change(() => {
           studioCtx.site.defaultPageRoleId = roleId;
@@ -192,9 +224,13 @@ export const TopFrameObserver = observer(function _TopFrameObserver({
       async waitForStudioReady(): Promise<void> {
         await studioCtx.awaitStudioReady();
       },
+      async blockChanges(): Promise<void> {
+        studioCtx.blockChanges = true;
+      },
       async executeCopilotToolCall(
         toolName: string,
-        toolArgs: Record<string, unknown>
+        toolArgs: Record<string, unknown>,
+        identity: AiIdentity,
       ): Promise<CopilotToolCallResult> {
         const copilotTool = COPILOT_TOOLS[toolName];
 
@@ -202,119 +238,47 @@ export const TopFrameObserver = observer(function _TopFrameObserver({
           return {
             success: false,
             error: {
-              message: `Copilot tool "${toolName}" not found.`,
+              message: `AI tool "${toolName}" not found.`,
               type: "TOOL_NOT_FOUND",
             },
           };
         }
 
         try {
-          const output = await copilotTool.execute(studioCtx, toolArgs);
+          const output = await copilotTool.execute(
+            aiStudioCtx(studioCtx, identity, copilotTool.title),
+            toolArgs,
+            { outputFormat: identity.outputFormat },
+          );
           return { success: true, output };
         } catch (err) {
           return {
             success: false,
             error: {
-              message: serializeCopilotError(err),
+              message: formatErrorMessage(err),
               type: "EXECUTION_FAILED",
             },
           };
         }
       },
-      async setPreferredAiOutputFormat(format: AiOutputFormat): Promise<void> {
-        studioCtx.setPreferredAiOutputFormat(format);
-      },
       /**
        * List the project resources that can be `@`-mentioned in Copilot Chat.
        */
-      async listMentionableResources(): Promise<MentionableResource[]> {
-        const site = studioCtx.site;
-        const resources: MentionableResource[] = [];
-
-        const focusedComponent = studioCtx.focusedViewCtx()?.currentComponent();
-        if (focusedComponent) {
-          const baseVariant = getBaseVariant(focusedComponent);
-          const tpls: MentionableResource[] = [];
-          for (const tpl of flattenTpls(focusedComponent.tplTree)) {
-            if (isTplNamable(tpl) && tpl.name) {
-              tpls.push({
-                kind: "tpl",
-                uuid: `${focusedComponent.uuid}/${tpl.uuid}`,
-                label: tpl.name,
-                tplType: getTplType(
-                  tpl,
-                  getEffectiveVariantSetting(tpl, [baseVariant])
-                ),
-                owners: [focusedComponent.name],
-                // For an instance, show which component it is an instance of.
-                detail: isTplComponent(tpl) ? tpl.component.name : undefined,
-              });
-            }
-          }
-          resources.push(...naturalSort(tpls, (t) => t.label));
-
-          for (const variant of naturalSortByName(
-            allComponentVariants(focusedComponent)
-          )) {
-            const group = getVariantGroupName(variant);
-            resources.push({
-              kind: "componentVariant",
-              uuid: variant.uuid,
-              label: variant.name,
-              owners: [focusedComponent.name, group ?? ""],
-              detail: group,
-            });
-          }
-        }
-
-        // Code components and arena frames aren't things a user would refer
-        // to by name in a prompt.
-        const [pages, components] = partition(
-          site.components.filter(isPlasmicComponent),
-          isPageComponent
-        );
-        for (const comp of naturalSortByName(components)) {
-          resources.push({
-            kind: "component",
-            uuid: comp.uuid,
-            label: comp.name,
-          });
-        }
-        for (const page of naturalSortByName(pages)) {
-          resources.push({ kind: "page", uuid: page.uuid, label: page.name });
-        }
-
-        for (const token of naturalSortByName(site.styleTokens)) {
-          resources.push({
-            kind: "token",
-            uuid: token.uuid,
-            label: token.name,
-          });
-        }
-
-        for (const variant of naturalSortByName(allGlobalVariants(site))) {
-          const group = getVariantGroupName(variant);
-          resources.push({
-            kind: "globalVariant",
-            uuid: variant.uuid,
-            label: variant.name,
-            detail: group,
-            owners: [group ?? ""],
-          });
-        }
-
-        for (const animation of naturalSortByName(site.animationSequences)) {
-          resources.push({
-            kind: "animation",
-            uuid: animation.uuid,
-            label: animation.name,
-          });
-        }
-
-        return resources;
+      async listMentionableResources(): Promise<MentionableResources> {
+        const viewCtx = studioCtx.focusedViewCtx();
+        return mkMentionableResources({
+          site: studioCtx.site,
+          focusedComponent: viewCtx?.currentComponent(),
+          selectedTpls: withoutNils(viewCtx?.focusedTpls() ?? []),
+          getDepName: (dep) =>
+            studioCtx.projectDependencyManager.getNiceDepName(dep),
+        });
       },
-      async resolveMentions(text: string): Promise<string> {
-        return resolveMentions(text, studioCtx.site);
+      async getCurrentArena(): Promise<ArenaRef | undefined> {
+        return maybe(studioCtx.currentArena, getArenaRef);
+      },
+      async findMissingMentions(text: string): Promise<string[]> {
+        return findMissingMentions(text, studioCtx.site);
       },
       async navigateToMentionedResource(kind, uuid): Promise<void> {
         const uiId = getMentionUiId(kind, uuid, studioCtx.site);
@@ -324,19 +288,41 @@ export const TopFrameObserver = observer(function _TopFrameObserver({
         }
         studioCtx.uiActionBus.dispatch(uiId, "jump");
       },
+      async onFileDragEventInTop(event): Promise<void> {
+        fileDragMonitor.onRemoteEvent(event);
+      },
     }),
-    [studioCtx]
+    [studioCtx],
   );
 
   React.useEffect(() => {
     hostFrameCtx.onHostFrameApiReady(hostFrameApi);
   }, [hostFrameApi]);
 
+  React.useEffect(() => trackArtboardFileDrags(studioCtx), [studioCtx]);
+  React.useEffect(
+    () =>
+      fileDragMonitor.subscribeRemote((event) =>
+        spawn(topFrameApi.onFileDragEventInHost(event)),
+      ),
+    [topFrameApi],
+  );
+
+  React.useEffect(() => {
+    const dispose = autorun(() => {
+      spawn(topFrameApi.setStudioModalOpen(isAnyModalOpen()));
+    });
+    return () => {
+      dispose();
+      spawn(topFrameApi.setStudioModalOpen(false));
+    };
+  }, [topFrameApi]);
+
   React.useEffect(() => {
     const noComponents = computed(
       () =>
         studioCtx.site.components.filter((c) => !isFrameComponent(c)).length ===
-        0
+        0,
     );
 
     // Get either (in descending preference):
@@ -352,20 +338,20 @@ export const TopFrameObserver = observer(function _TopFrameObserver({
           isPageArena(studioCtx.currentArena)
             ? studioCtx.currentArena.component
             : isComponentArena(studioCtx.currentArena)
-            ? studioCtx.currentArena.component
-            : studioCtx.focusedViewCtx()?.component,
+              ? studioCtx.currentArena.component
+              : studioCtx.focusedViewCtx()?.component,
           studioCtx.site.components.find(
-            (c) => isPageComponent(c) && c.pageMeta.path === "/"
+            (c) => isPageComponent(c) && c.pageMeta.path === "/",
           ),
           sortBy(
             studioCtx.site.components.filter((c) => isPageComponent(c)),
-            (c) => c.name.toLowerCase()
+            (c) => c.name.toLowerCase(),
           )[0],
           sortBy(
             studioCtx.site.components.filter((c) => isReusableComponent(c)),
-            (c) => c.name.toLowerCase()
+            (c) => c.name.toLowerCase(),
           )[0],
-        ].filter(Boolean)[0]
+        ].filter(Boolean)[0],
     );
 
     const disposes = filterFalsy([
@@ -382,7 +368,7 @@ export const TopFrameObserver = observer(function _TopFrameObserver({
                   tagPrefix: studioCtx.site.flags.tagPrefix,
                 } as LocalizationConfig)
               : undefined,
-          })
+          }),
         );
       }),
       autorun(() => {
@@ -393,8 +379,8 @@ export const TopFrameObserver = observer(function _TopFrameObserver({
                   revisionId: studioCtx.releases[0].revisionId,
                   version: studioCtx.releases[0].version,
                 }
-              : undefined
-          )
+              : undefined,
+          ),
         );
       }),
       autorun(() => {
@@ -415,8 +401,8 @@ export const TopFrameObserver = observer(function _TopFrameObserver({
           const branchInfo = studioCtx.dbCtx().branchInfo;
           spawn(
             topFrameApi.setActivatedBranch(
-              jsonClone(branchInfo ?? null) ?? undefined
-            )
+              jsonClone(branchInfo ?? null) ?? undefined,
+            ),
           );
         }),
     ]);

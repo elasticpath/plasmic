@@ -7,9 +7,6 @@ import { Bundle } from "@/wab/shared/bundles";
 import { Dict } from "@/wab/shared/collections";
 import {
   CopilotChat,
-  CopilotUiActions,
-  CopilotUiProps,
-  CopilotUiResponse,
   WholeChatCompletionResponse,
 } from "@/wab/shared/copilot/prompt-utils";
 import { ModelProviderOpts } from "@/wab/shared/copilot/provider";
@@ -61,7 +58,6 @@ export type CommentId = Opaque<string, "CommentId">;
 export type CommentReactionId = Opaque<string, "CommentReactionId">;
 export type ThreadHistoryId = Opaque<string, "ThreadHistoryId">;
 export type SsoConfigId = Opaque<string, "SsoConfigId">;
-export type TutorialDbId = Opaque<string, "TutorialDbId">;
 export type DataSourceId = Opaque<string, "DataSourceId">;
 export type CopilotInteractionId = Opaque<string, "CopilotInteractionId">;
 export type CommentThreadId = Opaque<string, "CommentThreadId">;
@@ -152,6 +148,7 @@ export interface ApiTeamMeta {
   projectCount: number;
   workspaceCount: number;
   memberCount: number;
+  canStartFreeTrial: boolean;
 }
 
 export interface ApiTeamDiscourseInfo {
@@ -251,7 +248,7 @@ export type MayTriggerPaywall<T> = MakeADT<
       description?: PaywallDescription;
     };
     upsell: {
-      team?: ApiTeam;
+      team: ApiTeam;
       minSeats?: number;
       features: ApiFeatureTier[];
       description: PaywallDescription;
@@ -323,6 +320,9 @@ export interface ApiWorkspace extends ApiEntityBase {
   uiConfig: UiConfig | null;
   contentCreatorConfig: UiConfig | null;
 }
+
+/** Header used to send the captcha token on captcha-protected routes. */
+export const CAPTCHA_TOKEN_HEADER = "x-plasmic-captcha-token";
 
 export interface SignUpRequest {
   email: string;
@@ -509,14 +509,21 @@ export interface ApiProject extends ApiEntityBase {
   extraData: ProjectExtraData | null;
   readableByPublic: boolean;
   isUserStarter?: boolean;
+<<<<<<< HEAD
   isOrgStarter?: boolean;
+=======
+  /**
+   * Declared as `never` so that any attempt to build `ApiProject` by spreading
+   * `Project` fails to compile.
+   */
+  secretApiToken?: never;
+>>>>>>> upstream/master
 }
 
-export interface ApiProjectMeta
-  extends Pick<
-    ApiProject,
-    "id" | "name" | "workspaceId" | "hostUrl" | "uiConfig"
-  > {
+export interface ApiProjectMeta extends Pick<
+  ApiProject,
+  "id" | "name" | "workspaceId" | "hostUrl" | "uiConfig"
+> {
   lastPublishedVersion?: string;
   publishedVersions: (Pick<
     PkgVersionInfo,
@@ -548,7 +555,7 @@ export interface CloneProjectRequest {
 }
 
 export interface CloneProjectResponse {
-  projectId: string;
+  projectId: ProjectId;
 }
 
 export interface CreateProjectResponse {
@@ -710,6 +717,12 @@ export interface ArenaInfo {
   focused: boolean;
 }
 
+export interface ArenaRef {
+  type: ArenaType;
+  name: string;
+  componentUuids: string[];
+}
+
 export interface PlayerSelectionInfo {
   selectableFrameUuid: string;
   selectableKey?: string;
@@ -785,6 +798,16 @@ export interface ListFeatureTiersResponse {
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 export interface AddFeatureTierResponse {}
 
+export type SetupIntent = {
+  clientSecret: string | null;
+};
+
+export interface Subscription {
+  id: string;
+  status: Stripe.Subscription.Status;
+  defaultPaymentMethodId: string | null;
+}
+
 export interface SubscriptionIntentRequest {
   // Which team is signing up?
   teamId: TeamId;
@@ -801,17 +824,17 @@ export type SubscriptionIntentResponse = MakeADT<
   {
     // See https://stripe.com/docs/billing/subscriptions/elements
     success: {
-      subscription: Stripe.Subscription;
+      subscription: Subscription;
       featureTier: ApiFeatureTier;
       clientSecret: string;
     };
     needPayment: {
-      subscription: Stripe.Subscription;
+      subscription: Subscription;
       featureTier: ApiFeatureTier;
       clientSecret: string;
     };
     alreadyExists: {
-      subscription: Stripe.Subscription;
+      subscription: Subscription;
       featureTier: ApiFeatureTier;
     };
   }
@@ -822,7 +845,7 @@ export type StartFreeTrialResponse = MakeADT<
   {
     success: object;
     alreadyExists: {
-      subscription: Stripe.Subscription;
+      subscription: Subscription;
       featureTier: ApiFeatureTier;
     };
   }
@@ -831,7 +854,7 @@ export type StartFreeTrialResponse = MakeADT<
 export type GetSubscriptionResponse = MakeADT<
   "type",
   {
-    success: { subscription: Stripe.Subscription };
+    success: { subscription: Subscription };
     notFound: object;
   }
 >;
@@ -986,6 +1009,7 @@ export interface UpdateProjectReq {
   branchId?: string;
 }
 
+<<<<<<< HEAD
 export interface SetSiteInfoReq
   extends Partial<
     Pick<
@@ -999,6 +1023,19 @@ export interface SetSiteInfoReq
       | "isOrgStarter"
     >
   > {
+=======
+export interface SetSiteInfoReq extends Partial<
+  Pick<
+    ApiProject,
+    | "name"
+    | "workspaceId"
+    | "inviteOnly"
+    | "defaultAccessLevel"
+    | "readableByPublic"
+    | "isUserStarter"
+  >
+> {
+>>>>>>> upstream/master
   regenerateSecretApiToken?: boolean;
 }
 
@@ -1195,6 +1232,8 @@ export interface ApiDataSource {
   source: DataSourceType;
   settings: Record<string, any>;
   ownerId?: string;
+  /** Whether the integration has server-side auth data that only the proxy applies. */
+  hasPrivateConfig: boolean;
 }
 
 export interface ApiDataSourceTest {
@@ -1367,14 +1406,10 @@ export interface CmsList extends CmsBaseType<any[]>, CmsTypeList {}
 export interface CmsObject extends CmsBaseType<object>, CmsTypeObject {}
 
 export interface CmsText
-  extends CmsBaseType<string>,
-    CmsTextLike,
-    CmsTypeText {}
+  extends CmsBaseType<string>, CmsTextLike, CmsTypeText {}
 
 export interface CmsLongText
-  extends CmsBaseType<string>,
-    CmsTextLike,
-    CmsTypeLongText {}
+  extends CmsBaseType<string>, CmsTextLike, CmsTypeLongText {}
 
 export interface CmsNumber extends CmsBaseType<number>, CmsTypeNumber {}
 
@@ -1512,8 +1547,7 @@ export interface ApiCmseRow extends ApiEntityBase<CmsRowId> {
   revision: number | null;
 }
 
-export interface ApiCmseRowRevisionMeta
-  extends ApiEntityBase<CmsRowRevisionId> {
+export interface ApiCmseRowRevisionMeta extends ApiEntityBase<CmsRowRevisionId> {
   rowId: string;
   isPublished: boolean;
 }
@@ -1550,6 +1584,7 @@ export type CheckDomainStatus =
       isAnyPlasmicDomain: boolean;
       isCorrectlyConfigured?: boolean;
       configuredBy?: string;
+      configCheckFailed?: boolean;
     };
 
 export interface CheckDomainRequest {
@@ -1558,13 +1593,6 @@ export interface CheckDomainRequest {
 
 export interface CheckDomainResponse {
   status: CheckDomainStatus;
-}
-
-export interface PlasmicHostingSettings {
-  favicon?: {
-    url: string;
-    mimeType?: string;
-  };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
@@ -1604,8 +1632,7 @@ export interface ApiCommentThread extends ApiEntityBase<CommentThreadId> {
   commentThreadHistories: ApiCommentThreadHistory[];
 }
 
-export interface ApiCommentThreadHistory
-  extends ApiEntityBase<ThreadHistoryId> {
+export interface ApiCommentThreadHistory extends ApiEntityBase<ThreadHistoryId> {
   resolved: boolean;
   commentThreadId: CommentThreadId;
 }
@@ -1667,8 +1694,12 @@ export type SetDomainStatus =
   | "DomainInvalid"
   | "DomainUsedElsewhereInPlasmic"
   | "DomainUsedElsewhereInVercel"
+  | "VercelAuthError"
   | "OtherDomainError"
   | "DomainUpdated";
+
+/** What was being done to a domain when it failed. */
+export type SetDomainOperation = "register" | "remove";
 
 export interface SetSubdomainForProjectRequest {
   subdomain?: string;
@@ -1684,8 +1715,16 @@ export interface SetCustomDomainForProjectRequest {
   projectId: ProjectId;
 }
 
+/** What happened to one domain. */
+export interface SetDomainOutcome {
+  status: SetDomainStatus;
+  vercelErrorCode?: string;
+  operation?: SetDomainOperation;
+}
+
 export interface SetCustomDomainForProjectResponse {
-  status: { [domain: string]: SetDomainStatus };
+  /** Keyed by domain, or by "" when the outcome isn't about a specific domain. */
+  domains: { [domain: string]: SetDomainOutcome };
 }
 export type ApiAnalyticsProjectMeta = {
   pages: Array<{
@@ -1766,6 +1805,10 @@ export interface RevalidatePlasmicHostingRequest {
 export type RevalidateError =
   | {
       type: "Invalid JSON response";
+    }
+  | {
+      type: "HTTP error";
+      status: number;
     }
   | {
       type: "Cloudflare challenge";
@@ -2047,23 +2090,20 @@ export type CopilotImage = {
   base64: string;
 };
 
-export type CopilotToken = {
-  name: string;
-  type: StyleTokenType;
-  uuid: string;
-  value: string;
-};
+export const copilotChatModes = ["query-migration", "starter"] as const;
 
-export type QueryCopilotUiRequest = {
-  type: "ui";
-  projectId: ProjectId;
-  modelProviderOverride?: ModelProviderOpts;
-  copilotSystemPromptOverride?: string;
-} & CopilotUiProps;
+/** Special chat modes. `undefined` is general chat. */
+export type CopilotChatMode = (typeof copilotChatModes)[number] | undefined;
+
+export interface CopilotChatOpenOpts {
+  prompt: string;
+  mode: CopilotChatMode;
+}
 
 export type QueryCopilotChatUiStreamRequest = {
   type: "chat-ui";
   projectId: ProjectId;
+  mode?: CopilotChatMode;
   modelProviderOverride?: ModelProviderOpts;
   copilotSystemPromptOverride?: string;
 } & CopilotChat;
@@ -2079,12 +2119,6 @@ export interface QueryCopilotResponse {
   response: string;
   typeDebug?: string;
 }
-
-export type QueryCopilotUiResponse = {
-  data: CopilotUiActions;
-  response: CopilotUiResponse;
-  copilotInteractionId: CopilotInteractionId;
-};
 
 export type CopilotResponseData = {
   data: WholeChatCompletionResponse;

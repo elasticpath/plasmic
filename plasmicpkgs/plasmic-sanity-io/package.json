@@ -1,6 +1,6 @@
 {
   "name": "@plasmicpkgs/plasmic-sanity-io",
-  "version": "1.0.237",
+  "version": "1.0.242",
   "description": "Plasmic Sanity.io components.",
   "homepage": "https://www.plasmic.app",
   "repository": {
@@ -33,14 +33,14 @@
     "analyze": "size-limit --why"
   },
   "devDependencies": {
-    "@plasmicapp/host": "2.0.15",
-    "@plasmicapp/query": "0.1.87",
-    "@types/dlv": "^1.1.5",
+    "@plasmicapp/host": "workspace:*",
+    "@plasmicapp/query": "workspace:*",
+    "@types/dlv": "catalog:",
     "@types/node": "^17.0.45",
-    "@types/react": "^18",
-    "tslib": "^2.3.1",
-    "tsup": "^7.2.0",
-    "typescript": "^5.2.2"
+    "@types/react": "catalog:",
+    "tslib": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:"
   },
   "dependencies": {
     "@sanity/client": "^6.2.0",

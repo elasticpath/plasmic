@@ -17,6 +17,7 @@ import {
   addOrEditComponentMetadata,
   removeComponentMetadata,
 } from "@/wab/shared/core/components";
+import { DELETE_ACTION } from "@/wab/shared/Labels";
 import { Component } from "@/wab/shared/model/classes";
 import { Menu, notification } from "antd";
 import { observer } from "mobx-react";
@@ -56,8 +57,8 @@ export const ComponentMetaDataPropsSection = observer(
                       COMMANDS.component.settings.setEditableByContentEditor.execute(
                         studioCtx,
                         { value: val },
-                        { component }
-                      )
+                        { component },
+                      ),
                     );
                   }}
                   value={component.editableByContentEditor}
@@ -76,8 +77,8 @@ export const ComponentMetaDataPropsSection = observer(
                         { value: val },
                         {
                           component,
-                        }
-                      )
+                        },
+                      ),
                     );
                   }}
                   value={component.hiddenFromContentEditor}
@@ -134,7 +135,7 @@ export const ComponentMetaDataPropsSection = observer(
                 addOrEditComponentMetadata(
                   component,
                   metaKeyAndValue.key,
-                  metaKeyAndValue.value
+                  metaKeyAndValue.value,
                 );
               }
             });
@@ -154,7 +155,7 @@ export const ComponentMetaDataPropsSection = observer(
         )}
       </SidebarSection>
     );
-  }
+  },
 );
 
 function MetadataSection(props: {
@@ -225,12 +226,12 @@ const MetadataRow = observer(function MetadataRow(props: {
                     addOrEditComponentMetadata(
                       component,
                       newKey,
-                      component.metadata[metadataKey]
+                      component.metadata[metadataKey],
                     );
                     removeComponentMetadata(component, metadataKey);
                   }
                 }
-              })
+              }),
             );
           }}
           labelFactory={(_props) => (
@@ -244,7 +245,7 @@ const MetadataRow = observer(function MetadataRow(props: {
             spawn(
               studioCtx.changeUnsafe(() => {
                 addOrEditComponentMetadata(component, metadataKey, newValue);
-              })
+              }),
             );
           }}
           labelFactory={(_props) => (
@@ -265,7 +266,7 @@ const MetadataRow = observer(function MetadataRow(props: {
 function makeMetadataMenu(
   studioCtx: StudioCtx,
   component: Component,
-  metadataKey: string
+  metadataKey: string,
 ) {
   return (
     <Menu>
@@ -276,7 +277,7 @@ function makeMetadataMenu(
           })
         }
       >
-        Delete metadata
+        {DELETE_ACTION}
       </Menu.Item>
     </Menu>
   );

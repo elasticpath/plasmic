@@ -6,6 +6,25 @@ const path = require("path");
 const sha256 = require("sha256");
 const hostlessPkgNames = require("./hostlessList.json");
 
+// PNPM does not install dependences from the linked internal-react-slick, so resolve
+// them from the locked react-slick installation from @plasmicpkgs/react-slick.
+const registeredReactSlickDir = path.dirname(
+  require.resolve("@plasmicpkgs/react-slick/package.json")
+);
+const installedReactSlickDir = path.dirname(
+  require.resolve("react-slick/package.json", {
+    paths: [registeredReactSlickDir],
+  })
+);
+const reactSlickDependencyAliases = Object.fromEntries(
+  ["json2mq", "lodash.debounce"].map((dependency) => [
+    dependency,
+    require.resolve(dependency, {
+      paths: [installedReactSlickDir, __dirname],
+    }),
+  ])
+);
+
 const inlineCssPlugin = () => {
   return {
     name: "esbuild-plugin-inline-css",
@@ -169,6 +188,7 @@ const clientConfigs = clientEntries.map(({ pkg, useSubJSXRuntime }) => ({
         : {}),
     }),
     alias({
+      ...reactSlickDependencyAliases,
       "react-slick": path.join(
         process.cwd(),
         "node_modules/internal-react-slick/lib/index.js"

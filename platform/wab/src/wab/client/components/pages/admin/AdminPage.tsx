@@ -29,7 +29,6 @@ import { ApiFeatureTier, ApiProjectRevision } from "@/wab/shared/ApiSchema";
 import { assert, tryRemove } from "@/wab/shared/common";
 import { DEVFLAGS } from "@/wab/shared/devflags";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
 import { PkgVersionInfo } from "@/wab/shared/SharedApi";
 import {
   Button,
@@ -44,10 +43,14 @@ import {
   Tabs,
 } from "antd";
 import TextArea from "antd/lib/input/TextArea";
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc";
 import L from "lodash";
 import moment from "moment";
 import React, { useEffect, useMemo, useState } from "react";
 import useSWR from "swr/immutable";
+
+dayjs.extend(utc);
 
 export default function AdminPage({ nonAuthCtx }: { nonAuthCtx: NonAuthCtx }) {
   return (
@@ -197,13 +200,13 @@ function CloneProjectView() {
             console.log("CLONING", event.projectId, event.revision);
             const res = await nonAuthCtx.api.cloneProjectAsAdmin(
               event.projectId,
-              event.revision
+              event.revision,
             );
             notification.success({
               message: "Project cloned",
               description: (
                 <a
-                  href={fillRoute(APP_ROUTES.project, {
+                  href={APP_ROUTES.project.fill({
                     projectId: res.projectId,
                   })}
                   target="_blank"
@@ -239,7 +242,7 @@ function UploadProject() {
         onClick={() =>
           getUploadedFile(async (data: string) => {
             await nonAuthCtx.api.importProject(data).then(({ projectId }) => {
-              document.location.href = fillRoute(APP_ROUTES.project, {
+              document.location.href = APP_ROUTES.project.fill({
                 projectId: projectId,
               });
             });
@@ -309,7 +312,7 @@ function DownloadProjectViewAndBranches() {
                 .trim()
                 .split(",")
                 .map((branchId) => branchId.trim())
-                .filter((branchId) => !!branchId)
+                .filter((branchId) => !!branchId),
             );
           } catch (e) {
             notification.error({ message: `${e}` });
@@ -334,7 +337,7 @@ function DownloadProjectViewAndBranches() {
 function downloadForPkgMgr(
   pkg: PkgVersionInfo,
   depPkgs: PkgVersionInfo[] | undefined,
-  fileName: string
+  fileName: string,
 ) {
   const blob = new Blob(
     [
@@ -342,12 +345,12 @@ function downloadForPkgMgr(
         [...(depPkgs || []), pkg].map((pkgVersion) => [
           pkgVersion.id,
           pkgVersion.model,
-        ])
+        ]),
       ),
     ],
     {
       type: "text/plain;charset=utf-8",
-    }
+    },
   );
   downloadBlob(blob, `${fileName}-master-pkg.json`);
 }
@@ -382,7 +385,7 @@ function DownloadPkgForPkgMgr() {
     const appCtx = await loadAppCtx(nonAuthCtx);
     const { depPkgs, pkg } = await appCtx.api.getPkgVersionByProjectId(
       projectId,
-      "latest"
+      "latest",
     );
 
     downloadForPkgMgr(
@@ -391,7 +394,7 @@ function DownloadPkgForPkgMgr() {
       pkg.model.map[pkg.model.root].name
         .replace(/[^a-zA-Z0-9\s]/g, "")
         .replace(/\s+/g, "-")
-        .toLowerCase()
+        .toLowerCase(),
     );
   };
   return (
@@ -418,7 +421,7 @@ function DevFlagControls() {
     "/admin/devflags",
     async () => {
       return (await nonAuthCtx.api.getDevFlagOverrides()).data;
-    }
+    },
   );
 
   const {
@@ -504,7 +507,7 @@ function DevFlagControls() {
                     type="button"
                     onClick={async () => {
                       const confirm = window.confirm(
-                        "Are you sure you want to revert to this version?"
+                        "Are you sure you want to revert to this version?",
                       );
                       if (confirm) {
                         await nonAuthCtx.api.setDevFlagOverrides(record.data);
@@ -685,7 +688,7 @@ function RevertProjectRev() {
           try {
             await nonAuthCtx.api.revertProjectRevision(
               event.projectId,
-              revision
+              revision,
             );
             notification.success({ message: "Successfully reverted!" });
           } catch (e) {
@@ -715,7 +718,7 @@ function ChangeProjectOwner() {
           try {
             await nonAuthCtx.api.changeProjectOwner(
               event.projectId,
-              event.ownerEmail
+              event.ownerEmail,
             );
             notification.success({ message: "Successfully updated!" });
           } catch (e) {
@@ -754,21 +757,21 @@ function PromotionCode() {
           assert(id && typeof id === "string", "Promo code requires an id");
           assert(
             message && typeof message === "string",
-            "Promo code requires a message"
+            "Promo code requires a message",
           );
           assert(
             !Number.isNaN(trialDays) && trialDays > 0,
-            "Promo code requires the amount of trial days"
+            "Promo code requires the amount of trial days",
           );
           await nonAuthCtx.api.createPromotionCode(
             id,
             message,
             trialDays,
-            expirationDate
+            expirationDate,
           );
           notification.info({
             message: `Created promotion code with id = ${id}. The promotion page is https://plasmic.app/?promo=${encodeURIComponent(
-              id
+              id,
             )}`,
           });
         }}
@@ -811,7 +814,7 @@ function LinkToDownloadString({
       new Blob([content], {
         type: "text/plain;charset=utf-8",
       }),
-    [content]
+    [content],
   );
   const [objectUrl, setObjectUrl] = useState<string>("");
   useEffect(() => {
@@ -861,7 +864,7 @@ function CopilotFeedbackView() {
 
   return (
     <div className="mv-lg">
-      <h2>View Copilot Feedback</h2>
+      <h2>View AI Feedback</h2>
       <SearchBox
         placeholder={"Project ID or user email (press enter to run)"}
         onEdit={(v) => setQuery(v)}
@@ -1050,7 +1053,7 @@ function EditProjectRevBundle() {
 
           const rev = await nonAuthCtx.api.getLatestProjectRevisionAsAdmin(
             projectId,
-            branchId
+            branchId,
           );
           setInitialRev(rev);
         }}
@@ -1094,7 +1097,7 @@ function EditProjectRevBundle() {
                         initialRev.projectId,
                         initialRev.revision,
                         data,
-                        initialRev.branchId
+                        initialRev.branchId,
                       );
                     notification.success({
                       message: `Project saved as revision ${res.revision}`,

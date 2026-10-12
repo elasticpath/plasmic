@@ -1,8 +1,8 @@
-import { methodForwarder } from "@/wab/commons/methodForwarder";
-import { PinoLogger } from "@/wab/server/observability/PinoLogger";
-import { Analytics } from "@/wab/shared/observability/Analytics";
-import { Logger } from "@/wab/shared/observability/Logger";
+import { importByPath } from "@/wab/server/util/import-by-path";
+import { initObservability } from "@plasmic-shared/observability/node";
+import path from "path";
 
+<<<<<<< HEAD
 let loggerInstance: Logger = new PinoLogger();
 
 // Resolve ECS task metadata and upgrade the singleton once available.
@@ -10,13 +10,49 @@ let loggerInstance: Logger = new PinoLogger();
 PinoLogger.create().then((resolved) => {
   loggerInstance = resolved;
 });
+=======
+const {
+  logger,
+  withSpan: withOtelSpan,
+  withLogContext,
+  initErrorReporting,
+} = initObservability(
+  "wab",
+  process.env.NODE_ENV || "development",
+  process.env,
+);
+>>>>>>> upstream/master
 
-export function initAnalyticsFactory(opts: {
-  production: boolean;
-}): () => Analytics {
-  return () => methodForwarder<Analytics>();
-}
+export { initErrorReporting, logger, withLogContext };
 
-export function logger(): Logger {
-  return loggerInstance;
+/** Adds WAB operation logs and Prometheus timings to the shared span lifecycle. */
+export async function withSpan<T>(
+  name: string,
+  f: () => Promise<T>,
+  msg?: string,
+) {
+  const suffix = msg ? `: ${msg}` : "";
+
+  const start = new Date().getTime();
+  logger.debug(`span "${name}" started at ${start}${suffix}`);
+
+  const { WabPromTimer }: typeof import("@/wab/server/promstats") =
+    await importByPath(path.join(__dirname, "..", "promstats.ts"));
+  const promTimer = new WabPromTimer(name);
+  return withOtelSpan(name, async () => {
+    try {
+      const result = await f();
+      logger.info(
+        `span "${name}" finished in ${new Date().getTime() - start}ms${suffix}`,
+      );
+      return result;
+    } catch (err) {
+      logger.error(
+        `span "${name}" failed in ${new Date().getTime() - start}ms${suffix}`,
+      );
+      throw err;
+    } finally {
+      promTimer.end();
+    }
+  });
 }

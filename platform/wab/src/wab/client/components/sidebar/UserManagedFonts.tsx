@@ -27,11 +27,11 @@ function _UserManagedFontsPanel(props: {}) {
   const readOnly = sc.getLeftTabPermission("fonts") === "readable";
   const renderFonts = () => {
     const fonts = sc.site.userManagedFonts.filter((font) =>
-      matcher.matches(font)
+      matcher.matches(font),
     );
 
     const importedFonts = _.uniq(
-      sc.site.projectDependencies.flatMap((p) => p.site.userManagedFonts)
+      sc.site.projectDependencies.flatMap((p) => p.site.userManagedFonts),
     ).filter((font) => matcher.matches(font) && !fonts.includes(font));
 
     const makeOverlay = (font: string) => {
@@ -48,7 +48,7 @@ function _UserManagedFontsPanel(props: {}) {
               }
             >
               Delete
-            </Menu.Item>
+            </Menu.Item>,
           );
         });
       }
@@ -102,7 +102,7 @@ function _UserManagedFontsPanel(props: {}) {
       return;
     }
     if (sc.site.userManagedFonts.find((f) => f === newFont)) {
-      notification.warn({
+      notification.warning({
         message: `${newFont} is already in the fonts list`,
       });
 

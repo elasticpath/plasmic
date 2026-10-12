@@ -2,7 +2,6 @@ import { CanvasCtx } from "@/wab/client/components/canvas/canvas-ctx";
 import { getRealClassNames } from "@/wab/client/components/canvas/styles-name";
 import { SubDeps } from "@/wab/client/components/canvas/subdeps";
 import { Fiber } from "@/wab/client/react-global-hook/fiber";
-import { globalHookCtx } from "@/wab/client/react-global-hook/globalHook";
 import {
   asArray,
   assert,
@@ -26,7 +25,7 @@ import { maxBy } from "lodash";
 
 // We only export the `RenderState` as a type
 class RenderStateImpl {
-  constructor() {}
+  constructor(private cachedValNodes: Map<string, WeakRef<ValNode>>) {}
 
   private _tpl2valKeys = new WeakMap<TplNode, Set<string>>();
   private _valKey2fullKeys = new Map<string, Set<string>>();
@@ -41,7 +40,7 @@ class RenderStateImpl {
       const fullKeys = xSetDefault(
         this._valKey2fullKeys,
         val.key,
-        () => new Set()
+        () => new Set(),
       );
       if (!fullKeys.has(val.fullKey)) {
         fullKeys.add(val.fullKey);
@@ -49,7 +48,7 @@ class RenderStateImpl {
       const vals = xSetDefault(
         this._fullKey2vals,
         val.fullKey,
-        () => new Set()
+        () => new Set(),
       );
       if (!vals.has(val)) {
         vals.add(val);
@@ -94,8 +93,6 @@ class RenderStateImpl {
     this.recomputeCachedVal(val.fullKey);
   }
 
-  private cachedValNodes = new Map<string, WeakRef<ValNode>>();
-
   unregisterFromKey(fullKey: string) {
     this.cachedValNodes.delete(fullKey);
     this._valKey2fullKeys.delete(fullKey);
@@ -111,12 +108,12 @@ class RenderStateImpl {
 
     assert(
       registeredVals.every(
-        (v) => v.constructor === registeredVals[0].constructor
+        (v) => v.constructor === registeredVals[0].constructor,
       ),
       () =>
         `The same fullKey (${fullKey}) is used for different ValNode types: ${registeredVals
           .map((v) => v.constructor["modelTypeName"])
-          .join(", ")}`
+          .join(", ")}`,
     );
 
     const mergedVal = cloneValNode(registeredVals[0]);
@@ -140,12 +137,12 @@ class RenderStateImpl {
   registerSlotPlaceholder(
     slotPlaceholderKey: string,
     fullKey: string,
-    fiber: Fiber
+    fiber: Fiber,
   ) {
     const fullKeys = xSetDefault(
       this._slotPlaceholderKey2fullKeys,
       slotPlaceholderKey,
-      () => []
+      () => [],
     );
     if (!fullKeys.includes(fullKey)) {
       fullKeys.push(fullKey);
@@ -156,7 +153,7 @@ class RenderStateImpl {
   unregisterSlotPlaceholder(
     slotPlaceholderKey: string,
     fullKey: string,
-    fiber: Fiber
+    fiber: Fiber,
   ) {
     const existingFiber = this._fullSlotPlaceholderKey2fiber.get(fullKey);
     if (existingFiber !== fiber) {
@@ -179,13 +176,13 @@ class RenderStateImpl {
       const valComp =
         sel.val ??
         maybe(this.tpl2bestVal(sel.getTpl(), anchorCloneKey), (val) =>
-          ensureInstance(val, ValComponent)
+          ensureInstance(val, ValComponent),
         );
       if (!valComp) {
         return [];
       }
       return asArray(this._valKey2fullKeys.get(valComp.key)).map(
-        (k) => `${k}~${sel.slotParam.uuid}`
+        (k) => `${k}~${sel.slotParam.uuid}`,
       );
     } else {
       return asArray(this._valKey2fullKeys.get(sel.key));
@@ -197,7 +194,7 @@ class RenderStateImpl {
       const valComp = sel.val
         ? sel.val
         : maybe(this.tpl2bestVal(sel.getTpl(), cloneKey), (v) =>
-            ensureInstance(v, ValComponent)
+            ensureInstance(v, ValComponent),
           );
       return new SlotSelection({
         val: valComp,
@@ -211,13 +208,13 @@ class RenderStateImpl {
   sel2dom(
     sel: Selectable,
     cctx: CanvasCtx,
-    anchorCloneKey?: string
+    anchorCloneKey?: string,
   ): HTMLElement[] | null {
     const tryGetSlotPlaceholder = (valSel: SlotSelection) => {
       const slotSelectionKey = makeSlotSelectionKey(valSel);
       const bestPlaceholderKey = this.bestFullKeyForSlotPlaceholder(
         slotSelectionKey,
-        anchorCloneKey ?? ""
+        anchorCloneKey ?? "",
       );
       const maybeFiber = bestPlaceholderKey
         ? this._fullSlotPlaceholderKey2fiber.get(bestPlaceholderKey)
@@ -227,8 +224,8 @@ class RenderStateImpl {
         ? withoutNils(
             [...getDomNodesFromFiber(maybeFiber, win, cctx.Sub, false)].filter(
               (v) =>
-                v && !(v instanceof win.Text) && shouldAcceptAsMappedDomNode(v)
-            ) as HTMLElement[]
+                v && !(v instanceof win.Text) && shouldAcceptAsMappedDomNode(v),
+            ) as HTMLElement[],
           )
         : null;
     };
@@ -236,7 +233,7 @@ class RenderStateImpl {
       const valComp = sel.val
         ? sel.val
         : maybe(this.tpl2bestVal(sel.getTpl(), anchorCloneKey), (v) =>
-            ensureInstance(v, ValComponent)
+            ensureInstance(v, ValComponent),
           );
       if (!valComp) {
         return null;
@@ -244,7 +241,7 @@ class RenderStateImpl {
       // First try get arg contents
       const dom =
         maybe(valComp.slotArgs.get(sel.slotParam), (vs) =>
-          withoutNils(vs.map((v) => this.val2dom(v, cctx))).flat()
+          withoutNils(vs.map((v) => this.val2dom(v, cctx))).flat(),
         ) ?? null;
       if (dom && dom.length > 0) {
         return dom;
@@ -262,7 +259,7 @@ class RenderStateImpl {
       if (sel.valOwner) {
         // Check for placeholder
         return tryGetSlotPlaceholder(
-          new SlotSelection({ val: sel.valOwner, slotParam: sel.tpl.param })
+          new SlotSelection({ val: sel.valOwner, slotParam: sel.tpl.param }),
         );
       }
       return null;
@@ -282,11 +279,11 @@ class RenderStateImpl {
                 (v): v is HTMLElement =>
                   !!v &&
                   !(v instanceof win.Text) &&
-                  shouldAcceptAsMappedDomNode(v)
-              )
-            )
-          )
-      )
+                  shouldAcceptAsMappedDomNode(v),
+              ),
+            ),
+          ),
+      ),
     );
     if (val.className != null) {
       const selector = getRealClassNames(val.className)
@@ -313,13 +310,13 @@ class RenderStateImpl {
 
   tpl2fullKeys(tpl: TplNode): string[] {
     return asArray(this._tpl2valKeys.get(tpl)).flatMap((valKey) =>
-      asArray(this._valKey2fullKeys.get(valKey))
+      asArray(this._valKey2fullKeys.get(valKey)),
     );
   }
 
   tpl2bestVal(
     tpl: TplNode,
-    anchorCloneKey: string | undefined
+    anchorCloneKey: string | undefined,
   ): ValNode | undefined {
     const allFullKeys = this.tpl2fullKeys(tpl);
     const fullKey = getBestFullKey(allFullKeys, anchorCloneKey);
@@ -340,18 +337,18 @@ class RenderStateImpl {
 
   bestFullKeyForSlotPlaceholder(
     slotPlaceholderKey: string,
-    anchorCloneKey: string | undefined
+    anchorCloneKey: string | undefined,
   ): string | undefined {
     const fullKeys =
       this._slotPlaceholderKey2fullKeys.get(slotPlaceholderKey) ?? [];
     const splitFullKeys = fullKeys.map((k) => k.split("~"));
     const bestValCompFullKey = getBestFullKey(
       splitFullKeys.map((x) => x[0]),
-      anchorCloneKey?.split("~")[0]
+      anchorCloneKey?.split("~")[0],
     );
     if (bestValCompFullKey) {
       const bestParamKey = splitFullKeys.find(
-        ([k, p]) => k === bestValCompFullKey
+        ([k, p]) => k === bestValCompFullKey,
       )?.[1];
       if (bestParamKey) {
         return `${bestValCompFullKey}~${bestParamKey}`;
@@ -379,7 +376,7 @@ class RenderStateImpl {
  */
 function getBestFullKey(
   fullKeys: string[],
-  anchorCloneKey: string | undefined
+  anchorCloneKey: string | undefined,
 ): string | undefined {
   if (fullKeys.length === 0) {
     return undefined;
@@ -414,11 +411,15 @@ function getBestFullKey(
 
 export type RenderState = RenderStateImpl;
 
-export function getRenderState(frameUid: number): RenderState {
-  return xSetDefault(
-    globalHookCtx.frameUidToRenderState,
-    frameUid,
-    () => new RenderStateImpl()
+const frameUidToCachedValNodes = new Map<
+  number,
+  Map<string, WeakRef<ValNode>>
+>();
+
+/** Creates an empty RenderState. Each canvas frame's `FrameState` owns one. */
+export function createRenderState(frameUid: number): RenderState {
+  return new RenderStateImpl(
+    xSetDefault(frameUidToCachedValNodes, frameUid, () => new Map()),
   );
 }
 
@@ -428,7 +429,7 @@ function* getDomNodesFromFiber(
   fiber: Fiber,
   win: typeof window,
   sub: SubDeps,
-  visitSiblings = true
+  visitSiblings = true,
 ): Generator<HTMLElement | Text | null> {
   if (
     fiber.stateNode != null &&

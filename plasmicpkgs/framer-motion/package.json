@@ -1,6 +1,6 @@
 {
   "name": "@plasmicpkgs/framer-motion",
-  "version": "0.0.256",
+  "version": "0.0.260",
   "description": "Plasmic registration call for Framer Motion",
   "homepage": "https://www.plasmic.app",
   "repository": {
@@ -35,11 +35,11 @@
     "analyze": "size-limit --why"
   },
   "devDependencies": {
-    "@plasmicapp/host": "2.0.15",
+    "@plasmicapp/host": "workspace:*",
     "@types/node": "^14.18.63",
-    "@types/react": "^18",
-    "tsdx": "^0.14.1",
-    "tslib": "^2.2.0"
+    "@types/react": "catalog:",
+    "tsdx": "catalog:",
+    "tslib": "catalog:"
   },
   "dependencies": {
     "framer-motion": "^5.3.0"

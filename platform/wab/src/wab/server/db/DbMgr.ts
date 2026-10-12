@@ -84,20 +84,16 @@ import {
   TemporaryTeamApiToken,
   TokenData,
   TrustedHost,
-  TutorialDb,
   User,
   Workspace,
   WorkspaceApiToken,
   WorkspaceAuthConfig,
   WorkspaceUser,
 } from "@/wab/server/entities/Entities";
+import { isPaidTeam } from "@/wab/server/freeTrial";
 import { logger } from "@/wab/server/observability";
 import { REAL_PLUME_VERSION } from "@/wab/server/pkg-mgr/plume-pkg-mgr";
 import { CompatRequest } from "@/wab/server/routes/util";
-import {
-  TutorialType,
-  createTutorialDb,
-} from "@/wab/server/tutorialdb/tutorialdb-utils";
 import { generateSomeApiToken } from "@/wab/server/util/Tokens";
 import {
   makeFieldMetaMap,
@@ -111,6 +107,7 @@ import { KnownProvider } from "@/wab/server/util/passport-multi-oauth2";
 import { UniqueViolationError } from "@/wab/shared/ApiErrors/cms-errors";
 import {
   BadRequestError,
+  CopilotPlanRequiredError,
   CopilotRateLimitExceededError,
   GrantUserNotFoundError,
   UnauthorizedError,
@@ -157,7 +154,6 @@ import {
   TeamMember,
   TeamWhiteLabelInfo,
   ThreadHistoryId,
-  TutorialDbId,
   UniqueFieldCheck,
   UserId,
   WorkspaceId,
@@ -228,6 +224,10 @@ import { WebhookHeader } from "@/wab/shared/db-json-blobs";
 import { isAdminTeamEmail } from "@/wab/shared/devflag-utils";
 import { DEVFLAGS } from "@/wab/shared/devflags";
 import { MIN_ACCESS_LEVEL_FOR_SUPPORT } from "@/wab/shared/discourse/config";
+import {
+  ParsedEmailAddress,
+  parseEmailAddress,
+} from "@/wab/shared/email-address";
 import { LocalizationKeyScheme } from "@/wab/shared/localization";
 import {
   HostLessPackageInfo,
@@ -446,7 +446,7 @@ export class MismatchPasswordError extends DbMgrError {
 
 export function checkPermissions(
   predicate: boolean,
-  msg: string
+  msg: string,
 ): asserts predicate {
   if (!predicate) {
     throw new ForbiddenError(msg);
@@ -467,7 +467,7 @@ async function getOneOrFailIfTooMany<T>(queryBuilder: SelectQueryBuilder<T>) {
 function ensureResourceIdFromPermission(perm: Permission) {
   return ensure(
     [perm.teamId, perm.workspaceId, perm.projectId].find((id) => id != null),
-    "Permission should have one of the ids set"
+    "Permission should have one of the ids set",
   );
 }
 
@@ -548,18 +548,24 @@ interface ForcedAccessLevel {
 
 type Resource = Project | Workspace | Team | CmsDatabase;
 
+interface ChangeTeamOwnerOptions {
+  allowUnpaidTransfer?: boolean;
+}
+
+const FREE_TRIAL_ONCE_MESSAGE = `Free trials are only available once per account.`;
+
 function isForcedAccessLevel(x: any): x is ForcedAccessLevel {
   return !!x?.force;
 }
 
 async function findExactlyOne<T extends ObjectLiteral>(
   repo: Repository<T>,
-  opts?: FindConditions<T> | FindOneOptions<T> | undefined
+  opts?: FindConditions<T> | FindOneOptions<T> | undefined,
 ) {
   const found = await repo.find(opts);
   return ensure(
     maybeOne(found),
-    () => `Not found entity given options ${opts}`
+    () => `Not found entity given options ${opts}`,
   );
 }
 
@@ -607,7 +613,7 @@ export async function checkWeakPassword(password: string | undefined) {
 
 function pickKnownFieldsByLocale(table: CmsTable, x: CmsRowData) {
   return L.mapValues(x, (values) =>
-    pick(values, ...table.schema.fields.map((f) => f.identifier))
+    pick(values, ...table.schema.fields.map((f) => f.identifier)),
   );
 }
 
@@ -620,7 +626,7 @@ function mkCommitGraph(): CommitGraph {
 
 function checkBranchFields(
   { name, status }: Partial<UpdatableBranchFields>,
-  otherBranches: ApiBranch[]
+  otherBranches: ApiBranch[],
 ) {
   if (name !== undefined) {
     const msg = validateBranchName(name, otherBranches);
@@ -639,7 +645,7 @@ function whereEqOrNull<T>(
   qb: SelectQueryBuilder<T>,
   field: string,
   params: Record<string, any>,
-  injectParam: boolean
+  injectParam: boolean,
 ) {
   const [[paramName, paramValue]] = Object.entries(params);
   if (paramValue) {
@@ -664,7 +670,7 @@ type MergeArgs = MergeSrcDst & {
 
 function getCommitChainFromCommit(
   g: Draft<CommitGraph>,
-  pkgVersionId: PkgVersionId | undefined
+  pkgVersionId: PkgVersionId | undefined,
 ): PkgVersionId[] {
   return generate(function* () {
     while (pkgVersionId) {
@@ -676,7 +682,7 @@ function getCommitChainFromCommit(
 
 function getCommitChainFromBranch(
   g: CommitGraph,
-  branchSpec: MainBranchId | BranchId
+  branchSpec: MainBranchId | BranchId,
 ) {
   return getCommitChainFromCommit(g, g.branches[branchSpec]);
 }
@@ -731,11 +737,11 @@ export class DbMgr implements MigrationDbMgr {
       temporaryTeamApiToken?: string;
       cmsIdsAndTokens?: CmsIdAndToken[];
       workspaceApiToken?: string;
-    }
+    },
   ) {
     this.entMgrOrReq = ensure(
       entMgrOrReq,
-      "Please pass an entity manager object or request to use DbMgr!"
+      "Please pass an entity manager object or request to use DbMgr!",
     );
     this.actor = ensure(actor, "Please pass an actor object to use DbMgr!");
     this.projectIdsAndTokens = opts?.projectIdsAndTokens;
@@ -762,7 +768,7 @@ export class DbMgr implements MigrationDbMgr {
 
   private async tryGetNormalActorUser() {
     return maybe(this.tryGetNormalActorId(), (userId) =>
-      this.getUserById(userId)
+      this.getUserById(userId),
     );
   }
 
@@ -800,13 +806,22 @@ export class DbMgr implements MigrationDbMgr {
   private checkNotAnonUser() {
     checkPermissions(
       this.actor.type !== "AnonUser",
-      "Must not be anonymous user"
+      "Must not be anonymous user",
     );
   }
 
   private checkNormalUser() {
     checkPermissions(this.actor.type === "NormalUser", "Must be a normal user");
     return this.actor.userId;
+  }
+
+  // Serializes the unpaid-organization check with the write that follows it.
+  private async lockUserRow(userId: UserId): Promise<void> {
+    await this.users()
+      .createQueryBuilder("user")
+      .setLock("pessimistic_write")
+      .where("user.id = :userId", { userId })
+      .getOne();
   }
 
   private checkTeamApiUser() {
@@ -1039,10 +1054,6 @@ export class DbMgr implements MigrationDbMgr {
     return this.entMgr.getRepository(AppAccessRegistry);
   }
 
-  private tutorialDbs() {
-    return this.entMgr.getRepository(TutorialDb);
-  }
-
   private copilotUsages() {
     return this.entMgr.getRepository(CopilotUsage);
   }
@@ -1119,13 +1130,13 @@ export class DbMgr implements MigrationDbMgr {
     teamId: TeamId,
     requireLevel: AccessLevel,
     action: string,
-    includeDeleted = false
+    includeDeleted = false,
   ) =>
     this._checkResourcePerms(
       { type: "team", id: teamId },
       requireLevel,
       action,
-      includeDeleted
+      includeDeleted,
     );
 
   /** Throws `ForbiddenError` if user does not have required level in any team. */
@@ -1133,29 +1144,29 @@ export class DbMgr implements MigrationDbMgr {
     teamIds: TeamId[],
     requireLevel: AccessLevel,
     action: string,
-    includeDeleted = false
+    includeDeleted = false,
   ) =>
     this._checkResourcesPerms(
       { type: "team", ids: teamIds },
       requireLevel,
       action,
-      includeDeleted
+      includeDeleted,
     );
 
   async getTeamAccessLevelByUser(
     teamId: TeamId,
-    userId: UserId
+    userId: UserId,
   ): Promise<AccessLevel> {
     this.checkSuperUser();
     const existingPerm = await this.getPermissionsForResources(
       { type: "team", ids: [teamId] },
       true,
-      { userId }
+      { userId },
     );
     return existingPerm.length > 0
       ? _.maxBy(
           existingPerm.map((p) => p.accessLevel),
-          (lvl) => accessLevelRank(lvl)
+          (lvl) => accessLevelRank(lvl),
         )!
       : "blocked";
   }
@@ -1178,11 +1189,60 @@ export class DbMgr implements MigrationDbMgr {
     return this._queryTeams(where, false).getMany();
   }
 
+  async checkCanCreateTeam(): Promise<void> {
+    await this.checkUnpaidTeamLimit(
+      this.checkNormalUser(),
+      undefined,
+      "creating another",
+    );
+  }
+
+  // An owner gets at most one live unpaid organization. `exceptTeamId` is
+  // the team about to become one.
+  private async checkUnpaidTeamLimit(
+    ownerId: UserId,
+    exceptTeamId: TeamId | undefined,
+    action: string,
+  ): Promise<void> {
+    await this.lockUserRow(ownerId);
+    const qb = this._queryTeams({
+      createdById: ownerId,
+      personalTeamOwnerId: IsNull(),
+    });
+    if (exceptTeamId) {
+      qb.andWhere("t.id <> :exceptTeamId", { exceptTeamId });
+    }
+    checkPermissions(
+      (await qb.getMany()).every((team) => isPaidTeam(team)),
+      `You can only have one unpaid ${ORGANIZATION_LOWER}. Upgrade or delete your existing ${ORGANIZATION_LOWER} before ${action}.`,
+    );
+  }
+
+  private async checkTeamCanBecomeUnpaid(
+    team: Team,
+    action: string,
+  ): Promise<void> {
+    if (
+      this.actor.type !== "SuperUser" &&
+      !team.personalTeamOwnerId &&
+      team.createdById
+    ) {
+      await this.checkUnpaidTeamLimit(team.createdById, team.id, action);
+    }
+  }
+
+  async checkCanCancelSubscription(teamId: TeamId): Promise<void> {
+    const team = await this.getTeamById(teamId);
+    if (isPaidTeam(team)) {
+      await this.checkTeamCanBecomeUnpaid(team, "canceling this subscription");
+    }
+  }
+
   async createTeam(
     name: string,
     opts?: {
       extendedFreeTrial?: number;
-    }
+    },
   ) {
     const userId = this.checkNormalUser();
     const user = await this.getUserById(userId);
@@ -1201,7 +1261,7 @@ export class DbMgr implements MigrationDbMgr {
 
     await this.sudo()._assignResourceOwner(
       { type: "team", id: team.id },
-      userId
+      userId,
     );
 
     return team;
@@ -1216,7 +1276,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkTeamPerms(id, "viewer", "read", includeDeleted);
     return ensureFound<Team>(
       await this._queryTeams({ id }, includeDeleted).getOne(),
-      `${ORGANIZATION_CAP} with ID ${id}`
+      `${ORGANIZATION_CAP} with ID ${id}`,
     );
   }
 
@@ -1225,7 +1285,7 @@ export class DbMgr implements MigrationDbMgr {
       { type: "team", ids },
       "viewer",
       "get",
-      includeDeleted
+      includeDeleted,
     );
     return this._queryTeams({ id: In(ids) }, includeDeleted).getMany();
   }
@@ -1246,7 +1306,7 @@ export class DbMgr implements MigrationDbMgr {
       { type: "team", ids: ids },
       "viewer",
       "get",
-      false
+      false,
     );
 
     return this._queryTeams({ parentTeamId: In(ids) }).getMany();
@@ -1275,7 +1335,7 @@ export class DbMgr implements MigrationDbMgr {
             and subperm.accessLevel <> 'blocked'
             and subperm.deletedAt is null
           `,
-          { userId }
+          { userId },
         );
     }
     return (await parentTeamQb.getRawMany()).map((t) => t.teamId);
@@ -1292,12 +1352,15 @@ export class DbMgr implements MigrationDbMgr {
     }
     if (fields.defaultAccessLevel) {
       ensureGrantableAccessLevel(fields.defaultAccessLevel);
+      if (fields.defaultAccessLevel === "owner") {
+        throw new BadRequestError("Ownership can only be granted by transfer");
+      }
     }
     const team = await this.getTeamById(id);
     if (fields.uiConfig) {
       checkPermissions(
         isEnterprise(team.featureTier || team.parentTeam?.featureTier),
-        "Must be on Enterprise plan"
+        "Must be on Enterprise plan",
       );
     }
     assignAllowEmpty(team, this.stampUpdate(), fields);
@@ -1336,6 +1399,38 @@ export class DbMgr implements MigrationDbMgr {
     return !!team.whiteLabelName || !!parentTeam?.whiteLabelName;
   }
 
+  async canStartFreeTrial(teamId: TeamId): Promise<boolean> {
+    if (this.actor.type === "SuperUser") {
+      return true;
+    }
+    const team = await this.getTeamById(teamId);
+    if (
+      this.actor.type !== "NormalUser" ||
+      !team.createdById ||
+      team.trialStartDate
+    ) {
+      return false;
+    }
+    await this.checkUserPerms(team.createdById, "read", "get");
+    const owner = ensureFound<User>(
+      await this.users().findOne({
+        select: ["id", "freeTrialStartedAt"],
+        where: { id: team.createdById, ...excludeDeleted() },
+      }),
+      `User with ID ${team.createdById}`,
+    );
+    return !owner.freeTrialStartedAt;
+  }
+
+  async checkFreeTrialEligibility(teamId: TeamId): Promise<void> {
+    // @todo replace with admin role
+    await this.checkTeamPerms(teamId, "editor", "start trial");
+    checkPermissions(
+      await this.canStartFreeTrial(teamId),
+      FREE_TRIAL_ONCE_MESSAGE,
+    );
+  }
+
   async startFreeTrial({
     teamId,
     featureTierName,
@@ -1343,8 +1438,7 @@ export class DbMgr implements MigrationDbMgr {
     teamId: TeamId;
     featureTierName: string;
   }): Promise<Team> {
-    // @todo replace with admin role
-    await this.checkTeamPerms(teamId, "editor", "start trial", true);
+    await this.checkFreeTrialEligibility(teamId);
     const tiersList = await this.listCurrentFeatureTiers([featureTierName]);
     assert(tiersList.length > 0, "Free trial tier name invalid");
     const featureTier = tiersList[0];
@@ -1352,6 +1446,20 @@ export class DbMgr implements MigrationDbMgr {
     const seats = featureTier.maxUsers;
 
     const trialStartDate = new Date();
+    if (this.actor.type === "NormalUser") {
+      const team = await this.getTeamById(teamId);
+      const ownerId = ensure(
+        team.createdById,
+        "A team must have an owner to start a free trial",
+      );
+      const claim = await this.users()
+        .createQueryBuilder()
+        .update()
+        .set({ ...this.stampUpdate(), freeTrialStartedAt: trialStartDate })
+        .where('id = :ownerId and "freeTrialStartedAt" is null', { ownerId })
+        .execute();
+      checkPermissions(claim.affected === 1, FREE_TRIAL_ONCE_MESSAGE);
+    }
     return await this.sudo().sudoUpdateTeam({
       id: teamId,
       seats,
@@ -1375,6 +1483,9 @@ export class DbMgr implements MigrationDbMgr {
       ...userUpdatableTeamFields,
     ]);
     const team = await this.getTeamById(id);
+    const tierChanged =
+      fields.featureTierId !== undefined &&
+      fields.featureTierId !== team.featureTierId;
     // We need to keep featureTier and featureTierId consistent
     if (!fields.featureTierId) {
       fields["featureTier"] = undefined;
@@ -1382,7 +1493,43 @@ export class DbMgr implements MigrationDbMgr {
       fields["featureTier"] = { id: fields.featureTierId } as any;
     }
     assignAllowEmpty(team, this.stampUpdate(), fields);
-    return await this.entMgr.save(team);
+    const saved = await this.entMgr.save(team);
+    if (tierChanged) {
+      await this.downgradeTeamRoles(saved);
+    }
+    return saved;
+  }
+
+  /** Revert roles the team's feature tier doesn't include to commenter. */
+  private async downgradeTeamRoles(team: Team) {
+    const tier = team.featureTierId
+      ? await this.getFeatureTier(team.featureTierId)
+      : DEVFLAGS.freeTier;
+    const roles = [
+      ...(tier.designerRole ? [] : ["designer" as const]),
+      ...(tier.contentRole ? [] : ["content" as const]),
+    ];
+    if (roles.length === 0) {
+      return;
+    }
+    const workspaces = await this.getWorkspacesByTeams([team.id]);
+    const workspaceIds = workspaces.map((workspace) => workspace.id);
+    const projects = await this.getProjectsByWorkspaces(workspaceIds);
+    const unsupported = { accessLevel: In(roles), deletedAt: IsNull() };
+    // Update permission rows directly so pending email invitations are included.
+    await this.permissions()
+      .createQueryBuilder()
+      .update()
+      .set({ ...this.stampUpdate(), accessLevel: "commenter" })
+      .where([
+        { ...unsupported, teamId: team.id },
+        { ...unsupported, workspaceId: In(workspaceIds) },
+        {
+          ...unsupported,
+          projectId: In(projects.map((project) => project.id)),
+        },
+      ])
+      .execute();
   }
 
   /**
@@ -1416,7 +1563,7 @@ export class DbMgr implements MigrationDbMgr {
           and
           perm.deletedAt is null
           `,
-        { userId }
+        { userId },
       )
       .getMany();
   }
@@ -1445,13 +1592,17 @@ export class DbMgr implements MigrationDbMgr {
   }
 
   async restoreTeam(id: TeamId) {
+    const team = await this.getTeamById(id, true);
+    if (!isPaidTeam(team)) {
+      await this.checkTeamCanBecomeUnpaid(team, "restoring another");
+    }
     return this._restoreResource({ type: "team", id });
   }
 
   async getTeamByWhiteLabelName(name: string) {
     return ensureFound<Team>(
       await this.tryGetTeamByWhiteLabelName(name),
-      `${ORGANIZATION_CAP} with white label id ${name}`
+      `${ORGANIZATION_CAP} with white label id ${name}`,
     );
   }
 
@@ -1463,7 +1614,7 @@ export class DbMgr implements MigrationDbMgr {
   async grantTeamPermissionByEmail(
     teamId: TeamId,
     email: string,
-    rawLevelToGrant: GrantableAccessLevel
+    rawLevelToGrant: GrantableAccessLevel,
   ) {
     return this.grantResourcesPermissionByEmail(
       {
@@ -1471,14 +1622,14 @@ export class DbMgr implements MigrationDbMgr {
         ids: [teamId],
       },
       email,
-      rawLevelToGrant
+      rawLevelToGrant,
     );
   }
 
   async revokeTeamPermissionsByEmails(teamId: TeamId, emails: string[]) {
     return this.revokeResourcesPermissionsByEmail(
       { type: "team", ids: [teamId] },
-      emails
+      emails,
     );
   }
 
@@ -1488,7 +1639,7 @@ export class DbMgr implements MigrationDbMgr {
   async getPermissionsForTeams(teamIds: TeamId[]) {
     return this.getPermissionsForResources(
       { type: "team", ids: teamIds },
-      true
+      true,
     );
   }
 
@@ -1499,7 +1650,7 @@ export class DbMgr implements MigrationDbMgr {
    */
   async getEffectiveUsersForTeam(
     teamId: TeamId,
-    excludePlasmicEmails: boolean
+    excludePlasmicEmails: boolean,
   ): Promise<Pick<Permission, "userId" | "email">[]> {
     await this.checkTeamPerms(teamId, "viewer", "get effective users in");
 
@@ -1511,7 +1662,7 @@ export class DbMgr implements MigrationDbMgr {
     const workspaceIds = workspaces.map((w) => w.id);
     const workspacePerms = await this.getPermissionsForWorkspaces(
       workspaceIds,
-      true
+      true,
     );
 
     // Find all users in projects in the workspaces.
@@ -1524,7 +1675,7 @@ export class DbMgr implements MigrationDbMgr {
       ...teamPerms,
       ...workspacePerms,
       ...projectPerms.filter(
-        (p) => accessLevelRank(p.accessLevel) >= accessLevelRank("commenter")
+        (p) => accessLevelRank(p.accessLevel) >= accessLevelRank("commenter"),
       ),
     ].map((p) => {
       return {
@@ -1542,7 +1693,7 @@ export class DbMgr implements MigrationDbMgr {
 
   async getTeamMeta(
     teamId: TeamId,
-    includeDeleted = false
+    includeDeleted = false,
   ): Promise<ApiTeamMeta> {
     await this.checkTeamPerms(teamId, "viewer", "read");
     const workspaces = await this.getWorkspacesByTeams([teamId]);
@@ -1553,7 +1704,12 @@ export class DbMgr implements MigrationDbMgr {
     });
     const members = await this.getEffectiveUsersForTeam(teamId, true);
     const memberCount = members.length;
-    return { projectCount, workspaceCount, memberCount };
+    return {
+      projectCount,
+      workspaceCount,
+      memberCount,
+      canStartFreeTrial: await this.canStartFreeTrial(teamId),
+    };
   }
 
   async getTeamMembers(teamId: TeamId): Promise<TeamMember[]> {
@@ -1561,27 +1717,26 @@ export class DbMgr implements MigrationDbMgr {
     const emails = filterMapTruthy(effectiveUsers, (u) => !u.userId && u.email);
     const userIds = filterMapTruthy(effectiveUsers, (u) => u.userId);
     const users = (await this.tryGetUsersById(userIds)).filter(
-      (u) => u
+      (u) => u,
     ) as User[];
     return [
-      ...emails.map((email) => ({ type: "email", email } as TeamMember)),
+      ...emails.map((email) => ({ type: "email", email }) as TeamMember),
       ...(await this.appendTeamMembersMeta(teamId, users)),
     ];
   }
 
   async getTeamByProjectId(
     projectId: ProjectId,
-    includeDeleted = false
+    includeDeleted = false,
   ): Promise<Team | undefined> {
     await this.checkProjectPerms(projectId, "viewer", "get", undefined, false);
-    const qb = this.teams()
-      .createQueryBuilder("t")
+    const qb = this._queryTeams({}, includeDeleted)
       .innerJoin(Workspace, "w", "w.teamId = t.id")
       .innerJoin(Project, "p", "p.workspaceId = w.id")
       .where("p.id = :projectId", { projectId });
     if (!includeDeleted) {
       qb.andWhere(
-        "p.deletedAt IS NULL AND w.deletedAt IS NULL AND t.deletedAt IS NULL"
+        "p.deletedAt IS NULL AND w.deletedAt IS NULL AND t.deletedAt IS NULL",
       );
     }
     return await qb.getOne();
@@ -1594,7 +1749,7 @@ export class DbMgr implements MigrationDbMgr {
       .innerJoin(Workspace, "w", "w.teamId = t.id")
       .where(
         "w.id = :workspaceId AND w.deletedAt IS NULL AND t.deletedAt IS NULL",
-        { workspaceId }
+        { workspaceId },
       )
       .getOne();
   }
@@ -1617,10 +1772,10 @@ export class DbMgr implements MigrationDbMgr {
   private checkUsersPerms(
     userIds: string[],
     capability: Capability,
-    action: string
+    action: string,
   ) {
     return sequentially(
-      userIds.map((id) => this.checkUserPerms(id, capability, action))
+      userIds.map((id) => this.checkUserPerms(id, capability, action)),
     );
   }
 
@@ -1654,7 +1809,7 @@ export class DbMgr implements MigrationDbMgr {
             await canEdit(),
             `${await this.describeActor()} tried to ${action} user ${
               (await this.getUserById(userId)).email
-            }`
+            }`,
           );
           return;
         }
@@ -1662,7 +1817,7 @@ export class DbMgr implements MigrationDbMgr {
           return assertNever(capability);
       }
     },
-    (...args) => JSON.stringify(args.slice(0, 2))
+    (...args) => JSON.stringify(args.slice(0, 2)),
   );
 
   async tryGetUserById(id: string) {
@@ -1675,7 +1830,7 @@ export class DbMgr implements MigrationDbMgr {
   async getUserById(id: string) {
     return ensureFound<User>(
       await this.tryGetUserById(id),
-      `User with ID ${id}`
+      `User with ID ${id}`,
     );
   }
 
@@ -1686,7 +1841,7 @@ export class DbMgr implements MigrationDbMgr {
       await this.users().findOne({
         where: { email, ...excludeDeleted() },
       }),
-      `User with email ${email}`
+      `User with email ${email}`,
     );
   }
 
@@ -1729,7 +1884,7 @@ export class DbMgr implements MigrationDbMgr {
 
   async appendTeamMembersMeta(
     teamId: TeamId,
-    users: User[]
+    users: User[],
   ): Promise<TeamMember[]> {
     await this.checkTeamPerms(teamId, "viewer", "get members meta for");
 
@@ -1742,7 +1897,7 @@ export class DbMgr implements MigrationDbMgr {
         `w.teamId = :teamId
         and rev.deletedAt is null
         and p.deletedAt is null
-        and w.deletedAt is null`
+        and w.deletedAt is null`,
       )
       .groupBy("rev.createdById")
       .setParameter("teamId", teamId)
@@ -1756,7 +1911,7 @@ export class DbMgr implements MigrationDbMgr {
       .where(
         `w.teamId = :teamId
         and p.deletedAt is null
-        and w.deletedAt is null`
+        and w.deletedAt is null`,
       )
       .groupBy("p.createdById")
       .setParameter("teamId", teamId)
@@ -1784,7 +1939,7 @@ export class DbMgr implements MigrationDbMgr {
    * Anyone can fetch our latest pricing
    */
   async listCurrentFeatureTiers(
-    featureTierNames: readonly string[]
+    featureTierNames: readonly string[],
   ): Promise<FeatureTier[]> {
     const result: FeatureTier[] = [];
     for (const name of featureTierNames) {
@@ -1802,7 +1957,7 @@ export class DbMgr implements MigrationDbMgr {
             return "tier.createdAt = " + subQuery;
           })
           .andWhere("tier.name = :name")
-          .setParameter("name", name)
+          .setParameter("name", name),
       );
       if (tier) {
         result.push(tier);
@@ -1826,7 +1981,7 @@ export class DbMgr implements MigrationDbMgr {
       await this.featureTiers().findOne({
         where: { id: featureTierId, ...maybeIncludeDeleted(includeDeleted) },
       }),
-      `FeatureTier with ID ${featureTierId}`
+      `FeatureTier with ID ${featureTierId}`,
     );
   }
 
@@ -1835,7 +1990,7 @@ export class DbMgr implements MigrationDbMgr {
       this.users()
         .createQueryBuilder("users")
         .where(`lower(users.email) = lower(:email)`, { email })
-        .andWhere("users.deletedAt is null")
+        .andWhere("users.deletedAt is null"),
     );
     if (!user) {
       return user;
@@ -1852,7 +2007,7 @@ export class DbMgr implements MigrationDbMgr {
    */
   async createUser({
     orgId,
-    email,
+    email: maybeUnparsedEmail,
     password,
     id,
     needsTeamCreationPrompt,
@@ -1864,7 +2019,7 @@ export class DbMgr implements MigrationDbMgr {
     ...fields
   }: {
     orgId?: string;
-    email: string;
+    email: string | ParsedEmailAddress;
     password?: string;
     id?: UserId;
     needsTeamCreationPrompt: boolean;
@@ -1877,7 +2032,14 @@ export class DbMgr implements MigrationDbMgr {
     this.allowAnyone();
     fields = _.pick(fields, updatableUserFields);
     await checkWeakPassword(password);
-    email = email.toLowerCase();
+    const parsedEmail =
+      typeof maybeUnparsedEmail === "string"
+        ? ensure(
+            parseEmailAddress(maybeUnparsedEmail),
+            `invalid email: ${maybeUnparsedEmail}`,
+          )
+        : maybeUnparsedEmail;
+    const email = parsedEmail.normalized;
     const user = this.users().create({
       ...this.stampNew(),
       email,
@@ -1936,7 +2098,7 @@ export class DbMgr implements MigrationDbMgr {
       // Create initial team and workspace.
       const asUser = this.asUser(user.id);
       const team = await asUser.createTeam(
-        `${user.firstName}'s First ${ORGANIZATION_CAP}`
+        `${user.firstName}'s First ${ORGANIZATION_CAP}`,
       );
       await asUser.createWorkspace({
         name: `${user.firstName}'s First ${WORKSPACE_CAP}`,
@@ -2039,6 +2201,59 @@ export class DbMgr implements MigrationDbMgr {
       .execute();
   }
 
+  async deleteExpiredSessionsBatch(
+    cutoff: number,
+    batchSize: number,
+    expiredAtOrAfter?: number,
+  ) {
+    this.checkSuperUser();
+    assert(
+      Number.isSafeInteger(cutoff) && cutoff >= 0,
+      "Invalid session expiration cutoff",
+    );
+    assert(
+      Number.isSafeInteger(batchSize) && batchSize > 0,
+      "Invalid session pruning batch size",
+    );
+    assert(
+      expiredAtOrAfter === undefined ||
+        (Number.isSafeInteger(expiredAtOrAfter) && expiredAtOrAfter <= cutoff),
+      "Invalid session pruning cursor",
+    );
+
+    const query = this.sessions()
+      .createQueryBuilder("session")
+      .select(["session.id", "session.expiredAt"])
+      .where("session.expiredAt <= :cutoff", { cutoff })
+      .orderBy("session.expiredAt", "ASC")
+      .limit(batchSize);
+    if (expiredAtOrAfter !== undefined) {
+      query.andWhere("session.expiredAt >= :expiredAtOrAfter", {
+        expiredAtOrAfter,
+      });
+    }
+    const sessions = await query.getMany();
+
+    if (sessions.length === 0) {
+      return { selected: 0, deleted: 0, lastExpiredAt: undefined };
+    }
+
+    const lastExpiredAt = Number(
+      ensure(last(sessions), "Missing selected session").expiredAt,
+    );
+    const result = await this.sessions()
+      .createQueryBuilder()
+      .delete()
+      .whereInIds(sessions.map((session) => session.id))
+      .andWhere('"expiredAt" <= :cutoff', { cutoff })
+      .execute();
+    return {
+      selected: sessions.length,
+      deleted: ensure(result.affected, "Missing deleted session count"),
+      lastExpiredAt,
+    };
+  }
+
   //
   // Password methods.
   //
@@ -2049,7 +2264,7 @@ export class DbMgr implements MigrationDbMgr {
     const user = await this.getUserById(userId);
     const isOldPasswordCorrect = await this.comparePassword(
       user.id,
-      oldPassword
+      oldPassword,
     );
     if (!isOldPasswordCorrect) {
       throw new MismatchPasswordError();
@@ -2063,7 +2278,7 @@ export class DbMgr implements MigrationDbMgr {
   async updateUserPassword(
     user: User,
     password: string,
-    allowWeakPassword = false
+    allowWeakPassword = false,
   ) {
     await this.checkUserPerms(user.id, "write", "change password for");
     if (!allowWeakPassword) {
@@ -2089,7 +2304,7 @@ export class DbMgr implements MigrationDbMgr {
         where: { id, ...excludeDeleted() },
         select: ["bcrypt", "id"],
       }),
-      `User with ID ${id}`
+      `User with ID ${id}`,
     );
 
     // `User.bcrypt` normally has type `string | undefined`,
@@ -2100,7 +2315,7 @@ export class DbMgr implements MigrationDbMgr {
 
   async comparePassword(
     userId: string,
-    candidatePassword: string
+    candidatePassword: string,
   ): Promise<boolean> {
     this.allowAnyone();
     const _bcrypt = await this._getUserBcrypt(userId);
@@ -2143,7 +2358,7 @@ export class DbMgr implements MigrationDbMgr {
 
   async getResetPassword(
     user: User,
-    token: string
+    token: string,
   ): Promise<ResetPassword | null> {
     this.checkSuperUser();
     const resets = await this.entMgr.find(ResetPassword, {
@@ -2187,7 +2402,7 @@ export class DbMgr implements MigrationDbMgr {
 
   async compareEmailVerificationToken(
     user: User,
-    token: string
+    token: string,
   ): Promise<EmailVerification | null> {
     this.checkNormalUser();
     const emailVerification = await this.entMgr.find(EmailVerification, {
@@ -2218,7 +2433,7 @@ export class DbMgr implements MigrationDbMgr {
         forUser: user,
         used: false,
         ...excludeDeleted(),
-      }
+      },
     );
     if (existingEmailVerification.length > 0) {
       const deletedAt = new Date();
@@ -2236,32 +2451,32 @@ export class DbMgr implements MigrationDbMgr {
     workspaceId: WorkspaceId,
     requireLevel: AccessLevel,
     action: string,
-    includeDeleted = false
+    includeDeleted = false,
   ) =>
     this._checkResourcePerms(
       { type: "workspace", id: workspaceId },
       requireLevel,
       action,
-      includeDeleted
+      includeDeleted,
     );
 
   private async checkWorkspacesPerms(
     workspaceIds: WorkspaceId[],
     requireLevel: AccessLevel,
     action: string,
-    includeDeleted = false
+    includeDeleted = false,
   ) {
     return this._checkResourcesPerms(
       { type: "workspace", ids: workspaceIds },
       requireLevel,
       action,
-      includeDeleted
+      includeDeleted,
     );
   }
 
   private _queryWorkspaces(
     where: FindConditions<Workspace>,
-    includeDeleted = false
+    includeDeleted = false,
   ) {
     const qb = this.workspaces()
       .createQueryBuilder("w")
@@ -2282,12 +2497,12 @@ export class DbMgr implements MigrationDbMgr {
 
   async getWorkspaceById(
     id: WorkspaceId,
-    includeDeleted = false
+    includeDeleted = false,
   ): Promise<Workspace> {
     await this.checkWorkspacePerms(id, "viewer", "get", includeDeleted);
     return ensureFound<Workspace>(
       await this._tryGetWorkspaceById(id, includeDeleted),
-      `Workspace with ID ${id}`
+      `Workspace with ID ${id}`,
     );
   }
 
@@ -2296,7 +2511,7 @@ export class DbMgr implements MigrationDbMgr {
       { type: "workspace", ids },
       "viewer",
       "get",
-      includeDeleted
+      includeDeleted,
     );
     return this._queryWorkspaces({ id: In(ids) }, includeDeleted).getMany();
   }
@@ -2305,7 +2520,7 @@ export class DbMgr implements MigrationDbMgr {
     await this._checkResourcesPerms(
       { type: "team", ids: teamIds },
       "viewer",
-      "get workspaces"
+      "get workspaces",
     );
     return await this._queryWorkspaces({
       teamId: In(teamIds),
@@ -2322,7 +2537,11 @@ export class DbMgr implements MigrationDbMgr {
       where: { userId, accessLevel: Not("blocked"), ...excludeDeleted() },
     });
     const workspaceIds = _.uniq(
+<<<<<<< HEAD
       withoutNils(permissions.map((p) => p.workspaceId))
+=======
+      withoutNils(permissions.map((p) => p.workspaceId)),
+>>>>>>> upstream/master
     );
     const teamIds = _.uniq(withoutNils(permissions.map((p) => p.teamId)));
     const childTeams = teamIds.length
@@ -2361,7 +2580,7 @@ export class DbMgr implements MigrationDbMgr {
     await this._checkResourcesPerms(
       { type: "team", ids: [teamId] },
       "editor",
-      "create workspace"
+      "create workspace",
     );
     const workspace = this.workspaces().create({
       ...this.stampNew({ genShortUuid: true }),
@@ -2373,7 +2592,7 @@ export class DbMgr implements MigrationDbMgr {
 
     await this.sudo()._assignResourceOwner(
       { type: "workspace", id: workspace.id },
-      userId
+      userId,
     );
 
     return workspace;
@@ -2422,6 +2641,13 @@ export class DbMgr implements MigrationDbMgr {
     if (fields.teamId) {
       await this.checkTeamPerms(ws.teamId, "editor", "move workspace");
       await this.checkTeamPerms(fields.teamId, "editor", "move workspace");
+      // Deleted projects count too, restoring one puts it in the new team.
+      if ((await this.projects().count({ where: { workspaceId } })) > 0) {
+        await this.checkCanTransferToTeam(
+          ws.teamId,
+          await this.getTeamById(fields.teamId),
+        );
+      }
       fields["team"] = { id: fields.teamId };
     }
     Object.assign(ws, this.stampUpdate(), fields);
@@ -2432,7 +2658,7 @@ export class DbMgr implements MigrationDbMgr {
   async grantWorkspacePermissionByEmail(
     workspaceId: WorkspaceId,
     email: string,
-    rawLevelToGrant: GrantableAccessLevel
+    rawLevelToGrant: GrantableAccessLevel,
   ) {
     return this.grantResourcesPermissionByEmail(
       {
@@ -2440,19 +2666,19 @@ export class DbMgr implements MigrationDbMgr {
         ids: [workspaceId],
       },
       email,
-      rawLevelToGrant
+      rawLevelToGrant,
     );
   }
 
   async revokeWorkspacePermissionsByEmails(
     workspaceId: WorkspaceId,
     emails: string[],
-    ignoreOwnerCheck?: boolean
+    ignoreOwnerCheck?: boolean,
   ) {
     return this.revokeResourcesPermissionsByEmail(
       { type: "workspace", ids: [workspaceId] },
       emails,
-      ignoreOwnerCheck
+      ignoreOwnerCheck,
     );
   }
 
@@ -2461,14 +2687,14 @@ export class DbMgr implements MigrationDbMgr {
    */
   async getPermissionsForWorkspaces(
     workspaceIds: WorkspaceId[],
-    directOnly = false
+    directOnly = false,
   ) {
     return this.getPermissionsForResources(
       {
         type: "workspace",
         ids: workspaceIds,
       },
-      directOnly
+      directOnly,
     );
   }
 
@@ -2494,7 +2720,7 @@ export class DbMgr implements MigrationDbMgr {
   }
 
   private async _getActorAccessLevelToProject(
-    project: Project
+    project: Project,
   ): Promise<AccessLevel> {
     return await this._getActorAccessLevelToResource(project);
   }
@@ -2508,7 +2734,7 @@ export class DbMgr implements MigrationDbMgr {
       requireLevel: AccessLevel,
       action: string,
       suggestion?: string,
-      includeDeleted = false
+      includeDeleted = false,
     ) => {
       if (this.actor.type === "SuperUser") {
         return;
@@ -2516,7 +2742,7 @@ export class DbMgr implements MigrationDbMgr {
 
       const project = await this.sudo().getProjectById(
         projectId,
-        includeDeleted
+        includeDeleted,
       );
 
       // Having a valid project API token should give us read access.
@@ -2525,7 +2751,7 @@ export class DbMgr implements MigrationDbMgr {
         this.projectIdsAndTokens?.find(
           (p) =>
             p.projectId === projectId &&
-            p.projectApiToken === project.projectApiToken
+            p.projectApiToken === project.projectApiToken,
         )
       ) {
         return;
@@ -2537,7 +2763,7 @@ export class DbMgr implements MigrationDbMgr {
         this.projectIdsAndTokens?.find(
           (p) =>
             p.projectId === projectId &&
-            p.projectApiToken === project.secretApiToken
+            p.projectApiToken === project.secretApiToken,
         )
       ) {
         return;
@@ -2554,7 +2780,7 @@ export class DbMgr implements MigrationDbMgr {
 
       const selfLevel = await this._getActorAccessLevelToProject(project);
       const msg = `${await this.describeActor()} tried to ${action} project ${projectId}, but their access level ${humanLevel(
-        selfLevel
+        selfLevel,
       )} didn't meet required level ${humanLevel(requireLevel)}. ${
         suggestion ?? ""
       }`;
@@ -2564,13 +2790,13 @@ export class DbMgr implements MigrationDbMgr {
         isUnownedProject(project); // project with no owner and public can be edited
       if (!satisfied && this.projectIdsAndTokens) {
         throw new ForbiddenError(
-          "Project ID and/or tokens are incorrect (and/or user has insufficient permissions)"
+          "Project ID and/or tokens are incorrect (and/or user has insufficient permissions)",
         );
       }
       checkPermissions(satisfied, msg);
     },
     (projectId, requireLevel, _action, _suggestion, includeDeleted) =>
-      JSON.stringify([projectId, requireLevel, includeDeleted])
+      JSON.stringify([projectId, requireLevel, includeDeleted]),
   );
 
   /**
@@ -2582,7 +2808,7 @@ export class DbMgr implements MigrationDbMgr {
     pkgId: string,
     requireLevel: AccessLevel,
     action: string,
-    suggestion?: string
+    suggestion?: string,
   ) => {
     const pkg = ensureFound(await this.pkgs().findOne(pkgId), `Pkg ${pkgId}`);
     // The only pkg without a projectId should be "base".
@@ -2594,7 +2820,7 @@ export class DbMgr implements MigrationDbMgr {
       requireLevel,
       action,
       suggestion,
-      true
+      true,
     );
   };
 
@@ -2634,7 +2860,7 @@ export class DbMgr implements MigrationDbMgr {
       await this.checkWorkspacePerms(
         _workspaceId,
         "editor",
-        "create project in"
+        "create project in",
       );
     }
 
@@ -2676,7 +2902,7 @@ export class DbMgr implements MigrationDbMgr {
     if (project.createdById) {
       await this.sudo()._assignResourceOwner(
         { type: "project", id: project.id },
-        project.createdById
+        project.createdById,
       );
     }
     return { project, rev };
@@ -2716,9 +2942,27 @@ export class DbMgr implements MigrationDbMgr {
     await this._assignResourceOwner({ type: "project", id: projectId }, userId);
   }
 
+  private async checkCanTransferToTeam(
+    sourceTeamId: TeamId | undefined,
+    destinationTeam: Team,
+  ): Promise<void> {
+    if (
+      destinationTeam.personalTeamOwnerId ||
+      sourceTeamId === destinationTeam.id ||
+      this.actor.type === "SuperUser" ||
+      (await this.isTeamWhiteLabel(destinationTeam))
+    ) {
+      return;
+    }
+    checkPermissions(
+      isPaidTeam(destinationTeam),
+      `Projects can only be transferred to a paid ${ORGANIZATION_LOWER}. Upgrade the destination ${ORGANIZATION_LOWER} before moving projects into it.`,
+    );
+  }
+
   async updateProject(
     { id, ...fields }: { id: string } & Partial<UpdatableProjectFields>,
-    regenerateSecretApiToken = false
+    regenerateSecretApiToken = false,
   ) {
     fields = _.pick(fields, updatableProjectFields);
     if (
@@ -2742,14 +2986,21 @@ export class DbMgr implements MigrationDbMgr {
         await this.checkWorkspacePerms(
           project.workspace.id,
           "editor",
-          "move project"
+          "move project",
         );
       }
       if (fields.workspaceId) {
         await this.checkWorkspacePerms(
           fields.workspaceId,
           "editor",
-          "move project"
+          "move project",
+        );
+        const destinationWorkspace = await this.getWorkspaceById(
+          fields.workspaceId,
+        );
+        await this.checkCanTransferToTeam(
+          project.workspace?.teamId,
+          destinationWorkspace.team,
         );
       }
       fields["workspace"] = { id: fields.workspaceId };
@@ -2758,7 +3009,7 @@ export class DbMgr implements MigrationDbMgr {
       await this.checkWorkspacePerms(
         fields.workspaceId,
         "editor",
-        "change workspace starters"
+        "change workspace starters",
       );
     }
     if ("isOrgStarter" in fields && project.workspace?.teamId) {
@@ -2775,19 +3026,19 @@ export class DbMgr implements MigrationDbMgr {
 
   async getProjectsByWorkspaces(
     workspaceIds: WorkspaceId[],
-    includeDeleted = false
+    includeDeleted = false,
   ) {
     await this.checkWorkspacesPerms(
       workspaceIds,
       "viewer",
       "list projects in",
-      includeDeleted
+      includeDeleted,
     );
     return this._queryProjects(
       {
         workspaceId: In(workspaceIds),
       },
-      includeDeleted
+      includeDeleted,
     ).getMany();
   }
 
@@ -2796,7 +3047,7 @@ export class DbMgr implements MigrationDbMgr {
       teamIds,
       "viewer",
       "list projects in",
-      includeDeleted
+      includeDeleted,
     );
     return this._queryProjects({}, includeDeleted)
       .andWhere("w.teamId IN (:...teamIds)", { teamIds })
@@ -2817,7 +3068,7 @@ export class DbMgr implements MigrationDbMgr {
           perm.teamId = :teamId
           or
           perm.teamId = t.parentTeamId
-        `
+        `,
       )
       .andWhere(
         `
@@ -2830,7 +3081,7 @@ export class DbMgr implements MigrationDbMgr {
           perm.accessLevel <> 'blocked'
           and
           perm.deletedAt is null
-        `
+        `,
       )
       .setParameters({ teamId, userId });
     return qb.getMany();
@@ -2862,41 +3113,75 @@ export class DbMgr implements MigrationDbMgr {
       .getMany();
   }
 
-  async changeTeamOwner(teamId: TeamId, newOwner: string) {
-    const teamOwner = await this.getTeamOwners(teamId);
-    if (teamOwner.length === 0 || teamOwner[0].id === newOwner) {
-      return;
-    }
-
-    const teamPerms = await this.getPermissionsForTeams([teamId]);
-    const newOwnerPermission = teamPerms.find(
-      (perm) => perm.userId === newOwner
-    );
-    const currentOwnerPermission = teamPerms.find(
-      (perm) => perm.userId === teamOwner[0].id
-    );
-    if (!newOwnerPermission || !currentOwnerPermission) {
-      return;
-    }
-
+  async changeTeamOwner(
+    teamId: TeamId,
+    newOwner: UserId,
+    { allowUnpaidTransfer = false }: ChangeTeamOwnerOptions = {},
+  ): Promise<void> {
     await this.teams()
-      .createQueryBuilder()
-      .update()
-      .set({ createdById: newOwner })
-      .where(`id = '${teamId}'`)
-      .execute();
-    await this.permissions()
-      .createQueryBuilder()
-      .update()
-      .set({ accessLevel: "editor" })
-      .where(`id = '${currentOwnerPermission.id}'`)
-      .execute();
-    await this.permissions()
-      .createQueryBuilder()
-      .update()
-      .set({ accessLevel: "owner" })
-      .where(`id = '${newOwnerPermission.id}'`)
-      .execute();
+      .createQueryBuilder("team")
+      .setLock("pessimistic_write")
+      .where("team.id = :teamId", { teamId })
+      .getOne();
+    await this._checkResourcesPerms(
+      { type: "team", ids: [teamId] },
+      "owner",
+      "transfer ownership",
+    );
+    const team = await this.getTeamById(teamId);
+    const newOwnerUser = await this.getUserById(newOwner);
+    const teamPerms = await this.permissions().find({
+      where: { teamId, ...excludeDeleted() },
+    });
+    const ownerPerms = teamPerms.filter((perm) => perm.accessLevel === "owner");
+    const newOwnerPermission = teamPerms.find(
+      (perm) => perm.userId === newOwner,
+    );
+    const ownershipIsConsistent =
+      team.createdById === newOwner &&
+      newOwnerPermission?.accessLevel === "owner" &&
+      ownerPerms.every((perm) => perm.userId === newOwner);
+    if (ownershipIsConsistent) {
+      return;
+    }
+
+    const isOwnershipChange =
+      (!!team.createdById && team.createdById !== newOwner) ||
+      ownerPerms.some((perm) => perm.userId !== newOwner);
+    if (isOwnershipChange && !isPaidTeam(team)) {
+      checkPermissions(
+        allowUnpaidTransfer,
+        `Cannot transfer an unpaid ${ORGANIZATION_LOWER}.`,
+      );
+      this.checkSuperUser();
+    }
+
+    const permissionsToSave = ownerPerms.filter(
+      (perm) => perm.id !== newOwnerPermission?.id,
+    );
+    for (const ownerPermission of permissionsToSave) {
+      mergeSane(ownerPermission, this.stampUpdate(), {
+        accessLevel: "editor",
+      });
+    }
+    const nextOwnerPermission =
+      newOwnerPermission ??
+      this.permissions().create({
+        ...this.stampNew(),
+        teamId,
+        userId: newOwnerUser.id,
+        accessLevel: "owner",
+      });
+    mergeSane(nextOwnerPermission, this.stampUpdate(), {
+      accessLevel: "owner",
+    });
+    permissionsToSave.push(nextOwnerPermission);
+
+    if (team.createdById !== newOwner) {
+      mergeSane(team, this.stampUpdate(), { createdById: newOwner });
+      await this.entMgr.save(team);
+    }
+    await this.entMgr.save(permissionsToSave);
   }
 
   async upgradePersonalTeam(teamId: TeamId) {
@@ -2964,18 +3249,18 @@ export class DbMgr implements MigrationDbMgr {
         // https://linear.app/plasmic/issue/PLA-10654
         stripeSubscriptionId: Not(IsNull()),
       },
-      false
+      false,
     ).getMany();
   }
 
   async listProjectsCreatedBy(
     createdById: string,
-    onlyProjectsWithoutWorkspace = false
+    onlyProjectsWithoutWorkspace = false,
   ) {
     if (this.actor.type === "NormalUser") {
       checkPermissions(
         createdById === this.actor.userId,
-        `${this.describeActor()} tried to get projects created by another user.`
+        `${this.describeActor()} tried to get projects created by another user.`,
       );
     } else {
       this.checkSuperUser();
@@ -3006,17 +3291,17 @@ export class DbMgr implements MigrationDbMgr {
       "viewer",
       "get",
       undefined,
-      includeDeleted
+      includeDeleted,
     );
     return ensureFound<Project>(
       await this.tryGetProjectById(id, includeDeleted),
-      `Project with ID ${id}`
+      `Project with ID ${id}`,
     );
   }
 
   async getProjectAndBranchesByIdOrNames(
     projectId: ProjectId,
-    branchIdOrNamesVersioned: (BranchId | string)[]
+    branchIdOrNamesVersioned: (BranchId | string)[],
   ) {
     const project = await this.getProjectById(projectId);
     const allBranches = await this.listBranchesForProject(projectId, true);
@@ -3025,7 +3310,7 @@ export class DbMgr implements MigrationDbMgr {
         const [branchIdOrName, version] = branchIdOrNameVersioned.split("@");
         const maybeBranch = allBranches.find(
           (branch) =>
-            branch.id === branchIdOrName || branch.name === branchIdOrName
+            branch.id === branchIdOrName || branch.name === branchIdOrName,
         );
         if (maybeBranch) {
           return {
@@ -3042,7 +3327,7 @@ export class DbMgr implements MigrationDbMgr {
         }
 
         throw new NotFoundError("Couldn't find branch " + branchIdOrName);
-      }
+      },
     );
 
     const versionedBranchesIncludingMain = [
@@ -3061,12 +3346,12 @@ export class DbMgr implements MigrationDbMgr {
     const commitGraph = await this.getCommitGraphForProject(
       projectId,
       versionedBranchesIncludingMain.map(
-        ({ id: branchId }) => branchId ?? MainBranchId
-      )
+        ({ id: branchId }) => branchId ?? MainBranchId,
+      ),
     );
 
     const branches = await Promise.all(
-      branchIds.map((branchId) => this.getBranchById(branchId, true))
+      branchIds.map((branchId) => this.getBranchById(branchId, true)),
     );
 
     // Branches that have never been published have no head in
@@ -3075,13 +3360,15 @@ export class DbMgr implements MigrationDbMgr {
       withoutNils(
         versionedBranchesIncludingMain.map(
           ({ id: branchId, version }) =>
-            version ?? commitGraph.branches[branchId ?? MainBranchId]
-        )
-      )
+            version ?? commitGraph.branches[branchId ?? MainBranchId],
+        ),
+      ),
     );
 
     const pkgVersions = await Promise.all(
-      pkgVersionsIds.map((pkgVersionId) => this.getPkgVersionById(pkgVersionId))
+      pkgVersionsIds.map((pkgVersionId) =>
+        this.getPkgVersionById(pkgVersionId),
+      ),
     );
 
     const revisions = await Promise.all(
@@ -3089,20 +3376,20 @@ export class DbMgr implements MigrationDbMgr {
         if (!version) {
           return this.getLatestProjectRev(
             projectId,
-            branchId ? { branchId } : undefined
+            branchId ? { branchId } : undefined,
           );
         } else {
           const pkgVersion = ensure(
             pkgVersions.find((_pkgVersion) => _pkgVersion.id === version),
-            `Couldn't find pkgVersion with ID ${version}`
+            `Couldn't find pkgVersion with ID ${version}`,
           );
           return this.getProjectRevision(
             projectId,
             pkgVersion.revisionId,
-            branchId
+            branchId,
           );
         }
-      })
+      }),
     );
 
     const additionalPkgVersionsIds: string[] = [];
@@ -3115,7 +3402,7 @@ export class DbMgr implements MigrationDbMgr {
           left.id,
           right.id,
           left.version,
-          right.version
+          right.version,
         );
         // Branches that have never been published have no commits in the
         // graph, so two branches may have no common ancestor.
@@ -3126,13 +3413,13 @@ export class DbMgr implements MigrationDbMgr {
         ) {
           additionalPkgVersionsIds.push(ancestorPkgId);
         }
-      })
+      }),
     );
 
     const additionalPkgVersions = await Promise.all(
       additionalPkgVersionsIds.map((pkgVersionId) =>
-        this.getPkgVersionById(pkgVersionId)
-      )
+        this.getPkgVersionById(pkgVersionId),
+      ),
     );
 
     return {
@@ -3147,7 +3434,7 @@ export class DbMgr implements MigrationDbMgr {
           ...fromPairs(
             versionedBranchesIncludingMain
               .filter(({ version }) => !!version)
-              .map(({ id, version }) => [id ?? MainBranchId, version])
+              .map(({ id, version }) => [id ?? MainBranchId, version]),
           ),
         },
       },
@@ -3159,13 +3446,13 @@ export class DbMgr implements MigrationDbMgr {
       { type: "project", ids },
       "viewer",
       "get",
-      includeDeleted
+      includeDeleted,
     );
     return this._queryProjects(
       {
         id: In(ids),
       },
-      includeDeleted
+      includeDeleted,
     ).getMany();
   }
 
@@ -3175,13 +3462,13 @@ export class DbMgr implements MigrationDbMgr {
         type: "project",
         ids: projectIds,
       },
-      directOnly
+      directOnly,
     );
   }
 
   private _queryProjects(
     where: FindConditions<Project>,
-    includeDeleted = false
+    includeDeleted = false,
   ) {
     const qb = this.projects().createQueryBuilder("p");
     qb.leftJoinAndSelect("p.workspace", "w")
@@ -3192,7 +3479,7 @@ export class DbMgr implements MigrationDbMgr {
       .where(where);
     if (!includeDeleted) {
       qb.andWhere(
-        "p.deletedAt is null and w.deletedAt is null and t.deletedAt is null and pt.deletedAt is null"
+        "p.deletedAt is null and w.deletedAt is null and t.deletedAt is null and pt.deletedAt is null",
       );
     }
     return qb;
@@ -3208,7 +3495,7 @@ export class DbMgr implements MigrationDbMgr {
       "viewer",
       "get",
       undefined,
-      includeDeleted
+      includeDeleted,
     );
     return this._queryProjects({ id }, includeDeleted).getOne();
   }
@@ -3235,7 +3522,7 @@ export class DbMgr implements MigrationDbMgr {
   async getProjectRevision(
     projectId: string,
     revisionNumOrId: number | string,
-    branchId?: BranchId
+    branchId?: BranchId,
   ) {
     await this.checkProjectPerms(projectId, "viewer", "get revision for");
 
@@ -3254,13 +3541,13 @@ export class DbMgr implements MigrationDbMgr {
               projectId,
               branchId,
               revisionNumOrId,
-            }
+            },
           )
-          .printSql()
+          .printSql(),
       ),
       `Project revision with id ${projectId}, branch ID ${branchId}, and ${
         isRevisionId ? "revision id" : "revision"
-      } ${revisionNumOrId}`
+      } ${revisionNumOrId}`,
     );
   }
 
@@ -3272,12 +3559,12 @@ export class DbMgr implements MigrationDbMgr {
       createdAtGt?: Date;
       revisionNumGt?: number;
       limit?: number;
-    } = {}
+    } = {},
   ) {
     await this.checkProjectPerms(
       projectId,
       "viewer",
-      "list revisions for project"
+      "list revisions for project",
     );
     const { branchId, createdAtGt, includeData, revisionNumGt, limit } = opts;
     const columns = this.entMgr.connection
@@ -3297,7 +3584,7 @@ export class DbMgr implements MigrationDbMgr {
         {
           projectId,
           branchId,
-        }
+        },
       );
     if (createdAtGt) {
       qb.andWhere(`"rev"."createdAt" > :createdAtGt`, {
@@ -3324,7 +3611,7 @@ export class DbMgr implements MigrationDbMgr {
   }
 
   async listLatestProjectAndBranchRevisions(
-    opts: { includeDeletedProjects?: boolean } = {}
+    opts: { includeDeletedProjects?: boolean } = {},
   ): Promise<
     {
       projectId: string;
@@ -3371,7 +3658,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkProjectBranchPerms(
       { projectId, branchId },
       "content",
-      "save"
+      "save",
     );
     const latest = await this.getLatestProjectRev(projectId, {
       branchId,
@@ -3381,7 +3668,7 @@ export class DbMgr implements MigrationDbMgr {
       throw new ProjectRevisionError(
         `Tried saving revision ${revisionNum}, but expecting ${
           latest.revision + 1
-        } since latest saved revision is ${latest.revision}`
+        } since latest saved revision is ${latest.revision}`,
       );
     }
     const revision = this.projectRevs().create({
@@ -3401,7 +3688,7 @@ export class DbMgr implements MigrationDbMgr {
         err.message.includes("duplicate key value violates unique constraint")
       ) {
         throw new ProjectRevisionError(
-          `Concurrent saves to revision ${revisionNum}`
+          `Concurrent saves to revision ${revisionNum}`,
         );
       }
       throw err;
@@ -3423,7 +3710,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkProjectPerms(projectId, "editor", "delete project");
     const rev = await this.getProjectRevision(projectId, revisionNum);
     return await this.projectRevs().delete(
-      ensure(rev, "you can't delete a project rev that doesn't exist").id
+      ensure(rev, "you can't delete a project rev that doesn't exist").id,
     );
   }
 
@@ -3433,18 +3720,18 @@ export class DbMgr implements MigrationDbMgr {
   async revertProjectRev(
     projectId: string,
     revisionNumOrId: number | string,
-    branchId?: BranchId
+    branchId?: BranchId,
   ) {
     await this.checkProjectPerms(
       projectId,
       "editor",
-      "revert project revision"
+      "revert project revision",
     );
 
     const rev = await this.getProjectRevision(
       projectId,
       revisionNumOrId,
-      branchId
+      branchId,
     );
 
     const latest = await this.getLatestProjectRev(projectId, {
@@ -3503,7 +3790,7 @@ export class DbMgr implements MigrationDbMgr {
     projectId: ProjectId,
     branchId: BranchId | undefined,
     pkgId: string,
-    limit: number
+    limit: number,
   ) {
     const graph = await this.getCommitGraphForProject(projectId as ProjectId, [
       branchId ?? MainBranchId,
@@ -3523,7 +3810,7 @@ export class DbMgr implements MigrationDbMgr {
             OR "branchId" = :branchId::text
             ${branchHead ? `OR "id" = :branchHead::text` : ""}
           )`,
-          { pkgId: pkgId, branchId, ...(branchHead ? { branchHead } : {}) }
+          { pkgId: pkgId, branchId, ...(branchHead ? { branchHead } : {}) },
         )
         .getRawMany();
 
@@ -3545,12 +3832,12 @@ export class DbMgr implements MigrationDbMgr {
   async computeNextProjectVersion(
     projectId: ProjectId,
     revisionNum?: number,
-    branchId?: BranchId
+    branchId?: BranchId,
   ) {
     await this.checkProjectBranchPerms(
       { projectId, branchId },
       "content",
-      "publish"
+      "publish",
     );
     const devflags = await getDevFlagsMergedWithOverrides(this);
     if (!devflags.serverPublishProjectIds.includes(projectId)) {
@@ -3566,23 +3853,23 @@ export class DbMgr implements MigrationDbMgr {
         projectId,
         branchId,
         pkg.id,
-        1
+        1,
       );
       if (prevPkgVersionIds.length === 1) {
         const bundler = new Bundler();
         const publishedSite = await unbundleProjectFromData(this, bundler, rev);
         const prevPkgVersion = await this.getPkgVersionById(
-          prevPkgVersionIds[0]
+          prevPkgVersionIds[0],
         );
         const prevUnbundled = await unbundlePkgVersion(
           this,
           bundler,
-          prevPkgVersion
+          prevPkgVersion,
         );
         const changeLog = compareSites(prevUnbundled.site, publishedSite);
         const releaseType = calculateSemVer(changeLog);
         const version = ensureString(
-          semver.inc(prevPkgVersion.version, releaseType)
+          semver.inc(prevPkgVersion.version, releaseType),
         );
         return { changeLog, releaseType, version };
       }
@@ -3603,12 +3890,12 @@ export class DbMgr implements MigrationDbMgr {
     hostLessPackage?: boolean,
     branchId?: BranchId,
     secondMergeParentPkgVersionId?: PkgVersionId,
-    conflictPickMap?: DirectConflictPickMap
+    conflictPickMap?: DirectConflictPickMap,
   ) {
     await this.checkProjectBranchPerms(
       { projectId, branchId },
       "content",
-      "save"
+      "save",
     );
     const project = await this.getProjectById(projectId);
     const rev = await (revisionNum
@@ -3629,7 +3916,7 @@ export class DbMgr implements MigrationDbMgr {
 
     if (
       publishedSite.splits.filter(
-        (split) => split.status === SplitStatus.Running
+        (split) => split.status === SplitStatus.Running,
       ).length > 0
     ) {
       usedSiteFeatures.push("split");
@@ -3640,20 +3927,20 @@ export class DbMgr implements MigrationDbMgr {
         projectId as ProjectId,
         branchId,
         pkg.id,
-        1
+        1,
       );
 
       if (prevPkgVersionIds.length === 1) {
         const prevPkgVersion = await this.getPkgVersionById(
-          prevPkgVersionIds[0]
+          prevPkgVersionIds[0],
         );
         const prevUnbundled = await unbundlePkgVersion(
           this,
           bundler,
-          prevPkgVersion
+          prevPkgVersion,
         );
         const releaseType = calculateSemVer(
-          compareSites(prevUnbundled.site, publishedSite)
+          compareSites(prevUnbundled.site, publishedSite),
         );
         version = ensureString(semver.inc(prevPkgVersion.version, releaseType));
       } else {
@@ -3676,7 +3963,7 @@ export class DbMgr implements MigrationDbMgr {
     const depBundle = bundler.bundle(
       dep,
       projectId,
-      await getLastBundleVersion()
+      await getLastBundleVersion(),
     );
 
     // Create the PkgVersion
@@ -3704,7 +3991,7 @@ export class DbMgr implements MigrationDbMgr {
         ]);
         g.branches[branchSpec] = pkgVersion.id;
       },
-      [branchSpec]
+      [branchSpec],
     );
 
     await this.entMgr.save(pkgVersion);
@@ -3712,7 +3999,7 @@ export class DbMgr implements MigrationDbMgr {
     const devflags = mergeSane(
       {},
       DEVFLAGS,
-      JSON.parse((await this.tryGetDevFlagOverrides())?.data ?? "{}")
+      JSON.parse((await this.tryGetDevFlagOverrides())?.data ?? "{}"),
     ) as typeof DEVFLAGS;
 
     if (
@@ -3731,7 +4018,7 @@ export class DbMgr implements MigrationDbMgr {
   private async checkProjectBranchPerms(
     { projectId, branchId }: ProjectAndBranchId,
     requireLevel: AccessLevel,
-    action: string
+    action: string,
   ) {
     await this.checkProjectPerms(projectId, requireLevel, action);
     if (branchId) {
@@ -3747,12 +4034,12 @@ export class DbMgr implements MigrationDbMgr {
     }: {
       branchId?: BranchId;
       revisionNumOnly?: boolean;
-    } = {}
+    } = {},
   ) {
     await this.checkProjectBranchPerms(
       { projectId, branchId },
       "viewer",
-      "get latest revision for"
+      "get latest revision for",
     );
     const qb = this.projectRevs()
       .createQueryBuilder("rev")
@@ -3765,25 +4052,25 @@ export class DbMgr implements MigrationDbMgr {
     qb.select(revisionNumOnly ? "rev.revision" : "rev");
     return ensureFound<ProjectRevision>(
       await getOneOrFailIfTooMany(qb.printSql()),
-      `Project with ID ${projectId} branch ${branchId}`
+      `Project with ID ${projectId} branch ${branchId}`,
     );
   }
 
   async getLatestProjectRevNumber(
     projectId: string,
-    { branchId }: { branchId?: BranchId } = {}
+    { branchId }: { branchId?: BranchId } = {},
   ) {
     await this.checkProjectPerms(
       projectId,
       "viewer",
-      "get latest revision for"
+      "get latest revision for",
     );
     const res = await this.projectRevs()
       .createQueryBuilder("rev")
       .select("max(rev.revision) as maxrev")
       .where("rev.projectId = :projectId")
       .andWhere(
-        "(:branchId::text is null and rev.branchId is null or rev.branchId = :branchId::text)"
+        "(:branchId::text is null and rev.branchId is null or rev.branchId = :branchId::text)",
       )
       .andWhere("rev.deletedAt is null")
       .setParameter("projectId", projectId)
@@ -3794,7 +4081,7 @@ export class DbMgr implements MigrationDbMgr {
   }
 
   async getPreviousProjectRev(
-    current: ProjectRevision | PkgVersion
+    current: ProjectRevision | PkgVersion,
   ): Promise<ProjectRevision | undefined> {
     this.checkSuperUser();
     let projectId: string | undefined = undefined;
@@ -3816,7 +4103,7 @@ export class DbMgr implements MigrationDbMgr {
         .setParameter("projectId", projectId)
         .setParameter("createdAt", current.createdAt)
         .orderBy("rev.createdAt", "DESC")
-        .limit(1)
+        .limit(1),
     );
   }
 
@@ -3835,14 +4122,14 @@ export class DbMgr implements MigrationDbMgr {
         })
         .andWhere("projectSync.projectId = :projectId")
         .setParameter("projectId", projectId)
-        .printSql()
+        .printSql(),
     );
   }
 
   async getProjectSyncMetadata(projectId: string, revisionNum: number) {
     return ensureFound<ProjectSyncMetadata>(
       await this.tryGetProjectSyncMetadata(projectId, revisionNum),
-      `Project revision with projectId ${projectId} and revision ${revisionNum}`
+      `Project revision with projectId ${projectId} and revision ${revisionNum}`,
     );
   }
 
@@ -3854,7 +4141,7 @@ export class DbMgr implements MigrationDbMgr {
         .where(`"projectId" = :projectId AND revision = :revision`)
         .setParameter("projectId", projectId)
         .setParameter("revision", revisionNum)
-        .printSql()
+        .printSql(),
     );
   }
 
@@ -3862,7 +4149,7 @@ export class DbMgr implements MigrationDbMgr {
     projectId: string,
     revision: number,
     projectRevId: string,
-    data: string
+    data: string,
   ) {
     this.allowAnyone();
     const projectSyncMetadata = this.projectSyncMetadata().create({
@@ -3884,7 +4171,7 @@ export class DbMgr implements MigrationDbMgr {
     projectId: string,
     revision: number,
     projectRevId: string,
-    data: string
+    data: string,
   ) {
     this.allowAnyone();
     return await this.projectSyncMetadata()
@@ -3912,7 +4199,7 @@ export class DbMgr implements MigrationDbMgr {
       revisionNum?: number;
       branchName?: string;
       ownerEmail?: string;
-    }
+    },
   ) {
     await this.checkProjectPerms(projectId, "viewer", "clone");
     if (opts.ownerId) {
@@ -3930,7 +4217,7 @@ export class DbMgr implements MigrationDbMgr {
       : await this.getProjectRevision(
           projectId,
           opts.revisionNum,
-          fromProjectBranch?.id
+          fromProjectBranch?.id,
         );
 
     const nameSuffixDetails = withoutNils([
@@ -3949,7 +4236,7 @@ export class DbMgr implements MigrationDbMgr {
         ...(fromProjectBranch
           ? { hostUrl: fromProjectBranch.hostUrl ?? null }
           : {}),
-      }
+      },
     );
   }
 
@@ -3963,7 +4250,7 @@ export class DbMgr implements MigrationDbMgr {
       hostUrl?: string;
       ownerEmail?: string;
       version?: string;
-    }
+    },
   ) {
     await this.checkProjectPerms(projectId, "viewer", "clone");
     if (opts.ownerId) {
@@ -3977,11 +4264,11 @@ export class DbMgr implements MigrationDbMgr {
     }
     const fromPkgVersion = await this.tryGetPkgVersion(
       fromPkg.id,
-      opts.version
+      opts.version,
     );
     if (!fromPkgVersion) {
       throw new NotFoundError(
-        `Template project id ${projectId} does not have a published version to clone`
+        `Template project id ${projectId} does not have a published version to clone`,
       );
     }
 
@@ -3992,7 +4279,7 @@ export class DbMgr implements MigrationDbMgr {
       {
         ...opts,
         name: opts.name ?? fromProject.name,
-      }
+      },
     );
   }
 
@@ -4006,7 +4293,7 @@ export class DbMgr implements MigrationDbMgr {
       workspaceId?: WorkspaceId;
       hostUrl?: string | null;
       ownerEmail?: string;
-    }
+    },
   ) {
     const { name, ownerId, workspaceId, hostUrl } = opts;
 
@@ -4040,7 +4327,7 @@ export class DbMgr implements MigrationDbMgr {
         // So we look into the workspace where the project is being cloned into
         const teamProjects = await this.getProjectsByTeams([workspace.teamId]);
         const isInTheSameTeam = teamProjects.some(
-          (p) => p.id === fromProject.id
+          (p) => p.id === fromProject.id,
         );
         if (isInTheSameTeam) {
           // If the project is being cloned into the same team, we reuse the directory
@@ -4062,13 +4349,13 @@ export class DbMgr implements MigrationDbMgr {
         } else {
           const endUserDirectory = await this.createEndUserDirectory(
             workspace.teamId,
-            name // re using project name
+            name, // re using project name
           );
 
           const oldToNewDirectoryGroupIds =
             await this.createDirectoryGroupsFromDirectory(
               fromAppAuthConfig.directoryId,
-              endUserDirectory.id
+              endUserDirectory.id,
             );
 
           // We won't copy the people that belong to the directory groups
@@ -4108,7 +4395,7 @@ export class DbMgr implements MigrationDbMgr {
         fromProject.id,
         project.id,
         oldToNewSourceIds,
-        oldToNewRoleIds
+        oldToNewRoleIds,
       );
     }
 
@@ -4117,7 +4404,7 @@ export class DbMgr implements MigrationDbMgr {
         this,
         clonedSite,
         oldToNewSourceIds,
-        oldToNewRoleIds
+        oldToNewRoleIds,
       );
     }
 
@@ -4132,9 +4419,9 @@ export class DbMgr implements MigrationDbMgr {
         // This may fail the clone if the user doesn't have access to the sourceIds, which is fine
         // the user will have a cloned version but won't be able to issue new opIds, the ones already
         // in the model will still work, but it will check for permissions in the data source too
-        logger().error(
+        logger.error(
           `Failed to allow project ${project.id} to data sources ${sourceId}`,
-          err
+          err,
         );
       }
     }
@@ -4142,7 +4429,7 @@ export class DbMgr implements MigrationDbMgr {
     const newBundle = bundler.bundle(
       clonedSite,
       "",
-      await getLastBundleVersion()
+      await getLastBundleVersion(),
     );
 
     const fromBundleId =
@@ -4151,21 +4438,21 @@ export class DbMgr implements MigrationDbMgr {
     if (fromBundleId && newBundle.deps.includes(fromBundleId)) {
       fs.writeFileSync(
         `/tmp/corrupt-${fromBundleId}.json`,
-        JSON.stringify(newBundle, undefined, 2)
+        JSON.stringify(newBundle, undefined, 2),
       );
       fs.writeFileSync(
         `/tmp/corrupt-from-${fromBundleId}.json`,
         JSON.stringify(
           getBundle(fromData, await getLastBundleVersion()),
           undefined,
-          2
-        )
+          2,
+        ),
       );
       if (global && !(global as any).badClone) {
         (global as any).badClone = { fromSite, clonedSite, bundler };
       }
       throw new Error(
-        `Unexpected dependency to fromProject during cloning ${fromProject.id}`
+        `Unexpected dependency to fromProject during cloning ${fromProject.id}`,
       );
     }
 
@@ -4201,7 +4488,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkProjectBranchPerms(
       { projectId, branchId },
       "content",
-      "save"
+      "save",
     );
     const partialRev = this.partialRevCache().create({
       ...this.stampNew(),
@@ -4220,7 +4507,7 @@ export class DbMgr implements MigrationDbMgr {
   async getPartialRevsFromRevisionNumber(
     projectId: string,
     fromRev: number,
-    branchId?: BranchId
+    branchId?: BranchId,
   ) {
     await this.checkProjectPerms(projectId, "viewer", "get");
     const tenMinAgo = new Date();
@@ -4239,12 +4526,12 @@ export class DbMgr implements MigrationDbMgr {
 
   async clearPartialRevisionsCacheForProject(
     projectId: string,
-    branchId?: BranchId
+    branchId?: BranchId,
   ) {
     await this.checkProjectPerms(projectId, "content", "edit");
     return this.partialRevCache().update(
       { projectId, branchId: branchId ?? null },
-      this.stampDelete()
+      this.stampDelete(),
     );
   }
 
@@ -4321,7 +4608,7 @@ export class DbMgr implements MigrationDbMgr {
         id,
         ...excludeDeleted(),
       }),
-      `Pkg Version ${id}`
+      `Pkg Version ${id}`,
     );
     await this.checkPkgPerms(pkgVersion.pkgId, "viewer", "get");
     return pkgVersion;
@@ -4352,13 +4639,13 @@ export class DbMgr implements MigrationDbMgr {
     pkgId: string,
     versionRange?: string,
     tag?: string,
-    opts?: { prefilledOnly?: boolean; branchId?: BranchId }
+    opts?: { prefilledOnly?: boolean; branchId?: BranchId },
   ) {
     return ensureFound<PkgVersion>(
       await this.tryGetPkgVersion(pkgId, versionRange, tag, opts),
       `PkgVersion for pkgId=${pkgId}, branchId=${opts?.branchId}, version=${
         versionRange ? versionRange : "latest"
-      }${tag ? ", tag=" + tag : ""}`
+      }${tag ? ", tag=" + tag : ""}`,
     );
   }
 
@@ -4366,7 +4653,11 @@ export class DbMgr implements MigrationDbMgr {
     pkgId: string,
     versionRange?: string,
     tag?: string,
+<<<<<<< HEAD
     opts: { prefilledOnly?: boolean; branchId?: BranchId } = {}
+=======
+    opts: { prefilledOnly?: boolean; branchId?: BranchId } = {},
+>>>>>>> upstream/master
   ) {
     return this.tryGetPkgVersionInternal(pkgId, versionRange, tag, opts, false);
   }
@@ -4375,19 +4666,28 @@ export class DbMgr implements MigrationDbMgr {
   async getLatestPkgVersionNumber(
     pkgId: string,
     tag: string | undefined,
+<<<<<<< HEAD
     opts: { prefilledOnly?: boolean } = {}
+=======
+    opts: { prefilledOnly?: boolean } = {},
+>>>>>>> upstream/master
   ): Promise<string> {
     const pkgVersion = await this.tryGetPkgVersionInternal(
       pkgId,
       "latest",
       tag,
       opts,
+<<<<<<< HEAD
       true
+=======
+      true,
+>>>>>>> upstream/master
     );
     return ensureFound(
       pkgVersion,
       `PkgVersion for pkgId=${pkgId}, version=latest${
         tag ? ", tag=" + tag : ""
+<<<<<<< HEAD
       }`
     ).version;
   }
@@ -4412,6 +4712,12 @@ export class DbMgr implements MigrationDbMgr {
     );
   }
 
+=======
+      }`,
+    ).version;
+  }
+
+>>>>>>> upstream/master
   private async tryGetPkgVersionInternal(
     pkgId: string,
     versionRange: string | undefined,
@@ -4420,7 +4726,11 @@ export class DbMgr implements MigrationDbMgr {
       prefilledOnly = false,
       branchId,
     }: { prefilledOnly?: boolean; branchId?: BranchId },
+<<<<<<< HEAD
     versionOnly: boolean
+=======
+    versionOnly: boolean,
+>>>>>>> upstream/master
   ) {
     await this.checkPkgPerms(pkgId, "viewer", "get");
     if (branchId) {
@@ -4444,10 +4754,10 @@ export class DbMgr implements MigrationDbMgr {
     if (!semver.validRange(range)) {
       throw new BadRequestError(`version range ${range} is not valid`);
     }
-    logger().info(
+    logger.info(
       `Looking for pkgVersion for pkgId=${pkgId}, branchId=${branchId}, version=${range}${
         tag ? ", tag=" + tag : ""
-      }`
+      }`,
     );
 
     if (branchId && range === "latest") {
@@ -4461,10 +4771,17 @@ export class DbMgr implements MigrationDbMgr {
         }
         const pkgVersion = ensureFound(
           await this.pkgVersions().findOne({
+<<<<<<< HEAD
             select: ["id", "pkgId", "version", "revisionId"],
             where: { id: chain[0], ...excludeDeleted() },
           }),
           `Pkg Version ${chain[0]}`
+=======
+            select: ["id", "pkgId", "version"],
+            where: { id: chain[0], ...excludeDeleted() },
+          }),
+          `Pkg Version ${chain[0]}`,
+>>>>>>> upstream/master
         );
         await this.checkPkgPerms(pkgVersion.pkgId, "viewer", "get");
         return pkgVersion;
@@ -4480,34 +4797,34 @@ export class DbMgr implements MigrationDbMgr {
       .where(`"pkgId" = :pkgId`, { pkgId })
       .andWhere(
         `(:branchId::text is null AND "branchId" is null OR "branchId" = :branchId::text)`,
-        { branchId }
+        { branchId },
       );
     if (tag) {
       availablePkgVersionsQuery.andWhere(`:tag = ANY ("tags")`, { tag });
     }
     if (prefilledOnly) {
       availablePkgVersionsQuery.andWhere(
-        `COALESCE("isPrefilled", TRUE) IS TRUE`
+        `COALESCE("isPrefilled", TRUE) IS TRUE`,
       );
     }
     const availablePkgVersions = await availablePkgVersionsQuery.getRawMany();
     const availableVersions = withoutNils(
-      availablePkgVersions.map((v) => v.version)
+      availablePkgVersions.map((v) => v.version),
     );
     const coercedAvailableVersions = withoutNils(
-      availableVersions.map((v) => semver.coerce(v))
+      availableVersions.map((v) => semver.coerce(v)),
     );
     // This will filter out any versions that cannot be coerced into semver
     const strictVersion = semver.maxSatisfying(coercedAvailableVersions, range);
     // Just find the first fuzzy version that matches
     const version = availableVersions.find(
-      (v) => semver.coerce(v) === strictVersion
+      (v) => semver.coerce(v) === strictVersion,
     );
     if (!strictVersion || !version) {
-      logger().warn(
+      logger.warn(
         `No matching versions for pkgId=${pkgId} branchId=${branchId} version=${range}${
           tag ? ", tag=" + tag : ""
-        }`
+        }`,
       );
       return;
     }
@@ -4517,16 +4834,24 @@ export class DbMgr implements MigrationDbMgr {
       .where("pkgVersion.pkgId = :pkgId", { pkgId })
       .andWhere(
         "(:branchId::text IS NULL AND pkgVersion.branchId IS NULL OR pkgVersion.branchId = :branchId::text)",
+<<<<<<< HEAD
         { branchId }
+=======
+        { branchId },
+>>>>>>> upstream/master
       )
       .andWhere("pkgVersion.version = :version", { version })
       .andWhere("pkgVersion.deletedAt IS NULL");
     if (versionOnly) {
+<<<<<<< HEAD
       pkgVersionQuery.select([
         "pkgVersion.id",
         "pkgVersion.version",
         "pkgVersion.revisionId",
       ]);
+=======
+      pkgVersionQuery.select(["pkgVersion.id", "pkgVersion.version"]);
+>>>>>>> upstream/master
     } else {
       pkgVersionQuery.leftJoinAndSelect("pkgVersion.pkg", "pkg");
     }
@@ -4550,7 +4875,7 @@ export class DbMgr implements MigrationDbMgr {
     bundler: Bundler,
     projectId: string,
     versionRangeOrTag?: string,
-    withModel?: boolean
+    withModel?: boolean,
   ): Promise<{
     version: string;
     pkgVersion: PkgVersion | undefined;
@@ -4565,7 +4890,7 @@ export class DbMgr implements MigrationDbMgr {
     // If versionRangeOfTag is a tag, maybe it's a branch name
     const branches = await this.listBranchesForProject(projectId as ProjectId);
     const maybeBranch = branches.find(
-      (branch) => branch.name === versionRangeOrTag
+      (branch) => branch.name === versionRangeOrTag,
     );
 
     const versionOrTag = versionRangeOrTag ?? "latest";
@@ -4597,14 +4922,14 @@ export class DbMgr implements MigrationDbMgr {
         semver.validRange(versionOrTag)
           ? await this.getPkgVersion(pkg.id, versionOrTag, undefined)
           : await this.getPkgVersion(pkg.id, undefined, versionOrTag),
-        "The pkg must have an pkg version"
+        "The pkg must have an pkg version",
       );
       // Load the projectRev to look up the revision number and id, but note
       // that projectRev.data may be a very outdated bundle, so careful not
       // to unbundle it!
       const projectRev = await this.tryGetProjectRevById(
         pkg.projectId,
-        pkgVersion.revisionId
+        pkgVersion.revisionId,
       );
 
       const bundle = await getMigratedBundle(pkgVersion);
@@ -4649,7 +4974,7 @@ export class DbMgr implements MigrationDbMgr {
     const pkg = await this.getPlumePkg();
     return ensure(
       await this.getPkgVersion(pkg.id),
-      "The plume pkg version must exist"
+      "The plume pkg version must exist",
     );
   }
 
@@ -4657,7 +4982,7 @@ export class DbMgr implements MigrationDbMgr {
     const pkg = await this.getPlumePkg();
     return ensure(
       await this.getPkgVersion(pkg.id, REAL_PLUME_VERSION),
-      "The plume pkg version must exist"
+      "The plume pkg version must exist",
     );
   }
 
@@ -4669,7 +4994,7 @@ export class DbMgr implements MigrationDbMgr {
     description: string,
     revisionNum: number,
     branchId?: BranchId,
-    id?: string
+    id?: string,
   ) {
     await this.checkPkgPerms(pkgId, "content", "publish");
 
@@ -4705,7 +5030,7 @@ export class DbMgr implements MigrationDbMgr {
     pkgId: string,
     version: string,
     branchId: BranchId | null,
-    toMerge: Partial<PkgVersion>
+    toMerge: Partial<PkgVersion>,
   ): Promise<PkgVersion> {
     await this.checkPkgPerms(pkgId, "content", "publish");
 
@@ -4724,7 +5049,7 @@ export class DbMgr implements MigrationDbMgr {
       includeData?: boolean;
       branchId?: BranchId;
       unfiltered?: boolean;
-    } = {}
+    } = {},
   ) {
     await this.checkPkgPerms(pkgId, "viewer", "get");
     const { branchId, unfiltered } = opts;
@@ -4735,7 +5060,7 @@ export class DbMgr implements MigrationDbMgr {
 
   private async listPkgVersionsRaw(
     pkgId: string,
-    opts: { includeData?: boolean; branchId?: BranchId } = {}
+    opts: { includeData?: boolean; branchId?: BranchId } = {},
   ) {
     await this.checkPkgPerms(pkgId, "viewer", "get");
     const columns = this.entMgr.connection
@@ -4794,7 +5119,7 @@ export class DbMgr implements MigrationDbMgr {
       await this.projectWebhooks().findOne({
         where: { id },
       }),
-      `Webhook with ID ${id}`
+      `Webhook with ID ${id}`,
     );
   }
 
@@ -4806,7 +5131,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkProjectPerms(
       webhook.projectId,
       "designer",
-      "update webhook"
+      "update webhook",
     );
     fields = _.pick(fields, updatableWebhookFields);
 
@@ -4827,7 +5152,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkProjectPerms(
       webhook.projectId,
       "designer",
-      "delete webhook"
+      "delete webhook",
     );
     return await this.projectWebhooks().delete(webhook.id);
   }
@@ -4890,12 +5215,12 @@ export class DbMgr implements MigrationDbMgr {
         where: { id, ...maybeIncludeDeleted(includeDeleted) },
         relations: ["project"],
       }),
-      `Project repository with ID ${id}`
+      `Project repository with ID ${id}`,
     );
     await this.checkProjectPerms(
       repository.projectId,
       "content",
-      "get project repository"
+      "get project repository",
     );
     return repository;
   }
@@ -4904,7 +5229,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkProjectPerms(
       projectId,
       "content",
-      "get project repositories"
+      "get project repositories",
     );
     const repositories = await this.projectRepositories().find({
       where: { projectId, ...excludeDeleted() },
@@ -4932,7 +5257,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkProjectPerms(
       fields.projectId,
       "editor",
-      "add project repository"
+      "add project repository",
     );
 
     const repository = this.entMgr.create(ProjectRepository, {
@@ -4941,7 +5266,7 @@ export class DbMgr implements MigrationDbMgr {
       user: {
         id: ensure(
           this.tryGetNormalActorId(),
-          "All normal users should have an actor id"
+          "All normal users should have an actor id",
         ),
       },
       ..._.pick(
@@ -4956,7 +5281,7 @@ export class DbMgr implements MigrationDbMgr {
         "language",
         "cachedCname",
         "publish",
-        "createdByPlasmic"
+        "createdByPlasmic",
       ),
     });
     await this.entMgr.save(repository);
@@ -4981,7 +5306,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkProjectPerms(
       repository.projectId,
       "editor",
-      "delete project repository"
+      "delete project repository",
     );
     Object.assign(repository, this.stampDelete());
     await this.entMgr.save(repository);
@@ -4991,7 +5316,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkProjectPerms(
       repository.projectId,
       "editor",
-      "delete project repository"
+      "delete project repository",
     );
     return await this.projectRepositories().delete(repository.id);
   }
@@ -5002,7 +5327,7 @@ export class DbMgr implements MigrationDbMgr {
 
   async saveBundleBackups(
     migrationName: string,
-    projectIdsAndPkgVersionIds?: Set<string>
+    projectIdsAndPkgVersionIds?: Set<string>,
   ) {
     this.checkSuperUser();
     assert(!migrationName.includes("'"), "Migration name can't have '");
@@ -5028,12 +5353,12 @@ export class DbMgr implements MigrationDbMgr {
           return subQuery;
         },
         "num",
-        "rev.projectId = num.projectId AND rev.revision = num.revision AND rev.branchId = num.branchId"
+        "rev.projectId = num.projectId AND rev.revision = num.revision AND rev.branchId = num.branchId",
       )
       .getMany();
     if (projectIdsAndPkgVersionIds && projectIdsAndPkgVersionIds.size > 0) {
       revs = revs.filter((rev) =>
-        projectIdsAndPkgVersionIds.has(rev.projectId)
+        projectIdsAndPkgVersionIds.has(rev.projectId),
       );
     }
     await this.bundleBackups()
@@ -5049,14 +5374,14 @@ export class DbMgr implements MigrationDbMgr {
           branchId: rev.branchId,
           data: () =>
             `(SELECT data FROM project_revision WHERE id = '${rev.id}')`,
-        }))
+        })),
       )
       .execute();
 
     let pkgvs = await this.listAllPkgVersionIds();
     if (projectIdsAndPkgVersionIds && projectIdsAndPkgVersionIds.size > 0) {
       pkgvs = pkgvs.filter((pkgVersion) =>
-        projectIdsAndPkgVersionIds.has(pkgVersion.id)
+        projectIdsAndPkgVersionIds.has(pkgVersion.id),
       );
     }
     await this.bundleBackups()
@@ -5069,7 +5394,7 @@ export class DbMgr implements MigrationDbMgr {
           rowType: "PkgVersion",
           pkgVersionId: pkgv.id,
           data: () => `(SELECT model FROM pkg_version WHERE id = '${pkgv.id}')`,
-        }))
+        })),
       )
       .execute();
   }
@@ -5132,7 +5457,7 @@ export class DbMgr implements MigrationDbMgr {
   async saveBundleBackupForEntity(
     migrationName: string,
     entity: PkgVersion | ProjectRevision,
-    data: string
+    data: string,
   ) {
     const insertData: Record<string, string> = {};
     if (entity instanceof PkgVersion) {
@@ -5161,7 +5486,7 @@ export class DbMgr implements MigrationDbMgr {
 
   async getBundleBackupForEntity(
     entity: PkgVersion | ProjectRevision,
-    backupName: string
+    backupName: string,
   ) {
     let query = this.bundleBackups()
       .createQueryBuilder()
@@ -5199,7 +5524,7 @@ export class DbMgr implements MigrationDbMgr {
           uniq(backups.map((backup) => backup.projectId)).map((projectId) => ({
             projectId,
             pkgVersionId: undefined,
-          }))
+          })),
         )),
       ...(await this.bundleBackups()
         .find({
@@ -5215,8 +5540,8 @@ export class DbMgr implements MigrationDbMgr {
             (pkgVersionId) => ({
               projectId: undefined,
               pkgVersionId,
-            })
-          )
+            }),
+          ),
         )),
     ];
   }
@@ -5267,7 +5592,7 @@ export class DbMgr implements MigrationDbMgr {
     provider: OauthTokenProvider,
     token: TokenData,
     userInfo: {},
-    ssoConfigId?: SsoConfigId
+    ssoConfigId?: SsoConfigId,
   ) {
     this.checkSuperUser();
     return await this.upsertOauthTokenBase(
@@ -5277,7 +5602,7 @@ export class DbMgr implements MigrationDbMgr {
       provider,
       userInfo,
       token,
-      ssoConfigId
+      ssoConfigId,
     );
   }
 
@@ -5288,7 +5613,7 @@ export class DbMgr implements MigrationDbMgr {
     provider: OauthTokenProvider,
     userInfo: {},
     token: TokenData,
-    ssoConfigId?: SsoConfigId
+    ssoConfigId?: SsoConfigId,
   ) {
     const oauthToken =
       (await tryGetTokenPromise) ||
@@ -5378,12 +5703,12 @@ export class DbMgr implements MigrationDbMgr {
   private async getPermissionsForResources(
     taggedResourceIds: TaggedResourceIds,
     directOnly: boolean,
-    whereClause?: FindConditions<Permission>
+    whereClause?: FindConditions<Permission>,
   ): Promise<Permission[]> {
     await this._checkResourcesPerms(
       taggedResourceIds,
       "viewer",
-      "list permissions for"
+      "list permissions for",
     );
 
     const resourceIds = [...taggedResourceIds.ids];
@@ -5409,7 +5734,7 @@ export class DbMgr implements MigrationDbMgr {
 
     if (taggedResourceIds.type === "team") {
       resourceIds.push(
-        ...(await await this.getParentTeamIds(resourceIds as TeamId[]))
+        ...(await await this.getParentTeamIds(resourceIds as TeamId[])),
       );
     }
 
@@ -5435,7 +5760,7 @@ export class DbMgr implements MigrationDbMgr {
             .innerJoin(
               Permission,
               "subperm",
-              `subperm.workspaceId = p.workspaceId or subperm.teamId = w.teamId`
+              `subperm.workspaceId = p.workspaceId or subperm.teamId = w.teamId`,
             )
             .andWhere(
               `
@@ -5443,7 +5768,7 @@ export class DbMgr implements MigrationDbMgr {
                 and subperm.accessLevel <> 'blocked'
                 and subperm.deletedAt is null
               `,
-              { userId }
+              { userId },
             );
         }
         // We check using an IN check with fetched workspaceIds, instead
@@ -5456,7 +5781,7 @@ export class DbMgr implements MigrationDbMgr {
         if (workspaceIds.length > 0) {
           qb = qb
             .orWhere(
-              `perm.deletedAt is null and perm.workspaceId in (:...workspaceIds)`
+              `perm.deletedAt is null and perm.workspaceId in (:...workspaceIds)`,
             )
             .setParameter("workspaceIds", workspaceIds);
         }
@@ -5474,7 +5799,7 @@ export class DbMgr implements MigrationDbMgr {
             .innerJoin(
               Permission,
               "subperm",
-              `subperm.teamId = t.id or subperm.teamId = t.parentTeamId`
+              `subperm.teamId = t.id or subperm.teamId = t.parentTeamId`,
             )
             .andWhere(
               `
@@ -5482,13 +5807,13 @@ export class DbMgr implements MigrationDbMgr {
                 and subperm.accessLevel <> 'blocked'
                 and subperm.deletedAt is null
               `,
-              { userId }
+              { userId },
             );
         }
         const teamIds = withoutNils(
           (await teamQb.setParameters(qb.getParameters()).getRawMany()).flatMap(
-            (r) => [r.teamId, r.parentTeamId]
-          )
+            (r) => [r.teamId, r.parentTeamId],
+          ),
         );
         if (teamIds.length > 0) {
           qb = qb
@@ -5508,7 +5833,7 @@ export class DbMgr implements MigrationDbMgr {
             .innerJoin(
               Permission,
               "subperm",
-              `subperm.teamId = t.id or subperm.teamId = t.parentTeamId`
+              `subperm.teamId = t.id or subperm.teamId = t.parentTeamId`,
             )
             .andWhere(
               `
@@ -5516,14 +5841,14 @@ export class DbMgr implements MigrationDbMgr {
                 and subperm.accessLevel <> 'blocked'
                 and subperm.deletedAt is null
               `,
-              { userId }
+              { userId },
             );
         }
         const result = await teamQb
           .setParameters(qb.getParameters())
           .getRawMany();
         const teamIds = withoutNils(
-          result.flatMap((r) => [r.teamId, r.parentTeamId])
+          result.flatMap((r) => [r.teamId, r.parentTeamId]),
         );
         if (teamIds.length > 0) {
           qb = qb
@@ -5537,13 +5862,20 @@ export class DbMgr implements MigrationDbMgr {
 
   private async _assignResourceOwner(
     taggedResourceId: TaggedResourceId,
-    userId: UserId
+    userId: UserId,
   ) {
     this.checkSuperUser();
+    if (taggedResourceId.type === "team") {
+      await this.changeTeamOwner(taggedResourceId.id, userId, {
+        allowUnpaidTransfer: true,
+      });
+      return;
+    }
+
     const user = await this.getUserById(userId);
     const perms = await this.getPermissionsForResources(
       pluralizeResourceId(taggedResourceId),
-      true
+      true,
     );
 
     // There should only be one owner, so remove existing owner
@@ -5563,19 +5895,19 @@ export class DbMgr implements MigrationDbMgr {
       user.email,
       {
         force: "owner",
-      }
+      },
     );
   }
 
   private async _getResourcesById(
     taggedResourceIds: TaggedResourceIds,
-    includeDeleted?: boolean
+    includeDeleted?: boolean,
   ) {
     return taggedResourceIds.type === "project"
       ? await this.getProjectsById(taggedResourceIds.ids, includeDeleted)
       : taggedResourceIds.type === "workspace"
-      ? await this.getWorkspacesById(taggedResourceIds.ids, includeDeleted)
-      : await this.getTeamsById(taggedResourceIds.ids, includeDeleted);
+        ? await this.getWorkspacesById(taggedResourceIds.ids, includeDeleted)
+        : await this.getTeamsById(taggedResourceIds.ids, includeDeleted);
   }
 
   /**
@@ -5583,39 +5915,39 @@ export class DbMgr implements MigrationDbMgr {
    * was found.
    */
   private async _getActorAccessLevelToResource(
-    resource: Resource
+    resource: Resource,
   ): Promise<AccessLevel> {
     const resourceType: ResourceType =
       resource instanceof Team
         ? "team"
         : resource instanceof Workspace
-        ? "workspace"
-        : "project";
+          ? "workspace"
+          : "project";
     const levels = await this._getActorAccessLevelToResources(
-      pluralizeResourceId(createTaggedResourceId(resourceType, resource.id))
+      pluralizeResourceId(createTaggedResourceId(resourceType, resource.id)),
     );
     return ensure(
       levels[resource.id],
-      `Must have access level to given resource.`
+      `Must have access level to given resource.`,
     );
   }
 
   private async _getActorAccessLevelToResources(
-    taggedResourceIds: TaggedResourceIds
+    taggedResourceIds: TaggedResourceIds,
   ): Promise<Record<string, AccessLevel>> {
     if (this.actor.type === "SuperUser") {
       return Object.fromEntries(
-        taggedResourceIds.ids.map((id: ResourceId) => [id, "owner"])
+        taggedResourceIds.ids.map((id: ResourceId) => [id, "owner"]),
       );
     }
 
     const levels: Record<string, AccessLevel> = Object.fromEntries(
-      taggedResourceIds.ids.map((id: ResourceId) => [id, "blocked"])
+      taggedResourceIds.ids.map((id: ResourceId) => [id, "blocked"]),
     );
 
     const resources = await this.sudo()._getResourcesById(
       taggedResourceIds,
-      true
+      true,
     );
 
     if (taggedResourceIds.type === "project") {
@@ -5633,7 +5965,7 @@ export class DbMgr implements MigrationDbMgr {
           this.projectIdsAndTokens?.find(
             (p) =>
               p.projectId === project.id &&
-              p.projectApiToken === project.projectApiToken
+              p.projectApiToken === project.projectApiToken,
           )
         ) {
           levels[project.id] = "viewer";
@@ -5641,7 +5973,7 @@ export class DbMgr implements MigrationDbMgr {
           this.projectIdsAndTokens?.find(
             (p) =>
               p.projectId === project.id &&
-              p.projectApiToken === project.secretApiToken
+              p.projectApiToken === project.secretApiToken,
           )
         ) {
           levels[project.id] = "editor";
@@ -5664,27 +5996,27 @@ export class DbMgr implements MigrationDbMgr {
             ? allPerms.filter(
                 (p) =>
                   p.teamId === resource.id ||
-                  p.teamId === (resource as Team).parentTeamId
+                  p.teamId === (resource as Team).parentTeamId,
               )
             : taggedResourceIds.type === "workspace"
-            ? allPerms.filter(
-                (p) =>
-                  p.workspaceId === resource.id ||
-                  p.teamId === (resource as Workspace).team.id ||
-                  p.teamId === (resource as Workspace).team.parentTeamId
-              )
-            : allPerms.filter(
-                (p) =>
-                  p.projectId === resource.id ||
-                  p.workspaceId === (resource as Project).workspace?.id ||
-                  p.teamId === (resource as Project).workspace?.team.id ||
-                  p.teamId ===
-                    (resource as Project).workspace?.team.parentTeamId
-              );
+              ? allPerms.filter(
+                  (p) =>
+                    p.workspaceId === resource.id ||
+                    p.teamId === (resource as Workspace).team.id ||
+                    p.teamId === (resource as Workspace).team.parentTeamId,
+                )
+              : allPerms.filter(
+                  (p) =>
+                    p.projectId === resource.id ||
+                    p.workspaceId === (resource as Project).workspace?.id ||
+                    p.teamId === (resource as Project).workspace?.team.id ||
+                    p.teamId ===
+                      (resource as Project).workspace?.team.parentTeamId,
+                );
 
         const maxFromPerms = _.maxBy(
           resourcePerms.map((p) => p.accessLevel),
-          (lvl) => accessLevelRank(lvl)
+          (lvl) => accessLevelRank(lvl),
         );
 
         levels[resource.id] = ensure(
@@ -5694,9 +6026,9 @@ export class DbMgr implements MigrationDbMgr {
               ...(maxFromPerms ? [maxFromPerms] : []),
               ...(isAdmin ? ["editor" as AccessLevel] : []),
             ],
-            (lvl) => accessLevelRank(lvl)
+            (lvl) => accessLevelRank(lvl),
           ),
-          "List of access levels must be nonempty and have a max"
+          "List of access levels must be nonempty and have a max",
         );
       }
     } else if (this.actor.type === "TeamApiUser") {
@@ -5725,7 +6057,7 @@ export class DbMgr implements MigrationDbMgr {
   }
 
   private async _getActorAccessLevelToResourceById(
-    taggedResourceId: TaggedResourceId
+    taggedResourceId: TaggedResourceId,
   ) {
     const resource = await this._getResourceById(taggedResourceId);
     const selfLevel = await this._getActorAccessLevelToResource(resource);
@@ -5740,28 +6072,27 @@ export class DbMgr implements MigrationDbMgr {
       taggedResourceId: TaggedResourceId,
       requireLevel: AccessLevel,
       action: string,
-      includeDeleted = false
+      includeDeleted = false,
     ) => {
       return await this._checkResourcesPerms(
         pluralizeResourceId(taggedResourceId),
         requireLevel,
         action,
-        includeDeleted
+        includeDeleted,
       );
     },
     (taggedResourceId, requireLevel, _action, includeDeleted) =>
-      JSON.stringify([taggedResourceId, requireLevel, includeDeleted])
+      JSON.stringify([taggedResourceId, requireLevel, includeDeleted]),
   );
 
   private async _checkResourcesPerms(
     taggedResourceIds: TaggedResourceIds,
     requireLevel: AccessLevel,
     action: string,
-    _includeDeleted = false
+    _includeDeleted = false,
   ) {
-    const levels = await this._getActorAccessLevelToResources(
-      taggedResourceIds
-    );
+    const levels =
+      await this._getActorAccessLevelToResources(taggedResourceIds);
 
     const actor = await this.describeActor();
     for (const id of taggedResourceIds.ids) {
@@ -5773,8 +6104,8 @@ export class DbMgr implements MigrationDbMgr {
             ? ORGANIZATION_LOWER
             : taggedResourceIds.type
         } ${id}, but their access level ${humanLevel(
-          levels[id]
-        )} didn't meet required level ${humanLevel(requireLevel)}.`
+          levels[id],
+        )} didn't meet required level ${humanLevel(requireLevel)}.`,
       );
     }
   }
@@ -5805,29 +6136,29 @@ export class DbMgr implements MigrationDbMgr {
   async revokeProjectPermissionsByEmails(
     projectId: string,
     emails: string[],
-    ignoreOwnerCheck?: boolean
+    ignoreOwnerCheck?: boolean,
   ) {
     await this.revokeResourcesPermissionsByEmail(
       { type: "project", ids: [projectId] },
       emails,
-      ignoreOwnerCheck
+      ignoreOwnerCheck,
     );
   }
 
   async revokeResourcesPermissionsByEmail(
     taggedResourceIds: TaggedResourceIds,
     emails: string[],
-    ignoreOwnerCheck?: boolean
+    ignoreOwnerCheck?: boolean,
   ) {
     await this._checkResourcesPerms(
       taggedResourceIds,
       "editor",
-      "revoke permission on"
+      "revoke permission on",
     );
     const emailSet = new Set(emails.map((e) => e.toLowerCase()));
     const perms = await this.getPermissionsForResources(
       taggedResourceIds,
-      true
+      true,
     );
     for (const perm of perms) {
       if (
@@ -5848,7 +6179,7 @@ export class DbMgr implements MigrationDbMgr {
   async grantProjectPermissionByEmail(
     projectId: string,
     email: string,
-    rawLevelToGrant: GrantableAccessLevel
+    rawLevelToGrant: GrantableAccessLevel,
   ) {
     return await this.grantResourcesPermissionByEmail(
       {
@@ -5856,13 +6187,13 @@ export class DbMgr implements MigrationDbMgr {
         ids: [projectId],
       },
       email,
-      rawLevelToGrant
+      rawLevelToGrant,
     );
   }
 
   private async _getResourceById(
     taggedResourceId: TaggedResourceId,
-    includeDeleted = false
+    includeDeleted = false,
   ): Promise<Resource> {
     switch (taggedResourceId.type) {
       case "team":
@@ -5891,22 +6222,22 @@ export class DbMgr implements MigrationDbMgr {
   private async grantTeamPermissionToUser(
     team: Team,
     userId: UserId,
-    levelToGrant: GrantableAccessLevel
+    levelToGrant: GrantableAccessLevel,
   ) {
     checkPermissions(
       this.actor.type !== "AnonUser",
-      `Cannot add anon user to team`
+      `Cannot add anon user to team`,
     );
     if (this.actor.type === "NormalUser") {
       checkPermissions(
         userId === this.actor.userId,
-        `Can only add self to team`
+        `Can only add self to team`,
       );
     } else if (this.actor.type === "TeamApiUser") {
       const user_ = await this.sudo().getUserById(userId);
       checkPermissions(
         user_.owningTeamId === team.id,
-        `Can only add users owned by team to team`
+        `Can only add users owned by team to team`,
       );
     } else if (this.actor.type === "SuperUser") {
       // All good
@@ -5940,7 +6271,7 @@ export class DbMgr implements MigrationDbMgr {
 
   async grantTeamPermissionToSelf(
     team: Team,
-    levelToGrant: GrantableAccessLevel
+    levelToGrant: GrantableAccessLevel,
   ) {
     const userId = this.checkNormalUser();
     return await this.grantTeamPermissionToUser(team, userId, levelToGrant);
@@ -5950,12 +6281,12 @@ export class DbMgr implements MigrationDbMgr {
     taggedResourceIds: TaggedResourceIds,
     email: string,
     rawLevelToGrant: GrantableAccessLevel | ForcedAccessLevel,
-    grantExistingUsersOnly?: boolean
+    grantExistingUsersOnly?: boolean,
   ) {
     await this._checkResourcesPerms(
       taggedResourceIds,
       "viewer",
-      "grant permission"
+      "grant permission",
     );
 
     email = email.toLowerCase();
@@ -5963,11 +6294,29 @@ export class DbMgr implements MigrationDbMgr {
     const levelToGrant = isForcedAccessLevel(rawLevelToGrant)
       ? rawLevelToGrant.force
       : ensureGrantableAccessLevel(rawLevelToGrant);
+
+    if (taggedResourceIds.type === "team" && levelToGrant === "owner") {
+      const user = await this.tryGetUserByEmail(email);
+      if (!user && grantExistingUsersOnly) {
+        throw new GrantUserNotFoundError();
+      }
+      checkPermissions(
+        !!user,
+        `Team ownership can only be transferred to a registered user.`,
+      );
+      for (const teamId of taggedResourceIds.ids) {
+        await this.changeTeamOwner(teamId, user.id, {
+          allowUnpaidTransfer: isForcedAccessLevel(rawLevelToGrant),
+        });
+      }
+      return { created: false };
+    }
+
     return this.grantResourcesPermission(
       taggedResourceIds,
       email,
       levelToGrant,
-      grantExistingUsersOnly
+      grantExistingUsersOnly,
     );
   }
 
@@ -5975,7 +6324,7 @@ export class DbMgr implements MigrationDbMgr {
     taggedResourceIds: TaggedResourceIds,
     email: string,
     levelToGrant: AccessLevel,
-    grantExistingUsersOnly?: boolean
+    grantExistingUsersOnly?: boolean,
   ) {
     const user = await this.tryGetUserByEmail(email);
     if (!user && grantExistingUsersOnly) {
@@ -5987,7 +6336,7 @@ export class DbMgr implements MigrationDbMgr {
         this.getPermissionsForResources(
           taggedResourceIds,
           true,
-          user ? { user } : { email }
+          user ? { user } : { email },
         ),
         this.getPermissionsForResources(taggedResourceIds, true, {
           accessLevel: "owner",
@@ -6002,8 +6351,21 @@ export class DbMgr implements MigrationDbMgr {
       levelToGrant,
       userPerms,
       ownerPerms,
-      actorResourceLevels
+      actorResourceLevels,
     );
+
+    if (taggedResourceIds.type === "team" && levelToGrant !== "owner") {
+      const directOwnerPerms = userPerms.filter(
+        (perm) =>
+          perm.accessLevel === "owner" &&
+          !!perm.teamId &&
+          taggedResourceIds.ids.includes(perm.teamId),
+      );
+      checkPermissions(
+        directOwnerPerms.length === 0,
+        `Team owners must transfer ownership instead of changing their role.`,
+      );
+    }
 
     let createdPerm = false;
 
@@ -6046,21 +6408,21 @@ export class DbMgr implements MigrationDbMgr {
     levelToGrant: AccessLevel,
     userPerms: Permission[],
     ownerPerms: Permission[],
-    actorResourceLevels: Record<string, AccessLevel>
+    actorResourceLevels: Record<string, AccessLevel>,
   ) {
     // 1. The actor has a lower access level than the level being granted
     const wrongAccessLevelEntries = Object.entries(actorResourceLevels).filter(
       ([_id, selfLevel]) =>
-        accessLevelRank(selfLevel) < accessLevelRank(levelToGrant)
+        accessLevelRank(selfLevel) < accessLevelRank(levelToGrant),
     );
     checkPermissions(
       wrongAccessLevelEntries.length === 0,
       wrongAccessLevelEntries
         .map(
           ([id, selfLevel]) =>
-            `${actorDesc} (${selfLevel}) tried to grant ${levelToGrant} to ${email} on ${resourceType} ${id}, but actor did not have permission`
+            `${actorDesc} (${selfLevel}) tried to grant ${levelToGrant} to ${email} on ${resourceType} ${id}, but actor did not have permission`,
         )
-        .join("\n")
+        .join("\n"),
     );
 
     // 2. The user to be granted already has a higher access level than the actor
@@ -6068,8 +6430,8 @@ export class DbMgr implements MigrationDbMgr {
       (perm) =>
         accessLevelRank(perm.accessLevel) >
         accessLevelRank(
-          actorResourceLevels[ensureResourceIdFromPermission(perm)]
-        )
+          actorResourceLevels[ensureResourceIdFromPermission(perm)],
+        ),
     );
     checkPermissions(
       higherLevelEntries.length === 0,
@@ -6079,24 +6441,24 @@ export class DbMgr implements MigrationDbMgr {
           const selfLevel = actorResourceLevels[id];
           return `${actorDesc} (${selfLevel}) tried to grant ${levelToGrant} to ${email} on ${resourceType} ${id}, but user already has higher level ${perm.accessLevel}`;
         })
-        .join("\n")
+        .join("\n"),
     );
 
     // 3. The grant would leave a resource with no owners
     if (levelToGrant !== "owner") {
       const granteeOwnerPerms = userPerms.filter(
-        (perm) => perm.accessLevel === "owner"
+        (perm) => perm.accessLevel === "owner",
       );
       const resourcesWithOtherOwners = new Set(
         ownerPerms
           .filter((perm) =>
-            user ? perm.userId !== user.id : perm.email !== email
+            user ? perm.userId !== user.id : perm.email !== email,
           )
-          .map(ensureResourceIdFromPermission)
+          .map(ensureResourceIdFromPermission),
       );
       const wouldLeaveOwnerless = granteeOwnerPerms.filter(
         (perm) =>
-          !resourcesWithOtherOwners.has(ensureResourceIdFromPermission(perm))
+          !resourcesWithOtherOwners.has(ensureResourceIdFromPermission(perm)),
       );
       checkPermissions(
         wouldLeaveOwnerless.length === 0,
@@ -6106,7 +6468,7 @@ export class DbMgr implements MigrationDbMgr {
             const selfLevel = actorResourceLevels[id];
             return `${actorDesc} (${selfLevel}) tried to grant ${levelToGrant} to ${email} on ${resourceType} ${id}, but would result in resource becoming ownerless`;
           })
-          .join("\n")
+          .join("\n"),
       );
     }
   }
@@ -6123,25 +6485,32 @@ export class DbMgr implements MigrationDbMgr {
           projectId,
           userId: ensure(
             this.tryGetNormalActorId(),
-            "Must have an user id to remove self perm"
+            "Must have an user id to remove self perm",
           ),
           ...maybeIncludeDeleted(false),
         },
       }),
-      `Permission for user ${this.tryGetNormalActorId()} to access project ${projectId}`
+      `Permission for user ${this.tryGetNormalActorId()} to access project ${projectId}`,
     );
 
     Object.assign(perm, this.stampDelete());
     await this.entMgr.save(perm);
   }
 
-  async useCopilotAndCheckRateLimit() {
+  async useCopilotAndCheckRateLimit(opts?: { checkTeamHasPlan?: ProjectId }) {
     if (this.actor.type === "SuperUser") {
       return;
     }
     const COPILOT_DAILY_RATE_LIMIT = 100;
     this.checkNormalUser();
     const userId = ensure(this.tryGetNormalActorId(), "Must have an user id");
+    if (opts?.checkTeamHasPlan) {
+      const team = await this.getTeamByProjectId(opts.checkTeamHasPlan);
+      if (!team || !isPaidTeam(team)) {
+        throw new CopilotPlanRequiredError();
+      }
+    }
+
     const yesterday = new Date();
     yesterday.setHours(yesterday.getHours() - 24);
     const todayCount = await this.copilotUsages().count({
@@ -6155,7 +6524,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.copilotUsages().save(
       this.copilotUsages().create({
         ...this.stampNew(),
-      })
+      }),
     );
   }
 
@@ -6172,7 +6541,7 @@ export class DbMgr implements MigrationDbMgr {
     model: "gpt" | "claude";
     request: CreateChatCompletionRequest | LanguageModelRequestMetadata;
   }) {
-    await this.checkProjectPerms(projectId, "content", "run copilot");
+    await this.checkProjectPerms(projectId, "content", "use Plasmic AI");
     const copilotInteraction = this.copilotInteractions().create({
       ...this.stampNew(),
       fullPromptSnapshot: JSON.stringify(request),
@@ -6196,13 +6565,13 @@ export class DbMgr implements MigrationDbMgr {
     feedback: boolean;
     feedbackDescription?: string | null;
   }) {
-    await this.checkProjectPerms(projectId, "content", "save copilot feedback");
+    await this.checkProjectPerms(projectId, "content", "save AI feedback");
 
     const copilotInteraction = await findExactlyOne(
       this.copilotInteractions(),
       {
         where: { projectId, id: copilotInteractionId },
-      }
+      },
     );
     mergeSane(copilotInteraction, this.stampUpdate(), {
       feedback,
@@ -6441,7 +6810,7 @@ export class DbMgr implements MigrationDbMgr {
   async getTrustedHostById(id: string) {
     return ensureFound(
       await this.trustedHosts().findOne(id),
-      `TrustedHost with ID ${id}`
+      `TrustedHost with ID ${id}`,
     );
   }
 
@@ -6481,7 +6850,7 @@ export class DbMgr implements MigrationDbMgr {
     checkPermissions(
       this.actor.type === "SuperUser" ||
         trustedHost.userId === this.checkNormalUser(),
-      `${await this.describeActor()} tried to edit trusted hosts list of another user`
+      `${await this.describeActor()} tried to edit trusted hosts list of another user`,
     );
     Object.assign(trustedHost, this.stampDelete());
     await this.entMgr.save(trustedHost);
@@ -6536,7 +6905,7 @@ export class DbMgr implements MigrationDbMgr {
 
   async validateOrGetProjectApiToken(
     projectId: string,
-    projectApiToken?: string
+    projectApiToken?: string,
   ): Promise<string> {
     const project = await this.sudo().getProjectById(projectId);
     // If the client didn't already have a (still-valid) token, we are willing
@@ -6545,7 +6914,7 @@ export class DbMgr implements MigrationDbMgr {
       await this.checkProjectPerms(
         projectId,
         "viewer",
-        "get own permissions for"
+        "get own permissions for",
       );
     }
     if (!project.projectApiToken) {
@@ -6562,7 +6931,7 @@ export class DbMgr implements MigrationDbMgr {
 
   async updateProjectExtraData(
     projectId: ProjectId,
-    extraData: Partial<Project["extraData"]>
+    extraData: Partial<Project["extraData"]>,
   ) {
     await this.checkProjectPerms(projectId, "editor", "update extra data");
     const project = await this.getProjectById(projectId);
@@ -6595,7 +6964,7 @@ export class DbMgr implements MigrationDbMgr {
           .slice(1)
           .filter(
             (p) =>
-              moment(latest.updatedAt).diff(moment(p.updatedAt), "days") < 3
+              moment(latest.updatedAt).diff(moment(p.updatedAt), "days") < 3,
           ),
       ];
     }
@@ -6666,7 +7035,7 @@ export class DbMgr implements MigrationDbMgr {
           ...publishment,
           ...this.stampUpdate(),
         };
-      })
+      }),
     );
     await this.loaderPublishments().save(loaderPublishments);
     return loaderPublishments;
@@ -6684,13 +7053,13 @@ export class DbMgr implements MigrationDbMgr {
 
   private async getAllValuesForKey(namespace: KeyValueNamespace, key: string) {
     return (await this.getAllKeyValuesForKey(namespace, key)).map(
-      (kv) => kv.value
+      (kv) => kv.value,
     );
   }
 
   private async getAllKeyValuesForKey(
     namespace: KeyValueNamespace,
-    key: string
+    key: string,
   ) {
     return await this.keyValues().find({
       where: { namespace, key, ...excludeDeleted() },
@@ -6713,7 +7082,7 @@ export class DbMgr implements MigrationDbMgr {
   async deleteKeyValue(namespace: KeyValueNamespace, key: string) {
     const keyValue = ensure(
       await this.tryGetKeyValue(namespace, key),
-      "You can't delete a key value that doesn't exist"
+      "You can't delete a key value that doesn't exist",
     );
     mergeSane(keyValue, this.stampDelete());
     await this.entMgr.save([keyValue]);
@@ -6738,7 +7107,7 @@ export class DbMgr implements MigrationDbMgr {
   private async tryGetPair(
     namespace: PairNamespace,
     left: string,
-    right: string
+    right: string,
   ) {
     return this.pairs().findOne({
       where: { namespace, left, right, ...excludeDeleted() },
@@ -6748,7 +7117,7 @@ export class DbMgr implements MigrationDbMgr {
   private async upsertPair(
     namespace: PairNamespace,
     left: string,
-    right: string
+    right: string,
   ) {
     const pair =
       (await this.tryGetPair(namespace, left, right)) ??
@@ -6814,12 +7183,11 @@ export class DbMgr implements MigrationDbMgr {
     }
 
     const hasToken = this.projectIdsAndTokens.some(
-      (p) => p.projectId === projectId
+      (p) => p.projectId === projectId,
     );
     if (!hasToken) {
-      const projectApiToken = await this.sudo().validateOrGetProjectApiToken(
-        projectId
-      );
+      const projectApiToken =
+        await this.sudo().validateOrGetProjectApiToken(projectId);
       this.projectIdsAndTokens.push({
         projectId,
         projectApiToken,
@@ -6847,14 +7215,14 @@ export class DbMgr implements MigrationDbMgr {
    */
   async checkDataSourceEditPerms(dataSource: DataSource) {
     const level = await this.getActorAccessLevelToWorkspace(
-      dataSource.workspaceId
+      dataSource.workspaceId,
     );
     const userId =
       this.actor.type === "NormalUser" ? this.actor.userId : undefined;
     const actor = await this.describeActor();
     checkPermissions(
       canEditDataSource(dataSource.createdById, userId, level),
-      `${actor} tried to edit dataSource ${dataSource.id}, but they aren't the owner with workspace editor access, nor a workspace owner.`
+      `${actor} tried to edit dataSource ${dataSource.id}, but they aren't the owner with workspace editor access, nor a workspace owner.`,
     );
   }
 
@@ -6871,7 +7239,7 @@ export class DbMgr implements MigrationDbMgr {
     opts?: {
       columns?: (keyof DataSource)[];
       skipPermissionCheck?: boolean;
-    }
+    },
   ) {
     const source = ensureFound(
       await this.dataSources().findOne({
@@ -6886,13 +7254,13 @@ export class DbMgr implements MigrationDbMgr {
           deletedAt: IsNull(),
         },
       }),
-      `Data source ${dataSourceId}`
+      `Data source ${dataSourceId}`,
     );
     if (!opts?.skipPermissionCheck) {
       await this.checkWorkspacePerms(
         source.workspaceId,
         "viewer",
-        "get data sources"
+        "get data sources",
       );
     }
     return source;
@@ -6905,7 +7273,7 @@ export class DbMgr implements MigrationDbMgr {
       credentials: Record<string, any>;
       source: DataSourceType;
       settings: Record<string, any>;
-    }
+    },
   ) {
     await this.checkWorkspacePerms(workspaceId, "editor", "create data source");
     const dataSource = this.dataSources().create({
@@ -6926,7 +7294,7 @@ export class DbMgr implements MigrationDbMgr {
       credentials: Record<string, any>;
       source: DataSourceType;
       settings: Record<string, any>;
-    }
+    },
   ) {
     await this.checkWorkspacePerms(workspaceId, "editor", "create data source");
     const dataSource = await this.createUnsavedDataSource(workspaceId, opts);
@@ -6941,14 +7309,14 @@ export class DbMgr implements MigrationDbMgr {
       credentials?: Record<string, any>;
       settings?: Record<string, any>;
       workspaceId?: WorkspaceId;
-    }
+    },
   ) {
     const dataSource = ensureFound(
       await this.dataSources().findOne({
         id,
         deletedAt: IsNull(),
       }),
-      `Data source ${id}`
+      `Data source ${id}`,
     );
     await this.checkDataSourceEditPerms(dataSource);
     if (opts.name) {
@@ -6967,7 +7335,7 @@ export class DbMgr implements MigrationDbMgr {
       await this.checkWorkspacePerms(
         opts.workspaceId,
         "editor",
-        "move data source"
+        "move data source",
       );
       dataSource.workspaceId = opts.workspaceId;
     }
@@ -6981,7 +7349,7 @@ export class DbMgr implements MigrationDbMgr {
         id,
         deletedAt: IsNull(),
       }),
-      `Data source ${id}`
+      `Data source ${id}`,
     );
     await this.checkDataSourceEditPerms(dataSource);
     Object.assign(dataSource, this.stampDelete());
@@ -6996,13 +7364,13 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkWorkspacePerms(
       dataSource.workspaceId,
       "editor",
-      "issue data source operation"
+      "issue data source operation",
     );
   }
 
   async createDataSourceOperation(
     dataOp: OperationTemplate,
-    dataSourceId: string
+    dataSourceId: string,
   ) {
     await this.checkDataSourceIssueOpIdPerms(dataSourceId);
     const source = await this.getDataSourceById(dataSourceId, {
@@ -7025,7 +7393,7 @@ export class DbMgr implements MigrationDbMgr {
 
   async existsDataSourceOperation(
     dataOp: OperationTemplate,
-    dataSourceId: string
+    dataSourceId: string,
   ) {
     await this.checkDataSourceIssueOpIdPerms(dataSourceId);
     const source = await this.getDataSourceById(dataSourceId, {
@@ -7053,7 +7421,7 @@ export class DbMgr implements MigrationDbMgr {
 
   async getCmsDatabaseById(
     databaseId: CmsDatabaseId,
-    includeDeleted = false
+    includeDeleted = false,
   ): Promise<CmsDatabase> {
     await this.checkCmsDatabasePerms(databaseId, "viewer");
     const database = ensureFound(
@@ -7061,13 +7429,13 @@ export class DbMgr implements MigrationDbMgr {
         id: databaseId,
         ...(!includeDeleted && excludeDeleted()),
       }),
-      `Database with id ${databaseId}`
+      `Database with id ${databaseId}`,
     );
     return database;
   }
 
   async getCmsDatabaseAndSecretTokenById(
-    databaseId: CmsDatabaseId
+    databaseId: CmsDatabaseId,
   ): Promise<CmsDatabase> {
     await this.checkCmsDatabasePerms(databaseId, "content");
     const database = ensureFound(
@@ -7076,7 +7444,7 @@ export class DbMgr implements MigrationDbMgr {
         .where(`"id" = :id`, { id: databaseId, ...excludeDeleted() })
         .addSelect("CmsDatabase.secretToken")
         .getOne(),
-      `Database with id ${databaseId}`
+      `Database with id ${databaseId}`,
     );
     return database;
   }
@@ -7084,7 +7452,7 @@ export class DbMgr implements MigrationDbMgr {
   async updateCmsDatabaseById(
     databaseId: CmsDatabaseId,
     fields: Partial<UpdatableCmsDatabaseFields>,
-    includeDeleted = false
+    includeDeleted = false,
   ): Promise<CmsDatabase> {
     await this.checkCmsDatabasePerms(databaseId, "editor");
     const database = await this.getCmsDatabaseById(databaseId, includeDeleted);
@@ -7096,7 +7464,7 @@ export class DbMgr implements MigrationDbMgr {
       await this.checkWorkspacePerms(
         database.workspaceId,
         "editor",
-        "move cms"
+        "move cms",
       );
       await this.checkWorkspacePerms(fields.workspaceId, "editor", "move cms");
       fields["workspace"] = { id: fields.workspaceId };
@@ -7122,7 +7490,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkWorkspacePerms(
       opts.workspaceId,
       "editor",
-      "create CMS database"
+      "create CMS database",
     );
     const db = this.cmsDatabases().create({
       ...this.stampNew({ genShortUuid: true }),
@@ -7164,7 +7532,7 @@ export class DbMgr implements MigrationDbMgr {
           if (field.type === "ref") {
             field.tableId = tableIdMap.get(field.tableId)!;
           }
-        }
+        },
       );
 
       await this.updateCmsTable(tableIdMap.get(table.id)!, {
@@ -7179,7 +7547,7 @@ export class DbMgr implements MigrationDbMgr {
 
   async listCmsTables(
     databaseId: CmsDatabaseId,
-    includeArchived: boolean = false
+    includeArchived: boolean = false,
   ) {
     await this.checkCmsDatabasePerms(databaseId, "viewer");
     let cmsTablesQuery = this.cmsTables()
@@ -7242,7 +7610,7 @@ export class DbMgr implements MigrationDbMgr {
         .setParameters({ dbId, identifier })
         .orderBy("t.createdAt", "ASC")
         .getOne(),
-      `Table for database ${dbId} and identifier ${identifier}`
+      `Table for database ${dbId} and identifier ${identifier}`,
     );
   }
 
@@ -7252,7 +7620,7 @@ export class DbMgr implements MigrationDbMgr {
         id,
         ...excludeDeleted(),
       }),
-      `Table with id ${id}`
+      `Table with id ${id}`,
     );
     await this.checkCmsDatabasePerms(table.databaseId, "viewer");
     return table;
@@ -7264,7 +7632,7 @@ export class DbMgr implements MigrationDbMgr {
         id,
         ...excludeDeleted(),
       }),
-      `Table with id ${id}`
+      `Table with id ${id}`,
     );
     await this.checkCmsDatabasePerms(table.databaseId, "editor");
     Object.assign(table, this.stampDelete());
@@ -7280,7 +7648,7 @@ export class DbMgr implements MigrationDbMgr {
       description?: string | null;
       settings?: CmsTableSettings | null;
       isArchived?: boolean | null;
-    }
+    },
   ) {
     const { name, schema, description, settings, isArchived } = opts;
     const table = await this.getCmsTableById(tableId);
@@ -7311,7 +7679,7 @@ export class DbMgr implements MigrationDbMgr {
       identifier?: string;
       data?: CmsRowData | null;
       draftData?: CmsRowData | null;
-    }
+    },
   ) {
     const [row] = await this.createCmsRows(tableId, [opts]);
     return row;
@@ -7328,7 +7696,7 @@ export class DbMgr implements MigrationDbMgr {
       identifier?: string;
       data?: CmsRowData | null;
       draftData?: CmsRowData | null;
-    }[]
+    }[],
   ) {
     const table = await this.getCmsTableById(tableId);
     await this.checkCmsDatabasePerms(table.databaseId, "content");
@@ -7342,11 +7710,11 @@ export class DbMgr implements MigrationDbMgr {
           locale,
           Object.fromEntries(
             table.schema.fields.map((field) =>
-              tuple(field.identifier, field.defaultValueByLocale[locale])
-            )
-          )
-        )
-      )
+              tuple(field.identifier, field.defaultValueByLocale[locale]),
+            ),
+          ),
+        ),
+      ),
     );
 
     const rows = rowInputs.map((opts) => {
@@ -7358,7 +7726,7 @@ export class DbMgr implements MigrationDbMgr {
           ? L.merge(
               {},
               defaults,
-              pickKnownFieldsByLocale(table, opts.draftData || { "": {} })
+              pickKnownFieldsByLocale(table, opts.draftData || { "": {} }),
             )
           : null;
 
@@ -7387,7 +7755,7 @@ export class DbMgr implements MigrationDbMgr {
         id,
         ...excludeDeleted(),
       }),
-      `Row with id ${id}`
+      `Row with id ${id}`,
     );
   }
 
@@ -7396,7 +7764,7 @@ export class DbMgr implements MigrationDbMgr {
     opts: {
       rowId: CmsRowId;
       uniqueFieldsData: Dict<unknown>;
-    }
+    },
   ): Promise<UniqueFieldCheck[]> {
     const table = await this.getCmsTableById(tableId);
     await this.checkCmsDatabasePerms(table.databaseId, "content");
@@ -7406,7 +7774,7 @@ export class DbMgr implements MigrationDbMgr {
       "": opts.uniqueFieldsData,
     });
     const finalData = Object.entries(uniqueFieldsData).filter(
-      ([_field, value]) => value !== null && value !== undefined
+      ([_field, value]) => value !== null && value !== undefined,
     );
     if (finalData.length === 0) {
       throw new BadRequestError("No unique fields to check");
@@ -7419,7 +7787,7 @@ export class DbMgr implements MigrationDbMgr {
           [field]: value,
         })),
       },
-      { useDraft: false }
+      { useDraft: false },
     );
 
     const rows = await this.cmsRows()
@@ -7441,8 +7809,8 @@ export class DbMgr implements MigrationDbMgr {
               rows.find((row) => row.data?.[""]?.[fieldIdentifier] === value)
                 ?.id ?? null,
           };
-        }
-      )
+        },
+      ),
     );
   }
 
@@ -7455,7 +7823,7 @@ export class DbMgr implements MigrationDbMgr {
       draftData?: CmsRowData | null;
       revision?: number;
       noMerge?: boolean;
-    }
+    },
   ) {
     const row = await this.getCmsRowById(rowId);
     const table = await this.getCmsTableById(row.tableId);
@@ -7467,16 +7835,14 @@ export class DbMgr implements MigrationDbMgr {
       row.identifier = opts.identifier;
     }
     if (opts.revision != null && opts.revision !== (row.revision ?? 0)) {
-      logger().info(
-        `Got revision ${opts.revision} but expected ${row.revision}`
-      );
+      logger.info(`Got revision ${opts.revision} but expected ${row.revision}`);
       throw new BadRequestError(
-        `This CMS row has been updated in the meanwhile`
+        `This CMS row has been updated in the meanwhile`,
       );
     }
     const mergedData = (
       existing: CmsRowData | null,
-      update: CmsRowData | null | undefined
+      update: CmsRowData | null | undefined,
     ): CmsRowData | null => {
       if (update == null) {
         return null;
@@ -7495,7 +7861,7 @@ export class DbMgr implements MigrationDbMgr {
             return srcValue;
           }
           return undefined;
-        }
+        },
       );
     };
     if ("data" in opts) {
@@ -7529,7 +7895,7 @@ export class DbMgr implements MigrationDbMgr {
           rowId: rowId,
           data: ensure(
             row.draftData,
-            "All cms rows must have the draftData dictionary"
+            "All cms rows must have the draftData dictionary",
           ),
           isPublished: false,
         })
@@ -7545,7 +7911,7 @@ export class DbMgr implements MigrationDbMgr {
       : undefined;
 
     await this.entMgr.save(
-      withoutNils([row, draftRevision, publishedRevision])
+      withoutNils([row, draftRevision, publishedRevision]),
     );
 
     return row;
@@ -7571,7 +7937,7 @@ export class DbMgr implements MigrationDbMgr {
         id,
         ...excludeDeleted(),
       }),
-      `Row revision with id ${id}`
+      `Row revision with id ${id}`,
     );
   }
 
@@ -7597,7 +7963,7 @@ export class DbMgr implements MigrationDbMgr {
     rowId: CmsRowId,
     opts: {
       identifier?: string;
-    }
+    },
   ) {
     await this.checkCmsRowPerms(rowId, "content");
     const row = await this.getCmsRowById(rowId);
@@ -7626,7 +7992,7 @@ export class DbMgr implements MigrationDbMgr {
   async queryCmsRows(
     tableId: CmsTableId,
     query: ApiCmsQuery,
-    opts: { useDraft?: boolean } = {}
+    opts: { useDraft?: boolean } = {},
   ) {
     if (query.offset && query.offset < 0) {
       throw new BadRequestError("offset field cannot be negative");
@@ -7637,7 +8003,7 @@ export class DbMgr implements MigrationDbMgr {
     const table = await this.getCmsTableById(tableId);
     await this.checkCmsDatabasePerms(
       table.databaseId,
-      opts.useDraft ? "content" : "viewer"
+      opts.useDraft ? "content" : "viewer",
     );
     return this.queryCmsRowsForTable(table, query, opts);
   }
@@ -7668,7 +8034,7 @@ export class DbMgr implements MigrationDbMgr {
       const { condition, params: valParams } = makeSqlCondition(
         table,
         query.where,
-        opts
+        opts,
       );
       builder = builder.andWhere(condition);
       builder = builder.setParameters(valParams);
@@ -7690,8 +8056,8 @@ export class DbMgr implements MigrationDbMgr {
             typeof order === "string"
               ? "ASC"
               : order.dir === "asc"
-              ? "ASC"
-              : "DESC";
+                ? "ASC"
+                : "DESC";
           builder = builder.addOrderBy(fieldSql, dir);
         }
       }
@@ -7706,8 +8072,16 @@ export class DbMgr implements MigrationDbMgr {
   async countCmsRowsForTable(
     table: CmsTable,
     query: Pick<ApiCmsQuery, "where">,
-    opts: { useDraft?: boolean } = {}
+    opts: { useDraft?: boolean } = {},
   ) {
+<<<<<<< HEAD
+=======
+    const table = await this.getCmsTableById(tableId);
+    await this.checkCmsDatabasePerms(
+      table.databaseId,
+      opts.useDraft ? "content" : "viewer",
+    );
+>>>>>>> upstream/master
     let builder = this.cmsRows()
       .createQueryBuilder("r")
       .where("r.tableId = :tableId", { tableId: table.id })
@@ -7722,7 +8096,7 @@ export class DbMgr implements MigrationDbMgr {
       const { condition, params: valParams } = makeSqlCondition(
         table,
         query.where,
-        opts
+        opts,
       );
       builder = builder.andWhere(condition);
       builder = builder.setParameters(valParams);
@@ -7738,14 +8112,14 @@ export class DbMgr implements MigrationDbMgr {
         .innerJoin(CmsRow, "r", "r.tableId = t.id")
         .andWhere("r.id = :rowId", { rowId })
         .getOne(),
-      `Table for row with id ${rowId}`
+      `Table for row with id ${rowId}`,
     );
     await this.checkCmsDatabasePerms(table.databaseId, accessLevel);
   }
 
   private async checkCmsRowRevisionPerms(
     revId: CmsRowRevisionId,
-    accessLevel: AccessLevel
+    accessLevel: AccessLevel,
   ) {
     const table = ensureFound(
       await this.cmsTables()
@@ -7754,14 +8128,14 @@ export class DbMgr implements MigrationDbMgr {
         .innerJoin(CmsRowRevision, "rev", "rev.rowId = r.id")
         .andWhere("rev.id = :revId", { revId })
         .getOne(),
-      `Table for row revision with id ${revId}`
+      `Table for row revision with id ${revId}`,
     );
     await this.checkCmsDatabasePerms(table.databaseId, accessLevel);
   }
 
   private async checkCmsDatabasePerms(
     databaseId: CmsDatabaseId,
-    accessLevel: AccessLevel
+    accessLevel: AccessLevel,
   ) {
     const database = ensureFound(
       await this.cmsDatabases()
@@ -7769,7 +8143,7 @@ export class DbMgr implements MigrationDbMgr {
         .where(`"id" = :id`, { id: databaseId, ...excludeDeleted() })
         .addSelect("CmsDatabase.secretToken")
         .getOne(),
-      `Database with id ${databaseId}`
+      `Database with id ${databaseId}`,
     );
     // Make sure the workspace hasn't been deleted
     ensureFound(
@@ -7777,37 +8151,39 @@ export class DbMgr implements MigrationDbMgr {
         id: database.workspaceId,
         ...excludeDeleted(),
       }),
-      `Workspace for database ${databaseId}`
+      `Workspace for database ${databaseId}`,
     );
     if (this.cmsIdsAndTokens) {
       if (
         this.cmsIdsAndTokens.find(
-          (p) => p.databaseId === databaseId && p.token === database.secretToken
+          (p) =>
+            p.databaseId === databaseId && p.token === database.secretToken,
         )
       ) {
         // With the secret token, have the same permissions as an content creator
         if (accessLevelRank(accessLevel) > accessLevelRank("content")) {
           throw new ForbiddenError(
-            `Cannot access database as a ${humanLevel(accessLevel)}`
+            `Cannot access database as a ${humanLevel(accessLevel)}`,
           );
         }
         return;
       }
       if (
         this.cmsIdsAndTokens.find(
-          (p) => p.databaseId === databaseId && p.token === database.publicToken
+          (p) =>
+            p.databaseId === databaseId && p.token === database.publicToken,
         )
       ) {
         // With the public token, can only read from the database
         if (accessLevelRank(accessLevel) > accessLevelRank("viewer")) {
           throw new ForbiddenError(
-            `Cannot access database as a ${humanLevel(accessLevel)}`
+            `Cannot access database as a ${humanLevel(accessLevel)}`,
           );
         }
         return;
       }
       throw new ForbiddenError(
-        `Tried accessing database with id ${databaseId} without the correct token`
+        `Tried accessing database with id ${databaseId} without the correct token`,
       );
     }
 
@@ -7837,7 +8213,7 @@ export class DbMgr implements MigrationDbMgr {
     const newRevision = await this.saveProjectRev({
       projectId: project.id,
       data: JSON.stringify(
-        bundler.bundle(site, project.id, await getLastBundleVersion())
+        bundler.bundle(site, project.id, await getLastBundleVersion()),
       ),
       revisionNum: rev.revision + 1,
     });
@@ -7849,7 +8225,7 @@ export class DbMgr implements MigrationDbMgr {
 
   public async createHostLessProject(
     hostLessPackageInfo: HostLessPackageInfo,
-    bundler: Bundler
+    bundler: Bundler,
   ) {
     const site = await createSiteForHostlessProject(hostLessPackageInfo);
 
@@ -7865,7 +8241,7 @@ export class DbMgr implements MigrationDbMgr {
       [],
       "",
       rev.revision,
-      true
+      true,
     );
 
     return unbundlePkgVersion(this, bundler, pkgVersion);
@@ -7876,7 +8252,7 @@ export class DbMgr implements MigrationDbMgr {
   //
 
   async tryGetProjectIdForDomain(
-    domain: string
+    domain: string,
   ): Promise<ProjectId | undefined> {
     return maybeOne(await this.getPairsByLeft("domain-project", domain))
       ?.right as ProjectId;
@@ -7888,7 +8264,7 @@ export class DbMgr implements MigrationDbMgr {
       "editor",
       "set domains",
       undefined,
-      false
+      false,
     );
     const pairs = await this.getPairsByRight("domain-project", projectId);
     for (const pair of pairs) {
@@ -7909,7 +8285,7 @@ export class DbMgr implements MigrationDbMgr {
       "viewer",
       "get domains",
       undefined,
-      false
+      false,
     );
     const pairs = await this.getPairsByRight("domain-project", projectId);
     return pairs.map((p) => p.left);
@@ -7982,13 +8358,13 @@ export class DbMgr implements MigrationDbMgr {
    */
   async getCommitGraphForProject(
     projectId: ProjectId,
-    branchSpecs: (BranchId | MainBranchId)[] = []
+    branchSpecs: (BranchId | MainBranchId)[] = [],
   ): Promise<CommitGraph> {
     let graph = mkCommitGraph();
     await this.maybeUpdateCommitGraphForProject(
       projectId,
       (g) => (graph = jsonClone(g)),
-      branchSpecs
+      branchSpecs,
     );
     return graph;
   }
@@ -8002,7 +8378,7 @@ export class DbMgr implements MigrationDbMgr {
   private async shouldRepairCommitGraphForBranches(
     projectId: ProjectId,
     graph: CommitGraph | undefined,
-    branchSpecs: (BranchId | MainBranchId)[]
+    branchSpecs: (BranchId | MainBranchId)[],
   ) {
     if (!graph || branchSpecs.length === 0) {
       return false;
@@ -8026,7 +8402,7 @@ export class DbMgr implements MigrationDbMgr {
 
   private async hasPkgVersionForBranchSpec(
     projectId: ProjectId,
-    branchSpec: BranchId | MainBranchId
+    branchSpec: BranchId | MainBranchId,
   ) {
     const pkg = await this.getPkgByProjectId(projectId);
     if (!pkg) {
@@ -8053,7 +8429,7 @@ export class DbMgr implements MigrationDbMgr {
    */
   private async repairCommitGraphForProject(
     projectId: ProjectId,
-    previousCommitGraph: CommitGraph | undefined
+    previousCommitGraph: CommitGraph | undefined,
   ) {
     const commitGraph = mkCommitGraph();
     commitGraph.parents = { ...(previousCommitGraph?.parents ?? {}) };
@@ -8069,14 +8445,14 @@ export class DbMgr implements MigrationDbMgr {
     });
     const pkgVersionsByBranch = _.groupBy(
       pkgVersions,
-      (pv) => pv.branchId ?? MainBranchId
+      (pv) => pv.branchId ?? MainBranchId,
     );
 
     for (const [branchSpec, branchPkgVersions] of Object.entries(
-      pkgVersionsByBranch
+      pkgVersionsByBranch,
     ) as [BranchId | MainBranchId, PkgVersion[]][]) {
       const sortedPkgVersions = branchPkgVersions.sort((a, b) =>
-        compareVersionNumbers(a.version, b.version)
+        compareVersionNumbers(a.version, b.version),
       );
 
       if (!safeHas(commitGraph.parents, sortedPkgVersions[0].id)) {
@@ -8107,20 +8483,20 @@ export class DbMgr implements MigrationDbMgr {
   async updateCommitGraphForProject(
     projectId: ProjectId,
     updater: (commitGraph: Draft<CommitGraph>) => void,
-    branchSpecs: (BranchId | MainBranchId)[] = []
+    branchSpecs: (BranchId | MainBranchId)[] = [],
   ) {
     await this.lockProjectRow(projectId);
     await this.maybeUpdateCommitGraphForProject(
       projectId,
       updater,
-      branchSpecs
+      branchSpecs,
     );
   }
 
   private async maybeUpdateCommitGraphForProject(
     projectId: ProjectId,
     updater: (commitGraph: Draft<CommitGraph>) => void,
-    branchSpecs: (BranchId | MainBranchId)[] = []
+    branchSpecs: (BranchId | MainBranchId)[] = [],
   ) {
     let project = await this.getProjectById(projectId, undefined);
     const needsRepair = async () =>
@@ -8128,7 +8504,7 @@ export class DbMgr implements MigrationDbMgr {
       this.shouldRepairCommitGraphForBranches(
         projectId,
         project.extraData.commitGraph,
-        branchSpecs
+        branchSpecs,
       );
     let repairedGraph: CommitGraph | undefined = undefined;
     if (await needsRepair()) {
@@ -8144,7 +8520,7 @@ export class DbMgr implements MigrationDbMgr {
           projectId,
           project.extraData?.commitGraph
             ? jsonClone(project.extraData.commitGraph)
-            : undefined
+            : undefined,
         );
       }
     }
@@ -8157,8 +8533,8 @@ export class DbMgr implements MigrationDbMgr {
     updater(
       ensure(
         curDraft.commitGraph,
-        "commitGraph was just repaired if it didn't exist"
-      )
+        "commitGraph was just repaired if it didn't exist",
+      ),
     );
     const changed = JSON.stringify(curDraft.commitGraph) !== initialDag;
     project.extraData = finishDraft(curDraft);
@@ -8169,7 +8545,7 @@ export class DbMgr implements MigrationDbMgr {
 
   async createBranch(
     projectId: ProjectId,
-    { name, pkgVersion }: { name: string; pkgVersion: PkgVersion }
+    { name, pkgVersion }: { name: string; pkgVersion: PkgVersion },
   ): Promise<Branch> {
     await this.checkProjectPerms(projectId, "content", "create branch");
 
@@ -8197,7 +8573,7 @@ export class DbMgr implements MigrationDbMgr {
       project: { id: projectId },
       branch: { id: branch.id },
       data: JSON.stringify(
-        bundler.bundle(site, pkgVersion.id, await getLastBundleVersion())
+        bundler.bundle(site, pkgVersion.id, await getLastBundleVersion()),
       ),
     });
     await this.entMgr.save(rev);
@@ -8206,7 +8582,7 @@ export class DbMgr implements MigrationDbMgr {
 
   async cloneBranch(
     sourceBranchId: BranchId,
-    { name }: { name: string }
+    { name }: { name: string },
   ): Promise<Branch> {
     await this.checkBranchPerms(sourceBranchId, "viewer", "clone branch");
     const sourceBranch = await this.getBranchById(sourceBranchId);
@@ -8226,11 +8602,11 @@ export class DbMgr implements MigrationDbMgr {
 
   async createBranchFromLatestPkgVersion(
     projectId: ProjectId,
-    { name }: { name: string }
+    { name }: { name: string },
   ): Promise<Branch> {
     const pkg = ensure(
       await this.getPkgByProjectId(projectId),
-      `commits must exist in order to create a branch for project ${projectId}`
+      `commits must exist in order to create a branch for project ${projectId}`,
     );
     const pkgVersion = await this.getPkgVersion(pkg.id);
     return this.createBranch(projectId, {
@@ -8243,7 +8619,7 @@ export class DbMgr implements MigrationDbMgr {
     branchId: BranchId,
     requireLevel: AccessLevel,
     action: string,
-    includeDeleted = false
+    includeDeleted = false,
   ) {
     // Ensure sudo can skip
     if (this.actor.type === "SuperUser") {
@@ -8260,14 +8636,14 @@ export class DbMgr implements MigrationDbMgr {
 
   async updateBranch(
     branchId: BranchId,
-    fields: Partial<UpdatableBranchFields>
+    fields: Partial<UpdatableBranchFields>,
   ) {
     await this.checkBranchPerms(branchId, "content", "update");
     const branch = await this.getBranchById(branchId);
     const allBranches = await this.listBranchesForProject(branch.projectId);
     checkBranchFields(
       fields,
-      allBranches.filter((b) => b.id !== branchId)
+      allBranches.filter((b) => b.id !== branchId),
     );
     fields = _.pick(fields, updatableBranchFields);
     Object.assign(branch, this.stampUpdate(), fields);
@@ -8277,25 +8653,25 @@ export class DbMgr implements MigrationDbMgr {
 
   async getBranchById(
     branchId: BranchId,
-    includeDeleted = false
+    includeDeleted = false,
   ): Promise<Branch> {
     await this.checkBranchPerms(
       branchId,
       "viewer",
       "get branch data",
-      includeDeleted
+      includeDeleted,
     );
     return ensureFound<Branch>(
       await this.branches().findOne({
         where: { id: branchId, ...maybeIncludeDeleted(includeDeleted) },
       }),
-      `Branch with ID ${branchId}`
+      `Branch with ID ${branchId}`,
     );
   }
 
   async getProjectBranchByName(
     projectId: ProjectId,
-    branchName: string
+    branchName: string,
   ): Promise<Branch> {
     await this.checkProjectPerms(projectId, "viewer", "get branch data");
     return ensureFound<Branch>(
@@ -8306,13 +8682,13 @@ export class DbMgr implements MigrationDbMgr {
           ...excludeDeleted(),
         },
       }),
-      `Branch with name "${branchName}"`
+      `Branch with name "${branchName}"`,
     );
   }
 
   async listBranchesForProject(
     projectId: ProjectId,
-    includeDeleted = false
+    includeDeleted = false,
   ): Promise<Branch[]> {
     await this.checkProjectPerms(projectId, "viewer", "list branches");
     return this.branches().find({
@@ -8325,7 +8701,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkProjectPerms(
       projectId,
       "editor",
-      "change main branch protection"
+      "change main branch protection",
     );
 
     const project = await this.getProjectById(projectId);
@@ -8362,7 +8738,7 @@ export class DbMgr implements MigrationDbMgr {
       description = "Auto-generated commit post-merge",
       tags = [],
     }: MergeArgs,
-    { mode }: { mode: "preview" | "try" }
+    { mode }: { mode: "preview" | "try" },
   ): Promise<MergeResult> {
     check(from !== to, "Cannot merge a branch into itself");
 
@@ -8382,7 +8758,7 @@ export class DbMgr implements MigrationDbMgr {
     ]);
     check(
       new Set(projectIds).size === 1,
-      `Can only merge branches from the same project, but merging branch  ${from} to ${to} spans projects ${projectIds}`
+      `Can only merge branches from the same project, but merging branch  ${from} to ${to} spans projects ${projectIds}`,
     );
     const [projectId] = projectIds;
 
@@ -8408,13 +8784,13 @@ export class DbMgr implements MigrationDbMgr {
       this,
       bundler,
       latestToRev,
-      `to-${projectId}`
+      `to-${projectId}`,
     );
     const latestFromSite = await unbundleProjectFromData(
       this,
       bundler,
       latestFromRev,
-      `from-${projectId}`
+      `from-${projectId}`,
     );
 
     const graph = await this.getCommitGraphForProject(projectId, [
@@ -8426,7 +8802,7 @@ export class DbMgr implements MigrationDbMgr {
       projectId,
       graph,
       fromBranchId,
-      toBranchId
+      toBranchId,
     );
 
     if (!lowestCommonAncestor) {
@@ -8435,15 +8811,32 @@ export class DbMgr implements MigrationDbMgr {
 
     const pkg = ensure(
       await this.getPkgByProjectId(projectId),
-      `Attempting to merge branches for project ${projectId}, so a pkg must have been created, but none found`
+      `Attempting to merge branches for project ${projectId}, so a pkg must have been created, but none found`,
     );
-    const ancestorPkgVersion = await this.getPkgVersionById(
-      lowestCommonAncestor
-    );
+<<<<<<< HEAD
     const latestToPkgVersion = await this.getPkgVersionHead(pkg.id, toBranchId);
     const latestFromPkgVersion = await this.getPkgVersionHead(
       pkg.id,
       fromBranchId
+=======
+    const ancestorPkgVersion =
+      await this.getPkgVersionById(lowestCommonAncestor);
+    const latestToPkgVersion = await this.getPkgVersion(
+      pkg.id,
+      undefined,
+      undefined,
+      {
+        branchId: toBranchId,
+      },
+    );
+    const latestFromPkgVersion = await this.getPkgVersion(
+      pkg.id,
+      undefined,
+      undefined,
+      {
+        branchId: fromBranchId,
+      },
+>>>>>>> upstream/master
     );
 
     const extras = {
@@ -8489,7 +8882,7 @@ export class DbMgr implements MigrationDbMgr {
     const { site: ancestorSite } = await unbundlePkgVersion(
       this,
       bundler,
-      ancestorPkgVersion
+      ancestorPkgVersion,
     );
 
     let result: MergeResult;
@@ -8498,7 +8891,7 @@ export class DbMgr implements MigrationDbMgr {
     const mergedSite = (
       bundler.unbundle(
         JSON.parse(ancestorPkgVersion.model),
-        mergedUuid
+        mergedUuid,
       ) as ProjectDependency
     ).site;
     if (!resolution) {
@@ -8508,7 +8901,7 @@ export class DbMgr implements MigrationDbMgr {
         latestToSite,
         mergedSite,
         bundler,
-        undefined
+        undefined,
       );
       const canMerge = mergeStepRaw.status === "merged";
       const mergeStep = excludeMergeStepFromResult ? undefined : mergeStepRaw;
@@ -8548,7 +8941,7 @@ export class DbMgr implements MigrationDbMgr {
           await this.getProjectRevision(
             projectId,
             expectedFromRevisionNum,
-            fromBranchId
+            fromBranchId,
           )
         ).data !== latestFromRev.data
       ) {
@@ -8565,7 +8958,7 @@ export class DbMgr implements MigrationDbMgr {
           await this.getProjectRevision(
             projectId,
             expectedToRevisionNum,
-            toBranchId
+            toBranchId,
           )
         ).data !== latestToRev.data
       ) {
@@ -8577,7 +8970,7 @@ export class DbMgr implements MigrationDbMgr {
 
       assert(
         xor(!!resolution.resolvedSite, !!resolution.picks),
-        "tryMergeBranch: expecting either resolvedSite or picks"
+        "tryMergeBranch: expecting either resolvedSite or picks",
       );
 
       if (resolution.picks) {
@@ -8587,11 +8980,11 @@ export class DbMgr implements MigrationDbMgr {
           latestToSite,
           mergedSite,
           bundler,
-          resolution.picks
+          resolution.picks,
         );
         assert(
           mergeStepRaw.status === "merged",
-          "tryMergeBranch: expecting tryMerge with picks to result in a fully merged site with no further resolutions needed"
+          "tryMergeBranch: expecting tryMerge with picks to result in a fully merged site with no further resolutions needed",
         );
       }
 
@@ -8617,7 +9010,7 @@ export class DbMgr implements MigrationDbMgr {
             "Auto-generated commit pre-merge",
             undefined,
             undefined,
-            fromBranchId
+            fromBranchId,
           )
         ).pkgVersion;
 
@@ -8631,7 +9024,7 @@ export class DbMgr implements MigrationDbMgr {
         "Auto-generated commit pre-merge",
         undefined,
         undefined,
-        toBranchId
+        toBranchId,
       );
     }
 
@@ -8651,15 +9044,15 @@ export class DbMgr implements MigrationDbMgr {
                 bundler.bundle(
                   resolution.resolvedSite,
                   projectId,
-                  await getLastBundleVersion()
-                )
+                  await getLastBundleVersion(),
+                ),
               )
           : JSON.stringify(
               bundler.bundle(
                 mergedSite,
                 mergedUuid,
-                await getLastBundleVersion()
-              )
+                await getLastBundleVersion(),
+              ),
             ),
         revisionNum: latestToRev.revision + 1,
         branchId: toBranchId,
@@ -8669,7 +9062,7 @@ export class DbMgr implements MigrationDbMgr {
         result.status === "can be merged" &&
           mergeStepRaw &&
           mergeStepRaw.status === "merged",
-        "Should be merge-able by this point"
+        "Should be merge-able by this point",
       );
       await this.saveProjectRev({
         projectId,
@@ -8679,8 +9072,8 @@ export class DbMgr implements MigrationDbMgr {
             // Make sure to bundle with the correct mergedUuid,
             // since the mergedSite was originally unbundled with that.
             mergedUuid,
-            await getLastBundleVersion()
-          )
+            await getLastBundleVersion(),
+          ),
         ),
         revisionNum: latestToRev.revision + 1,
         branchId: toBranchId,
@@ -8697,7 +9090,7 @@ export class DbMgr implements MigrationDbMgr {
       undefined,
       toBranchId,
       finalFromCommit.id,
-      resolution?.picks
+      resolution?.picks,
     );
 
     if (fromBranchId) {
@@ -8716,7 +9109,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkWorkspacePerms(
       workspaceId,
       "viewer",
-      "get workspace token"
+      "get workspace token",
     );
 
     let workspaceApiToken = await this.workspaceApiTokens().findOne({
@@ -8749,7 +9142,7 @@ export class DbMgr implements MigrationDbMgr {
     workspaceId: WorkspaceId,
     userId: string,
     roles: string[],
-    properties: any
+    properties: any,
   ) {
     await this.checkWorkspacePerms(workspaceId, "editor", "edit user");
     const workspaceUser = await findExactlyOne(this.workspaceUsers(), {
@@ -8764,7 +9157,7 @@ export class DbMgr implements MigrationDbMgr {
   async createWorkspaceAuthConfig(
     workspaceId: WorkspaceId,
     provider: string | undefined,
-    config: any
+    config: any,
   ) {
     await this.checkWorkspacePerms(workspaceId, "editor", "create auth config");
     const workspaceAuthConfig = this.workspaceAuthConfigs().create({
@@ -8805,7 +9198,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkTeamPerms(
       endUserDirectory.teamId,
       "viewer",
-      "get end user directory"
+      "get end user directory",
     );
     return endUserDirectory;
   }
@@ -8817,7 +9210,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkTeamPerms(
       endUserDirectory.teamId,
       "viewer",
-      "get end user directory apps"
+      "get end user directory apps",
     );
     const appConfigs = await this.appAuthConfigs().find({
       where: {
@@ -8831,7 +9224,7 @@ export class DbMgr implements MigrationDbMgr {
 
   async updateEndUserDirectory(
     endUserDirectoryId: string,
-    changes: Pick<EndUserDirectory, "name">
+    changes: Pick<EndUserDirectory, "name">,
   ) {
     const endUserDirectory = await findExactlyOne(this.endUserDirectories(), {
       id: endUserDirectoryId,
@@ -8839,7 +9232,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkTeamPerms(
       endUserDirectory.teamId,
       "editor",
-      "update end user directory"
+      "update end user directory",
     );
     const result = await this.endUserDirectories().save({
       ...endUserDirectory,
@@ -8855,12 +9248,12 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkTeamPerms(
       endUserDirectory.teamId,
       "editor",
-      "delete end user directory"
+      "delete end user directory",
     );
     const apps = await this.getEndUserDirectoryApps(endUserDirectoryId);
     if (apps.length > 0) {
       throw new Error(
-        `Cannot delete end user directory ${endUserDirectoryId} because it has apps associated with it`
+        `Cannot delete end user directory ${endUserDirectoryId} because it has apps associated with it`,
       );
     }
     await this.endUserDirectories().save({
@@ -8872,13 +9265,13 @@ export class DbMgr implements MigrationDbMgr {
   async upsertAppAuthConfig(
     projectId: ProjectId,
     config: Partial<AppAuthConfig>,
-    skipPermissionCheck = false
+    skipPermissionCheck = false,
   ) {
     if (!skipPermissionCheck) {
       await this.checkProjectPerms(
         projectId,
         "editor",
-        "upsert app auth config"
+        "upsert app auth config",
       );
     }
     let appAuthConfig = await this.appAuthConfigs().findOne({
@@ -8941,14 +9334,14 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkProjectPerms(
       projectId,
       "editor",
-      "disable app auth config"
+      "disable app auth config",
     );
     const appAccessRules = await this.listAppAccessRules(projectId);
     await this.appEndUserAccess().save(
       appAccessRules.map((appAccessRule) => ({
         ...appAccessRule,
         ...this.stampDelete(),
-      }))
+      })),
     );
 
     await this.deleteAppAuthConfig(projectId);
@@ -8958,12 +9351,12 @@ export class DbMgr implements MigrationDbMgr {
       appRoles.map((appRole) => ({
         ...appRole,
         ...this.stampDelete(),
-      }))
+      })),
     );
   }
 
   async getPublicAppAuthConfig(
-    projectId: string
+    projectId: string,
   ): Promise<
     | Pick<
         AppAuthConfig,
@@ -9011,7 +9404,7 @@ export class DbMgr implements MigrationDbMgr {
     directoryId: string,
     identifier: EndUserIdentifier,
     userId: UserId | undefined = undefined,
-    properties: Record<string, any> = {}
+    properties: Record<string, any> = {},
   ) {
     let endUser = await this.endUsers().findOne({
       directoryId,
@@ -9065,7 +9458,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkDirectoryPerms(
       directoryId,
       "viewer",
-      "get directory users"
+      "get directory users",
     );
     // Verify that the user has access to the directory/team
     return this.endUsers().find({
@@ -9119,7 +9512,7 @@ export class DbMgr implements MigrationDbMgr {
 
   async changeAppRolesOrder(
     projectId: string,
-    newOrders: Record<string, number>
+    newOrders: Record<string, number>,
   ) {
     await this.checkProjectPerms(projectId, "editor", "change app roles order");
     const appRoles = await this.listAppRoles(projectId);
@@ -9172,7 +9565,7 @@ export class DbMgr implements MigrationDbMgr {
     const accessList = await this.listAppAccessRules(role.projectId);
     if (accessList.some((access) => access.roleId === roleId)) {
       throw new ForbiddenError(
-        "Cannot delete a role that is assigned to an access rule"
+        "Cannot delete a role that is assigned to an access rule",
       );
     }
     const appRoles = await this.listAppRoles(role.projectId);
@@ -9192,8 +9585,8 @@ export class DbMgr implements MigrationDbMgr {
           ...acc,
           [appRole.id]: newRoles.length - 1 - idx,
         }),
-        {}
-      )
+        {},
+      ),
     );
   }
 
@@ -9223,7 +9616,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkProjectPerms(
       projectId,
       "viewer",
-      "get app end user accesses"
+      "get app end user accesses",
     );
     return this.appEndUserAccess().findOne({
       where: {
@@ -9241,7 +9634,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkProjectPerms(
       projectId,
       "viewer",
-      "get app end user accesses"
+      "get app end user accesses",
     );
     return this.appEndUserAccess().find({
       where: {
@@ -9255,12 +9648,12 @@ export class DbMgr implements MigrationDbMgr {
 
   async getAppEndUserAccessByIdentifier(
     projectId: string,
-    identifier: AppEndUserAccessIdentifier
+    identifier: AppEndUserAccessIdentifier,
   ) {
     await this.checkProjectPerms(
       projectId,
       "viewer",
-      "get app end user access"
+      "get app end user access",
     );
     const appEndUserAccess = await this.appEndUserAccess().findOne({
       where: {
@@ -9277,7 +9670,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkProjectPerms(
       projectId,
       "viewer",
-      "get app end user access"
+      "get app end user access",
     );
     const appEndUserAccess = await this.appEndUserAccess().find({
       where: {
@@ -9294,12 +9687,12 @@ export class DbMgr implements MigrationDbMgr {
     projectId: string,
     identifier: AppEndUserAccessIdentifier,
     roleId?: string,
-    manuallyAdded = true
+    manuallyAdded = true,
   ) {
     await this.checkProjectPerms(
       projectId,
       "editor",
-      "upsert app end user access"
+      "upsert app end user access",
     );
     let appEndUserAccess = await this.appEndUserAccess().findOne({
       projectId,
@@ -9336,7 +9729,7 @@ export class DbMgr implements MigrationDbMgr {
       directoryEndUserGroupIds: string[];
       domains: string[];
     },
-    roleId?: string
+    roleId?: string,
   ) {
     await this.checkProjectPerms(projectId, "editor", "invite user to app");
     const {
@@ -9359,7 +9752,7 @@ export class DbMgr implements MigrationDbMgr {
       const appEndUserAccess = await this.upsertAppEndUserAccess(
         projectId,
         identifier,
-        roleId
+        roleId,
       );
       appEndUserAccesses.push(appEndUserAccess);
     }
@@ -9370,7 +9763,7 @@ export class DbMgr implements MigrationDbMgr {
     projectId: string,
     accessId: string,
     roleId: string,
-    manuallyAdded = true
+    manuallyAdded = true,
   ) {
     await this.checkProjectPerms(projectId, "editor", "update app user");
     const appEndUserAccess = await findExactlyOne(this.appEndUserAccess(), {
@@ -9407,7 +9800,7 @@ export class DbMgr implements MigrationDbMgr {
     appId: string,
     opts?: {
       skipDirectoryPermsCheck?: boolean;
-    }
+    },
   ) {
     const appAuthConfig = await this.getPublicAppAuthConfig(appId);
 
@@ -9436,7 +9829,7 @@ export class DbMgr implements MigrationDbMgr {
       await this.checkDirectoryPerms(
         endUser.directoryId,
         "viewer",
-        "get end user"
+        "get end user",
       );
     }
     return endUser;
@@ -9463,7 +9856,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkProjectPerms(
       appEndUserAccess.projectId,
       "viewer",
-      "get app end user access"
+      "get app end user access",
     );
     return appEndUserAccess;
   }
@@ -9471,7 +9864,7 @@ export class DbMgr implements MigrationDbMgr {
   async checkDirectoryPerms(
     directoryId: string,
     requiredLevel: AccessLevel,
-    action: string
+    action: string,
   ) {
     const directory = await findExactlyOne(this.endUserDirectories(), {
       where: {
@@ -9487,7 +9880,7 @@ export class DbMgr implements MigrationDbMgr {
     const directory = await this.checkDirectoryPerms(
       directoryId,
       "viewer",
-      "access end user directory"
+      "access end user directory",
     );
     return directory;
   }
@@ -9496,7 +9889,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkDirectoryPerms(
       directoryId,
       "viewer",
-      "get end users by emails"
+      "get end users by emails",
     );
     const endUsers = await this.endUsers().find({
       where: {
@@ -9512,18 +9905,18 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkDirectoryPerms(
       directoryId,
       "editor",
-      "add end users to directory"
+      "add end users to directory",
     );
     const uniqEmails = uniq(emails);
 
     const existingEndUsers = await this.getEndUsersByEmails(
       directoryId,
-      uniqEmails
+      uniqEmails,
     );
     const existingEmails = existingEndUsers.map((endUser) => endUser.email);
 
     const newEmails = uniqEmails.filter(
-      (email) => !existingEmails.includes(email)
+      (email) => !existingEmails.includes(email),
     );
     const newEndUsers: EndUser[] = newEmails.map((email) => {
       return this.endUsers().create({
@@ -9541,7 +9934,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkDirectoryPerms(
       directoryId,
       "editor",
-      "remove end user from directory"
+      "remove end user from directory",
     );
     const endUser = await findExactlyOne(this.endUsers(), {
       where: {
@@ -9562,7 +9955,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkDirectoryPerms(
       directoryId,
       "viewer",
-      "get directory group"
+      "get directory group",
     );
     const directoryGroup = await findExactlyOne(this.directoryEndUserGroups(), {
       where: {
@@ -9581,7 +9974,7 @@ export class DbMgr implements MigrationDbMgr {
       await this.checkDirectoryPerms(
         directoryId,
         "viewer",
-        "get directory groups"
+        "get directory groups",
       );
     }
     return this.directoryEndUserGroups().find({
@@ -9596,7 +9989,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkDirectoryPerms(
       directoryId,
       "editor",
-      "create directory group"
+      "create directory group",
     );
     const directoryGroup = this.directoryEndUserGroups().create({
       ...this.stampNew(),
@@ -9613,16 +10006,16 @@ export class DbMgr implements MigrationDbMgr {
   async updateDirectoryGroup(
     directoryId: string,
     groupId: string,
-    name: string
+    name: string,
   ) {
     await this.checkDirectoryPerms(
       directoryId,
       "editor",
-      "update directory group"
+      "update directory group",
     );
     const directoryGroup = await this.getDirectoryGroupById(
       directoryId,
-      groupId
+      groupId,
     );
     directoryGroup.name = name;
     return this.directoryEndUserGroups().save(directoryGroup);
@@ -9632,11 +10025,11 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkDirectoryPerms(
       directoryId,
       "editor",
-      "delete directory group"
+      "delete directory group",
     );
     const directoryGroup = await this.getDirectoryGroupById(
       directoryId,
-      groupId
+      groupId,
     );
     await this.directoryEndUserGroups().save({
       ...directoryGroup,
@@ -9652,12 +10045,12 @@ export class DbMgr implements MigrationDbMgr {
   async addEndUserToGroups(
     directoryId: string,
     endUserId: string,
-    groupIds: string[]
+    groupIds: string[],
   ) {
     await this.checkDirectoryPerms(
       directoryId,
       "editor",
-      "add end user to groups"
+      "add end user to groups",
     );
     const appEndUserGroups = groupIds.map((groupId) => {
       // TODO(fmota): validate group id (?)
@@ -9674,12 +10067,12 @@ export class DbMgr implements MigrationDbMgr {
   async removeEndUserFromGroups(
     directoryId: string,
     endUserId: string,
-    groupIds: string[]
+    groupIds: string[],
   ) {
     await this.checkDirectoryPerms(
       directoryId,
       "editor",
-      "remove end user from groups"
+      "remove end user from groups",
     );
     const appEndUserGroups = await this.appEndUserGroups().find({
       where: {
@@ -9693,7 +10086,7 @@ export class DbMgr implements MigrationDbMgr {
           ...appEndUserGroup,
           ...this.stampDelete(),
         };
-      })
+      }),
     );
   }
 
@@ -9702,13 +10095,13 @@ export class DbMgr implements MigrationDbMgr {
     endUserIds: string[],
     opts?: {
       skipDirectoryPermsCheck?: boolean;
-    }
+    },
   ) {
     if (!opts?.skipDirectoryPermsCheck) {
       await this.checkDirectoryPerms(
         directoryId,
         "viewer",
-        "list end users groups"
+        "list end users groups",
       );
     }
     // No need to validate that groups belong to directory, since endUser lives inside the directory
@@ -9726,7 +10119,7 @@ export class DbMgr implements MigrationDbMgr {
       size: number;
       page: number;
     },
-    search: string
+    search: string,
   ) {
     // Limited to editor as the access rules exposes users of a project
     // Instead of throwing an error if the user is not an editor, we return an empty list
@@ -9764,7 +10157,7 @@ export class DbMgr implements MigrationDbMgr {
         `%${search}%`,
         pagination.size * pagination.page,
         pagination.size,
-      ]
+      ],
     );
   }
 
@@ -9782,7 +10175,7 @@ export class DbMgr implements MigrationDbMgr {
       select count(*) from app_access_registry left join end_user on end_user.id = app_access_registry."endUserId"
       where "projectId" = $1 and end_user.email ilike $2;
       `,
-      [projectId, `%${search}%`]
+      [projectId, `%${search}%`],
     );
     return Number.parseInt(result[0].count);
   }
@@ -9838,7 +10231,7 @@ export class DbMgr implements MigrationDbMgr {
             order by amount desc
       ) as apps_with_active_users where amount > $2;
     `,
-        [`${recency} days`, threshold]
+        [`${recency} days`, threshold],
       )
     )[0].count;
 
@@ -9923,8 +10316,8 @@ export class DbMgr implements MigrationDbMgr {
         directoryEndUserGroupId: keepGroupRefs
           ? accessRule.directoryEndUserGroupId
           : accessRule.directoryEndUserGroupId
-          ? oldToNewDirectoryGroupIds[accessRule.directoryEndUserGroupId]
-          : null,
+            ? oldToNewDirectoryGroupIds[accessRule.directoryEndUserGroupId]
+            : null,
         projectId: toProjectId,
         role: null,
         roleId: oldToNewRoleIds[accessRule.roleId],
@@ -9942,7 +10335,7 @@ export class DbMgr implements MigrationDbMgr {
 
   async createDirectoryGroupsFromDirectory(
     fromDirectoryId: string,
-    toDirectoryId: string
+    toDirectoryId: string,
   ) {
     // No checks for the directory permissions, since we only copy the groups
     // And checking the perms for the directory would require the user to have
@@ -9950,7 +10343,7 @@ export class DbMgr implements MigrationDbMgr {
     // as the fromProject may be a template
     const directoryGroups = await this.getDirectoryGroups(
       fromDirectoryId,
-      true
+      true,
     );
     const oldToNewDirectoryGroupIds: Record<string, string> = {};
     const newDirectoryGroups = directoryGroups.map((directoryGroup) => {
@@ -9994,7 +10387,7 @@ export class DbMgr implements MigrationDbMgr {
 
     const newDirectory = await this.createEndUserDirectory(
       workspace.teamId,
-      directory.name
+      directory.name,
     );
     await this.upsertAppAuthConfig(projectId, {
       directoryId: newDirectory.id,
@@ -10008,7 +10401,7 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkProjectBranchPerms(
       { projectId, branchId },
       "commenter",
-      "view comments"
+      "view comments",
     );
     const query = this.commentThreads()
       .createQueryBuilder("thread")
@@ -10035,14 +10428,14 @@ export class DbMgr implements MigrationDbMgr {
         if (comment.deletedAt) {
           comment.body = "";
         }
-      })
+      }),
     );
 
     return threads;
   }
 
   async getCommentsForThread(
-    commentThreadId: CommentThreadId
+    commentThreadId: CommentThreadId,
   ): Promise<Comment[]> {
     return await this.comments().find({
       where: {
@@ -10064,7 +10457,7 @@ export class DbMgr implements MigrationDbMgr {
       .leftJoinAndSelect("thread.branch", "branch")
       .andWhere(
         "(thread.lastEmailedAt is NULL OR (thread.updatedAt > thread.lastEmailedAt AND thread.updatedAt <= :before))",
-        { before }
+        { before },
       )
       .orderBy("thread.updatedAt", "ASC")
       .getMany();
@@ -10072,7 +10465,7 @@ export class DbMgr implements MigrationDbMgr {
 
   async getUnnotifiedCommentsByThreadIds(
     threadIds: CommentThreadId[],
-    before: Date
+    before: Date,
   ): Promise<Comment[]> {
     this.checkSuperUser();
     if (threadIds.length === 0) {
@@ -10086,7 +10479,7 @@ export class DbMgr implements MigrationDbMgr {
       .where("thread.id IN (:...threadIds)", { threadIds })
       .andWhere(
         "(thread.lastEmailedAt is NULL OR (comment.createdAt > thread.lastEmailedAt AND comment.createdAt <= :before))",
-        { before }
+        { before },
       )
       .andWhere("comment.deletedAt IS NULL")
       .orderBy("comment.createdAt", "ASC")
@@ -10095,7 +10488,7 @@ export class DbMgr implements MigrationDbMgr {
 
   async getUnnotifiedCommentsThreadHistoriesByThreadIds(
     threadIds: CommentThreadId[],
-    before: Date
+    before: Date,
   ): Promise<CommentThreadHistory[]> {
     this.checkSuperUser();
     if (threadIds.length === 0) {
@@ -10110,7 +10503,7 @@ export class DbMgr implements MigrationDbMgr {
       .where("thread.id IN (:...threadIds)", { threadIds })
       .andWhere(
         "(thread.lastEmailedAt is NULL OR (threadHistory.createdAt > thread.lastEmailedAt AND threadHistory.createdAt <= :before))",
-        { before }
+        { before },
       )
       .andWhere("threadHistory.deletedAt IS NULL")
       .orderBy("threadHistory.createdAt", "ASC")
@@ -10119,7 +10512,7 @@ export class DbMgr implements MigrationDbMgr {
 
   async getUnnotifiedCommentsReactionsByThreadIds(
     threadIds: CommentThreadId[],
-    before: Date
+    before: Date,
   ): Promise<CommentReaction[]> {
     this.checkSuperUser();
     if (threadIds.length === 0) {
@@ -10136,7 +10529,7 @@ export class DbMgr implements MigrationDbMgr {
       .where("thread.id IN (:...threadIds)", { threadIds })
       .andWhere(
         "(thread.lastEmailedAt is NULL OR (commentReaction.createdAt > thread.lastEmailedAt AND commentReaction.createdAt <= :before))",
-        { before }
+        { before },
       )
       .andWhere("commentReaction.deletedAt IS NULL")
       .orderBy("commentReaction.createdAt", "ASC")
@@ -10145,17 +10538,17 @@ export class DbMgr implements MigrationDbMgr {
 
   async markCommentThreadsAsNotified(
     commentThreadIds: string[],
-    notifiedDate: Date
+    notifiedDate: Date,
   ): Promise<void> {
     this.checkSuperUser();
     await this.commentThreads().update(
       { id: In(commentThreadIds) },
-      { lastEmailedAt: notifiedDate }
+      { lastEmailedAt: notifiedDate },
     );
   }
 
   async getCommentThreadAndStampUpdate(
-    threadId: CommentThreadId
+    threadId: CommentThreadId,
   ): Promise<CommentThread> {
     const commentThread = await findExactlyOne(this.commentThreads(), {
       id: threadId,
@@ -10166,17 +10559,27 @@ export class DbMgr implements MigrationDbMgr {
 
   async postCommentInThread(
     { projectId, branchId }: ProjectAndBranchId,
-    data: { id: CommentId; threadId: CommentThreadId; body: string }
+    data: { id: CommentId; threadId: CommentThreadId; body: string },
   ): Promise<Comment> {
     await this.checkProjectBranchPerms(
       { projectId, branchId },
       "commenter",
-      "post comment"
+      "post comment",
     );
     const { id, body, threadId } = data;
+    ensureFound<CommentThread>(
+      await this.commentThreads().findOne({
+        where: {
+          id: threadId,
+          projectId,
+          branchId: branchId ?? IsNull(),
+        },
+      }),
+      `Comment thread with id ${threadId}`,
+    );
     if (!isUuidV4(id) && !isShortUuidV4(id)) {
       throw new BadRequestError(
-        "Invalid UUID format: 'id' must be a valid UUID."
+        "Invalid UUID format: 'id' must be a valid UUID.",
       );
     }
     const comment = this.comments().create({
@@ -10193,7 +10596,7 @@ export class DbMgr implements MigrationDbMgr {
         ...this.stampUpdate(),
         deletedAt: null,
         deletedById: null,
-      }
+      },
     );
 
     return comment;
@@ -10206,22 +10609,22 @@ export class DbMgr implements MigrationDbMgr {
       commentId: CommentId;
       location: CommentLocation;
       body: string;
-    }
+    },
   ): Promise<Comment> {
     await this.checkProjectBranchPerms(
       { projectId, branchId },
       "commenter",
-      "post comment"
+      "post comment",
     );
     const { commentThreadId, commentId, location, body } = data;
     if (!isUuidV4(commentThreadId) && !isShortUuidV4(commentThreadId)) {
       throw new BadRequestError(
-        "Invalid UUID format: 'commentThreadId' must be a valid UUID."
+        "Invalid UUID format: 'commentThreadId' must be a valid UUID.",
       );
     }
     if (!isUuidV4(commentId) && !isShortUuidV4(commentId)) {
       throw new BadRequestError(
-        "Invalid UUID format: 'commentId' must be a valid UUID."
+        "Invalid UUID format: 'commentId' must be a valid UUID.",
       );
     }
     const commentThread = this.commentThreads().create({
@@ -10257,7 +10660,7 @@ export class DbMgr implements MigrationDbMgr {
   async resolveThreadInProject(
     id: ThreadHistoryId,
     commentThreadId: CommentThreadId,
-    resolved: boolean
+    resolved: boolean,
   ) {
     const commentThread = await findExactlyOne(this.commentThreads(), {
       id: commentThreadId,
@@ -10267,13 +10670,13 @@ export class DbMgr implements MigrationDbMgr {
       await this.checkProjectPerms(
         commentThread.projectId,
         "content",
-        "resolve a comment"
+        "resolve a comment",
       );
     }
 
     if (!isUuidV4(id) && !isShortUuidV4(id)) {
       throw new BadRequestError(
-        "Invalid UUID format: 'id' must be a valid UUID."
+        "Invalid UUID format: 'id' must be a valid UUID.",
       );
     }
     const commentThreadHistory = this.commentThreadHistory().create({
@@ -10290,16 +10693,23 @@ export class DbMgr implements MigrationDbMgr {
 
   async deleteCommentInProject(
     { projectId, branchId }: ProjectAndBranchId,
-    commentId: CommentId
+    commentId: CommentId,
   ): Promise<Comment> {
-    const comment = await findExactlyOne(this.comments(), {
-      id: commentId,
-    });
+    const qb = this.comments()
+      .createQueryBuilder("comment")
+      .innerJoin("comment.commentThread", "thread")
+      .where("comment.id = :commentId", { commentId })
+      .andWhere("thread.projectId = :projectId", { projectId });
+    whereEqOrNull(qb, "thread.branchId", { branchId }, true);
+    const comment = ensureFound<Comment>(
+      await qb.getOne(),
+      `Comment with id ${commentId}`,
+    );
     if (!this.isUserIdSelf(comment.createdById ?? undefined)) {
       await this.checkProjectBranchPerms(
         { projectId, branchId },
         "editor",
-        "delete comments"
+        "delete comments",
       );
     }
     Object.assign(comment, this.stampDelete());
@@ -10314,7 +10724,7 @@ export class DbMgr implements MigrationDbMgr {
         `NOT EXISTS (
       SELECT 1 FROM "comment" c
       WHERE c."commentThreadId" = :threadId AND c."deletedAt" IS NULL
-    )`
+    )`,
       )
       .setParameter("threadId", comment.commentThreadId)
       .execute();
@@ -10323,7 +10733,7 @@ export class DbMgr implements MigrationDbMgr {
   }
 
   async getFirstCommentInThread(
-    threadId: CommentThreadId
+    threadId: CommentThreadId,
   ): Promise<Comment | undefined> {
     return await this.comments().findOne({
       where: {
@@ -10338,23 +10748,25 @@ export class DbMgr implements MigrationDbMgr {
 
   async deleteThreadInProject(
     { projectId, branchId }: ProjectAndBranchId,
-    threadId: CommentThreadId
+    threadId: CommentThreadId,
   ): Promise<CommentThread> {
     const commentThread = ensureFound<CommentThread>(
       await this.commentThreads().findOne({
         where: {
           id: threadId,
+          projectId,
+          branchId: branchId ?? IsNull(),
           ...excludeDeleted(),
         },
       }),
-      `Comment thread with id ${threadId}`
+      `Comment thread with id ${threadId}`,
     );
 
     if (!this.isUserIdSelf(commentThread.createdById ?? undefined)) {
       await this.checkProjectBranchPerms(
         { projectId, branchId },
         "editor",
-        "delete comments"
+        "delete comments",
       );
     }
 
@@ -10364,29 +10776,29 @@ export class DbMgr implements MigrationDbMgr {
   }
 
   async getReactionsForComments(
-    commentThreads: CommentThread[]
+    commentThreads: CommentThread[],
   ): Promise<CommentReaction[]> {
     if (commentThreads.length === 0) {
       return [];
     }
     const projectId = only([
       ...new Set(
-        commentThreads.map((commentThread) => commentThread.projectId)
+        commentThreads.map((commentThread) => commentThread.projectId),
       ),
     ]);
     const branchId =
       only([
         ...new Set(
-          commentThreads.map((commentThread) => commentThread.branchId)
+          commentThreads.map((commentThread) => commentThread.branchId),
         ),
       ]) ?? undefined;
     await this.checkProjectBranchPerms(
       { projectId, branchId },
       "commenter",
-      "view comment reactions"
+      "view comment reactions",
     );
     const comments = commentThreads.flatMap(
-      (commentThread) => commentThread.comments
+      (commentThread) => commentThread.comments,
     );
     return await this.commentReactions().find({
       where: {
@@ -10399,16 +10811,16 @@ export class DbMgr implements MigrationDbMgr {
   async addCommentReaction(
     id: CommentReactionId,
     commentId: CommentId,
-    data: CommentReactionData
+    data: CommentReactionData,
   ): Promise<CommentReaction> {
     await this.checkCommentPerms(
       commentId,
       "commenter",
-      "post comment reaction"
+      "post comment reaction",
     );
     if (!isUuidV4(id) && !isShortUuidV4(id)) {
       throw new BadRequestError(
-        "Invalid UUID format: 'id' must be a valid UUID."
+        "Invalid UUID format: 'id' must be a valid UUID.",
       );
     }
     const reaction = this.commentReactions().create({
@@ -10420,7 +10832,7 @@ export class DbMgr implements MigrationDbMgr {
       id: reaction.commentId,
     });
     const commentThread = await this.getCommentThreadAndStampUpdate(
-      comment.commentThreadId
+      comment.commentThreadId,
     );
     await this.entMgr.save([commentThread, reaction]);
     return {
@@ -10430,7 +10842,7 @@ export class DbMgr implements MigrationDbMgr {
   }
 
   async removeCommentReaction(
-    reactionId: CommentReactionId
+    reactionId: CommentReactionId,
   ): Promise<CommentReaction> {
     const reaction = await findExactlyOne(this.commentReactions(), {
       id: reactionId,
@@ -10438,14 +10850,14 @@ export class DbMgr implements MigrationDbMgr {
     await this.checkCommentPerms(
       reaction.commentId,
       "commenter",
-      "post comment reaction"
+      "post comment reaction",
     );
     const comment = await findExactlyOne(this.comments(), {
       id: reaction.commentId,
     });
     Object.assign(reaction, this.stampDelete());
     const commentThread = await this.getCommentThreadAndStampUpdate(
-      comment.commentThreadId
+      comment.commentThreadId,
     );
     await this.entMgr.save([commentThread, reaction]);
     return reaction;
@@ -10454,7 +10866,7 @@ export class DbMgr implements MigrationDbMgr {
   private async checkCommentPerms(
     commentId: CommentId,
     requireLevel: AccessLevel,
-    action: string
+    action: string,
   ) {
     const comment = await findExactlyOne(this.comments(), {
       where: { id: commentId },
@@ -10462,7 +10874,7 @@ export class DbMgr implements MigrationDbMgr {
     });
     const commentThread = ensure(
       comment.commentThread,
-      `Must have commentThread.`
+      `Must have commentThread.`,
     );
     await this.checkProjectBranchPerms(
       {
@@ -10470,22 +10882,22 @@ export class DbMgr implements MigrationDbMgr {
         branchId: commentThread.branchId ?? undefined,
       },
       requireLevel,
-      action
+      action,
     );
   }
 
   async tryGetNotificationSettings(
     userId: UserId,
-    projectId: ProjectId
+    projectId: ProjectId,
   ): Promise<ApiNotificationSettings | undefined> {
     await this.checkProjectPerms(
       projectId,
       "commenter",
-      "get notification settings"
+      "get notification settings",
     );
     const settings = await this.tryGetKeyValue(
       "notification-settings",
-      JSON.stringify({ userId, projectId })
+      JSON.stringify({ userId, projectId }),
     );
     return settings ? JSON.parse(settings.value) : undefined;
   }
@@ -10493,17 +10905,17 @@ export class DbMgr implements MigrationDbMgr {
   async updateNotificationSettings(
     userId: UserId,
     projectId: ProjectId,
-    settings: ApiNotificationSettings
+    settings: ApiNotificationSettings,
   ) {
     await this.checkProjectPerms(
       projectId,
       "commenter",
-      "update notification settings"
+      "update notification settings",
     );
     await this.setKeyValue(
       "notification-settings",
       JSON.stringify({ userId, projectId }),
-      JSON.stringify(settings)
+      JSON.stringify(settings),
     );
   }
 
@@ -10528,7 +10940,7 @@ export class DbMgr implements MigrationDbMgr {
           personalTeamOwnerId: this.actor.userId,
         },
       }),
-      `User's personal team`
+      `User's personal team`,
     );
 
     const personalWorkspace = await this._queryWorkspaces({
@@ -10537,54 +10949,15 @@ export class DbMgr implements MigrationDbMgr {
 
     return ensureFound<Workspace>(
       personalWorkspace,
-      `User's personal workspace`
+      `User's personal workspace`,
     );
-  }
-
-  async createTutorialDb(type: TutorialType) {
-    const result = await createTutorialDb(type);
-    const db = this.tutorialDbs().create({
-      ...this.stampNew(),
-      info: result,
-    });
-    await this.entMgr.save(db);
-    return db;
-  }
-
-  async getTutorialDb(id: TutorialDbId) {
-    return ensureFound<TutorialDb>(
-      await this.tutorialDbs().findOne({
-        id,
-        ...excludeDeleted(),
-      }),
-      `Tutorial DB with id ${id}`
-    );
-  }
-
-  async createTutorialDbDataSource(
-    type: TutorialType,
-    workspaceId: WorkspaceId,
-    name: string
-  ) {
-    const newTutorialDb = await this.createTutorialDb(type);
-    const newDataSource = await this.createDataSource(workspaceId, {
-      name,
-      source: "tutorialdb",
-      credentials: {
-        tutorialDbId: newTutorialDb.id,
-      },
-      settings: {
-        type,
-      },
-    });
-    return newDataSource;
   }
 
   async createPromotionCode(
     id: string,
     message: string,
     trialDays: number,
-    expirationDate?: Date | null
+    expirationDate?: Date | null,
   ) {
     const promoCode = await this.promotioCodes().create({
       id,
@@ -10619,13 +10992,11 @@ export class DbMgr implements MigrationDbMgr {
     const project = await findExactlyOne(this.projects(), { id });
     assert(
       opts?.force || !!project.deletedAt,
-      `Can only permanently delete project that has been soft-deleted`
+      `Can only permanently delete project that has been soft-deleted`,
     );
 
     if (!project.deletedAt) {
-      logger().info(
-        `Forced to delete project "${project.name}" (${project.id})`
-      );
+      logger.info(`Forced to delete project "${project.name}" (${project.id})`);
     }
 
     await this.projectRevs().delete({ projectId: id });
@@ -10666,17 +11037,17 @@ export class DbMgr implements MigrationDbMgr {
 
   async permanentlyDeleteDataSource(
     id: DataSourceId,
-    opts?: { force?: boolean }
+    opts?: { force?: boolean },
   ) {
     const source = await findExactlyOne(this.dataSources(), { id });
     assert(
       opts?.force || !!source.deletedAt,
-      `Can only permanently delete data sources that have been soft-deleted`
+      `Can only permanently delete data sources that have been soft-deleted`,
     );
 
     if (!source.deletedAt) {
-      logger().info(
-        `Forced to delete data source "${source.name}" (${source.id})`
+      logger.info(
+        `Forced to delete data source "${source.name}" (${source.id})`,
       );
     }
 
@@ -10688,11 +11059,11 @@ export class DbMgr implements MigrationDbMgr {
     const database = await findExactlyOne(this.cmsDatabases(), { id });
     assert(
       opts?.force || !!database.deletedAt,
-      `Can only permanently delete CMS database that has been soft-deleted`
+      `Can only permanently delete CMS database that has been soft-deleted`,
     );
 
     if (!database.deletedAt) {
-      logger().info(`Forced to delete CMS "${database.name}" (${database.id})`);
+      logger.info(`Forced to delete CMS "${database.name}" (${database.id})`);
     }
 
     const tables = await this.cmsTables().find({ databaseId: id });
@@ -10709,17 +11080,17 @@ export class DbMgr implements MigrationDbMgr {
 
   async permanentlyDeleteWorkspace(
     id: WorkspaceId,
-    opts?: { force?: boolean }
+    opts?: { force?: boolean },
   ) {
     const workspace = await findExactlyOne(this.workspaces(), { id });
     assert(
       opts?.force || !!workspace.deletedAt,
-      `Can only permanently delete workspace that has been soft-deleted`
+      `Can only permanently delete workspace that has been soft-deleted`,
     );
 
     if (!workspace.deletedAt) {
-      logger().info(
-        `Forced to delete workspace "${workspace.name}" (${workspace.id})`
+      logger.info(
+        `Forced to delete workspace "${workspace.name}" (${workspace.id})`,
       );
     }
 
@@ -10733,7 +11104,7 @@ export class DbMgr implements MigrationDbMgr {
         throw new Error(
           `Cannot permanently delete a workspace that still contains CMS databases: ${databases
             .map((db) => db.id)
-            .join(", ")}`
+            .join(", ")}`,
         );
       }
     }
@@ -10748,7 +11119,7 @@ export class DbMgr implements MigrationDbMgr {
         throw new Error(
           `Cannot permanently delete a workspace that still contains data sources: ${sources
             .map((s) => s.id)
-            .join(", ")}`
+            .join(", ")}`,
         );
       }
     }
@@ -10764,7 +11135,7 @@ export class DbMgr implements MigrationDbMgr {
         throw new Error(
           `Cannot permanently delete a workspace that still contains projects: ${projects
             .map((p) => p.id)
-            .join(", ")}`
+            .join(", ")}`,
         );
       }
     }
@@ -10777,25 +11148,25 @@ export class DbMgr implements MigrationDbMgr {
     const team = await findExactlyOne(this.teams(), { id });
     assert(
       opts?.force || !!team.deletedAt,
-      `Can only permanently delete workspace that has been soft-deleted`
+      `Can only permanently delete workspace that has been soft-deleted`,
     );
 
     if (!team.deletedAt) {
-      logger().info(`Forced to delete team "${team.name}" (${team.id})`);
+      logger.info(`Forced to delete team "${team.name}" (${team.id})`);
     }
 
     const workspaces = await this.workspaces().find({ teamId: id });
     if (workspaces.length > 0) {
       if (opts?.force) {
         for (const w of workspaces) {
-          logger().info(`Forced to delete workspace "${w.name}" (${w.id})`);
+          logger.info(`Forced to delete workspace "${w.name}" (${w.id})`);
           await this.permanentlyDeleteWorkspace(w.id, opts);
         }
       } else {
         throw new Error(
           `Cannot permanently delete a team that still contains workspaces: ${workspaces
             .map((w) => w.id)
-            .join(", ")}`
+            .join(", ")}`,
         );
       }
     }
@@ -10820,20 +11191,20 @@ export class DbMgr implements MigrationDbMgr {
     const user = await findExactlyOne(this.users(), { id });
     assert(
       opts?.force || !!user.deletedAt,
-      `Can only permanently delete a user that has been soft-deleted`
+      `Can only permanently delete a user that has been soft-deleted`,
     );
 
     if (!user.deletedAt) {
-      logger().info(`Forced to delete "${user.email}" (${user.id})`);
+      logger.info(`Forced to delete "${user.email}" (${user.id})`);
     }
 
     assert(
       !user.whiteLabelInfo,
-      `Cannot permanently delete whitelabeled users`
+      `Cannot permanently delete whitelabeled users`,
     );
     assert(
       !user.owningTeamId,
-      `Cannot permanently delete users owned by an org`
+      `Cannot permanently delete users owned by an org`,
     );
 
     await this.projectRepositories().delete({ userId: id });
@@ -10871,7 +11242,7 @@ export class DbMgr implements MigrationDbMgr {
     days: number,
     opts?: {
       leftJoins?: [string, string][];
-    }
+    },
   ) {
     let query = this.entMgr.getRepository(Ent).createQueryBuilder("x");
 
@@ -10892,7 +11263,7 @@ export class DbMgr implements MigrationDbMgr {
     if (Ent === User) {
       // We exclude org-owned users or white-labeled users
       query = query.andWhere(
-        'x."isWhiteLabel" IS NULL OR x."isWhiteLabel" IS FALSE'
+        'x."isWhiteLabel" IS NULL OR x."isWhiteLabel" IS FALSE',
       );
       query = query.andWhere('x."owningTeamId" IS NULL');
     }
@@ -10903,7 +11274,7 @@ export class DbMgr implements MigrationDbMgr {
   // for a data source.
   async isProjectAllowedToUseDataSource(
     projectId: ProjectId,
-    dataSourceId: DataSourceId
+    dataSourceId: DataSourceId,
   ) {
     const permission = await this.dataSourceAllowedProjects().findOne({
       projectId,
@@ -10923,7 +11294,7 @@ export class DbMgr implements MigrationDbMgr {
     dataSourceIds: DataSourceId[],
     opts: {
       skipPermissionCheck?: boolean;
-    } = {}
+    } = {},
   ) {
     if (dataSourceIds.length === 0) {
       return;
@@ -10931,12 +11302,12 @@ export class DbMgr implements MigrationDbMgr {
 
     const alreadyAllowedDataSources = new Set<DataSourceId>(
       (await this.listAllowedDataSourcesForProject(projectId as ProjectId)).map(
-        (p) => p.dataSourceId
-      )
+        (p) => p.dataSourceId,
+      ),
     );
 
     const newDataSourceIds = dataSourceIds.filter(
-      (id) => !alreadyAllowedDataSources.has(id)
+      (id) => !alreadyAllowedDataSources.has(id),
     );
 
     if (newDataSourceIds.length === 0) {
@@ -10969,21 +11340,21 @@ export class DbMgr implements MigrationDbMgr {
   }) {
     this.checkSuperUser();
 
-    let discourseOrg = await this.getDiscourseInfoByTeamId(fields.teamId);
-    if (discourseOrg) {
-      assignAllowEmpty(discourseOrg, this.stampUpdate(), fields);
+    let discourseInfo = await this.getDiscourseInfoByTeamId(fields.teamId);
+    if (discourseInfo) {
+      assignAllowEmpty(discourseInfo, this.stampUpdate(), fields);
     } else {
-      discourseOrg = this.discourseInfos().create({
+      discourseInfo = this.discourseInfos().create({
         ...this.stampNew(),
         ...fields,
       });
     }
-    await this.entMgr.save(discourseOrg);
-    return discourseOrg;
+    await this.entMgr.save(discourseInfo);
+    return discourseInfo;
   }
 
   async getDiscourseInfoByTeamId(
-    teamId: TeamId
+    teamId: TeamId,
   ): Promise<TeamDiscourseInfo | undefined> {
     await this.checkTeamPerms(teamId, MIN_ACCESS_LEVEL_FOR_SUPPORT, "read");
     return this.discourseInfos().findOne({
@@ -10994,7 +11365,7 @@ export class DbMgr implements MigrationDbMgr {
   }
 
   async getDiscourseInfosByTeamIds(
-    teamIds: TeamId[]
+    teamIds: TeamId[],
   ): Promise<TeamDiscourseInfo[]> {
     await this.checkTeamsPerms(teamIds, MIN_ACCESS_LEVEL_FOR_SUPPORT, "read");
     return await this.discourseInfos().find({

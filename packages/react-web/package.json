@@ -1,7 +1,12 @@
 {
   "name": "@plasmicapp/react-web",
+<<<<<<< HEAD
   "version": "1.0.29",
   "description": "Runtime library for rendering Plasmic-generated React components \u2014 variants, slots, overrides, and styling.",
+=======
+  "version": "1.0.39",
+  "description": "Runtime library for rendering Plasmic-generated React components — variants, slots, overrides, and styling.",
+>>>>>>> upstream/master
   "homepage": "https://www.plasmic.app",
   "repository": {
     "type": "git",
@@ -82,7 +87,7 @@
   "scripts": {
     "build": "rollup -c && mkdir -p lib && cp src/styles/plasmic.css lib/",
     "clean": "rm -rf dist/ skinny/dist/ lib/host/*js lib/host/*.ts lib/host/*.map lib/data-sources/*js lib/data-sources/*.ts lib/data-sources/*.map lib/query/*js lib/query/*.ts lib/query/*.map lib/auth/*js lib/auth/*.ts lib/auth/*.map lib/splits/*js lib/splits/*.ts lib/splits/*.map",
-    "test": "TEST_CWD=`pwd` pnpm -w test",
+    "test": "vitest run",
     "lint": "eslint",
     "prepublishOnly": "npm run build",
     "size": "size-limit",
@@ -92,13 +97,13 @@
     "test-storybook": "test-storybook"
   },
   "dependencies": {
-    "@plasmicapp/auth-react": "0.0.30",
-    "@plasmicapp/data-sources": "1.0.24",
-    "@plasmicapp/data-sources-context": "0.1.25",
-    "@plasmicapp/host": "2.0.15",
-    "@plasmicapp/loader-splits": "1.0.75",
-    "@plasmicapp/prepass": "1.0.27",
-    "@plasmicapp/query": "0.1.87",
+    "@plasmicapp/auth-react": "workspace:*",
+    "@plasmicapp/data-sources": "workspace:*",
+    "@plasmicapp/data-sources-context": "workspace:*",
+    "@plasmicapp/host": "workspace:*",
+    "@plasmicapp/loader-splits": "workspace:*",
+    "@plasmicapp/prepass": "workspace:*",
+    "@plasmicapp/query": "workspace:*",
     "@react-aria/checkbox": "^3.15.5",
     "@react-aria/focus": "^3.20.3",
     "@react-aria/interactions": "^3.25.1",
@@ -123,26 +128,27 @@
     "valtio": "^1.6.4"
   },
   "devDependencies": {
-    "@babel/core": "^7.29.0",
-    "@babel/preset-env": "^7.29.2",
-    "@babel/preset-react": "^7.28.5",
-    "@babel/preset-typescript": "^7.28.5",
+    "@babel/core": "catalog:",
+    "@babel/preset-env": "catalog:",
+    "@babel/preset-react": "catalog:",
+    "@babel/preset-typescript": "catalog:",
     "@react-types/overlays": "^3.8.15",
     "@react-types/select": "^3.9.2",
-    "@react-types/shared": "^3.22.1",
+    "@react-types/shared": "^3.36.1",
     "@rollup/plugin-commonjs": "^25.0.2",
     "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^15.1.0",
-    "@types/classnames": "^2.3.4",
     "@types/clone": "^2.1.4",
-    "@types/dlv": "^1.1.5",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
+    "@types/dlv": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
     "rollup": "^3.26.1",
-    "rollup-plugin-dts": "^5.3.0",
-    "rollup-plugin-typescript2": "^0.36.0"
+    "rollup-plugin-dts": "catalog:",
+    "rollup-plugin-typescript2": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
   },
   "peerDependencies": {
     "react": ">=18.0.0",

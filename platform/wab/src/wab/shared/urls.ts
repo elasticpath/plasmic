@@ -107,7 +107,7 @@ export function getDataUrl() {
 export function extractProjectIdFromUrlOrId(rawProjectUrlOrId: string) {
   const trimmedUrlOrId = rawProjectUrlOrId.trim();
   const match = new RegExp(
-    `^${L.escapeRegExp(`${getPublicUrl()}/projects/`)}([\\w_-]+)`
+    `^${L.escapeRegExp(`${getPublicUrl()}/projects/`)}([\\w_-]+)`,
   ).exec(trimmedUrlOrId);
 
   const projectId = match?.[1] ?? trimmedUrlOrId;
@@ -117,7 +117,7 @@ export function extractProjectIdFromUrlOrId(rawProjectUrlOrId: string) {
 export function createProjectUrl(
   host: string,
   projectId: string,
-  branchName?: string
+  branchName?: string,
 ) {
   return `${host}/projects/${projectId}${
     branchName ? `?branch=${encodeURIComponent(branchName)}` : ""
@@ -141,6 +141,6 @@ function maybeGetPlasmicStudioOrigin(): string | undefined {
   const params = new URLSearchParams(hash.replace(/^#/, "?"));
   return ensure(
     params.get("origin"),
-    "Missing origin hash param in host frame"
+    "Missing origin hash param in host frame",
   );
 }

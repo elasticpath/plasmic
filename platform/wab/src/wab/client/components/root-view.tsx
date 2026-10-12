@@ -13,14 +13,8 @@ import {
   isProjectPath,
   Router,
 } from "@/wab/client/cli-routes";
-import AllProjectsPage from "@/wab/client/components/dashboard/AllProjectsPage";
-import MyPlayground from "@/wab/client/components/dashboard/MyPlayground";
 import { documentTitle } from "@/wab/client/components/dashboard/page-utils";
-import SettingsPage from "@/wab/client/components/dashboard/SettingsPage";
-import TeamPage from "@/wab/client/components/dashboard/TeamPage";
-import TeamSettingsPage from "@/wab/client/components/dashboard/TeamSettingsPage";
-import WorkspacePage from "@/wab/client/components/dashboard/WorkspacePage";
-import { IntroSplash } from "@/wab/client/components/modals/IntroSplash";
+import { shouldUpsellRedirect } from "@/wab/client/components/dashboard/useUpsellQueryParam";
 import {
   NormalLayout,
   NormalNonAuthLayout,
@@ -33,29 +27,22 @@ import {
   SsoLoginForm,
 } from "@/wab/client/components/pages/AuthForm";
 import { EmailVerification } from "@/wab/client/components/pages/EmailVerification";
-import { FromStarterTemplate } from "@/wab/client/components/pages/FromStarterTemplate";
 import { GithubCallback } from "@/wab/client/components/pages/GithubCallback";
-import { ImportProjectsFromProd } from "@/wab/client/components/pages/ImportProjectFromProd";
-import { InitTokenPage } from "@/wab/client/components/pages/InitTokenPage";
 import { SurveyForm } from "@/wab/client/components/pages/SurveyForm";
-import { TeamCreation } from "@/wab/client/components/pages/TeamCreation";
 import PromoBanner from "@/wab/client/components/PromoBanner";
-import {
-  routerRedirect,
-  routerRedirectAsync,
-  routerRoute,
-} from "@/wab/client/components/router-utils";
 import { AppView } from "@/wab/client/components/top-view";
 import * as widgets from "@/wab/client/components/widgets";
 import { providesAppCtx, useAppCtx } from "@/wab/client/contexts/AppContexts";
 import { useHostFrameCtxIfHostFrame } from "@/wab/client/frame-ctx/host-frame-ctx";
 import { analytics } from "@/wab/client/observability";
+import { useHistory, useLocation } from "@/wab/client/route/HistoryProvider";
+import { Redirect, RedirectAsync } from "@/wab/client/route/Redirect";
+import { Switch, switchCase, switchDefault } from "@/wab/client/route/Switch";
 import { useForceUpdate } from "@/wab/client/useForceUpdate";
 import {
   promisifyMethods,
   PromisifyMethods,
 } from "@/wab/commons/promisify-methods";
-import { CmsDatabaseId } from "@/wab/shared/ApiSchema";
 import { FastBundler } from "@/wab/shared/bundler";
 import { ensure, hackyCast, spawn } from "@/wab/shared/common";
 import { isAdminTeamEmail } from "@/wab/shared/devflag-utils";
@@ -68,18 +55,47 @@ import {
 import { StarterSectionConfig } from "@/wab/shared/devflags";
 import { BASE_URL } from "@/wab/shared/discourse/config";
 import { accessLevelRank } from "@/wab/shared/EntUtil";
+import { noopFn } from "@/wab/shared/functions";
 import { getAccessLevelToResource } from "@/wab/shared/perms";
 import { getMaximumTierFromTeams } from "@/wab/shared/pricing/pricing-utils";
 import { APP_ROUTES, SEARCH_PROMPT } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
 import * as React from "react";
-import { Redirect, Route, Switch, useHistory, useLocation } from "react-router";
 
-const LazyTeamAnalytics = React.lazy(() => import("./analytics/TeamAnalytics"));
-const LazyAdminPage = React.lazy(() => import("./pages/admin/AdminPage"));
-const LazyViewInitializer = React.lazy(
-  () => import("./studio/view-initializer")
-);
+type LazyPage = React.LazyExoticComponent<React.ComponentType<any>>;
+
+// Keep every page rendered by LoggedInContainer in this registry, the type
+// constraint rejects eager components. Layouts and other shared route chrome
+// remain regular imports.
+const LoggedInPages = {
+  AdminPage: React.lazy(() => import("./pages/admin/AdminPage")),
+  AllProjectsPage: React.lazy(() => import("./dashboard/AllProjectsPage")),
+  CmsRoot: React.lazy(() => import("./cms/CmsRoot")),
+  FromStarterTemplate: React.lazy(() =>
+    import("./pages/FromStarterTemplate").then((m) => ({
+      default: m.FromStarterTemplate,
+    })),
+  ),
+  ImportProjectsFromProd: React.lazy(() =>
+    import("./pages/ImportProjectFromProd").then((m) => ({
+      default: m.ImportProjectsFromProd,
+    })),
+  ),
+  InitTokenPage: React.lazy(() =>
+    import("./pages/InitTokenPage").then((m) => ({
+      default: m.InitTokenPage,
+    })),
+  ),
+  MyPlayground: React.lazy(() => import("./dashboard/MyPlayground")),
+  SettingsPage: React.lazy(() => import("./dashboard/SettingsPage")),
+  TeamAnalytics: React.lazy(() => import("./analytics/TeamAnalytics")),
+  TeamCreation: React.lazy(() =>
+    import("./pages/TeamCreation").then((m) => ({ default: m.TeamCreation })),
+  ),
+  TeamPage: React.lazy(() => import("./dashboard/TeamPage")),
+  TeamSettingsPage: React.lazy(() => import("./dashboard/TeamSettingsPage")),
+  ViewInitializer: React.lazy(() => import("./studio/view-initializer")),
+  WorkspacePage: React.lazy(() => import("./dashboard/WorkspacePage")),
+} satisfies Record<string, LazyPage>;
 
 interface LoggedInContainerProps {
   onRefreshUi: () => void;
@@ -87,16 +103,16 @@ interface LoggedInContainerProps {
 
 function getStarter(
   starterSections: StarterSectionConfig[],
-  starterTag: string
+  starterTag: string,
 ) {
   try {
     const results = starterSections.flatMap((section) =>
-      section.projects.filter((project) => project.tag === starterTag)
+      section.projects.filter((project) => project.tag === starterTag),
     );
     return ensure(results[0], "");
   } catch (e) {
     throw new Error(
-      `Could not find the starter project named "${starterTag}".`
+      `Could not find the starter project named "${starterTag}".`,
     );
   }
 }
@@ -108,24 +124,26 @@ function LoggedInContainer(props: LoggedInContainerProps) {
 
   const selfInfo =
     appCtx.selfInfo && !appCtx.selfInfo.isFake ? appCtx.selfInfo : null;
-  function projectRoute() {
-    return routerRoute({
-      path: APP_ROUTES.project,
-      render: ({ match }) => {
-        return (
-          <LazyViewInitializer
-            appCtx={appCtx}
-            onRefreshUi={onRefreshUi}
-            projectId={match.params.projectId}
-          />
-        );
-      },
-    });
-  }
+  const isWhiteLabeled = !!selfInfo?.isWhiteLabel;
+
+  const projectRoute = switchCase({
+    route: APP_ROUTES.project,
+    render: ({ projectId }) => {
+      return (
+        <LoggedInPages.ViewInitializer
+          appCtx={appCtx}
+          onRefreshUi={onRefreshUi}
+          projectId={projectId}
+        />
+      );
+    },
+  });
 
   const currentLocation = useLocation();
+  const upsellRedirectRoute = selfInfo
+    ? shouldUpsellRedirect(appCtx, currentLocation)
+    : undefined;
 
-  const isWhiteLabeled = !!selfInfo?.isWhiteLabel;
   return (
     <React.Suspense
       fallback={
@@ -136,6 +154,7 @@ function LoggedInContainer(props: LoggedInContainerProps) {
         )
       }
     >
+<<<<<<< HEAD
       <IntroSplash />
       <AdminOverrideBanner />
       {!selfInfo ? (
@@ -186,310 +205,405 @@ function LoggedInContainer(props: LoggedInContainerProps) {
             }}
           />
         </Switch>
+=======
+      {!selfInfo ? (
+        // Not logged in users
+        <Switch
+          cases={[
+            projectRoute,
+            switchDefault({
+              render: () => <Redirect to={getLoginRouteWithContinuation()} />,
+            }),
+          ]}
+        />
+      ) : isWhiteLabeled ? (
+        // White-labeled users only get the project route
+        <Switch cases={[projectRoute, switchDefault({ render: () => null })]} />
+>>>>>>> upstream/master
       ) : (
         // Normal logged in users
-        <Switch>
-          {routerRoute({
-            exact: true,
-            path: APP_ROUTES.starter,
-            render: ({ match, location }) => {
-              const starter = getStarter(
-                appCtx.appConfig.starterSections,
-                match.params.starterTag
-              );
-              return (
-                <FromStarterTemplate
-                  appCtx={appCtx}
-                  {...starter}
-                  path={location.pathname}
+        <Switch
+          cases={[
+            switchCase({
+              exact: true,
+              route: APP_ROUTES.starter,
+              render: ({ starterTag }) => {
+                const starter = getStarter(
+                  appCtx.appConfig.starterSections,
+                  starterTag,
+                );
+                return (
+                  <LoggedInPages.FromStarterTemplate
+                    appCtx={appCtx}
+                    {...starter}
+                    path={currentLocation.pathname}
+                  />
+                );
+              },
+            }),
+            switchCase({
+              exact: true,
+              route: APP_ROUTES.fork,
+              render: ({ projectId: baseProjectId }) => {
+                // NOTE: Temporarily re-using the FromStarterTemplate component to fork a public project
+                // TODO (later): Fork a private project using listingId
+                const { pathname, search } = currentLocation;
+                const version =
+                  new URLSearchParams(search).get("version") ?? undefined; // gets the query param "version" from the URL
+                return (
+                  <LoggedInPages.FromStarterTemplate
+                    appCtx={appCtx}
+                    baseProjectId={baseProjectId}
+                    path={pathname}
+                    version={version}
+                  />
+                );
+              },
+            }),
+            switchCase({
+              exact: true,
+              route: APP_ROUTES.teamCreation,
+              render: (pathParams) => (
+                <Redirect
+                  to={APP_ROUTES.orgCreation.fill(
+                    pathParams,
+                    Object.fromEntries(
+                      new URLSearchParams(currentLocation.search),
+                    ),
+                  )}
                 />
-              );
-            },
-          })}
-          {routerRoute({
-            exact: true,
-            path: APP_ROUTES.fork,
-            render: ({ match, location }) => {
-              // NOTE: Temporarily re-using the FromStarterTemplate component to fork a public project
-              // TODO (later): Fork a private project using listingId
-              const baseProjectId = match.params.projectId;
-              const { pathname, search } = location;
-              const version =
-                new URLSearchParams(search).get("version") ?? undefined; // gets the query param "version" from the URL
-              return (
-                <FromStarterTemplate
-                  appCtx={appCtx}
-                  baseProjectId={baseProjectId}
-                  path={pathname}
-                  version={version}
-                />
-              );
-            },
-          })}
-          {routerRedirect({
-            exact: true,
-            path: APP_ROUTES.teamCreation,
-            to: ({ match, location }) =>
-              fillRoute(
-                APP_ROUTES.orgCreation,
-                match.params,
-                Object.fromEntries(new URLSearchParams(location.search))
               ),
-          })}
-          {routerRoute({
-            exact: true,
-            path: APP_ROUTES.orgCreation,
-            render: () => (
-              <NormalNonAuthLayout nonAuthCtx={nonAuthCtx}>
-                <TeamCreation />
-              </NormalNonAuthLayout>
-            ),
-          })}
-          <Route
-            render={() =>
-              selfInfo.needsSurvey ? (
-                <Redirect
-                  to={fillRoute(
-                    APP_ROUTES.survey,
-                    {},
-                    {
-                      continueTo: getRouteContinuation(),
-                    }
-                  )}
-                />
-              ) : selfInfo.waitingEmailVerification ? (
-                <Redirect
-                  to={fillRoute(
-                    APP_ROUTES.emailVerification,
-                    {},
-                    {
-                      continueTo: getRouteContinuation(),
-                    }
-                  )}
-                />
-              ) : selfInfo.needsTeamCreationPrompt ? (
-                <Redirect
-                  to={fillRoute(
-                    APP_ROUTES.orgCreation,
-                    {},
-                    {
-                      continueTo: getRouteContinuation(),
-                    }
-                  )}
-                />
-              ) : (
-                <Switch>
-                  {projectRoute()}
-                  {routerRedirect({
-                    exact: true,
-                    path: APP_ROUTES.dashboard,
-                    to: () => fillRoute(APP_ROUTES.allProjects, {}),
-                  })}
-                  {routerRoute({
-                    exact: true,
-                    path: APP_ROUTES.allProjects,
-                    render: () => <AllProjectsPage />,
-                  })}
-                  {routerRoute({
-                    exact: true,
-                    path: APP_ROUTES.playground,
-                    render: () => <MyPlayground />,
-                  })}
-                  {routerRoute({
-                    path: APP_ROUTES.workspace,
-                    render: ({ match }) => (
-                      <WorkspacePage
-                        key={match.params.workspaceId}
-                        workspaceId={match.params.workspaceId}
-                      />
-                    ),
-                  })}
-                  {routerRedirect({
-                    exact: true,
-                    path: APP_ROUTES.team,
-                    to: ({ match, location }) =>
-                      fillRoute(
-                        APP_ROUTES.org,
-                        match.params,
-                        Object.fromEntries(new URLSearchParams(location.search))
-                      ),
-                  })}
-                  {routerRoute({
-                    exact: true,
-                    path: APP_ROUTES.org,
-                    render: ({ match }) => (
-                      <TeamPage
-                        key={match.params.teamId}
-                        teamId={match.params.teamId}
-                      />
-                    ),
-                  })}
-                  {routerRoute({
-                    path: APP_ROUTES.cmsRoot,
-                    render: ({ match }) => (
-                      <widgets.ObserverLoadable
-                        loader={() => import("./cms/CmsRoot")}
-                        contents={(CmsRoot) => (
-                          <CmsRoot.default
-                            databaseId={
-                              match.params.databaseId as CmsDatabaseId
-                            }
-                          />
+            }),
+            switchCase({
+              exact: true,
+              route: APP_ROUTES.orgCreation,
+              render: () => (
+                <NormalNonAuthLayout nonAuthCtx={nonAuthCtx}>
+                  <LoggedInPages.TeamCreation />
+                </NormalNonAuthLayout>
+              ),
+            }),
+            switchDefault(
+              selfInfo.needsSurvey
+                ? {
+                    render: () => (
+                      <Redirect
+                        to={APP_ROUTES.survey.fill(
+                          {},
+                          {
+                            continueTo: getRouteContinuation(),
+                          },
                         )}
                       />
                     ),
-                  })}
-                  {routerRedirectAsync({
-                    exact: true,
-                    path: APP_ROUTES.orgBilling,
-                    to: async ({ match }) => {
-                      const teamId = match.params.teamId;
-                      try {
-                        const { url } =
-                          await appCtx.api.createTeamCustomerPortalSession(
-                            teamId
-                          );
-                        return url;
-                      } catch (e) {
-                        return fillRoute(APP_ROUTES.orgSettings, { teamId });
-                      }
-                    },
-                  })}
-                  {routerRedirect({
-                    path: APP_ROUTES.teamSettings,
-                    to: ({ match, location }) =>
-                      fillRoute(
-                        APP_ROUTES.orgSettings,
-                        match.params,
-                        Object.fromEntries(new URLSearchParams(location.search))
+                  }
+                : selfInfo.waitingEmailVerification
+                  ? {
+                      render: () => (
+                        <Redirect
+                          to={APP_ROUTES.emailVerification.fill(
+                            {},
+                            {
+                              continueTo: getRouteContinuation(),
+                            },
+                          )}
+                        />
                       ),
-                  })}
-                  {routerRoute({
-                    path: APP_ROUTES.orgSettings,
-                    render: ({ match, location }) => {
-                      const teamId = match.params.teamId;
-                      // Block viewers from seeing the settings page.
-                      const team = teamId
-                        ? appCtx.teams.find((t) => t.id === teamId)
-                        : undefined;
-                      const userAccessLevel =
-                        (team
-                          ? getAccessLevelToResource(
-                              { type: "team", resource: team },
-                              appCtx.selfInfo,
-                              appCtx.perms
-                            )
-                          : undefined) ?? "blocked";
-                      if (
-                        accessLevelRank(userAccessLevel) <=
-                        accessLevelRank("viewer")
-                      ) {
-                        return (
+                    }
+                  : selfInfo.needsTeamCreationPrompt
+                    ? {
+                        render: () => (
                           <Redirect
-                            to={fillRoute(
-                              APP_ROUTES.org,
-                              match.params,
-                              Object.fromEntries(
-                                new URLSearchParams(location.search)
-                              )
+                            to={APP_ROUTES.orgCreation.fill(
+                              {},
+                              {
+                                continueTo: getRouteContinuation(),
+                              },
                             )}
                           />
-                        );
+                        ),
                       }
-                      return <TeamSettingsPage teamId={teamId} />;
-                    },
-                  })}
-                  {routerRedirectAsync({
-                    path: APP_ROUTES.orgSupport,
-                    to: async ({ match }) => {
-                      const { publicSupportUrl, privateSupportUrl } =
-                        await appCtx.api.prepareTeamSupportUrls(
-                          match.params.teamId
-                        );
-                      if (privateSupportUrl) {
-                        return privateSupportUrl;
-                      } else {
-                        return publicSupportUrl;
-                      }
-                    },
-                  })}
-                  {routerRoute({
-                    exact: true,
-                    path: APP_ROUTES.settings,
-                    render: () => <SettingsPage appCtx={appCtx} />,
-                  })}
-                  <Route
-                    exact
-                    path={[
-                      APP_ROUTES.admin.pattern,
-                      APP_ROUTES.adminTeams.pattern,
-                    ]}
-                    render={() =>
-                      isAdminTeamEmail(selfInfo.email, appCtx.appConfig) ? (
-                        <NormalLayout appCtx={appCtx}>
-                          <LazyAdminPage nonAuthCtx={nonAuthCtx} />
-                        </NormalLayout>
-                      ) : (
-                        <Redirect to={"/"} />
-                      )
-                    }
-                  />
-                  {routerRoute({
-                    exact: true,
-                    path: APP_ROUTES.importProjectsFromProd,
-                    render: () =>
-                      isAdminTeamEmail(selfInfo.email, appCtx.appConfig) ? (
-                        <NormalLayout appCtx={appCtx}>
-                          <ImportProjectsFromProd nonAuthCtx={nonAuthCtx} />
-                        </NormalLayout>
-                      ) : (
-                        <Redirect to={"/"} />
-                      ),
-                  })}
-                  {routerRedirectAsync({
-                    exact: true,
-                    path: APP_ROUTES.discourseConnect,
-                    to: async () => {
-                      const params = await appCtx.api.discourseConnect(
-                        location.search
-                      );
-                      const url = new URL(`${BASE_URL}/session/sso_login`);
-                      url.search = new URLSearchParams(params).toString();
-                      return url.toString();
-                    },
-                  })}
-                  {routerRoute({
-                    exact: true,
-                    path: APP_ROUTES.plasmicInit,
-                    render: ({ match }) => (
-                      <InitTokenPage
-                        appCtx={appCtx}
-                        initToken={match.params.initToken}
-                      />
-                    ),
-                  })}
-                  {routerRedirect({
-                    exact: true,
-                    path: APP_ROUTES.teamAnalytics,
-                    to: ({ match, location }) =>
-                      fillRoute(
-                        APP_ROUTES.orgAnalytics,
-                        match.params,
-                        Object.fromEntries(new URLSearchParams(location.search))
-                      ),
-                  })}
-                  {routerRoute({
-                    exact: true,
-                    path: APP_ROUTES.orgAnalytics,
-                    render: ({ match }) => (
-                      <LazyTeamAnalytics teamId={match.params.teamId} />
-                    ),
-                  })}
-                </Switch>
-              )
-            }
-          />
-        </Switch>
+                    : upsellRedirectRoute
+                      ? {
+                          render: () => <Redirect to={upsellRedirectRoute} />,
+                        }
+                      : {
+                          render: () => (
+                            <Switch
+                              cases={[
+                                projectRoute,
+                                switchCase({
+                                  exact: true,
+                                  route: APP_ROUTES.dashboard,
+                                  render: () => (
+                                    <Redirect
+                                      to={APP_ROUTES.allProjects.fill({})}
+                                    />
+                                  ),
+                                }),
+                                switchCase({
+                                  exact: true,
+                                  route: APP_ROUTES.allProjects,
+                                  render: () => (
+                                    <LoggedInPages.AllProjectsPage />
+                                  ),
+                                }),
+                                switchCase({
+                                  exact: true,
+                                  route: APP_ROUTES.playground,
+                                  render: () => <LoggedInPages.MyPlayground />,
+                                }),
+                                switchCase({
+                                  route: APP_ROUTES.workspace,
+                                  render: ({ workspaceId }) => (
+                                    <LoggedInPages.WorkspacePage
+                                      key={workspaceId}
+                                      workspaceId={workspaceId}
+                                    />
+                                  ),
+                                }),
+                                switchCase({
+                                  exact: true,
+                                  route: APP_ROUTES.team,
+                                  render: (pathParams) => (
+                                    <Redirect
+                                      to={APP_ROUTES.org.fill(
+                                        pathParams,
+                                        Object.fromEntries(
+                                          new URLSearchParams(
+                                            currentLocation.search,
+                                          ),
+                                        ),
+                                      )}
+                                    />
+                                  ),
+                                }),
+                                switchCase({
+                                  exact: true,
+                                  route: APP_ROUTES.org,
+                                  render: ({ teamId }) => (
+                                    <LoggedInPages.TeamPage
+                                      key={teamId}
+                                      teamId={teamId}
+                                    />
+                                  ),
+                                }),
+                                switchCase({
+                                  route: APP_ROUTES.cmsRoot,
+                                  render: ({ databaseId }) => (
+                                    <LoggedInPages.CmsRoot
+                                      databaseId={databaseId}
+                                    />
+                                  ),
+                                }),
+                                switchCase({
+                                  exact: true,
+                                  route: APP_ROUTES.orgBilling,
+                                  render: ({ teamId }) => (
+                                    <RedirectAsync
+                                      to={async () => {
+                                        try {
+                                          const { url } =
+                                            await appCtx.api.createTeamCustomerPortalSession(
+                                              teamId,
+                                            );
+                                          return url;
+                                        } catch (e) {
+                                          return APP_ROUTES.orgSettings.fill({
+                                            teamId,
+                                          });
+                                        }
+                                      }}
+                                    />
+                                  ),
+                                }),
+                                switchCase({
+                                  route: APP_ROUTES.teamSettings,
+                                  render: (pathParams) => (
+                                    <Redirect
+                                      to={APP_ROUTES.orgSettings.fill(
+                                        pathParams,
+                                        Object.fromEntries(
+                                          new URLSearchParams(
+                                            currentLocation.search,
+                                          ),
+                                        ),
+                                      )}
+                                    />
+                                  ),
+                                }),
+                                switchCase({
+                                  route: APP_ROUTES.orgSettings,
+                                  render: ({ teamId }) => {
+                                    // Block viewers from seeing the settings page.
+                                    const team = teamId
+                                      ? appCtx.teams.find(
+                                          (t) => t.id === teamId,
+                                        )
+                                      : undefined;
+                                    const userAccessLevel =
+                                      (team
+                                        ? getAccessLevelToResource(
+                                            { type: "team", resource: team },
+                                            appCtx.selfInfo,
+                                            appCtx.perms,
+                                          )
+                                        : undefined) ?? "blocked";
+                                    if (
+                                      accessLevelRank(userAccessLevel) <=
+                                      accessLevelRank("viewer")
+                                    ) {
+                                      return (
+                                        <Redirect
+                                          to={APP_ROUTES.org.fill(
+                                            { teamId },
+                                            Object.fromEntries(
+                                              new URLSearchParams(
+                                                currentLocation.search,
+                                              ),
+                                            ),
+                                          )}
+                                        />
+                                      );
+                                    }
+                                    return (
+                                      <LoggedInPages.TeamSettingsPage
+                                        teamId={teamId}
+                                      />
+                                    );
+                                  },
+                                }),
+                                switchCase({
+                                  route: APP_ROUTES.orgSupport,
+                                  render: ({ teamId }) => (
+                                    <RedirectAsync
+                                      to={async () => {
+                                        const {
+                                          publicSupportUrl,
+                                          privateSupportUrl,
+                                        } =
+                                          await appCtx.api.prepareTeamSupportUrls(
+                                            teamId,
+                                          );
+                                        if (privateSupportUrl) {
+                                          return privateSupportUrl;
+                                        } else {
+                                          return publicSupportUrl;
+                                        }
+                                      }}
+                                    />
+                                  ),
+                                }),
+                                switchCase({
+                                  exact: true,
+                                  route: APP_ROUTES.settings,
+                                  render: () => (
+                                    <LoggedInPages.SettingsPage
+                                      appCtx={appCtx}
+                                    />
+                                  ),
+                                }),
+                                switchCase<{}>({
+                                  exact: true,
+                                  route: [
+                                    APP_ROUTES.admin,
+                                    APP_ROUTES.adminTeams,
+                                  ],
+                                  render: () =>
+                                    isAdminTeamEmail(
+                                      selfInfo.email,
+                                      appCtx.appConfig,
+                                    ) ? (
+                                      <NormalLayout appCtx={appCtx}>
+                                        <LoggedInPages.AdminPage
+                                          nonAuthCtx={nonAuthCtx}
+                                        />
+                                      </NormalLayout>
+                                    ) : (
+                                      <Redirect to="/" />
+                                    ),
+                                }),
+                                switchCase({
+                                  exact: true,
+                                  route: APP_ROUTES.importProjectsFromProd,
+                                  render: () =>
+                                    isAdminTeamEmail(
+                                      selfInfo.email,
+                                      appCtx.appConfig,
+                                    ) ? (
+                                      <NormalLayout appCtx={appCtx}>
+                                        <LoggedInPages.ImportProjectsFromProd
+                                          nonAuthCtx={nonAuthCtx}
+                                        />
+                                      </NormalLayout>
+                                    ) : (
+                                      <Redirect to="/" />
+                                    ),
+                                }),
+                                switchCase({
+                                  exact: true,
+                                  route: APP_ROUTES.discourseConnect,
+                                  render: () => (
+                                    <RedirectAsync
+                                      to={async () => {
+                                        const params =
+                                          await appCtx.api.discourseConnect(
+                                            location.search,
+                                          );
+                                        const url = new URL(
+                                          `${BASE_URL}/session/sso_login`,
+                                        );
+                                        url.search = new URLSearchParams(
+                                          params,
+                                        ).toString();
+                                        return url.toString();
+                                      }}
+                                    />
+                                  ),
+                                }),
+                                switchCase({
+                                  exact: true,
+                                  route: APP_ROUTES.plasmicInit,
+                                  render: ({ initToken }) => (
+                                    <LoggedInPages.InitTokenPage
+                                      appCtx={appCtx}
+                                      initToken={initToken}
+                                    />
+                                  ),
+                                }),
+                                switchCase({
+                                  exact: true,
+                                  route: APP_ROUTES.teamAnalytics,
+                                  render: (pathParams) => (
+                                    <Redirect
+                                      to={APP_ROUTES.orgAnalytics.fill(
+                                        pathParams,
+                                        Object.fromEntries(
+                                          new URLSearchParams(
+                                            currentLocation.search,
+                                          ),
+                                        ),
+                                      )}
+                                    />
+                                  ),
+                                }),
+                                switchCase({
+                                  exact: true,
+                                  route: APP_ROUTES.orgAnalytics,
+                                  render: ({ teamId }) => (
+                                    <LoggedInPages.TeamAnalytics
+                                      teamId={teamId}
+                                    />
+                                  ),
+                                }),
+                                switchDefault({ render: () => null }),
+                              ]}
+                            />
+                          ),
+                        },
+            ),
+          ]}
+        />
       )}
     </React.Suspense>
   );
@@ -498,7 +612,7 @@ function LoggedInContainer(props: LoggedInContainerProps) {
 export function Root() {
   const history = useHistory();
   const [nonAuthCtx, setNonAuthCtx] = React.useState<NonAuthCtx | undefined>(
-    undefined
+    undefined,
   );
   const [loaderKey, setLoaderKey] = React.useState(0);
 
@@ -523,7 +637,7 @@ export function Root() {
             await api.refreshCsrfToken();
             const { latestBundleVersion } = await api.getLastBundleVersion();
             return latestBundleVersion;
-          }
+          },
         );
         setNonAuthCtx(
           new NonAuthCtx({
@@ -534,9 +648,9 @@ export function Root() {
             change: forceUpdate,
             bundler,
             lastBundleVersion,
-          })
+          }),
         );
-      })()
+      })(),
     );
   }, []);
 
@@ -606,145 +720,150 @@ export function Root() {
               }
               return providesAppCtx(appCtx)(
                 <NonAuthCtxContext.Provider value={nonAuthCtx}>
-                  <div className={"root"} onPointerDown={() => {}}>
-                    <Switch>
-                      {routerRoute({
-                        exact: true,
-                        path: APP_ROUTES.login,
-                        render: () => (
-                          <>
-                            <PromoBanner />
+                  <div className={"root"} onPointerDown={noopFn}>
+                    <Switch
+                      cases={[
+                        switchCase({
+                          exact: true,
+                          route: APP_ROUTES.login,
+                          render: () => (
+                            <>
+                              <PromoBanner />
+                              <NormalNonAuthLayout nonAuthCtx={nonAuthCtx}>
+                                {documentTitle("Sign in")}
+                                <AuthForm
+                                  mode="sign in"
+                                  onLoggedIn={reloadData}
+                                />
+                              </NormalNonAuthLayout>
+                            </>
+                          ),
+                        }),
+                        switchCase({
+                          exact: true,
+                          route: APP_ROUTES.survey,
+                          render: () => (
                             <NormalNonAuthLayout nonAuthCtx={nonAuthCtx}>
-                              {documentTitle("Sign in")}
-                              <AuthForm
-                                mode="sign in"
-                                onLoggedIn={reloadData}
-                              />
-                            </NormalNonAuthLayout>
-                          </>
-                        ),
-                      })}
-                      {routerRoute({
-                        exact: true,
-                        path: APP_ROUTES.survey,
-                        render: () => (
-                          <NormalNonAuthLayout nonAuthCtx={nonAuthCtx}>
-                            <SurveyForm />
-                          </NormalNonAuthLayout>
-                        ),
-                      })}
-                      {routerRoute({
-                        exact: true,
-                        path: APP_ROUTES.emailVerification,
-                        render: () =>
-                          !appCtx.selfInfo ? (
-                            <Redirect to={getLoginRouteWithContinuation()} />
-                          ) : (
-                            <NormalNonAuthLayout nonAuthCtx={nonAuthCtx}>
-                              <EmailVerification selfInfo={appCtx.selfInfo} />
+                              <SurveyForm />
                             </NormalNonAuthLayout>
                           ),
-                      })}
-                      {routerRoute({
-                        exact: true,
-                        path: APP_ROUTES.signup,
-                        render: () => (
-                          <>
-                            <PromoBanner />
+                        }),
+                        switchCase({
+                          exact: true,
+                          route: APP_ROUTES.emailVerification,
+                          render: () =>
+                            !appCtx.selfInfo ? (
+                              <Redirect to={getLoginRouteWithContinuation()} />
+                            ) : (
+                              <NormalNonAuthLayout nonAuthCtx={nonAuthCtx}>
+                                <EmailVerification selfInfo={appCtx.selfInfo} />
+                              </NormalNonAuthLayout>
+                            ),
+                        }),
+                        switchCase({
+                          exact: true,
+                          route: APP_ROUTES.signup,
+                          render: () => (
+                            <>
+                              <PromoBanner />
+                              <NormalNonAuthLayout nonAuthCtx={nonAuthCtx}>
+                                {documentTitle("Sign up")}
+                                <AuthForm
+                                  mode="sign up"
+                                  onLoggedIn={reloadData}
+                                />
+                              </NormalNonAuthLayout>
+                            </>
+                          ),
+                        }),
+                        switchCase({
+                          exact: true,
+                          route: APP_ROUTES.sso,
+                          render: () => (
                             <NormalNonAuthLayout nonAuthCtx={nonAuthCtx}>
-                              {documentTitle("Sign up")}
-                              <AuthForm
-                                mode="sign up"
-                                onLoggedIn={reloadData}
-                              />
+                              {documentTitle("Log in with SSO")}
+                              <SsoLoginForm onLoggedIn={reloadData} />
                             </NormalNonAuthLayout>
-                          </>
-                        ),
-                      })}
-                      {routerRoute({
-                        exact: true,
-                        path: APP_ROUTES.sso,
-                        render: () => (
-                          <NormalNonAuthLayout nonAuthCtx={nonAuthCtx}>
-                            {documentTitle("Log in with SSO")}
-                            <SsoLoginForm onLoggedIn={reloadData} />
-                          </NormalNonAuthLayout>
-                        ),
-                      })}
-                      {routerRoute({
-                        exact: true,
-                        path: APP_ROUTES.logout,
-                        render: () => {
-                          spawn(appCtx.logout());
-                          return null;
-                        },
-                      })}
-                      {routerRoute({
-                        exact: true,
-                        path: APP_ROUTES.authorize,
-                        render: () => (
-                          <NormalNonAuthLayout nonAuthCtx={nonAuthCtx}>
-                            <AppAuthPage />
-                          </NormalNonAuthLayout>
-                        ),
-                      })}
-                      {routerRoute({
-                        exact: true,
-                        path: APP_ROUTES.forgotPassword,
-                        render: () => (
-                          <NormalNonAuthLayout nonAuthCtx={nonAuthCtx}>
-                            {documentTitle("Forgot password")}
-                            <ForgotPasswordForm />
-                          </NormalNonAuthLayout>
-                        ),
-                      })}
-                      {routerRoute({
-                        exact: true,
-                        path: APP_ROUTES.resetPassword,
-                        render: () => (
-                          <NormalNonAuthLayout nonAuthCtx={nonAuthCtx}>
-                            {documentTitle("Reset password")}
-                            <ResetPasswordForm />
-                          </NormalNonAuthLayout>
-                        ),
-                      })}
-                      {routerRoute({
-                        exact: true,
-                        path: APP_ROUTES.githubCallback,
-                        render: () => (
-                          <GithubCallback nonAuthCtx={nonAuthCtx} />
-                        ),
-                      })}
-                      {routerRedirectAsync({
-                        exact: true,
-                        path: APP_ROUTES.copilot,
-                        to: async () => {
-                          const prompt = new URLSearchParams(
-                            location.search
-                          ).get(SEARCH_PROMPT);
-                          if (prompt) {
-                            const { project } = await appCtx.api.createProject({
-                              name: "Copilot",
-                              isPublic: true,
-                            });
-                            return fillRoute(
-                              APP_ROUTES.project,
-                              { projectId: project.id },
-                              { [SEARCH_PROMPT]: prompt }
-                            );
-                          }
-                          return fillRoute(APP_ROUTES.login, {});
-                        },
-                      })}
-                      {routerRoute({
-                        path: APP_ROUTES.dashboard,
-                        render: () => (
-                          <LoggedInContainer onRefreshUi={forceUpdate} />
-                        ),
-                      })}
-                    </Switch>
+                          ),
+                        }),
+                        switchCase({
+                          exact: true,
+                          route: APP_ROUTES.logout,
+                          render: () => {
+                            spawn(appCtx.logout());
+                            return null;
+                          },
+                        }),
+                        switchCase({
+                          exact: true,
+                          route: APP_ROUTES.authorize,
+                          render: () => (
+                            <NormalNonAuthLayout nonAuthCtx={nonAuthCtx}>
+                              <AppAuthPage />
+                            </NormalNonAuthLayout>
+                          ),
+                        }),
+                        switchCase({
+                          exact: true,
+                          route: APP_ROUTES.forgotPassword,
+                          render: () => (
+                            <NormalNonAuthLayout nonAuthCtx={nonAuthCtx}>
+                              {documentTitle("Forgot password")}
+                              <ForgotPasswordForm />
+                            </NormalNonAuthLayout>
+                          ),
+                        }),
+                        switchCase({
+                          exact: true,
+                          route: APP_ROUTES.resetPassword,
+                          render: () => (
+                            <NormalNonAuthLayout nonAuthCtx={nonAuthCtx}>
+                              {documentTitle("Reset password")}
+                              <ResetPasswordForm />
+                            </NormalNonAuthLayout>
+                          ),
+                        }),
+                        switchCase({
+                          exact: true,
+                          route: APP_ROUTES.githubCallback,
+                          render: () => (
+                            <GithubCallback nonAuthCtx={nonAuthCtx} />
+                          ),
+                        }),
+                        switchCase({
+                          exact: true,
+                          route: APP_ROUTES.copilot,
+                          render: () => (
+                            <RedirectAsync
+                              to={async () => {
+                                const prompt = new URLSearchParams(
+                                  location.search,
+                                ).get(SEARCH_PROMPT);
+                                if (prompt) {
+                                  const { project } =
+                                    await appCtx.api.createProject({
+                                      name: "Copilot",
+                                      isPublic: true,
+                                    });
+                                  return APP_ROUTES.project.fill(
+                                    { projectId: project.id },
+                                    { [SEARCH_PROMPT]: prompt },
+                                  );
+                                }
+                                return APP_ROUTES.login.fill({});
+                              }}
+                            />
+                          ),
+                        }),
+                        switchDefault({
+                          render: () => (
+                            <LoggedInContainer onRefreshUi={forceUpdate} />
+                          ),
+                        }),
+                      ]}
+                    />
                   </div>
-                </NonAuthCtxContext.Provider>
+                </NonAuthCtxContext.Provider>,
               );
             }}
           />
