@@ -96,8 +96,9 @@ as on the Pages Router, search runs in the browser as before.
 - A query in the URL applies to the server render. Other URL search state, such
   as the page number, applies while the component that owns it is on the page.
 - If the server search fails, has no session, or takes longer than 3 seconds,
-  the page renders without the provider's content and the browser searches. It
-  never fails the page or renders the error slot.
+  the page renders the provider's components with no results and the browser
+  searches. It never fails the page, renders the error slot or shows
+  EP Search Empty.
 - A storefront with a nonce-based Content Security Policy sends the nonce in an
   `x-nonce` request header, or as a `'nonce-…'` source in the request's
   `Content-Security-Policy` header. The results script carries it.

@@ -71,9 +71,8 @@ const NEVER = new Promise<never>(() => {});
  * Searches during the server render with the page request's session.
  *
  * Any failure skips rather than rejects: a rejection renders the error slot
- * into the HTML, where a crawler would index it. After a skip the provider
- * renders nothing, as the browser's first render does, and the browser then
- * searches through the proxy.
+ * into the HTML, where a crawler would index it. After a skip the HTML carries
+ * the widgets before any search, and the browser searches through the proxy.
  */
 async function serverPassSearch(
   pass: CatalogSearchServerPass,
@@ -97,8 +96,8 @@ async function serverPassSearch(
       bridge.requestSession(),
       bridge.requestNonce(),
     ]);
-    if (!isUsableAuth(auth)) return null;
     pass.nonce = nonce;
+    if (!isUsableAuth(auth)) return null;
     const data = await epMultiSearchWithAuth(auth, { searches, include });
     return Array.isArray(data?.results) ? data : null;
   })();

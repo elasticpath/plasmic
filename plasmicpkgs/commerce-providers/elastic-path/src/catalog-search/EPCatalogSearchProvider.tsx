@@ -276,14 +276,15 @@ function EPCatalogSearchProviderInner(props: {
   }));
   const insertHTML = useCallback(
     (callback: () => React.ReactNode) => {
-      if (serverPass.outcome !== "success" || !outerInsertHTML) return;
+      if (serverPass.outcome === "pending" || !outerInsertHTML) return;
+      const skipped = serverPass.outcome === "skipped";
       outerInsertHTML(() =>
-        toSlotScript(callback(), slotKey, serverPass.nonce)
+        toSlotScript(callback(), slotKey, serverPass.nonce, skipped)
       );
     },
     [outerInsertHTML, serverPass, slotKey]
   );
-  useHydrateFromSlot(slotKey);
+  const serverSkipped = useHydrateFromSlot(slotKey);
 
   // Create the search client from the EP adapter
   const searchClient = useMemo(() => {
@@ -355,13 +356,13 @@ function EPCatalogSearchProviderInner(props: {
       />
       <QueryState />
       <EPCatalogSearchBody
-        serverPass={serverPass}
         className={className}
         currencyCode={currencyCode}
         errorContent={errorContent}
       >
         {children}
       </EPCatalogSearchBody>
+      {serverSkipped ? <SearchAfterServerSkip /> : null}
     </>
   );
 
@@ -392,32 +393,48 @@ const SLOT_EXPRESSION = `window[Symbol.for(${JSON.stringify(SLOT_NAME)})]`;
 const UPSTREAM_SCRIPT_PREFIX =
   'window[Symbol.for("InstantSearchInitialResults")] = ';
 
+/**
+ * What the server leaves in this provider's slot: its results, or, when it
+ * did not search, an empty set and a request for the browser to search.
+ */
+interface SlotEntry {
+  results: unknown;
+  skipped?: boolean;
+}
+
 type ResultsWindow = Window & {
   [INITIAL_RESULTS]?: unknown;
-  [INITIAL_RESULTS_SLOT]?: Record<string, unknown>;
+  [INITIAL_RESULTS_SLOT]?: Record<string, SlotEntry | undefined>;
 };
 
 /**
  * Rewrites InstantSearchNext's results script to fill this provider's own
  * slot. Upstream writes one page-wide global, so a second provider on the
- * page would hydrate from the first one's results. Anything not shaped as
- * expected inserts nothing, and the browser searches instead.
+ * page would hydrate from the first one's results. Results not shaped as
+ * expected insert nothing, and the browser searches instead.
  */
 function toSlotScript(
   node: React.ReactNode,
   slotKey: string,
-  nonce: string | undefined
+  nonce: string | undefined,
+  skipped: boolean
 ): React.ReactNode {
-  if (!React.isValidElement(node) || node.type !== "script") return null;
-  const props = node.props as {
+  const props = (
+    React.isValidElement(node) && node.type === "script" ? node.props : {}
+  ) as {
     nonce?: string;
     dangerouslySetInnerHTML?: { __html?: unknown };
   };
-  const html = props.dangerouslySetInnerHTML?.__html;
-  if (typeof html !== "string" || !html.startsWith(UPSTREAM_SCRIPT_PREFIX)) {
-    return null;
+  let entry: string;
+  if (skipped) {
+    entry = '{"results":{},"skipped":true}';
+  } else {
+    const html = props.dangerouslySetInnerHTML?.__html;
+    if (typeof html !== "string" || !html.startsWith(UPSTREAM_SCRIPT_PREFIX)) {
+      return null;
+    }
+    entry = `{"results":${html.slice(UPSTREAM_SCRIPT_PREFIX.length)}}`;
   }
-  const json = html.slice(UPSTREAM_SCRIPT_PREFIX.length);
   const key = JSON.stringify(slotKey).replace(
     /[<>&]/g,
     (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`
@@ -426,7 +443,7 @@ function toSlotScript(
     <script
       nonce={nonce ?? props.nonce}
       dangerouslySetInnerHTML={{
-        __html: `(${SLOT_EXPRESSION} = ${SLOT_EXPRESSION} || {})[${key}] = ${json}`,
+        __html: `(${SLOT_EXPRESSION} = ${SLOT_EXPRESSION} || {})[${key}] = ${entry}`,
       }}
     />
   );
@@ -434,28 +451,44 @@ function toSlotScript(
 
 /**
  * Points InstantSearchNext at this provider's server results before it reads
- * them on its first render, and drops them once mounted.
+ * them on its first render, and drops them once mounted. Returns whether the
+ * server left the search to the browser.
+ *
+ * After a skip the server rendered the widgets before any search. Empty
+ * initial results make the browser's first render match that, where without
+ * them InstantSearch renders nothing until it starts.
  */
-function useHydrateFromSlot(slotKey: string) {
+function useHydrateFromSlot(slotKey: string): boolean {
   const mounted = useRef(false);
+  const skipped = useRef(false);
   if (!mounted.current && typeof window !== "undefined") {
     const w = window as ResultsWindow;
-    w[INITIAL_RESULTS] = w[INITIAL_RESULTS_SLOT]?.[slotKey];
+    const entry = w[INITIAL_RESULTS_SLOT]?.[slotKey];
+    w[INITIAL_RESULTS] = entry?.results;
+    skipped.current = entry?.skipped === true;
   }
   useEffect(() => {
     mounted.current = true;
     delete (window as ResultsWindow)[INITIAL_RESULTS_SLOT]?.[slotKey];
   }, [slotKey]);
+  return skipped.current;
 }
 
-/** `React.use` where it exists, else the older thrown-promise suspend. */
-function suspendOn(promise: Promise<unknown>): void {
-  const use = (React as { use?: (p: Promise<unknown>) => unknown }).use;
-  if (use) {
-    use(promise);
-    return;
-  }
-  throw promise;
+/**
+ * Sends the search the server skipped. Initial results stop InstantSearch
+ * from sending its own first search, empty ones included. Rendered after the
+ * widgets so their effects have registered them first.
+ */
+function SearchAfterServerSkip() {
+  const search = useInstantSearchContext();
+  const sent = useRef(false);
+  useEffect(() => {
+    // StrictMode runs this effect twice; one search is enough.
+    if (sent.current) return;
+    sent.current = true;
+    search.refresh();
+  }, [search]);
+  return null;
 }
 
 /**
@@ -499,18 +532,9 @@ function EPCatalogSearchBody(props: {
   errorContent?: React.ReactNode;
   className?: string;
   currencyCode: string;
-  serverPass: CatalogSearchServerPass;
 }) {
-  const { children, errorContent, className, currencyCode, serverPass } = props;
-  const { waitForResultsRef } = useRSCContext();
+  const { children, errorContent, className, currencyCode } = props;
   const { status, error } = useInstantSearch({ catchError: true });
-  if (typeof window === "undefined") {
-    // The browser's first render without server results is empty, so a
-    // server pass that found none renders nothing either.
-    const serverResults = waitForResultsRef?.current;
-    if (serverResults?.status === "pending") suspendOn(serverResults);
-    if (serverPass.outcome !== "success") return null;
-  }
   const failed = status === "error";
 
   const catalogSearchData: CatalogSearchData = {

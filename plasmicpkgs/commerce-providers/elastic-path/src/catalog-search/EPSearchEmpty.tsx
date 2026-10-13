@@ -143,10 +143,15 @@ function EPSearchEmptyInner({
 }) {
   const { results } = useInstantSearch();
 
-  // Stay silent during the SSR-to-first-response window (results === null)
-  // and during error states (results keeps last successful value, which
-  // could have nbHits > 0). Only render on a real zero-hit response.
-  if (!results || results.nbHits !== 0) {
+  // Stay silent before the first response (no results, or the placeholder
+  // InstantSearch renders before searching) and during error states
+  // (results keeps last successful value, which could have nbHits > 0).
+  // Only render on a real zero-hit response.
+  if (
+    !results ||
+    (results as { __isArtificial?: boolean }).__isArtificial ||
+    results.nbHits !== 0
+  ) {
     return null;
   }
 

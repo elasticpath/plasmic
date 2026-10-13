@@ -75,6 +75,12 @@ const { ServerInsertedHTMLContext } = require("next/navigation.js");
 const { useHits, useSearchBox } = require("react-instantsearch");
 const { EPCatalogSearchProvider } =
   require("../EPCatalogSearchProvider") as typeof import("../EPCatalogSearchProvider");
+const { EPSearchEmpty } =
+  require("../EPSearchEmpty") as typeof import("../EPSearchEmpty");
+const { EPRefinementList } =
+  require("../EPRefinementList") as typeof import("../EPRefinementList");
+const { EPSearchPagination } =
+  require("../EPSearchPagination") as typeof import("../EPSearchPagination");
 const { SERVER_SEARCH_TIMEOUT_MS } =
   require("../multi-search-client") as typeof import("../multi-search-client");
 
@@ -87,7 +93,10 @@ const AUTH = {
   clientId: "client-1",
 };
 
-function searchResult(names: string[]) {
+const FACET_VALUES = ["Acme", "Zenith"];
+
+/** Answers every facet the search asks for with `FACET_VALUES`. */
+function searchResult(names: string[], facetBy = "") {
   return {
     hits: names.map((name, i) => ({
       document: { id: `${name}-${i}`, name },
@@ -97,7 +106,18 @@ function searchResult(names: string[]) {
     page: 1,
     request_params: { per_page: 12, q: "*" },
     search_time_ms: 1,
-    facet_counts: [],
+    facet_counts: facetBy
+      .split(",")
+      .filter(Boolean)
+      .map((field) => ({
+        field_name: field,
+        counts: FACET_VALUES.map((value) => ({
+          value,
+          count: 1,
+          highlighted: value,
+        })),
+        stats: {},
+      })),
   };
 }
 
@@ -109,6 +129,14 @@ async function requestBody(input: Request | string, init?: any) {
   );
 }
 
+/** Every search sent, in order. */
+async function sentSearches(): Promise<any[]> {
+  const bodies = await Promise.all(
+    fetchMock.mock.calls.map(([input, init]) => requestBody(input, init))
+  );
+  return bodies.flatMap((body) => body.searches);
+}
+
 /** The `q` of every search sent, in order. */
 async function searchedQueries(): Promise<string[]> {
   const bodies = await Promise.all(
@@ -118,14 +146,17 @@ async function searchedQueries(): Promise<string[]> {
 }
 
 function answerSearches(
-  namesFor: (filterBy: string, query: string) => string[]
+  namesFor: (filterBy: string, query: string, search: any) => string[]
 ) {
   fetchMock.mockImplementation(async (input: Request | string, init?: any) => {
     const body = await requestBody(input, init);
     return new Response(
       JSON.stringify({
         results: body.searches.map((s: any) =>
-          searchResult(namesFor(String(s.filter_by ?? ""), String(s.q ?? "")))
+          searchResult(
+            namesFor(String(s.filter_by ?? ""), String(s.q ?? ""), s),
+            String(s.facet_by ?? "")
+          )
         ),
         included: {},
       }),
@@ -336,26 +367,45 @@ describe("catalog search server pass", () => {
     const slot = slotContents(inserted);
     const keys = Object.keys(slot);
     expect(keys).toHaveLength(2);
-    expect(hitNamesIn(slot[keys[0]])).toEqual(["Trail Boot"]);
-    expect(hitNamesIn(slot[keys[1]])).toEqual(["Sun Hat"]);
+    expect(hitNamesIn(slot[keys[0]].results)).toEqual(["Trail Boot"]);
+    expect(hitNamesIn(slot[keys[1]].results)).toEqual(["Sun Hat"]);
   });
 });
 
 describe("a server pass that cannot search", () => {
-  // Nothing, as in the browser's first render before InstantSearch starts.
-  function expectBrowserFallback({ html, inserted, errors }: ServerRender) {
-    expect(errors).toEqual([]);
-    expect(html).toBe("<main></main>");
-    expect(inserted).not.toContain("<script");
-  }
-
   const page = (
     <EPCatalogSearchProvider baseFilter="categories:=boots">
       <HitNames />
+      <EPSearchEmpty>
+        <p>No results found</p>
+      </EPSearchEmpty>
     </EPCatalogSearchProvider>
   );
 
-  it("renders without results when the search fails", async () => {
+  /**
+   * The HTML carries the widgets before any search, which the browser
+   * hydrates and then searches through the storefront's own proxy.
+   */
+  async function expectBrowserSearch(rendered: ServerRender) {
+    expect(rendered.errors).toEqual([]);
+    expect(rendered.html).toContain("<ul></ul>");
+    expect(rendered.html).not.toContain("No results found");
+    expect(rendered.html).not.toContain("data-ep-catalog-search-error");
+
+    fetchMock.mockReset();
+    answerSearches(() => ["Trail Boot"]);
+    const browser = await hydrateInBrowser(rendered, page);
+    try {
+      expect(browser.hydrationErrors).toEqual([]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][0]).toBe("/api/ep/proxy/multiSearch");
+      expect(browser.container.innerHTML).toContain("<li>Trail Boot</li>");
+    } finally {
+      await browser.leave();
+    }
+  }
+
+  it("leaves the search to the browser when the server's search fails", async () => {
     installBridge();
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ errors: [{ status: 500 }] }), {
@@ -364,10 +414,10 @@ describe("a server pass that cannot search", () => {
       })
     );
 
-    expectBrowserFallback(await serverRender(page));
+    await expectBrowserSearch(await serverRender(page));
   });
 
-  it("renders without results when the response carries none", async () => {
+  it("leaves the search to the browser when the response carries no results", async () => {
     installBridge();
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ data: [] }), {
@@ -376,10 +426,11 @@ describe("a server pass that cannot search", () => {
       })
     );
 
-    expectBrowserFallback(await serverRender(page));
+    await expectBrowserSearch(await serverRender(page));
   });
 
-  it("renders without results when the search outlasts the timeout", async () => {
+  it("leaves the search to the browser when the server's search outlasts the timeout", async () => {
+    let rendered: ServerRender;
     jest.useFakeTimers({
       doNotFake: ["setImmediate", "nextTick", "queueMicrotask"],
     });
@@ -389,34 +440,43 @@ describe("a server pass that cannot search", () => {
 
       const rendering = serverRender(page);
       await jest.advanceTimersByTimeAsync(SERVER_SEARCH_TIMEOUT_MS);
-
-      expectBrowserFallback(await rendering);
+      rendered = await rendering;
     } finally {
       jest.useRealTimers();
     }
+
+    await expectBrowserSearch(rendered);
   });
 
-  it("renders without results when the storefront registered no bridge", async () => {
+  it("leaves the search to the browser when the storefront registered no bridge", async () => {
     answerSearches(() => ["Trail Boot"]);
 
-    expectBrowserFallback(await serverRender(page));
+    const rendered = await serverRender(page);
     expect(fetchMock).not.toHaveBeenCalled();
+    await expectBrowserSearch(rendered);
   });
 
-  it("renders without results when the request has no session", async () => {
+  it("leaves the search to the browser when the request has no session", async () => {
     installBridge({ requestSession: async () => null });
     answerSearches(() => ["Trail Boot"]);
 
-    expectBrowserFallback(await serverRender(page));
+    const rendered = await serverRender(page);
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(rendered.inserted).toContain('nonce="abc123"');
+    await expectBrowserSearch(rendered);
   });
 
-  it("renders without results outside the App Router, where next/headers throws", async () => {
+  it("renders nothing outside the App Router, where next/headers throws", async () => {
     mockNextRequest.inScope = false;
     installBridge();
     answerSearches(() => ["Trail Boot"]);
 
-    expectBrowserFallback(await serverRender(page, { insertContext: false }));
+    const { html, inserted, errors } = await serverRender(page, {
+      insertContext: false,
+    });
+    expect(errors).toEqual([]);
+    expect(html).toBe("<main></main>");
+    expect(inserted).not.toContain("<script");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
@@ -439,10 +499,11 @@ const BROWSER_GLOBALS = [
  */
 async function hydrateInBrowser(
   { html, inserted }: ServerRender,
-  tree: React.ReactElement
+  tree: React.ReactElement,
+  opts: { url?: string } = {}
 ) {
   const dom = new JSDOM("<!doctype html><html><body></body></html>", {
-    url: "http://shop.test/category/boots",
+    url: opts.url ?? "http://shop.test/category/boots",
     runScripts: "outside-only",
   });
   const saved = BROWSER_GLOBALS.map(
@@ -485,10 +546,18 @@ async function hydrateInBrowser(
         if (descriptor) Object.defineProperty(globalThis, key, descriptor);
         else delete (globalThis as any)[key];
       }
-      dom.window.close();
+      openWindows.push(dom.window);
     },
   };
 }
+
+// The URL router writes 400 ms after the last change, unmounting included,
+// and must find its window still open.
+const openWindows: Array<{ close(): void }> = [];
+afterAll(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  for (const w of openWindows) w.close();
+});
 
 async function settle() {
   for (let i = 0; i < 10; i++) {
@@ -624,3 +693,71 @@ describe("in the browser", () => {
     }
   });
 });
+
+describe("widgets in the provider's slot", () => {
+  it("serves and hydrates the page of results the URL asks for", async () => {
+    installBridge();
+    mockPageUrl.search = "search%5Bpage%5D=2";
+    // Typesense pages count from 1; the URL's page 2 is its page 2.
+    answerSearches((_filterBy, _query, search) =>
+      search.page === 2 ? ["Page Two Boot"] : ["Page One Boot"]
+    );
+    const page = (
+      <EPCatalogSearchProvider baseFilter="categories:=boots">
+        <EPSearchPagination />
+        <HitNames />
+      </EPCatalogSearchProvider>
+    );
+
+    const rendered = await serverRender(page);
+    expect(rendered.errors).toEqual([]);
+    expect((await sentSearches()).map((s) => s.page)).toEqual([2]);
+    expect(rendered.html).toContain("<li>Page Two Boot</li>");
+    fetchMock.mockClear();
+
+    const browser = await hydrateInBrowser(rendered, page, {
+      url: "http://shop.test/category/boots?search%5Bpage%5D=2",
+    });
+    try {
+      expect(browser.hydrationErrors).toEqual([]);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(browser.container.innerHTML).toContain("<li>Page Two Boot</li>");
+    } finally {
+      await browser.leave();
+    }
+  });
+
+  it("serves and hydrates a refinement list's facet values", async () => {
+    installBridge();
+    answerSearches(() => ["Trail Boot"]);
+    const page = (
+      <EPCatalogSearchProvider baseFilter="categories:=boots">
+        <EPRefinementList attribute="brand" />
+        <HitNames />
+      </EPCatalogSearchProvider>
+    );
+
+    const rendered = await serverRender(page);
+    expect(rendered.errors).toEqual([]);
+    expect((await sentSearches()).map((s) => s.facet_by)).toEqual(["brand"]);
+    expect(refinementLabels(rendered.html)).toEqual(FACET_VALUES);
+    fetchMock.mockClear();
+
+    const browser = await hydrateInBrowser(rendered, page);
+    try {
+      expect(browser.hydrationErrors).toEqual([]);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(refinementLabels(browser.container.innerHTML)).toEqual(
+        FACET_VALUES
+      );
+    } finally {
+      await browser.leave();
+    }
+  });
+});
+
+function refinementLabels(html: string): string[] {
+  return [...html.matchAll(/data-ep-refinement-label="">([^<]*)</g)].map(
+    ([, label]) => label
+  );
+}
