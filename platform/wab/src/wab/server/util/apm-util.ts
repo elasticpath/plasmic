@@ -1,6 +1,7 @@
 import { logger } from "@/wab/server/observability";
 import { WabPromTimer } from "@/wab/server/promstats";
 import { recordTiming } from "@/wab/server/util/server-timing";
+import { isApiError } from "@/wab/shared/ApiErrors/errors";
 import { Properties } from "@/wab/shared/observability/Properties";
 import { trace } from "@opentelemetry/api";
 
@@ -64,12 +65,18 @@ export async function withSpan<T>(
       return result;
     } catch (err) {
       const durationMs = new Date().getTime() - start;
-      logger().error(`span "${name}" failed in ${durationMs}ms${suffix}`, {
+      const message = `span "${name}" failed in ${durationMs}ms${suffix}`;
+      const details = {
         operation_name: name,
         duration_ms: durationMs,
         err,
         ...payload,
-      });
+      };
+      if (isApiError(err) && err.statusCode < 500) {
+        logger().warn(message, details);
+      } else {
+        logger().error(message, details);
+      }
       throw err;
     } finally {
       recordTiming(name, new Date().getTime() - start);
