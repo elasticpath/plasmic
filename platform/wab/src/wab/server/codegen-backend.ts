@@ -1,4 +1,5 @@
 // tslint:disable:ordered-imports
+import "@/wab/server/instrument";
 import { spawn } from "@/wab/shared/common";
 import { codegenBackendMain } from "@/wab/server/codegen-backend-real";
 

@@ -335,6 +335,38 @@ describe("EP Fork Integrity", () => {
     }
   });
 
+  describe("EP tracer initialisation", () => {
+    it("instrument.ts registers dd-trace as the OpenTelemetry provider", () => {
+      const instrument = readFile(
+        "platform/wab/src/wab/server/instrument.ts"
+      );
+      expect(instrument).toContain("tracer.init");
+      expect(instrument).toContain("new tracer.TracerProvider().register()");
+    });
+
+    const entrypoints = [
+      "platform/wab/src/wab/server/main.ts",
+      "platform/wab/src/wab/server/codegen-backend.ts",
+      "platform/wab/src/wab/server/integrations-backend.ts",
+      "platform/wab/src/wab/server/img-optimizer-backend.ts",
+      "platform/wab/src/wab/server/loader-html-backend.ts",
+      "platform/wab/src/wab/server/loader-backend.ts",
+      "platform/wab/src/wab/server/app-socket-backend-real.ts",
+    ];
+    for (const entrypoint of entrypoints) {
+      it(`${path.basename(entrypoint)} loads the tracer before other imports`, () => {
+        const src = readFile(entrypoint);
+        expect(src).toMatch(
+          /import "(\.\/|@\/wab\/server\/)instrument";/
+        );
+        const importLines = src
+          .split("\n")
+          .filter((line) => line.startsWith("import "));
+        expect(importLines[0]).toMatch(/instrument";$/);
+      });
+    }
+  });
+
   describe("EP bundle migrations", () => {
     it("EP migration 255-fix-ep-addtocart-import-path is present and listed", () => {
       expect(
