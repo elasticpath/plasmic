@@ -133,9 +133,11 @@ jest.mock("../../shopper-context/EpCommerceContext", () => ({
 }));
 
 jest.mock("../../utils/errorHandling", () => ({
-  handleAPIError: jest.fn().mockImplementation((err: unknown) =>
-    err instanceof Error ? err : new Error(String(err))
-  ),
+  handleAPIError: jest
+    .fn()
+    .mockImplementation((err: unknown) =>
+      err instanceof Error ? err : new Error(String(err))
+    ),
 }));
 
 jest.mock("../../utils/logger", () => ({
@@ -160,13 +162,18 @@ jest.mock("react-instantsearch", () => ({
   useSortBy: (...a: unknown[]) => mockUseSortBy(...a),
   useClearRefinements: (...a: unknown[]) => mockUseClearRefinements(...a),
   useCurrentRefinements: (...a: unknown[]) => mockUseCurrentRefinements(...a),
-  InstantSearch: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="instantsearch">{children}</div>
-  ),
+  useRSCContext: () => ({}),
+  useInstantSearchContext: () => ({}),
   // Render props so tests can assert what the provider configures
   // (hitsPerPage, the base `filters`, …).
   Configure: (props: Record<string, unknown>) => (
     <div data-testid="configure" data-configure={JSON.stringify(props)} />
+  ),
+}));
+
+jest.mock("react-instantsearch-nextjs", () => ({
+  InstantSearchNext: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="instantsearch">{children}</div>
   ),
 }));
 
@@ -204,7 +211,8 @@ const {
   EPCatalogSearchProvider,
   epCatalogSearchProviderMeta,
   registerEPCatalogSearchProvider,
-} = require("../EPCatalogSearchProvider") as typeof import("../EPCatalogSearchProvider");
+} =
+  require("../EPCatalogSearchProvider") as typeof import("../EPCatalogSearchProvider");
 
 const { EPSearchBox, epSearchBoxMeta, registerEPSearchBox } =
   require("../EPSearchBox") as typeof import("../EPSearchBox");
@@ -246,13 +254,11 @@ const {
   EPCurrentRefinements,
   epCurrentRefinementsMeta,
   registerEPCurrentRefinements,
-} = require("../EPCurrentRefinements") as typeof import("../EPCurrentRefinements");
+} =
+  require("../EPCurrentRefinements") as typeof import("../EPCurrentRefinements");
 
-const {
-  EPSearchEmpty,
-  epSearchEmptyMeta,
-  registerEPSearchEmpty,
-} = require("../EPSearchEmpty") as typeof import("../EPSearchEmpty");
+const { EPSearchEmpty, epSearchEmptyMeta, registerEPSearchEmpty } =
+  require("../EPSearchEmpty") as typeof import("../EPSearchEmpty");
 
 /* ---------- helpers ---------- */
 const mockClient = { baseUrl: "https://api.test.com" };
@@ -286,9 +292,9 @@ describe("design-time-data", () => {
       expect(product.id).toBeTruthy();
       expect(product.attributes?.name).toBeTruthy();
       expect(product.attributes?.slug).toBeTruthy();
-      expect(
-        typeof product.meta?.display_price?.without_tax?.float_price
-      ).toBe("number");
+      expect(typeof product.meta?.display_price?.without_tax?.float_price).toBe(
+        "number"
+      );
       expect(product.meta?.display_price?.without_tax?.currency).toBe("USD");
       expect(product.images.length).toBeGreaterThan(0);
     }
@@ -326,9 +332,7 @@ describe("design-time-data", () => {
     expect(MOCK_RANGE_DATA.currentMin).toBeGreaterThanOrEqual(
       MOCK_RANGE_DATA.min
     );
-    expect(MOCK_RANGE_DATA.currentMax).toBeLessThanOrEqual(
-      MOCK_RANGE_DATA.max
-    );
+    expect(MOCK_RANGE_DATA.currentMax).toBeLessThanOrEqual(MOCK_RANGE_DATA.max);
     expect(MOCK_RANGE_DATA.canRefine).toBe(true);
   });
 
@@ -615,7 +619,9 @@ describe("EPCatalogSearchProvider", () => {
         </EPCatalogSearchProvider>
       );
 
-      expect(container.querySelector("[data-ep-catalog-search-error]")).toBeNull();
+      expect(
+        container.querySelector("[data-ep-catalog-search-error]")
+      ).toBeNull();
       expect(container.textContent).not.toContain("Custom error");
 
       const el = container.querySelector(
@@ -668,7 +674,9 @@ describe("EPSearchBox", () => {
 
     expect(container.querySelector("input")).toBeNull();
     expect(container.querySelector("button")).toBeNull();
-    expect(container.querySelector('[data-testid="user-content"]')).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid="user-content"]')
+    ).not.toBeNull();
   });
 
   it("setValue ref-action updates searchFieldData.value at runtime", () => {
@@ -866,7 +874,6 @@ describe("EPSearchBox", () => {
     expect(epSearchBoxMeta.refActions!.clear).toBeDefined();
     expect(epSearchBoxMeta.refActions!.clear.argTypes).toEqual([]);
   });
-
 });
 
 /* ================================================================
@@ -928,9 +935,7 @@ describe("EPSearchHits", () => {
     );
     expect(indexProviders.length).toBe(MOCK_SEARCH_PRODUCTS.length);
     expect(
-      JSON.parse(
-        indexProviders[0].getAttribute("data-provider-data") || "null"
-      )
+      JSON.parse(indexProviders[0].getAttribute("data-provider-data") || "null")
     ).toBe(0);
   });
 
@@ -1041,12 +1046,12 @@ describe("EPSearchHits", () => {
   it("carries template extensions where the product page reads them", () => {
     const data = renderHitAndGetCurrentProduct(EP_HIT);
 
-    expect(
-      data.attributes.extensions["products(specs)"].lifecycle_status
-    ).toBe("Published");
-    expect(
-      data.attributes.extensions["products(specs)"].product_kind
-    ).toBe("standard");
+    expect(data.attributes.extensions["products(specs)"].lifecycle_status).toBe(
+      "Published"
+    );
+    expect(data.attributes.extensions["products(specs)"].product_kind).toBe(
+      "standard"
+    );
   });
 
   it("builds path from productPathPrefix (trailing slash tolerated)", () => {
@@ -1081,9 +1086,7 @@ describe("EPSearchHits", () => {
     });
 
     expect(data.highlightedName).toBe("Sample <mark>Product</mark>");
-    expect(data.snippetedDescription).toBe(
-      "a <mark>sample</mark> description"
-    );
+    expect(data.snippetedDescription).toBe("a <mark>sample</mark> description");
   });
 
   it("should fall back to USD when catalogSearchData has no currencyCode", () => {
@@ -1158,7 +1161,9 @@ describe("EPRefinementList — empty slot", () => {
   it("marks which value is refined", () => {
     const { container } = render(<EPRefinementList attribute="material" />);
 
-    const refined = container.querySelectorAll("[data-ep-refinement][data-refined]");
+    const refined = container.querySelectorAll(
+      "[data-ep-refinement][data-refined]"
+    );
     expect(refined).toHaveLength(1);
     expect(refined[0].textContent).toContain("Suede");
   });
@@ -1169,7 +1174,9 @@ describe("EPRefinementList — empty slot", () => {
     // The default honours that: real values, no affordance invented for them.
     const refine = jest.fn();
     mockUseRefinementList.mockReturnValue({
-      items: [{ value: "leather", label: "Leather", count: 12, isRefined: false }],
+      items: [
+        { value: "leather", label: "Leather", count: 12, isRefined: false },
+      ],
       refine,
     });
 
@@ -1187,7 +1194,9 @@ describe("EPRefinementList — empty slot", () => {
   it("still exposes toggle on the item data for that wiring", () => {
     const refine = jest.fn();
     mockUseRefinementList.mockReturnValue({
-      items: [{ value: "leather", label: "Leather", count: 12, isRefined: false }],
+      items: [
+        { value: "leather", label: "Leather", count: 12, isRefined: false },
+      ],
       refine,
     });
 
@@ -1234,7 +1243,9 @@ describe("EPRefinementList — empty slot", () => {
     expect(
       container.querySelector("[data-ep-refinement-count]")?.textContent
     ).toBe("12");
-    expect(container.querySelector("[data-ep-refinement][data-refined]")).toBeTruthy();
+    expect(
+      container.querySelector("[data-ep-refinement][data-refined]")
+    ).toBeTruthy();
   });
 
   it("shows the default on the Studio canvas too", () => {
@@ -1328,9 +1339,7 @@ describe("EPRefinementList", () => {
     expect(data.count).toBe(39);
     expect(data.isRefined).toBe(true);
 
-    expect(
-      container.querySelector("[data-single-select]")
-    ).not.toBeNull();
+    expect(container.querySelector("[data-single-select]")).not.toBeNull();
   });
 
   it("should expose currentRefinementIndex in editor", () => {
@@ -1368,7 +1377,13 @@ describe("EPHierarchicalMenu — empty slot", () => {
           count: 24,
           isRefined: true,
           data: [
-            { value: "shoes > sandals", label: "Sandals", count: 6, isRefined: false, data: null },
+            {
+              value: "shoes > sandals",
+              label: "Sandals",
+              count: 6,
+              isRefined: false,
+              data: null,
+            },
           ],
         },
       ],
@@ -1377,7 +1392,9 @@ describe("EPHierarchicalMenu — empty slot", () => {
   });
 
   it("renders each category's real label and count", () => {
-    const { container } = render(<EPHierarchicalMenu attributes="categories" />);
+    const { container } = render(
+      <EPHierarchicalMenu attributes="categories" />
+    );
 
     const labels = Array.from(
       container.querySelectorAll("[data-ep-category-label]")
@@ -1391,7 +1408,9 @@ describe("EPHierarchicalMenu — empty slot", () => {
   });
 
   it("carries the nesting depth so a design can indent", () => {
-    const { container } = render(<EPHierarchicalMenu attributes="categories" />);
+    const { container } = render(
+      <EPHierarchicalMenu attributes="categories" />
+    );
 
     const depths = Array.from(
       container.querySelectorAll("[data-ep-category]")
@@ -1400,9 +1419,13 @@ describe("EPHierarchicalMenu — empty slot", () => {
   });
 
   it("marks the refined category", () => {
-    const { container } = render(<EPHierarchicalMenu attributes="categories" />);
+    const { container } = render(
+      <EPHierarchicalMenu attributes="categories" />
+    );
 
-    const refined = container.querySelectorAll("[data-ep-category][data-refined]");
+    const refined = container.querySelectorAll(
+      "[data-ep-category][data-refined]"
+    );
     expect(refined).toHaveLength(1);
     expect(refined[0].textContent).toContain("Shoes");
   });
@@ -1410,11 +1433,21 @@ describe("EPHierarchicalMenu — empty slot", () => {
   it("pre-renders nothing interactive", () => {
     const refine = jest.fn();
     mockUseHierarchicalMenu.mockReturnValue({
-      items: [{ value: "shoes", label: "Shoes", count: 24, isRefined: false, data: null }],
+      items: [
+        {
+          value: "shoes",
+          label: "Shoes",
+          count: 24,
+          isRefined: false,
+          data: null,
+        },
+      ],
       refine,
     });
 
-    const { container } = render(<EPHierarchicalMenu attributes="categories" />);
+    const { container } = render(
+      <EPHierarchicalMenu attributes="categories" />
+    );
 
     expect(container.querySelector("button")).toBeNull();
     expect(container.querySelector("a")).toBeNull();
@@ -1778,7 +1811,12 @@ describe("EPCurrentRefinements — empty slot", () => {
           attribute: "material",
           label: "Material",
           refinements: [
-            { attribute: "material", type: "disjunctive", value: "leather", label: "Leather" },
+            {
+              attribute: "material",
+              type: "disjunctive",
+              value: "leather",
+              label: "Leather",
+            },
           ],
           refine: refineOne,
         },
@@ -1821,7 +1859,9 @@ describe("EPCurrentRefinements — empty slot", () => {
       </EPCurrentRefinements>
     );
 
-    expect(container.querySelectorAll("[data-ep-refinement-chip]")).toHaveLength(0);
+    expect(
+      container.querySelectorAll("[data-ep-refinement-chip]")
+    ).toHaveLength(0);
   });
 
   // Studio materialises a slot's defaultValue on insert, so any default at all
@@ -1854,9 +1894,7 @@ describe("EPCurrentRefinements", () => {
       </EPCurrentRefinements>
     );
 
-    expect(
-      container.querySelector("[data-ep-current-refinements]")
-    ).toBeNull();
+    expect(container.querySelector("[data-ep-current-refinements]")).toBeNull();
   });
 
   it("flattens items into one chip per refinement and publishes per-iteration ctx", () => {
@@ -1867,8 +1905,18 @@ describe("EPCurrentRefinements", () => {
           attribute: "brand",
           label: "Brand",
           refinements: [
-            { attribute: "brand", type: "facet", value: "leather", label: "Leather" },
-            { attribute: "brand", type: "facet", value: "canvas", label: "Canvas" },
+            {
+              attribute: "brand",
+              type: "facet",
+              value: "leather",
+              label: "Leather",
+            },
+            {
+              attribute: "brand",
+              type: "facet",
+              value: "canvas",
+              label: "Canvas",
+            },
           ],
           refine,
         },
@@ -1931,7 +1979,12 @@ describe("EPCurrentRefinements", () => {
           attribute: "brand",
           label: "Brand",
           refinements: [
-            { attribute: "brand", type: "facet", value: "leather", label: "Leather" },
+            {
+              attribute: "brand",
+              type: "facet",
+              value: "leather",
+              label: "Leather",
+            },
           ],
           refine: refineBrand,
         },
@@ -1984,7 +2037,12 @@ describe("EPCurrentRefinements", () => {
           attribute: "brand",
           label: "Brand",
           refinements: [
-            { attribute: "brand", type: "facet", value: "leather", label: "Leather" },
+            {
+              attribute: "brand",
+              type: "facet",
+              value: "leather",
+              label: "Leather",
+            },
           ],
           refine,
         },
@@ -2028,7 +2086,12 @@ describe("EPCurrentRefinements", () => {
           attribute: "brand",
           label: "Brand",
           refinements: [
-            { attribute: "brand", type: "facet", value: "leather", label: "Leather" },
+            {
+              attribute: "brand",
+              type: "facet",
+              value: "leather",
+              label: "Leather",
+            },
           ],
           refine: jest.fn(),
         },
@@ -2076,9 +2139,7 @@ describe("EPSearchEmpty", () => {
       </EPSearchEmpty>
     );
 
-    expect(
-      container.querySelector('[data-testid="empty-content"]')
-    ).toBeNull();
+    expect(container.querySelector('[data-testid="empty-content"]')).toBeNull();
     expect(container.querySelector("[data-ep-search-empty]")).toBeNull();
   });
 
@@ -2092,9 +2153,7 @@ describe("EPSearchEmpty", () => {
       </EPSearchEmpty>
     );
 
-    expect(
-      container.querySelector('[data-testid="empty-content"]')
-    ).toBeNull();
+    expect(container.querySelector('[data-testid="empty-content"]')).toBeNull();
   });
 
   it("runtime renders the wrapper + slot when results !== null && nbHits === 0", () => {
@@ -2184,9 +2243,7 @@ describe("EPSearchEmpty", () => {
       </EPSearchEmpty>
     );
 
-    expect(
-      container.querySelector('[data-testid="empty-content"]')
-    ).toBeNull();
+    expect(container.querySelector('[data-testid="empty-content"]')).toBeNull();
 
     mockUseInstantSearch.mockReturnValue({ results: { nbHits: 0 } });
     rerender(
@@ -2221,9 +2278,7 @@ describe("EPSearchEmpty", () => {
       </EPSearchEmpty>
     );
 
-    expect(
-      container.querySelector('[data-testid="empty-content"]')
-    ).toBeNull();
+    expect(container.querySelector('[data-testid="empty-content"]')).toBeNull();
     expect(container.querySelector("[data-ep-search-empty]")).toBeNull();
   });
 
@@ -2242,8 +2297,8 @@ describe("EPSearchEmpty", () => {
   });
 
   it("registerEPSearchEmpty calls registerComponent", () => {
-    const registerComponent = require("@plasmicapp/host/registerComponent")
-      .default;
+    const registerComponent =
+      require("@plasmicapp/host/registerComponent").default;
     registerComponent.mockClear();
     registerEPSearchEmpty();
     expect(registerComponent).toHaveBeenCalledWith(
@@ -2352,9 +2407,7 @@ describe("component registration", () => {
   });
 
   it("EPSearchSortBy meta should have correct name and refActions", () => {
-    expect(epSearchSortByMeta.name).toBe(
-      "plasmic-commerce-ep-search-sort-by"
-    );
+    expect(epSearchSortByMeta.name).toBe("plasmic-commerce-ep-search-sort-by");
     expect(epSearchSortByMeta.refActions!.setSort).toBeDefined();
   });
 
@@ -2466,9 +2519,7 @@ describeHeadlessStylingContract({
   ),
   renderAtRuntime: ({ className }) => {
     mockUseRefinementList.mockReturnValue({
-      items: [
-        { value: "acme", label: "Acme", count: 3, isRefined: false },
-      ],
+      items: [{ value: "acme", label: "Acme", count: 3, isRefined: false }],
       refine: jest.fn(),
     });
     return (
@@ -2613,7 +2664,12 @@ describeHeadlessStylingContract({
           attribute: "brand",
           label: "Brand",
           refinements: [
-            { attribute: "brand", type: "facet", value: "leather", label: "Leather" },
+            {
+              attribute: "brand",
+              type: "facet",
+              value: "leather",
+              label: "Leather",
+            },
           ],
           refine: jest.fn(),
         },

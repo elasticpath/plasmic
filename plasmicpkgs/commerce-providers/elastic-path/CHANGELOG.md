@@ -81,6 +81,28 @@ removed component or a removed published prop. Both are empty instead.
 
 ### Added
 
+`EPCatalogSearchProvider` renders the first page of results on the server, so
+the HTML of a category page contains its products. It uses
+`react-instantsearch-nextjs` and needs the Next.js App Router. Elsewhere, such
+as on the Pages Router, search runs in the browser as before.
+
+- The server search uses the page request's session, which `createEpAuth`
+  makes available, so a storefront adds no route, property or component. The
+  storefront's own copy of the package must be this version or later; with an
+  older one, catalog search runs in the browser only.
+- The browser uses the server's results without searching again. Each provider
+  on a page uses its own results. After hydration, searches go through the
+  storefront's proxy route as before.
+- A query in the URL applies to the server render. Other URL search state, such
+  as the page number, applies while the component that owns it is on the page.
+- If the server search fails, has no session, or takes longer than 3 seconds,
+  the page renders the provider's components with no results and the browser
+  searches. It never fails the page, renders the error slot or shows
+  EP Search Empty.
+- A storefront with a nonce-based Content Security Policy sends the nonce in an
+  `x-nonce` request header, or as a `'nonce-…'` source in the request's
+  `Content-Security-Policy` header. The results script carries it.
+
 The root entry exports the cart writes `epAddCartItem`, `epUpdateCartItem` and
 `epRemoveCartItem`, their input types, and the `Cart` type they resolve with,
 so a storefront's own React component can write to the cart. The types `Cart`

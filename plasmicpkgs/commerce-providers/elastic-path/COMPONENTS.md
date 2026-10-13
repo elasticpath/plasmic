@@ -58,11 +58,34 @@ no `sort` parameter, and ignore one rather than reject it, so a sort control
 over EP Product List Provider changes nothing. Use EP Search Sort By inside EP
 Catalog Search Provider.
 
-**Server rendering.** EP Product List Provider renders on the server: bind its
-**Products (pre-fetched)** prop to an `ep.getProductPage` Server Query, and the
-first page is in the HTML. Catalog search does not render on the server yet. Its
-products appear only after the browser runs the page, so a crawler or link
-preview that does not run scripts sees an empty listing.
+**Server rendering.** Both providers put their first page of products in the
+HTML. EP Product List Provider needs its **Products (pre-fetched)** prop bound
+to an `ep.getProductPage` Server Query. EP Catalog Search Provider needs nothing:
+on the Next.js App Router it searches during the server render with the
+shopper's session, and the browser uses those results without searching again.
+
+- A query in the URL, such as `?search[query]=boots`, applies to the server
+  render. Other search state in the URL, such as the page number, applies only
+  while the component that owns it, such as EP Search Pagination, is on the
+  page. The browser follows the same rule.
+- If the server search fails, has no session, or takes longer than 3 seconds,
+  the page still renders the provider's components with no results, and the
+  browser runs the search. The page never fails, and never shows the error slot
+  or EP Search Empty because of it. Components that show counts, such as EP
+  Search Stats, render 0 until the browser's results arrive.
+- Outside the App Router, for example on the Pages Router, catalog search runs
+  in the browser only.
+- The session reaches the server render through `createEpAuth`, so the
+  storefront's own installed copy of this package must be this version or
+  later. With an older copy, catalog search runs in the browser only.
+
+**Content Security Policy.** The server render adds one inline script for each
+catalog search provider. The script carries that provider's results. If your
+storefront uses a nonce-based policy, send the nonce on the page request in an
+`x-nonce` header, as the Next.js CSP guide shows. The package also reads a
+`'nonce-…'` source from the request's `Content-Security-Policy` header. If the
+policy blocks the script, the browser discards the server render and searches
+again.
 
 **Design time.** Both providers show labelled `"Sample"` fixtures on the Studio
 canvas, not your catalog. Catalog search never mounts its inner component on

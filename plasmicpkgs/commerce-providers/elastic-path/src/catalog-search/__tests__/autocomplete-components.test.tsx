@@ -201,7 +201,6 @@ jest.mock(
     __esModule: true,
     createAutocomplete: (...args: any[]) => mockCreateAutocomplete(...args),
   }),
-  { virtual: true }
 );
 
 const mockEpMultiSearch = jest.fn().mockResolvedValue({

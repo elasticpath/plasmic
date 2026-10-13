@@ -37,16 +37,16 @@ _Avoid_: data query, `$queries` (that is the client data-queries namespace)
 
 **Search server pass**:
 The client-component server render in which `<InstantSearchNext>` executes the
-search and emits `initialResults` into the HTML. Distinct from a **Server
-Query**: no `ep.*` binding, no `$q.*`. It applies `<Configure>` but not
-`initialUiState` or routing state, so it renders the unrefined default first
-page.
+search with the page request's session, read through the **request bridge**,
+and emits each provider's initial results into the HTML. Distinct from a
+**Server Query**: no `ep.*` binding, no `$q.*`. It applies `<Configure>` and the
+URL's routing state for the widgets mounted on the page, the same state the
+browser applies. App Router only.
 
-**Configure-scoped listing**:
-A catalog-search listing whose scope rides `<Configure filters>` (the
-`baseFilter` prop) rather than URL refinements, and which therefore
-server-renders correctly. The shape both the SEO recommendation and the
-`baseFilter` dev warning turn on.
+**Request bridge**:
+The `globalThis` slot through which `createEpAuth`, in the storefront's server
+process, hands the page request's session and CSP nonce to the **search server
+pass** in the loader bundle's own copy of the package.
 
 **EP session scope**:
 The per-request `AsyncLocalStorage` scope established by `withEpSession`

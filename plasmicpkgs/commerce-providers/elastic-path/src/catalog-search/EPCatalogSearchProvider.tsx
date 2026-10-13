@@ -1,35 +1,49 @@
 /**
  * EPCatalogSearchProvider — root provider for catalog search.
  *
- * Wraps children in `<InstantSearch>` from react-instantsearch with the
- * EP Catalog Search adapter. Handles client initialization, URL routing,
- * and global search configuration.
+ * Wraps children in `<InstantSearchNext>` with the EP Catalog Search
+ * adapter. Handles client initialization, URL routing, and global search
+ * configuration.
  *
  * At design time, renders children with mock data (no real search calls).
- * At runtime, initializes the adapter from the ElasticPathProvider context
- * and provides full search capabilities.
+ * At runtime, server-renders the first page of results where the page can
+ * carry them (the Next.js App Router), and searches in the browser otherwise.
  */
 
+import * as catalogSearchAdapterModule from "@elasticpath/catalog-search-instantsearch-adapter";
 import { DataProvider, usePlasmicCanvasContext } from "@plasmicapp/host";
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
-import React, { useMemo } from "react";
-import { Registerable } from "../registerable";
-import { DEFAULT_CURRENCY_CODE } from "../const";
-import { MOCK_CATALOG_SEARCH_DATA } from "./design-time-data";
-import type { CatalogSearchData } from "./design-time-data";
-import { useHeadlessStyling } from "./headless-styling";
-import { createMultiSearchClient } from "./multi-search-client";
-import { catalogSearchErrorCopy } from "./search-error-copy";
-import { readEpErrorCode } from "../browser-call";
+import { ServerInsertedHTMLContext } from "next/navigation.js";
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Configure,
-  InstantSearch,
   useInstantSearch,
+  useInstantSearchContext,
+  useRSCContext,
   useSearchBox,
 } from "react-instantsearch";
-import * as catalogSearchAdapterModule from "@elasticpath/catalog-search-instantsearch-adapter";
+import { InstantSearchNext } from "react-instantsearch-nextjs";
+import { readEpErrorCode } from "../browser-call";
+import { DEFAULT_CURRENCY_CODE } from "../const";
+import { Registerable } from "../registerable";
+import type { CatalogSearchData } from "./design-time-data";
+import { MOCK_CATALOG_SEARCH_DATA } from "./design-time-data";
+import { useHeadlessStyling } from "./headless-styling";
+import {
+  CatalogSearchServerPass,
+  createMultiSearchClient,
+} from "./multi-search-client";
+import { catalogSearchErrorCopy } from "./search-error-copy";
 
 type PreviewState = "auto" | "withData" | "loading" | "empty" | "error";
 
@@ -255,6 +269,23 @@ function EPCatalogSearchProviderInner(props: {
     className,
   } = props;
 
+  const outerInsertHTML = useContext(ServerInsertedHTMLContext);
+  const slotKey = useId();
+  const [serverPass] = useState<CatalogSearchServerPass>(() => ({
+    outcome: "pending",
+  }));
+  const insertHTML = useCallback(
+    (callback: () => React.ReactNode) => {
+      if (serverPass.outcome === "pending" || !outerInsertHTML) return;
+      const skipped = serverPass.outcome === "skipped";
+      outerInsertHTML(() =>
+        toSlotScript(callback(), slotKey, serverPass.nonce, skipped)
+      );
+    },
+    [outerInsertHTML, serverPass, slotKey]
+  );
+  const serverSkipped = useHydrateFromSlot(slotKey);
+
   // Create the search client from the EP adapter
   const searchClient = useMemo(() => {
     try {
@@ -269,7 +300,7 @@ function EPCatalogSearchProviderInner(props: {
       const adapter = new CatalogSearchInstantSearchAdapter({
         // Not an Elastic Path client: the one `.post()` the adapter reaches
         // for runs the search through `epMultiSearch` instead.
-        client: createMultiSearchClient(),
+        client: createMultiSearchClient(serverPass),
         additionalSearchParameters: {
           query_by: queryBy,
           // Typesense snippets long fields by default; fields listed here are
@@ -294,7 +325,7 @@ function EPCatalogSearchProviderInner(props: {
       );
       return null;
     }
-  }, [queryBy, highlightFullFields]);
+  }, [queryBy, highlightFullFields, serverPass]);
 
   if (!searchClient) {
     return (
@@ -311,12 +342,9 @@ function EPCatalogSearchProviderInner(props: {
     );
   }
 
-  return (
-    <InstantSearch
-      searchClient={searchClient}
-      indexName={indexName}
-      routing={enableUrlSync}
-    >
+  const searchTree = (
+    <>
+      <ServerPassRelease serverPass={serverPass} />
       {/* `filters` rides through the adapter's _adaptFilters, which always
           joins it (&&) with facet refinements — unlike the adapter-level
           `additionalSearchParameters.filter_by`, which is silently DROPPED
@@ -334,8 +362,152 @@ function EPCatalogSearchProviderInner(props: {
       >
         {children}
       </EPCatalogSearchBody>
-    </InstantSearch>
+      {serverSkipped ? <SearchAfterServerSkip /> : null}
+    </>
   );
+
+  // Outside the App Router InstantSearchNext cannot render on the server: it
+  // reads `next/headers`, which throws there. Rendering nothing matches the
+  // browser's first render, which is empty until InstantSearch starts.
+  const renderable = typeof window !== "undefined" || outerInsertHTML != null;
+
+  return (
+    <ServerInsertedHTMLContext.Provider value={insertHTML}>
+      {renderable ? (
+        <InstantSearchNext
+          searchClient={searchClient}
+          indexName={indexName}
+          routing={enableUrlSync}
+        >
+          {searchTree}
+        </InstantSearchNext>
+      ) : null}
+    </ServerInsertedHTMLContext.Provider>
+  );
+}
+
+const INITIAL_RESULTS = Symbol.for("InstantSearchInitialResults");
+const SLOT_NAME = "@elasticpath/ep-catalog-search-initial-results";
+const INITIAL_RESULTS_SLOT = Symbol.for(SLOT_NAME);
+const SLOT_EXPRESSION = `window[Symbol.for(${JSON.stringify(SLOT_NAME)})]`;
+const UPSTREAM_SCRIPT_PREFIX =
+  'window[Symbol.for("InstantSearchInitialResults")] = ';
+
+/**
+ * What the server leaves in this provider's slot: its results, or, when it
+ * did not search, an empty set and a request for the browser to search.
+ */
+interface SlotEntry {
+  results: unknown;
+  skipped?: boolean;
+}
+
+type ResultsWindow = Window & {
+  [INITIAL_RESULTS]?: unknown;
+  [INITIAL_RESULTS_SLOT]?: Record<string, SlotEntry | undefined>;
+};
+
+/**
+ * Rewrites InstantSearchNext's results script to fill this provider's own
+ * slot. Upstream writes one page-wide global, so a second provider on the
+ * page would hydrate from the first one's results. Results not shaped as
+ * expected insert nothing, and the browser searches instead.
+ */
+function toSlotScript(
+  node: React.ReactNode,
+  slotKey: string,
+  nonce: string | undefined,
+  skipped: boolean
+): React.ReactNode {
+  const props = (
+    React.isValidElement(node) && node.type === "script" ? node.props : {}
+  ) as {
+    nonce?: string;
+    dangerouslySetInnerHTML?: { __html?: unknown };
+  };
+  let entry: string;
+  if (skipped) {
+    entry = '{"results":{},"skipped":true}';
+  } else {
+    const html = props.dangerouslySetInnerHTML?.__html;
+    if (typeof html !== "string" || !html.startsWith(UPSTREAM_SCRIPT_PREFIX)) {
+      return null;
+    }
+    entry = `{"results":${html.slice(UPSTREAM_SCRIPT_PREFIX.length)}}`;
+  }
+  const key = JSON.stringify(slotKey).replace(
+    /[<>&]/g,
+    (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`
+  );
+  return (
+    <script
+      nonce={nonce ?? props.nonce}
+      dangerouslySetInnerHTML={{
+        __html: `(${SLOT_EXPRESSION} = ${SLOT_EXPRESSION} || {})[${key}] = ${entry}`,
+      }}
+    />
+  );
+}
+
+/**
+ * Points InstantSearchNext at this provider's server results before it reads
+ * them on its first render, and drops them once mounted. Returns whether the
+ * server left the search to the browser.
+ *
+ * After a skip the server rendered the widgets before any search. Empty
+ * initial results make the browser's first render match that, where without
+ * them InstantSearch renders nothing until it starts.
+ */
+function useHydrateFromSlot(slotKey: string): boolean {
+  const mounted = useRef(false);
+  const skipped = useRef(false);
+  if (!mounted.current && typeof window !== "undefined") {
+    const w = window as ResultsWindow;
+    const entry = w[INITIAL_RESULTS_SLOT]?.[slotKey];
+    w[INITIAL_RESULTS] = entry?.results;
+    skipped.current = entry?.skipped === true;
+  }
+  useEffect(() => {
+    mounted.current = true;
+    delete (window as ResultsWindow)[INITIAL_RESULTS_SLOT]?.[slotKey];
+  }, [slotKey]);
+  return skipped.current;
+}
+
+/**
+ * Sends the search the server skipped. Initial results stop InstantSearch
+ * from sending its own first search, empty ones included. Rendered after the
+ * widgets so their effects have registered them first.
+ */
+function SearchAfterServerSkip() {
+  const search = useInstantSearchContext();
+  const sent = useRef(false);
+  useEffect(() => {
+    // StrictMode runs this effect twice; one search is enough.
+    if (sent.current) return;
+    sent.current = true;
+    search.refresh();
+  }, [search]);
+  return null;
+}
+
+/**
+ * Gives the search client a way to end the server render with no results.
+ *
+ * Resolving InstantSearchNext's wait alone is not enough: with a search sent
+ * and no results, its `getInitialResults` throws, and the widgets waiting on
+ * it rethrow into the render. Clearing `_hasSearchWidget` first makes it
+ * serialize nothing instead.
+ */
+function ServerPassRelease(props: { serverPass: CatalogSearchServerPass }) {
+  const { resolveWaitForResultsRef } = useRSCContext();
+  const search = useInstantSearchContext();
+  props.serverPass.release = () => {
+    (search as unknown as { _hasSearchWidget: boolean })._hasSearchWidget =
+      false;
+    resolveWaitForResultsRef?.current?.();
+  };
+  return null;
 }
 
 /**

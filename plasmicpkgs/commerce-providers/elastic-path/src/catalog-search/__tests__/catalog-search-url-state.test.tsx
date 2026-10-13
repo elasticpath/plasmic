@@ -1,8 +1,8 @@
 /**
  * @jest-environment jsdom
  */
-import React from "react";
 import { render, waitFor } from "@testing-library/react";
+import React from "react";
 
 const mockEpMultiSearch = jest.fn(async (args: any) => ({
   results: args.searches.map(() => ({
@@ -19,6 +19,14 @@ const mockEpMultiSearch = jest.fn(async (args: any) => ({
 jest.mock("../../ep-server-functions/multiSearch", () => ({
   __esModule: true,
   epMultiSearch: (...a: any[]) => (mockEpMultiSearch as any)(...a),
+}));
+
+// The loader's stand-in for `next/navigation` outside the App Router.
+jest.mock("next/navigation.js", () => ({
+  ServerInsertedHTMLContext: jest.requireActual("react").createContext(null),
+  usePathname: () => window.location.pathname,
+  useSearchParams: () => new URLSearchParams(window.location.search),
+  useParams: () => ({}),
 }));
 
 jest.mock("@plasmicapp/host", () => ({

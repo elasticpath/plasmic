@@ -193,7 +193,6 @@ jest.mock(
     __esModule: true,
     createAutocomplete: (...args: any[]) => mockCreateAutocomplete(...args),
   }),
-  { virtual: true }
 );
 
 jest.mock("react-instantsearch", () => ({
