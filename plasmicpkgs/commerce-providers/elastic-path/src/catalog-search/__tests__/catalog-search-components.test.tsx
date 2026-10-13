@@ -1064,6 +1064,30 @@ describe("EPSearchHits", () => {
     expect(withDefault.path).toBe("/product/sample-product");
   });
 
+  it.each([[{}], [{ productPathPrefix: "/products/" }]])(
+    "links a card exactly as EP Product Grid does (%j)",
+    (props) => {
+      const { EPProductGrid } =
+        require("../../product-discovery/EPProductGrid") as typeof import("../../product-discovery/EPProductGrid");
+      const product = renderHitAndGetCurrentProduct(EP_HIT, props);
+      const searchPath = renderHitAndGetSearchMeta(EP_HIT, props).path;
+
+      mockUseSelector.mockReturnValue({ products: [product] });
+      const { container } = render(
+        <EPProductGrid {...props}>
+          <div>child</div>
+        </EPProductGrid>
+      );
+      const gridHit = container.querySelector(
+        '[data-testid="data-provider-currentHit"]'
+      );
+
+      expect(
+        JSON.parse(gridHit!.getAttribute("data-provider-data") || "{}").path
+      ).toBe(searchPath);
+    }
+  );
+
   it("recovers bare-keyed EP highlights from the raw Typesense hit", () => {
     // EP keys highlights by the bare query_by names while the document nests
     // fields under attributes — the adapter's document-driven walk drops

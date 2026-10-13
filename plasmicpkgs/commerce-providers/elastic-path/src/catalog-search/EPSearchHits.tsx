@@ -2,11 +2,12 @@
  * EPSearchHits — repeater for catalog search results.
  *
  * Wraps `useHits()` from react-instantsearch and normalizes each hit to
- * the unified `currentProduct` shape used by EPProductGrid (per D2/D4).
- * Designers can reuse the same card layouts across listing and search.
+ * the `currentProduct` shape EPProductGrid publishes (per D2/D4), with the
+ * same `currentHit.path` link. Designers can reuse the same card layouts
+ * across listing and search.
  *
- * Search-specific extras (_highlightedName, _highlightedDescription, _score,
- * rawHit) are also available for advanced use.
+ * Search-specific extras on `currentHit` (highlightedName,
+ * highlightedDescription, score, raw) are also available for advanced use.
  */
 
 import {
@@ -23,6 +24,11 @@ import { Registerable } from "../registerable";
 import { MOCK_SEARCH_PRODUCTS } from "./design-time-data";
 import type { Product } from "../types/product";
 import { completePrice } from "../utils/price";
+import {
+  DEFAULT_PRODUCT_PATH_PREFIX,
+  PRODUCT_PATH_PREFIX_PROP,
+  productPath,
+} from "../utils/product-path";
 import { useHits, useInstantSearch } from "react-instantsearch";
 
 type PreviewState = "auto" | "withData";
@@ -51,8 +57,6 @@ function buildHitsGridStyle(
 const DEFAULT_GRID_TEMPLATE_COLUMNS =
   "repeat(auto-fill, minmax(220px, 1fr))";
 const DEFAULT_GRID_GAP = "24px";
-
-const DEFAULT_PRODUCT_PATH_PREFIX = "/product";
 
 interface EPSearchHitsProps {
   children?: React.ReactNode;
@@ -138,21 +142,6 @@ export function hitToProduct(
 }
 
 /**
- * A product's PDP route. The last segment is its product reference — the slug,
- * or the id when it has none — which is exactly what `ep.getProduct` reads.
- */
-export function productPath(
-  product: Product,
-  productPathPrefix: string = DEFAULT_PRODUCT_PATH_PREFIX
-): string {
-  const prefix = (productPathPrefix || DEFAULT_PRODUCT_PATH_PREFIX).replace(
-    /\/+$/,
-    ""
-  );
-  return `${prefix}/${product.attributes?.slug || product.id}`;
-}
-
-/**
  * The search-side facts about a hit: where it links, and what the backend
  * highlighted.
  *
@@ -207,7 +196,7 @@ export const epSearchHitsMeta: CodeComponentMeta<EPSearchHitsProps> = {
   name: "plasmic-commerce-ep-search-hits",
   displayName: "EP Search Hits",
   description:
-    "Repeats children for each search result. Exposes currentProduct (same shape as EP Product Grid) plus search-specific extras. Must be inside EP Catalog Search Provider.",
+    "Repeats children for each search result. Exposes currentProduct and currentHit.path (same as EP Product Grid) plus search-specific extras. Must be inside EP Catalog Search Provider.",
   props: {
     children: {
       type: "slot",
@@ -240,13 +229,7 @@ export const epSearchHitsMeta: CodeComponentMeta<EPSearchHitsProps> = {
       description: "CSS gap between hit cards.",
       defaultValue: DEFAULT_GRID_GAP,
     },
-    productPathPrefix: {
-      type: "string",
-      displayName: "Product Path Prefix",
-      description:
-        "Route prefix used to build each hit's currentProduct.path link (prefix + '/' + slug). Set this to match the storefront's PDP route, e.g. \"/products\".",
-      defaultValue: DEFAULT_PRODUCT_PATH_PREFIX,
-    },
+    productPathPrefix: PRODUCT_PATH_PREFIX_PROP,
     previewState: {
       type: "choice",
       options: ["auto", "withData"],
