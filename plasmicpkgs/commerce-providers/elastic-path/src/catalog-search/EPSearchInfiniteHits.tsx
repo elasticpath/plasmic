@@ -1,14 +1,11 @@
 /**
- * EPSearchInfiniteHits — catalog search results that grow in place.
+ * EPSearchInfiniteHits — catalog search results with load more.
  *
- * Wraps `useInfiniteHits()` from react-instantsearch. Each card gets the same
- * `currentProduct` / `currentHit` / `currentProductIndex` as EPSearchHits;
- * `loadMore` appends the next page instead of replacing the current one, and
- * `loadPrevious` prepends the page before the first one shown, for a shopper
- * who reloads a URL that names a later page.
+ * Wraps `useInfiniteHits()` from react-instantsearch. Exposes
+ * loadMore/loadPrevious via refActions.
  */
 
-import { DataProvider, usePlasmicCanvasContext } from "@plasmicapp/host";
+import { DataProvider } from "@plasmicapp/host";
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
@@ -19,29 +16,20 @@ import {
   MOCK_SEARCH_INFINITE_HITS_DATA,
   SearchInfiniteHitsData,
 } from "./design-time-data";
+import { MockSearchHits, SearchHitsGrid } from "./EPSearchHits";
 import {
-  DEFAULT_PRODUCT_PATH_PREFIX,
-  PRODUCT_PATH_PREFIX_PROP,
-} from "../utils/product-path";
-import {
-  buildHitsGridStyle,
-  DEFAULT_GRID_GAP,
-  DEFAULT_GRID_TEMPLATE_COLUMNS,
-  MockSearchHits,
-  SearchHitsGrid,
-} from "./EPSearchHits";
+  HITS_CARD_SLOT,
+  HitsGridLayoutProps,
+  HitsGridProps,
+  hitsGridMetaProps,
+  useHitsGrid,
+} from "./hits-grid";
 
-type PreviewState = "auto" | "withData";
-
-interface EPSearchInfiniteHitsProps {
+interface EPSearchInfiniteHitsProps extends HitsGridLayoutProps {
   children?: React.ReactNode;
   loadMoreButton?: React.ReactNode;
   loadPreviousButton?: React.ReactNode;
   className?: string;
-  gridTemplateColumns?: string;
-  gridGap?: string;
-  productPathPrefix?: string;
-  previewState?: PreviewState;
 }
 
 interface EPSearchInfiniteHitsActions {
@@ -58,18 +46,7 @@ export const epSearchInfiniteHitsMeta: CodeComponentMeta<EPSearchInfiniteHitsPro
     description:
       "Repeats children for each search result, like EP Search Hits, but Load More appends the next page in place. Cards get the same currentProduct, currentHit and currentProductIndex as EP Search Hits. Bind the Load More button to $ctx.searchInfiniteHitsData (isLastPage, loadMore) or the loadMore element action, and hide it when isLastPage. A URL can name a later page, so a shopper who reloads starts there: put a button in Load Previous Button, bound to loadPrevious and hidden when isFirstPage. Must be inside EP Catalog Search Provider.",
     props: {
-      children: {
-        type: "slot",
-        defaultValue: [
-          {
-            type: "vbox",
-            children: [
-              { type: "text", value: "Product Name" },
-              { type: "text", value: "$0.00" },
-            ],
-          },
-        ],
-      },
+      children: HITS_CARD_SLOT,
       loadMoreButton: {
         type: "slot",
         displayName: "Load More Button",
@@ -79,27 +56,9 @@ export const epSearchInfiniteHitsMeta: CodeComponentMeta<EPSearchInfiniteHitsPro
         type: "slot",
         displayName: "Load Previous Button",
       },
-      gridTemplateColumns: {
-        type: "string",
-        displayName: "Grid Template Columns",
-        description:
-          "CSS grid-template-columns value applied to the results grid. Defaults to a responsive auto-fill. The Visual Builder strips display/grid styles set in the Style panel from code components, so this prop is the supported way to override the layout.",
-        defaultValue: DEFAULT_GRID_TEMPLATE_COLUMNS,
-      },
-      gridGap: {
-        type: "string",
-        displayName: "Grid Gap",
-        description: "CSS gap between hit cards.",
-        defaultValue: DEFAULT_GRID_GAP,
-      },
-      productPathPrefix: PRODUCT_PATH_PREFIX_PROP,
-      previewState: {
-        type: "choice",
-        options: ["auto", "withData"],
-        defaultValue: "auto",
-        displayName: "Preview State",
-        advanced: true,
-      },
+      ...hitsGridMetaProps(
+        "CSS grid-template-columns value applied to the results grid. Defaults to a responsive auto-fill. The Visual Builder strips display/grid styles set in the Style panel from code components, so this prop is the supported way to override the layout."
+      ),
     } as any,
     importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
     importName: "EPSearchInfiniteHits",
@@ -121,22 +80,8 @@ export const EPSearchInfiniteHits = React.forwardRef<
   EPSearchInfiniteHitsActions,
   EPSearchInfiniteHitsProps
 >(function EPSearchInfiniteHits(props, ref) {
-  const {
-    children,
-    loadMoreButton,
-    loadPreviousButton,
-    className,
-    gridTemplateColumns = DEFAULT_GRID_TEMPLATE_COLUMNS,
-    gridGap = DEFAULT_GRID_GAP,
-    productPathPrefix = DEFAULT_PRODUCT_PATH_PREFIX,
-    previewState = "auto",
-  } = props;
-
-  const inEditor = !!usePlasmicCanvasContext();
-  const useMock =
-    previewState === "withData" || (previewState === "auto" && inEditor);
-
-  const gridStyle = buildHitsGridStyle(gridTemplateColumns, gridGap);
+  const { children, loadMoreButton, loadPreviousButton, className } = props;
+  const { useMock, gridStyle, productPathPrefix } = useHitsGrid(props);
   const Inner = useMock ? MockInfiniteHits : InfiniteHitsInner;
 
   return (
@@ -153,52 +98,29 @@ export const EPSearchInfiniteHits = React.forwardRef<
   );
 });
 
-interface InnerProps {
-  children?: React.ReactNode;
+interface InnerProps extends HitsGridProps {
   loadMoreButton?: React.ReactNode;
   loadPreviousButton?: React.ReactNode;
-  className?: string;
-  gridStyle: React.CSSProperties;
-  productPathPrefix: string;
 }
+
+const NO_OP_ACTIONS: EPSearchInfiniteHitsActions = {
+  loadMore: () => {},
+  loadPrevious: () => {},
+};
 
 const MockInfiniteHits = React.forwardRef<
   EPSearchInfiniteHitsActions,
   InnerProps
 >(function MockInfiniteHits(props, ref) {
-  const {
-    children,
-    loadMoreButton,
-    loadPreviousButton,
-    className,
-    gridStyle,
-    productPathPrefix,
-  } = props;
-  useImperativeHandle(ref, () => ({
-    loadMore: () => {},
-    loadPrevious: () => {},
-  }));
+  const { children, gridStyle, productPathPrefix, ...shell } = props;
+  useImperativeHandle(ref, () => NO_OP_ACTIONS);
 
   return (
-    <DataProvider
-      name="searchInfiniteHitsData"
-      data={MOCK_SEARCH_INFINITE_HITS_DATA}
-    >
-      <div
-        className={className}
-        data-ep-search-infinite-hits=""
-        style={ROOT_STYLE}
-      >
-        {loadPreviousButton}
-        <MockSearchHits
-          gridStyle={gridStyle}
-          productPathPrefix={productPathPrefix}
-        >
-          {children}
-        </MockSearchHits>
-        {loadMoreButton}
-      </div>
-    </DataProvider>
+    <InfiniteHitsShell {...shell} data={MOCK_SEARCH_INFINITE_HITS_DATA}>
+      <MockSearchHits gridStyle={gridStyle} productPathPrefix={productPathPrefix}>
+        {children}
+      </MockSearchHits>
+    </InfiniteHitsShell>
   );
 });
 
@@ -206,14 +128,7 @@ const InfiniteHitsInner = React.forwardRef<
   EPSearchInfiniteHitsActions,
   InnerProps
 >(function InfiniteHitsInner(props, ref) {
-  const {
-    children,
-    loadMoreButton,
-    loadPreviousButton,
-    className,
-    gridStyle,
-    productPathPrefix,
-  } = props;
+  const { children, gridStyle, productPathPrefix, ...shell } = props;
   const { items, isFirstPage, isLastPage, showMore, showPrevious } =
     useInfiniteHits();
   useImperativeHandle(
@@ -230,6 +145,27 @@ const InfiniteHitsInner = React.forwardRef<
   };
 
   return (
+    <InfiniteHitsShell {...shell} data={data}>
+      <SearchHitsGrid
+        hits={items}
+        gridStyle={gridStyle}
+        productPathPrefix={productPathPrefix}
+      >
+        {children}
+      </SearchHitsGrid>
+    </InfiniteHitsShell>
+  );
+});
+
+function InfiniteHitsShell(
+  props: Omit<InnerProps, "gridStyle" | "productPathPrefix"> & {
+    data: SearchInfiniteHitsData;
+  }
+) {
+  const { data, children, className, loadMoreButton, loadPreviousButton } =
+    props;
+
+  return (
     <DataProvider name="searchInfiniteHitsData" data={data}>
       <div
         className={className}
@@ -237,18 +173,12 @@ const InfiniteHitsInner = React.forwardRef<
         style={ROOT_STYLE}
       >
         {loadPreviousButton}
-        <SearchHitsGrid
-          hits={items}
-          gridStyle={gridStyle}
-          productPathPrefix={productPathPrefix}
-        >
-          {children}
-        </SearchHitsGrid>
+        {children}
         {loadMoreButton}
       </div>
     </DataProvider>
   );
-});
+}
 
 export function registerEPSearchInfiniteHits(
   loader?: Registerable,

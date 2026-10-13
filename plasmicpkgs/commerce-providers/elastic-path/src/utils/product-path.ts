@@ -24,3 +24,10 @@ export function productPath(
   );
   return `${prefix}/${product.attributes?.slug || product.id}`;
 }
+
+export function productHitMeta(
+  product: Product,
+  productPathPrefix?: string
+): { path: string; raw: Record<string, any> } {
+  return { path: productPath(product, productPathPrefix), raw: {} };
+}

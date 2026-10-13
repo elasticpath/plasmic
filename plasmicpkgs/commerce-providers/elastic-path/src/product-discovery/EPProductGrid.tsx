@@ -30,7 +30,7 @@ import type { Product } from "../types/product";
 import {
   DEFAULT_PRODUCT_PATH_PREFIX,
   PRODUCT_PATH_PREFIX_PROP,
-  productPath,
+  productHitMeta,
 } from "../utils/product-path";
 
 type PreviewState = "auto" | "withData";
@@ -123,7 +123,7 @@ export function EPProductGrid(props: EPProductGridProps) {
           <DataProvider name="currentProduct" data={product}>
             <DataProvider
               name="currentHit"
-              data={{ path: productPath(product, productPathPrefix), raw: {} }}
+              data={productHitMeta(product, productPathPrefix)}
             >
               <DataProvider name="currentProductIndex" data={i}>
                 {repeatedElement(i, children)}
