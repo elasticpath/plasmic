@@ -367,6 +367,23 @@ describe("EP Fork Integrity", () => {
     }
   });
 
+  describe("EP worker pool observability", () => {
+    it("pool.exec emits the queued and done log lines the dashboard reads", () => {
+      const pool = readFile("platform/wab/src/wab/server/workers/pool.ts");
+      expect(pool).toContain('"worker-pool-task-queued"');
+      expect(pool).toContain('"worker-pool-task-done"');
+      expect(pool).toContain("workerPoolPendingTasks");
+      expect(pool).toContain("workerPoolActiveTasks");
+      expect(pool).toContain("workerPoolMethod");
+    });
+
+    it("pool.exec keeps the trace carrier alongside the logging", () => {
+      const pool = readFile("platform/wab/src/wab/server/workers/pool.ts");
+      expect(pool).toContain("propagation.inject");
+      expect(pool).toContain("trackWorkerPool");
+    });
+  });
+
   describe("EP bundle migrations", () => {
     it("EP migration 255-fix-ep-addtocart-import-path is present and listed", () => {
       expect(
