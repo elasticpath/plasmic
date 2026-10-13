@@ -14,6 +14,16 @@ export {
   epAccountFormFieldMeta,
 } from "./EPAccountFormField";
 export {
+  EPAccountRegistrationFormProvider,
+  registerEPAccountRegistrationFormProvider,
+  epAccountRegistrationFormProviderMeta,
+} from "./EPAccountRegistrationFormProvider";
+export {
+  EPAccountRegistrationField,
+  registerEPAccountRegistrationField,
+  epAccountRegistrationFieldMeta,
+} from "./EPAccountRegistrationField";
+export {
   EPAccountGate,
   registerEPAccountGate,
   epAccountGateMeta,
