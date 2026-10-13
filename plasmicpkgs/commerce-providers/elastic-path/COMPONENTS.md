@@ -117,9 +117,11 @@ binding, which has no counterpart there.
 An EP Product Grid left inside EP Catalog Search Provider renders nothing,
 because the search provider does not supply its products. The grid logs a
 console warning once, and on the Studio canvas shows that message in place of
-sample products. Replace it with EP Search Hits. A grid inside EP Product List
-Provider or EP Related Products Provider does not warn, even when that provider
-sits inside catalog search.
+sample products. Replace it with EP Search Hits or EP Search Infinite Hits. The
+nearest provider decides: a grid inside EP Product List Provider or EP Related
+Products Provider does not warn, even when that provider sits inside catalog
+search. A grid inside catalog search renders nothing, even when catalog search
+sits inside one of those providers.
 
 **Product links.** Bind a card's link to `currentHit.path`. EP Product Grid, EP
 Search Hits and EP Search Infinite Hits all build it as **Product Path Prefix** + `/` + the product's

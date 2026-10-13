@@ -96,16 +96,47 @@ afterEach(() => {
   warn.mockRestore();
 });
 
+const productListSources: Array<[string, React.ReactElement, number]> = [
+  [
+    "EP Product List Provider",
+    <EPProductListProvider key="list">{grid}</EPProductListProvider>,
+    2,
+  ],
+  [
+    "EP Related Products Provider",
+    <EPRelatedProductsProvider key="related" productId="p-1">
+      {grid}
+    </EPRelatedProductsProvider>,
+    1,
+  ],
+];
+
 describe("EP Product Grid inside EP Catalog Search Provider", () => {
-  it("warns that the search provider does not supply its products and names EP Search Hits", () => {
+  it("warns that the search provider does not supply its products and names both search repeaters", () => {
     render(<EPCatalogSearchProvider>{grid}</EPCatalogSearchProvider>);
 
     expect(gridWarnings()).toHaveLength(1);
     const message = String(gridWarnings()[0][0]);
     expect(message).toContain("EP Catalog Search Provider");
     expect(message).toContain("EP Search Hits");
+    expect(message).toContain("EP Search Infinite Hits");
     expect(screen.queryAllByTestId("card")).toHaveLength(0);
   });
+
+  it.each(productListSources)(
+    "does not render the products of an outer %s",
+    (_name, tree) => {
+      const nested = React.cloneElement(
+        tree,
+        undefined,
+        <EPCatalogSearchProvider>{grid}</EPCatalogSearchProvider>
+      );
+      render(nested);
+
+      expect(screen.queryAllByTestId("card")).toHaveLength(0);
+      expect(gridWarnings()).toHaveLength(1);
+    }
+  );
 
   it("warns once per mount, not on every render", () => {
     const { rerender } = render(
@@ -127,21 +158,6 @@ describe("EP Product Grid inside EP Catalog Search Provider", () => {
     expect(gridWarnings()).toHaveLength(1);
   });
 });
-
-const productListSources: Array<[string, React.ReactElement, number]> = [
-  [
-    "EP Product List Provider",
-    <EPProductListProvider key="list">{grid}</EPProductListProvider>,
-    2,
-  ],
-  [
-    "EP Related Products Provider",
-    <EPRelatedProductsProvider key="related" productId="p-1">
-      {grid}
-    </EPRelatedProductsProvider>,
-    1,
-  ],
-];
 
 describe("EP Product Grid inside a product-list source", () => {
   it.each(productListSources)(
@@ -194,12 +210,23 @@ describe("EP Product Grid on the Studio canvas", () => {
       );
 
       expect(screen.queryAllByTestId("card")).toHaveLength(0);
-      expect(
-        screen.getByText(/EP Catalog Search Provider/).textContent
-      ).toContain("EP Search Hits");
+      const notice = screen.getByText(/EP Catalog Search Provider/).textContent;
+      expect(notice).toContain("EP Search Hits");
+      expect(notice).toContain("EP Search Infinite Hits");
       expect(gridWarnings()).toHaveLength(1);
     }
   );
+
+  it("shows the mismatch when EP Catalog Search Provider sits inside EP Product List Provider", () => {
+    onCanvas(
+      <EPProductListProvider>
+        <EPCatalogSearchProvider>{grid}</EPCatalogSearchProvider>
+      </EPProductListProvider>
+    );
+
+    expect(screen.queryAllByTestId("card")).toHaveLength(0);
+    expect(screen.getByText(/EP Catalog Search Provider/)).toBeTruthy();
+  });
 
   it("shows sample products when a product-list provider sits inside EP Catalog Search Provider", () => {
     onCanvas(

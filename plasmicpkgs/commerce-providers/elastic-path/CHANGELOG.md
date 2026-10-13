@@ -204,10 +204,12 @@ with no account selected no checkout call does.
 `EPProductGrid` inside `EPCatalogSearchProvider` logs a console warning once
 per mount instead of rendering an empty listing with no error. The search
 provider does not supply the grid's products; the warning says to use
-`EPSearchHits` instead. On the Studio canvas the grid shows the same message in
-place of sample products. A grid inside `EPProductListProvider` or
-`EPRelatedProductsProvider` never warns, even when that provider sits inside
-catalog search. Nothing substitutes another data source.
+`EPSearchHits` or `EPSearchInfiniteHits` instead. On the Studio canvas the grid
+shows the same message in place of sample products. The nearest provider
+decides: a grid inside `EPProductListProvider` or `EPRelatedProductsProvider`
+never warns, even when that provider sits inside catalog search, and a grid
+inside catalog search renders no products even when catalog search sits inside
+one of those providers. Nothing substitutes another data source.
 
 ### Changed
 

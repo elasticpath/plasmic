@@ -46,7 +46,7 @@ export const epProductGridMeta: CodeComponentMeta<EPProductGridProps> = {
   name: "plasmic-commerce-ep-product-grid",
   displayName: "EP Product Grid",
   description:
-    "Repeats children for each product in the parent provider's product list. Exposes currentProduct, currentHit.path (the product page link, as EP Search Hits publishes it) and currentProductIndex for data binding. Works inside EP Product List Provider or EP Related Products Provider. Inside EP Catalog Search Provider, use EP Search Hits instead.",
+    "Repeats children for each product in the parent provider's product list. Exposes currentProduct, currentHit.path (the product page link, as EP Search Hits publishes it) and currentProductIndex for data binding. Works inside EP Product List Provider or EP Related Products Provider. Inside EP Catalog Search Provider, use EP Search Hits or EP Search Infinite Hits instead.",
   props: {
     children: {
       type: "slot",
@@ -106,12 +106,12 @@ export function EPProductGrid(props: EPProductGridProps) {
     return gridData?.products ?? [];
   }, [useMock, gridData?.products]);
 
-  if (inCatalogSearch && inEditor) {
-    return (
+  if (inCatalogSearch) {
+    return inEditor ? (
       <div className={className} data-ep-product-grid-notice="">
         {PRODUCT_GRID_IN_CATALOG_SEARCH}
       </div>
-    );
+    ) : null;
   }
 
   if (products.length === 0) return null;
@@ -138,9 +138,9 @@ export function EPProductGrid(props: EPProductGridProps) {
 
 const PRODUCT_GRID_IN_CATALOG_SEARCH =
   "EP Product Grid is inside EP Catalog Search Provider, which does not " +
-  "supply the grid's products. Use EP Search Hits to list search results, " +
-  "or move the grid into EP Product List Provider or EP Related Products " +
-  "Provider.";
+  "supply the grid's products. Use EP Search Hits or EP Search Infinite " +
+  "Hits to list search results, or move the grid into EP Product List " +
+  "Provider or EP Related Products Provider.";
 
 function useWarnInCatalogSearch(inCatalogSearch: boolean) {
   const warned = useRef(false);
