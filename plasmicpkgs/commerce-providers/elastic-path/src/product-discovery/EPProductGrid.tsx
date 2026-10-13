@@ -3,14 +3,10 @@
  *
  * Reads `productGridData.products` from a parent DataProvider (D4) and renders
  * children once per product via `repeatedElement()`. Each iteration exposes
- * `currentProduct` — the same Elastic Path product shape a product page
- * binds — `currentHit.path`, its product page link built exactly as
- * EPSearchHits builds it, and `currentProductIndex`.
+ * `currentProduct`, `currentHit.path` and `currentProductIndex`.
  *
  * No `parentComponentName` restriction (D5) — works inside both
- * EPProductListProvider and EPRelatedProductsProvider. Inside
- * EPCatalogSearchProvider, which supplies no `productGridData`, it warns once
- * per mount and shows the mismatch on the Studio canvas.
+ * EPProductListProvider and EPRelatedProductsProvider.
  */
 
 import {
