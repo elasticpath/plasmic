@@ -35,7 +35,7 @@ type PreviewState = "auto" | "withData";
 // container with `align-items: center` (a common Plasmic page layout).
 // Without it the grid collapses to its `min-content` (one column) because
 // flex defaults each child to `align-self: auto`.
-function buildHitsGridStyle(
+export function buildHitsGridStyle(
   gridTemplateColumns: string,
   gap: string
 ): React.CSSProperties {
@@ -48,11 +48,11 @@ function buildHitsGridStyle(
   };
 }
 
-const DEFAULT_GRID_TEMPLATE_COLUMNS =
+export const DEFAULT_GRID_TEMPLATE_COLUMNS =
   "repeat(auto-fill, minmax(220px, 1fr))";
-const DEFAULT_GRID_GAP = "24px";
+export const DEFAULT_GRID_GAP = "24px";
 
-const DEFAULT_PRODUCT_PATH_PREFIX = "/product";
+export const DEFAULT_PRODUCT_PATH_PREFIX = "/product";
 
 interface EPSearchHitsProps {
   children?: React.ReactNode;
@@ -300,7 +300,7 @@ export function EPSearchHits(props: EPSearchHitsProps) {
   );
 }
 
-function MockSearchHits(props: {
+export function MockSearchHits(props: {
   children?: React.ReactNode;
   className?: string;
   gridStyle: React.CSSProperties;
@@ -350,10 +350,21 @@ function EPSearchHitsInner(props: {
   gridStyle: React.CSSProperties;
   productPathPrefix?: string;
 }) {
-  const { children, className, gridStyle, productPathPrefix } = props;
-
   const { hits } = useHits();
-  const { indexUiState } = useInstantSearch();
+  useInstantSearch();
+
+  return <SearchHitsGrid {...props} hits={hits} />;
+}
+
+/** Repeats `children` once per hit, as `currentProduct`, `currentHit` and `currentProductIndex`. */
+export function SearchHitsGrid(props: {
+  hits: Record<string, any>[];
+  children?: React.ReactNode;
+  className?: string;
+  gridStyle: React.CSSProperties;
+  productPathPrefix?: string;
+}) {
+  const { hits, children, className, gridStyle, productPathPrefix } = props;
 
   // Read currencyCode from parent EPCatalogSearchProvider's DataProvider context
   const catalogSearchData = useSelector("catalogSearchData") as

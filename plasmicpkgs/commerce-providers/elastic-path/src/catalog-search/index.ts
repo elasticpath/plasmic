@@ -5,6 +5,10 @@ export {
 export { EPSearchBox, registerEPSearchBox } from "./EPSearchBox";
 export { EPSearchHits, registerEPSearchHits } from "./EPSearchHits";
 export {
+  EPSearchInfiniteHits,
+  registerEPSearchInfiniteHits,
+} from "./EPSearchInfiniteHits";
+export {
   EPRefinementList,
   registerEPRefinementList,
 } from "./EPRefinementList";
@@ -51,6 +55,7 @@ export type {
   CategoryItem,
   RangeData,
   SearchPaginationData,
+  SearchInfiniteHitsData,
   SearchStatsData,
   SortByData,
   ClearRefinementsData,

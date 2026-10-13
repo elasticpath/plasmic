@@ -36,6 +36,14 @@ const mockUseHits = jest.fn().mockReturnValue({
   hits: [],
 });
 
+const mockUseInfiniteHits = jest.fn().mockReturnValue({
+  items: [],
+  isFirstPage: true,
+  isLastPage: true,
+  showMore: jest.fn(),
+  showPrevious: jest.fn(),
+});
+
 const mockUseInstantSearch = jest.fn().mockReturnValue({
   indexUiState: {},
 });
@@ -152,6 +160,7 @@ jest.mock("../../utils/logger", () => ({
 jest.mock("react-instantsearch", () => ({
   useSearchBox: (...a: unknown[]) => mockUseSearchBox(...a),
   useHits: (...a: unknown[]) => mockUseHits(...a),
+  useInfiniteHits: (...a: unknown[]) => mockUseInfiniteHits(...a),
   useInstantSearch: (...a: unknown[]) => mockUseInstantSearch(...a),
   useRefinementList: (...a: unknown[]) => mockUseRefinementList(...a),
   useMenu: (...a: unknown[]) => mockUseMenu(...a),
@@ -219,6 +228,13 @@ const { EPSearchBox, epSearchBoxMeta, registerEPSearchBox } =
 
 const { EPSearchHits, epSearchHitsMeta, registerEPSearchHits } =
   require("../EPSearchHits") as typeof import("../EPSearchHits");
+
+const {
+  EPSearchInfiniteHits,
+  epSearchInfiniteHitsMeta,
+  registerEPSearchInfiniteHits,
+} =
+  require("../EPSearchInfiniteHits") as typeof import("../EPSearchInfiniteHits");
 
 const { EPRefinementList, epRefinementListMeta, registerEPRefinementList } =
   require("../EPRefinementList") as typeof import("../EPRefinementList");
@@ -1118,6 +1134,93 @@ describe("EPSearchHits", () => {
     );
     expect(data.meta.display_price.without_tax.currency).toBe("USD");
   });
+});
+
+/* ================================================================
+ * EPSearchInfiniteHits tests
+ * ================================================================ */
+describe("EPSearchInfiniteHits", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUsePlasmicCanvasContext.mockReturnValue(null);
+  });
+
+  it("previews sample cards and a load-more button in the editor", () => {
+    mockUsePlasmicCanvasContext.mockReturnValue({});
+
+    const { container, getByText } = render(
+      <EPSearchInfiniteHits loadMoreButton={<button>Load more</button>}>
+        <div>card</div>
+      </EPSearchInfiniteHits>
+    );
+
+    expect(container.querySelectorAll('[role="listitem"]')).toHaveLength(
+      MOCK_SEARCH_PRODUCTS.length
+    );
+    expect(getByText("Load more")).toBeTruthy();
+    const data = JSON.parse(
+      container
+        .querySelector('[data-testid="data-provider-searchInfiniteHitsData"]')!
+        .getAttribute("data-provider-data")!
+    );
+    expect(data.isLastPage).toBe(false);
+    expect(data.isFirstPage).toBe(true);
+    expect(mockUseInfiniteHits).not.toHaveBeenCalled();
+  });
+
+  it("registers as a catalog-search child with a loadMore element action", () => {
+    expect(epSearchInfiniteHitsMeta.name).toBe(
+      "plasmic-commerce-ep-search-infinite-hits"
+    );
+    expect(epSearchInfiniteHitsMeta.importName).toBe("EPSearchInfiniteHits");
+    expect(epSearchInfiniteHitsMeta.parentComponentName).toBe(
+      "plasmic-commerce-ep-catalog-search-provider"
+    );
+    expect(epSearchInfiniteHitsMeta.providesData).toBe(true);
+    expect(epSearchInfiniteHitsMeta.refActions!.loadMore.argTypes).toEqual([]);
+    expect(epSearchInfiniteHitsMeta.refActions!.loadPrevious.argTypes).toEqual(
+      []
+    );
+
+    const registerComponent =
+      require("@plasmicapp/host/registerComponent").default;
+    registerComponent.mockClear();
+    registerEPSearchInfiniteHits();
+    expect(registerComponent).toHaveBeenCalledWith(
+      EPSearchInfiniteHits,
+      epSearchInfiniteHitsMeta
+    );
+  });
+});
+
+describeHeadlessStylingContract({
+  componentName: "EPSearchInfiniteHits",
+  leafSelector: "[data-ep-search-infinite-hits]",
+  setEditorMode,
+  renderInEditor: ({ className }) => (
+    <EPSearchInfiniteHits className={className}>
+      <div>card</div>
+    </EPSearchInfiniteHits>
+  ),
+  renderAtRuntime: ({ className }) => {
+    mockUseInfiniteHits.mockReturnValue({
+      items: [
+        {
+          objectID: "ep-test-hit-1",
+          ep_name: "Test Product",
+          ep_slug: "test-product",
+          ep_price: { USD: { float_price: 9.99 } },
+        },
+      ],
+      isLastPage: false,
+      showMore: jest.fn(),
+    });
+    return (
+      <EPSearchInfiniteHits className={className}>
+        <div>card</div>
+      </EPSearchInfiniteHits>
+    );
+  },
 });
 
 /* ================================================================

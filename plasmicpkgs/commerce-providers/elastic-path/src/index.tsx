@@ -57,6 +57,7 @@ import { registerEPProductField } from "./product-extensions/composable/EPProduc
 import { registerEPProductExtensionValue } from "./product-extensions/composable/EPProductExtensionValue";
 import { registerEPSearchBox } from "./catalog-search/EPSearchBox";
 import { registerEPSearchHits } from "./catalog-search/EPSearchHits";
+import { registerEPSearchInfiniteHits } from "./catalog-search/EPSearchInfiniteHits";
 import { registerEPRefinementList } from "./catalog-search/EPRefinementList";
 import { registerEPHierarchicalMenu } from "./catalog-search/EPHierarchicalMenu";
 import { registerEPRangeFilter } from "./catalog-search/EPRangeFilter";
@@ -231,6 +232,7 @@ export function registerAll(loader?: Registerable) {
   registerEPSearchStats(loader);
   registerEPSearchSortBy(loader);
   registerEPSearchHits(loader);
+  registerEPSearchInfiniteHits(loader);
   registerEPRefinementList(loader);
   registerEPHierarchicalMenu(loader);
   registerEPRangeFilter(loader);

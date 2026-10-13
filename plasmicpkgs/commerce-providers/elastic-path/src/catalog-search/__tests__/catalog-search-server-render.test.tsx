@@ -46,12 +46,26 @@ jest.mock("next/headers.js", () => ({
   },
 }));
 
-jest.mock("@plasmicapp/host", () => ({
-  DataProvider: ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
-  ),
-  usePlasmicCanvasContext: () => null,
-}));
+jest.mock("@plasmicapp/host", () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { createContext, createElement, useContext } = require("react");
+  const PageData = createContext({});
+  return {
+    DataProvider: (props: {
+      name: string;
+      data: unknown;
+      children: React.ReactNode;
+    }) =>
+      createElement(
+        PageData.Provider,
+        { value: { ...useContext(PageData), [props.name]: props.data } },
+        props.children
+      ),
+    useSelector: (name: string) => useContext(PageData)[name],
+    usePlasmicCanvasContext: () => null,
+    repeatedElement: (_index: number, children: React.ReactNode) => children,
+  };
+});
 
 jest.mock("@plasmicapp/host/registerComponent", () => ({
   __esModule: true,
@@ -81,6 +95,12 @@ const { EPRefinementList } =
   require("../EPRefinementList") as typeof import("../EPRefinementList");
 const { EPSearchPagination } =
   require("../EPSearchPagination") as typeof import("../EPSearchPagination");
+const { EPSearchHits } =
+  require("../EPSearchHits") as typeof import("../EPSearchHits");
+const { EPSearchInfiniteHits } =
+  require("../EPSearchInfiniteHits") as typeof import("../EPSearchInfiniteHits");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { useSelector } = require("@plasmicapp/host");
 const { SERVER_SEARCH_TIMEOUT_MS } =
   require("../multi-search-client") as typeof import("../multi-search-client");
 
@@ -761,3 +781,225 @@ function refinementLabels(html: string): string[] {
     ([, label]) => label
   );
 }
+
+describe("an infinite listing", () => {
+  const slugOf = (name: string) => name.toLowerCase().replace(/ /g, "-");
+
+  /** Answers each search with the page of names it asks for. */
+  function answerPages(pages: string[][]) {
+    fetchMock.mockImplementation(
+      async (input: Request | string, init?: any) => {
+        const body = await requestBody(input, init);
+        return new Response(
+          JSON.stringify({
+            results: body.searches.map((s: any) => {
+              const page = s.page ?? 1;
+              const names = pages[page - 1] ?? [];
+              return {
+                ...searchResult(names),
+                hits: names.map((name) => ({
+                  document: {
+                    id: `${slugOf(name)}-id`,
+                    name,
+                    slug: slugOf(name),
+                  },
+                })),
+                found: pages.flat().length,
+                page,
+                request_params: { per_page: s.per_page, q: s.q },
+              };
+            }),
+            included: {},
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+    );
+  }
+
+  function ProductCard() {
+    const product = useSelector("currentProduct");
+    const hit = useSelector("currentHit");
+    return <a href={hit.path}>{product.attributes.name}</a>;
+  }
+
+  function LoadMore() {
+    const { isLastPage, loadMore } = useSelector("searchInfiniteHitsData");
+    return isLastPage ? (
+      <span>end of results</span>
+    ) : (
+      <button onClick={loadMore}>load more</button>
+    );
+  }
+
+  const page = (
+    <EPCatalogSearchProvider baseFilter="categories:=boots" hitsPerPage={2}>
+      <EPSearchInfiniteHits loadMoreButton={<LoadMore />}>
+        <ProductCard />
+      </EPSearchInfiniteHits>
+    </EPCatalogSearchProvider>
+  );
+
+  function cards(html: string): string[] {
+    return [...html.matchAll(/<a href="([^"]*)">([^<]*)<\/a>/g)].map(
+      ([, href, name]) => `${name} ${href}`
+    );
+  }
+
+  it("renders the first page of cards into the HTML, each linking to its product", async () => {
+    installBridge();
+    answerPages([
+      ["Trail Boot", "Hiking Boot"],
+      ["Snow Boot", "Rain Boot"],
+    ]);
+
+    const { html, errors } = await serverRender(page);
+
+    expect(errors).toEqual([]);
+    expect(cards(html)).toEqual([
+      "Trail Boot /product/trail-boot",
+      "Hiking Boot /product/hiking-boot",
+    ]);
+    expect(html).toContain("load more");
+  });
+
+  it("gives each card the same product and link as EP Search Hits", async () => {
+    installBridge();
+    answerPages([["Trail Boot", "Hiking Boot"]]);
+
+    function FullCard() {
+      const product = useSelector("currentProduct");
+      const hit = useSelector("currentHit");
+      const index = useSelector("currentProductIndex");
+      return (
+        <pre>{JSON.stringify({ product, path: hit.path, index })}</pre>
+      );
+    }
+
+    const { html, errors } = await serverRender(
+      <EPCatalogSearchProvider baseFilter="categories:=boots" hitsPerPage={2}>
+        <section>
+          <EPSearchHits productPathPrefix="/products">
+            <FullCard />
+          </EPSearchHits>
+        </section>
+        <section>
+          <EPSearchInfiniteHits productPathPrefix="/products">
+            <FullCard />
+          </EPSearchInfiniteHits>
+        </section>
+      </EPCatalogSearchProvider>
+    );
+
+    expect(errors).toEqual([]);
+    const [hits, infinite] = [
+      ...html.matchAll(/<section>([\s\S]*?)<\/section>/g),
+    ].map(([, section]) =>
+      [...section.matchAll(/<pre>([^<]*)<\/pre>/g)].map(([, card]) => card)
+    );
+    expect(hits).toHaveLength(2);
+    expect(infinite).toEqual(hits);
+    expect(infinite[0]).toContain("&quot;path&quot;:&quot;/products/trail-boot&quot;");
+  });
+
+  it("tells the load-more button a single page of results is the last", async () => {
+    installBridge();
+    answerPages([["Trail Boot"]]);
+
+    const { html, errors } = await serverRender(page);
+
+    expect(errors).toEqual([]);
+    expect(cards(html)).toEqual(["Trail Boot /product/trail-boot"]);
+    expect(html).toContain("end of results");
+    expect(html).not.toContain("load more");
+  });
+
+  it("appends the next page below the hydrated one when the shopper loads more", async () => {
+    installBridge();
+    answerPages([
+      ["Trail Boot", "Hiking Boot"],
+      ["Snow Boot", "Rain Boot"],
+    ]);
+    const rendered = await serverRender(page);
+    fetchMock.mockClear();
+
+    const browser = await hydrateInBrowser(rendered, page);
+    try {
+      expect(browser.hydrationErrors).toEqual([]);
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      browser.container.querySelector("button")!.click();
+      await settle();
+
+      expect((await sentSearches()).map((s) => s.page)).toEqual([2]);
+      expect(cards(browser.container.innerHTML)).toEqual([
+        "Trail Boot /product/trail-boot",
+        "Hiking Boot /product/hiking-boot",
+        "Snow Boot /product/snow-boot",
+        "Rain Boot /product/rain-boot",
+      ]);
+      expect(browser.container.innerHTML).toContain("end of results");
+      expect(browser.container.querySelector("button")).toBeNull();
+    } finally {
+      await browser.leave();
+    }
+  });
+
+  it("serves the page a reloaded URL names, and loads the earlier ones above it", async () => {
+    function LoadPrevious() {
+      const { isFirstPage, loadPrevious } = useSelector(
+        "searchInfiniteHitsData"
+      );
+      return isFirstPage ? null : (
+        <button onClick={loadPrevious}>load previous</button>
+      );
+    }
+    const reloaded = (
+      <EPCatalogSearchProvider baseFilter="categories:=boots" hitsPerPage={2}>
+        <EPSearchInfiniteHits
+          loadPreviousButton={<LoadPrevious />}
+          loadMoreButton={<LoadMore />}
+        >
+          <ProductCard />
+        </EPSearchInfiniteHits>
+      </EPCatalogSearchProvider>
+    );
+    installBridge();
+    mockPageUrl.search = "search%5Bpage%5D=2";
+    answerPages([
+      ["Trail Boot", "Hiking Boot"],
+      ["Snow Boot", "Rain Boot"],
+    ]);
+
+    const rendered = await serverRender(reloaded);
+    expect(rendered.errors).toEqual([]);
+    expect(cards(rendered.html)).toEqual([
+      "Snow Boot /product/snow-boot",
+      "Rain Boot /product/rain-boot",
+    ]);
+    expect(rendered.html).toContain("load previous");
+    fetchMock.mockClear();
+
+    const browser = await hydrateInBrowser(rendered, reloaded, {
+      url: "http://shop.test/category/boots?search%5Bpage%5D=2",
+    });
+    try {
+      expect(browser.hydrationErrors).toEqual([]);
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      browser.container.querySelector("button")!.click();
+      await settle();
+
+      expect((await sentSearches()).map((s) => s.page)).toEqual([1]);
+      expect(cards(browser.container.innerHTML)).toEqual([
+        "Trail Boot /product/trail-boot",
+        "Hiking Boot /product/hiking-boot",
+        "Snow Boot /product/snow-boot",
+        "Rain Boot /product/rain-boot",
+      ]);
+      expect(browser.container.innerHTML).not.toContain("load previous");
+    } finally {
+      await browser.leave();
+    }
+  });
+});
