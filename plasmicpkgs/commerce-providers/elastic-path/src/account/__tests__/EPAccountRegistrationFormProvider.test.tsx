@@ -120,6 +120,23 @@ function Fill(props: FillValues) {
   );
 }
 
+function SetField(props: {
+  name: RegistrationField;
+  value: string;
+  testId: string;
+}) {
+  const form = useAccountRegistrationForm();
+  return (
+    <button
+      type="button"
+      data-testid={props.testId}
+      onClick={() => form.setField(props.name, props.value)}
+    >
+      set
+    </button>
+  );
+}
+
 function ErrorProbe() {
   const form = useAccountRegistrationForm();
   return (
@@ -173,17 +190,16 @@ function installFetch(options?: {
       return jsonResponse({ session: {} });
     }
     if (target.includes("/account/register")) {
-      if (options?.registerMessage) {
-        return jsonResponse(
-          {
-            code: options.registerCode ?? "registration_rejected",
-            message: options.registerMessage,
-          },
-          false,
-          options.registerStatus ?? 400
-        );
-      }
-      const response = jsonResponse(REGISTERED);
+      const response = options?.registerMessage
+        ? jsonResponse(
+            {
+              code: options.registerCode ?? "registration_rejected",
+              message: options.registerMessage,
+            },
+            false,
+            options.registerStatus ?? 400
+          )
+        : jsonResponse(REGISTERED);
       return options?.hangRegister
         ? registerGate.then(() => response)
         : response;
@@ -436,6 +452,99 @@ describe("EPAccountRegistrationFormProvider", () => {
       await first;
     });
     expect(registerCalls(fetchImpl)).toHaveLength(1);
+  });
+
+  it("ignores an invalid resubmit while registration is in flight", async () => {
+    const { fetchImpl, releaseRegister } = installFetch({ hangRegister: true });
+    const ref = React.createRef<RegistrationActions>();
+    render(
+      <EPAccountProvider>
+        <EPAccountRegistrationFormProvider ref={ref}>
+          <Fill {...FILLED} />
+          <SetField name="name" value="" testId="clear-name" />
+          <ErrorProbe />
+        </EPAccountRegistrationFormProvider>
+      </EPAccountProvider>
+    );
+    fireEvent.click(screen.getByTestId("fill"));
+
+    let first: Promise<void> = Promise.resolve();
+    act(() => {
+      first = ref.current!.submit();
+    });
+    expect(registerCalls(fetchImpl)).toHaveLength(1);
+    expect(publishedForm()).toEqual({
+      status: "submitting",
+      error: null,
+      isSubmitting: true,
+    });
+    const errorsWhileSubmitting = fieldErrors();
+
+    fireEvent.click(screen.getByTestId("clear-name"));
+    await act(async () => {
+      await ref.current!.submit();
+    });
+    expect(registerCalls(fetchImpl)).toHaveLength(1);
+    expect(publishedForm()).toEqual({
+      status: "submitting",
+      error: null,
+      isSubmitting: true,
+    });
+    expect(fieldErrors()).toEqual(errorsWhileSubmitting);
+
+    await act(async () => {
+      releaseRegister();
+      await first;
+    });
+    expect(registerCalls(fetchImpl)).toHaveLength(1);
+    expect(publishedForm()).toEqual({
+      status: "submitted",
+      error: null,
+      isSubmitting: false,
+    });
+  });
+
+  it("keeps the original registration failure when a later submit is invalid", async () => {
+    const { fetchImpl, releaseRegister } = installFetch({
+      hangRegister: true,
+      registerMessage: "Password must contain a number",
+    });
+    const ref = React.createRef<RegistrationActions>();
+    render(
+      <EPAccountProvider>
+        <EPAccountRegistrationFormProvider ref={ref}>
+          <Fill {...FILLED} />
+          <SetField name="email" value="" testId="clear-email" />
+          <ErrorProbe />
+        </EPAccountRegistrationFormProvider>
+      </EPAccountProvider>
+    );
+    fireEvent.click(screen.getByTestId("fill"));
+
+    let first: Promise<void> = Promise.resolve();
+    act(() => {
+      first = ref.current!.submit();
+    });
+    fireEvent.click(screen.getByTestId("clear-email"));
+    await act(async () => {
+      await ref.current!.submit();
+    });
+    expect(registerCalls(fetchImpl)).toHaveLength(1);
+    expect(publishedForm().status).toBe("submitting");
+    expect(publishedForm().isSubmitting).toBe(true);
+    expect(fieldErrors().email).toBeNull();
+
+    await act(async () => {
+      releaseRegister();
+      await first;
+    });
+    expect(registerCalls(fetchImpl)).toHaveLength(1);
+    expect(publishedForm()).toEqual({
+      status: "error",
+      error: "Password must contain a number",
+      isSubmitting: false,
+    });
+    expect(fieldErrors().email).toBeNull();
   });
 
   it("keeps credentials out of the Studio data", async () => {

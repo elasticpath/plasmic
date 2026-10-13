@@ -117,6 +117,7 @@ export const EPAccountLoginFormProvider = React.forwardRef<
 
   const submit = useCallback(async () => {
     if (inEditor) return;
+    if (submittingRef.current) return;
     const username = values.username.trim();
     const password = values.password;
     const nextErrors: Record<LoginField, string | null> = {
@@ -138,7 +139,6 @@ export const EPAccountLoginFormProvider = React.forwardRef<
       setError(REQUIRED_FORM);
       return;
     }
-    if (submittingRef.current) return;
     submittingRef.current = true;
     setStatus("submitting");
     setError(null);

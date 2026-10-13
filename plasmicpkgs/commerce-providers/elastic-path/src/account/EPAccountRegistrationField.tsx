@@ -116,7 +116,7 @@ export const epAccountRegistrationFieldMeta: CodeComponentMeta<EPAccountRegistra
         defaultValue: "name",
         displayName: "Name",
       },
-      label: { type: "string", defaultValue: "Name" },
+      label: { type: "string" },
     },
     importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
     importName: "EPAccountRegistrationField",

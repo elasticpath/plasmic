@@ -177,6 +177,7 @@ export const EPAccountRegistrationFormProvider = React.forwardRef<
 
   const submit = useCallback(async () => {
     if (inEditor) return;
+    if (submittingRef.current) return;
     const usernamePresent = registry.current.has("username");
     const confirmPresent = registry.current.has("confirmPassword");
     const invalid = validateRegistration(values, {
@@ -189,7 +190,6 @@ export const EPAccountRegistrationFormProvider = React.forwardRef<
       setError(invalid.formError);
       return;
     }
-    if (submittingRef.current) return;
     submittingRef.current = true;
     setStatus("submitting");
     setError(null);

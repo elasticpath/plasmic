@@ -140,6 +140,31 @@ describe("EPAccountRegistrationField", () => {
     return { ...view, ref };
   }
 
+  it("labels each field from its name when no label is supplied", () => {
+    renderFields(
+      <>
+        <EPAccountRegistrationField name="name" />
+        <EPAccountRegistrationField name="email" />
+        <EPAccountRegistrationField name="username" />
+        <EPAccountRegistrationField name="password" />
+        <EPAccountRegistrationField name="confirmPassword" />
+      </>
+    );
+    expect(screen.getByLabelText("Name *")).toBeTruthy();
+    expect(screen.getByLabelText("Email *")).toBeTruthy();
+    expect(screen.getByLabelText("Username *")).toBeTruthy();
+    expect(screen.getByLabelText("Password *")).toBeTruthy();
+    expect(screen.getByLabelText("Confirm password *")).toBeTruthy();
+  });
+
+  it("uses an explicit label instead of the field default", () => {
+    renderFields(
+      <EPAccountRegistrationField name="email" label="Work email" />
+    );
+    expect(screen.getByLabelText("Work email *")).toBeTruthy();
+    expect(screen.queryByLabelText("Email *")).toBeNull();
+  });
+
   it("renders each field with its input type and autocomplete", () => {
     renderFields(<Fields username confirmPassword />);
     expect((screen.getByLabelText("Name *") as HTMLInputElement).type).toBe(
@@ -428,6 +453,8 @@ describe("EPAccountRegistrationField", () => {
       "password",
       "confirmPassword",
     ]);
+    expect(props.label).toEqual({ type: "string" });
+    expect(props.label).not.toHaveProperty("defaultValue");
     expect(props).not.toHaveProperty("passwordProfileId");
     expect(props).not.toHaveProperty("inputType");
     expect(props).not.toHaveProperty("required");

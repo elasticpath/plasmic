@@ -81,6 +81,26 @@ function RegisterRequired() {
   return null;
 }
 
+function SetPassword(props: { value: string }) {
+  const form = useAccountLoginForm();
+  return (
+    <button
+      type="button"
+      data-testid="set-password"
+      onClick={() => form.setField("password", props.value)}
+    >
+      set
+    </button>
+  );
+}
+
+function LoginErrorProbe() {
+  const form = useAccountLoginForm();
+  return (
+    <span data-testid="login-field-errors">{JSON.stringify(form.errors)}</span>
+  );
+}
+
 function Fill(props: { username?: string; password?: string }) {
   const form = useAccountLoginForm();
   return (
@@ -135,15 +155,14 @@ function installFetch(options?: {
       return jsonResponse({ session: {} });
     }
     if (target.includes("/account/login")) {
-      if (options?.loginFails) {
-        return jsonResponse({ message: "Invalid credentials" }, false);
-      }
-      const response = jsonResponse({
-        user: { id: "user-1", email: "buyer@example.com" },
-        session: { epMemberId: "member-1" },
-        accounts: [],
-        total: 0,
-      });
+      const response = options?.loginFails
+        ? jsonResponse({ message: "Invalid credentials" }, false)
+        : jsonResponse({
+            user: { id: "user-1", email: "buyer@example.com" },
+            session: { epMemberId: "member-1" },
+            accounts: [],
+            total: 0,
+          });
       return options?.hangLogin ? loginGate.then(() => response) : response;
     }
     if (target.includes("/account/roster")) {
@@ -348,6 +367,109 @@ describe("EPAccountLoginFormProvider", () => {
       await first;
     });
     expect(loginCalls(fetchImpl)).toHaveLength(1);
+  });
+
+  it("ignores an invalid resubmit while login is in flight", async () => {
+    const { fetchImpl, releaseLogin } = installFetch({ hangLogin: true });
+    const ref = React.createRef<LoginActions>();
+    render(
+      <EPAccountProvider>
+        <EPAccountLoginFormProvider ref={ref}>
+          <RegisterRequired />
+          <Fill />
+          <SetPassword value="" />
+          <LoginErrorProbe />
+        </EPAccountLoginFormProvider>
+      </EPAccountProvider>
+    );
+    fireEvent.click(screen.getByTestId("fill"));
+
+    let first: Promise<void> = Promise.resolve();
+    act(() => {
+      first = ref.current!.submit();
+    });
+    expect(loginCalls(fetchImpl)).toHaveLength(1);
+    expect(publishedForm()).toEqual({
+      status: "submitting",
+      error: null,
+      isSubmitting: true,
+    });
+
+    fireEvent.click(screen.getByTestId("set-password"));
+    await act(async () => {
+      await ref.current!.submit();
+    });
+    expect(loginCalls(fetchImpl)).toHaveLength(1);
+    expect(publishedForm()).toEqual({
+      status: "submitting",
+      error: null,
+      isSubmitting: true,
+    });
+    expect(screen.getByTestId("login-field-errors").textContent).toBe(
+      JSON.stringify({ username: null, password: null })
+    );
+
+    await act(async () => {
+      releaseLogin();
+      await first;
+    });
+    expect(loginCalls(fetchImpl)).toHaveLength(1);
+    expect(publishedForm()).toEqual({
+      status: "submitted",
+      error: null,
+      isSubmitting: false,
+    });
+  });
+
+  it("keeps the original login failure when a later submit is invalid", async () => {
+    const { fetchImpl, releaseLogin } = installFetch({
+      hangLogin: true,
+      loginFails: true,
+    });
+    const ref = React.createRef<LoginActions>();
+    render(
+      <EPAccountProvider>
+        <EPAccountLoginFormProvider ref={ref}>
+          <RegisterRequired />
+          <Fill />
+          <SetPassword value="" />
+          <LoginErrorProbe />
+        </EPAccountLoginFormProvider>
+      </EPAccountProvider>
+    );
+    fireEvent.click(screen.getByTestId("fill"));
+
+    let first: Promise<void> = Promise.resolve();
+    act(() => {
+      first = ref.current!.submit();
+    });
+    fireEvent.click(screen.getByTestId("set-password"));
+    await act(async () => {
+      await ref.current!.submit();
+    });
+    expect(loginCalls(fetchImpl)).toHaveLength(1);
+    expect(publishedForm()).toEqual({
+      status: "submitting",
+      error: null,
+      isSubmitting: true,
+    });
+    expect(screen.getByTestId("login-field-errors").textContent).toBe(
+      JSON.stringify({ username: null, password: null })
+    );
+
+    await act(async () => {
+      releaseLogin();
+      await first;
+    });
+    expect(loginCalls(fetchImpl)).toHaveLength(1);
+    expect(publishedForm()).toEqual({
+      status: "error",
+      error: "Invalid credentials",
+      isSubmitting: false,
+    });
+    expect(screen.getByTestId("login-field-errors").textContent).toBe(
+      JSON.stringify({ username: null, password: null })
+    );
   });
 
   it("does not call login in the canvas", async () => {
