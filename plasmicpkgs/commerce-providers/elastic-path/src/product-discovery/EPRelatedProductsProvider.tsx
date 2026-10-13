@@ -134,7 +134,7 @@ export function EPRelatedProductsProvider(
   props: EPRelatedProductsProviderProps
 ) {
   return (
-    <ListingSourceContext.Provider value="product-list">
+    <ListingSourceContext.Provider value="product-grid-data">
       <EPRelatedProductsProviderContent {...props} />
     </ListingSourceContext.Provider>
   );
