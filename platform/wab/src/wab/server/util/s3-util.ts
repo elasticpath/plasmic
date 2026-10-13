@@ -28,10 +28,11 @@ export async function upsertS3CacheEntry<T>(opts: {
       s3.getObject({ Bucket: bucket, Key: key }).promise()
     );
     const serialized = ensureInstance(obj.Body, Buffer).toString("utf8");
-    logger().info(`S3 cache hit for ${bucket} ${key}`, {
+    logger().info("S3 cache hit", {
       s3CacheResult: "hit",
       bucket,
       key,
+      keyPrefix: key.split("/")[0],
     });
     const data = await withTiming(`s3-deserialize-${shortKey}`, async () =>
       deserialize(serialized)
@@ -41,10 +42,11 @@ export async function upsertS3CacheEntry<T>(opts: {
     if (err.code === "TimeoutError") {
       throw err;
     }
-    logger().info(`S3 cache miss for ${bucket} ${key}; computing`, {
+    logger().info("S3 cache miss; computing", {
       s3CacheResult: "miss",
       bucket,
       key,
+      keyPrefix: key.split("/")[0],
     });
     const content = await withSpan("s3-cache-compute", async () => {
       return await withTiming(`s3-compute-${shortKey}`, f);

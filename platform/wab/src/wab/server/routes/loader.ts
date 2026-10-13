@@ -480,7 +480,10 @@ export async function getLoaderChunk(req: Request, res: Response) {
 
   const fileNamesSet = new Set(fileNames);
 
-  logger().info(`Loading S3 bundle from ${LOADER_ASSETS_BUCKET} ${bundleKey}`);
+  logger().info("Loading S3 bundle", {
+    bucket: LOADER_ASSETS_BUCKET,
+    bundleKey,
+  });
 
   const s3 = new S3({ endpoint: process.env.S3_ENDPOINT });
 
