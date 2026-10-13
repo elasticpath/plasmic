@@ -89,8 +89,9 @@ added below the ones shown, not in their place. It wraps react-instantsearch's
 Button slot binds to `$ctx.searchInfiniteHitsData.loadMore`, or the `loadMore`
 element action, and hides when `isLastPage`. The page number goes in the URL,
 so a shopper who reloads starts on the last page loaded; `loadPrevious`,
-`isFirstPage` and a Load Previous Button slot load the pages above it. The
-first page renders on the server like the rest of catalog search.
+`isFirstPage` and a Load Previous Button slot load the pages above it. A click
+while a page is still loading is ignored, so a double click cannot skip a page.
+The first page renders on the server like the rest of catalog search.
 
 `EPCatalogSearchProvider` renders the first page of results on the server, so
 the HTML of a category page contains its products. It uses

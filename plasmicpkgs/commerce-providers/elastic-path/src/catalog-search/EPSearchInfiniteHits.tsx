@@ -9,8 +9,8 @@ import { DataProvider } from "@plasmicapp/host";
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
-import React, { useImperativeHandle } from "react";
-import { useInfiniteHits } from "react-instantsearch";
+import React, { useEffect, useImperativeHandle, useMemo, useRef } from "react";
+import { useInfiniteHits, useInstantSearch } from "react-instantsearch";
 import { Registerable } from "../registerable";
 import {
   MOCK_SEARCH_INFINITE_HITS_DATA,
@@ -129,19 +129,15 @@ const InfiniteHitsInner = React.forwardRef<
   InnerProps
 >(function InfiniteHitsInner(props, ref) {
   const { children, gridStyle, productPathPrefix, ...shell } = props;
-  const { items, isFirstPage, isLastPage, showMore, showPrevious } =
+  const { items, results, isFirstPage, isLastPage, showMore, showPrevious } =
     useInfiniteHits();
-  useImperativeHandle(
-    ref,
-    () => ({ loadMore: showMore, loadPrevious: showPrevious }),
-    [showMore, showPrevious]
-  );
+  const actions = useOneLoadAtATime(showMore, showPrevious, results);
+  useImperativeHandle(ref, () => actions, [actions]);
 
   const data: SearchInfiniteHitsData = {
     isFirstPage,
     isLastPage,
-    loadMore: showMore,
-    loadPrevious: showPrevious,
+    ...actions,
   };
 
   return (
@@ -156,6 +152,32 @@ const InfiniteHitsInner = React.forwardRef<
     </InfiniteHitsShell>
   );
 });
+
+// A second click before the next page arrives makes InstantSearch skip a page.
+function useOneLoadAtATime(
+  showMore: () => void,
+  showPrevious: () => void,
+  results: unknown
+): EPSearchInfiniteHitsActions {
+  const { status } = useInstantSearch();
+  const loading = useRef(false);
+  useEffect(() => {
+    if (status === "idle" || status === "error") {
+      loading.current = false;
+    }
+  }, [status, results]);
+
+  return useMemo(() => {
+    const once = (load: () => void) => () => {
+      if (loading.current) {
+        return;
+      }
+      loading.current = true;
+      load();
+    };
+    return { loadMore: once(showMore), loadPrevious: once(showPrevious) };
+  }, [showMore, showPrevious]);
+}
 
 function InfiniteHitsShell(
   props: Omit<InnerProps, "gridStyle" | "productPathPrefix"> & {

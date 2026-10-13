@@ -945,6 +945,55 @@ describe("an infinite listing", () => {
     }
   });
 
+  it("loses no page when the shopper clicks load more again before the next page arrives", async () => {
+    installBridge();
+    answerPages([
+      ["Trail Boot", "Hiking Boot"],
+      ["Snow Boot", "Rain Boot"],
+      ["Ski Boot", "Work Boot"],
+    ]);
+    const rendered = await serverRender(page);
+    fetchMock.mockClear();
+
+    const answer = fetchMock.getMockImplementation()!;
+    let release!: () => void;
+    const slowNetwork = new Promise<void>((resolve) => (release = resolve));
+    fetchMock.mockImplementation(async (...args: any[]) => {
+      await slowNetwork;
+      return answer(...args);
+    });
+
+    const browser = await hydrateInBrowser(rendered, page);
+    try {
+      const button = browser.container.querySelector("button")!;
+      button.click();
+      button.click();
+      release();
+      await settle();
+
+      expect(cards(browser.container.innerHTML)).toEqual([
+        "Trail Boot /product/trail-boot",
+        "Hiking Boot /product/hiking-boot",
+        "Snow Boot /product/snow-boot",
+        "Rain Boot /product/rain-boot",
+      ]);
+
+      browser.container.querySelector("button")!.click();
+      await settle();
+
+      expect(cards(browser.container.innerHTML)).toEqual([
+        "Trail Boot /product/trail-boot",
+        "Hiking Boot /product/hiking-boot",
+        "Snow Boot /product/snow-boot",
+        "Rain Boot /product/rain-boot",
+        "Ski Boot /product/ski-boot",
+        "Work Boot /product/work-boot",
+      ]);
+    } finally {
+      await browser.leave();
+    }
+  });
+
   it("serves the page a reloaded URL names, and loads the earlier ones above it", async () => {
     function LoadPrevious() {
       const { isFirstPage, loadPrevious } = useSelector(
