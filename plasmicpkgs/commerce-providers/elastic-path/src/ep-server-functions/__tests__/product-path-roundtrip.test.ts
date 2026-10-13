@@ -1,8 +1,8 @@
 export {};
 
 // The link builder and the product read are two halves of one contract: the
-// path EP Search Hits links to must name a product `ep.getProduct` can read.
-// This drives both halves against one mocked catalog.
+// path a product card links to — on either listing path — must name a product
+// `ep.getProduct` can read. This drives both halves against one mocked catalog.
 
 const mockGetByContextProduct = jest.fn();
 const mockGetByContextAllProducts = jest.fn();
@@ -16,6 +16,7 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
   getByContextAllProducts: (...args: unknown[]) =>
     mockGetByContextAllProducts(...args),
   getByContextChildProducts: jest.fn(),
+  getByContextProductsForNode: jest.fn(),
 }));
 
 jest.mock("../proxy-fetch", () => ({
@@ -28,7 +29,11 @@ const { epGetProduct } = require("../getProduct");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { withEpSession } = require("../session-context");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { hitToProduct, productPath } = require("../../catalog-search/EPSearchHits");
+const { hitToProduct } = require("../../catalog-search/EPSearchHits");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { epGetProductPage } = require("../getProductPage");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { productPath } = require("../../utils/product-path");
 
 const SESSION = {
   accessToken: "token-abc",
@@ -54,6 +59,7 @@ beforeEach(() => {
       : { error: { errors: [] }, response: { status: 404 } };
   });
   mockGetByContextAllProducts.mockImplementation(async ({ query }: any) => {
+    if (!query.filter) return { data: { data: CATALOG, included: {} } };
     const slug = /^eq\(slug,(.*)\)$/.exec(query.filter)?.[1];
     const rows = CATALOG.filter((p) => p.attributes.slug === slug);
     return { data: { data: rows, included: {} } };
@@ -67,6 +73,24 @@ describe("a search hit's product path names a product ep.getProduct reads", () =
   ])("when the hit %s", async (_, row) => {
     const hit = { objectID: row.id, attributes: row.attributes };
     const path: string = productPath(hitToProduct(hit, "USD"), "/product");
+    const reference = path.replace(/^\/product\//, "");
+
+    const product = await withEpSession(SESSION, () =>
+      epGetProduct({ id: reference })
+    );
+
+    expect(product?.id).toBe(row.id);
+  });
+});
+
+describe("a listed product's path names a product ep.getProduct reads", () => {
+  it.each([
+    ["carries a slug", CATALOG[0]],
+    ["carries no slug", CATALOG[1]],
+  ])("when the product %s", async (_, row) => {
+    const page = await withEpSession(SESSION, () => epGetProductPage({}));
+    const listed = page.data.find((p: { id: string }) => p.id === row.id);
+    const path: string = productPath(listed, "/product");
     const reference = path.replace(/^\/product\//, "");
 
     const product = await withEpSession(SESSION, () =>

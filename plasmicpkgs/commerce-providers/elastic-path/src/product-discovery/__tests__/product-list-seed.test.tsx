@@ -13,25 +13,36 @@ import React from "react";
 const mockUseProductList = jest.fn();
 const mockUsePlasmicCanvasContext = jest.fn();
 
-jest.mock("@plasmicapp/host", () => ({
-  DataProvider: ({
-    children,
-    name,
-    data,
-  }: {
-    children: React.ReactNode;
-    name: string;
-    data: any;
-  }) => (
-    <div
-      data-testid={`data-provider-${name}`}
-      data-provider-data={JSON.stringify(data)}
-    >
-      {children}
-    </div>
-  ),
-  usePlasmicCanvasContext: () => mockUsePlasmicCanvasContext(),
-}));
+jest.mock("@plasmicapp/host", () => {
+  const R = jest.requireActual("react");
+  const Ctx = R.createContext({});
+  return {
+    DataProvider: ({
+      children,
+      name,
+      data,
+    }: {
+      children: React.ReactNode;
+      name: string;
+      data: any;
+    }) => {
+      const parent = R.useContext(Ctx);
+      return (
+        <Ctx.Provider value={{ ...parent, [name]: data }}>
+          <div
+            data-testid={`data-provider-${name}`}
+            data-provider-data={JSON.stringify(data)}
+          >
+            {children}
+          </div>
+        </Ctx.Provider>
+      );
+    },
+    useSelector: (name: string) => (R.useContext(Ctx) as any)[name],
+    repeatedElement: (_i: number, children: React.ReactNode) => children,
+    usePlasmicCanvasContext: () => mockUsePlasmicCanvasContext(),
+  };
+});
 
 jest.mock("@plasmicapp/host/registerComponent", () => ({
   __esModule: true,
@@ -46,6 +57,8 @@ import { act, render, screen } from "@testing-library/react";
 
 const { EPProductListProvider } =
   require("../EPProductListProvider") as typeof import("../EPProductListProvider");
+const { EPProductGrid } =
+  require("../EPProductGrid") as typeof import("../EPProductGrid");
 
 const seedProduct = (id: string) => ({
   id,
@@ -81,6 +94,21 @@ beforeEach(() => {
 });
 
 describe("EPProductListProvider initialPage", () => {
+  it("links each seeded product card to its product page", () => {
+    render(
+      <EPProductListProvider initialPage={SEED}>
+        <EPProductGrid>
+          <div>card</div>
+        </EPProductGrid>
+      </EPProductListProvider>
+    );
+
+    const paths = screen
+      .getAllByTestId("data-provider-currentHit")
+      .map((n) => JSON.parse(n.getAttribute("data-provider-data")!).path);
+    expect(paths).toEqual(["/product/seed-1", "/product/seed-2"]);
+  });
+
   it("renders the seeded page without fetching in the browser", () => {
     render(
       <EPProductListProvider initialPage={SEED}>
