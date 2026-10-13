@@ -87,10 +87,9 @@ describe("addEndErrorHandlers", () => {
   it("logs an unrecognized error at error level with its stack, and returns 500", async () => {
     const err = new Error("totally unexpected");
     const { logger, res } = await run(err);
-    expect(logger.error).toHaveBeenCalledWith(
-      "Error - totally unexpected",
-      { stack: err.stack }
-    );
+    expect(logger.error).toHaveBeenCalledWith("Error - totally unexpected", {
+      err,
+    });
     expect(logger.warn).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(500);
   });
