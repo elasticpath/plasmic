@@ -105,6 +105,13 @@ both repeaters publish the same `currentProduct` and the same
 Moving to catalog search also drops the **Products (pre-fetched)** Server Query
 binding, which has no counterpart there.
 
+An EP Product Grid left inside EP Catalog Search Provider renders nothing,
+because the search provider does not supply its products. The grid logs a
+console warning once, and on the Studio canvas shows that message in place of
+sample products. Replace it with EP Search Hits. A grid inside EP Product List
+Provider or EP Related Products Provider does not warn, even when that provider
+sits inside catalog search.
+
 **Product links.** Bind a card's link to `currentHit.path`. EP Product Grid and
 EP Search Hits both build it as **Product Path Prefix** + `/` + the product's
 slug, or its id when it has no slug. The prefix defaults to `/product` on both.

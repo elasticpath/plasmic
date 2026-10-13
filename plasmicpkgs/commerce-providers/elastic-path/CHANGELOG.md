@@ -190,6 +190,14 @@ checkout-session handler call made as the shopper carries
 already does. Calls made with `getClientCredentialsToken` never carry it, and
 with no account selected no checkout call does.
 
+`EPProductGrid` inside `EPCatalogSearchProvider` logs a console warning once
+per mount instead of rendering an empty listing with no error. The search
+provider does not supply the grid's products; the warning says to use
+`EPSearchHits` instead. On the Studio canvas the grid shows the same message in
+place of sample products. A grid inside `EPProductListProvider` or
+`EPRelatedProductsProvider` never warns, even when that provider sits inside
+catalog search. Nothing substitutes another data source.
+
 ### Changed
 
 EP Add To Cart Button, EP Cart Item Quantity Control and EP Cart Item Remove
