@@ -291,6 +291,12 @@ describe("EP Fork Integrity", () => {
       expect(apmUtil).toContain("recordTiming");
     });
 
+    it("apm-util reports operation attributes on failure as well as success", () => {
+      const apmUtil = readFile("platform/wab/src/wab/server/util/apm-util.ts");
+      const occurrences = apmUtil.match(/operation_name: name/g) ?? [];
+      expect(occurrences.length).toBeGreaterThanOrEqual(2);
+    });
+
     it("s3-util keeps the early S3 cache check", () => {
       const s3Util = readFile("platform/wab/src/wab/server/util/s3-util.ts");
       expect(s3Util).toContain("tryGetS3CacheEntry");
