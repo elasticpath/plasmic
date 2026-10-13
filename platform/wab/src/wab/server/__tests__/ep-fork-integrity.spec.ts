@@ -312,6 +312,15 @@ describe("EP Fork Integrity", () => {
       ).toBe(true);
     });
 
+    it("PinoLogger finds the error wherever it arrives and emits reserved attributes", () => {
+      const pinoLogger = readFile(
+        "platform/wab/src/wab/server/observability/PinoLogger.ts"
+      );
+      expect(pinoLogger).toContain("findError");
+      expect(pinoLogger).toContain("kind: err.name");
+      expect(pinoLogger).toContain("stack: err.stack");
+    });
+
     // Upstream error-handling refactors tend to reintroduce Sentry calls in
     // these files; EP migrated them to Datadog.
     const migratedFiles = [

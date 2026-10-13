@@ -38,6 +38,27 @@ async function resolvePodName(): Promise<string> {
 
 const POD_NAME: Promise<string> = resolvePodName();
 
+const ERROR_PAYLOAD_KEYS = ["err", "error", "exception"] as const;
+
+function findError(
+  message: string | Error,
+  payload?: Record<string, any>
+): Error | undefined {
+  if (message instanceof Error) {
+    return message;
+  }
+  if (payload instanceof Error) {
+    return payload;
+  }
+  for (const key of ERROR_PAYLOAD_KEYS) {
+    const candidate = payload?.[key];
+    if (candidate instanceof Error) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
 export class PinoLogger implements Logger {
   private readonly pinoLogger: PinoLog;
 
@@ -75,15 +96,17 @@ export class PinoLogger implements Logger {
     // `err` of a `.catch` is `any`, so the string signature doesn't stop it.
     // Error.message and .stack are non-enumerable, so serializing one as-is
     // drops the text and emits only `{"name":"..."}`.
-    const err = message instanceof Error ? message : undefined;
-    const text = err ? err.message || err.name : (message as string);
+    const err = findError(message, payload);
+    const text =
+      message instanceof Error ? message.message || message.name : message;
+    const extra = payload instanceof Error ? undefined : payload;
     const logEntry = {
       message: text,
-      ...(err
-        ? { error: { name: err.name, message: err.message, stack: err.stack } }
-        : {}),
       ...(requestId ? { x_request_id: requestId } : {}),
-      ...payload,
+      ...extra,
+      ...(err
+        ? { error: { kind: err.name, message: err.message, stack: err.stack } }
+        : {}),
     };
 
     this.pinoLogger[level](logEntry);

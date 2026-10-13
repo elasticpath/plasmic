@@ -2047,7 +2047,7 @@ export function addEndErrorHandlers(app: express.Application) {
           } else {
             logger().error(
               `${err.name ?? "Unhandled server error"} - ${err.message}`,
-              { stack: err.stack }
+              { err }
             );
           }
         }
