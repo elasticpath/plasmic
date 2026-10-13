@@ -136,6 +136,11 @@ location is used. `epRemoveCartItem` takes `itemId`. The root entry also
 exports the types of the cart they resolve with: `Cart`, `CartItem`,
 `CartItemType`, `CartMeta`, `CartResponse` and `FormattedPrice`.
 
+The writes can overlap, for example when a shopper taps a quantity button
+twice. The consumers never go back to an older cart, and after the last of the
+overlapping writes finishes, they read the cart once from Elastic Path. Each
+call still resolves with the cart it produced.
+
 A rejection is an `Error` whose `message` you can show the shopper. When the
 proxy route forwards Elastic Path's own reason, which it does only in
 development, the `message` is that reason. Otherwise it is fixed text for the

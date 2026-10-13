@@ -104,6 +104,16 @@ const antdModules = {
   "antd/es/upload/style": "__Sub._antd_es_upload_style_",
 };
 
+const nextShims = Object.fromEntries(
+  ["headers", "navigation"].flatMap((name) => {
+    const shim = path.join(process.cwd(), `next-shims/${name}.js`);
+    return [
+      [`next/${name}`, shim],
+      [`next/${name}.js`, shim],
+    ];
+  })
+);
+
 // We will be bundling the canvas-packages in two different ways:
 // 1. Accessing react/jsx-runtime from node_modules/jsx-runtime
 // 2. Accessing react/jsx-runtime from __Sub.jsxRuntime
@@ -193,6 +203,7 @@ const clientConfigs = clientEntries.map(({ pkg, useSubJSXRuntime }) => ({
         process.cwd(),
         "node_modules/@plasmicapp/host/registerFunction/dist/index.esm.js"
       ),
+      ...nextShims,
       ...(useSubJSXRuntime
         ? {}
         : {
@@ -267,6 +278,7 @@ const serverConfigs = hostlessPkgNames.map((pkg) => ({
   target: "node14",
   bundle: true,
   minify: isProd,
+  plugins: [alias(nextShims)],
 }));
 
 serverConfigs.forEach((config) => esbuild.build(config));

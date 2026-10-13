@@ -163,6 +163,8 @@ export async function createBackend(
         keepAliveTimeoutMs: 60000,
         genericWorkerPoolSize: 1,
         loaderWorkerPoolSize: 1,
+        enableCommentNotificationJob: false,
+        enablePruneCacheJob: false,
       });
 
       return {

@@ -31,6 +31,10 @@ import {
   getLoaderForPath,
   replaceDataPlasmicHost,
 } from "@/wab/server/loader/bundle-utils";
+import {
+  loaderProvidesNextNavigation,
+  nextModulesPlugin,
+} from "@/wab/server/loader/next-modules";
 
 export interface ComponentMeta {
   id: string;
@@ -212,6 +216,7 @@ async function bundleModulesEsbuild(
       plugins: withoutNils([
         externalizeCssUrlsPlugin,
         fixAntdPathPlugin,
+        nextModulesPlugin(opts),
         // Replace hardcoded data.plasmic.app URL in @plasmicapp/data-sources
         // with DATA_HOST env var for self-hosted deployments
         {
@@ -651,6 +656,9 @@ function deriveExternals(opts: BundleOpts) {
   }
   if (opts.platform === "nextjs") {
     external.push("next", "next/head", "next/link", "next/router");
+    if (loaderProvidesNextNavigation(opts)) {
+      external.push("next/navigation");
+    }
   } else if (opts.platform === "gatsby") {
     external.push("gatsby");
   }

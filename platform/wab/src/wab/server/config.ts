@@ -16,6 +16,8 @@ export interface Config {
   keepAliveTimeoutMs: number;
   genericWorkerPoolSize: number;
   loaderWorkerPoolSize: number;
+  enableCommentNotificationJob: boolean;
+  enablePruneCacheJob: boolean;
 }
 
 export const DEFAULT_DATABASE_URI =
@@ -34,6 +36,8 @@ const DEFAULT_CONFIG: Config = {
   keepAliveTimeoutMs: 60000,
   genericWorkerPoolSize: 1,
   loaderWorkerPoolSize: 1,
+  enableCommentNotificationJob: false,
+  enablePruneCacheJob: false,
 };
 
 export const loadConfig = memoizeOne((): Config => {
@@ -86,6 +90,14 @@ function parseConfigFromEnv(): Config {
     loaderWorkerPoolSize: process.env["LOADER_WORKER_POOL_SIZE"]
       ? parseInt(process.env["LOADER_WORKER_POOL_SIZE"], 10)
       : undefined,
+    enableCommentNotificationJob:
+      process.env["ENABLE_COMMENT_NOTIFICATION_JOB"] != null
+        ? process.env["ENABLE_COMMENT_NOTIFICATION_JOB"] === "true"
+        : undefined,
+    enablePruneCacheJob:
+      process.env["ENABLE_PRUNE_CACHE_JOB"] != null
+        ? process.env["ENABLE_PRUNE_CACHE_JOB"] === "true"
+        : undefined,
   };
 
   Object.entries(envConfig).forEach(([key, value]) => {

@@ -450,14 +450,16 @@ export function addLoggingMiddleware(app: express.Application) {
     const start = Date.now();
     res.on("finish", () => {
       const duration = Date.now() - start;
+      const endpoint = getTemplatedEndpointFromExpressRoutePath(req.route?.path);
       incHttpRequestCount({
-        endpoint: getTemplatedEndpointFromExpressRoutePath(req.route?.path),
+        endpoint,
         responseCode: res.statusCode,
       });
       logger().info(
         `${req.method} ${req.originalUrl} ${res.statusCode} (${duration}ms)`,
         {
           requestMethod: req.method,
+          requestEndpoint: endpoint,
           requestOriginalUrl: req.originalUrl,
           requestStatusCode: res.statusCode,
           x_request_id: req.id,
@@ -2145,14 +2147,16 @@ export async function createApp(
     spawn(pruneOldBundleBackupsCache(conn.manager));
   };
 
-  // Call it before `setInterval` so there's no initial delay
-  pruneCache();
-
-  // Prune old cache every 2 hours
-  cron.schedule("0 */2 * * *", () => {
-    logger().info("Pruning cache");
+  if (config.enablePruneCacheJob) {
+    // Call it before `setInterval` so there's no initial delay
     pruneCache();
-  });
+
+    // Prune old cache every 2 hours
+    cron.schedule("0 */2 * * *", () => {
+      logger().info("Pruning cache");
+      pruneCache();
+    });
+  }
 
   // Don't leak infra info
   app.disable("x-powered-by");
