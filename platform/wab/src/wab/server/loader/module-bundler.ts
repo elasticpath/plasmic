@@ -578,14 +578,12 @@ export async function bundleModules(
         );
       } catch (err) {
         const bundleErrorStr: string = err.toString();
-        logger().error(
-          `Error bundling with esbuild: ${bundleErrorStr}: ${err.stack}`
-        );
+        logger().error("Error bundling with esbuild", { err });
         try {
           const errPrefix = await uploadErrorFiles(err, dir);
           logger().error(`Errors uploaded: ${errPrefix}`);
         } catch (err2) {
-          logger().error(`Error uploading error files: ${err2.toString()}`);
+          logger().error("Error uploading error files", { err: err2 });
         }
 
         const transformedBundleErrorStr = transformBundlerErrors(

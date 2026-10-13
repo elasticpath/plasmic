@@ -14,6 +14,7 @@
  *
  * Runs on port 3020 or SOCKET_PORT.
  */
+import "@/wab/server/instrument";
 import {
   addLoggingMiddleware,
   addPromMetricsMiddleware,

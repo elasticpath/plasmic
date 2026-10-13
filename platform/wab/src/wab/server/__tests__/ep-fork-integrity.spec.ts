@@ -312,6 +312,15 @@ describe("EP Fork Integrity", () => {
       ).toBe(true);
     });
 
+    it("PinoLogger finds the error wherever it arrives and emits reserved attributes", () => {
+      const pinoLogger = readFile(
+        "platform/wab/src/wab/server/observability/PinoLogger.ts"
+      );
+      expect(pinoLogger).toContain("findError");
+      expect(pinoLogger).toContain("kind: err.name");
+      expect(pinoLogger).toContain("stack: err.stack");
+    });
+
     // Upstream error-handling refactors tend to reintroduce Sentry calls in
     // these files; EP migrated them to Datadog.
     const migratedFiles = [
@@ -322,6 +331,38 @@ describe("EP Fork Integrity", () => {
     for (const file of migratedFiles) {
       it(`${path.basename(file)} does not import Sentry`, () => {
         expect(readFile(file)).not.toContain("@sentry/");
+      });
+    }
+  });
+
+  describe("EP tracer initialisation", () => {
+    it("instrument.ts registers dd-trace as the OpenTelemetry provider", () => {
+      const instrument = readFile(
+        "platform/wab/src/wab/server/instrument.ts"
+      );
+      expect(instrument).toContain("tracer.init");
+      expect(instrument).toContain("new tracer.TracerProvider().register()");
+    });
+
+    const entrypoints = [
+      "platform/wab/src/wab/server/main.ts",
+      "platform/wab/src/wab/server/codegen-backend.ts",
+      "platform/wab/src/wab/server/integrations-backend.ts",
+      "platform/wab/src/wab/server/img-optimizer-backend.ts",
+      "platform/wab/src/wab/server/loader-html-backend.ts",
+      "platform/wab/src/wab/server/loader-backend.ts",
+      "platform/wab/src/wab/server/app-socket-backend-real.ts",
+    ];
+    for (const entrypoint of entrypoints) {
+      it(`${path.basename(entrypoint)} loads the tracer before other imports`, () => {
+        const src = readFile(entrypoint);
+        expect(src).toMatch(
+          /import "(\.\/|@\/wab\/server\/)instrument";/
+        );
+        const importLines = src
+          .split("\n")
+          .filter((line) => line.startsWith("import "));
+        expect(importLines[0]).toMatch(/instrument";$/);
       });
     }
   });
