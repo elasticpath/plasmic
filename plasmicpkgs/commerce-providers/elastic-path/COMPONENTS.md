@@ -101,7 +101,8 @@ the canvas. EP Product List Provider's Server Query reads the real catalog in
 the data-query Configure panel.
 
 **Switching paths.** Three things change, and card layouts survive, because
-both repeaters publish the same `currentProduct`:
+both repeaters publish the same `currentProduct` and the same
+`currentHit.path` product page link:
 
 | EP Product List Provider path | EP Catalog Search Provider path |
 | --- | --- |
@@ -111,8 +112,15 @@ both repeaters publish the same `currentProduct`:
 | EP Product Grid with a button bound to the provider's `loadMore` | EP Search Infinite Hits, with the button in its Load More Button slot |
 
 Moving to catalog search also drops the **Products (pre-fetched)** Server Query
-binding, which has no counterpart there. Set EP Search Hits' route prefix so
-product links match your product page route.
+binding, which has no counterpart there.
+
+**Product links.** Bind a card's link to `currentHit.path`. EP Product Grid and
+EP Search Hits both build it as **Product Path Prefix** + `/` + the product's
+slug, or its id when it has no slug. The prefix defaults to `/product` on both.
+Set it on the repeater to match your product page route, and set the same value
+when you switch. EP Product Grid builds the link inside EP Related Products
+Provider too. `currentHit.path` is the only link field: `currentProduct` has no
+`path`.
 
 ---
 

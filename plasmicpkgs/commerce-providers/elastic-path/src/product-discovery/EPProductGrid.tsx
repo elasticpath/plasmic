@@ -4,7 +4,8 @@
  * Reads `productGridData.products` from a parent DataProvider (D4) and renders
  * children once per product via `repeatedElement()`. Each iteration exposes
  * `currentProduct` — the same Elastic Path product shape a product page
- * binds — and `currentProductIndex`.
+ * binds — `currentHit.path`, its product page link built exactly as
+ * EPSearchHits builds it, and `currentProductIndex`.
  *
  * No `parentComponentName` restriction (D5) — works inside both
  * EPProductListProvider and EPRelatedProductsProvider.
@@ -23,12 +24,18 @@ import React, { useMemo } from "react";
 import { Registerable } from "../registerable";
 import { MOCK_PRODUCTS } from "./design-time-data";
 import type { Product } from "../types/product";
+import {
+  DEFAULT_PRODUCT_PATH_PREFIX,
+  PRODUCT_PATH_PREFIX_PROP,
+  productPath,
+} from "../utils/product-path";
 
 type PreviewState = "auto" | "withData";
 
 interface EPProductGridProps {
   children?: React.ReactNode;
   className?: string;
+  productPathPrefix?: string;
   previewState?: PreviewState;
 }
 
@@ -36,7 +43,7 @@ export const epProductGridMeta: CodeComponentMeta<EPProductGridProps> = {
   name: "plasmic-commerce-ep-product-grid",
   displayName: "EP Product Grid",
   description:
-    "Repeats children for each product in the parent provider's product list. Exposes currentProduct and currentProductIndex for data binding. Works inside EP Product List Provider or EP Related Products Provider.",
+    "Repeats children for each product in the parent provider's product list. Exposes currentProduct, currentHit.path (the product page link, as EP Search Hits publishes it) and currentProductIndex for data binding. Works inside EP Product List Provider or EP Related Products Provider.",
   props: {
     children: {
       type: "slot",
@@ -56,6 +63,7 @@ export const epProductGridMeta: CodeComponentMeta<EPProductGridProps> = {
         },
       ],
     },
+    productPathPrefix: PRODUCT_PATH_PREFIX_PROP,
     previewState: {
       type: "choice",
       options: ["auto", "withData"],
@@ -72,7 +80,12 @@ export const epProductGridMeta: CodeComponentMeta<EPProductGridProps> = {
 };
 
 export function EPProductGrid(props: EPProductGridProps) {
-  const { children, className, previewState = "auto" } = props;
+  const {
+    children,
+    className,
+    productPathPrefix = DEFAULT_PRODUCT_PATH_PREFIX,
+    previewState = "auto",
+  } = props;
 
   const gridData = useSelector("productGridData") as
     | { products?: Product[] }
@@ -94,8 +107,13 @@ export function EPProductGrid(props: EPProductGridProps) {
       {products.map((product, i) => (
         <div key={product.id} role="listitem">
           <DataProvider name="currentProduct" data={product}>
-            <DataProvider name="currentProductIndex" data={i}>
-              {repeatedElement(i, children)}
+            <DataProvider
+              name="currentHit"
+              data={{ path: productPath(product, productPathPrefix), raw: {} }}
+            >
+              <DataProvider name="currentProductIndex" data={i}>
+                {repeatedElement(i, children)}
+              </DataProvider>
             </DataProvider>
           </DataProvider>
         </div>

@@ -269,6 +269,14 @@ changes: same props, same slots, same data.
 
 ### Fixed
 
+A product card inside EP Product Grid now has a link to its product page.
+EP Product Grid publishes `$ctx.currentHit.path`, built exactly as EP Search
+Hits builds it, so a card moved from catalog search to EP Product List
+Provider or EP Related Products Provider keeps its links. EP Product Grid has
+a new **Product Path Prefix** prop, with the same `/product` default as EP
+Search Hits'. Set it to your product page route. `currentProduct` itself is
+unchanged and has no `path` (ADR-0002).
+
 A cart write no longer resolves with a cart priced differently from the one
 `ep.getCart` reads. `epAddCartItem`, `epUpdateCartItem`, `epRemoveCartItem`,
 `epApplyPromoCode` and `epRemovePromoCode` read the cart back without the
