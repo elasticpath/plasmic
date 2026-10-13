@@ -81,6 +81,17 @@ removed component or a removed published prop. Both are empty instead.
 
 ### Added
 
+`EPSearchInfiniteHits` ("EP Search Infinite Hits") gives catalog search the
+load more that `EPProductListProvider` already has: the next page of results is
+added below the ones shown, not in their place. It wraps react-instantsearch's
+`useInfiniteHits`. Cards get the same `currentProduct`, `currentHit` (with
+`path`) and `currentProductIndex` as `EPSearchHits`. A button in its Load More
+Button slot binds to `$ctx.searchInfiniteHitsData.loadMore`, or the `loadMore`
+element action, and hides when `isLastPage`. The page number goes in the URL,
+so a shopper who reloads starts on the last page loaded; `loadPrevious`,
+`isFirstPage` and a Load Previous Button slot load the pages above it. The
+first page renders on the server like the rest of catalog search.
+
 `EPCatalogSearchProvider` renders the first page of results on the server, so
 the HTML of a category page contains its products. It uses
 `react-instantsearch-nextjs` and needs the Next.js App Router. Elsewhere, such

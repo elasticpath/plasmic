@@ -79,6 +79,14 @@ shopper's session, and the browser uses those results without searching again.
   storefront's own installed copy of this package must be this version or
   later. With an older copy, catalog search runs in the browser only.
 
+**Loading more.** Both paths can add the next page below the products already
+shown. On catalog search, use EP Search Infinite Hits in place of EP Search
+Hits and EP Search Pagination. Bind its Load More button to
+`$ctx.searchInfiniteHitsData.loadMore` and hide it when `isLastPage`. The page
+number goes in the URL, so a shopper who reloads starts on the last page they
+loaded. Put a button in its Load Previous Button slot, bound to `loadPrevious`
+and hidden when `isFirstPage`, to load the pages above it.
+
 **Content Security Policy.** The server render adds one inline script for each
 catalog search provider. The script carries that provider's results. If your
 storefront uses a nonce-based policy, send the nonce on the page request in an
@@ -100,7 +108,8 @@ both repeaters publish the same `currentProduct` and the same
 | --- | --- |
 | EP Product List Provider | EP Catalog Search Provider |
 | EP Product Grid | EP Search Hits |
-| buttons bound to the provider's `nextPage` / `prevPage` / `goToPage` / `loadMore` | EP Search Pagination |
+| buttons bound to the provider's `nextPage` / `prevPage` / `goToPage` | EP Search Pagination |
+| EP Product Grid with a button bound to the provider's `loadMore` | EP Search Infinite Hits, with the button in its Load More Button slot |
 
 Moving to catalog search also drops the **Products (pre-fetched)** Server Query
 binding, which has no counterpart there.
@@ -112,9 +121,9 @@ sample products. Replace it with EP Search Hits. A grid inside EP Product List
 Provider or EP Related Products Provider does not warn, even when that provider
 sits inside catalog search.
 
-**Product links.** Bind a card's link to `currentHit.path`. EP Product Grid and
-EP Search Hits both build it as **Product Path Prefix** + `/` + the product's
-slug, or its id when it has no slug. The prefix defaults to `/product` on both.
+**Product links.** Bind a card's link to `currentHit.path`. EP Product Grid, EP
+Search Hits and EP Search Infinite Hits all build it as **Product Path Prefix** + `/` + the product's
+slug, or its id when it has no slug. The prefix defaults to `/product` on all three.
 Set it on the repeater to match your product page route, and set the same value
 when you switch. EP Product Grid builds the link inside EP Related Products
 Provider too. `currentHit.path` is the only link field: `currentProduct` has no

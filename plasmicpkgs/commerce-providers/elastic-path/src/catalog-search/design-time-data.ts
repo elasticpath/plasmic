@@ -246,6 +246,25 @@ export const MOCK_SEARCH_PAGINATION_DATA: SearchPaginationData = {
 };
 
 // ---------------------------------------------------------------------------
+// SearchInfiniteHitsData — shape exposed by EPSearchInfiniteHits
+// ---------------------------------------------------------------------------
+
+export interface SearchInfiniteHitsData {
+  isFirstPage: boolean;
+  isLastPage: boolean;
+  /** Wire clicks via customFunction interactions, e.g. $ctx.searchInfiniteHitsData.loadMore(). */
+  loadMore: () => void;
+  loadPrevious: () => void;
+}
+
+export const MOCK_SEARCH_INFINITE_HITS_DATA: SearchInfiniteHitsData = {
+  isFirstPage: true,
+  isLastPage: false,
+  loadMore: () => {},
+  loadPrevious: () => {},
+};
+
+// ---------------------------------------------------------------------------
 // SearchStatsData — shape exposed by EPSearchStats
 // ---------------------------------------------------------------------------
 
