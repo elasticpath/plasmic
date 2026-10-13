@@ -518,6 +518,18 @@ export interface EpAccountRegisterRequest {
 }
 
 // @public (undocumented)
+export function EPAccountRegistrationField(props: EPAccountRegistrationFieldProps): React_2.JSX.Element | null;
+
+// @public (undocumented)
+export const epAccountRegistrationFieldMeta: CodeComponentMeta<EPAccountRegistrationFieldProps>;
+
+// @public (undocumented)
+export const EPAccountRegistrationFormProvider: React_2.ForwardRefExoticComponent<EPAccountRegistrationFormProviderProps & React_2.RefAttributes<EPAccountRegistrationFormProviderActions>>;
+
+// @public (undocumented)
+export const epAccountRegistrationFormProviderMeta: CodeComponentMeta<EPAccountRegistrationFormProviderProps>;
+
+// @public (undocumented)
 export interface EpAccountRosterRequest {
     // (undocumented)
     limit?: number;
@@ -1633,6 +1645,12 @@ export function registerEPAccountLoginFormProvider(loader?: Registerable, custom
 
 // @public (undocumented)
 export function registerEPAccountProvider(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountProviderProps>): void;
+
+// @public (undocumented)
+export function registerEPAccountRegistrationField(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountRegistrationFieldProps>): void;
+
+// @public (undocumented)
+export function registerEPAccountRegistrationFormProvider(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountRegistrationFormProviderProps>): void;
 
 // @public (undocumented)
 export function registerEPAddToCartButton(loader?: Registerable, customEPAddToCartButtonMeta?: CodeComponentMeta<EPAddToCartButtonProps>): void;

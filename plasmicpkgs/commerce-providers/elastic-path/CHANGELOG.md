@@ -131,6 +131,21 @@ ignored, and an invalid query falls back to a valid `redirectUrl`. If the
 reload fails, the shopper stays on the page even when a later automatic
 retry succeeds. With neither a valid query nor a valid `redirectUrl`, login
 stays on the page as before. Navigation is a no-op in the Studio canvas.
+
+`EPAccountRegistrationFormProvider` owns name, email, username, password, and
+confirm-password internally and publishes only
+`$ctx.accountRegistrationFormData` (`status`, `error`, `isSubmitting`).
+`EPAccountRegistrationField` is the field: `name` is `name`, `email`,
+`username`, `password`, or `confirmPassword`. Name, email, and password are
+required even when a designer removes that field. Username is required only
+when its field is on the form; otherwise the trimmed email is the username.
+Confirm password is checked only when its field is on the form, and it is
+never sent. A normal Studio button calls the Registration Form Provider's
+`submit()` ref action. That registers through the shared identity client and
+asks the Account Provider to reload. Optional `redirectUrl` follows the same
+same-site rules as login, including `?redirect=`. If the reload fails, the
+shopper stays on the page. Submit and navigation no-op in the Studio canvas.
+
 A normal Studio button calls the Account Provider's `selectAccount(accountId)`
 ref action to choose an organisation. It no-ops in the Plasmic canvas. At
 runtime the already-selected id returns without a request or a reload; any
