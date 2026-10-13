@@ -20,10 +20,13 @@ import {
   SearchInfiniteHitsData,
 } from "./design-time-data";
 import {
+  DEFAULT_PRODUCT_PATH_PREFIX,
+  PRODUCT_PATH_PREFIX_PROP,
+} from "../utils/product-path";
+import {
   buildHitsGridStyle,
   DEFAULT_GRID_GAP,
   DEFAULT_GRID_TEMPLATE_COLUMNS,
-  DEFAULT_PRODUCT_PATH_PREFIX,
   MockSearchHits,
   SearchHitsGrid,
 } from "./EPSearchHits";
@@ -89,13 +92,7 @@ export const epSearchInfiniteHitsMeta: CodeComponentMeta<EPSearchInfiniteHitsPro
         description: "CSS gap between hit cards.",
         defaultValue: DEFAULT_GRID_GAP,
       },
-      productPathPrefix: {
-        type: "string",
-        displayName: "Product Path Prefix",
-        description:
-          "Route prefix used to build each hit's currentHit.path link (prefix + '/' + slug). Set this to match the storefront's PDP route, e.g. \"/products\".",
-        defaultValue: DEFAULT_PRODUCT_PATH_PREFIX,
-      },
+      productPathPrefix: PRODUCT_PATH_PREFIX_PROP,
       previewState: {
         type: "choice",
         options: ["auto", "withData"],

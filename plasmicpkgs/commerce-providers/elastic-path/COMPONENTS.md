@@ -114,9 +114,9 @@ both repeaters publish the same `currentProduct` and the same
 Moving to catalog search also drops the **Products (pre-fetched)** Server Query
 binding, which has no counterpart there.
 
-**Product links.** Bind a card's link to `currentHit.path`. EP Product Grid and
-EP Search Hits both build it as **Product Path Prefix** + `/` + the product's
-slug, or its id when it has no slug. The prefix defaults to `/product` on both.
+**Product links.** Bind a card's link to `currentHit.path`. EP Product Grid, EP
+Search Hits and EP Search Infinite Hits all build it as **Product Path Prefix** + `/` + the product's
+slug, or its id when it has no slug. The prefix defaults to `/product` on all three.
 Set it on the repeater to match your product page route, and set the same value
 when you switch. EP Product Grid builds the link inside EP Related Products
 Provider too. `currentHit.path` is the only link field: `currentProduct` has no

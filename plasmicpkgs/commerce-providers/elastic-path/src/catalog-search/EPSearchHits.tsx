@@ -58,8 +58,6 @@ export const DEFAULT_GRID_TEMPLATE_COLUMNS =
   "repeat(auto-fill, minmax(220px, 1fr))";
 export const DEFAULT_GRID_GAP = "24px";
 
-export const DEFAULT_PRODUCT_PATH_PREFIX = "/product";
-
 interface EPSearchHitsProps {
   children?: React.ReactNode;
   className?: string;
