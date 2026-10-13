@@ -29,7 +29,7 @@ import {
   PRODUCT_PATH_PREFIX_PROP,
   productPath,
 } from "../utils/product-path";
-import { useHits, useInstantSearch } from "react-instantsearch";
+import { useHits } from "react-instantsearch";
 
 type PreviewState = "auto" | "withData";
 
@@ -334,7 +334,6 @@ function EPSearchHitsInner(props: {
   productPathPrefix?: string;
 }) {
   const { hits } = useHits();
-  useInstantSearch();
 
   return <SearchHitsGrid {...props} hits={hits} />;
 }
