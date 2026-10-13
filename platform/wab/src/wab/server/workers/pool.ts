@@ -1,4 +1,5 @@
 import { Config } from "@/wab/server/config";
+import { logger } from "@/wab/server/observability";
 import { trackWorkerPool } from "@/wab/server/promstats";
 import { TraceCarrier, withSpan } from "@/wab/server/util/apm-util";
 import type { workerBuildAssets } from "@/wab/server/workers/build-loader-assets";
@@ -36,11 +37,27 @@ class WorkerPoolWrapper {
 
   exec(method: string, params: any) {
     return withSpan(`workerpool-exec-${method}`, async () => {
+      const pool =
+        method === "loader-assets" ? this.loaderPool : this.genericPool;
+      const stats = pool.stats();
+      logger().info("worker-pool-task-queued", {
+        workerPoolMethod: method,
+        workerPoolPendingTasks: stats.pendingTasks,
+        workerPoolActiveTasks: stats.activeTasks,
+      });
+      const start = Date.now();
       const traceCarrier: TraceCarrier = {};
       propagation.inject(context.active(), traceCarrier);
-      return (method === "loader-assets" ? this.loaderPool : this.genericPool)
-        .exec(method, [...params, traceCarrier])
-        .timeout(TIMEOUT_MS);
+      try {
+        return await pool
+          .exec(method, [...params, traceCarrier])
+          .timeout(TIMEOUT_MS);
+      } finally {
+        logger().info("worker-pool-task-done", {
+          workerPoolMethod: method,
+          workerPoolWaitMs: Date.now() - start,
+        });
+      }
     });
   }
 }
