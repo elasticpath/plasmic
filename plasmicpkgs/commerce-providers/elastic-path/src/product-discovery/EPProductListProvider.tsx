@@ -201,7 +201,7 @@ export const EPProductListProvider = React.forwardRef<
   EPProductListProviderProps
 >(function EPProductListProvider(props, ref) {
   return (
-    <ListingSourceContext.Provider value="product-list">
+    <ListingSourceContext.Provider value="product-grid-data">
       <EPProductListProviderContent {...props} ref={ref} />
     </ListingSourceContext.Provider>
   );

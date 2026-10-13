@@ -3,14 +3,10 @@
  *
  * Reads `productGridData.products` from a parent DataProvider (D4) and renders
  * children once per product via `repeatedElement()`. Each iteration exposes
- * `currentProduct` — the same Elastic Path product shape a product page
- * binds — `currentHit.path`, its product page link built exactly as
- * EPSearchHits builds it, and `currentProductIndex`.
+ * `currentProduct`, `currentHit.path` and `currentProductIndex`.
  *
  * No `parentComponentName` restriction (D5) — works inside both
- * EPProductListProvider and EPRelatedProductsProvider. Inside
- * EPCatalogSearchProvider, which supplies no `productGridData`, it warns once
- * per mount and shows the mismatch on the Studio canvas.
+ * EPProductListProvider and EPRelatedProductsProvider.
  */
 
 import {
@@ -30,7 +26,7 @@ import type { Product } from "../types/product";
 import {
   DEFAULT_PRODUCT_PATH_PREFIX,
   PRODUCT_PATH_PREFIX_PROP,
-  productPath,
+  productHitMeta,
 } from "../utils/product-path";
 
 type PreviewState = "auto" | "withData";
@@ -46,7 +42,7 @@ export const epProductGridMeta: CodeComponentMeta<EPProductGridProps> = {
   name: "plasmic-commerce-ep-product-grid",
   displayName: "EP Product Grid",
   description:
-    "Repeats children for each product in the parent provider's product list. Exposes currentProduct, currentHit.path (the product page link, as EP Search Hits publishes it) and currentProductIndex for data binding. Works inside EP Product List Provider or EP Related Products Provider. Inside EP Catalog Search Provider, use EP Search Hits instead.",
+    "Repeats children for each product in the parent provider's product list. Exposes currentProduct, currentHit.path (the product page link, as EP Search Hits publishes it) and currentProductIndex for data binding. Works inside EP Product List Provider or EP Related Products Provider. Inside EP Catalog Search Provider, use EP Search Hits or EP Search Infinite Hits instead.",
   props: {
     children: {
       type: "slot",
@@ -106,12 +102,12 @@ export function EPProductGrid(props: EPProductGridProps) {
     return gridData?.products ?? [];
   }, [useMock, gridData?.products]);
 
-  if (inCatalogSearch && inEditor) {
-    return (
+  if (inCatalogSearch) {
+    return inEditor ? (
       <div className={className} data-ep-product-grid-notice="">
         {PRODUCT_GRID_IN_CATALOG_SEARCH}
       </div>
-    );
+    ) : null;
   }
 
   if (products.length === 0) return null;
@@ -123,7 +119,7 @@ export function EPProductGrid(props: EPProductGridProps) {
           <DataProvider name="currentProduct" data={product}>
             <DataProvider
               name="currentHit"
-              data={{ path: productPath(product, productPathPrefix), raw: {} }}
+              data={productHitMeta(product, productPathPrefix)}
             >
               <DataProvider name="currentProductIndex" data={i}>
                 {repeatedElement(i, children)}
@@ -138,9 +134,9 @@ export function EPProductGrid(props: EPProductGridProps) {
 
 const PRODUCT_GRID_IN_CATALOG_SEARCH =
   "EP Product Grid is inside EP Catalog Search Provider, which does not " +
-  "supply the grid's products. Use EP Search Hits to list search results, " +
-  "or move the grid into EP Product List Provider or EP Related Products " +
-  "Provider.";
+  "supply the grid's products. Use EP Search Hits or EP Search Infinite " +
+  "Hits to list search results, or move the grid into EP Product List " +
+  "Provider or EP Related Products Provider.";
 
 function useWarnInCatalogSearch(inCatalogSearch: boolean) {
   const warned = useRef(false);
