@@ -450,14 +450,16 @@ export function addLoggingMiddleware(app: express.Application) {
     const start = Date.now();
     res.on("finish", () => {
       const duration = Date.now() - start;
+      const endpoint = getTemplatedEndpointFromExpressRoutePath(req.route?.path);
       incHttpRequestCount({
-        endpoint: getTemplatedEndpointFromExpressRoutePath(req.route?.path),
+        endpoint,
         responseCode: res.statusCode,
       });
       logger().info(
         `${req.method} ${req.originalUrl} ${res.statusCode} (${duration}ms)`,
         {
           requestMethod: req.method,
+          requestEndpoint: endpoint,
           requestOriginalUrl: req.originalUrl,
           requestStatusCode: res.statusCode,
           x_request_id: req.id,
