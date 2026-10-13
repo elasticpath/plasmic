@@ -22,6 +22,7 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../registerable";
+import { ListingSourceContext } from "./listing-source";
 import { useRelatedProducts } from "./use-related-products";
 import {
   MOCK_RELATED_PRODUCTS_DATA,
@@ -130,6 +131,16 @@ export const epRelatedProductsProviderMeta: CodeComponentMeta<EPRelatedProductsP
   };
 
 export function EPRelatedProductsProvider(
+  props: EPRelatedProductsProviderProps
+) {
+  return (
+    <ListingSourceContext.Provider value="product-list">
+      <EPRelatedProductsProviderContent {...props} />
+    </ListingSourceContext.Provider>
+  );
+}
+
+function EPRelatedProductsProviderContent(
   props: EPRelatedProductsProviderProps
 ) {
   const {

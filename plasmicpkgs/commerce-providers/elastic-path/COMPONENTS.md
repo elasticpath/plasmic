@@ -105,6 +105,13 @@ Moving to catalog search also drops the **Products (pre-fetched)** Server Query
 binding, which has no counterpart there. Set EP Search Hits' route prefix so
 product links match your product page route.
 
+An EP Product Grid left inside EP Catalog Search Provider renders nothing,
+because the search provider does not supply its products. The grid logs a
+console warning once, and on the Studio canvas shows that message in place of
+sample products. Replace it with EP Search Hits. A grid inside EP Product List
+Provider or EP Related Products Provider does not warn, even when that provider
+sits inside catalog search.
+
 ---
 
 ## 4. Cart

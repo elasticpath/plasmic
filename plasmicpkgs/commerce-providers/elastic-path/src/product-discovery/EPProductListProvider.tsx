@@ -36,6 +36,7 @@ import React, {
   useState,
 } from "react";
 import { Registerable } from "../registerable";
+import { ListingSourceContext } from "./listing-source";
 import { useProductList } from "./use-product-list";
 import { MOCK_PRODUCT_GRID_DATA, ProductGridData } from "./design-time-data";
 import type { Product } from "../types/product";
@@ -199,6 +200,17 @@ export const EPProductListProvider = React.forwardRef<
   EPProductListProviderActions,
   EPProductListProviderProps
 >(function EPProductListProvider(props, ref) {
+  return (
+    <ListingSourceContext.Provider value="product-list">
+      <EPProductListProviderContent {...props} ref={ref} />
+    </ListingSourceContext.Provider>
+  );
+});
+
+const EPProductListProviderContent = React.forwardRef<
+  EPProductListProviderActions,
+  EPProductListProviderProps
+>(function EPProductListProviderContent(props, ref) {
   const {
     children,
     loadingContent,
