@@ -577,7 +577,9 @@ function addMiddlewares(
     })
   );
 
-  app.use(customEPCCCookieAuth);
+  if (!opts?.skipSession) {
+    app.use(customEPCCCookieAuth);
+  }
 
   app.use((req, res, next) => {
     // For Plasmic users, let's instrument the DbMgr and track their call durations.
@@ -1215,6 +1217,7 @@ export function addCodegenRoutes(app: express.Application) {
 }
 
 export function addImgOptimizerRoutes(app: express.Application) {
+  // In-memory, so the limit counts per task, not across the fleet.
   app.use("/img-optimizer", createRateLimiter({ windowMs: 60 * 1000, limit: 60 }));
   // Image optimization endpoints
   app.get("/img-optimizer/v1/img", optimizeImageHandler);

@@ -12,7 +12,9 @@ export async function createImgOptimizerApp(config: Config) {
   const { app } = await createApp(
     "img-optimizer",
     config,
-    addImgOptimizerRoutes
+    addImgOptimizerRoutes,
+    undefined,
+    { skipSession: true }
   );
   return app;
 }

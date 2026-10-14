@@ -7,11 +7,13 @@ jest.mock("aws-sdk/clients/s3");
 jest.mock("sharp");
 
 import { closeDbConnections } from "@/wab/server/db/DbCon";
+import { ExpressSession } from "@/wab/server/entities/Entities";
 import S3 from "aws-sdk/clients/s3";
 import http from "http";
 import { AddressInfo } from "net";
 import { register } from "prom-client";
 import sharp from "sharp";
+import { getConnection } from "typeorm";
 
 const ASSET_KEY = "abcdef0123456789abcdef0123456789.jpg";
 const ORIGINAL_BYTES = Buffer.from("original-image");
@@ -120,6 +122,42 @@ describe("image optimizer HTTP boundary", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toMatch(/^image\//);
+    expect(Buffer.from(await res.arrayBuffer())).toEqual(OPTIMIZED_BYTES);
+  });
+
+  it("sets no cookie on a request without one", async () => {
+    const res = await fetch(
+      `${baseUrl}/img-optimizer/v1/img/${ASSET_KEY}?w=400`
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("writes no session row for a request without a cookie", async () => {
+    const sessions = getConnection().getRepository(ExpressSession);
+    const before = await sessions.count();
+
+    const res = await fetch(
+      `${baseUrl}/img-optimizer/v1/img/${ASSET_KEY}?w=400`
+    );
+    await res.arrayBuffer();
+
+    expect(res.status).toBe(200);
+    expect(await sessions.count()).toBe(before);
+  });
+
+  it("ignores a CM auth cookie", async () => {
+    const res = await fetch(
+      `${baseUrl}/img-optimizer/v1/img/${ASSET_KEY}?w=400`,
+      {
+        headers: { cookie: "cms_auth_token=not-a-valid-jwt" },
+        signal: AbortSignal.timeout(5000),
+      }
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("set-cookie")).toBeNull();
     expect(Buffer.from(await res.arrayBuffer())).toEqual(OPTIMIZED_BYTES);
   });
 
