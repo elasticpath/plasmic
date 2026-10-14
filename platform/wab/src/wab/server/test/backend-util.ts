@@ -1,4 +1,5 @@
 import { runAppServer } from "@/wab/server/app-backend-real";
+import type { Config } from "@/wab/server/config";
 import { closeDbConnections, ensureDbConnection, MIGRATION_POOL_NAME } from "@/wab/server/db/DbCon";
 import { getConnectionManager } from "typeorm";
 import { register } from "prom-client";
@@ -130,6 +131,24 @@ export async function createDatabase(name = "test") {
   };
 }
 
+export function testConfig(databaseUri: string, host: string): Config {
+  return {
+    databaseUri,
+    host,
+    adminEmails: [],
+    production: false,
+    sessionSecret: "secret",
+    mailFrom: "",
+    mailUserOps: "",
+    terminationGracePeriodMs: 5000,
+    keepAliveTimeoutMs: 60000,
+    genericWorkerPoolSize: 1,
+    loaderWorkerPoolSize: 1,
+    enableCommentNotificationJob: false,
+    enablePruneCacheJob: false,
+  };
+}
+
 export async function createBackend(
   dburi: string,
   opts?: {
@@ -150,21 +169,9 @@ export async function createBackend(
     },
     async () => {
       const server = await runAppServer({
-        databaseUri: dburi,
+        ...testConfig(dburi, `http://localhost:${port}`),
         port: port,
-        host: `http://localhost:${port}`,
-        adminEmails: [],
-        production: false,
-        sessionSecret: "secret",
-        mailFrom: "",
-        mailUserOps: "",
         mailBcc: "",
-        terminationGracePeriodMs: 5000,
-        keepAliveTimeoutMs: 60000,
-        genericWorkerPoolSize: 1,
-        loaderWorkerPoolSize: 1,
-        enableCommentNotificationJob: false,
-        enablePruneCacheJob: false,
       });
 
       return {

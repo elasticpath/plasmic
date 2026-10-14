@@ -29,9 +29,8 @@ const s3Config: S3.Types.ClientConfiguration = {
 const s3 = new S3(s3Config);
 
 function generateCacheKey(params: OptimizeParams): string {
-  // Create a deterministic cache key from optimization parameters
   const keyData = {
-    src: params.src,
+    assetKey: params.assetKey,
     width: params.width,
     height: params.height,
     quality: params.quality,
@@ -87,7 +86,7 @@ async function uploadOptimizedImage(
 }
 
 interface OptimizeParams {
-  src: string;
+  assetKey: string;
   width?: number;
   height?: number;
   quality?: number;
@@ -108,7 +107,8 @@ function validateParams(query: any): OptimizeParams {
     throw new BadRequestError("Invalid URL in src parameter");
   }
 
-  if (!extractS3Key(src)) {
+  const assetKey = extractS3Key(src);
+  if (!assetKey) {
     throw new BadRequestError("Invalid image URL format");
   }
 
@@ -133,7 +133,7 @@ function validateParams(query: any): OptimizeParams {
 
   const format = f === "webp" ? "webp" : undefined;
 
-  return { src, width, height, quality, format };
+  return { assetKey, width, height, quality, format };
 }
 
 function extractS3Key(url: string): string | null {
@@ -166,23 +166,27 @@ function extractS3Key(url: string): string | null {
   }
 }
 
-async function fetchImageBuffer(url: string): Promise<Buffer> {
-  const s3Key = extractS3Key(url);
-
-  if (!s3Key) {
-    throw new BadRequestError("Invalid image URL format");
-  }
-
+async function fetchSourceImage(assetKey: string): Promise<Buffer> {
   try {
     const result = await s3
       .getObject({
         Bucket: siteAssetsBucket,
-        Key: s3Key,
+        Key: assetKey,
       })
       .promise();
 
     if (!result.Body || !result.ContentType?.startsWith("image/")) {
       throw new BadRequestError("Object is not a valid image");
+    }
+
+    if (
+      result.ContentType.startsWith("image/svg") ||
+      assetKey.toLowerCase().endsWith(".svg") ||
+      isSVG(result.Body as Buffer)
+    ) {
+      throw new BadRequestError(
+        "SVG images are not supported by the image optimizer"
+      );
     }
 
     return result.Body as Buffer;
@@ -196,16 +200,8 @@ async function fetchImageBuffer(url: string): Promise<Buffer> {
 
 async function optimizeImage(
   buffer: Buffer,
-  { width, height, quality, format }: Omit<OptimizeParams, "src">
+  { width, height, quality, format }: Omit<OptimizeParams, "assetKey">
 ): Promise<{ buffer: Buffer; contentType: string }> {
-  // Skip processing for SVGs
-  if (isSVG(buffer)) {
-    return {
-      buffer,
-      contentType: "image/svg+xml",
-    };
-  }
-
   let sharpInstance = sharp(buffer);
 
   // Get original metadata
@@ -269,7 +265,7 @@ export async function fetchAndOptimizeSingleFlight(
   }
 
   const processingPromise = (async () => {
-    const imageBuffer = await fetchImageBuffer(params.src);
+    const imageBuffer = await fetchSourceImage(params.assetKey);
     return optimizeImage(imageBuffer, params);
   })();
 
@@ -287,8 +283,8 @@ export async function fetchAndOptimizeSingleFlight(
 }
 
 export async function optimizeImageHandler(req: Request, res: Response) {
+  const params = validateParams(req.query);
   try {
-    const params = validateParams(req.query);
     const cacheKey = generateCacheKey(params);
 
     const cachedImage = await getCachedImage(cacheKey);
@@ -315,25 +311,20 @@ export async function optimizeImageHandler(req: Request, res: Response) {
     }
 
     // For other errors, try to serve the original image
-    const { src } = req.query;
-    if (src) {
-      try {
-        const originalBuffer = await fetchImageBuffer(src as string);
-        const srcPath = new URL(src as string).pathname.toLowerCase();
-        const contentType = srcPath.endsWith(".png") ? "image/png"
-          : srcPath.endsWith(".webp") ? "image/webp"
-          : "image/jpeg";
+    try {
+      const originalBuffer = await fetchSourceImage(params.assetKey);
+      const assetKey = params.assetKey.toLowerCase();
+      const contentType = assetKey.endsWith(".png") ? "image/png"
+        : assetKey.endsWith(".webp") ? "image/webp"
+        : "image/jpeg";
 
-        res.set({
-          "Content-Type": contentType,
-          "Cache-Control": "public, max-age=300", // 5 minutes for errors
-          "X-Cache": "ERROR",
-        });
-        res.send(originalBuffer);
-      } catch (fetchError) {
-        throw new BadRequestError("Image processing failed");
-      }
-    } else {
+      res.set({
+        "Content-Type": contentType,
+        "Cache-Control": "public, max-age=300", // 5 minutes for errors
+        "X-Cache": "ERROR",
+      });
+      res.send(originalBuffer);
+    } catch (fetchError) {
       throw new BadRequestError("Image processing failed");
     }
   }

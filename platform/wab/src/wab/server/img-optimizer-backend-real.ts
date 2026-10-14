@@ -6,11 +6,21 @@ import { ensureDbConnections } from "@/wab/server/db/DbCon";
 import { runExpressApp, setupServerCli } from "@/wab/server/server-common";
 import "core-js";
 
-async function runImgOptimizerServer(config: Config) {
+export async function createImgOptimizerApp(config: Config) {
   await ensureDbConnections(config.databaseUri);
-  
-  const { app } = await createApp("img-optimizer", config, addImgOptimizerRoutes);
-  return runExpressApp(app);
+
+  const { app } = await createApp(
+    "img-optimizer",
+    config,
+    addImgOptimizerRoutes,
+    undefined,
+    { skipSession: true }
+  );
+  return app;
+}
+
+async function runImgOptimizerServer(config: Config) {
+  return runExpressApp(await createImgOptimizerApp(config));
 }
 
 export async function imgOptimizerBackendMain() {
