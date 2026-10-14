@@ -3,12 +3,46 @@ process.env.SITE_ASSETS_BUCKET = "test-bucket";
 process.env.SITE_ASSETS_BASE_URL = "https://test-assets.example.com/";
 process.env.S3_ENDPOINT = "https://s3.amazonaws.com";
 
-jest.mock("aws-sdk/clients/s3");
+jest.mock("@aws-sdk/client-s3", () => ({
+  S3Client: jest.fn(),
+  GetObjectCommand: jest.fn(),
+  PutObjectCommand: jest.fn(),
+}));
 jest.mock("sharp");
 
 import { BadRequestError } from "@/wab/shared/ApiErrors/errors";
-import S3 from "aws-sdk/clients/s3";
+import {
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import sharp from "sharp";
+
+type S3Mock = { getObject: jest.Mock; putObject: jest.Mock };
+
+/** v3 bodies are streams, exposing transformToByteArray rather than a Buffer. */
+function mkBody(content: Buffer) {
+  return { transformToByteArray: async () => new Uint8Array(content) };
+}
+
+// v3 dispatches every operation through `send(command)`, so route each command
+// to the matching mock by the command class that built it.
+function installS3Mock(s3Mock: S3Mock) {
+  (GetObjectCommand as unknown as jest.Mock).mockImplementation((input) => ({
+    op: "get",
+    input,
+  }));
+  (PutObjectCommand as unknown as jest.Mock).mockImplementation((input) => ({
+    op: "put",
+    input,
+  }));
+  (S3Client as unknown as jest.Mock).mockImplementation(() => ({
+    send: (command: { op: string; input: unknown }) =>
+      command.op === "get"
+        ? s3Mock.getObject(command.input)
+        : s3Mock.putObject(command.input),
+  }));
+}
 
 // Simple unit tests focused on core validation logic
 describe("img-optimizer routes", () => {
@@ -257,14 +291,12 @@ describe("fetchAndOptimizeSingleFlight", () => {
     quality: 75,
   };
 
-  function makeS3Mock() {
+  function makeS3Mock(): S3Mock {
     return {
-      getObject: jest.fn().mockReturnValue({
-        promise: jest.fn().mockResolvedValue({ Body: mockBuffer, ContentType: "image/jpeg" }),
-      }),
-      upload: jest.fn().mockReturnValue({
-        promise: jest.fn().mockResolvedValue({ Location: "https://s3/cached" }),
-      }),
+      getObject: jest
+        .fn()
+        .mockResolvedValue({ Body: mkBody(mockBuffer), ContentType: "image/jpeg" }),
+      putObject: jest.fn().mockResolvedValue({}),
     };
   }
 
@@ -295,7 +327,7 @@ describe("fetchAndOptimizeSingleFlight", () => {
   });
 
   it("first caller gets coalesced: false, concurrent caller gets coalesced: true", async () => {
-    (S3 as jest.MockedClass<typeof S3>).mockImplementation(() => makeS3Mock() as any);
+    installS3Mock(makeS3Mock());
     setupSharpMock();
     const fetchAndOptimizeSingleFlight = loadFn();
 
@@ -310,7 +342,7 @@ describe("fetchAndOptimizeSingleFlight", () => {
   });
 
   it("removes the cacheKey from the map after a successful call", async () => {
-    (S3 as jest.MockedClass<typeof S3>).mockImplementation(() => makeS3Mock() as any);
+    installS3Mock(makeS3Mock());
     setupSharpMock();
     const fetchAndOptimizeSingleFlight = loadFn();
 
@@ -324,10 +356,8 @@ describe("fetchAndOptimizeSingleFlight", () => {
   it("removes the cacheKey from the map after a failed call", async () => {
     const s3Mock = makeS3Mock();
     // First getObject call rejects; default mock handles subsequent calls (success).
-    s3Mock.getObject.mockReturnValueOnce({
-      promise: jest.fn().mockRejectedValue(new Error("S3 error")),
-    });
-    (S3 as jest.MockedClass<typeof S3>).mockImplementation(() => s3Mock as any);
+    s3Mock.getObject.mockRejectedValueOnce(new Error("S3 error"));
+    installS3Mock(s3Mock);
     setupSharpMock();
     const fetchAndOptimizeSingleFlight = loadFn();
 
@@ -343,15 +373,13 @@ describe("fetchAndOptimizeSingleFlight", () => {
 describe("image source validation", () => {
   const assetKey = "abcdef0123456789abcdef0123456789.jpg";
 
-  function makeS3Mock() {
+  function makeS3Mock(): S3Mock {
     return {
-      getObject: jest.fn().mockReturnValue({
-        promise: jest.fn().mockResolvedValue({
-          Body: Buffer.from("cached-image"),
-          ContentType: "image/jpeg",
-        }),
+      getObject: jest.fn().mockResolvedValue({
+        Body: mkBody(Buffer.from("cached-image")),
+        ContentType: "image/jpeg",
       }),
-      upload: jest.fn(),
+      putObject: jest.fn(),
     };
   }
 
@@ -367,7 +395,7 @@ describe("image source validation", () => {
     return { set: jest.fn(), send: jest.fn() } as any;
   }
 
-  let s3Mock: ReturnType<typeof makeS3Mock>;
+  let s3Mock: S3Mock;
 
   // The first describe block clears these in its afterAll.
   beforeAll(() => {
@@ -383,7 +411,7 @@ describe("image source validation", () => {
   beforeEach(() => {
     jest.resetAllMocks();
     s3Mock = makeS3Mock();
-    (S3 as jest.MockedClass<typeof S3>).mockImplementation(() => s3Mock as any);
+    installS3Mock(s3Mock);
   });
 
   it("rejects an image id that is not an asset key without reading from S3", async () => {
