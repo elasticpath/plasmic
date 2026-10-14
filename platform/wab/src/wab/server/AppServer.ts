@@ -376,7 +376,7 @@ function shouldIgnoreErrorByMessage(message: string) {
   return ignoredErrorMessages.some((pattern) => message.includes(pattern));
 }
 
-function addDatadogMiddleware(app: express.Application) {
+export function addDatadogMiddleware(app: express.Application) {
   // dd-trace auto-instruments Express — no requestHandler/tracingHandler needed.
   // Tag the active span with projectId for correlation in Datadog APM.
   app.use((req, _res, next) => {
@@ -402,7 +402,7 @@ export function getStatusCodeFromResponse(error: any): number {
   return statusCode ? parseInt(statusCode as string, 10) : 500;
 }
 
-function addDatadogErrorHandler(app: express.Application) {
+export function addDatadogErrorHandler(app: express.Application) {
   /** Returns true if response code is internal server error */
   const defaultShouldHandleError = (error: any): boolean => {
     const status = getStatusCodeFromResponse(transformErrors(error));
