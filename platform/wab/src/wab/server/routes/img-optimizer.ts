@@ -1,3 +1,4 @@
+import { logger } from "@/wab/server/observability";
 import { md5 } from "@/wab/server/util/hash";
 import { BadRequestError, NotFoundError } from "@/wab/shared/ApiErrors/errors";
 import { isSVG } from "@/wab/shared/svg-utils";
@@ -58,7 +59,7 @@ async function getCachedImage(cacheKey: string): Promise<{ buffer: Buffer; conte
     return null;
   } catch (error) {
     if (error.code !== "NoSuchKey" && error.code !== "NotFound") {
-      console.error("[IMG-OPTIMIZER] S3 cache lookup failed:", error);
+      logger().error("[IMG-OPTIMIZER] S3 cache lookup failed", { err: error });
     }
     return null;
   }
@@ -277,7 +278,7 @@ export async function fetchAndOptimizeSingleFlight(
   try {
     const result = await processingPromise;
     uploadOptimizedImage(cacheKey, result.buffer, result.contentType).catch((error) => {
-      console.error("[IMG-OPTIMIZER] Failed to cache image:", error);
+      logger().error("[IMG-OPTIMIZER] Failed to cache image", { err: error });
     });
     return { ...result, coalesced: false };
   } finally {
