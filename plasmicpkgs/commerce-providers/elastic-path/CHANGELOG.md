@@ -18,6 +18,13 @@ storefront's own origin.
 [ADR-0003](docs/adr/0003-one-session-for-elastic-path-identity.md) records the
 decision. Upgrade in one step: no release supports both designs.
 
+Publish the hostless package in the same step as the storefront's npm
+upgrade. The components in a Visual Builder project come from the hostless
+package, and the routes they call come from the storefront. In 0.8.0 and
+earlier, the Elastic Path Provider on every page reads the cart from
+`/api/ep/cart` and writes it to `/api/ep/cart/items`. This release removes
+those routes, so on an upgraded storefront those reads and writes return 404.
+
 The package needs Node 22.12 or later, and says so in `engines`. The CommonJS
 build `require`s better-auth, which ships only as ES modules.
 
