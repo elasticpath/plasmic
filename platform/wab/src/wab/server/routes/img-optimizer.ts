@@ -13,6 +13,9 @@ const DEFAULT_QUALITY = 75;
 const siteAssetsBucket = process.env.SITE_ASSETS_BUCKET as string;
 const siteAssetsBaseUrl = process.env.SITE_ASSETS_BASE_URL as string;
 
+// Site assets are uploaded under `{md5}.{ext}` (see cdn/images.ts).
+const ASSET_KEY_PATTERN = /^[a-f0-9]{32}\.[a-zA-Z0-9]+$/;
+
 // Per-process single-flight map: prevents concurrent requests for the same
 // cache key from each spawning independent S3 fetches and Sharp jobs.
 const inFlightRequests = new Map<string, Promise<{ buffer: Buffer; contentType: string }>>();
@@ -104,6 +107,10 @@ function validateParams(query: any): OptimizeParams {
     throw new BadRequestError("Invalid URL in src parameter");
   }
 
+  if (!extractS3Key(src)) {
+    throw new BadRequestError("Invalid image URL format");
+  }
+
   const width = w ? parseInt(w, 10) : undefined;
   if (width && (isNaN(width) || width <= 0 || width > MAX_WIDTH)) {
     throw new BadRequestError(
@@ -137,7 +144,8 @@ function extractS3Key(url: string): string | null {
     // 3. Just the key itself
 
     if (siteAssetsBaseUrl && url.startsWith(siteAssetsBaseUrl)) {
-      return url.substring(siteAssetsBaseUrl.length);
+      const key = url.substring(siteAssetsBaseUrl.length);
+      return ASSET_KEY_PATTERN.test(key) ? key : null;
     }
 
     // Check if it's a direct S3 URL pattern
@@ -147,7 +155,7 @@ function extractS3Key(url: string): string | null {
     }
 
     // Check if it's just the key itself (32-char hex + extension)
-    if (/^[a-f0-9]{32}\.[a-zA-Z0-9]+$/.test(url)) {
+    if (ASSET_KEY_PATTERN.test(url)) {
       return url;
     }
 

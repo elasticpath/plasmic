@@ -364,3 +364,98 @@ describe("fetchAndOptimizeSingleFlight", () => {
     expect(retry.coalesced).toBe(false);
   });
 });
+describe("image source validation", () => {
+  const assetKey = "abcdef0123456789abcdef0123456789.jpg";
+
+  function makeS3Mock() {
+    return {
+      getObject: jest.fn().mockReturnValue({
+        promise: jest.fn().mockResolvedValue({
+          Body: Buffer.from("cached-image"),
+          ContentType: "image/jpeg",
+        }),
+      }),
+      upload: jest.fn(),
+    };
+  }
+
+  function loadHandlers(): typeof import("./img-optimizer") {
+    let mod: typeof import("./img-optimizer");
+    jest.isolateModules(() => {
+      mod = require("./img-optimizer");
+    });
+    return mod!;
+  }
+
+  function makeRes() {
+    return { set: jest.fn(), send: jest.fn() } as any;
+  }
+
+  let s3Mock: ReturnType<typeof makeS3Mock>;
+
+  // The first describe block clears these in its afterAll.
+  beforeAll(() => {
+    process.env.SITE_ASSETS_BUCKET = "test-bucket";
+    process.env.SITE_ASSETS_BASE_URL = "https://test-assets.example.com/";
+  });
+
+  afterAll(() => {
+    delete process.env.SITE_ASSETS_BUCKET;
+    delete process.env.SITE_ASSETS_BASE_URL;
+  });
+
+  beforeEach(() => {
+    jest.resetAllMocks();
+    s3Mock = makeS3Mock();
+    (S3 as jest.MockedClass<typeof S3>).mockImplementation(() => s3Mock as any);
+  });
+
+  it("rejects an image id that is not an asset key without reading from S3", async () => {
+    const { optimizeImageStaticHandler } = loadHandlers();
+
+    await expect(
+      optimizeImageStaticHandler(
+        { params: { imageId: "logo.png" }, query: {} } as any,
+        makeRes()
+      )
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(s3Mock.getObject).not.toHaveBeenCalled();
+  });
+
+  it("serves an image id that is an asset key", async () => {
+    const { optimizeImageStaticHandler } = loadHandlers();
+    const res = makeRes();
+
+    await optimizeImageStaticHandler(
+      { params: { imageId: assetKey }, query: {} } as any,
+      res
+    );
+
+    expect(s3Mock.getObject).toHaveBeenCalled();
+    expect(res.send).toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a non-asset path on the asset host", "https://test-assets.example.com/images/logo.png"],
+    ["an image on another host", "https://external.example.com/image.jpg"],
+  ])("rejects %s as src without reading from S3", async (_label, src) => {
+    const { optimizeImageHandler } = loadHandlers();
+
+    await expect(
+      optimizeImageHandler({ query: { src } } as any, makeRes())
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(s3Mock.getObject).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["the asset host", `https://test-assets.example.com/${assetKey}`],
+    ["another host", `https://cdn.example.com/${assetKey}`],
+  ])("serves an asset key on %s as src", async (_label, src) => {
+    const { optimizeImageHandler } = loadHandlers();
+    const res = makeRes();
+
+    await optimizeImageHandler({ query: { src } } as any, res);
+
+    expect(res.send).toHaveBeenCalled();
+  });
+});
