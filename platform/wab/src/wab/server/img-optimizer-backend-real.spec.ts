@@ -16,18 +16,35 @@ import sharp from "sharp";
 const ASSET_KEY = "abcdef0123456789abcdef0123456789.jpg";
 const ORIGINAL_BYTES = Buffer.from("original-image");
 const OPTIMIZED_BYTES = Buffer.from("optimized-image");
+const SVG_KEY = "0123456789abcdef0123456789abcdef.svg";
+const PNG_KEY = "fedcba9876543210fedcba9876543210.png";
+const SVG_BYTES = Buffer.from(
+  '<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>'
+);
+const SVG_AFTER_LONG_PREAMBLE = Buffer.concat([
+  Buffer.from(`<!--${" ".repeat(12 * 1024)}-->`),
+  SVG_BYTES,
+]);
+
+type S3Object = { Body: Buffer; ContentType: string };
 
 const s3 = { getObject: jest.fn(), upload: jest.fn() };
 
-function stubS3AndSharp() {
+function stubGetObject(objects: Map<string, S3Object>) {
   s3.getObject.mockImplementation(({ Key }: { Key: string }) => ({
     promise: () =>
-      Key === ASSET_KEY
-        ? Promise.resolve({ Body: ORIGINAL_BYTES, ContentType: "image/jpeg" })
+      objects.has(Key)
+        ? Promise.resolve(objects.get(Key))
         : Promise.reject(
             Object.assign(new Error("NoSuchKey"), { code: "NoSuchKey" })
           ),
   }));
+}
+
+function stubS3AndSharp() {
+  stubGetObject(
+    new Map([[ASSET_KEY, { Body: ORIGINAL_BYTES, ContentType: "image/jpeg" }]])
+  );
   s3.upload.mockImplementation(() => ({
     promise: () => Promise.resolve({ Location: "https://s3/cached" }),
   }));
@@ -104,5 +121,85 @@ describe("image optimizer HTTP boundary", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toMatch(/^image\//);
     expect(Buffer.from(await res.arrayBuffer())).toEqual(OPTIMIZED_BYTES);
+  });
+
+  describe("svg sources", () => {
+    it("serves a png asset", async () => {
+      stubGetObject(
+        new Map([
+          [PNG_KEY, { Body: Buffer.from("png-image"), ContentType: "image/png" }],
+        ])
+      );
+
+      const res = await fetch(`${baseUrl}/img-optimizer/v1/img/${PNG_KEY}?w=400`);
+
+      expect(res.status).toBe(200);
+      expect(Buffer.from(await res.arrayBuffer())).toEqual(OPTIMIZED_BYTES);
+    });
+
+    it("rejects an svg asset with 400 and caches nothing", async () => {
+      stubGetObject(
+        new Map([[SVG_KEY, { Body: SVG_BYTES, ContentType: "image/svg+xml" }]])
+      );
+
+      const res = await fetch(`${baseUrl}/img-optimizer/v1/img/${SVG_KEY}?w=400`);
+
+      expect(res.status).toBe(400);
+      expect(await res.text()).toMatch(/SVG images are not supported/);
+      expect(s3.upload).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["stored as image/svg+xml", PNG_KEY, "image/svg+xml"],
+      ["stored under an svg key", SVG_KEY, "image/png"],
+    ])(
+      "rejects an svg past the content sniff window when %s",
+      async (_label, key, contentType) => {
+        stubGetObject(
+          new Map([
+            [key, { Body: SVG_AFTER_LONG_PREAMBLE, ContentType: contentType }],
+          ])
+        );
+
+        const res = await fetch(`${baseUrl}/img-optimizer/v1/img/${key}?w=400`);
+
+        expect(res.status).toBe(400);
+        expect(s3.upload).not.toHaveBeenCalled();
+      }
+    );
+
+    it("rejects svg content stored under a png key", async () => {
+      stubGetObject(
+        new Map([[PNG_KEY, { Body: SVG_BYTES, ContentType: "image/png" }]])
+      );
+      const src = encodeURIComponent(`https://test-assets.example.com/${PNG_KEY}`);
+
+      const res = await fetch(`${baseUrl}/img-optimizer/v1/img?src=${src}&w=400`);
+
+      expect(res.status).toBe(400);
+      expect(await res.text()).toMatch(/SVG images are not supported/);
+      expect(s3.upload).not.toHaveBeenCalled();
+    });
+
+    it("does not serve svg bytes from the error fallback", async () => {
+      const objects = new Map<string, S3Object>([
+        [PNG_KEY, { Body: Buffer.from("png-image"), ContentType: "image/png" }],
+      ]);
+      stubGetObject(objects);
+      (sharp as unknown as jest.Mock).mockImplementation(() => {
+        objects.set(PNG_KEY, { Body: SVG_BYTES, ContentType: "image/svg+xml" });
+        throw new Error("sharp exploded");
+      });
+
+      const res = await fetch(`${baseUrl}/img-optimizer/v1/img/${PNG_KEY}?w=400`);
+      const body = Buffer.from(await res.arrayBuffer());
+
+      expect(res.status).toBe(400);
+      expect(body.includes(SVG_BYTES)).toBe(false);
+      expect(s3.upload).not.toHaveBeenCalled();
+      expect(
+        s3.getObject.mock.calls.filter(([{ Key }]) => Key === PNG_KEY)
+      ).toHaveLength(2);
+    });
   });
 });

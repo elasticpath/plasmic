@@ -185,6 +185,16 @@ async function fetchImageBuffer(url: string): Promise<Buffer> {
       throw new BadRequestError("Object is not a valid image");
     }
 
+    if (
+      result.ContentType.startsWith("image/svg") ||
+      s3Key.toLowerCase().endsWith(".svg") ||
+      isSVG(result.Body as Buffer)
+    ) {
+      throw new BadRequestError(
+        "SVG images are not supported by the image optimizer"
+      );
+    }
+
     return result.Body as Buffer;
   } catch (error) {
     if (error.code === "NoSuchKey" || error.code === "NotFound") {
@@ -198,14 +208,6 @@ async function optimizeImage(
   buffer: Buffer,
   { width, height, quality, format }: Omit<OptimizeParams, "src">
 ): Promise<{ buffer: Buffer; contentType: string }> {
-  // Skip processing for SVGs
-  if (isSVG(buffer)) {
-    return {
-      buffer,
-      contentType: "image/svg+xml",
-    };
-  }
-
   let sharpInstance = sharp(buffer);
 
   // Get original metadata
