@@ -1,3 +1,4 @@
+import { logger } from "@/wab/server/observability";
 import { md5 } from "@/wab/server/util/hash";
 import { BadRequestError, NotFoundError } from "@/wab/shared/ApiErrors/errors";
 import { isSVG } from "@/wab/shared/svg-utils";
@@ -12,6 +13,9 @@ const DEFAULT_QUALITY = 75;
 
 const siteAssetsBucket = process.env.SITE_ASSETS_BUCKET as string;
 const siteAssetsBaseUrl = process.env.SITE_ASSETS_BASE_URL as string;
+
+// Site assets are uploaded under `{md5}.{ext}` (see cdn/images.ts).
+const ASSET_KEY_PATTERN = /^[a-f0-9]{32}\.[a-zA-Z0-9]+$/;
 
 // Per-process single-flight map: prevents concurrent requests for the same
 // cache key from each spawning independent S3 fetches and Sharp jobs.
@@ -55,7 +59,7 @@ async function getCachedImage(cacheKey: string): Promise<{ buffer: Buffer; conte
     return null;
   } catch (error) {
     if (error.code !== "NoSuchKey" && error.code !== "NotFound") {
-      console.error("[IMG-OPTIMIZER] S3 cache lookup failed:", error);
+      logger().error("[IMG-OPTIMIZER] S3 cache lookup failed", { err: error });
     }
     return null;
   }
@@ -104,6 +108,10 @@ function validateParams(query: any): OptimizeParams {
     throw new BadRequestError("Invalid URL in src parameter");
   }
 
+  if (!extractS3Key(src)) {
+    throw new BadRequestError("Invalid image URL format");
+  }
+
   const width = w ? parseInt(w, 10) : undefined;
   if (width && (isNaN(width) || width <= 0 || width > MAX_WIDTH)) {
     throw new BadRequestError(
@@ -137,7 +145,8 @@ function extractS3Key(url: string): string | null {
     // 3. Just the key itself
 
     if (siteAssetsBaseUrl && url.startsWith(siteAssetsBaseUrl)) {
-      return url.substring(siteAssetsBaseUrl.length);
+      const key = url.substring(siteAssetsBaseUrl.length);
+      return ASSET_KEY_PATTERN.test(key) ? key : null;
     }
 
     // Check if it's a direct S3 URL pattern
@@ -147,7 +156,7 @@ function extractS3Key(url: string): string | null {
     }
 
     // Check if it's just the key itself (32-char hex + extension)
-    if (/^[a-f0-9]{32}\.[a-zA-Z0-9]+$/.test(url)) {
+    if (ASSET_KEY_PATTERN.test(url)) {
       return url;
     }
 
@@ -269,7 +278,7 @@ export async function fetchAndOptimizeSingleFlight(
   try {
     const result = await processingPromise;
     uploadOptimizedImage(cacheKey, result.buffer, result.contentType).catch((error) => {
-      console.error("[IMG-OPTIMIZER] Failed to cache image:", error);
+      logger().error("[IMG-OPTIMIZER] Failed to cache image", { err: error });
     });
     return { ...result, coalesced: false };
   } finally {
