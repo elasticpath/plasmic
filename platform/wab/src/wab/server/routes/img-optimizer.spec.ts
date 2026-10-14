@@ -138,29 +138,6 @@ describe("img-optimizer routes", () => {
     });
   });
 
-  describe("cache key generation", () => {
-    it("should generate consistent cache keys", () => {
-      const params1 = { src: "test.jpg", width: 300, quality: 80, format: "webp" };
-      const params2 = { src: "test.jpg", width: 300, quality: 80, format: "webp" };
-      
-      // Simulate cache key generation
-      const key1 = `${params1.src}-${params1.width}-${params1.quality}-${params1.format}`;
-      const key2 = `${params2.src}-${params2.width}-${params2.quality}-${params2.format}`;
-      
-      expect(key1).toBe(key2);
-    });
-
-    it("should generate different keys for different parameters", () => {
-      const params1 = { src: "test.jpg", width: 300, quality: 80, format: "webp" };
-      const params2 = { src: "test.jpg", width: 400, quality: 80, format: "webp" };
-      
-      const key1 = `${params1.src}-${params1.width}-${params1.quality}-${params1.format}`;
-      const key2 = `${params2.src}-${params2.width}-${params2.quality}-${params2.format}`;
-      
-      expect(key1).not.toBe(key2);
-    });
-  });
-
   describe("static handler logic", () => {
     it("should build correct redirect URLs", () => {
       const imageId = "test-image.jpg";
@@ -274,9 +251,8 @@ describe("img-optimizer routes", () => {
 describe("fetchAndOptimizeSingleFlight", () => {
   const mockBuffer = Buffer.from("fake-image-data");
 
-  // 32-char hex key — satisfies extractS3Key's regex when siteAssetsBaseUrl is unset
   const params = {
-    src: "https://test-assets.example.com/abcdef0123456789abcdef0123456789.jpg",
+    assetKey: "abcdef0123456789abcdef0123456789.jpg",
     width: 400,
     quality: 75,
   };

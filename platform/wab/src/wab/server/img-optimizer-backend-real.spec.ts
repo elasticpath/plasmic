@@ -44,12 +44,26 @@ function stubGetObject(objects: Map<string, S3Object>) {
 }
 
 function stubS3AndSharp() {
-  stubGetObject(
-    new Map([[ASSET_KEY, { Body: ORIGINAL_BYTES, ContentType: "image/jpeg" }]])
+  const objects = new Map<string, S3Object>([
+    [ASSET_KEY, { Body: ORIGINAL_BYTES, ContentType: "image/jpeg" }],
+  ]);
+  stubGetObject(objects);
+  s3.upload.mockImplementation(
+    ({
+      Key,
+      Body,
+      ContentType,
+    }: {
+      Key: string;
+      Body: Buffer;
+      ContentType: string;
+    }) => {
+      objects.set(Key, { Body, ContentType });
+      return {
+        promise: () => Promise.resolve({ Location: "https://s3/cached" }),
+      };
+    }
   );
-  s3.upload.mockImplementation(() => ({
-    promise: () => Promise.resolve({ Location: "https://s3/cached" }),
-  }));
   (sharp as unknown as jest.Mock).mockImplementation(() => {
     const inst = {
       metadata: jest.fn().mockResolvedValue({ format: "jpeg", width: 800 }),
@@ -61,6 +75,27 @@ function stubS3AndSharp() {
     };
     return inst;
   });
+}
+
+async function waitForUploads(count: number) {
+  for (let i = 0; i < 100 && s3.upload.mock.calls.length < count; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  expect(s3.upload).toHaveBeenCalledTimes(count);
+}
+
+function uploadedKeys(): string[] {
+  return s3.upload.mock.calls.map(([{ Key }]) => Key);
+}
+
+function cacheLookupKeys(): string[] {
+  return s3.getObject.mock.calls
+    .map(([{ Key }]) => Key)
+    .filter((key) => key.startsWith("img-opt/"));
+}
+
+function querySrc(host: string, key = ASSET_KEY) {
+  return encodeURIComponent(`${host}/${key}`);
 }
 
 describe("image optimizer HTTP boundary", () => {
@@ -115,9 +150,7 @@ describe("image optimizer HTTP boundary", () => {
   });
 
   it("serves a valid asset url on the query route", async () => {
-    const src = encodeURIComponent(
-      `https://test-assets.example.com/${ASSET_KEY}`
-    );
+    const src = querySrc("https://test-assets.example.com");
     const res = await fetch(`${baseUrl}/img-optimizer/v1/img?src=${src}&w=400`);
 
     expect(res.status).toBe(200);
@@ -161,15 +194,76 @@ describe("image optimizer HTTP boundary", () => {
     expect(Buffer.from(await res.arrayBuffer())).toEqual(OPTIMIZED_BYTES);
   });
 
+  describe("cache key", () => {
+    it("shares one cache entry for the same asset under two src hosts", async () => {
+      const first = await fetch(
+        `${baseUrl}/img-optimizer/v1/img?src=${querySrc(
+          "https://test-assets.example.com"
+        )}&w=640`
+      );
+      expect(first.status).toBe(200);
+      expect(first.headers.get("x-cache")).toBe("MISS");
+      await waitForUploads(1);
+
+      const second = await fetch(
+        `${baseUrl}/img-optimizer/v1/img?src=${querySrc(
+          "https://other-cdn.example.net/assets"
+        )}&w=640`
+      );
+
+      expect(second.status).toBe(200);
+      expect(second.headers.get("x-cache")).toBe("HIT");
+      expect(Buffer.from(await second.arrayBuffer())).toEqual(OPTIMIZED_BYTES);
+      const [cacheKey] = uploadedKeys();
+      expect(cacheLookupKeys()).toEqual([cacheKey, cacheKey]);
+    });
+
+    it("uses different cache keys for different widths", async () => {
+      await fetch(`${baseUrl}/img-optimizer/v1/img/${ASSET_KEY}?w=320`);
+      await fetch(`${baseUrl}/img-optimizer/v1/img/${ASSET_KEY}?w=321`);
+      await waitForUploads(2);
+
+      const [narrow, wide] = uploadedKeys();
+      expect(narrow).not.toEqual(wide);
+    });
+
+    it("shares one cache key between the static and query routes", async () => {
+      await fetch(`${baseUrl}/img-optimizer/v1/img/${ASSET_KEY}?w=480&q=60`);
+      await waitForUploads(1);
+
+      const res = await fetch(
+        `${baseUrl}/img-optimizer/v1/img?src=${querySrc(
+          "https://other-cdn.example.net"
+        )}&w=480&q=60`
+      );
+
+      expect(res.headers.get("x-cache")).toBe("HIT");
+      const [cacheKey] = uploadedKeys();
+      expect(cacheLookupKeys()).toEqual([cacheKey, cacheKey]);
+    });
+
+    it("prefixes cache keys with img-opt/", async () => {
+      await fetch(`${baseUrl}/img-optimizer/v1/img/${ASSET_KEY}?w=200`);
+      await waitForUploads(1);
+
+      expect(uploadedKeys()[0]).toMatch(/^img-opt\/[a-f0-9]{32}$/);
+    });
+  });
+
   describe("svg sources", () => {
     it("serves a png asset", async () => {
       stubGetObject(
         new Map([
-          [PNG_KEY, { Body: Buffer.from("png-image"), ContentType: "image/png" }],
+          [
+            PNG_KEY,
+            { Body: Buffer.from("png-image"), ContentType: "image/png" },
+          ],
         ])
       );
 
-      const res = await fetch(`${baseUrl}/img-optimizer/v1/img/${PNG_KEY}?w=400`);
+      const res = await fetch(
+        `${baseUrl}/img-optimizer/v1/img/${PNG_KEY}?w=400`
+      );
 
       expect(res.status).toBe(200);
       expect(Buffer.from(await res.arrayBuffer())).toEqual(OPTIMIZED_BYTES);
@@ -180,7 +274,9 @@ describe("image optimizer HTTP boundary", () => {
         new Map([[SVG_KEY, { Body: SVG_BYTES, ContentType: "image/svg+xml" }]])
       );
 
-      const res = await fetch(`${baseUrl}/img-optimizer/v1/img/${SVG_KEY}?w=400`);
+      const res = await fetch(
+        `${baseUrl}/img-optimizer/v1/img/${SVG_KEY}?w=400`
+      );
 
       expect(res.status).toBe(400);
       expect(await res.text()).toMatch(/SVG images are not supported/);
@@ -210,9 +306,11 @@ describe("image optimizer HTTP boundary", () => {
       stubGetObject(
         new Map([[PNG_KEY, { Body: SVG_BYTES, ContentType: "image/png" }]])
       );
-      const src = encodeURIComponent(`https://test-assets.example.com/${PNG_KEY}`);
+      const src = querySrc("https://test-assets.example.com", PNG_KEY);
 
-      const res = await fetch(`${baseUrl}/img-optimizer/v1/img?src=${src}&w=400`);
+      const res = await fetch(
+        `${baseUrl}/img-optimizer/v1/img?src=${src}&w=400`
+      );
 
       expect(res.status).toBe(400);
       expect(await res.text()).toMatch(/SVG images are not supported/);
@@ -229,7 +327,9 @@ describe("image optimizer HTTP boundary", () => {
         throw new Error("sharp exploded");
       });
 
-      const res = await fetch(`${baseUrl}/img-optimizer/v1/img/${PNG_KEY}?w=400`);
+      const res = await fetch(
+        `${baseUrl}/img-optimizer/v1/img/${PNG_KEY}?w=400`
+      );
       const body = Buffer.from(await res.arrayBuffer());
 
       expect(res.status).toBe(400);
