@@ -7,6 +7,7 @@
  */
 
 import type { EpLocaleAndCurrency } from "../../types/locale-and-currency";
+import type { ManualPaymentRuleInput } from "./manual-payment-rule";
 
 // ---------------------------------------------------------------------------
 // Session status
@@ -182,7 +183,16 @@ export interface PaymentSetupRequest {
   [key: string]: unknown;
 }
 
-export interface CartPaymentIntentAdapter {
+/**
+ * Optional per-order check. /pay calls it before it creates an order for an
+ * order with a total above zero, and refuses the gateway unless it returns
+ * `true`.
+ */
+export interface PaymentAdapterOrderRule {
+  allowsOrder?(input: ManualPaymentRuleInput): boolean | Promise<boolean>;
+}
+
+export interface CartPaymentIntentAdapter extends PaymentAdapterOrderRule {
   readonly paymentSequence: "cart_payment_intent";
   initializePayment(
     session: CheckoutSession,
@@ -190,7 +200,7 @@ export interface CartPaymentIntentAdapter {
   ): Promise<PaymentAdapterResult>;
 }
 
-export interface OrderFirstAdapter {
+export interface OrderFirstAdapter extends PaymentAdapterOrderRule {
   readonly paymentSequence: "order_first";
   buildPaymentSetup(
     session: CheckoutSession,
@@ -202,7 +212,7 @@ export interface OrderFirstAdapter {
  * Pre-sequence adapter shape (Clover). Not a payment sequence.
  * Kept so existing Clover files type-check without being edited.
  */
-export interface LegacyPaymentAdapter {
+export interface LegacyPaymentAdapter extends PaymentAdapterOrderRule {
   initializePayment(
     session: CheckoutSession,
     gatewayData: Record<string, unknown>
@@ -295,6 +305,11 @@ export interface SessionHandlerContext extends EpLocaleAndCurrency {
    * call.
    */
   accountToken?: string;
+  /**
+   * The selected account's id, from the same session as `accountToken`. A
+   * payment rule sees it. Omit it when no account is selected.
+   */
+  accountId?: string;
   /**
    * Request-scoped admin token resolver for EP operations that require
    * `client_credentials` grant (createCartPaymentIntent, checkoutApi,

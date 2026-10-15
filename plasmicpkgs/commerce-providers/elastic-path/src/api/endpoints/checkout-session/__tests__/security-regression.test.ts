@@ -235,6 +235,20 @@ function createMockReq(body: Record<string, unknown> = {}): SessionRequest {
   return { body, headers: {}, cookies: {} };
 }
 
+function mockFreeOrder() {
+  epSdk.checkoutApi.mockResolvedValue({
+    data: {
+      data: {
+        id: "order-1",
+        meta: { display_price: { with_tax: { amount: 0, currency: "USD" } } },
+      },
+    },
+  });
+  epSdk.paymentSetup.mockResolvedValue({
+    data: { data: { id: "txn-1", status: "complete" } },
+  });
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   // Default: a priced cart with an authoritative non-zero total.
@@ -290,6 +304,7 @@ describe("free-vs-paid server authority (#369)", () => {
   });
 
   it("still settles a genuinely free cart (authoritative meta total 0) via the manual gateway", async () => {
+    mockFreeOrder();
     // Must-not-break: a real CHF 0 cart has `meta.display_price` present and
     // exactly 0 → it still settles for free with no card.
     const FREE_ITEMS = [{ id: "free-1", quantity: 1 }];
@@ -1112,6 +1127,7 @@ describe("clear stale managed shipping on non-shipping pay (#436)", () => {
   });
 
   it("routes free product + stale shipping to free settlement after clearing", async () => {
+    mockFreeOrder();
     const FREE_ITEMS = [{ id: "free-1", quantity: 1 }];
     const withStaleShip = [
       ...FREE_ITEMS,
@@ -1363,6 +1379,7 @@ describe("token-leak boundary — no admin/shopper token in any response", () =>
   });
 
   it("free pay() — settleFreeOrder + order-fields write never reflect the admin token", async () => {
+    mockFreeOrder();
     const FREE_ITEMS = [{ id: "free-1", quantity: 1 }];
     epSdk.getACart.mockResolvedValue(cartResponseWithTotal(0, FREE_ITEMS));
     const ctx = createMockCtx(

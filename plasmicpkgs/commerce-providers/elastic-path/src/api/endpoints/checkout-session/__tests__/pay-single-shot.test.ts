@@ -421,6 +421,47 @@ describe("handlePay — zero-total (free) order", () => {
         data: { meta: { display_price: { with_tax: { amount: 0, currency: "CHF" } } } },
       },
     });
+    epSdk.checkoutApi.mockResolvedValue({
+      data: {
+        data: {
+          id: "order-1",
+          meta: { display_price: { with_tax: { amount: 0, currency: "CHF" } } },
+        },
+      },
+    });
+    epSdk.paymentSetup.mockResolvedValue({
+      data: { data: { id: "txn-1", status: "complete" } },
+    });
+  });
+
+  it("does not settle with manual when the order total is not zero", async () => {
+    epSdk.checkoutApi.mockResolvedValue({
+      data: {
+        data: {
+          id: "order-1",
+          meta: { display_price: { with_tax: { amount: 4400, currency: "CHF" } } },
+        },
+      },
+    });
+    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS) }));
+    const res = await handlePay(createMockReq({}), ctx);
+
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("ORDER_TOTAL_CHANGED");
+    expect(epSdk.paymentSetup).not.toHaveBeenCalled();
+    expect(epSdk.deleteACart).not.toHaveBeenCalled();
+  });
+
+  it("returns 502 when manual settlement reports a failed transaction", async () => {
+    epSdk.paymentSetup.mockResolvedValue({
+      data: { data: { id: "txn-1", status: "failed" } },
+    });
+    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS) }));
+    const res = await handlePay(createMockReq({}), ctx);
+
+    expect(res.status).toBe(502);
+    expect((res.body as any).error.code).toBe("EP_ERROR");
+    expect(epSdk.deleteACart).not.toHaveBeenCalled();
   });
 
   it("settles a free order via the manual gateway with no card / adapter", async () => {

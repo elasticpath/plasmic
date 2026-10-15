@@ -77,6 +77,7 @@ import {
 import { finalizePaidSession } from "../../../checkout/session/finalize-paid-session";
 import { toCustomAttributes } from "../../../ep-server-functions/place-order";
 import { createLogger } from "../../../utils/logger";
+import type { EpCartResponse } from "../../../checkout/session/manual-payment-rule";
 
 const log = createLogger("Pay");
 
@@ -164,15 +165,17 @@ async function settleFreeOrder(
 ): Promise<SessionResponse> {
   // 1. checkoutApi (cart → order)
   let orderId: string;
+  let orderTotal: unknown;
   try {
     const checkoutResponse = await checkoutApi({
       client: adminClient,
       path: { cartID: session.cartId },
       body: buildGuestCheckoutBody(session) as any,
     });
-    const oid = (checkoutResponse.data as any)?.data?.id;
-    if (!oid) throw new Error("checkoutApi response missing order id");
-    orderId = oid;
+    const order = (checkoutResponse.data as any)?.data;
+    if (!order?.id) throw new Error("checkoutApi response missing order id");
+    orderId = order.id;
+    orderTotal = order.meta?.display_price?.with_tax?.amount;
   } catch (err) {
     log.error("Free-order checkoutApi failed", {
       cartId: session.cartId,
@@ -183,6 +186,23 @@ async function settleFreeOrder(
       body: {
         success: false,
         error: { message: "Free order creation failed", code: "EP_ERROR" },
+      },
+    };
+  }
+
+  // Manual settles only an order whose own total is zero.
+  if (orderTotal !== 0) {
+    log.warn("Free-order checkout produced an order with a total", {
+      orderId,
+    } as Record<string, unknown>);
+    return {
+      status: 409,
+      body: {
+        success: false,
+        error: {
+          message: "Order total changed; review the cart and try again",
+          code: "ORDER_TOTAL_CHANGED",
+        },
       },
     };
   }
@@ -198,8 +218,10 @@ async function settleFreeOrder(
   });
 
   // 2. manual/purchase settles the zero-total order with no card step.
+  let payRes: unknown;
+  let payThrown: unknown;
   try {
-    await paymentSetup({
+    payRes = await paymentSetup({
       client: adminClient,
       path: { orderID: orderId },
       body: {
@@ -207,9 +229,13 @@ async function settleFreeOrder(
       } as never,
     });
   } catch (err) {
+    payThrown = err;
+  }
+  const settled = mapTransactionResponse(payRes, payThrown);
+  if (settled.status !== "succeeded") {
     log.error("Manual settlement of free order failed", {
       orderId,
-      error: err instanceof Error ? err.message : String(err),
+      error: settled.errorMessage ?? settled.status,
     } as Record<string, unknown>);
     return {
       status: 502,
@@ -800,8 +826,9 @@ export async function handlePay(
   // must NOT depend on it, or a paid cart whose items don't parse would settle
   // for free with no charge.
   let cartMetaTotal: number | null = null;
+  let cartResponse: EpCartResponse;
   try {
-    const cartResponse = await readCartResponse(
+    cartResponse = await readCartResponse(
       shopperClient,
       session.cartId,
       ctx
@@ -1091,6 +1118,29 @@ export async function handlePay(
         error: {
           message: `Unknown payment gateway: ${gateway}`,
           code: "UNKNOWN_GATEWAY",
+        },
+      },
+    };
+  }
+
+  if (
+    adapter.allowsOrder &&
+    !(await adapter.allowsOrder({
+      cart: cartResponse,
+      account: ctx.accountId ? { id: ctx.accountId } : null,
+    }))
+  ) {
+    log.warn("Gateway refused for this order", {
+      sessionId: session.id,
+      gateway,
+    } as Record<string, unknown>);
+    return {
+      status: 400,
+      body: {
+        success: false,
+        error: {
+          message: "This payment method is not available for this order",
+          code: "GATEWAY_NOT_ALLOWED",
         },
       },
     };
