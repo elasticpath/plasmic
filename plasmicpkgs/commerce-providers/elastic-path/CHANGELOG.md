@@ -53,7 +53,7 @@ a rejection in the browser there has that reason as its `message`.
 | `useEpCommerce().client`, `EpCommerce.client` | None. Call an `ep.*` server function; it resolves the session the server holds. |
 | `createCartRoutes`, the `/api/ep/cart/*` routes | `createEpProxyRoutes`, already mounted at `/api/ep/proxy/[fn]`. Delete the cart route file. |
 | `useCart`, `useAddItem`, `useUpdateItem`, `useRemoveItem` | `useEpCart` to read. To write, `epAddCartItem`, `epUpdateCartItem` and `epRemoveCartItem` from the root entry. Each returns a promise of the updated cart and rejects on failure. `epAddCartItem` takes `location`, `bundleConfiguration`, `customInputs` and `sku`. |
-| `useShopperFetch`, `useShopperContext`, `ShopperOverrides` | None. Nothing in the page carries shopper identity. |
+| `useShopperFetch`, `useShopperContext`, `getShopperContext`, `ShopperOverrides` | None. Nothing in the page carries shopper identity. |
 | `X-Shopper-Context`, `resolveCartId`, `parseShopperHeader` | None. The shopper envelope is the only identity input. |
 | `buildCartCookieHeader`, `buildClearCartCookieHeader`, the `ep_cart` cookie | The envelope's own cart pointer, written by `setCart`. |
 | `ShopperContext`'s `basePath` | None. The auth handler is always at `/api/ep`. |
