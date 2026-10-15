@@ -24,9 +24,5 @@ export function createRateLimiter({
     keyGenerator,
     standardHeaders: true,
     legacyHeaders: false,
-    validate: {
-      xForwardedForHeader: false,
-      trustProxy: false,
-    },
   });
 }
