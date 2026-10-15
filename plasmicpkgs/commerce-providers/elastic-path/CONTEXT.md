@@ -264,8 +264,8 @@ deliberately not used)
 **Design-time catalog route**:
 `createEpDesignRoutes`, mounted at `app/api/ep/design/[fn]/route.ts`. The
 session-free route serving the store's default catalog to Studio under an
-anonymous implicit token, with four declared names and no cart or order
-access. Distinct from the shopper proxy, which carries session identity.
+anonymous implicit token, with a closed list of declared names and no cart
+or order access. Distinct from the shopper proxy, which carries session identity.
 
 **Mock floor**:
 The automatic canvas fallback to `"Sample"` fixtures beneath any design-time
