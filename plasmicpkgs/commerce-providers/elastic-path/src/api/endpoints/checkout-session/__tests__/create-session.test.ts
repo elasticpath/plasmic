@@ -108,7 +108,9 @@ describe("handleCreateSession", () => {
 
   describe("the cart comes from the shopper's session", () => {
     beforeEach(() => {
-      epSdk.getACart.mockResolvedValue(makeCartResponse([]) as any);
+      epSdk.getACart.mockResolvedValue(
+        makeCartResponse([{ id: "item-1", quantity: 1, unit_price: { amount: 1500 } }]) as any
+      );
     });
 
     it("checks out the session cart, not a cart id the browser sends", async () => {
@@ -317,18 +319,29 @@ describe("handleCreateSession", () => {
     });
   });
 
-  describe("empty cart", () => {
-    it("creates session with a consistent hash for an empty cart", async () => {
-      epSdk.getACart.mockResolvedValue(makeCartResponse([]) as any);
+  describe("a cart with nothing to buy", () => {
+    it.each([
+      ["no lines", []],
+      [
+        "only the shipping line",
+        [{ id: "ship-1", type: "custom_item", sku: EP_SHIPPING_LINE_SKU, quantity: 1, unit_price: { amount: 599 } }],
+      ],
+      [
+        "only a promotion line",
+        [{ id: "promo-1", type: "promotion_item", sku: "TEST1", quantity: 1, unit_price: { amount: -500 } }],
+      ],
+    ])("refuses a cart with %s and stores no session", async (_label, items) => {
+      epSdk.getACart.mockResolvedValue(makeCartResponse(items) as any);
       const store = createMockStore();
 
-      await handleCreateSession(
+      const res = await handleCreateSession(
         createMockReq(),
         createMockCtx({ sessionCartId: "empty-cart", sessionStore: store })
       );
 
-      const storedSession: CheckoutSession = store.set.mock.calls[0][1];
-      expect(typeof storedSession.cartHash).toBe("string");
+      expect(res.status).toBe(409);
+      expect((res.body as any).error.code).toBe("EMPTY_CART");
+      expect(store.set).not.toHaveBeenCalled();
     });
   });
 
