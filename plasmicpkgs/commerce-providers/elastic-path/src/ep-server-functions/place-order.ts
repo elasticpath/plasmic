@@ -1,6 +1,7 @@
 import {
   checkoutApi,
   deleteAllCartItems,
+  getAnOrder,
   updateACart,
 } from "@epcc-sdk/sdks-shopper";
 import { buildEpClient, isUsableAuth } from "./ep-client";
@@ -82,6 +83,7 @@ export interface EpPlaceOrderInput {
 
 export interface EpPlaceOrderResult {
   orderId: string;
+  /** Order status read after payment; empty when that read fails. */
   status: string;
   payment: string;
   total: number;
@@ -131,6 +133,21 @@ export function normalizeAddress(a: EpPlaceOrderAddress | undefined) {
     postcode: a.postcode ?? "",
     country: a.country ?? "",
   };
+}
+
+/** The order status Elastic Path reports once payment is taken; undefined when the read fails. */
+async function orderStatusAfterPayment(
+  client: Parameters<typeof getAnOrder>[0]["client"],
+  orderId: string
+): Promise<string | undefined> {
+  try {
+    const res = await getAnOrder({ client, path: { orderID: orderId } });
+    const status = (res as { data?: { data?: { status?: unknown } } })?.data
+      ?.data?.status;
+    return typeof status === "string" ? status : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function epPlaceOrder(
@@ -233,6 +250,7 @@ export async function epPlaceOrder(
   }
   const payment = (payRes as { data?: { data?: { status?: unknown } } })
     ?.data?.data;
+  const status = await orderStatusAfterPayment(client, order.id);
 
   // 4. Clear the cart on success (best-effort — a failed clear is non-fatal).
   if (input.clearCart !== false) {
@@ -245,7 +263,7 @@ export async function epPlaceOrder(
 
   return {
     orderId: order.id,
-    status: (order.status as string | undefined) ?? "",
+    status: status ?? "",
     payment:
       (payment?.status as string | undefined) ??
       (order.payment as string | undefined) ??

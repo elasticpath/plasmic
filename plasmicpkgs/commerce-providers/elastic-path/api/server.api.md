@@ -543,7 +543,6 @@ export interface EpPlaceOrderResult {
     orderId: string;
     // (undocumented)
     payment: string;
-    // (undocumented)
     status: string;
     // (undocumented)
     total: number;
