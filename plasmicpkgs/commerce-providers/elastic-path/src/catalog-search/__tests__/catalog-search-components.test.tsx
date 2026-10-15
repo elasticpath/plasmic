@@ -1605,7 +1605,7 @@ describe("EPHierarchicalMenu", () => {
     mockUsePlasmicCanvasContext.mockReturnValue({});
 
     const { container } = render(
-      <EPHierarchicalMenu>
+      <EPHierarchicalMenu attributes="categories.lvl0,categories.lvl1">
         <div data-testid="item">Category</div>
       </EPHierarchicalMenu>
     );
@@ -1618,7 +1618,7 @@ describe("EPHierarchicalMenu", () => {
     mockUsePlasmicCanvasContext.mockReturnValue({});
 
     const { container } = render(
-      <EPHierarchicalMenu>
+      <EPHierarchicalMenu attributes="categories.lvl0,categories.lvl1">
         <div>child</div>
       </EPHierarchicalMenu>
     );
@@ -1690,6 +1690,18 @@ describe("filters with no field chosen", () => {
       () => <EPHierarchicalMenu attributes=" , "><span>v</span></EPHierarchicalMenu>,
     ],
     ["EPRangeFilter", () => <EPRangeFilter><span>v</span></EPRangeFilter>],
+    [
+      "EPRefinementList (Preview State withData)",
+      () => <EPRefinementList previewState="withData"><span>v</span></EPRefinementList>,
+    ],
+    [
+      "EPHierarchicalMenu (Preview State withData)",
+      () => <EPHierarchicalMenu previewState="withData"><span>v</span></EPHierarchicalMenu>,
+    ],
+    [
+      "EPRangeFilter (Preview State withData)",
+      () => <EPRangeFilter previewState="withData"><span>v</span></EPRangeFilter>,
+    ],
   ])("%s adds no facet to the search and renders nothing on a live page", (_name, el) => {
     const { container } = render(el());
 
@@ -1700,22 +1712,40 @@ describe("filters with no field chosen", () => {
     expect(mockUseRange).not.toHaveBeenCalled();
   });
 
-  it("still shows sample values on the Studio canvas", () => {
+  it.each([
+    [
+      "EPRefinementList",
+      () => <EPRefinementList><span data-testid="slot">v</span></EPRefinementList>,
+      'Choose a field: set "Attribute" on this EP Refinement List.',
+    ],
+    [
+      "EPRefinementList (single select)",
+      () => <EPRefinementList singleSelect><span data-testid="slot">v</span></EPRefinementList>,
+      'Choose a field: set "Attribute" on this EP Refinement List.',
+    ],
+    [
+      "EPHierarchicalMenu",
+      () => <EPHierarchicalMenu><span data-testid="slot">v</span></EPHierarchicalMenu>,
+      'Choose a field: set "Attributes" on this EP Hierarchical Menu.',
+    ],
+    [
+      "EPHierarchicalMenu (blank list)",
+      () => <EPHierarchicalMenu attributes=" , "><span data-testid="slot">v</span></EPHierarchicalMenu>,
+      'Choose a field: set "Attributes" on this EP Hierarchical Menu.',
+    ],
+    [
+      "EPRangeFilter",
+      () => <EPRangeFilter><span data-testid="slot">v</span></EPRangeFilter>,
+      'Choose a field: set "Attribute" on this EP Range Filter.',
+    ],
+  ])("%s asks for a field on the Studio canvas instead of showing sample values", (_name, el, prompt) => {
     mockUsePlasmicCanvasContext.mockReturnValue({});
 
-    const { container } = render(
-      <>
-        <EPRefinementList />
-        <EPHierarchicalMenu />
-        <EPRangeFilter>
-          <span>range</span>
-        </EPRangeFilter>
-      </>
-    );
+    const { container } = render(el());
 
-    expect(container.querySelector("[data-ep-refinement-list]")).not.toBeNull();
-    expect(container.querySelector("[data-ep-hierarchical-menu]")).not.toBeNull();
-    expect(container.querySelector("[data-ep-range-filter]")).not.toBeNull();
+    expect(container.textContent).toBe(prompt);
+    expect(container.querySelector('[data-testid="slot"]')).toBeNull();
+    expect(container.querySelector('[role="listitem"]')).toBeNull();
   });
 
   it("does not hint a field the store may not have", () => {
@@ -2721,7 +2751,10 @@ describeHeadlessStylingContract({
   leafSelector: "[data-ep-hierarchical-menu]",
   setEditorMode,
   renderInEditor: ({ className }) => (
-    <EPHierarchicalMenu className={className}>
+    <EPHierarchicalMenu
+      attributes="categories.lvl0,categories.lvl1"
+      className={className}
+    >
       <div>row</div>
     </EPHierarchicalMenu>
   ),

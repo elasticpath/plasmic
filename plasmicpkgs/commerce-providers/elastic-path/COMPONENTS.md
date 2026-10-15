@@ -111,6 +111,7 @@ never mounts its inner component there.
 | EP Product List Provider | Your catalog |
 | EP Related Products Provider | Your catalog; fixtures when no product is chosen |
 | EP Catalog Search Provider | Fixtures |
+| EP Refinement List, EP Hierarchical Menu, EP Range Filter | Fixtures once a field is chosen; with no field, a "Choose a field" prompt that names the prop to set |
 
 Preview State (`loading`, `error`, `empty`, `withData`) forces a state on the
 canvas only. Published pages always fetch.

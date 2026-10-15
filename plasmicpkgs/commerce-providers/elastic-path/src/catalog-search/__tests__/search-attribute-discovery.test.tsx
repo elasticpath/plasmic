@@ -185,8 +185,8 @@ describe("discovery on the canvas", () => {
     const plain = render(
       <>
         <EPRefinementList attribute="tags" />
-        <EPHierarchicalMenu />
-        <EPRangeFilter>
+        <EPHierarchicalMenu attributes="categories.lvl0" />
+        <EPRangeFilter attribute="rating">
           <span>range</span>
         </EPRangeFilter>
       </>
@@ -200,8 +200,14 @@ describe("discovery on the canvas", () => {
           attribute="tags"
           setControlContextData={jest.fn() as any}
         />
-        <EPHierarchicalMenu setControlContextData={jest.fn() as any} />
-        <EPRangeFilter setControlContextData={jest.fn() as any}>
+        <EPHierarchicalMenu
+          attributes="categories.lvl0"
+          setControlContextData={jest.fn() as any}
+        />
+        <EPRangeFilter
+          attribute="rating"
+          setControlContextData={jest.fn() as any}
+        >
           <span>range</span>
         </EPRangeFilter>
       </>
