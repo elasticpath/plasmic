@@ -298,6 +298,13 @@ export interface SessionHandlerContext extends EpLocaleAndCurrency {
    */
   shopperAccessToken?: string;
   /**
+   * The shopper's session cart, `session.cart.id` from the same `getSession`.
+   * `handleCreateSession` checks out this cart and nothing else; without it,
+   * creating a checkout session returns 409 `NO_CART`. Never take it from the
+   * request.
+   */
+  sessionCartId?: string;
+  /**
    * The selected account's Elastic Path account-management token, resolved
    * per-request from the same session as `shopperAccessToken`. Sent with every
    * call made under the shopper's token, as the `ep.*` functions do. Omit it
@@ -368,7 +375,6 @@ export interface AdapterRegistry {
 // ---------------------------------------------------------------------------
 
 export interface CreateSessionRequest {
-  cartId: string;
   /** Optional — see CheckoutSession.requiresShipping. Defaults to true. */
   requiresShipping?: boolean;
 }

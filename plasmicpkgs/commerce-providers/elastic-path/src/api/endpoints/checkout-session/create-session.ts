@@ -1,7 +1,8 @@
 /**
  * A-4.1: Create Checkout Session
  *
- * Initialises a new checkout session for the given cartId. Fetches the cart
+ * Initialises a new checkout session for the shopper's session cart
+ * (`ctx.sessionCartId`); a cart id in the request body is ignored. Fetches the cart
  * from EP to compute the initial cart hash (used later in /pay to detect
  * cart mutations), stores the session via the SessionStore, and returns a 201
  * with the client-visible session shape plus Set-Cookie headers.
@@ -55,18 +56,17 @@ export async function handleCreateSession(
 ): Promise<SessionResponse> {
   const { body } = req;
 
-  // Validate cartId
-  if (!body.cartId || typeof body.cartId !== "string") {
+  const cartId = ctx.sessionCartId;
+  if (!cartId) {
     return {
-      status: 400,
+      status: 409,
       body: {
         success: false,
-        error: { message: "cartId is required and must be a string", code: "VALIDATION_ERROR" },
+        error: { message: "The shopper has no cart to check out", code: "NO_CART" },
       },
     };
   }
 
-  const cartId = body.cartId as string;
   const ttl = ctx.sessionTtlSeconds ?? 1800;
 
   // Authenticated client to read the cart (compute hash + totals). Prefer the

@@ -780,7 +780,7 @@ export const epCheckoutConfirmationMeta: {
 };
 
 // @public (undocumented)
-export function EPCheckoutForm({ cartId, apiBaseUrl, onComplete, onError, className, style }: EPCheckoutFormProps): React_2.JSX.Element;
+export function EPCheckoutForm({ apiBaseUrl, onComplete, onError, className, style }: EPCheckoutFormProps): React_2.JSX.Element;
 
 // @public (undocumented)
 export const epCheckoutFormMeta: {
@@ -794,7 +794,7 @@ export const epCheckoutFormMeta: {
             type: "string";
             displayName: string;
             description: string;
-            defaultValue: string;
+            hidden: () => boolean;
         };
         apiBaseUrl: {
             type: "string";

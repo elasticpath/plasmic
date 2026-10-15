@@ -1423,8 +1423,8 @@ describe("token-leak boundary — no admin/shopper token in any response", () =>
 
   it("create-session() never reflects the cart-read token", async () => {
     epSdk.getACart.mockResolvedValue(cartResponseWithTotal(5400));
-    const ctx = createMockCtx(null);
-    const res = await handleCreateSession(createMockReq({ cartId: "cart-abc" }), ctx);
+    const ctx = { ...createMockCtx(null), sessionCartId: "cart-abc" };
+    const res = await handleCreateSession(createMockReq({}), ctx);
     expect(res.status).toBe(201);
     expectNoTokenLeak(res);
   });

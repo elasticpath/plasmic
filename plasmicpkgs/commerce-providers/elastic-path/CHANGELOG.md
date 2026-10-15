@@ -46,6 +46,14 @@ Path's reason from the rejection's `cause`, not its `message`, and branch on
 `code`. In development the proxy route still forwards Elastic Path's reason, so
 a rejection in the browser there has that reason as its `message`.
 
+Checkout takes the cart from the shopper's session, never from the browser.
+`handleCreateSession` checks out `sessionCartId` on `SessionHandlerContext`
+and ignores any `cartId` in the request body. To migrate, set
+`sessionCartId: session.cart?.id` where the checkout routes build their
+context, from the same `getSession` that gives `shopperAccessToken`, and stop
+copying a cart id into the request. Without it, creating a checkout session
+returns `409` with code `NO_CART`.
+
 **The server decides which payment methods an order may use.** Before `/pay`
 creates an order, it checks the requested gateway against that order:
 
@@ -105,12 +113,23 @@ Two capabilities go with them, not only their configuration:
 
 ### Deprecated
 
-Two registrations could not be removed, because hostless publishing rejects a
-removed component or a removed published prop. Both are empty instead.
+These registrations could not be removed, because hostless publishing rejects a
+removed component or a removed published prop. All are empty instead.
 
 - **EP Shopper Context** renders its children and nothing else. Its four props
   are hidden and ignored. Remove it from your project; nothing reads it.
 - **EP Promo Code Input**'s `Use Server Routes` is hidden and ignored.
+- **EP Checkout Provider** is now "EP Checkout Provider (deprecated)". It
+  called `/api/checkout/create-order`, `/setup-payment` and `/confirm-payment`,
+  which nothing serves, so it could not place an order. It renders its
+  children and nothing else, publishes no `checkoutData`, and its ref actions
+  do nothing. Every prop but its children slot, `Cart ID` included, is hidden
+  and ignored. Build checkout with EP Checkout Session Provider. EP Payment
+  Elements took its client secret only from this provider, so it no longer
+  renders a form; use EP Stripe Payment.
+- **Elastic Path Checkout Form**'s `Cart ID` is hidden and ignored.
+- **EP Checkout Session Provider**'s `createSession` ignores its `cartId`
+  argument. The session checks out the shopper's session cart.
 
 ### Added
 

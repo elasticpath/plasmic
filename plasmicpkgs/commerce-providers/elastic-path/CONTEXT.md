@@ -67,18 +67,21 @@ _Avoid_: simple checkout, form provider checkout
 **Controlled-field checkout**:
 The refAction-orchestrated, fixed-schema checkout family:
 `EPCustomerInfoFields`/`EPShippingAddressFields`/`EPBillingAddressFields`
-with the 4-step `EPCheckoutProvider`. The breakout for multi-step flows,
+inside `EPCheckoutSessionProvider`. The breakout for multi-step flows,
 bring-your-own inputs, address suggestions, and shipping-rate selection.
-Either/or per page with managed-form, never mixed.
+Either/or per page with managed-form, never mixed. The 4-step
+`EPCheckoutProvider` is deprecated and inert: it called routes nothing serves.
 _Avoid_: composable checkout (ambiguous — both families are composable)
 
 **Checkout session**:
 The server-authoritative checkout state managed by
-`EPCheckoutSessionProvider` and the `/api/…/checkout/sessions*` routes. Holds
-orchestration and selection state only — never an authoritative amount. The
-managed form submits through it, and shows a setup error without one. The
-checkout-session routes are the only place orders are placed; the proxy route
-never places one.
+`EPCheckoutSessionProvider` and the `/api/…/checkout/sessions*` routes — the
+checkout path. Holds orchestration and selection state only — never an
+authoritative amount. It checks out the **session cart**, which the server
+takes from the shopper envelope when the session is created; the browser never
+names a cart. The managed form submits through it, and shows a setup error
+without one. The checkout-session routes are the only place orders are placed;
+the proxy route never places one.
 
 **Manual payment rule**:
 The host's rule, `createManualAdapter({ allow })` or `epPlaceOrder`'s
