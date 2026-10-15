@@ -18,6 +18,7 @@
 
 jest.mock("@epcc-sdk/sdks-shopper", () => ({
   getACart: jest.fn(),
+  getAnOrder: jest.fn(),
   checkoutApi: jest.fn(),
   confirmOrder: jest.fn(),
   paymentSetup: jest.fn(),
@@ -35,6 +36,7 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const epSdk = require("@epcc-sdk/sdks-shopper") as {
   getACart: jest.Mock;
+  getAnOrder: jest.Mock;
   checkoutApi: jest.Mock;
   confirmOrder: jest.Mock;
   paymentSetup: jest.Mock;
@@ -451,6 +453,56 @@ describe("handlePay — zero-total (free) order", () => {
     expect((res.body as any).error.code).toBe("ORDER_TOTAL_CHANGED");
     expect(epSdk.paymentSetup).not.toHaveBeenCalled();
     expect(epSdk.deleteACart).not.toHaveBeenCalled();
+  });
+
+  it("reads the order back when checkout reports no total, and settles a free one", async () => {
+    epSdk.checkoutApi.mockResolvedValue({ data: { data: { id: "order-1" } } });
+    epSdk.getAnOrder.mockResolvedValue({
+      data: {
+        data: {
+          id: "order-1",
+          meta: { display_price: { with_tax: { amount: 0, currency: "CHF" } } },
+        },
+      },
+    });
+    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS) }));
+    const res = await handlePay(createMockReq({}), ctx);
+
+    expect(res.status).toBe(200);
+    expect((res.body as any).data.session.status).toBe("complete");
+    expect(epSdk.paymentSetup.mock.calls[0][0].body.data).toEqual({
+      gateway: "manual",
+      method: "purchase",
+    });
+  });
+
+  it("does not settle when the read-back order has a total", async () => {
+    epSdk.checkoutApi.mockResolvedValue({ data: { data: { id: "order-1" } } });
+    epSdk.getAnOrder.mockResolvedValue({
+      data: {
+        data: {
+          id: "order-1",
+          meta: { display_price: { with_tax: { amount: 4400, currency: "CHF" } } },
+        },
+      },
+    });
+    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS) }));
+    const res = await handlePay(createMockReq({}), ctx);
+
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("ORDER_TOTAL_CHANGED");
+    expect(epSdk.paymentSetup).not.toHaveBeenCalled();
+  });
+
+  it("answers 502, not a changed total, when no order total can be read", async () => {
+    epSdk.checkoutApi.mockResolvedValue({ data: { data: { id: "order-1" } } });
+    epSdk.getAnOrder.mockResolvedValue({ data: { data: { id: "order-1" } } });
+    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS) }));
+    const res = await handlePay(createMockReq({}), ctx);
+
+    expect(res.status).toBe(502);
+    expect((res.body as any).error.code).toBe("EP_ERROR");
+    expect(epSdk.paymentSetup).not.toHaveBeenCalled();
   });
 
   it("returns 502 when manual settlement reports a failed transaction", async () => {

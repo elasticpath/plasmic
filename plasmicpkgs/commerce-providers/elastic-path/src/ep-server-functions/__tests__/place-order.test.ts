@@ -3,6 +3,7 @@ const mockPaymentSetup = jest.fn();
 const mockDeleteAllCartItems = jest.fn();
 const mockUpdateACart = jest.fn();
 const mockGetACart = jest.fn();
+const mockGetAnOrder = jest.fn();
 
 jest.mock("@epcc-sdk/sdks-shopper", () => ({
   createShopperClient: jest.fn(() => ({
@@ -15,6 +16,7 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
   deleteAllCartItems: (...args: unknown[]) => mockDeleteAllCartItems(...args),
   updateACart: (...args: unknown[]) => mockUpdateACart(...args),
   getACart: (...args: unknown[]) => mockGetACart(...args),
+  getAnOrder: (...args: unknown[]) => mockGetAnOrder(...args),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -78,6 +80,7 @@ beforeEach(() => {
   mockGetACart.mockReset();
   mockGetACart.mockResolvedValue(CART_RESPONSE(0));
   mockCheckoutApi.mockReset();
+  mockGetAnOrder.mockReset();
   mockPaymentSetup.mockReset();
   mockDeleteAllCartItems.mockReset();
   mockUpdateACart.mockReset();
@@ -189,6 +192,43 @@ describe("epPlaceOrder payment method rule", () => {
     ).rejects.toThrow(/not available for this order/i);
     expect(mockPaymentSetup).not.toHaveBeenCalled();
     expect(mockDeleteAllCartItems).not.toHaveBeenCalled();
+  });
+
+  it("reads the order back when checkout reports no total, and completes a free one", async () => {
+    mockCheckoutApi.mockResolvedValue({
+      data: { data: { id: "order-1", type: "order", status: "complete" } },
+    });
+    mockGetAnOrder.mockResolvedValue(ORDER_RESPONSE(0));
+    mockPaymentSetup.mockResolvedValue({
+      data: { data: { id: "txn-1", status: "complete" } },
+    });
+
+    const result = await withEpSession({ ...SESSION_BASE, cartId: "cart-1" }, () =>
+      epPlaceOrder({
+        customer: { name: "Ada Lovelace", email: "ada@ep.com" },
+        billingAddress: BILLING,
+      })
+    );
+
+    expect(result).toMatchObject({ total: 0, currency: "CHF", isFree: true });
+    expect(mockPaymentSetup).toHaveBeenCalled();
+  });
+
+  it("takes no payment when no order total can be read", async () => {
+    mockCheckoutApi.mockResolvedValue({
+      data: { data: { id: "order-1", type: "order" } },
+    });
+    mockGetAnOrder.mockResolvedValue({ data: { data: { id: "order-1" } } });
+
+    await expect(
+      withEpSession({ ...SESSION_BASE, cartId: "cart-1" }, () =>
+        epPlaceOrder({
+          customer: { name: "Ada Lovelace", email: "ada@ep.com" },
+          billingAddress: BILLING,
+        })
+      )
+    ).rejects.toThrow(/order total/i);
+    expect(mockPaymentSetup).not.toHaveBeenCalled();
   });
 
   it("does not ask the rule about another gateway", async () => {

@@ -74,6 +74,7 @@ import {
   applyPaymentRequiresAction,
 } from "../../../checkout/session/session-state-transition";
 import { finalizePaidSession } from "../../../checkout/session/finalize-paid-session";
+import { readOrderTotal } from "../../../checkout/session/order-total";
 import { toCustomAttributes } from "../../../ep-server-functions/place-order";
 import { createLogger } from "../../../utils/logger";
 import { toClientSession } from "../../../checkout/session/client-session";
@@ -160,17 +161,16 @@ async function settleFreeOrder(
 ): Promise<SessionResponse> {
   // 1. checkoutApi (cart → order)
   let orderId: string;
-  let orderTotal: unknown;
+  let order: { id: string };
   try {
     const checkoutResponse = await checkoutApi({
       client: adminClient,
       path: { cartID: session.cartId },
       body: buildGuestCheckoutBody(session) as any,
     });
-    const order = (checkoutResponse.data as any)?.data;
+    order = (checkoutResponse.data as any)?.data;
     if (!order?.id) throw new Error("checkoutApi response missing order id");
     orderId = order.id;
-    orderTotal = order.meta?.display_price?.with_tax?.amount;
   } catch (err) {
     log.error("Free-order checkoutApi failed", {
       cartId: session.cartId,
@@ -185,8 +185,22 @@ async function settleFreeOrder(
     };
   }
 
+  const orderTotal = await readOrderTotal(adminClient, order);
+  if (!orderTotal) {
+    log.error("Free-order checkout produced an order with no total", {
+      orderId,
+    } as Record<string, unknown>);
+    return {
+      status: 502,
+      body: {
+        success: false,
+        error: { message: "Order total unavailable", code: "EP_ERROR" },
+      },
+    };
+  }
+
   // Manual settles only an order whose own total is zero.
-  if (orderTotal !== 0) {
+  if (orderTotal.amount !== 0) {
     log.warn("Free-order checkout produced an order with a total", {
       orderId,
     } as Record<string, unknown>);

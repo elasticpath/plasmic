@@ -12,6 +12,7 @@ import {
   type ManualPaymentRule,
 } from "../checkout/session/manual-payment-rule";
 import { mapTransactionResponse } from "../checkout/session/payment-sequence";
+import { readOrderTotal } from "../checkout/session/order-total";
 
 const MANUAL_GATEWAY = "manual";
 const NOT_AVAILABLE =
@@ -208,11 +209,14 @@ export async function epPlaceOrder(
     throw new Error(`epPlaceOrder: checkout did not return an order (${detail})`);
   }
 
-  const total = order.meta?.display_price?.with_tax?.amount ?? 0;
-  const currency =
-    order.meta?.display_price?.with_tax?.currency ?? auth.currency ?? "";
+  const orderTotal = await readOrderTotal(client, order);
+  if (!orderTotal) {
+    throw new Error(`epPlaceOrder: no order total for order ${order.id}`);
+  }
+  const total = orderTotal.amount;
+  const currency = orderTotal.currency ?? auth.currency ?? "";
 
-  if (manualForFreeOrder && order.meta?.display_price?.with_tax?.amount !== 0) {
+  if (manualForFreeOrder && total !== 0) {
     throw new Error(NOT_AVAILABLE);
   }
 
