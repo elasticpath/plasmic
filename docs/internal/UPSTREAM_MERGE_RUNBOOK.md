@@ -36,6 +36,14 @@ EP additions to preserve:
 - `ensureDbConnections` import (~line 5)
 - EP branding in devflags: `logoImgSrc: "https://developer.elasticpath.com/logo/light.svg"` (~lines 117-123)
 
+**`platform/wab/src/wab/server/db/DbMgr.ts` — `checkUserIdIsSelf` (fork-first)**
+
+EP fix to preserve: with no user id, `checkUserIdIsSelf` throws
+`UnauthorizedError("Must be logged in")` (401) instead of
+`ensure(userId, "User id should exist")` (500). Logged-out calls to the personal API
+token routes reach it (#717). It goes upstream as its own PR; once upstream has the
+same change, take upstream's version and delete its check from `ep-fork-integrity.spec.ts`.
+
 **`platform/loader-bundle-env/package.json`**
 
 EP dependency to preserve:
