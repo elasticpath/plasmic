@@ -95,6 +95,19 @@ on the server.
 
 The development-only proxy error text no longer names the cart.
 
+**Search filters with no field set render nothing.** EP Refinement List,
+EP Hierarchical Menu and EP Range Filter no longer fall back to `"brand"`,
+`"categories.lvl0,categories.lvl1,categories.lvl2"` or
+`"price.USD.float_price"` when their field is unset. Those were guesses, and on
+a store without the field the whole search answered 400. A filter that relied
+on one of them adds nothing to the search after the upgrade, and renders nothing
+on a published page. On the Studio canvas it shows "Choose a field" and names
+the prop to set (Attribute, or Attributes on EP Hierarchical Menu), in place of
+sample values. After you upgrade, open each page with these filters in Studio,
+choose a field on every filter that shows the prompt, and publish. If the
+filter used the old default and your store has that field, choose it from the
+list. A filter with a field set is unchanged.
+
 ### Removed
 
 | Removed | Replacement |
@@ -316,13 +329,6 @@ currency (`price.USD.float_price`). A saved value stays selectable even when
 the store does not list it. To use a field the list does not show, bind a
 value. Without the design-time route the dropdown lists only the saved value.
 When the route fails, the next filter render on the canvas asks again.
-
-These three filters no longer fall back to `"brand"`,
-`"categories.lvl0,categories.lvl1,categories.lvl2"` or `"price.USD.float_price"`
-when the prop is unset. Those were guesses, and on a store without the field
-the whole search answered 400. On a page, a filter with no field adds nothing
-to the search and renders nothing. The canvas still shows sample values. Set
-the field on each filter you use.
 
 EP Add To Cart Button, EP Cart Item Quantity Control and EP Cart Item Remove
 Button show the cart write's rejection message as their `error`. They show

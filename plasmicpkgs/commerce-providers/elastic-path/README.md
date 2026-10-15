@@ -945,7 +945,7 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 - **EPCatalogSearchProvider** — InstantSearch over the store's Catalog Search index. See [Choosing a listing path](COMPONENTS.md#3-choosing-a-listing-path)
 - **EPSearchBox** / **EPSearchHits** / **EPSearchPagination** — Search UI
 - **EPSearchInfiniteHits** — Search results with load more, appended in place
-- **EPRefinementList** / **EPHierarchicalMenu** / **EPRangeFilter** — Faceted filtering. In Studio, the attribute is picked from a list of the fields the store's catalog search can filter on, read through the design-time route. A filter with no attribute set renders nothing on a page and adds nothing to the search
+- **EPRefinementList** / **EPHierarchicalMenu** / **EPRangeFilter** — Faceted filtering. In Studio, the attribute is picked from a list of the fields the store's catalog search can filter on, read through the design-time route. A filter with no attribute set renders nothing on a page and adds nothing to the search. On the canvas it shows "Choose a field" and names the prop to set
 - **EPSearchStats** / **EPSearchSortBy** — Search metadata
 
 ## Styling contract (catalog-search components)
