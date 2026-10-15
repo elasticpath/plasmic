@@ -144,7 +144,7 @@ describe("the session cart", () => {
       })
     );
 
-    expect(res.ok).toBe(false);
+    expect(res.status).toBe(404);
     const session = await storedSession(
       auth,
       mergeCookies(anon.cookie, setCookiesOf(res))

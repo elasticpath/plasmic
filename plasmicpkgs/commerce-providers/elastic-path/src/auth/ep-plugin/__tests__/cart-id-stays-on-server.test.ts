@@ -218,7 +218,7 @@ describe("the cart id stays on the server", () => {
       cartId: "someone-elses-cart",
     });
 
-    expect(res.ok).toBe(false);
+    expect(res.status).toBe(404);
     expect(await browser.storedCartId()).toBe(CART_ID);
   });
 
