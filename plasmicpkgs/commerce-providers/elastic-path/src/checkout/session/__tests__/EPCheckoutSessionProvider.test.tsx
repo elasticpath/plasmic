@@ -182,20 +182,6 @@ describe("EPCheckoutSessionProvider", () => {
   });
 
   describe("refActions", () => {
-    it("createSession refAction ignores a cart id passed to it", async () => {
-      const ref = React.createRef<any>();
-      render(
-        <EPCheckoutSessionProvider ref={ref} autoCreate={false}>
-          <span>content</span>
-        </EPCheckoutSessionProvider>
-      );
-      await act(async () => {
-        await ref.current.createSession("cart-xyz");
-      });
-      expect(mockCreateSession).toHaveBeenCalledTimes(1);
-      expect(mockCreateSession.mock.calls[0]).toEqual([]);
-    });
-
     it("auto-creates a session on mount when none exists and autoCreate=true (default)", async () => {
       // Override the mock for this one test: no session present.
       useCheckoutSession.mockReturnValueOnce({
@@ -219,8 +205,6 @@ describe("EPCheckoutSessionProvider", () => {
         );
       });
       expect(mockCreateSession).toHaveBeenCalledTimes(1);
-      // Called with no cartId arg — server resolves from better-auth session.
-      expect(mockCreateSession).toHaveBeenCalledWith();
     });
 
     it("does NOT auto-create when autoCreate=false", async () => {

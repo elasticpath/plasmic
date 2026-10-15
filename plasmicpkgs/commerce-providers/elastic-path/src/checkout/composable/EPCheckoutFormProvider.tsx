@@ -658,7 +658,7 @@ export const epCheckoutFormProviderMeta: CodeComponentMeta<EPCheckoutFormProvide
         type: "string",
         displayName: "Payment Gateway",
         description:
-          "Unused. The payment component inside the EP Checkout Session Provider selects the gateway.",
+          "Deprecated — ignored. The payment component inside the EP Checkout Session Provider selects the gateway.",
         advanced: true,
         hidden: () => true,
       },
@@ -666,7 +666,7 @@ export const epCheckoutFormProviderMeta: CodeComponentMeta<EPCheckoutFormProvide
         type: "string",
         displayName: "Payment Method",
         description:
-          "Unused. The payment component inside the EP Checkout Session Provider selects the gateway.",
+          "Deprecated — ignored. The payment component inside the EP Checkout Session Provider selects the gateway.",
         advanced: true,
         hidden: () => true,
       },

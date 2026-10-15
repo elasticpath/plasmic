@@ -8,26 +8,9 @@
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
-import React, { createContext, useContext, useImperativeHandle } from "react";
+import React, { useImperativeHandle } from "react";
 import { Registerable } from "../../registerable";
 import type { AddressData } from "../types";
-
-interface CheckoutInternalContextValue {
-  clientSecret: string | null;
-  setElements: (elements: any) => void;
-  elements: any;
-}
-
-export const CheckoutInternalContext =
-  createContext<CheckoutInternalContextValue>({
-    clientSecret: null,
-    setElements: () => {},
-    elements: null,
-  });
-
-export function useCheckoutInternal() {
-  return useContext(CheckoutInternalContext);
-}
 
 type PreviewState =
   | "auto"

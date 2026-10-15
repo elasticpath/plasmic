@@ -61,7 +61,9 @@ creates an order, it checks the requested gateway against that order:
 - For an order with a total, the `manual` adapter is refused unless the host
   gives it a rule: `createManualAdapter({ allow })`. The rule receives the cart
   and the account (`{ cart, account }`) and must return `true`. A rule that
-  throws refuses. `/pay` answers `400` with `GATEWAY_NOT_ALLOWED`.
+  throws refuses. `/pay` answers `400` with `GATEWAY_NOT_ALLOWED`. The input
+  type is `PaymentAdapterOrderRuleInput`, from `/server`;
+  `ManualPaymentRuleInput` is the same type.
 - `epPlaceOrder(input, { allowManual })` follows the same rule, reads the cart
   before it creates the order, and throws when payment does not succeed.
 
@@ -137,10 +139,25 @@ removed component or a removed published prop. All are empty instead.
   which nothing serves, so it could not place an order. It renders its
   children and nothing else, publishes no `checkoutData`, and its ref actions
   do nothing. Every prop but its children slot, `Cart ID` included, is hidden
-  and ignored. Build checkout with EP Checkout Session Provider. EP Payment
-  Elements took its client secret only from this provider, so it no longer
-  renders a form; use EP Stripe Payment.
-- **Elastic Path Checkout Form**'s `Cart ID` is hidden and ignored.
+  and ignored. Build checkout with EP Checkout Session Provider.
+- **EP Payment Elements** is now "EP Payment Elements (deprecated)". It took
+  its client secret only from EP Checkout Provider, so it could not show a card
+  form. It renders its children and nothing else, loads no Stripe.js and
+  publishes no `paymentData`. Its other props are hidden and ignored. Use EP
+  Stripe Payment.
+- **EP Checkout Step Indicator** is now "EP Checkout Step Indicator
+  (deprecated)". It read the step from EP Checkout Provider, so it always
+  showed the first step. It renders nothing and publishes no `currentStep`;
+  `Preview State` is hidden and ignored. Show progress from
+  `$ctx.checkoutSession`.
+- **Elastic Path Checkout Form** is now "Elastic Path Checkout Form
+  (deprecated)". It posted to `/checkout/create-order`, which nothing serves,
+  so it could not place an order. It renders nothing and makes no request.
+  Every prop, `Cart ID` included, is hidden and ignored. Build checkout with
+  EP Checkout Session Provider.
+- **EP Checkout Button**'s descriptions no longer call it step-aware: on a
+  page it is always the "Checkout" link to `Checkout URL`. `On Complete` never
+  fires.
 - **EP Checkout Session Provider**'s `createSession` ignores its `cartId`
   argument. The session checks out the shopper's session cart.
 
@@ -297,12 +314,15 @@ lists only numeric fields, and EP Hierarchical Menu lists each `….lvlN` set as
 one option. A field keyed by currency, such as `price`, is listed once per
 currency (`price.USD.float_price`). A saved value stays selectable even when
 the store does not list it. To use a field the list does not show, bind a
-value. The props have no default value any more, because the old ones were
-guesses that a store need not have. An unset prop renders as before: the
-components still fall back to `"brand"`, `"categories.lvl0,categories.lvl1,categories.lvl2"`
-and `"price.USD.float_price"`. Rendering, on the canvas and on the page, does
-not change. Without the design-time route the dropdown lists only the saved
-value.
+value. Without the design-time route the dropdown lists only the saved value.
+When the route fails, the next filter render on the canvas asks again.
+
+These three filters no longer fall back to `"brand"`,
+`"categories.lvl0,categories.lvl1,categories.lvl2"` or `"price.USD.float_price"`
+when the prop is unset. Those were guesses, and on a store without the field
+the whole search answered 400. On a page, a filter with no field adds nothing
+to the search and renders nothing. The canvas still shows sample values. Set
+the field on each filter you use.
 
 EP Add To Cart Button, EP Cart Item Quantity Control and EP Cart Item Remove
 Button show the cart write's rejection message as their `error`. They show
@@ -386,7 +406,9 @@ changes: same props, same slots, same data.
 A zero-total checkout completes only when Elastic Path reports the `manual`
 payment as complete. `/pay` answers `502` when that payment fails, and `409`
 with `ORDER_TOTAL_CHANGED`, without taking payment, when the order it created
-has a total.
+has a total. When the checkout response carries no total, `/pay` and
+`epPlaceOrder` read the order back; when Elastic Path still reports none,
+`/pay` answers `502` and `epPlaceOrder` throws, without taking payment.
 
 A product card inside EP Product Grid now has a link to its product page.
 EP Product Grid publishes `$ctx.currentHit.path`, built exactly as EP Search

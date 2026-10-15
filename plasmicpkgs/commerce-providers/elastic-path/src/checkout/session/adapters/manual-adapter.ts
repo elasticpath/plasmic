@@ -4,10 +4,6 @@
  * /pay owns checkoutApi + paymentSetup. This adapter only returns the
  * PaymentSetupRequest body. Host configures purchase vs authorize at
  * registration; capture is not implemented here.
- *
- * A zero-total order completes without this adapter. For an order with a
- * total above zero, /pay allows `manual` only when the host's `allow` rule
- * returns `true` for that cart and account.
  */
 import type { OrderFirstAdapter, PaymentSetupRequest } from "../types";
 import {
@@ -23,10 +19,7 @@ export type ManualPaymentMethod = "purchase" | "authorize";
 export interface ManualAdapterConfig {
   /** EPCC Manual paymentSetup method. Defaults to purchase. */
   method?: ManualPaymentMethod;
-  /**
-   * Allows `manual` for an order with a total above zero, for example invoice
-   * terms for approved accounts. Without it, such orders cannot use `manual`.
-   */
+  /** See {@link ManualPaymentRule}. */
   allow?: ManualPaymentRule;
 }
 

@@ -250,9 +250,11 @@ scoped by that authentication)
 
 **Identity operation**:
 One of the things a call site does to the shopper envelope — read it, mint
-it, rotate it, point it at a cart, register a member, sign a member in or
-out, read the roster, select an account, roll its credential. Reached as
-a method on the **identity client**, never as a route. Distinct from a
+it, rotate it, register a member, sign a member in or out, read the roster,
+select an account, roll its credential. Reached as a method on the
+**identity client**, never as a route. Pointing the envelope at a cart is
+not one: only server code does it, when a cart write creates the cart.
+Distinct from a
 *named operation*: these are authentication-plugin endpoints, so the client
 is derived from the endpoints rather than dispatched through the proxy.
 

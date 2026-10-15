@@ -5,8 +5,6 @@
  * PaymentRegistrationContext so placeOrder() posts `{ gateway: "manual" }`.
  * No card fields, credentials, or customer-action continuation.
  * Purchase vs authorize is not exposed; the server adapter chooses.
- * The server allows `manual` for an order with a total only when the host's
- * `createManualAdapter({ allow })` rule allows it for that cart and account.
  */
 import {
   DataProvider,

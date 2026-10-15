@@ -899,11 +899,11 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 
 ### Checkout (Composable)
 - **EPCheckoutProvider** — Deprecated. Renders its children and nothing else. Use **EPCheckoutSessionProvider**
-- **EPCheckoutStepIndicator** — Multi-step progress
+- **EPCheckoutStepIndicator** — Deprecated. Renders nothing; it read its step from EPCheckoutProvider
 - **EPCustomerInfoFields** / **EPShippingAddressFields** / **EPBillingAddressFields** — Form fields
 - **EPShippingMethodSelector** — Shipping options
-- **EPPaymentElements** — Stripe Payment Element. It took its client secret only from EPCheckoutProvider, so it no longer renders a form; use **EPStripePayment**
-- **EPCheckoutButton** — Step-aware button: continue to shipping, continue to payment, place order. Outside a checkout provider it links to `checkoutUrl`
+- **EPPaymentElements** — Deprecated. Renders its children and nothing else; it took its client secret only from EPCheckoutProvider. Use **EPStripePayment**
+- **EPCheckoutButton** — "Checkout" control that goes to `checkoutUrl`, for a cart page
 - **EPPlaceOrderButton** — Places the order
 - **EPOrderTotalsBreakdown** — Order summary
 - **EPCheckoutCartSummary** / **EPCheckoutCartItemList** — Cart in checkout
@@ -945,7 +945,7 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 - **EPCatalogSearchProvider** — InstantSearch over the store's Catalog Search index. See [Choosing a listing path](COMPONENTS.md#3-choosing-a-listing-path)
 - **EPSearchBox** / **EPSearchHits** / **EPSearchPagination** — Search UI
 - **EPSearchInfiniteHits** — Search results with load more, appended in place
-- **EPRefinementList** / **EPHierarchicalMenu** / **EPRangeFilter** — Faceted filtering. In Studio, the attribute is picked from a list of the fields the store's catalog search can filter on, read through the design-time route
+- **EPRefinementList** / **EPHierarchicalMenu** / **EPRangeFilter** — Faceted filtering. In Studio, the attribute is picked from a list of the fields the store's catalog search can filter on, read through the design-time route. A filter with no attribute set renders nothing on a page and adds nothing to the search
 - **EPSearchStats** / **EPSearchSortBy** — Search metadata
 
 ## Styling contract (catalog-search components)

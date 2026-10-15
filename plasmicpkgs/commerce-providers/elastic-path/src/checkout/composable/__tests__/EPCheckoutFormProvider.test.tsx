@@ -35,10 +35,6 @@ jest.mock("@plasmicapp/host/registerComponent", () => {
   return fn;
 });
 
-jest.mock("../../../ep-server-functions/proxy-fetch", () => ({
-  callEpProxy: jest.fn(),
-}));
-
 import React, { useEffect } from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { DEFAULT_DEBOUNCE_MS } from "../../../const";
@@ -49,8 +45,8 @@ const {
   useCheckoutForm,
   epCheckoutFormProviderMeta,
 } = require("../EPCheckoutFormProvider");
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { callEpProxy } = require("../../../ep-server-functions/proxy-fetch");
+const fetchMock = jest.fn();
+global.fetch = fetchMock as any;
 
 const COMPLETE_SHIPPING = {
   shippingAddress: "123 Main St",
@@ -520,6 +516,15 @@ describe("EPCheckoutFormProvider setup", () => {
     ]);
   });
 
+  it.each(["paymentGateway", "paymentMethod"])(
+    "hides %s and describes it as ignored",
+    (name) => {
+      const prop = epCheckoutFormProviderMeta.props[name];
+      expect(prop.hidden()).toBe(true);
+      expect(prop.description).toMatch(/^Deprecated — ignored\./);
+    }
+  );
+
   it("shows a setup error for a stored proxy Payment Mode and places no order", async () => {
     const form = await placeWith({ paymentMode: "proxy" });
 
@@ -529,7 +534,7 @@ describe("EPCheckoutFormProvider setup", () => {
     expect(form.status).toBe("error");
     expect(form.error).toContain("EP Checkout Session Provider");
     expect(mockPlaceOrder).not.toHaveBeenCalled();
-    expect(callEpProxy).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it.each(["session", "auto"])(
@@ -547,7 +552,7 @@ describe("EPCheckoutFormProvider setup", () => {
       expect(onError).toHaveBeenCalledWith({
         message: expect.stringContaining("EP Checkout Session Provider"),
       });
-      expect(callEpProxy).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
     }
   );
 

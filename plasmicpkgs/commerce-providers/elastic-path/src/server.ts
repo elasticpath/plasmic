@@ -63,6 +63,7 @@ export type {
   OrderFirstAdapter,
   PaymentAdapter,
   PaymentAdapterOrderRule,
+  PaymentAdapterOrderRuleInput,
   PaymentSequence,
   PaymentSetupRequest,
   SessionHandlerContext,

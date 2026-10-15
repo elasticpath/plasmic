@@ -2,10 +2,22 @@
  * Guard: the Elastic Path cart id never reaches the browser. A cart id alone
  * grants access to that cart, so every response a storefront page can read
  * is checked for it: the cart functions through the proxy, the auth routes,
- * and the development error text. Checkout session responses are checked in
- * each handler's own tests.
+ * the development error text, and what a server render puts in `$ctx`.
+ * Checkout session responses are checked in each handler's own tests.
  */
+import React from "react";
+import { renderToString } from "react-dom/server";
+import { SWRConfig } from "swr";
+import { useSelector } from "@plasmicapp/host";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildEpCtx } from "../../../ep-server-functions/build-ep-ctx";
+import { withEpSession } from "../../../ep-server-functions/session-context";
+import { getCart } from "../../../ep-server-functions/register-custom-functions";
+import { seedCartFallback } from "../../../cart-provider/seed-cart-fallback";
+import { EPCartProvider } from "../../../cart-provider/EPCartProvider";
+import { EPCheckoutSessionProvider } from "../../../checkout/session/EPCheckoutSessionProvider";
+import { handleGetSession } from "../../../api/endpoints/checkout-session/get-session";
+import type { CheckoutSession } from "../../../checkout/session/types";
 import { createEpAuth } from "../create-ep-auth-better";
 import { createEpAuthRoutes } from "../auth-routes";
 import { createEpProxyRoutes } from "../proxy-routes";
@@ -234,5 +246,103 @@ describe("the cart id stays on the server", () => {
     const text = await res.text();
     expect(JSON.parse(text).message).toBeTruthy();
     expect(text).not.toContain(CART_ID);
+  });
+});
+
+function CtxDump({ name }: { name: string }) {
+  return React.createElement("pre", null, JSON.stringify(useSelector(name) ?? null));
+}
+
+function serverRender(fallback: Record<string, unknown>, tree: React.ReactElement) {
+  return renderToString(
+    React.createElement(
+      SWRConfig,
+      { value: { fallback, provider: () => new Map() } },
+      tree
+    )
+  );
+}
+
+async function serverEpCtx(browser: Browser) {
+  const session = await browser.auth.api.getSession({
+    cookies: Object.fromEntries(
+      [...browser.jar].map(([name, value]) => [name, decodeURIComponent(value)])
+    ),
+  });
+  return buildEpCtx(session);
+}
+
+describe("the cart id stays out of a server render", () => {
+  it("is not in the cart seed or the server-rendered $ctx.cart", async () => {
+    const { browser } = await shopperWithACart();
+    const epCtx = await serverEpCtx(browser);
+    expect(epCtx.cartId).toBe(CART_ID);
+
+    const fallback = await withEpSession(epCtx, () => seedCartFallback());
+    const html = serverRender(
+      fallback,
+      React.createElement(
+        EPCartProvider,
+        null,
+        React.createElement(CtxDump, { name: "cart" })
+      )
+    );
+
+    expect(html).toContain("Jumper");
+    expect(JSON.stringify(fallback)).not.toContain(CART_ID);
+    expect(html).not.toContain(CART_ID);
+  });
+
+  it("is not in a server query's cart", async () => {
+    const { browser } = await shopperWithACart();
+    const epCtx = await serverEpCtx(browser);
+
+    const cart = await withEpSession(epCtx, () => getCart());
+
+    expect(JSON.stringify(cart)).toContain("Jumper");
+    expect(JSON.stringify(cart)).not.toContain(CART_ID);
+  });
+
+  it("is not in the server-rendered $ctx.checkoutSession", async () => {
+    const stored: CheckoutSession = {
+      id: "sess-1",
+      status: "open",
+      cartId: CART_ID,
+      cartHash: "hash",
+      customerInfo: { name: "Jane Doe", email: "jane@example.com" },
+      shippingAddress: null,
+      billingAddress: null,
+      selectedShippingRateId: null,
+      availableShippingRates: [],
+      totals: null,
+      payment: {
+        gateway: null,
+        status: "idle",
+        clientToken: null,
+        gatewayMetadata: {},
+        actionData: null,
+      },
+      order: null,
+      expiresAt: Date.now() + 60_000,
+    };
+    const res = await handleGetSession({ body: {}, headers: {} } as any, {
+      sessionStore: {
+        get: async () => stored,
+        set: async () => ({ headers: {} }),
+        delete: async () => ({ headers: {} }),
+      },
+    } as any);
+
+    const html = serverRender(
+      { "/api/checkout/sessions/current": res.body },
+      React.createElement(
+        EPCheckoutSessionProvider,
+        { autoCreate: false },
+        React.createElement(CtxDump, { name: "checkoutSession" })
+      )
+    );
+
+    expect(html).toContain("sess-1");
+    expect(html).not.toContain(CART_ID);
   });
 });

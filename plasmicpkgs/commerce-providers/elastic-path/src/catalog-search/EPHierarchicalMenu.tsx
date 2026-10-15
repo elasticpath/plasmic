@@ -55,10 +55,9 @@ export const epHierarchicalMenuMeta: CodeComponentMeta<EPHierarchicalMenuProps> 
       type: "choice",
       displayName: "Attributes",
       description:
-        'Hierarchy levels to navigate, listed from the connected store\'s catalog search. Unset uses "categories.lvl0,categories.lvl1,categories.lvl2". For levels the list does not show, bind a comma-separated value.',
+        "Hierarchy levels to navigate, listed from the connected store's catalog search. For levels the list does not show, bind a comma-separated value. Unset: the filter is left out of the search and shows nothing on a live page.",
       options: (props, ctx) => hierarchyOptions(props.attributes, ctx),
       allowSearch: true,
-      defaultValueHint: "categories.lvl0,categories.lvl1,categories.lvl2",
     },
     previewState: {
       type: "choice",
@@ -135,6 +134,13 @@ function DefaultCategoryRow(props: {
   );
 }
 
+function splitLevels(attributes: string | undefined): string[] {
+  return (attributes ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export const EPHierarchicalMenu = React.forwardRef<
   EPHierarchicalMenuActions,
   EPHierarchicalMenuProps
@@ -161,10 +167,13 @@ export const EPHierarchicalMenu = React.forwardRef<
     );
   }
 
+  const levels = splitLevels(attributes);
+  if (levels.length === 0) return null;
+
   return (
     <EPHierarchicalMenuInner
       ref={ref}
-      attributes={attributes}
+      attributes={levels.join(",")}
       className={className}
     >
       {children}
@@ -209,19 +218,11 @@ const EPHierarchicalMenuInner = React.forwardRef<
   EPHierarchicalMenuActions,
   {
     children?: React.ReactNode;
-    attributes?: string;
+    attributes: string;
     className?: string;
   }
 >(function EPHierarchicalMenuInner({ children, attributes, className }, ref) {
-
-  const attributeArray = useMemo(
-    () =>
-      (attributes || "categories.lvl0,categories.lvl1,categories.lvl2")
-        .split(",")
-        .map((s: string) => s.trim())
-        .filter(Boolean),
-    [attributes]
-  );
+  const attributeArray = useMemo(() => splitLevels(attributes), [attributes]);
 
   const { items, refine } = useHierarchicalMenu({
     attributes: attributeArray,

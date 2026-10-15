@@ -779,14 +779,15 @@ export const epCheckoutConfirmationMeta: {
     };
 };
 
-// @public (undocumented)
-export function EPCheckoutForm({ apiBaseUrl, onComplete, onError, className, style }: EPCheckoutFormProps): React_2.JSX.Element;
+// @public @deprecated (undocumented)
+export function EPCheckoutForm(_props: EPCheckoutFormProps): React_2.JSX.Element;
 
 // @public (undocumented)
 export const epCheckoutFormMeta: {
     name: string;
     displayName: string;
     description: string;
+    hideFromContentCreators: boolean;
     importName: string;
     importPath: string;
     props: {
@@ -801,11 +802,13 @@ export const epCheckoutFormMeta: {
             displayName: string;
             description: string;
             defaultValue: string;
+            hidden: () => boolean;
         };
         className: {
             type: "string";
             displayName: string;
             description: string;
+            hidden: () => boolean;
         };
         onComplete: {
             type: "eventHandler";
@@ -815,6 +818,7 @@ export const epCheckoutFormMeta: {
                 name: string;
                 type: "object";
             }[];
+            hidden: () => boolean;
         };
         onError: {
             type: "eventHandler";
@@ -824,6 +828,7 @@ export const epCheckoutFormMeta: {
                 name: string;
                 type: "object";
             }[];
+            hidden: () => boolean;
         };
     };
     trapsFocus: boolean;
@@ -854,7 +859,7 @@ export const EPCheckoutShippingRates: React_2.ForwardRefExoticComponent<EPChecko
 export const epCheckoutShippingRatesMeta: CodeComponentMeta<EPCheckoutShippingRatesProps>;
 
 // @public (undocumented)
-export function EPCheckoutStepIndicator(props: EPCheckoutStepIndicatorProps): React_2.JSX.Element;
+export function EPCheckoutStepIndicator(_props: EPCheckoutStepIndicatorProps): null;
 
 // @public (undocumented)
 export const epCheckoutStepIndicatorMeta: CodeComponentMeta<EPCheckoutStepIndicatorProps>;
@@ -1115,7 +1120,7 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps): Reac
 export const epOrderTotalsBreakdownMeta: CodeComponentMeta<EPOrderTotalsBreakdownProps>;
 
 // @public (undocumented)
-export function EPPaymentElements(props: EPPaymentElementsProps): React_2.JSX.Element;
+export function EPPaymentElements({ children }: EPPaymentElementsProps): React_2.JSX.Element;
 
 // @public (undocumented)
 export const epPaymentElementsMeta: CodeComponentMeta<EPPaymentElementsProps>;

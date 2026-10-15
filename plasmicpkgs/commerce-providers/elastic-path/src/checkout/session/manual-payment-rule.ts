@@ -1,20 +1,15 @@
-import type { getACart } from "@epcc-sdk/sdks-shopper";
+import type { EpCartResponse, PaymentAdapterOrderRuleInput } from "./types";
 
-export type EpCartResponse = NonNullable<
-  Awaited<ReturnType<typeof getACart>>["data"]
->;
+export type { EpCartResponse };
 
 /** What a host's Manual payment rule sees about the order it decides on. */
-export interface ManualPaymentRuleInput {
-  /** The cart, in Elastic Path's own shape, with its items under `included`. */
-  cart: EpCartResponse;
-  /** The account the shopper buys for, or `null` when none is selected. */
-  account: { id: string } | null;
-}
+export type ManualPaymentRuleInput = PaymentAdapterOrderRuleInput;
 
 /**
  * Decides whether an order with a total above zero may use the `manual`
- * gateway. Only `true` allows it. A rule that throws refuses.
+ * gateway, for example invoice terms for approved accounts. Only `true`
+ * allows it; a rule that throws refuses. Without a rule, `manual` takes only
+ * orders whose total is zero. The rule runs before the order is created.
  */
 export type ManualPaymentRule = (
   input: ManualPaymentRuleInput

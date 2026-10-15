@@ -288,6 +288,22 @@ describe("EPCheckoutButton", () => {
       expect(slot.hidePlaceholder).toBe(true);
     });
 
+    it("describes the link to the checkout page, not a step-aware button", () => {
+      const texts = [
+        epCheckoutButtonMeta.description,
+        ...Object.values<any>(epCheckoutButtonMeta.props).map(
+          (p) => p.description ?? ""
+        ),
+      ].join("\n");
+
+      expect(texts).not.toMatch(/step-aware/i);
+      expect(texts).not.toMatch(/outside an EP Checkout Provider/i);
+      expect(epCheckoutButtonMeta.description).toMatch(/checkout page/i);
+      expect(
+        (epCheckoutButtonMeta.props as any).onComplete.description
+      ).toMatch(/^Deprecated — ignored\./);
+    });
+
     it("has correct meta shape", () => {
       expect(epCheckoutButtonMeta.name).toBe(
         "plasmic-commerce-ep-checkout-button"

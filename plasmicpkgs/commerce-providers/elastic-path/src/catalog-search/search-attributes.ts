@@ -22,7 +22,13 @@ export function resetSearchAttributeDiscovery(): void {
 
 function discover(): Promise<SearchAttribute[] | null> {
   if (!discovery) {
-    discovery = requestDesignSearchAttributes().catch(() => null);
+    const attempt = requestDesignSearchAttributes()
+      .catch(() => null)
+      .then((found) => {
+        if (!found && discovery === attempt) discovery = undefined;
+        return found;
+      });
+    discovery = attempt;
   }
   return discovery;
 }

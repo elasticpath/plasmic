@@ -816,12 +816,7 @@ export type ManualPaymentMethod = "purchase" | "authorize";
 export type ManualPaymentRule = (input: ManualPaymentRuleInput) => boolean | Promise<boolean>;
 
 // @public
-export interface ManualPaymentRuleInput {
-    account: {
-        id: string;
-    } | null;
-    cart: EpCartResponse;
-}
+export type ManualPaymentRuleInput = PaymentAdapterOrderRuleInput;
 
 // @public (undocumented)
 export const multiSearch: AdaptedFunction;
@@ -843,7 +838,15 @@ export type PaymentAdapter = CartPaymentIntentAdapter | OrderFirstAdapter | Lega
 // @public
 export interface PaymentAdapterOrderRule {
     // (undocumented)
-    allowsOrder?(input: ManualPaymentRuleInput): boolean | Promise<boolean>;
+    allowsOrder?(input: PaymentAdapterOrderRuleInput): boolean | Promise<boolean>;
+}
+
+// @public
+export interface PaymentAdapterOrderRuleInput {
+    account: {
+        id: string;
+    } | null;
+    cart: EpCartResponse;
 }
 
 // @public (undocumented)

@@ -53,10 +53,9 @@ export const epRangeFilterMeta: CodeComponentMeta<EPRangeFilterProps> = {
       type: "choice",
       displayName: "Attribute",
       description:
-        'Numeric field to filter on, listed from the connected store\'s catalog search. Unset filters on "price.USD.float_price". For a field the list does not show, bind a value.',
+        "Numeric field to filter on, listed from the connected store's catalog search. For a field the list does not show, bind a value. Unset: the filter is left out of the search and shows nothing on a live page.",
       options: (props, ctx) => numericAttributeOptions(props.attribute, ctx),
       allowSearch: true,
-      defaultValueHint: "price.USD.float_price",
     },
     previewState: {
       type: "choice",
@@ -107,10 +106,12 @@ export const EPRangeFilter = React.forwardRef<
     );
   }
 
+  if (!attribute) return null;
+
   return (
     <EPRangeFilterInner
       ref={ref}
-      attribute={attribute || "price.USD.float_price"}
+      attribute={attribute}
       className={className}
     >
       {children}

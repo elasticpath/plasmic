@@ -6,8 +6,8 @@
  * on-demand from the session's cartId / orderId rather than duplicated.
  */
 
+import type { getACart } from "@epcc-sdk/sdks-shopper";
 import type { EpLocaleAndCurrency } from "../../types/locale-and-currency";
-import type { ManualPaymentRuleInput } from "./manual-payment-rule";
 
 // ---------------------------------------------------------------------------
 // Session status
@@ -189,7 +189,19 @@ export interface PaymentSetupRequest {
  * `true`.
  */
 export interface PaymentAdapterOrderRule {
-  allowsOrder?(input: ManualPaymentRuleInput): boolean | Promise<boolean>;
+  allowsOrder?(input: PaymentAdapterOrderRuleInput): boolean | Promise<boolean>;
+}
+
+export type EpCartResponse = NonNullable<
+  Awaited<ReturnType<typeof getACart>>["data"]
+>;
+
+/** What an order rule sees about the order it decides on. */
+export interface PaymentAdapterOrderRuleInput {
+  /** The cart, in Elastic Path's own shape, with its items under `included`. */
+  cart: EpCartResponse;
+  /** The account the shopper buys for, or `null` when none is selected. */
+  account: { id: string } | null;
 }
 
 export interface CartPaymentIntentAdapter extends PaymentAdapterOrderRule {
