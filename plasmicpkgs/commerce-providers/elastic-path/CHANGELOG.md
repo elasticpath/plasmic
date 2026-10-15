@@ -46,6 +46,14 @@ Path's reason from the rejection's `cause`, not its `message`, and branch on
 `code`. In development the proxy route still forwards Elastic Path's reason, so
 a rejection in the browser there has that reason as its `message`.
 
+Checkout takes the cart from the shopper's session, never from the browser.
+`handleCreateSession` checks out `sessionCartId` on `SessionHandlerContext`
+and ignores any `cartId` in the request body. To migrate, set
+`sessionCartId: session.cart?.id` where the checkout routes build their
+context, from the same `getSession` that gives `shopperAccessToken`, and stop
+copying a cart id into the request. Without it, creating a checkout session
+returns `409` with code `NO_CART`.
+
 ### Removed
 
 | Removed | Replacement |
@@ -79,12 +87,23 @@ Two capabilities go with them, not only their configuration:
 
 ### Deprecated
 
-Two registrations could not be removed, because hostless publishing rejects a
-removed component or a removed published prop. Both are empty instead.
+These registrations could not be removed, because hostless publishing rejects a
+removed component or a removed published prop. All are empty instead.
 
 - **EP Shopper Context** renders its children and nothing else. Its four props
   are hidden and ignored. Remove it from your project; nothing reads it.
 - **EP Promo Code Input**'s `Use Server Routes` is hidden and ignored.
+- **EP Checkout Provider** is now "EP Checkout Provider (deprecated)". It
+  called `/api/checkout/create-order`, `/setup-payment` and `/confirm-payment`,
+  which nothing serves, so it could not place an order. It renders its
+  children and nothing else, publishes no `checkoutData`, and its ref actions
+  do nothing. Every prop but its children slot, `Cart ID` included, is hidden
+  and ignored. Build checkout with EP Checkout Session Provider. EP Payment
+  Elements took its client secret only from this provider, so it no longer
+  renders a form; use EP Stripe Payment.
+- **Elastic Path Checkout Form**'s `Cart ID` is hidden and ignored.
+- **EP Checkout Session Provider**'s `createSession` ignores its `cartId`
+  argument. The session checks out the shopper's session cart.
 
 ### Added
 
@@ -153,10 +172,11 @@ stay on the server. An Elastic Path `4xx` other than `401` is
 `registration_rejected` with Elastic Path's status and error detail; a `401` or
 `5xx` is `account_token_mint_failed`, as for login.
 
-`createEpDesignRoutes` serves Studio design time. It answers four catalog
-reads, `getProduct`, `getProductList`, `getProductPage` and
-`getRelatedProducts`, under the store's public credential, and refuses every
-other name. It reads no shopper session, so it works inside Studio's editing
+`createEpDesignRoutes` serves Studio design time. It answers the catalog
+reads `getProduct`, `getProductList`, `getProductPage` and
+`getRelatedProducts`, and `getSearchAttributes`, which lists the fields the
+store's catalog search can filter on. It answers under the store's public
+credential and refuses every other name. It reads no shopper session, so it works inside Studio's editing
 frame, where the browser never sends the shopper envelope. Mount it at
 `app/api/ep/design/[fn]/route.ts`. Without it, the canvas shows labelled
 `"Sample"` fixtures and the console says once which route is missing.
@@ -229,6 +249,21 @@ inside catalog search renders no products even when catalog search sits inside
 one of those providers. Nothing substitutes another data source.
 
 ### Changed
+
+EP Refinement List `attribute`, EP Hierarchical Menu `attributes` and EP Range
+Filter `attribute` are dropdowns in Studio instead of free text. The list comes
+from the connected store: on the canvas the components ask the design-time
+route for the fields the store's catalog search can filter on. EP Range Filter
+lists only numeric fields, and EP Hierarchical Menu lists each `….lvlN` set as
+one option. A field keyed by currency, such as `price`, is listed once per
+currency (`price.USD.float_price`). A saved value stays selectable even when
+the store does not list it. To use a field the list does not show, bind a
+value. The props have no default value any more, because the old ones were
+guesses that a store need not have. An unset prop renders as before: the
+components still fall back to `"brand"`, `"categories.lvl0,categories.lvl1,categories.lvl2"`
+and `"price.USD.float_price"`. Rendering, on the canvas and on the page, does
+not change. Without the design-time route the dropdown lists only the saved
+value.
 
 EP Add To Cart Button, EP Cart Item Quantity Control and EP Cart Item Remove
 Button show the cart write's rejection message as their `error`. They show

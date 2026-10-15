@@ -17,17 +17,24 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
+  CanvasComponentProps,
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useImperativeHandle, useMemo } from "react";
 import { Registerable } from "../registerable";
 import { MOCK_REFINEMENT_ITEMS } from "./design-time-data";
+import {
+  SearchAttributeContext,
+  attributeOptions,
+  useSearchAttributeDiscovery,
+} from "./search-attributes";
 import type { RefinementItem } from "./design-time-data";
 import { useMenu, useRefinementList } from "react-instantsearch";
 
 type PreviewState = "auto" | "withData";
 
-interface EPRefinementListProps {
+interface EPRefinementListProps
+  extends CanvasComponentProps<SearchAttributeContext> {
   children?: React.ReactNode;
   attribute?: string;
   label?: string;
@@ -57,10 +64,13 @@ export const epRefinementListMeta: CodeComponentMeta<EPRefinementListProps> = {
       hidePlaceholder: true,
     },
     attribute: {
-      type: "string",
+      type: "choice",
       displayName: "Attribute",
-      description: 'Facet attribute name (e.g., "brand", "color", "material")',
-      defaultValue: "brand",
+      description:
+        'Field to filter on, listed from the connected store\'s catalog search. Unset filters on "brand". For a field the list does not show, bind a value.',
+      options: (props, ctx) => attributeOptions(props.attribute, ctx),
+      allowSearch: true,
+      defaultValueHint: "brand",
     },
     label: {
       type: "string",
@@ -157,7 +167,10 @@ export const EPRefinementList = React.forwardRef<
     itemGap = "9.5px",
     className,
     previewState = "auto",
+    setControlContextData,
   } = props;
+
+  useSearchAttributeDiscovery(setControlContextData);
 
   const inEditor = !!usePlasmicCanvasContext();
   const useMock =

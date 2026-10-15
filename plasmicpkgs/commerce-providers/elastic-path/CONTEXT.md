@@ -67,16 +67,20 @@ _Avoid_: simple checkout, form provider checkout
 **Controlled-field checkout**:
 The refAction-orchestrated, fixed-schema checkout family:
 `EPCustomerInfoFields`/`EPShippingAddressFields`/`EPBillingAddressFields`
-with the 4-step `EPCheckoutProvider`. The breakout for multi-step flows,
+inside `EPCheckoutSessionProvider`. The breakout for multi-step flows,
 bring-your-own inputs, address suggestions, and shipping-rate selection.
-Either/or per page with managed-form, never mixed.
+Either/or per page with managed-form, never mixed. The 4-step
+`EPCheckoutProvider` is deprecated and inert: it called routes nothing serves.
 _Avoid_: composable checkout (ambiguous — both families are composable)
 
 **Checkout session**:
 The server-authoritative checkout state managed by
-`EPCheckoutSessionProvider` and the `/api/…/checkout/sessions*` routes. Holds
-orchestration and selection state only — never an authoritative amount. The
-managed form auto-detects it (`paymentMode: "auto"`) and submits through it.
+`EPCheckoutSessionProvider` and the `/api/…/checkout/sessions*` routes — the
+checkout path. Holds orchestration and selection state only — never an
+authoritative amount. It checks out the **session cart**, which the server
+takes from the shopper envelope when the session is created; the browser never
+names a cart. The managed form auto-detects it (`paymentMode: "auto"`) and
+submits through it.
 
 ### Session & security
 
@@ -260,8 +264,8 @@ deliberately not used)
 **Design-time catalog route**:
 `createEpDesignRoutes`, mounted at `app/api/ep/design/[fn]/route.ts`. The
 session-free route serving the store's default catalog to Studio under an
-anonymous implicit token, with four declared names and no cart or order
-access. Distinct from the shopper proxy, which carries session identity.
+anonymous implicit token, with a closed list of declared names and no cart
+or order access. Distinct from the shopper proxy, which carries session identity.
 
 **Mock floor**:
 The automatic canvas fallback to `"Sample"` fixtures beneath any design-time

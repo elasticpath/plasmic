@@ -357,9 +357,9 @@ can rely on:
   attach itself and then list that cart.
 
 **The cart id still reaches page scripts.** `get-session` returns `epCartId`,
-because EP Checkout Provider reads it to drive checkout. Treat it as a
-credential for that one cart: do not log it, put it in a URL, or send it to a
-third-party script.
+although nothing in this package reads it in the browser: checkout takes the
+cart from the session on the server. Treat it as a credential for that one
+cart: do not log it, put it in a URL, or send it to a third-party script.
 
 **`next dev` exposes the session.** Next's React Server Components debug
 instrumentation serializes a server component's local variables into the page
@@ -420,8 +420,9 @@ export const OPTIONS = routes.options;
 The design route reads no shopper session, which is what lets it answer inside
 Studio's editing frame: the session cookie is `SameSite=Lax` and never travels
 there once the app host is served from the storefront's own domain. It serves
-four catalog reads — `getProduct`, `getProductList`, `getProductPage`,
-`getRelatedProducts` — under a bare implicit token, and refuses every other
+the catalog reads `getProduct`, `getProductList`, `getProductPage` and
+`getRelatedProducts`, plus `getSearchAttributes` for the search filters'
+attribute dropdowns, under a bare implicit token, and refuses every other
 name. Mount it in production: designers edit against a deployed app host.
 
 Its CORS is `Access-Control-Allow-Origin: *` with no credentials and no origin
@@ -520,6 +521,12 @@ selected account's token as `accountToken` on `SessionHandlerContext`, resolved
 from `session.session.account?.token` next to `shopperAccessToken`. Calls made
 with `getClientCredentialsToken` never carry it.
 
+Pass the session cart as `sessionCartId`, from `session.cart?.id` on the same
+`getSession`. `handleCreateSession` checks out that cart and ignores any cart
+id in the request; without it, creating a checkout session returns `409` with
+code `NO_CART`. Every later checkout-session route works on the cart the
+session was created with.
+
 Pass the session's `locale` and `currency` on `SessionHandlerContext` as well,
 from the same `getSession`:
 `{ ...ctx, locale: session.locale, currency: session.currency }`. Checkout
@@ -605,7 +612,7 @@ The checkout-session handlers are mounted one route each, under the
 
 | Method | Path | Handler | Description |
 |--------|------|---------|-------------|
-| POST | `{apiBaseUrl}/checkout/sessions` | `handleCreateSession` | Open a session for the cart |
+| POST | `{apiBaseUrl}/checkout/sessions` | `handleCreateSession` | Open a session for the shopper's session cart |
 | GET | `{apiBaseUrl}/checkout/sessions/current` | `handleGetSession` | Read the session |
 | PATCH | `{apiBaseUrl}/checkout/sessions/current` | `handleUpdateSession` | Merge fields; a changed shipping address requotes |
 | POST | `{apiBaseUrl}/checkout/sessions/current/shipping` | `handleCalculateShipping` | Requote on demand, for example after the cart changes |
@@ -842,11 +849,11 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 - **EPAddToCartButton** — Add to cart action
 
 ### Checkout (Composable)
-- **EPCheckoutProvider** — Checkout state management
+- **EPCheckoutProvider** — Deprecated. Renders its children and nothing else. Use **EPCheckoutSessionProvider**
 - **EPCheckoutStepIndicator** — Multi-step progress
 - **EPCustomerInfoFields** / **EPShippingAddressFields** / **EPBillingAddressFields** — Form fields
 - **EPShippingMethodSelector** — Shipping options
-- **EPPaymentElements** — Payment form
+- **EPPaymentElements** — Stripe Payment Element. It took its client secret only from EPCheckoutProvider, so it no longer renders a form; use **EPStripePayment**
 - **EPCheckoutButton** — Step-aware button: continue to shipping, continue to payment, place order. Outside a checkout provider it links to `checkoutUrl`
 - **EPPlaceOrderButton** — Places the order
 - **EPOrderTotalsBreakdown** — Order summary
@@ -855,7 +862,7 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 - **EPCountrySelect** — Country picker
 
 ### Checkout (Session-based)
-- **EPCheckoutSessionProvider** — Server-authoritative session
+- **EPCheckoutSessionProvider** — The checkout path. Server-authoritative session for the cart in the shopper's session
 - **EPStripePayment** / **EPCloverPayment** — Payment adapters
 
 ### Accounts (Composable)
@@ -887,7 +894,7 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 - **EPCatalogSearchProvider** — InstantSearch over the store's Catalog Search index. See [Choosing a listing path](COMPONENTS.md#3-choosing-a-listing-path)
 - **EPSearchBox** / **EPSearchHits** / **EPSearchPagination** — Search UI
 - **EPSearchInfiniteHits** — Search results with load more, appended in place
-- **EPRefinementList** / **EPHierarchicalMenu** / **EPRangeFilter** — Faceted filtering
+- **EPRefinementList** / **EPHierarchicalMenu** / **EPRangeFilter** — Faceted filtering. In Studio, the attribute is picked from a list of the fields the store's catalog search can filter on, read through the design-time route
 - **EPSearchStats** / **EPSearchSortBy** — Search metadata
 
 ## Styling contract (catalog-search components)

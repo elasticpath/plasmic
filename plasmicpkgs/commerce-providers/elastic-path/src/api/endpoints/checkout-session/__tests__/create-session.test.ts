@@ -1,7 +1,7 @@
 /**
  * A-10.3: handleCreateSession tests
  *
- * Covers the success path (201 with session), missing-cartId validation (400),
+ * Covers the success path (201 with session), the session cart (409 without one),
  * EP cart fetch failure (502), and session shape invariants (cartHash present
  * internally, stripped from client response).
  *
@@ -76,6 +76,7 @@ function createMockCtx(
       getAdapter: jest.fn().mockReturnValue(undefined),
     },
     sessionStore: createMockStore(),
+    sessionCartId: "cart-abc",
     ...overrides,
   };
 }
@@ -105,29 +106,38 @@ describe("handleCreateSession", () => {
     epSdk.confirmPayment.mockReset();
   });
 
-  describe("input validation", () => {
-    it("returns 400 when cartId is missing from body", async () => {
-      const res = await handleCreateSession(createMockReq({}), createMockCtx());
-      expect(res.status).toBe(400);
-      expect((res.body as any).success).toBe(false);
-      expect((res.body as any).error.code).toBe("VALIDATION_ERROR");
+  describe("the cart comes from the shopper's session", () => {
+    beforeEach(() => {
+      epSdk.getACart.mockResolvedValue(makeCartResponse([]) as any);
     });
 
-    it("returns 400 when cartId is not a string", async () => {
+    it("checks out the session cart, not a cart id the browser sends", async () => {
+      const store = createMockStore();
       const res = await handleCreateSession(
-        createMockReq({ cartId: 42 }),
-        createMockCtx()
+        createMockReq({ cartId: "someone-elses-cart" }),
+        createMockCtx({ sessionCartId: "session-cart", sessionStore: store })
       );
-      expect(res.status).toBe(400);
-      expect((res.body as any).error.code).toBe("VALIDATION_ERROR");
+
+      expect(res.status).toBe(201);
+      expect(epSdk.getACart).toHaveBeenCalledTimes(1);
+      expect(epSdk.getACart.mock.calls[0][0].path).toEqual({
+        cartID: "session-cart",
+      });
+      const stored: CheckoutSession = store.set.mock.calls[0][1];
+      expect(stored.cartId).toBe("session-cart");
     });
 
-    it("returns 400 when cartId is an empty string", async () => {
+    it("refuses when the shopper has no session cart, whatever the browser sends", async () => {
+      const store = createMockStore();
       const res = await handleCreateSession(
-        createMockReq({ cartId: "" }),
-        createMockCtx()
+        createMockReq({ cartId: "someone-elses-cart" }),
+        createMockCtx({ sessionCartId: undefined, sessionStore: store })
       );
-      expect(res.status).toBe(400);
+
+      expect(res.status).toBe(409);
+      expect((res.body as any).error.code).toBe("NO_CART");
+      expect(epSdk.getACart).not.toHaveBeenCalled();
+      expect(store.set).not.toHaveBeenCalled();
     });
   });
 
@@ -136,7 +146,7 @@ describe("handleCreateSession", () => {
       epSdk.getACart.mockRejectedValue(new Error("Network error"));
 
       const res = await handleCreateSession(
-        createMockReq({ cartId: "cart-abc" }),
+        createMockReq(),
         createMockCtx()
       );
 
@@ -158,7 +168,7 @@ describe("handleCreateSession", () => {
 
     it("returns 201 on success", async () => {
       const res = await handleCreateSession(
-        createMockReq({ cartId: "cart-abc" }),
+        createMockReq(),
         createMockCtx()
       );
       expect(res.status).toBe(201);
@@ -166,7 +176,7 @@ describe("handleCreateSession", () => {
 
     it("response body has success: true", async () => {
       const res = await handleCreateSession(
-        createMockReq({ cartId: "cart-abc" }),
+        createMockReq(),
         createMockCtx()
       );
       expect((res.body as any).success).toBe(true);
@@ -174,7 +184,7 @@ describe("handleCreateSession", () => {
 
     it("response body contains a session object", async () => {
       const res = await handleCreateSession(
-        createMockReq({ cartId: "cart-abc" }),
+        createMockReq(),
         createMockCtx()
       );
       const session = (res.body as any).data.session;
@@ -183,7 +193,7 @@ describe("handleCreateSession", () => {
 
     it("session has status 'open'", async () => {
       const res = await handleCreateSession(
-        createMockReq({ cartId: "cart-abc" }),
+        createMockReq(),
         createMockCtx()
       );
       expect((res.body as any).data.session.status).toBe("open");
@@ -191,7 +201,7 @@ describe("handleCreateSession", () => {
 
     it("session has the correct cartId", async () => {
       const res = await handleCreateSession(
-        createMockReq({ cartId: "cart-abc" }),
+        createMockReq(),
         createMockCtx()
       );
       expect((res.body as any).data.session.cartId).toBe("cart-abc");
@@ -199,7 +209,7 @@ describe("handleCreateSession", () => {
 
     it("client session does NOT expose cartHash", async () => {
       const res = await handleCreateSession(
-        createMockReq({ cartId: "cart-abc" }),
+        createMockReq(),
         createMockCtx()
       );
       const session = (res.body as any).data.session;
@@ -208,7 +218,7 @@ describe("handleCreateSession", () => {
 
     it("session has a string id", async () => {
       const res = await handleCreateSession(
-        createMockReq({ cartId: "cart-abc" }),
+        createMockReq(),
         createMockCtx()
       );
       expect(typeof (res.body as any).data.session.id).toBe("string");
@@ -217,7 +227,7 @@ describe("handleCreateSession", () => {
 
     it("session has payment.status 'idle'", async () => {
       const res = await handleCreateSession(
-        createMockReq({ cartId: "cart-abc" }),
+        createMockReq(),
         createMockCtx()
       );
       expect((res.body as any).data.session.payment.status).toBe("idle");
@@ -225,7 +235,7 @@ describe("handleCreateSession", () => {
 
     it("response includes Set-Cookie header", async () => {
       const res = await handleCreateSession(
-        createMockReq({ cartId: "cart-abc" }),
+        createMockReq(),
         createMockCtx()
       );
       expect(res.headers?.["Set-Cookie"]).toBeDefined();
@@ -234,7 +244,7 @@ describe("handleCreateSession", () => {
     it("calls sessionStore.set once", async () => {
       const store = createMockStore();
       await handleCreateSession(
-        createMockReq({ cartId: "cart-abc" }),
+        createMockReq(),
         createMockCtx({ sessionStore: store })
       );
       expect(store.set).toHaveBeenCalledTimes(1);
@@ -243,7 +253,7 @@ describe("handleCreateSession", () => {
     it("stores the session with cartHash computed from items", async () => {
       const store = createMockStore();
       await handleCreateSession(
-        createMockReq({ cartId: "cart-abc" }),
+        createMockReq(),
         createMockCtx({ sessionStore: store })
       );
       const storedSession: CheckoutSession = store.set.mock.calls[0][1];
@@ -253,7 +263,7 @@ describe("handleCreateSession", () => {
 
     it("requests include: ['items'] so EP returns cart lines", async () => {
       await handleCreateSession(
-        createMockReq({ cartId: "cart-abc" }),
+        createMockReq(),
         createMockCtx()
       );
       expect(epSdk.getACart).toHaveBeenCalledWith(
@@ -289,7 +299,7 @@ describe("handleCreateSession", () => {
       );
       const store = createMockStore();
       await handleCreateSession(
-        createMockReq({ cartId: "cart-abc" }),
+        createMockReq(),
         createMockCtx({ sessionStore: store })
       );
       const storedSession: CheckoutSession = store.set.mock.calls[0][1];
@@ -313,8 +323,8 @@ describe("handleCreateSession", () => {
       const store = createMockStore();
 
       await handleCreateSession(
-        createMockReq({ cartId: "empty-cart" }),
-        createMockCtx({ sessionStore: store })
+        createMockReq(),
+        createMockCtx({ sessionCartId: "empty-cart", sessionStore: store })
       );
 
       const storedSession: CheckoutSession = store.set.mock.calls[0][1];
@@ -354,7 +364,7 @@ describe("handleCreateSession", () => {
 
     it("totals the checkout in the currency the cart shows", async () => {
       const res = await handleCreateSession(
-        createMockReq({ cartId: "cart-abc" }),
+        createMockReq(),
         createMockCtx({ locale: "fr-FR", currency: "EUR" })
       );
 
@@ -379,7 +389,7 @@ describe("handleCreateSession", () => {
 
     it("reads the cart with the selected account's credential", async () => {
       await handleCreateSession(
-        createMockReq({ cartId: "cart-abc" }),
+        createMockReq(),
         createMockCtx({
           shopperAccessToken: "shopper-token",
           accountToken: "account-token",
@@ -395,7 +405,7 @@ describe("handleCreateSession", () => {
 
     it("reads the cart with no account credential when none is selected", async () => {
       await handleCreateSession(
-        createMockReq({ cartId: "cart-abc" }),
+        createMockReq(),
         createMockCtx({ shopperAccessToken: "shopper-token" })
       );
 
@@ -407,7 +417,7 @@ describe("handleCreateSession", () => {
 
     it("sends no account credential on the client_credentials fallback read", async () => {
       await handleCreateSession(
-        createMockReq({ cartId: "cart-abc" }),
+        createMockReq(),
         createMockCtx({
           accountToken: "account-token",
           getClientCredentialsToken: jest.fn(async () => "admin-token"),
