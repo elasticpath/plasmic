@@ -101,21 +101,13 @@ export function EPCheckoutButton(props: EPCheckoutButtonProps) {
   const canProceed = checkoutData?.canProceed ?? false;
   const isProcessing = checkoutData?.isProcessing ?? false;
 
-  // Design-time preview
-  const useMock =
-    (previewState !== "auto") ||
-    (inEditor && !checkoutData);
+  const useMock = inEditor && previewState !== "auto";
 
   const buttonData = useMemo<CheckoutButtonData>(() => {
     if (useMock) {
-      const previewStep =
-        previewState !== "auto" ? previewState : "customerInfo";
-      // Map previewState camelCase to step key
-      const stepKey =
-        previewStep === "customerInfo"
-          ? "customer_info"
-          : previewStep;
-      return mockForStep(stepKey);
+      return mockForStep(
+        previewState === "customerInfo" ? "customer_info" : previewState
+      );
     }
 
     if (isStandalone) {
@@ -233,7 +225,7 @@ export const epCheckoutButtonMeta: CodeComponentMeta<EPCheckoutButtonProps> = {
       defaultValue: "auto",
       displayName: "Preview State",
       description:
-        "Shows the button's label for a checkout step on the canvas. The page always shows \"Checkout\".",
+        "Editor only. Shows a checkout step's label on the canvas. Auto shows \"Checkout\", as the published page always does.",
       advanced: true,
     },
   },

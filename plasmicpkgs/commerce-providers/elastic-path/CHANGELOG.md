@@ -170,7 +170,9 @@ removed component or a removed published prop. All are empty instead.
   EP Checkout Session Provider.
 - **EP Checkout Button**'s descriptions no longer call it step-aware: on a
   page it is always the "Checkout" link to `Checkout URL`. `On Complete` never
-  fires.
+  fires. `Preview State` acts only in Studio: a published page shows
+  "Checkout" whatever value is saved, and on the canvas `auto` shows
+  "Checkout" too, not a step label.
 - **EP Checkout Session Provider**'s `createSession` ignores its `cartId`
   argument. The session checks out the shopper's session cart.
 
