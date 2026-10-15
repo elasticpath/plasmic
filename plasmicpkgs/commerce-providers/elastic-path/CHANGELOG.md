@@ -88,6 +88,18 @@ removed component or a removed published prop. Both are empty instead.
 
 ### Added
 
+`EPSearchInfiniteHits` ("EP Search Infinite Hits") gives catalog search the
+load more that `EPProductListProvider` already has: the next page of results is
+added below the ones shown, not in their place. It wraps react-instantsearch's
+`useInfiniteHits`. Cards get the same `currentProduct`, `currentHit` (with
+`path`) and `currentProductIndex` as `EPSearchHits`. A button in its Load More
+Button slot binds to `$ctx.searchInfiniteHitsData.loadMore`, or the `loadMore`
+element action, and hides when `isLastPage`. The page number goes in the URL,
+so a shopper who reloads starts on the last page loaded; `loadPrevious`,
+`isFirstPage` and a Load Previous Button slot load the pages above it. A click
+while a page is still loading is ignored, so a double click cannot skip a page.
+The first page renders on the server like the rest of catalog search.
+
 `EPCatalogSearchProvider` renders the first page of results on the server, so
 the HTML of a category page contains its products. It uses
 `react-instantsearch-nextjs` and needs the Next.js App Router. Elsewhere, such
@@ -197,6 +209,16 @@ checkout-session handler call made as the shopper carries
 already does. Calls made with `getClientCredentialsToken` never carry it, and
 with no account selected no checkout call does.
 
+`EPProductGrid` inside `EPCatalogSearchProvider` logs a console warning once
+per mount instead of rendering an empty listing with no error. The search
+provider does not supply the grid's products; the warning says to use
+`EPSearchHits` or `EPSearchInfiniteHits` instead. On the Studio canvas the grid
+shows the same message in place of sample products. The nearest provider
+decides: a grid inside `EPProductListProvider` or `EPRelatedProductsProvider`
+never warns, even when that provider sits inside catalog search, and a grid
+inside catalog search renders no products even when catalog search sits inside
+one of those providers. Nothing substitutes another data source.
+
 ### Changed
 
 EP Add To Cart Button, EP Cart Item Quantity Control and EP Cart Item Remove
@@ -264,6 +286,14 @@ only the ones that were already server-rendered. Nothing about the components
 changes: same props, same slots, same data.
 
 ### Fixed
+
+A product card inside EP Product Grid now has a link to its product page.
+EP Product Grid publishes `$ctx.currentHit.path`, built exactly as EP Search
+Hits builds it, so a card moved from catalog search to EP Product List
+Provider or EP Related Products Provider keeps its links. EP Product Grid has
+a new **Product Path Prefix** prop, with the same `/product` default as EP
+Search Hits'. Set it to your product page route. `currentProduct` itself is
+unchanged and has no `path` (ADR-0002).
 
 A cart write no longer resolves with a cart priced differently from the one
 `ep.getCart` reads. `epAddCartItem`, `epUpdateCartItem`, `epRemoveCartItem`,

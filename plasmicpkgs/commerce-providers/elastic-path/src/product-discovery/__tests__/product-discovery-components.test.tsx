@@ -490,6 +490,60 @@ describe("EPProductGrid", () => {
     ).toBe(1);
   });
 
+  function renderGridAndGetHits(
+    products: Product[],
+    props: { productPathPrefix?: string } = {}
+  ) {
+    mockUseSelector.mockReturnValue({ products });
+    const { container } = render(
+      <EPProductGrid {...props}>
+        <div>child</div>
+      </EPProductGrid>
+    );
+    return Array.from(
+      container.querySelectorAll('[data-testid="data-provider-currentHit"]')
+    ).map((el) => JSON.parse(el.getAttribute("data-provider-data") || "{}"));
+  }
+
+  it("links each card to its product page as EP Search Hits does", () => {
+    const hits = renderGridAndGetHits([
+      mockProduct({ id: "p-1", name: "Blue Shirt", slug: "blue-shirt" }),
+      mockProduct({ id: "p-2", name: "No Slug" }),
+    ]);
+
+    expect(hits.map((h) => h.path)).toEqual([
+      "/product/blue-shirt",
+      "/product/p-2",
+    ]);
+  });
+
+  it("builds the link from productPathPrefix (trailing slash tolerated)", () => {
+    const hits = renderGridAndGetHits(
+      [mockProduct({ id: "p-1", name: "Blue Shirt", slug: "blue-shirt" })],
+      { productPathPrefix: "/products/" }
+    );
+
+    expect(hits[0].path).toBe("/products/blue-shirt");
+  });
+
+  it("links design-time cards too", () => {
+    mockUsePlasmicCanvasContext.mockReturnValue({});
+    mockUseSelector.mockReturnValue(undefined);
+
+    const { container } = render(
+      <EPProductGrid>
+        <div>child</div>
+      </EPProductGrid>
+    );
+    const first = container.querySelector(
+      '[data-testid="data-provider-currentHit"]'
+    );
+
+    expect(
+      JSON.parse(first!.getAttribute("data-provider-data") || "{}").path
+    ).toMatch(/^\/product\/.+/);
+  });
+
   it("should use withData previewState to force mock products", () => {
     mockUseSelector.mockReturnValue(undefined);
     mockUsePlasmicCanvasContext.mockReturnValue(null);

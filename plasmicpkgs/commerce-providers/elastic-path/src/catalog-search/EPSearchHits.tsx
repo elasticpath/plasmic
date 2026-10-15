@@ -2,19 +2,15 @@
  * EPSearchHits — repeater for catalog search results.
  *
  * Wraps `useHits()` from react-instantsearch and normalizes each hit to
- * the unified `currentProduct` shape used by EPProductGrid (per D2/D4).
- * Designers can reuse the same card layouts across listing and search.
+ * the `currentProduct` shape EPProductGrid publishes (per D2/D4), with the
+ * same `currentHit.path` link. Designers can reuse the same card layouts
+ * across listing and search.
  *
- * Search-specific extras (_highlightedName, _highlightedDescription, _score,
- * rawHit) are also available for advanced use.
+ * Search-specific extras on `currentHit` (highlightedName,
+ * highlightedDescription, score, raw) are also available for advanced use.
  */
 
-import {
-  DataProvider,
-  repeatedElement,
-  useSelector,
-  usePlasmicCanvasContext,
-} from "@plasmicapp/host";
+import { DataProvider, repeatedElement, useSelector } from "@plasmicapp/host";
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
@@ -23,44 +19,23 @@ import { Registerable } from "../registerable";
 import { MOCK_SEARCH_PRODUCTS } from "./design-time-data";
 import type { Product } from "../types/product";
 import { completePrice } from "../utils/price";
-import { useHits, useInstantSearch } from "react-instantsearch";
+import {
+  DEFAULT_PRODUCT_PATH_PREFIX,
+  productHitMeta,
+  productPath,
+} from "../utils/product-path";
+import { useHits } from "react-instantsearch";
+import {
+  HITS_CARD_SLOT,
+  HitsGridLayoutProps,
+  HitsGridProps,
+  hitsGridMetaProps,
+  useHitsGrid,
+} from "./hits-grid";
 
-type PreviewState = "auto" | "withData";
-
-// Default grid layout — applied as inline style so it survives Plasmic's
-// className filter (which strips display/grid props from code component
-// instances).
-//
-// `align-self: stretch` keeps the grid full-width when its parent is a flex
-// container with `align-items: center` (a common Plasmic page layout).
-// Without it the grid collapses to its `min-content` (one column) because
-// flex defaults each child to `align-self: auto`.
-function buildHitsGridStyle(
-  gridTemplateColumns: string,
-  gap: string
-): React.CSSProperties {
-  return {
-    display: "grid",
-    gridTemplateColumns,
-    gap,
-    width: "100%",
-    alignSelf: "stretch",
-  };
-}
-
-const DEFAULT_GRID_TEMPLATE_COLUMNS =
-  "repeat(auto-fill, minmax(220px, 1fr))";
-const DEFAULT_GRID_GAP = "24px";
-
-const DEFAULT_PRODUCT_PATH_PREFIX = "/product";
-
-interface EPSearchHitsProps {
+interface EPSearchHitsProps extends HitsGridLayoutProps {
   children?: React.ReactNode;
   className?: string;
-  gridTemplateColumns?: string;
-  gridGap?: string;
-  productPathPrefix?: string;
-  previewState?: PreviewState;
 }
 
 /** 1x1 transparent gif — keeps `<img src>` non-empty so the browser issues no
@@ -138,21 +113,6 @@ export function hitToProduct(
 }
 
 /**
- * A product's PDP route. The last segment is its product reference — the slug,
- * or the id when it has none — which is exactly what `ep.getProduct` reads.
- */
-export function productPath(
-  product: Product,
-  productPathPrefix: string = DEFAULT_PRODUCT_PATH_PREFIX
-): string {
-  const prefix = (productPathPrefix || DEFAULT_PRODUCT_PATH_PREFIX).replace(
-    /\/+$/,
-    ""
-  );
-  return `${prefix}/${product.attributes?.slug || product.id}`;
-}
-
-/**
  * The search-side facts about a hit: where it links, and what the backend
  * highlighted.
  *
@@ -195,65 +155,16 @@ function hitToSearchMeta(
   };
 }
 
-/** Design-time equivalent, so hit cards author against the same shape. */
-function mockSearchMeta(
-  product: Product,
-  productPathPrefix: string = DEFAULT_PRODUCT_PATH_PREFIX
-): SearchHitMeta {
-  return { path: productPath(product, productPathPrefix), raw: {} };
-}
-
 export const epSearchHitsMeta: CodeComponentMeta<EPSearchHitsProps> = {
   name: "plasmic-commerce-ep-search-hits",
   displayName: "EP Search Hits",
   description:
-    "Repeats children for each search result. Exposes currentProduct (same shape as EP Product Grid) plus search-specific extras. Must be inside EP Catalog Search Provider.",
+    "Repeats children for each search result. Exposes currentProduct and currentHit.path (same as EP Product Grid) plus search-specific extras. Must be inside EP Catalog Search Provider.",
   props: {
-    children: {
-      type: "slot",
-      defaultValue: [
-        {
-          type: "vbox",
-          children: [
-            {
-              type: "text",
-              value: "Product Name",
-            },
-            {
-              type: "text",
-              value: "$0.00",
-            },
-          ],
-        },
-      ],
-    },
-    gridTemplateColumns: {
-      type: "string",
-      displayName: "Grid Template Columns",
-      description:
-        "CSS grid-template-columns value applied to the hits container. Defaults to a responsive auto-fill. Plasmic strips display/grid styles set in the canvas Style panel from code components, so this prop is the supported way to override the layout.",
-      defaultValue: DEFAULT_GRID_TEMPLATE_COLUMNS,
-    },
-    gridGap: {
-      type: "string",
-      displayName: "Grid Gap",
-      description: "CSS gap between hit cards.",
-      defaultValue: DEFAULT_GRID_GAP,
-    },
-    productPathPrefix: {
-      type: "string",
-      displayName: "Product Path Prefix",
-      description:
-        "Route prefix used to build each hit's currentProduct.path link (prefix + '/' + slug). Set this to match the storefront's PDP route, e.g. \"/products\".",
-      defaultValue: DEFAULT_PRODUCT_PATH_PREFIX,
-    },
-    previewState: {
-      type: "choice",
-      options: ["auto", "withData"],
-      defaultValue: "auto",
-      displayName: "Preview State",
-      advanced: true,
-    },
+    children: HITS_CARD_SLOT,
+    ...hitsGridMetaProps(
+      "CSS grid-template-columns value applied to the hits container. Defaults to a responsive auto-fill. Plasmic strips display/grid styles set in the canvas Style panel from code components, so this prop is the supported way to override the layout."
+    ),
   } as any,
   importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
   importName: "EPSearchHits",
@@ -262,98 +173,50 @@ export const epSearchHitsMeta: CodeComponentMeta<EPSearchHitsProps> = {
 };
 
 export function EPSearchHits(props: EPSearchHitsProps) {
-  const {
-    children,
-    className,
-    gridTemplateColumns = DEFAULT_GRID_TEMPLATE_COLUMNS,
-    gridGap = DEFAULT_GRID_GAP,
-    productPathPrefix = DEFAULT_PRODUCT_PATH_PREFIX,
-    previewState = "auto",
-  } = props;
-
-  const inEditor = !!usePlasmicCanvasContext();
-  const useMock =
-    previewState === "withData" || (previewState === "auto" && inEditor);
-
-  const gridStyle = buildHitsGridStyle(gridTemplateColumns, gridGap);
-
-  if (useMock) {
-    return (
-      <MockSearchHits
-        className={className}
-        gridStyle={gridStyle}
-        productPathPrefix={productPathPrefix}
-      >
-        {children}
-      </MockSearchHits>
-    );
-  }
+  const { children, className } = props;
+  const { useMock, gridStyle, productPathPrefix } = useHitsGrid(props);
+  const Grid = useMock ? MockSearchHits : EPSearchHitsInner;
 
   return (
-    <EPSearchHitsInner
+    <Grid
       className={className}
       gridStyle={gridStyle}
       productPathPrefix={productPathPrefix}
     >
       {children}
-    </EPSearchHitsInner>
+    </Grid>
   );
 }
 
-function MockSearchHits(props: {
-  children?: React.ReactNode;
-  className?: string;
-  gridStyle: React.CSSProperties;
-  productPathPrefix?: string;
-}) {
+export function MockSearchHits(props: HitsGridProps) {
   const { children, className, gridStyle, productPathPrefix } = props;
 
-  const products = useMemo<
-    { product: Product; hit: SearchHitMeta }[]
-  >(
+  const products = useMemo<{ product: Product; hit: SearchHitMeta }[]>(
     () =>
       MOCK_SEARCH_PRODUCTS.map((p) => ({
         product: p,
-        hit: mockSearchMeta(p, productPathPrefix),
+        hit: productHitMeta(p, productPathPrefix),
       })),
     [productPathPrefix]
   );
 
-  if (products.length === 0) return null;
-
   return (
-    <div
-      className={className}
-      role="list"
-      aria-label="Search results"
-      data-ep-search-hits=""
-      style={gridStyle}
-    >
-      {products.map(({ product, hit }, i) => (
-        <div key={product.id} role="listitem">
-          <DataProvider name="currentProduct" data={product}>
-            <DataProvider name="currentHit" data={hit}>
-              <DataProvider name="currentProductIndex" data={i}>
-                {repeatedElement(i, children)}
-              </DataProvider>
-            </DataProvider>
-          </DataProvider>
-        </div>
-      ))}
-    </div>
+    <HitsList className={className} gridStyle={gridStyle} results={products}>
+      {children}
+    </HitsList>
   );
 }
 
-function EPSearchHitsInner(props: {
-  children?: React.ReactNode;
-  className?: string;
-  gridStyle: React.CSSProperties;
-  productPathPrefix?: string;
-}) {
-  const { children, className, gridStyle, productPathPrefix } = props;
-
+function EPSearchHitsInner(props: HitsGridProps) {
   const { hits } = useHits();
-  const { indexUiState } = useInstantSearch();
+
+  return <SearchHitsGrid {...props} hits={hits} />;
+}
+
+export function SearchHitsGrid(
+  props: HitsGridProps & { hits: Record<string, any>[] }
+) {
+  const { hits, children, className, gridStyle, productPathPrefix } = props;
 
   // Read currencyCode from parent EPCatalogSearchProvider's DataProvider context
   const catalogSearchData = useSelector("catalogSearchData") as
@@ -369,6 +232,21 @@ function EPSearchHitsInner(props: {
       }),
     [hits, currencyCode, productPathPrefix]
   );
+
+  return (
+    <HitsList className={className} gridStyle={gridStyle} results={results}>
+      {children}
+    </HitsList>
+  );
+}
+
+function HitsList(props: {
+  results: { product: Product; hit: SearchHitMeta }[];
+  children?: React.ReactNode;
+  className?: string;
+  gridStyle: React.CSSProperties;
+}) {
+  const { results, children, className, gridStyle } = props;
 
   if (results.length === 0) return null;
 
