@@ -43,6 +43,7 @@ export const epCheckoutFormMeta = {
         },
       ],
       hidden: () => true,
+      advanced: true,
     },
     onError: {
       type: "eventHandler" as const,
@@ -55,6 +56,7 @@ export const epCheckoutFormMeta = {
         },
       ],
       hidden: () => true,
+      advanced: true,
     },
   },
   trapsFocus: true,

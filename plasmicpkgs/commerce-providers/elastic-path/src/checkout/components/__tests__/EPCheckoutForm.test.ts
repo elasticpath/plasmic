@@ -51,4 +51,20 @@ describe("Elastic Path Checkout Form (deprecated)", () => {
       expect(prop.description).toMatch(/^Deprecated — ignored\./);
     }
   });
+
+  it("keeps its event handlers off Studio's Interactions section", () => {
+    // Studio ignores `hidden` on event handlers; it leaves `advanced` ones
+    // out of the Interactions rows.
+    const props = epCheckoutFormMeta.props as Record<string, any>;
+    const handlers = Object.entries<any>(props).filter(
+      ([, p]) => p.type === "eventHandler"
+    );
+    expect(handlers.map(([name]) => name).sort()).toEqual([
+      "onComplete",
+      "onError",
+    ]);
+    for (const [name, prop] of handlers) {
+      expect([name, prop.advanced]).toEqual([name, true]);
+    }
+  });
 });

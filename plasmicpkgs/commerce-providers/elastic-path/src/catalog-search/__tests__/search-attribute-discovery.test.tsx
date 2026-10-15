@@ -137,6 +137,7 @@ describe("discovery on the canvas", () => {
   });
 
   afterEach(() => {
+    jest.useRealTimers();
     globalThis.fetch = originalFetch;
     delete (window as any).__CanvasPkgs;
   });
@@ -185,8 +186,8 @@ describe("discovery on the canvas", () => {
     const plain = render(
       <>
         <EPRefinementList attribute="tags" />
-        <EPHierarchicalMenu />
-        <EPRangeFilter>
+        <EPHierarchicalMenu attributes="categories.lvl0" />
+        <EPRangeFilter attribute="rating">
           <span>range</span>
         </EPRangeFilter>
       </>
@@ -200,8 +201,14 @@ describe("discovery on the canvas", () => {
           attribute="tags"
           setControlContextData={jest.fn() as any}
         />
-        <EPHierarchicalMenu setControlContextData={jest.fn() as any} />
-        <EPRangeFilter setControlContextData={jest.fn() as any}>
+        <EPHierarchicalMenu
+          attributes="categories.lvl0"
+          setControlContextData={jest.fn() as any}
+        />
+        <EPRangeFilter
+          attribute="rating"
+          setControlContextData={jest.fn() as any}
+        >
           <span>range</span>
         </EPRangeFilter>
       </>
@@ -251,24 +258,165 @@ describe("discovery on the canvas", () => {
       () => fetchMock.mockRejectedValueOnce(new TypeError("network down")),
     ],
   ])("asks again on a later render after the route %s", async (_label, fail) => {
+    jest.useFakeTimers();
     fail();
     jest.spyOn(console, "warn").mockImplementation(() => {});
     jest.spyOn(console, "error").mockImplementation(() => {});
     const first = render(
       <EPRefinementList setControlContextData={jest.fn() as any} />
     );
-    await settle();
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(0);
+    });
     first.unmount();
 
     const setControlContextData = jest.fn();
     render(
       <EPRefinementList setControlContextData={setControlContextData as any} />
     );
-    await settle();
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(5_000);
+    });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(setControlContextData).toHaveBeenLastCalledWith({
       attributes: STORE_ATTRIBUTES,
+    });
+  });
+
+  describe("after a failed discovery", () => {
+    const failed = {
+      ok: false,
+      status: 500,
+      json: async () => ({}),
+    };
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      jest.spyOn(console, "warn").mockImplementation(() => {});
+      jest.spyOn(console, "error").mockImplementation(() => {});
+    });
+
+    async function wait(ms: number) {
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(ms);
+      });
+    }
+
+    function lastFields(setControlContextData: jest.Mock) {
+      return setControlContextData.mock.calls.at(-1)?.[0]?.attributes;
+    }
+
+    it("fills every mounted filter once the route recovers, with one more request", async () => {
+      fetchMock.mockResolvedValueOnce(failed);
+      const refinement = jest.fn();
+      const range = jest.fn();
+      render(
+        <>
+          <EPRefinementList setControlContextData={refinement as any} />
+          <EPRangeFilter setControlContextData={range as any} />
+        </>
+      );
+      await wait(0);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(lastFields(refinement)).toBeUndefined();
+
+      await wait(60_000);
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(lastFields(refinement)).toEqual(STORE_ATTRIBUTES);
+      expect(lastFields(range)).toEqual(STORE_ATTRIBUTES);
+    });
+
+    it("stops asking after a few attempts while the route keeps failing", async () => {
+      fetchMock.mockResolvedValue(failed);
+      render(<EPRefinementList setControlContextData={jest.fn() as any} />);
+
+      await wait(10 * 60_000);
+      const attempts = fetchMock.mock.calls.length;
+      expect(attempts).toBeGreaterThan(1);
+      expect(attempts).toBeLessThanOrEqual(6);
+
+      await wait(60 * 60_000);
+      expect(fetchMock).toHaveBeenCalledTimes(attempts);
+    });
+
+    it("asks again when the canvas regains focus after the attempts run out", async () => {
+      fetchMock.mockResolvedValue(failed);
+      const setControlContextData = jest.fn();
+      render(
+        <EPRefinementList setControlContextData={setControlContextData as any} />
+      );
+      await wait(10 * 60_000);
+      const attempts = fetchMock.mock.calls.length;
+
+      fetchMock.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => STORE_ATTRIBUTES,
+      });
+      await act(async () => {
+        window.dispatchEvent(new Event("focus"));
+      });
+      await wait(0);
+
+      expect(fetchMock).toHaveBeenCalledTimes(attempts + 1);
+      expect(lastFields(setControlContextData)).toEqual(STORE_ATTRIBUTES);
+
+      await act(async () => {
+        window.dispatchEvent(new Event("focus"));
+      });
+      await wait(60_000);
+      expect(fetchMock).toHaveBeenCalledTimes(attempts + 1);
+    });
+
+    it("does not ask on every focus", async () => {
+      fetchMock.mockResolvedValue(failed);
+      render(<EPRefinementList setControlContextData={jest.fn() as any} />);
+      await wait(10 * 60_000);
+      const attempts = fetchMock.mock.calls.length;
+
+      for (let i = 0; i < 10; i++) {
+        await act(async () => {
+          window.dispatchEvent(new Event("focus"));
+        });
+        await wait(0);
+      }
+
+      expect(fetchMock).toHaveBeenCalledTimes(attempts + 1);
+    });
+
+    it("stops asking once no filter is on the canvas", async () => {
+      fetchMock.mockResolvedValue(failed);
+      const view = render(
+        <EPRefinementList setControlContextData={jest.fn() as any} />
+      );
+      await wait(0);
+      view.unmount();
+
+      await wait(10 * 60_000);
+      await act(async () => {
+        window.dispatchEvent(new Event("focus"));
+      });
+      await wait(0);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("asks only once after the route answers", async () => {
+      const setControlContextData = jest.fn();
+      render(
+        <EPRefinementList setControlContextData={setControlContextData as any} />
+      );
+      await wait(0);
+      await act(async () => {
+        window.dispatchEvent(new Event("focus"));
+      });
+      await wait(10 * 60_000);
+      render(<EPRangeFilter setControlContextData={jest.fn() as any} />);
+      await wait(0);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
 });

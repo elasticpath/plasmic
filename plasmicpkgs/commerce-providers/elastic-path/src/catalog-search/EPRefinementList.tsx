@@ -22,6 +22,7 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React, { useImperativeHandle, useMemo } from "react";
 import { Registerable } from "../registerable";
+import { ChooseFieldPrompt } from "./ChooseFieldPrompt";
 import { MOCK_REFINEMENT_ITEMS } from "./design-time-data";
 import {
   SearchAttributeContext,
@@ -67,7 +68,7 @@ export const epRefinementListMeta: CodeComponentMeta<EPRefinementListProps> = {
       type: "choice",
       displayName: "Attribute",
       description:
-        "Field to filter on, listed from the connected store's catalog search. For a field the list does not show, bind a value. Unset: the filter is left out of the search and shows nothing on a live page.",
+        "Field to filter on, listed from the connected store's catalog search. For a field the list does not show, bind a value. Unset: the filter is left out of the search and shows nothing on a live page; on the canvas it asks for a field.",
       options: (props, ctx) => attributeOptions(props.attribute, ctx),
       allowSearch: true,
     },
@@ -175,6 +176,16 @@ export const EPRefinementList = React.forwardRef<
   const useMock =
     previewState === "withData" || (previewState === "auto" && inEditor);
 
+  if (!attribute) {
+    return inEditor ? (
+      <ChooseFieldPrompt
+        propName="Attribute"
+        componentName="EP Refinement List"
+        className={className}
+      />
+    ) : null;
+  }
+
   if (useMock) {
     return (
       <MockRefinementList
@@ -188,8 +199,6 @@ export const EPRefinementList = React.forwardRef<
       </MockRefinementList>
     );
   }
-
-  if (!attribute) return null;
 
   // Separate inner components — the backing InstantSearch hook differs
   // (useMenu vs useRefinementList) and hooks cannot be picked conditionally

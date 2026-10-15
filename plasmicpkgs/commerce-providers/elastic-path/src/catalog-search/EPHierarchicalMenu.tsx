@@ -16,6 +16,7 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React, { useImperativeHandle, useMemo } from "react";
 import { Registerable } from "../registerable";
+import { ChooseFieldPrompt } from "./ChooseFieldPrompt";
 import { MOCK_CATEGORY_ITEMS } from "./design-time-data";
 import type { CategoryItem } from "./design-time-data";
 import {
@@ -55,7 +56,7 @@ export const epHierarchicalMenuMeta: CodeComponentMeta<EPHierarchicalMenuProps> 
       type: "choice",
       displayName: "Attributes",
       description:
-        "Hierarchy levels to navigate, listed from the connected store's catalog search. For levels the list does not show, bind a comma-separated value. Unset: the filter is left out of the search and shows nothing on a live page.",
+        "Hierarchy levels to navigate, listed from the connected store's catalog search. For levels the list does not show, bind a comma-separated value. Unset: the filter is left out of the search and shows nothing on a live page; on the canvas it asks for a field.",
       options: (props, ctx) => hierarchyOptions(props.attributes, ctx),
       allowSearch: true,
     },
@@ -159,6 +160,17 @@ export const EPHierarchicalMenu = React.forwardRef<
   const useMock =
     previewState === "withData" || (previewState === "auto" && inEditor);
 
+  const levels = splitLevels(attributes);
+  if (levels.length === 0) {
+    return inEditor ? (
+      <ChooseFieldPrompt
+        propName="Attributes"
+        componentName="EP Hierarchical Menu"
+        className={className}
+      />
+    ) : null;
+  }
+
   if (useMock) {
     return (
       <MockHierarchicalMenu ref={ref} className={className}>
@@ -166,9 +178,6 @@ export const EPHierarchicalMenu = React.forwardRef<
       </MockHierarchicalMenu>
     );
   }
-
-  const levels = splitLevels(attributes);
-  if (levels.length === 0) return null;
 
   return (
     <EPHierarchicalMenuInner

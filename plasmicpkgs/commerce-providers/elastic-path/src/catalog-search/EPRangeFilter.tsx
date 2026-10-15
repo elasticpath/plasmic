@@ -13,6 +13,7 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React, { useCallback, useImperativeHandle } from "react";
 import { Registerable } from "../registerable";
+import { ChooseFieldPrompt } from "./ChooseFieldPrompt";
 import { MOCK_RANGE_DATA } from "./design-time-data";
 import type { RangeData } from "./design-time-data";
 import {
@@ -53,7 +54,7 @@ export const epRangeFilterMeta: CodeComponentMeta<EPRangeFilterProps> = {
       type: "choice",
       displayName: "Attribute",
       description:
-        "Numeric field to filter on, listed from the connected store's catalog search. For a field the list does not show, bind a value. Unset: the filter is left out of the search and shows nothing on a live page.",
+        "Numeric field to filter on, listed from the connected store's catalog search. For a field the list does not show, bind a value. Unset: the filter is left out of the search and shows nothing on a live page; on the canvas it asks for a field.",
       options: (props, ctx) => numericAttributeOptions(props.attribute, ctx),
       allowSearch: true,
     },
@@ -98,6 +99,16 @@ export const EPRangeFilter = React.forwardRef<
   const useMock =
     previewState === "withData" || (previewState === "auto" && inEditor);
 
+  if (!attribute) {
+    return inEditor ? (
+      <ChooseFieldPrompt
+        propName="Attribute"
+        componentName="EP Range Filter"
+        className={className}
+      />
+    ) : null;
+  }
+
   if (useMock) {
     return (
       <MockRangeFilter ref={ref} className={className}>
@@ -105,8 +116,6 @@ export const EPRangeFilter = React.forwardRef<
       </MockRangeFilter>
     );
   }
-
-  if (!attribute) return null;
 
   return (
     <EPRangeFilterInner
