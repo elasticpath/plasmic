@@ -112,7 +112,10 @@ async function countQueries(send: () => Promise<Response>) {
 
 const servers: http.Server[] = [];
 let cleanupDatabase: () => Promise<void>;
-let startApp: (overrides?: Partial<Config>) => Promise<string>;
+let startApp: (
+  overrides?: Partial<Config>,
+  opts?: { socketAddress?: string }
+) => Promise<string>;
 
 beforeAll(async () => {
   (S3 as jest.MockedClass<typeof S3>).mockImplementation(() => s3 as any);
@@ -127,7 +130,7 @@ beforeAll(async () => {
   cleanupDatabase = db.cleanup;
   await ensureDbConnections(db.dburi);
 
-  startApp = async (overrides = {}) => {
+  startApp = async (overrides = {}, { socketAddress } = {}) => {
     const app = await createImgOptimizerApp({
       ...testConfig(db.dburi, "http://localhost"),
       ...overrides,
@@ -135,6 +138,12 @@ beforeAll(async () => {
     const server = await new Promise<http.Server>((resolve) => {
       const s = app.listen(0, () => resolve(s));
     });
+    if (socketAddress) {
+      // Stands in for the proxy the app sees as its peer.
+      server.on("connection", (socket) => {
+        Object.defineProperty(socket, "remoteAddress", { value: socketAddress });
+      });
+    }
     servers.push(server);
     return `http://localhost:${(server.address() as AddressInfo).port}`;
   };
@@ -468,6 +477,76 @@ describe("image optimizer rate limit", () => {
   });
 });
 
+describe("image optimizer client IP behind two proxies in production", () => {
+  const VIEWER = "198.51.100.3";
+  const OTHER_VIEWER = "198.51.100.4";
+  const CDN_EDGE = "192.0.2.10";
+
+  describe.each([
+    { label: "a load balancer address", socketAddress: "10.0.12.34" },
+    { label: "127.0.0.1", socketAddress: "127.0.0.1" },
+  ])("with the socket at $label", ({ socketAddress }) => {
+    let baseUrl: string;
+
+    beforeAll(async () => {
+      baseUrl = await startApp({ production: true }, { socketAddress });
+    });
+
+    async function send(forwardedFor: string) {
+      const res = await fetch(`${baseUrl}/img-optimizer/v1/img`, {
+        headers: { "x-forwarded-for": forwardedFor },
+      });
+      await res.arrayBuffer();
+      return res.status;
+    }
+
+    it("counts a forged X-Forwarded-For against the real client only", async () => {
+      for (let i = 0; i < 60; i++) {
+        await send(`203.0.113.${i}, ${VIEWER}, ${CDN_EDGE}`);
+      }
+
+      expect(await send(`203.0.113.200, ${VIEWER}, ${CDN_EDGE}`)).toBe(429);
+      expect(await send(`${VIEWER}, ${CDN_EDGE}`)).toBe(429);
+      expect(await send(`${OTHER_VIEWER}, ${CDN_EDGE}`)).not.toBe(429);
+    });
+  });
+});
+
+describe("image optimizer client IP outside production", () => {
+  it("keys on the socket and reports the unexpected header", async () => {
+    const baseUrl = await startApp({}, { socketAddress: "10.0.12.34" });
+    const info = jest.spyOn(PinoLogger.prototype, "info");
+    const consoleError = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    try {
+      const res = await fetch(
+        `${baseUrl}/img-optimizer/v1/img/${ASSET_KEY}?w=400`,
+        {
+          headers: {
+            "x-forwarded-for": "203.0.113.7, 198.51.100.2, 192.0.2.10",
+            "x-request-id": "req-xff-dev",
+          },
+        }
+      );
+      await res.arrayBuffer();
+
+      const accessLog = info.mock.calls
+        .map(([, payload]) => payload)
+        .find((payload) => payload?.x_request_id === "req-xff-dev");
+      expect(accessLog).toEqual(
+        expect.objectContaining({ remoteAddr: "10.0.12.34" })
+      );
+      expect(consoleError).toHaveBeenCalledWith(
+        expect.objectContaining({ code: "ERR_ERL_UNEXPECTED_X_FORWARDED_FOR" })
+      );
+    } finally {
+      info.mockRestore();
+      consoleError.mockRestore();
+    }
+  });
+});
+
 describe("image optimizer in production", () => {
   let baseUrl: string;
 
@@ -531,14 +610,14 @@ describe("image optimizer in production", () => {
     });
   });
 
-  it("logs the first X-Forwarded-For address as the client", async () => {
+  it("logs the viewer the CDN added as the client, not a forged one", async () => {
     const info = jest.spyOn(PinoLogger.prototype, "info");
     try {
       const res = await fetch(
         `${baseUrl}/img-optimizer/v1/img/${ASSET_KEY}?w=400`,
         {
           headers: {
-            "x-forwarded-for": "203.0.113.7, 198.51.100.2",
+            "x-forwarded-for": "203.0.113.7, 198.51.100.2, 192.0.2.10",
             "x-request-id": "req-xff",
           },
         }
@@ -553,8 +632,8 @@ describe("image optimizer in production", () => {
         expect.objectContaining({
           requestStatusCode: 200,
           requestOriginalUrl: `/img-optimizer/v1/img/${ASSET_KEY}?w=400`,
-          remoteAddr: "203.0.113.7",
-          forwardedFor: "203.0.113.7, 198.51.100.2",
+          remoteAddr: "198.51.100.2",
+          forwardedFor: "203.0.113.7, 198.51.100.2, 192.0.2.10",
           socketRemoteAddr: expect.stringMatching(
             /^(::1|::ffff:127\.0\.0\.1|127\.0\.0\.1)$/
           ),

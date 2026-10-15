@@ -2112,7 +2112,9 @@ export async function createApp(
   addDatadogMiddleware(app);
 
   if (config.production) {
-    app.enable("trust proxy");
+    // Two proxies append to X-Forwarded-For: a CDN, then a load balancer.
+    // Trusting more hops lets the client choose req.ip.
+    app.set("trust proxy", 2);
   }
 
   addCleanRoutes?.(app);
