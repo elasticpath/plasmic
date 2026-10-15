@@ -7,7 +7,8 @@
  *   - getClientCredentialsToken: a closure-memoized admin token minter,
  *     scoped to this request only (no process-level cache).
  *   - sessionCartId: the shopper's session cart, the only cart checkout uses.
- *   - adapterRegistry with Stripe and Manual registered when EP_CLIENT_SECRET is set.
+ *   - adapterRegistry with Stripe registered when EP_CLIENT_SECRET is set.
+ *     Zero-total orders complete without a registered gateway.
  *   - sessionStore (cookie-based JWE).
  *   - shippingRateResolver: one static example rate (demo only).
  */
@@ -15,7 +16,6 @@ import {
   CookieSessionStore,
   createAdapterRegistry,
   createClientCredentialsTokenResolver,
-  createManualAdapter,
   createStripeAdapter,
   resolveAuthSecret,
   type SessionHandlerContext,
@@ -75,8 +75,8 @@ export async function buildCheckoutContext(
       })
     : undefined;
 
-  // Adapter registry — Stripe + Manual when admin auth is available
-  // (checkoutApi / paymentSetup need the client-credentials token).
+  // Adapter registry — Stripe when admin auth is available (checkoutApi /
+  // paymentSetup need the client-credentials token).
   const adapterRegistry = createAdapterRegistry();
   if (getClientCredentialsToken) {
     adapterRegistry.register(
@@ -86,11 +86,6 @@ export async function buildCheckoutContext(
         clientId,
         getClientCredentialsToken,
       })
-    );
-    // Manual settlement method is host config (purchase default; authorize optional).
-    adapterRegistry.register(
-      "manual",
-      createManualAdapter({ method: "purchase" })
     );
   }
 

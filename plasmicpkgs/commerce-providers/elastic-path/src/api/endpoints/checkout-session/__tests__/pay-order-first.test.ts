@@ -170,10 +170,16 @@ function sessionWithExistingOrder(
 }
 
 
-function createManualCtx(session: CheckoutSession | null): SessionHandlerContext {
-  const registry = createAdapterRegistry();
-  registry.register("manual", createManualAdapter());
+function createManualCtx(
+  session: CheckoutSession | null,
+  registry: AdapterRegistry = createAdapterRegistry(),
+  accountId?: string
+): SessionHandlerContext {
+  if (!registry.getAdapter("manual")) {
+    registry.register("manual", createManualAdapter({ allow: () => true }));
+  }
   return {
+    ...(accountId ? { accountId } : {}),
     epCredentials: {
       clientId: "test-id",
       apiBaseUrl: "https://api.test.com",
@@ -516,6 +522,97 @@ describe("handlePay — order_first retry / idempotency", () => {
     expect((res.body as any).error.code).toBe("EP_ERROR");
     expect(epSdk.paymentSetup).not.toHaveBeenCalled();
     expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+  });
+});
+
+describe("handlePay — Manual gateway rule", () => {
+  it("refuses Manual for an order with a total when the host supplies no rule", async () => {
+    const registry = createAdapterRegistry();
+    registry.register("manual", createManualAdapter());
+    const ctx = createManualCtx(makeSession(), registry);
+
+    const res = await handlePay(createMockReq({ gateway: "manual" }), ctx);
+
+    expect(res.status).toBe(400);
+    expect((res.body as any).error.code).toBe("GATEWAY_NOT_ALLOWED");
+    expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+    expect(epSdk.paymentSetup).not.toHaveBeenCalled();
+  });
+
+  it("allows Manual only for the cart and account the host's rule approves", async () => {
+    const seen: unknown[] = [];
+    const registry = createAdapterRegistry();
+    registry.register(
+      "manual",
+      createManualAdapter({
+        allow: (input) => {
+          seen.push(input);
+          return input.account?.id === "acct-approved";
+        },
+      })
+    );
+
+    const refused = await handlePay(
+      createMockReq({ gateway: "manual" }),
+      createManualCtx(makeSession(), registry, "acct-other")
+    );
+    expect(refused.status).toBe(400);
+    expect((refused.body as any).error.code).toBe("GATEWAY_NOT_ALLOWED");
+    expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+
+    const allowed = await handlePay(
+      createMockReq({ gateway: "manual" }),
+      createManualCtx(makeSession(), registry, "acct-approved")
+    );
+    expect(allowed.status).toBe(200);
+    expect((allowed.body as any).data.session.status).toBe("complete");
+    expect(epSdk.paymentSetup.mock.calls[0][0].body.data).toEqual({
+      gateway: "manual",
+      method: "purchase",
+    });
+
+    expect(seen[1]).toEqual({
+      cart: expect.objectContaining({
+        data: expect.objectContaining({ id: "cart-abc" }),
+        included: { items: CART_ITEMS },
+      }),
+      account: { id: "acct-approved" },
+    });
+  });
+
+  it("refuses Manual when the host's rule throws", async () => {
+    const registry = createAdapterRegistry();
+    registry.register(
+      "manual",
+      createManualAdapter({
+        allow: () => {
+          throw new Error("account lookup failed");
+        },
+      })
+    );
+
+    const res = await handlePay(
+      createMockReq({ gateway: "manual" }),
+      createManualCtx(makeSession(), registry, "acct-approved")
+    );
+
+    expect(res.status).toBe(400);
+    expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+  });
+
+  it("sees no account when none is selected", async () => {
+    const allow = jest.fn(() => false);
+    const registry = createAdapterRegistry();
+    registry.register("manual", createManualAdapter({ allow }));
+
+    await handlePay(
+      createMockReq({ gateway: "manual" }),
+      createManualCtx(makeSession(), registry)
+    );
+
+    expect(allow).toHaveBeenCalledWith(
+      expect.objectContaining({ account: null })
+    );
   });
 });
 

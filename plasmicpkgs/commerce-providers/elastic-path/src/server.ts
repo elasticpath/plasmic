@@ -36,6 +36,11 @@ export type {
   ManualAdapterConfig,
   ManualPaymentMethod,
 } from "./checkout/session/adapters/manual-adapter";
+export type {
+  ManualPaymentRule,
+  ManualPaymentRuleInput,
+  EpCartResponse,
+} from "./checkout/session/manual-payment-rule";
 export {
   isCartPaymentIntentAdapter,
   isLegacyPaymentAdapter,
@@ -57,6 +62,7 @@ export type {
   LegacyPaymentAdapter,
   OrderFirstAdapter,
   PaymentAdapter,
+  PaymentAdapterOrderRule,
   PaymentSequence,
   PaymentSetupRequest,
   SessionHandlerContext,
@@ -182,6 +188,7 @@ export type {
   EpMultiSearchResponse,
   EpPlaceOrderAddress,
   EpPlaceOrderInput,
+  EpPlaceOrderOptions,
   EpPlaceOrderResult,
   EpProductStock,
   EpRemoveCartItemInput,

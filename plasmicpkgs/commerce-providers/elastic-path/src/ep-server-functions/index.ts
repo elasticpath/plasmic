@@ -59,6 +59,7 @@ export {
 export type {
   EpPlaceOrderAddress,
   EpPlaceOrderInput,
+  EpPlaceOrderOptions,
   EpPlaceOrderResult,
 } from "./place-order";
 // Bare-name aliases the loader imports for Studio Server Queries; see
