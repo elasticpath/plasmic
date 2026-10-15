@@ -234,6 +234,33 @@ describe("EP Fork Integrity", () => {
     });
   });
 
+  describe("client IP from the last trusted proxy hop (not yet upstream)", () => {
+    for (const file of [
+      "platform/wab/src/wab/server/AppServer.ts",
+      "platform/wab/src/wab/server/img-optimizer-backend-real.ts",
+    ]) {
+      it(`${path.basename(file)} trusts two proxy hops`, () => {
+        expect(readFile(file)).toMatch(/app\.set\(\s*"trust proxy",\s*2\s*\)/);
+      });
+    }
+
+    it("no server app trusts every proxy hop", () => {
+      const trustsEveryHop =
+        /enable\(\s*["']trust proxy["']\s*\)|set\(\s*["']trust proxy["']\s*,\s*true\s*\)/;
+      const offenders = sourceFiles("platform/wab/src/wab/server").filter(
+        (file) => trustsEveryHop.test(readFile(file))
+      );
+      expect(offenders).toEqual([]);
+    });
+
+    it("the shared rate limiter keeps the library's proxy checks on", () => {
+      const src = readFile("platform/wab/src/wab/server/rate-limit.ts");
+      expect(src).not.toMatch(/validate:\s*false/);
+      expect(src).not.toMatch(/trustProxy:\s*false/);
+      expect(src).not.toMatch(/xForwardedForHeader:\s*false/);
+    });
+  });
+
   describe("EP admin-only resource creation gates", () => {
     it("AppServer applies adminOnly middleware", () => {
       const appServer = readFile("platform/wab/src/wab/server/AppServer.ts");

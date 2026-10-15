@@ -138,6 +138,25 @@ change, take upstream's version and delete its check from `ep-fork-integrity.spe
   of both branches through `getPkgVersionHead`, which skips the `model` column, instead
   of `getPkgVersion` (#652).
 
+**Client IP from the last trusted proxy hop (fork-first)**
+
+Upstream sets Express `trust proxy` to `true` in production. The fork sets it to the number
+of proxies in front of the app instead.
+
+EP changes to preserve:
+- `platform/wab/src/wab/server/AppServer.ts`: in production, `createApp` calls
+  `app.set("trust proxy", 2)` in place of `app.enable("trust proxy")`.
+- `platform/wab/src/wab/server/img-optimizer-backend-real.ts`: the image optimizer app does
+  the same.
+- `platform/wab/src/wab/server/rate-limit.ts`: `createRateLimiter` passes no `validate`
+  option, so the library's `trustProxy` and `xForwardedForHeader` checks stay on.
+
+On conflict, keep the EP version. If upstream adds an app or another place that sets
+`trust proxy`, use 2 there too. The count is the number of proxies that append to
+`X-Forwarded-For` in front of the app: a CDN, then a load balancer. If upstream changes this
+setting, check that it gives the same client IP behind two proxies before you take it, then
+delete its checks from `ep-fork-integrity.spec.ts`.
+
 **Sentry → Datadog (fork-wide)**
 
 EP replaced `Sentry.captureException`/`captureMessage` with
