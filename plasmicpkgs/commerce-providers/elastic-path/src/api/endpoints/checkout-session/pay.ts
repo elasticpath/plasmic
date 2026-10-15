@@ -162,16 +162,17 @@ async function settleFreeOrder(
 ): Promise<SessionResponse> {
   // 1. checkoutApi (cart → order)
   let orderId: string;
-  let order: { id: string };
+  let order: Parameters<typeof readOrderTotal>[2];
   try {
     const checkoutResponse = await checkoutApi({
       client: adminClient,
       path: { cartID: session.cartId },
       body: buildGuestCheckoutBody(session) as any,
     });
-    order = (checkoutResponse.data as any)?.data;
-    if (!order?.id) throw new Error("checkoutApi response missing order id");
-    orderId = order.id;
+    const created = (checkoutResponse.data as any)?.data;
+    if (!created?.id) throw new Error("checkoutApi response missing order id");
+    orderId = created.id;
+    order = created;
   } catch (err) {
     log.error("Free-order checkoutApi failed", {
       cartId: session.cartId,
@@ -186,7 +187,7 @@ async function settleFreeOrder(
     };
   }
 
-  const orderTotal = await readOrderTotal(adminClient, order);
+  const orderTotal = await readOrderTotal(adminClient, orderId, order);
   if (!orderTotal) {
     log.error("Free-order checkout produced an order with no total", {
       orderId,

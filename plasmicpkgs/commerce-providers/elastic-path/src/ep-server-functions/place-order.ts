@@ -207,7 +207,7 @@ export async function epPlaceOrder(
     throw new Error(`epPlaceOrder: checkout did not return an order (${detail})`);
   }
 
-  const orderTotal = await readOrderTotal(client, order);
+  const orderTotal = await readOrderTotal(client, order.id, order);
   if (!orderTotal) {
     throw new Error(`epPlaceOrder: no order total for order ${order.id}`);
   }

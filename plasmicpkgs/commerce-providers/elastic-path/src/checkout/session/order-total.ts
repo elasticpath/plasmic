@@ -7,7 +7,6 @@ export interface OrderTotal {
 }
 
 type OrderLike = {
-  id?: string;
   meta?: {
     display_price?: { with_tax?: { amount?: unknown; currency?: unknown } };
   };
@@ -28,12 +27,13 @@ function totalOf(order: OrderLike | undefined): OrderTotal | null {
  */
 export async function readOrderTotal(
   client: Client,
-  order: OrderLike & { id: string }
+  orderId: string,
+  order: OrderLike
 ): Promise<OrderTotal | null> {
   const own = totalOf(order);
   if (own) return own;
   try {
-    const res = await getAnOrder({ client, path: { orderID: order.id } });
+    const res = await getAnOrder({ client, path: { orderID: orderId } });
     return totalOf((res as { data?: { data?: OrderLike } })?.data?.data);
   } catch {
     return null;
