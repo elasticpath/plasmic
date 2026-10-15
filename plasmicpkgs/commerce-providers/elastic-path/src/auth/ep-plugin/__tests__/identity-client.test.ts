@@ -224,15 +224,6 @@ describe("the identity client against the mounted handler", () => {
     expect(err.code).toBe("invalid_credentials");
     expect(err.status).toBe(401);
   });
-
-  it("points the envelope at a cart", async () => {
-    const browser = browserAt();
-    await browser.client.signInAnonymously();
-
-    const updated = await browser.client.setCart({ cartId: "cart-42" });
-
-    expect(updated.session.epCartId).toBe("cart-42");
-  });
 });
 
 describe("a config that still carries the removed basePath", () => {
@@ -266,7 +257,9 @@ describe("the client and the plugin agree on where every operation lives", () =>
 
     const mounted = new Map<string, string>();
     for (const endpoint of Object.values(endpoints)) {
-      mounted.set(endpoint.path, endpoint.options?.method ?? "POST");
+      if (endpoint.path) {
+        mounted.set(endpoint.path, endpoint.options?.method ?? "POST");
+      }
     }
 
     // `getSession` is better-auth's own endpoint, not one this plugin mounts.
@@ -280,11 +273,11 @@ describe("the client and the plugin agree on where every operation lives", () =>
     }
   });
 
-  it("leaves no endpoint on the plugin without a client method", () => {
+  it("leaves no mounted endpoint on the plugin without a client method", () => {
     const endpoints = (
       epPlugin({
         hostAllowlist: DEFAULT_HOST_ALLOWLIST, clientId: EP_CLIENT_ID, host: EP_HOST }) as any
-    ).endpoints as Record<string, { path: string }>;
+    ).endpoints as Record<string, { path?: string }>;
 
     const called = new Set(
       Object.values(EP_IDENTITY_ROUTES).map((route) => route.path)
@@ -293,7 +286,7 @@ describe("the client and the plugin agree on where every operation lives", () =>
     expect(
       Object.values(endpoints)
         .map((endpoint) => endpoint.path)
-        .filter((path) => !called.has(path))
+        .filter((path) => path && !called.has(path))
     ).toEqual([]);
   });
 });

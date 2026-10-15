@@ -11,7 +11,6 @@ import type {
   SessionResponse,
   SessionHandlerContext,
   CheckoutSession,
-  ClientCheckoutSession,
   SessionTotals,
   SessionShippingRate,
   UpdateSessionRequest,
@@ -23,13 +22,9 @@ import { resolveShippingRate } from "../../../checkout/session/cart-shipping";
 import { buildAdminEpClient } from "../../../checkout/session/admin-client";
 import { sessionAddressesEquivalent } from "../../../checkout/session/address-utils";
 import { createLogger } from "../../../utils/logger";
+import { toClientSession } from "../../../checkout/session/client-session";
 
 const log = createLogger("UpdateSession");
-
-function toClientSession(s: CheckoutSession): ClientCheckoutSession {
-  const { cartHash, ...rest } = s;
-  return rest;
-}
 
 /** Authoritative cart total from a normalized Cart (minor units), or null. */
 function cartWithTaxAmount(cart: Cart): number | null {

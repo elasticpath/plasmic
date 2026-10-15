@@ -26,7 +26,7 @@ export async function readCartResponse(
     headers: buildCartReadHeaders(pricing),
   });
   if (!response.data) {
-    throw new Error(`Elastic Path returned no cart for ${cartId}`);
+    throw new Error("Elastic Path returned no cart for the session's cart");
   }
   return response.data;
 }

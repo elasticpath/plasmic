@@ -123,7 +123,7 @@ export function buildLeafOptions(): ChoiceObject[];
 export function buildTemplateOptions(templates: ExtensionTemplate[] | undefined): ChoiceObject[];
 
 // @public
-export type Cart = Omit<CartResponse, "meta"> & {
+export type Cart = Omit<CartResponse, "meta" | "id" | "links"> & {
     meta?: CartMeta;
     items: CartItem[];
     promotions: CartItem[];
@@ -1022,11 +1022,6 @@ export interface EpIdentityOperations {
         response: EpSessionEnvelope;
     };
     // (undocumented)
-    setCart: {
-        request: EpSetCartRequest;
-        response: EpSessionEnvelope;
-    };
-    // (undocumented)
     signInAnonymously: {
         request: void;
         response: EpSessionEnvelope;
@@ -1327,12 +1322,6 @@ export interface EpSessionEnvelope {
     session: ReleasedEpSession;
     // (undocumented)
     user: ReleasedEpUser;
-}
-
-// @public (undocumented)
-export interface EpSetCartRequest {
-    // (undocumented)
-    cartId: string;
 }
 
 // @public (undocumented)
@@ -1992,7 +1981,7 @@ export function registerEPVariationPicker(loader?: Registerable, customMeta?: Co
 export function registerStripeProvider(loader?: Registerable): void;
 
 // @public
-export const RELEASED_SESSION_PATHS: readonly ["id", "userId", "expiresAt", "createdAt", "updatedAt", "epCartId", "epExpires", "epMemberId", "epAccount.id", "epAccount.name", "epLapsedAccount.id", "epLapsedAccount.name"];
+export const RELEASED_SESSION_PATHS: readonly ["id", "userId", "expiresAt", "createdAt", "updatedAt", "epExpires", "epMemberId", "epAccount.id", "epAccount.name", "epLapsedAccount.id", "epLapsedAccount.name"];
 
 // @public (undocumented)
 export interface ReleasedEpSession {
@@ -2000,8 +1989,6 @@ export interface ReleasedEpSession {
     createdAt: string;
     // (undocumented)
     epAccount?: EpAccountSummary;
-    // (undocumented)
-    epCartId?: string;
     // (undocumented)
     epExpires?: number;
     // (undocumented)

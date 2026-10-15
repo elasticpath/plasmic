@@ -550,8 +550,8 @@ describe("selecting and switching account", () => {
       headers: new Headers({ cookie: cookies }),
       asResponse: true,
     });
+    expect(cartRes.status).toBe(200);
     cookies = mergeCookies(cookies, cartRes);
-    expect((await cartRes.json()).session.epCartId).toBe("cart-1");
 
     const { res } = await select(auth, cookies, "acct-south");
     expect((await res.json()).session.epCartId).toBeUndefined();

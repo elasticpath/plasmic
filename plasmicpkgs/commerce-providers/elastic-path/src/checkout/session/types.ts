@@ -388,5 +388,5 @@ export interface ConfirmRequest {
 
 export type ClientCheckoutSession = Omit<
   CheckoutSession,
-  "cartHash"
+  "cartHash" | "cartId"
 >;

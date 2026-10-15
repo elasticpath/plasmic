@@ -199,12 +199,12 @@ describe("handleCreateSession", () => {
       expect((res.body as any).data.session.status).toBe("open");
     });
 
-    it("session has the correct cartId", async () => {
+    it("keeps the cart id out of the response", async () => {
       const res = await handleCreateSession(
         createMockReq(),
         createMockCtx()
       );
-      expect((res.body as any).data.session.cartId).toBe("cart-abc");
+      expect(JSON.stringify(res.body)).not.toContain("cart-abc");
     });
 
     it("client session does NOT expose cartHash", async () => {

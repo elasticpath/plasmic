@@ -180,6 +180,7 @@ describe("handleUpdateSession", () => {
         createMockCtx(makeSession())
       );
       expect(res.status).toBe(200);
+      expect(JSON.stringify(res.body)).not.toContain("cart-abc");
     });
 
     it("merges customerInfo onto the session", async () => {

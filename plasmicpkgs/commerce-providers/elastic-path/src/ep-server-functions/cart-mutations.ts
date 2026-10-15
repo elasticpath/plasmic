@@ -277,6 +277,7 @@ async function addCartItemWithSession(
     if (!cartId) {
       throw new Error("epAddCartItem: failed to create cart");
     }
+    auth.cartId = cartId;
   }
 
   const itemData: Record<string, unknown> = {

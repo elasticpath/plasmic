@@ -302,7 +302,6 @@ const mockCartMoney = (minor: number) => ({
 });
 
 export const MOCK_CART_DATA: Cart = {
-  id: "sample-cart-001",
   type: "cart",
   items: MOCK_CART_LINE_ITEMS,
   itemCount: 3,
@@ -359,7 +358,6 @@ export const MOCK_CHECKOUT_CART_ITEMS: CartItem[] = [
 ];
 
 export const MOCK_CHECKOUT_CART_DATA: Cart = {
-  id: "sample-checkout-cart-001",
   type: "cart",
   items: MOCK_CHECKOUT_CART_ITEMS,
   itemCount: 2,

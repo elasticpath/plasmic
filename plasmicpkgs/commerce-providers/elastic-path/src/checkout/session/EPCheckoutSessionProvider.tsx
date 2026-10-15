@@ -314,11 +314,8 @@ export const EPCheckoutSessionProvider = React.forwardRef<
   const inEditor = usePlasmicCanvasContext();
 
   if (inEditor && previewState !== "auto") {
-    const mockSession = getMockSession(previewState);
-    // Strip cartHash for client-visible shape
-    const { cartHash, ...clientSession } = mockSession;
     const mockData = {
-      session: clientSession,
+      session: getMockSession(previewState),
       isLoading: false,
       error: null,
     };

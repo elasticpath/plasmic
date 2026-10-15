@@ -13,7 +13,6 @@
  */
 import type {
   CheckoutSession,
-  ClientCheckoutSession,
   SessionHandlerContext,
   SessionRequest,
   SessionResponse,
@@ -25,13 +24,9 @@ import { isCartPaymentIntentAdapter } from "./payment-sequence";
 import { buildShopperEpClient } from "./shopper-client";
 import { buildAdminEpClientFromToken } from "./admin-client";
 import { createLogger } from "../../utils/logger";
+import { toClientSession } from "./client-session";
 
 const log = createLogger("FinalizePaidSession");
-
-function toClientSession(s: CheckoutSession): ClientCheckoutSession {
-  const { cartHash, ...rest } = s;
-  return rest;
-}
 
 async function detachCartPaymentIntentIfNeeded(
   ctx: SessionHandlerContext,

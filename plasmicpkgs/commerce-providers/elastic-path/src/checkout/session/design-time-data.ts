@@ -4,13 +4,11 @@
  * These mocks let designers see realistic data in the Plasmic canvas without
  * a running server or real cart.
  */
-import type { CheckoutSession } from "./types";
+import type { ClientCheckoutSession } from "./types";
 
-const BASE_SESSION: CheckoutSession = {
+const BASE_SESSION: ClientCheckoutSession = {
   id: "mock-session-id",
   status: "open",
-  cartId: "mock-cart-id",
-  cartHash: "mock-hash",
   customerInfo: {
     name: "Jane Doe",
     email: "jane@example.com",
@@ -77,8 +75,8 @@ const BASE_SESSION: CheckoutSession = {
 };
 
 function makeSession(
-  overrides: Partial<CheckoutSession>
-): CheckoutSession {
+  overrides: Partial<ClientCheckoutSession>
+): ClientCheckoutSession {
   return { ...BASE_SESSION, ...overrides };
 }
 
@@ -115,7 +113,7 @@ export type PreviewState = "auto" | "collecting" | "paying" | "complete";
 
 export function getMockSession(
   previewState: PreviewState
-): CheckoutSession {
+): ClientCheckoutSession {
   switch (previewState) {
     case "collecting":
       return MOCK_SESSION_COLLECTING;

@@ -203,6 +203,7 @@ describe("handlePay — single-shot guest happy path", () => {
     const res = await handlePay(req, ctx);
 
     expect(res.status).toBe(200);
+    expect(JSON.stringify(res.body)).not.toContain("cart-abc");
     const body = res.body as any;
     expect(body.success).toBe(true);
     expect(body.data.session.status).toBe("complete");

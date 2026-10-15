@@ -18,20 +18,15 @@ import type {
   SessionResponse,
   SessionHandlerContext,
   CheckoutSession,
-  ClientCheckoutSession,
 } from "../../../checkout/session/types";
 import { applyAbandonedRequiresAction } from "../../../checkout/session/session-state-transition";
 import { isCartPaymentIntentAdapter } from "../../../checkout/session/payment-sequence";
 import { clearCartPaymentIntentId } from "../../../checkout/session/clear-cart-payment-intent";
 import { buildShopperEpClient } from "../../../checkout/session/shopper-client";
 import { createLogger } from "../../../utils/logger";
+import { toClientSession } from "../../../checkout/session/client-session";
 
 const log = createLogger("AbandonPayment");
-
-function toClientSession(s: CheckoutSession): ClientCheckoutSession {
-  const { cartHash, ...rest } = s;
-  return rest;
-}
 
 export async function handleAbandonPayment(
   req: SessionRequest,
