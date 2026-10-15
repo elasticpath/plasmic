@@ -330,7 +330,10 @@ one option. A field keyed by currency, such as `price`, is listed once per
 currency (`price.USD.float_price`). A saved value stays selectable even when
 the store does not list it. To use a field the list does not show, bind a
 value. Without the design-time route the dropdown lists only the saved value.
-When the route fails, the next filter render on the canvas asks again.
+The canvas asks the route once per page load for all filters. When the route
+fails, it asks again a few times with growing delays, then when the canvas
+regains focus or a filter is added; every filter already on the canvas gets
+the list when an attempt succeeds.
 
 EP Add To Cart Button, EP Cart Item Quantity Control and EP Cart Item Remove
 Button show the cart write's rejection message as their `error`. They show
