@@ -158,4 +158,31 @@ describe("normalizeCart", () => {
       },
     });
   });
+
+  it("publishes nothing that carries the cart id", () => {
+    const cartId = "5a1d2c3e-0f4b-4c8e-9d7a-1b2c3d4e5f60";
+    const cart = normalizeCart({
+      data: {
+        ...cartResponse.data,
+        id: cartId,
+        name: "Cart",
+        description: "Shopping cart",
+        payment_intent_id: "pi_3Q0abc",
+        links: { self: `https://api.test.com/v2/carts/${cartId}` },
+        relationships: {
+          items: { data: [{ type: "cart_item", id: "line-1" }] },
+          accounts: { data: [{ type: "account", id: "acct-1" }] },
+        },
+      },
+      included: cartResponse.included,
+    });
+
+    expect(JSON.stringify(cart)).not.toContain(cartId);
+    expect(cart).not.toHaveProperty("id");
+    expect(cart).not.toHaveProperty("links");
+    expect(cart.name).toBe("Cart");
+    expect(cart.relationships?.accounts).toEqual({
+      data: [{ type: "account", id: "acct-1" }],
+    });
+  });
 });

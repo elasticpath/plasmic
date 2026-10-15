@@ -36,7 +36,6 @@ import type {
   SessionResponse,
   SessionHandlerContext,
   CheckoutSession,
-  ClientCheckoutSession,
   CartPaymentIntentAdapter,
   LegacyPaymentAdapter,
   OrderFirstAdapter,
@@ -77,6 +76,7 @@ import {
 import { finalizePaidSession } from "../../../checkout/session/finalize-paid-session";
 import { toCustomAttributes } from "../../../ep-server-functions/place-order";
 import { createLogger } from "../../../utils/logger";
+import { toClientSession } from "../../../checkout/session/client-session";
 import type { EpCartResponse } from "../../../checkout/session/manual-payment-rule";
 
 const log = createLogger("Pay");
@@ -119,11 +119,6 @@ function settledOrderFromGetAnOrder(payload: unknown): {
     settled: payment != null && SETTLED_ORDER_PAYMENTS.has(payment),
     payment,
   };
-}
-
-function toClientSession(s: CheckoutSession): ClientCheckoutSession {
-  const { cartHash, ...rest } = s;
-  return rest;
 }
 
 /** Persist the session's extra fields + consent flags as cart custom

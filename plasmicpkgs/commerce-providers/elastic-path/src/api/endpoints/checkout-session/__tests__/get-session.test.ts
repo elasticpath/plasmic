@@ -118,10 +118,10 @@ describe("handleGetSession", () => {
       expect((res.body as any).data.session.status).toBe("processing");
     });
 
-    it("returns the session with correct cartId", async () => {
+    it("keeps the cart id out of the response", async () => {
       const session = makeSession({ cartId: "cart-xyz" });
       const res = await handleGetSession(createMockReq(), createMockCtx(session));
-      expect((res.body as any).data.session.cartId).toBe("cart-xyz");
+      expect(JSON.stringify(res.body)).not.toContain("cart-xyz");
     });
 
     it("returns session with payment info", async () => {

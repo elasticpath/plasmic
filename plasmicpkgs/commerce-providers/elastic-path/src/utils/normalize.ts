@@ -273,7 +273,7 @@ export const normalizeCart = (
   cart: CartEntityResponse,
   locale?: string
 ): Cart => {
-  const data = cart.data ?? {};
+  const { id: _id, links: _links, ...data } = cart.data ?? {};
   // An applied promotion comes back as a promotion_item beside the real lines.
   // It is not something the shopper bought, so it is neither a line to render
   // nor a unit to count — but it is what tells the promo input a code is still

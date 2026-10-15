@@ -163,7 +163,7 @@ describe("epAddCartItem", () => {
     );
 
     expect(result).not.toBeNull();
-    expect(result.id).toBe("cart-id");
+    expect(JSON.stringify(result)).not.toContain("cart-id");
     expect(result.items).toHaveLength(1);
     expect(mockManageCarts).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -207,7 +207,25 @@ describe("epAddCartItem", () => {
         path: { cartID: "new-cart-id" },
       })
     );
-    expect(result.id).toBe("new-cart-id");
+    expect(JSON.stringify(result)).not.toContain("new-cart-id");
+  });
+
+  it("makes a cart it creates the session's cart, so the next write in the request reuses it", async () => {
+    mockCreateACart.mockResolvedValue({
+      data: { data: { id: "new-cart-id", type: "cart" } },
+    });
+    mockSuccessfulAdd("new-cart-id");
+
+    await withEpSession({ ...SESSION_BASE }, async () => {
+      await epAddCartItem({ productId: "prod-1", quantity: 1 });
+      await epAddCartItem({ productId: "prod-2", quantity: 1 });
+    });
+
+    expect(mockCreateACart).toHaveBeenCalledTimes(1);
+    expect(mockManageCarts.mock.calls.map((c) => c[0].path)).toEqual([
+      { cartID: "new-cart-id" },
+      { cartID: "new-cart-id" },
+    ]);
   });
 
   it("keeps the underlying SDK error as the cause when the EP backend rejects the add", async () => {
@@ -350,7 +368,7 @@ describe("epApplyCartAdjustment", () => {
         })
     );
 
-    expect(result.id).toBe("cart-id");
+    expect(JSON.stringify(result)).not.toContain("cart-id");
     expect(mockManageCarts).toHaveBeenCalledWith(
       expect.objectContaining({
         path: { cartID: "cart-id" },
@@ -465,7 +483,7 @@ describe("epUpdateCartItem", () => {
       () => epUpdateCartItem({ itemId: "item-1", quantity: 3 })
     );
 
-    expect(result.id).toBe("cart-id");
+    expect(JSON.stringify(result)).not.toContain("cart-id");
     expect(mockUpdateACartItem).toHaveBeenCalledWith(
       expect.objectContaining({
         path: { cartID: "cart-id", cartitemID: "item-1" },
@@ -597,7 +615,7 @@ describe("epRemoveCartItem", () => {
       () => epRemoveCartItem({ itemId: "item-1" })
     );
 
-    expect(result.id).toBe("cart-id");
+    expect(JSON.stringify(result)).not.toContain("cart-id");
     expect(mockDeleteACartItem).toHaveBeenCalledWith(
       expect.objectContaining({
         path: { cartID: "cart-id", cartitemID: "item-1" },
@@ -637,6 +655,20 @@ describe("epRemoveCartItem", () => {
     expect(err.code).toBe("dispatch_failed");
     expect(causeOf(err)).toMatch(/cart item not found/);
     expect(mockGetACart).not.toHaveBeenCalled();
+  });
+
+  it("does not name the cart when the re-read comes back empty", async () => {
+    mockDeleteACartItem.mockResolvedValue({});
+    mockGetACart.mockResolvedValue({ data: undefined });
+
+    const err = await rejectionOf(
+      withEpSession({ ...SESSION_BASE, cartId: "cart-id" }, () =>
+        epRemoveCartItem({ itemId: "item-1" })
+      )
+    );
+
+    expect(causeOf(err)).toMatch(/returned no cart/);
+    expect(causeOf(err)).not.toContain("cart-id");
   });
 });
 

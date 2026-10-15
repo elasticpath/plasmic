@@ -62,7 +62,6 @@ const SESSION_RETURNING_ROUTES = [
   ["POST", "/api/ep/ep/account/select"],
   ["POST", "/api/ep/ep/account/roll"],
   ["POST", "/api/ep/ep/account/member"],
-  ["POST", "/api/ep/ep/cart"],
 ] as const;
 
 describe("createEpAuthRoutes", () => {
@@ -83,6 +82,18 @@ describe("createEpAuthRoutes", () => {
       expect(session.epAccount?.token).toBeUndefined();
       expect(session.epClientId).toBeUndefined();
       expect(session.epHost).toBeUndefined();
+    }
+  );
+
+  it.each(SESSION_RETURNING_ROUTES)(
+    "withholds the cart id from %s %s",
+    async (method, path) => {
+      nextResponse = jsonResponse(SESSION_BODY);
+      const handler = method === "GET" ? routes().GET : routes().POST;
+
+      const res = await handler(req(path, method));
+
+      expect(await res.text()).not.toContain(CART_ID);
     }
   );
 
@@ -280,13 +291,12 @@ describe("createEpAuthRoutes", () => {
     expect("epLapsedAccount" in body.session).toBe(false);
   });
 
-  it("keeps the fields the checkout components read", async () => {
+  it("keeps the fields the storefront reads", async () => {
     nextResponse = jsonResponse(SESSION_BODY);
 
     const res = await routes().GET(req("/api/ep/get-session"));
     const body = await res.json();
 
-    expect(body.session.epCartId).toBe(CART_ID);
     expect(body.session.id).toBe("sess-1");
     expect(body.session.epExpires).toBe(1786630149);
     expect(body.user).toEqual(SESSION_BODY.user);

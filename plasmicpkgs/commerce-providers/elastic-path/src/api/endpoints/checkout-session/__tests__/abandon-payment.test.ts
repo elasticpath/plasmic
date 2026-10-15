@@ -211,6 +211,7 @@ describe("handleAbandonPayment — success", () => {
     const res = await handleAbandonPayment(createMockReq(), ctx);
 
     expect(res.status).toBe(200);
+    expect(JSON.stringify(res.body)).not.toContain("cart-abc");
     expect((res.body as any).success).toBe(true);
     const session = (res.body as any).data.session;
     expect(session.status).toBe("open");

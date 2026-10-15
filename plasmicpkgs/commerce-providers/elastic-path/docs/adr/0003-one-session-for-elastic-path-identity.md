@@ -165,9 +165,20 @@ account token, or under the bare implicit token, both return 200 — and the
 account relationship is an appendable **set**, so an account can add itself to a
 cart whose id it knows and thereafter enumerate it. That upgrades a one-time
 cart-id leak into durable access. It creates no capability that reading by id did
-not already have, and association must never be presented as a second layer:
-custody of the id is the whole defence. Association does not touch the expiry
-clock either.
+not already have, and association must never be presented as a second layer.
+Association does not touch the expiry clock either.
+
+**The id stays on the server, and that is the storefront's only control.** On
+2026-10-15 the id alone was confirmed to read and change a cart linked to an
+account too. So nothing the storefront sends to the browser contains it: not
+`$ctx.cart`, not a session, account or checkout response, not development
+error text. The browser cannot set the session's cart either; only server code
+records a cart it created. This prevents page scripts, browser extensions and
+anything that records what a page receives from learning the id through the
+storefront. It does not prevent access by a party that gets the id some other
+way: Elastic Path still grants the cart to any holder of the id, and the
+storefront cannot see or stop that access. A cart whose id reached a browser
+before this change gets no protection from it.
 
 **A resolver seam chooses the cart at an identity transition** — a login or an
 account switch — because merge semantics are merchant policy and Elastic Path

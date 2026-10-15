@@ -236,6 +236,7 @@ describe("handlePay — order_first sequence", () => {
     );
 
     expect(res.status).toBe(200);
+    expect(JSON.stringify(res.body)).not.toContain("cart-abc");
     const body = res.body as any;
     expect(body.data.session.status).toBe("complete");
     expect(body.data.session.order?.id).toBe("order-1");
@@ -299,6 +300,7 @@ describe("handlePay — order_first sequence", () => {
     );
 
     expect(res.status).toBe(200);
+    expect(JSON.stringify(res.body)).not.toContain("cart-abc");
     const session = (res.body as any).data.session;
     expect(session.status).toBe("open");
     expect(session.payment.status).toBe("requires_action");

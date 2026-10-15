@@ -15,7 +15,6 @@ import type {
   SessionResponse,
   SessionHandlerContext,
   CheckoutSession,
-  ClientCheckoutSession,
 } from "../../../checkout/session/types";
 import { hashCart } from "../../../checkout/session/cart-hash";
 import { readCartResponse } from "../../../ep-server-functions/read-cart";
@@ -35,13 +34,9 @@ import {
 import { finalizePaidSession } from "../../../checkout/session/finalize-paid-session";
 import { isCartPaymentIntentAdapter } from "../../../checkout/session/payment-sequence";
 import { createLogger } from "../../../utils/logger";
+import { toClientSession } from "../../../checkout/session/client-session";
 
 const log = createLogger("ResumePayment");
-
-function toClientSession(s: CheckoutSession): ClientCheckoutSession {
-  const { cartHash, ...rest } = s;
-  return rest;
-}
 
 function storedPaymentIntentId(session: CheckoutSession): string | undefined {
   const id = session.payment.gatewayMetadata?.paymentIntentId;

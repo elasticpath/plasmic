@@ -410,6 +410,7 @@ describe("handlePay", () => {
         createMockCtx(makeSession(), adapter)
       );
       expect(res.status).toBe(200);
+      expect(JSON.stringify(res.body)).not.toContain("cart-abc");
     });
 
     it("session status remains 'open' on 'failed' to allow retry", async () => {

@@ -420,6 +420,7 @@ describe("handleResumePayment — success", () => {
     );
 
     expect(res.status).toBe(200);
+    expect(JSON.stringify(res.body)).not.toContain("cart-abc");
     const session = (res.body as any).data.session;
     expect(session.status).toBe("complete");
     expect(session.payment.status).toBe("succeeded");

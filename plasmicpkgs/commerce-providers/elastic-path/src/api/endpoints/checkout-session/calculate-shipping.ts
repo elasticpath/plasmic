@@ -19,17 +19,12 @@ import type {
   SessionResponse,
   SessionHandlerContext,
   CheckoutSession,
-  ClientCheckoutSession,
   SessionShippingRate,
 } from "../../../checkout/session/types";
 import { createLogger } from "../../../utils/logger";
+import { toClientSession } from "../../../checkout/session/client-session";
 
 const log = createLogger("CalculateShipping");
-
-function toClientSession(s: CheckoutSession): ClientCheckoutSession {
-  const { cartHash, ...rest } = s;
-  return rest;
-}
 
 export async function handleCalculateShipping(
   req: SessionRequest,

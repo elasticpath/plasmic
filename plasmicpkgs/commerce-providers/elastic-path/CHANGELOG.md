@@ -80,6 +80,19 @@ form has no EP Checkout Session Provider above it, shows a setup error that
 names EP Checkout Session Provider. Its Payment Gateway and Payment Method
 props are hidden and ignored.
 
+**The Elastic Path cart id no longer reaches the browser.** The id alone is
+enough to read and change a cart, also a cart linked to an account, so it stays
+on the server.
+
+| Removed | Migrate to |
+| --- | --- |
+| `$ctx.cart.id` and `$ctx.cart.links`, and `id` and `links` on every `Cart` the cart functions, the proxy route and `seedCartFallback` return | Nothing. To show whether there is a cart, bind to `$ctx.cart.itemCount`. Server code reads `session.cart?.id` from `epAuth.api.getSession`. |
+| `epCartId` in the `get-session` and account route responses, on `ReleasedEpSession` and in `RELEASED_SESSION_PATHS` | Nothing in the browser. Server code reads `session.cart?.id` from `epAuth.api.getSession`. |
+| `ClientCheckoutSession.cartId`, in every checkout session response and in `getMockSession` | Nothing. Checkout takes the cart from the session. |
+| `POST /api/ep/ep/cart`, the identity client's `setCart` and `EpSetCartRequest` | Nothing. The route now returns 404. When a cart write through the proxy route creates a cart, the route records it on the session. |
+
+The development-only proxy error text no longer names the cart.
+
 ### Removed
 
 | Removed | Replacement |
@@ -89,7 +102,7 @@ props are hidden and ignored.
 | `useCart`, `useAddItem`, `useUpdateItem`, `useRemoveItem` | `useEpCart` to read. To write, `epAddCartItem`, `epUpdateCartItem` and `epRemoveCartItem` from the root entry. Each returns a promise of the updated cart and rejects on failure. `epAddCartItem` takes `location`, `bundleConfiguration`, `customInputs` and `sku`. |
 | `useShopperFetch`, `useShopperContext`, `getShopperContext`, `ShopperOverrides` | None. Nothing in the page carries shopper identity. |
 | `X-Shopper-Context`, `resolveCartId`, `parseShopperHeader` | None. The shopper envelope is the only identity input. |
-| `buildCartCookieHeader`, `buildClearCartCookieHeader`, the `ep_cart` cookie | The envelope's own cart pointer, written by `setCart`. |
+| `buildCartCookieHeader`, `buildClearCartCookieHeader`, the `ep_cart` cookie | The envelope's own cart pointer, which only server code sets. |
 | `ShopperContext`'s `basePath` | None. The auth handler is always at `/api/ep`. |
 | `basePath` on `createEpAuth` | None. Mount the auth handler at `/api/ep`, the only path the components, `epAuthMiddleware` and the proxy route's cart write call. A config that still passes `basePath` now throws at startup. |
 | `basePath` on `createEpIdentityClient` | None. The client always calls `/api/ep`, where the auth handler is. Passing `basePath` now throws. |
