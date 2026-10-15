@@ -420,8 +420,9 @@ export const OPTIONS = routes.options;
 The design route reads no shopper session, which is what lets it answer inside
 Studio's editing frame: the session cookie is `SameSite=Lax` and never travels
 there once the app host is served from the storefront's own domain. It serves
-four catalog reads — `getProduct`, `getProductList`, `getProductPage`,
-`getRelatedProducts` — under a bare implicit token, and refuses every other
+the catalog reads `getProduct`, `getProductList`, `getProductPage` and
+`getRelatedProducts`, plus `getSearchAttributes` for the search filters'
+attribute dropdowns, under a bare implicit token, and refuses every other
 name. Mount it in production: designers edit against a deployed app host.
 
 Its CORS is `Access-Control-Allow-Origin: *` with no credentials and no origin
@@ -887,7 +888,7 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 - **EPCatalogSearchProvider** — InstantSearch over the store's Catalog Search index. See [Choosing a listing path](COMPONENTS.md#3-choosing-a-listing-path)
 - **EPSearchBox** / **EPSearchHits** / **EPSearchPagination** — Search UI
 - **EPSearchInfiniteHits** — Search results with load more, appended in place
-- **EPRefinementList** / **EPHierarchicalMenu** / **EPRangeFilter** — Faceted filtering
+- **EPRefinementList** / **EPHierarchicalMenu** / **EPRangeFilter** — Faceted filtering. In Studio, the attribute is picked from a list of the fields the store's catalog search can filter on, read through the design-time route
 - **EPSearchStats** / **EPSearchSortBy** — Search metadata
 
 ## Styling contract (catalog-search components)

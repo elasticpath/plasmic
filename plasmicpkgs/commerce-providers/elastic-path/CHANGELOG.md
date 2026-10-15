@@ -153,10 +153,11 @@ stay on the server. An Elastic Path `4xx` other than `401` is
 `registration_rejected` with Elastic Path's status and error detail; a `401` or
 `5xx` is `account_token_mint_failed`, as for login.
 
-`createEpDesignRoutes` serves Studio design time. It answers four catalog
-reads, `getProduct`, `getProductList`, `getProductPage` and
-`getRelatedProducts`, under the store's public credential, and refuses every
-other name. It reads no shopper session, so it works inside Studio's editing
+`createEpDesignRoutes` serves Studio design time. It answers the catalog
+reads `getProduct`, `getProductList`, `getProductPage` and
+`getRelatedProducts`, and `getSearchAttributes`, which lists the fields the
+store's catalog search can filter on. It answers under the store's public
+credential and refuses every other name. It reads no shopper session, so it works inside Studio's editing
 frame, where the browser never sends the shopper envelope. Mount it at
 `app/api/ep/design/[fn]/route.ts`. Without it, the canvas shows labelled
 `"Sample"` fixtures and the console says once which route is missing.
@@ -229,6 +230,21 @@ inside catalog search renders no products even when catalog search sits inside
 one of those providers. Nothing substitutes another data source.
 
 ### Changed
+
+EP Refinement List `attribute`, EP Hierarchical Menu `attributes` and EP Range
+Filter `attribute` are dropdowns in Studio instead of free text. The list comes
+from the connected store: on the canvas the components ask the design-time
+route for the fields the store's catalog search can filter on. EP Range Filter
+lists only numeric fields, and EP Hierarchical Menu lists each `….lvlN` set as
+one option. A field keyed by currency, such as `price`, is listed once per
+currency (`price.USD.float_price`). A saved value stays selectable even when
+the store does not list it. To use a field the list does not show, bind a
+value. The props have no default value any more, because the old ones were
+guesses that a store need not have. An unset prop renders as before: the
+components still fall back to `"brand"`, `"categories.lvl0,categories.lvl1,categories.lvl2"`
+and `"price.USD.float_price"`. Rendering, on the canvas and on the page, does
+not change. Without the design-time route the dropdown lists only the saved
+value.
 
 EP Add To Cart Button, EP Cart Item Quantity Control and EP Cart Item Remove
 Button show the cart write's rejection message as their `error`. They show
