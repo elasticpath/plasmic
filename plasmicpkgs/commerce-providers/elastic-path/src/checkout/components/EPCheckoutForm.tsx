@@ -6,7 +6,8 @@ import { createLogger } from "../../utils/logger";
 const log = createLogger("EPCheckoutForm");
 
 interface EPCheckoutFormProps {
-  cartId: string;
+  /** @deprecated Ignored. Checkout uses the cart in the shopper's session. */
+  cartId?: string;
   apiBaseUrl?: string;
   onComplete?: (order: any) => void;
   onError?: (error: Error) => void;
@@ -19,7 +20,6 @@ interface FormErrors {
 }
 
 export function EPCheckoutForm({
-  cartId,
   apiBaseUrl,
   onComplete,
   onError,
@@ -27,7 +27,6 @@ export function EPCheckoutForm({
   style
 }: EPCheckoutFormProps) {
   const checkout = useCheckout({
-    cartId,
     apiBaseUrl,
     onComplete,
     onError

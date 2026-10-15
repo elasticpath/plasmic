@@ -213,88 +213,47 @@ browser refreshes the `useEpCart()` cache.
 
 ## 5. Checkout Components
 
-### EPCheckoutProvider
+### EPCheckoutSessionProvider
 
-Root orchestrator. Manages multi-step checkout state and provides data + actions to all child components.
+The checkout path. **EP Checkout Session Provider** holds the checkout session
+on the server and runs it through the checkout-session routes; the README
+lists them. Put the field, shipping-rate and payment components
+(`EPStripePayment`, `EPCloverPayment`, `EPManualPayment`) inside it. For a
+single-page form, `EPCheckoutFormProvider` submits through it.
+
+The session checks out the cart in the shopper's session. The server takes
+that cart from the session when it creates the checkout session, and every
+later route works on it. The browser never names a cart: a cart id sent in
+the request, or passed to `createSession`, is ignored.
 
 **Props:**
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `cartId` | `string?` | — | Override cart ID |
-| `apiBaseUrl` | `string?` | `"/api"` | Base path for checkout API routes |
-| `autoAdvanceSteps` | `boolean?` | `false` | Auto-advance after step completion |
-| `previewState` | `"auto" \| "customerInfo" \| "shipping" \| "payment" \| "confirmation"` | `"auto"` | Force preview step |
-| `loadingContent` | `ReactNode?` | — | Slot shown while loading |
-| `errorContent` | `ReactNode?` | — | Slot shown on error |
-| `className` | `string?` | — | |
+| `apiBaseUrl` | `string?` | `"/api"` | Base path for the checkout-session routes |
+| `autoCreate` | `boolean?` | `true` | Create a session on first render when there is none, or the last one is complete or expired |
+| `previewState` | `"auto" \| "collecting" \| "paying" \| "complete"` | `"auto"` | Force a preview state in Studio |
 
-**DataProvider `checkoutData`** -> `CheckoutData`:
+**DataProvider `checkoutSession`:** `session`, `isLoading`, `error`, and the
+actions below.
 
-```ts
-interface CheckoutData {
-  step: string;                // "customer_info" | "shipping" | "payment" | "confirmation"
-  stepIndex: number;           // 0-3
-  totalSteps: number;          // 4
-  canProceed: boolean;
-  isProcessing: boolean;
+**refActions:** `createSession()`, `updateSession(data)`,
+`calculateShipping()`, `placeOrder()`, `confirmPayment(confirmData)`,
+`resumePayment(resumeData)`, `reset()`.
 
-  customerInfo: { firstName: string; lastName: string; email: string } | null;
-  shippingAddress: AddressData | null;
-  billingAddress: AddressData | null;
-  sameAsShipping: boolean;
-  selectedShippingRate: {
-    id: string; name: string; price: number; priceFormatted: string;
-    currency: string; estimatedDays?: string; carrier?: string;
-  } | null;
-  order: any | null;
-  paymentStatus: "idle" | "pending" | "processing" | "succeeded" | "failed";
-  error: string | null;
+---
 
-  summary: {
-    subtotal: number;          subtotalFormatted: string;
-    tax: number;               taxFormatted: string;
-    shipping: number;          shippingFormatted: string;
-    discount: number;          discountFormatted: string;
-    total: number;             totalFormatted: string;
-    currency: string;
-    itemCount: number;
-  };
-}
+### EPCheckoutProvider (deprecated)
 
-interface AddressData {
-  first_name: string;  last_name: string;
-  line_1: string;      line_2?: string;
-  city: string;        county?: string;
-  country: string;     postcode: string;
-}
-```
-
-**refActions (9):**
-
-| Action | Signature | Description |
-|--------|-----------|-------------|
-| `nextStep` | `() => void` | Advance to next step |
-| `previousStep` | `() => void` | Go back one step |
-| `goToStep` | `(step: string) => void` | Jump to named step |
-| `submitCustomerInfo` | `(data) => void` | Submit customer + addresses (see below) |
-| `submitShippingAddress` | `(data: AddressData) => void` | Submit shipping address only |
-| `submitBillingAddress` | `(data: AddressData) => void` | Submit billing address only |
-| `selectShippingRate` | `(rateId: string) => void` | Select a shipping rate |
-| `submitPayment` | `() => Promise<void>` | Trigger Stripe payment confirmation |
-| `reset` | `() => void` | Reset to step 1 |
-
-`submitCustomerInfo` data shape:
-```ts
-{
-  firstName: string;
-  lastName: string;
-  email: string;
-  shippingAddress: AddressData;
-  sameAsShipping: boolean;
-  billingAddress?: AddressData;
-}
-```
+Does nothing. It called `/api/checkout/create-order`, `/setup-payment` and
+`/confirm-payment`, which nothing serves, so it could not place an order. It
+stays registered because hostless publishing rejects a removed component
+([ADR-0004](docs/adr/0004-registered-surfaces-are-append-only.md)). It renders
+its children and nothing else, publishes no `checkoutData`, and every ref
+action does nothing. Every prop except its children slot, `cartId` included,
+is hidden and ignored. Without its `checkoutData`, EPCheckoutStepIndicator
+shows the first step active and EPCheckoutButton links to `checkoutUrl`. Use
+EP Checkout Session Provider.
 
 ---
 
@@ -358,7 +317,7 @@ Step-aware button that derives its label and behavior from the current checkout 
 
 ### EPOrderTotalsBreakdown
 
-Reads totals from `checkoutData.summary` or falls back to the cart published by `EPCheckoutCartSummary`.
+Reads totals from the checkout session (`checkoutSession.session.totals`) or falls back to the cart published by `EPCheckoutCartSummary`.
 
 **DataProvider `orderTotalsData`:**
 
@@ -476,7 +435,7 @@ Mirrors shipping address when `sameAsShipping` is true (refActions become no-ops
 
 **refActions:** `setField(name, value)`, `validate()`, `clear()` — all no-op when `isMirroringShipping`.
 
-Reads toggle state from `billingToggleData.isSameAsShipping` (EPBillingAddressToggle) or `checkoutData.sameAsShipping`.
+Reads toggle state from `billingToggleData.isSameAsShipping` (EPBillingAddressToggle).
 
 **PreviewStates:** `"auto"`, `"sameAsShipping"`, `"different"`, `"withErrors"`
 
@@ -528,7 +487,7 @@ Stripe Payment Element wrapper. Loads Stripe.js from `https://js.stripe.com/v3` 
   isProcessing: boolean;
   error: string | null;
   paymentMethodType: string;
-  clientSecret: string | null;  // from EPCheckoutProvider's internal context
+  clientSecret: string | null;
 }
 ```
 
@@ -540,25 +499,16 @@ Stripe Payment Element wrapper. Loads Stripe.js from `https://js.stripe.com/v3` 
 | `appearance` | `Record<string, any>?` | Stripe Elements appearance theme |
 | `previewState` | `"auto" \| "ready" \| "processing" \| "error"` | |
 
-Reads `clientSecret` from EPCheckoutProvider's internal context, which it sets after calling `/api/checkout/setup-payment`.
+It took `clientSecret` only from EPCheckoutProvider, which is deprecated and sets none, so it no longer renders a payment form. Use `EPStripePayment` inside EP Checkout Session Provider.
 
 ---
 
 ### Checkout API Routes
 
-The supported checkout runs on the checkout-session routes, whose handlers this
-package ships; the README lists them. EPCheckoutProvider without a checkout
-session calls these routes instead, which the package does not ship — you
-implement them:
-
-| Route | Method | Purpose | Request Body |
-|-------|--------|---------|-------------|
-| `/api/checkout/create-order` | POST | Creates EP order | `{ cartId?, customerData, billingAddress, shippingAddress }` |
-| `/api/checkout/setup-payment` | POST | Creates Stripe PaymentIntent | `{ orderId, amount, currency }` |
-| `/api/checkout/confirm-payment` | POST | Confirms payment | `{ orderId, transactionId, stripePaymentIntentId }` |
-
-Without a checkout session there are no shipping rates: the session's
-`shippingRateResolver` is the only source.
+Checkout runs on the checkout-session routes, whose handlers this package
+ships; the README lists them. The create route takes the cart from the
+shopper's session (`sessionCartId` on `SessionHandlerContext`), never from the
+request.
 
 ---
 
@@ -706,7 +656,8 @@ Lookup table for Plasmic dynamic value bindings (`$ctx.xxx`).
 
 | DataProvider Name | Source Component | Key Fields |
 |-------------------|-----------------|------------|
-| `checkoutData` | EPCheckoutProvider | `step`, `stepIndex`, `canProceed`, `isProcessing`, `summary.*`, `customerInfo`, `shippingAddress`, `billingAddress`, `sameAsShipping`, `selectedShippingRate`, `order`, `paymentStatus`, `error` |
+| `checkoutSession` | EPCheckoutSessionProvider | `session`, `isLoading`, `error` |
+| `checkoutData` | EPCheckoutProvider (deprecated) | Never published. Without it, EPCheckoutStepIndicator shows the first step active and EPCheckoutButton links to `checkoutUrl` |
 | `currentStep` | EPCheckoutStepIndicator | `name`, `stepKey`, `index`, `isActive`, `isCompleted`, `isFuture` |
 | `currentStepIndex` | EPCheckoutStepIndicator | `number` |
 | `checkoutButtonData` | EPCheckoutButton | `label`, `isDisabled`, `isProcessing`, `step` |
