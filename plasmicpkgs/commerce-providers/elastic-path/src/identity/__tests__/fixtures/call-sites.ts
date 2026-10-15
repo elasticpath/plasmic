@@ -30,6 +30,10 @@ identity.register({ username: "buyer", password: "pw", name: "Buyer" });
 identity.roster();
 identity.roster({ limit: 10, offset: 20 });
 
+identity.member();
+// @ts-expect-error the server chooses the member; the browser sends nothing
+identity.member({ memberId: "member-1" });
+
 // Deselecting is passing null, not omitting the field.
 identity.selectAccount({ accountId: "acct-1" });
 identity.selectAccount({ accountId: null });

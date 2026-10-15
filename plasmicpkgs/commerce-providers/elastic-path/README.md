@@ -544,6 +544,17 @@ Selection follows from the count. Exactly one account and the member is placed
 in it; several and **none** is chosen for them; none at all and the member is
 signed in anyway, authenticated but permanently unscoped.
 
+`POST /ep/account/member` takes an empty body. The server reads
+`GET /v2/account-members/{session.epMemberId}` with the implicit shopper token
+and the account-management credential the session already holds: the selected
+account's when it is still valid, otherwise the anchor held while none is
+selected. The response is `{ id, name?, email? }`. `id` is the session's
+member id. A member with no usable account-management credential, including a
+member of no organisation and a lapsed selection, returns `{ id }` and does
+not call Elastic Path. An Elastic Path rejection is
+`account_member_read_failed` with Elastic Path's status and
+`errors[0].detail` as the message. The shopper session is left as it was.
+
 `POST /ep/account/roster` reads the same list later in the session. With no
 body it reads every page on the server and answers the whole list. With
 `{ limit?, offset? }` it answers that one page; Elastic Path caps a page at

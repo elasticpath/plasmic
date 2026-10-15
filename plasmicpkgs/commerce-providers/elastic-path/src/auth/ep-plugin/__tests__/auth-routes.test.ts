@@ -61,6 +61,7 @@ const SESSION_RETURNING_ROUTES = [
   ["POST", "/api/ep/ep/account/logout"],
   ["POST", "/api/ep/ep/account/select"],
   ["POST", "/api/ep/ep/account/roll"],
+  ["POST", "/api/ep/ep/account/member"],
   ["POST", "/api/ep/ep/cart"],
 ] as const;
 
@@ -102,6 +103,25 @@ describe("createEpAuthRoutes", () => {
 
     expect(text).not.toContain(ANCHOR_TOKEN);
     expect(JSON.parse(text).session.epMemberId).toBe("member-1");
+  });
+
+  it("passes an account-member profile through without a session or extra fields", async () => {
+    nextResponse = jsonResponse({
+      id: "member-1",
+      name: "Ada",
+      email: "ada@example.com",
+    });
+
+    const res = await routes().POST(req("/api/ep/ep/account/member", "POST"));
+    const text = await res.text();
+
+    expect(text).not.toContain(ACCESS_TOKEN);
+    expect(text).not.toContain(ACCOUNT_TOKEN);
+    expect(JSON.parse(text)).toEqual({
+      id: "member-1",
+      name: "Ada",
+      email: "ada@example.com",
+    });
   });
 
   it("passes the account roster through, which carries no credential", async () => {

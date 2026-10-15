@@ -9,7 +9,11 @@
  * The response is the account roster and the token list at once. Callers keep
  * the tokens on the server and hand the browser only `{ id, name }`.
  */
-import { EP_ACCOUNT_TOKEN_HEADER, parseEpExpires } from "./envelope";
+import {
+  EP_ACCOUNT_TOKEN_HEADER,
+  accountTokenHeaders,
+  parseEpExpires,
+} from "./envelope";
 
 /**
  * The platform rejects `page[limit]` above this. Its own default is 25; this
@@ -376,6 +380,59 @@ export async function findAccountToken(input: {
     offset += ACCOUNT_PAGE_LIMIT_MAX;
     if (offset >= page.total) return { memberId, entry: null };
   }
+}
+
+export class AccountMemberReadError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "AccountMemberReadError";
+    this.status = status;
+  }
+}
+
+export async function readAccountMember(input: {
+  host: string;
+  implicitToken: string;
+  accountToken: string;
+  memberId: string;
+}): Promise<{ name?: string; email?: string }> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${input.host}/v2/account-members/${encodeURIComponent(input.memberId)}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${input.implicitToken}`,
+          ...accountTokenHeaders({ accountToken: input.accountToken }),
+        },
+      }
+    );
+  } catch {
+    throw new AccountMemberReadError(502, "Elastic Path was unreachable.");
+  }
+
+  if (!response.ok) {
+    throw new AccountMemberReadError(response.status, await readError(response));
+  }
+
+  const body = (await response.json().catch(() => null)) as {
+    data?: { id?: unknown; name?: unknown; email?: unknown };
+  } | null;
+  const data = body?.data;
+  if (typeof data?.id === "string" && data.id !== input.memberId) {
+    throw new AccountMemberReadError(
+      502,
+      "Elastic Path returned a different account member."
+    );
+  }
+
+  const profile: { name?: string; email?: string } = {};
+  if (typeof data?.name === "string") profile.name = data.name;
+  if (typeof data?.email === "string") profile.email = data.email;
+  return profile;
 }
 
 /** The roster as the browser may see it — ids and names, never tokens. */

@@ -123,6 +123,15 @@ a configure panel a write does not run; it rejects with the code
 `design_fn_not_served` and a `message` that names where it ran. They are the
 same functions `/server` exports.
 
+`identity.member()` and `POST /ep/account/member` read the signed-in account
+member. The body must be empty. The server uses the selected account
+credential when it is still valid, otherwise the anchor credential, together
+with the implicit shopper token, and returns `{ id, name?, email? }`. `id` is
+the session's member id. With no usable account-management credential it
+returns `{ id }` and does not call Elastic Path. A rejection is
+`account_member_read_failed` with Elastic Path's status and error detail, and
+does not sign the shopper out.
+
 `identity.register({ username, password, name, email })` and
 `POST /ep/account/register` register an account member. The server sends
 Elastic Path a self-signup token request, using the password profile
