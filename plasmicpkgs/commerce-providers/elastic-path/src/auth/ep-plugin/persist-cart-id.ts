@@ -6,15 +6,24 @@
  */
 import type { EpAuth } from "./create-ep-auth-better";
 
+interface EpCartEndpoint {
+  epCart(request: {
+    body: { cartId: string };
+    headers: Headers;
+    asResponse: true;
+  }): Promise<Response>;
+}
+
 export async function persistCartId(
   epAuth: EpAuth,
   request: Request,
   cartId: string
 ): Promise<string[]> {
   const cookieHeader = request.headers.get("cookie") ?? "";
+  const api: EpCartEndpoint = epAuth.handler.api;
   let res: Response;
   try {
-    res = await (epAuth.handler.api as any).epCart({
+    res = await api.epCart({
       body: { cartId },
       headers: new Headers(cookieHeader ? { cookie: cookieHeader } : {}),
       asResponse: true,
