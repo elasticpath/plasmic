@@ -29,6 +29,9 @@ import type {
 // Variation mock data
 // ---------------------------------------------------------------------------
 
+/** The id of the sample product the canvas shows when no real product is bound. */
+export const SAMPLE_PRODUCT_ID = "mock-product";
+
 /**
  * Builds a design-time product in Elastic Path's own shape, so mocks and real
  * responses bind identically in canvas.

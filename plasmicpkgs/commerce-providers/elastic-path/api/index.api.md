@@ -1441,7 +1441,8 @@ export function FieldContextProvider(props: {
 // @public
 export function FieldDisplay(props: {
     resolved: ResolvedField;
-    show: "value" | "label";
+    show: "value" | "label" | "image";
+    imageAlt?: string;
     children?: React_2.ReactNode;
     notPresentContent?: React_2.ReactNode;
     className?: string;
