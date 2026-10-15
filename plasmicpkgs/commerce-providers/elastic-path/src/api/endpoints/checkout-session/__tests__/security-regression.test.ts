@@ -140,6 +140,11 @@ const DEFAULT_RATES = [
   { id: "rate-standard", name: "Standard", amount: 500, currency: "CHF", serviceLevel: "standard", carrier: "DHL" },
 ];
 
+/** The total the session last showed the shopper. */
+function shownTotal(total: number): CheckoutSession["totals"] {
+  return { subtotal: total, tax: 0, shipping: 0, total, currency: "CHF" };
+}
+
 function makeSession(overrides: Partial<CheckoutSession> = {}): CheckoutSession {
   return {
     id: "sess-sec",
@@ -165,7 +170,7 @@ function makeSession(overrides: Partial<CheckoutSession> = {}): CheckoutSession 
     },
     selectedShippingRateId: "rate-standard",
     availableShippingRates: DEFAULT_RATES,
-    totals: null,
+    totals: shownTotal(5400),
     payment: {
       gateway: null,
       status: "idle",
@@ -311,7 +316,11 @@ describe("free-vs-paid server authority (#369)", () => {
     epSdk.getACart.mockResolvedValue(cartResponseWithTotal(0, FREE_ITEMS));
     // A genuinely free order is digital here (no shipping to assert).
     const ctx = createMockCtx(
-      makeSession({ cartHash: hashCart(FREE_ITEMS), requiresShipping: false })
+      makeSession({
+        cartHash: hashCart(FREE_ITEMS),
+        requiresShipping: false,
+        totals: shownTotal(0),
+      })
     );
 
     const res = await handlePay(createMockReq({}), ctx);
@@ -741,13 +750,22 @@ describe("authoritative shipping re-assertion (setShippingLine #4)", () => {
       ...PRICED_ITEMS,
       { id: "ship-old", sku: SHIP_SKU, quantity: 1, unit_price: { amount: 1 } },
     ];
-    epSdk.getACart.mockResolvedValue(cartFetch(tampered, 5401));
+    let call = 0;
+    epSdk.getACart.mockImplementation(async () => {
+      call += 1;
+      if (call <= 2) return cartFetch(tampered, 5401);
+      return cartFetch(
+        [...PRICED_ITEMS, { id: "ship-new", sku: SHIP_SKU, quantity: 1, unit_price: { amount: 500 } }],
+        5900
+      );
+    });
     const adapter = createMockAdapter();
     const ctx = createMockCtx(
       makeSession({
         cartHash: hashCart(PRICED_ITEMS), // managed line excluded → unchanged
         availableShippingRates: SHIPPING_RATES,
         selectedShippingRateId: "rate-standard",
+        totals: shownTotal(5900),
       }),
       adapter
     );
@@ -951,6 +969,7 @@ describe("clear stale managed shipping on non-shipping pay (#436)", () => {
         requiresShipping: false,
         selectedShippingRateId: null,
         availableShippingRates: [],
+        totals: shownTotal(PRODUCT_TOTAL),
       }),
       adapter
     );
@@ -993,6 +1012,7 @@ describe("clear stale managed shipping on non-shipping pay (#436)", () => {
         // Rate still selected — must NOT cause a shipping re-write/charge.
         selectedShippingRateId: "rate-standard",
         availableShippingRates: SHIPPING_RATES,
+        totals: shownTotal(PRODUCT_TOTAL),
       }),
       adapter
     );
@@ -1031,6 +1051,7 @@ describe("clear stale managed shipping on non-shipping pay (#436)", () => {
         cartHash: hashCart(DIGITAL_ITEMS),
         requiresShipping: false,
         selectedShippingRateId: null,
+        totals: shownTotal(PRODUCT_TOTAL),
       }),
       adapter
     );
@@ -1057,6 +1078,7 @@ describe("clear stale managed shipping on non-shipping pay (#436)", () => {
         cartHash: hashCart(DIGITAL_ITEMS),
         requiresShipping: false,
         selectedShippingRateId: null,
+        totals: shownTotal(PRODUCT_TOTAL),
       }),
       adapter
     );
@@ -1110,6 +1132,7 @@ describe("clear stale managed shipping on non-shipping pay (#436)", () => {
         cartHash: hashCart(PRICED_ITEMS),
         availableShippingRates: SHIPPING_RATES,
         selectedShippingRateId: "rate-express",
+        totals: shownTotal(6900),
       }),
       adapter
     );
@@ -1145,6 +1168,7 @@ describe("clear stale managed shipping on non-shipping pay (#436)", () => {
         cartHash: hashCart(FREE_ITEMS),
         requiresShipping: false,
         selectedShippingRateId: null,
+        totals: shownTotal(0),
       }),
       adapter
     );
@@ -1183,6 +1207,7 @@ describe("clear stale managed shipping on non-shipping pay (#436)", () => {
         cartHash: hashCart(DIGITAL_ITEMS),
         requiresShipping: false,
         selectedShippingRateId: null,
+        totals: shownTotal(PRODUCT_TOTAL),
       }),
       adapter
     );
@@ -1226,7 +1251,7 @@ describe("applyCartAdjustment money integrity (#371)", () => {
     epSdk.getACart.mockResolvedValue(cartResponseWithTotal(5900, ITEMS_WITH_FEE));
     // Session was created against the same line set (fee included) — hashes match.
     const ctx = createMockCtx(
-      makeSession({ cartHash: hashCart(ITEMS_WITH_FEE) }),
+      makeSession({ cartHash: hashCart(ITEMS_WITH_FEE), totals: shownTotal(5900) }),
       adapter
     );
 
@@ -1250,7 +1275,7 @@ describe("applyCartAdjustment money integrity (#371)", () => {
     const adapter = createMockAdapter();
     epSdk.getACart.mockResolvedValue(cartResponseWithTotal(5900, ITEMS_WITH_FEE));
     const ctx = createMockCtx(
-      makeSession({ cartHash: hashCart(ITEMS_WITH_FEE) }),
+      makeSession({ cartHash: hashCart(ITEMS_WITH_FEE), totals: shownTotal(5900) }),
       adapter
     );
 
@@ -1387,6 +1412,7 @@ describe("token-leak boundary — no admin/shopper token in any response", () =>
         cartHash: hashCart(FREE_ITEMS),
         customAttributes: { ...EXTRAS },
         requiresShipping: false,
+        totals: shownTotal(0),
       }),
       undefined,
       { allowedCustomAttributeKeys: "*" }

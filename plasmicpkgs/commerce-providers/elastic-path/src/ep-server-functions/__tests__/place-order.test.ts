@@ -298,6 +298,7 @@ describe("epPlaceOrder", () => {
     mockPaymentSetup.mockResolvedValue({
       data: { data: { id: "txn-1", status: "complete" } },
     });
+    mockGetAnOrder.mockResolvedValue(ORDER_RESPONSE(91900));
     mockDeleteAllCartItems.mockResolvedValue({});
 
     const result = await withEpSession({ ...SESSION_BASE, cartId: "cart-1" }, () =>
@@ -343,6 +344,31 @@ describe("epPlaceOrder", () => {
       currency: "CHF",
       isFree: false,
     });
+  });
+
+  it("reports the order status after payment, not the status checkout returned", async () => {
+    mockGetACart.mockResolvedValue(CART_RESPONSE(91900));
+    const unpaid = ORDER_RESPONSE(91900);
+    unpaid.data.data.status = "incomplete";
+    unpaid.data.data.payment = "unpaid";
+    mockCheckoutApi.mockResolvedValue(unpaid);
+    mockPaymentSetup.mockResolvedValue({
+      data: { data: { id: "txn-1", status: "complete" } },
+    });
+    mockGetAnOrder.mockResolvedValue(ORDER_RESPONSE(91900));
+    mockDeleteAllCartItems.mockResolvedValue({});
+
+    const result = await withEpSession({ ...SESSION_BASE, cartId: "cart-1" }, () =>
+      epPlaceOrder(
+        {
+          customer: { name: "Ada Lovelace", email: "ada@ep.com" },
+          billingAddress: BILLING,
+        },
+        { allowManual: () => true }
+      )
+    );
+
+    expect(result.status).toBe("complete");
   });
 
   it("flags a zero-total order as free and still completes it via manual purchase", async () => {

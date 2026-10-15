@@ -80,7 +80,15 @@ import {
 import { toCustomAttributes } from "../../../ep-server-functions/place-order";
 import { createLogger } from "../../../utils/logger";
 import { toClientSession } from "../../../checkout/session/client-session";
-import type { EpCartResponse } from "../../../checkout/session/types";
+import type { EpCartResponse, SessionTotals } from "../../../checkout/session/types";
+import { hasPurchasableItem } from "../../../checkout/session/purchasable-items";
+import {
+  cartLines,
+  totalsFromCart,
+  totalsFromDisplayPrice,
+} from "../../../checkout/session/session-totals";
+import { resolveShippingRate } from "../../../checkout/session/cart-shipping";
+import { settleOnce } from "../../../checkout/session/settle-once";
 import {
   MANUAL_GATEWAY as FREE_ORDER_GATEWAY,
   MANUAL_PURCHASE_METHOD as FREE_ORDER_METHOD,
@@ -325,6 +333,47 @@ interface PayContinuation {
   ttl: number;
   gateway: string;
   gatewayData: Record<string, unknown>;
+  /** The total the session last showed the shopper; the only total pay takes. */
+  expectedTotal: number;
+}
+
+async function persistTotalChanged(
+  req: SessionRequest,
+  ctx: SessionHandlerContext,
+  refreshed: CheckoutSession,
+  ttl: number
+): Promise<SessionResponse> {
+  const error = {
+    message: "The order total changed; review the total and try again",
+    code: "TOTAL_CHANGED",
+  };
+  try {
+    const setResult = await ctx.sessionStore.set("current", refreshed, ttl, req);
+    return {
+      status: 409,
+      body: {
+        success: false,
+        error,
+        data: { session: toClientSession(refreshed) },
+      },
+      headers: setResult.headers,
+    };
+  } catch {
+    return { status: 409, body: { success: false, error } };
+  }
+}
+
+function orderTotalChanged(): SessionResponse {
+  return {
+    status: 409,
+    body: {
+      success: false,
+      error: {
+        message: "Order total changed; review the cart and try again",
+        code: "ORDER_TOTAL_CHANGED",
+      },
+    },
+  };
 }
 
 async function persistRequiresAction(
@@ -626,6 +675,23 @@ async function handleOrderFirstPay(
         },
       });
     }
+    const reused = await readOrderTotal(
+      adminClient,
+      orderId,
+      orderResource as Parameters<typeof readOrderTotal>[2]
+    );
+    if (reused?.amount !== params.expectedTotal) {
+      log.warn("Unpaid order total differs from the session total; dropping it", {
+        sessionId: session.id,
+        orderId,
+      } as Record<string, unknown>);
+      try {
+        await ctx.sessionStore.set("current", { ...session, order: null }, ttl, req);
+      } catch {
+        /* the next pay re-checks the same order and refuses again */
+      }
+      return orderTotalChanged();
+    }
   } else {
     try {
       const checkoutResponse = await checkoutApi({
@@ -633,9 +699,17 @@ async function handleOrderFirstPay(
         path: { cartID: session.cartId },
         body: buildGuestCheckoutBody(session) as any,
       });
-      const oid = (checkoutResponse.data as any)?.data?.id;
-      if (!oid) throw new Error("checkoutApi response missing order id");
-      orderId = oid;
+      const created = (checkoutResponse.data as any)?.data;
+      if (!created?.id) throw new Error("checkoutApi response missing order id");
+      orderId = created.id;
+      const total = await readOrderTotal(adminClient, orderId, created);
+      if (total?.amount !== params.expectedTotal) {
+        log.warn("Order total differs from the session total; not taking payment", {
+          sessionId: session.id,
+          orderId,
+        } as Record<string, unknown>);
+        return orderTotalChanged();
+      }
     } catch (err) {
       log.error("EP checkoutApi failed before paymentSetup", {
         cartId: session.cartId,
@@ -776,6 +850,31 @@ export async function handlePay(
     };
   }
 
+  const open = session;
+  const settled = settleOnce(open.cartId, open.id, () =>
+    payOpenSession(req, ctx, open, ttl)
+  );
+  if (settled === "busy") {
+    return {
+      status: 409,
+      body: {
+        success: false,
+        error: {
+          message: "Another checkout for this cart is in progress",
+          code: "CHECKOUT_IN_PROGRESS",
+        },
+      },
+    };
+  }
+  return settled;
+}
+
+async function payOpenSession(
+  req: SessionRequest,
+  ctx: SessionHandlerContext,
+  session: CheckoutSession,
+  ttl: number
+): Promise<SessionResponse> {
   // 2b. Required-field validation is deferred to step 3a (after the cart
   //     fetch), because whether shipping is required is server-authoritative —
   //     inferred from the cart's physical items, not just the client flag — so
@@ -818,7 +917,7 @@ export async function handlePay(
   // item array can live in different response shapes), so the free/paid branch
   // must NOT depend on it, or a paid cart whose items don't parse would settle
   // for free with no charge.
-  let cartMetaTotal: number | null = null;
+  let latest: SessionTotals | null = null;
   let cartResponse: EpCartResponse;
   try {
     cartResponse = await readCartResponse(
@@ -838,11 +937,7 @@ export async function handlePay(
     freshCartItems = (Array.isArray(items) ? items : []).filter(
       (it: { sku?: string }) => it?.sku !== EP_SHIPPING_LINE_SKU
     );
-    const metaAmount = (cartResponse as any)?.data?.meta?.display_price
-      ?.with_tax?.amount;
-    if (typeof metaAmount === "number" && Number.isFinite(metaAmount)) {
-      cartMetaTotal = metaAmount;
-    }
+    latest = totalsFromCart(cartResponse);
   } catch (err) {
     log.error("Failed to re-fetch cart for hash check", {
       cartId: session.cartId,
@@ -857,9 +952,23 @@ export async function handlePay(
     };
   }
 
+  if (!hasPurchasableItem(cartLines(cartResponse))) {
+    return {
+      status: 409,
+      body: {
+        success: false,
+        error: { message: "The cart has nothing to check out", code: "EMPTY_CART" },
+      },
+    };
+  }
+
   const freshHash = hashCart(freshCartItems);
   if (freshHash !== session.cartHash) {
-    const refreshed: CheckoutSession = { ...session, cartHash: freshHash };
+    const refreshed: CheckoutSession = {
+      ...session,
+      cartHash: freshHash,
+      totals: latest ?? session.totals,
+    };
     try {
       const setResult = await ctx.sessionStore.set("current", refreshed, ttl, req);
       return {
@@ -957,11 +1066,11 @@ export async function handlePay(
       const pricedCart = await applyShippingSelection(ctx, session, {
         client: adminClient,
       });
-      const metaAmount = pricedCart.meta?.display_price?.with_tax?.amount;
-      cartMetaTotal =
-        typeof metaAmount === "number" && Number.isFinite(metaAmount)
-          ? metaAmount
-          : null;
+      const rate = resolveShippingRate(
+        session.availableShippingRates,
+        session.selectedShippingRateId ?? ""
+      );
+      latest = totalsFromDisplayPrice(pricedCart.meta?.display_price, rate.amount);
     } catch (err) {
       if (err instanceof ShippingResolutionError) {
         log.warn("Selected shipping rate no longer resolvable at pay", {
@@ -992,21 +1101,6 @@ export async function handlePay(
         },
       };
     }
-
-    // Fail closed: re-assertion mutates the cart; without an authoritative
-    // post-mutation total we must not free-settle or charge on a stale total.
-    if (cartMetaTotal === null) {
-      log.error("Shipping re-assertion returned cart without authoritative total", {
-        cartId: session.cartId,
-      } as Record<string, unknown>);
-      return {
-        status: 502,
-        body: {
-          success: false,
-          error: { message: "Failed to fetch cart", code: "EP_ERROR" },
-        },
-      };
-    }
   } else {
     let deletedCount = 0;
     try {
@@ -1028,8 +1122,8 @@ export async function handlePay(
       };
     }
 
-    // Only refresh meta when the cart actually changed. A no-op clear leaves
-    // the hash-step cartMetaTotal authoritative.
+    // Only refresh totals when the cart actually changed. A no-op clear leaves
+    // the hash-step totals authoritative.
     if (deletedCount > 0) {
       try {
         const reread = await readCartResponse(
@@ -1037,12 +1131,7 @@ export async function handlePay(
           session.cartId,
           ctx
         );
-        const metaAmount = (reread as any)?.data?.meta?.display_price
-          ?.with_tax?.amount;
-        cartMetaTotal =
-          typeof metaAmount === "number" && Number.isFinite(metaAmount)
-            ? metaAmount
-            : null;
+        latest = totalsFromCart(reread);
       } catch (err) {
         log.error("Failed to re-read cart total after clearing shipping line", {
           cartId: session.cartId,
@@ -1056,21 +1145,31 @@ export async function handlePay(
           },
         };
       }
-
-      if (cartMetaTotal === null) {
-        log.error("Post-clear cart read missing authoritative total", {
-          cartId: session.cartId,
-        } as Record<string, unknown>);
-        return {
-          status: 502,
-          body: {
-            success: false,
-            error: { message: "Failed to fetch cart", code: "EP_ERROR" },
-          },
-        };
-      }
     }
   }
+
+  // Fail closed: without an authoritative total there is nothing to check the
+  // charge against, so neither settle for free nor charge.
+  if (latest === null) {
+    log.error("Cart read returned no authoritative total before pay", {
+      cartId: session.cartId,
+    } as Record<string, unknown>);
+    return {
+      status: 502,
+      body: {
+        success: false,
+        error: { message: "Failed to fetch cart", code: "EP_ERROR" },
+      },
+    };
+  }
+
+  // 3b-ter. Charge only the total this session last showed the shopper. A
+  //     different total (shipping re-asserted, line cleared, selection write
+  //     that failed) is shown first and paid on the next submit.
+  if (session.totals?.total !== latest.total) {
+    return persistTotalChanged(req, ctx, { ...session, totals: latest }, ttl);
+  }
+  const expectedTotal = latest.total;
 
   // 3c. Free-order (zero-total) branch. Stripe and other third-party gateways
   //     reject a 0 charge, so EP best practice is to settle a free order with
@@ -1082,12 +1181,10 @@ export async function handlePay(
   //     AND exactly zero — i.e. an authoritative zero, never an *absence*. The
   //     parsed-items sum is deliberately NOT consulted here (see the note
   //     above the cart re-fetch): a paid cart whose items don't parse would
-  //     sum to 0 and route to free settlement, completing with no charge. When
-  //     the authoritative total is unavailable (cartMetaTotal === null) we fail
-  //     closed: we refuse to free-settle and fall through to the paid path,
-  //     which requires a gateway + a confirmed PaymentIntent. An unprovable-
-  //     free cart can therefore never settle for free.
-  if (cartMetaTotal === 0) {
+  //     sum to 0 and route to free settlement, completing with no charge. An
+  //     unavailable total already failed closed above, so an unprovable-free
+  //     cart can never settle for free.
+  if (expectedTotal === 0) {
     return await settleFreeOrder(req, ctx, session, adminClient, ttl);
   }
 
@@ -1145,6 +1242,7 @@ export async function handlePay(
     ttl,
     gateway,
     gatewayData,
+    expectedTotal,
   };
 
   if (isCartPaymentIntentAdapter(adapter)) {

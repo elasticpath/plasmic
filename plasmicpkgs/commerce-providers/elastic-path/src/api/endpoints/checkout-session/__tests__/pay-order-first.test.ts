@@ -96,7 +96,7 @@ function makeSession(overrides: Partial<CheckoutSession> = {}): CheckoutSession 
         serviceLevel: "standard",
       },
     ],
-    totals: null,
+    totals: { subtotal: 4900, tax: 0, shipping: 500, total: 5400, currency: "USD" },
     payment: {
       gateway: null,
       status: "idle",
@@ -195,6 +195,10 @@ function createMockReq(body: Record<string, unknown> = {}): SessionRequest {
   return { body, headers: {}, cookies: {} };
 }
 
+const ORDER_META = {
+  display_price: { with_tax: { amount: 5400, currency: "USD" } },
+};
+
 beforeEach(() => {
   jest.clearAllMocks();
   epSdk.getACart.mockResolvedValue({
@@ -207,14 +211,14 @@ beforeEach(() => {
     },
   });
   epSdk.checkoutApi.mockResolvedValue({
-    data: { data: { id: "order-1" } },
+    data: { data: { id: "order-1", meta: ORDER_META } },
   });
   epSdk.confirmOrder.mockResolvedValue({ data: { data: { id: "order-1" } } });
   epSdk.paymentSetup.mockResolvedValue({
     data: { data: { id: "txn-1", status: "complete", transaction_type: "purchase" } },
   });
   epSdk.getAnOrder.mockResolvedValue({
-    data: { data: { id: "order-1", payment: "unpaid" } },
+    data: { data: { id: "order-1", payment: "unpaid", meta: ORDER_META } },
   });
   epSdk.updateACart.mockResolvedValue({ data: { data: {} } });
   epSdk.updateAnOrder.mockResolvedValue({ data: { data: { id: "order-1" } } });
@@ -341,6 +345,48 @@ describe("handlePay — order_first retry / idempotency", () => {
     gatewayMetadata: {},
     actionData: null,
   };
+
+  it("takes no payment for a new order whose total is not the shown total", async () => {
+    epSdk.checkoutApi.mockResolvedValue({
+      data: {
+        data: {
+          id: "order-1",
+          meta: { display_price: { with_tax: { amount: 9999, currency: "USD" } } },
+        },
+      },
+    });
+    const ctx = createMockCtx(makeSession(), createOrderFirstAdapter());
+
+    const res = await handlePay(createMockReq({ gateway: "manual" }), ctx);
+
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("ORDER_TOTAL_CHANGED");
+    expect(epSdk.paymentSetup).not.toHaveBeenCalled();
+    expect(ctx.sessionStore.set).not.toHaveBeenCalled();
+  });
+
+  it("drops an unpaid order whose total is not the shown total, and takes no payment", async () => {
+    epSdk.getAnOrder.mockResolvedValue({
+      data: {
+        data: {
+          id: "order-1",
+          payment: "unpaid",
+          meta: { display_price: { with_tax: { amount: 3000, currency: "USD" } } },
+        },
+      },
+    });
+    const ctx = createMockCtx(
+      sessionWithExistingOrder(failedPayment),
+      createOrderFirstAdapter()
+    );
+
+    const res = await handlePay(createMockReq({ gateway: "manual" }), ctx);
+
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("ORDER_TOTAL_CHANGED");
+    expect(epSdk.paymentSetup).not.toHaveBeenCalled();
+    expect(lastStoredSession(ctx).order).toBeNull();
+  });
 
   it("failed first attempt → retry reuses same order, no second checkoutApi", async () => {
     epSdk.paymentSetup

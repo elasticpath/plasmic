@@ -23,6 +23,7 @@ import { buildAdminEpClient } from "../../../checkout/session/admin-client";
 import { sessionAddressesEquivalent } from "../../../checkout/session/address-utils";
 import { createLogger } from "../../../utils/logger";
 import { toClientSession } from "../../../checkout/session/client-session";
+import { isSettling } from "../../../checkout/session/settle-once";
 
 const log = createLogger("UpdateSession");
 
@@ -100,6 +101,19 @@ export async function handleUpdateSession(
         error: {
           message: "Session is not open",
           code: "SESSION_NOT_OPEN",
+        },
+      },
+    };
+  }
+
+  if (isSettling(session.cartId)) {
+    return {
+      status: 409,
+      body: {
+        success: false,
+        error: {
+          message: "Payment for this checkout is in progress",
+          code: "CHECKOUT_IN_PROGRESS",
         },
       },
     };

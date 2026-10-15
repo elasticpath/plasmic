@@ -20,30 +20,12 @@ import { readCartResponse } from "../../../ep-server-functions/read-cart";
 import { buildAdminEpClient } from "../../../checkout/session/admin-client";
 import { buildShopperEpClient } from "../../../checkout/session/shopper-client";
 import { EP_SHIPPING_LINE_SKU } from "../../../checkout/session/set-shipping-line";
+import { hasPurchasableItem } from "../../../checkout/session/purchasable-items";
+import { totalsFromCart } from "../../../checkout/session/session-totals";
 import { createLogger } from "../../../utils/logger";
 import { toClientSession } from "../../../checkout/session/client-session";
 
 const log = createLogger("CreateSession");
-
-/**
- * Derive session totals from an EP cart's `meta.display_price`. Returns null
- * when the cart carries no price meta (e.g. an empty cart) — the Stripe
- * Element then falls back to its default amount and /pay recomputes the total
- * from the live cart anyway.
- */
-function extractTotals(cartData: any): SessionTotals | null {
-  const dp = cartData?.meta?.display_price;
-  if (!dp) return null;
-  const total = dp.with_tax?.amount;
-  if (typeof total !== "number") return null;
-  return {
-    subtotal: dp.without_tax?.amount ?? total,
-    tax: dp.tax?.amount ?? 0,
-    shipping: 0,
-    total,
-    currency: dp.with_tax?.currency ?? "",
-  };
-}
 
 export async function handleCreateSession(
   req: SessionRequest,
@@ -73,6 +55,7 @@ export async function handleCreateSession(
 
   let cartItems: Array<{ id: string; quantity: number; unit_price?: { amount?: number }; value?: { amount?: number } }> = [];
   let totals: SessionTotals | null = null;
+  let purchasable = false;
 
   try {
     const cartResponse = await readCartResponse(client, cartId, ctx);
@@ -85,7 +68,8 @@ export async function handleCreateSession(
     cartItems = (Array.isArray(items) ? items : []).filter(
       (it: { sku?: string }) => it?.sku !== EP_SHIPPING_LINE_SKU
     );
-    totals = extractTotals((cartResponse as any)?.data);
+    purchasable = hasPurchasableItem(items);
+    totals = totalsFromCart(cartResponse);
   } catch (err) {
     log.error("Failed to fetch cart from EP", {
       cartId,
@@ -96,6 +80,16 @@ export async function handleCreateSession(
       body: {
         success: false,
         error: { message: "Failed to fetch cart from Elastic Path", code: "EP_ERROR" },
+      },
+    };
+  }
+
+  if (!purchasable) {
+    return {
+      status: 409,
+      body: {
+        success: false,
+        error: { message: "The cart has nothing to check out", code: "EMPTY_CART" },
       },
     };
   }

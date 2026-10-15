@@ -101,7 +101,7 @@ function makeSession(overrides: Partial<CheckoutSession> = {}): CheckoutSession 
     availableShippingRates: [
       { id: "rate-standard", name: "Standard", amount: 500, currency: "USD", serviceLevel: "standard" },
     ],
-    totals: null,
+    totals: { subtotal: 4900, tax: 0, shipping: 500, total: 5400, currency: "USD" },
     payment: {
       gateway: null,
       status: "idle",
@@ -577,6 +577,7 @@ describe("handlePay", () => {
       );
       const session = makeSession({
         cartHash: hashCart(EUR_ITEMS),
+        totals: { subtotal: 4410, tax: 0, shipping: 450, total: 4860, currency: "EUR" },
         availableShippingRates: [
           { id: "rate-standard", name: "Standard", amount: 450, currency: "EUR" },
         ],
@@ -636,6 +637,7 @@ describe("handlePay", () => {
             cartHash: hashCart(FREE_ITEMS),
             requiresShipping: false,
             selectedShippingRateId: null,
+            totals: { subtotal: 0, tax: 0, shipping: 0, total: 0, currency: "EUR" },
           }),
           adapter,
           { locale: "fr-FR", currency: "EUR" }

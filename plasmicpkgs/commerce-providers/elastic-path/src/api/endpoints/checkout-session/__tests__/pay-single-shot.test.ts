@@ -95,7 +95,7 @@ function makeSession(overrides: Partial<CheckoutSession> = {}): CheckoutSession 
     availableShippingRates: [
       { id: "rate-standard", name: "Standard", amount: 500, currency: "USD", serviceLevel: "standard" },
     ],
-    totals: null,
+    totals: { subtotal: 4900, tax: 0, shipping: 500, total: 5400, currency: "USD" },
     payment: {
       gateway: null,
       status: "idle",
@@ -184,6 +184,8 @@ beforeEach(() => {
   epSdk.manageCarts.mockResolvedValue({});
   epSdk.deleteACartItem.mockResolvedValue({});
 });
+
+const FREE_TOTALS = { subtotal: 0, tax: 0, shipping: 0, total: 0, currency: "CHF" };
 
 const FREE_ITEMS = [
   { id: "free-1", quantity: 1, unit_price: { amount: 0 }, value: { amount: 0 } },
@@ -446,7 +448,7 @@ describe("handlePay — zero-total (free) order", () => {
         },
       },
     });
-    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS) }));
+    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS), totals: FREE_TOTALS }));
     const res = await handlePay(createMockReq({}), ctx);
 
     expect(res.status).toBe(409);
@@ -465,7 +467,7 @@ describe("handlePay — zero-total (free) order", () => {
         },
       },
     });
-    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS) }));
+    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS), totals: FREE_TOTALS }));
     const res = await handlePay(createMockReq({}), ctx);
 
     expect(res.status).toBe(200);
@@ -486,7 +488,7 @@ describe("handlePay — zero-total (free) order", () => {
         },
       },
     });
-    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS) }));
+    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS), totals: FREE_TOTALS }));
     const res = await handlePay(createMockReq({}), ctx);
 
     expect(res.status).toBe(409);
@@ -497,7 +499,7 @@ describe("handlePay — zero-total (free) order", () => {
   it("answers 502, not a changed total, when no order total can be read", async () => {
     epSdk.checkoutApi.mockResolvedValue({ data: { data: { id: "order-1" } } });
     epSdk.getAnOrder.mockResolvedValue({ data: { data: { id: "order-1" } } });
-    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS) }));
+    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS), totals: FREE_TOTALS }));
     const res = await handlePay(createMockReq({}), ctx);
 
     expect(res.status).toBe(502);
@@ -509,7 +511,7 @@ describe("handlePay — zero-total (free) order", () => {
     epSdk.paymentSetup.mockResolvedValue({
       data: { data: { id: "txn-1", status: "failed" } },
     });
-    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS) }));
+    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS), totals: FREE_TOTALS }));
     const res = await handlePay(createMockReq({}), ctx);
 
     expect(res.status).toBe(502);
@@ -520,7 +522,7 @@ describe("handlePay — zero-total (free) order", () => {
   it("settles a free order via the manual gateway with no card / adapter", async () => {
     const adapter = createMockAdapter();
     const ctx = createMockCtx(
-      makeSession({ cartHash: hashCart(FREE_ITEMS) }),
+      makeSession({ cartHash: hashCart(FREE_ITEMS), totals: FREE_TOTALS }),
       adapter
     );
     // No gateway/confirmation_token — a free order needs no payment UI.
@@ -570,7 +572,7 @@ describe("handlePay — zero-total (free) order", () => {
       }
       return { data: { data: {} } };
     });
-    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS) }));
+    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS), totals: FREE_TOTALS }));
     const res = await handlePay(createMockReq({}), ctx);
 
     expect(res.status).toBe(200);
@@ -582,6 +584,7 @@ describe("handlePay — zero-total (free) order", () => {
     const ctx = createMockCtx(
       makeSession({
         cartHash: hashCart(FREE_ITEMS),
+        totals: FREE_TOTALS,
         customAttributes: { language: "English", marketing: false },
       }),
       undefined,
@@ -599,7 +602,7 @@ describe("handlePay — zero-total (free) order", () => {
 
   it("returns 502 when manual settlement fails (gateway not enabled)", async () => {
     epSdk.paymentSetup.mockRejectedValue(new Error("gateway disabled"));
-    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS) }));
+    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS), totals: FREE_TOTALS }));
     const res = await handlePay(createMockReq({}), ctx);
 
     expect(res.status).toBe(502);
@@ -607,11 +610,12 @@ describe("handlePay — zero-total (free) order", () => {
   });
 
   it("uses the cart META total (not parsed items) to decide free vs paid", async () => {
-    // Regression: a paid cart whose item array doesn't parse must NOT settle
-    // for free. getACart returns no parseable items but a non-zero meta total.
+    // Regression: a paid cart whose lines carry no price must NOT settle for
+    // free. The items sum to zero but the meta total is not zero.
+    const UNPRICED = [{ id: "unpriced-1", quantity: 1 }];
     epSdk.getACart.mockResolvedValue({
       data: {
-        included: { items: [] },
+        included: { items: UNPRICED },
         data: { meta: { display_price: { with_tax: { amount: 4400, currency: "CHF" } } } },
       },
     });
@@ -620,7 +624,13 @@ describe("handlePay — zero-total (free) order", () => {
       gatewayOrderId: "pi_paid",
       gatewayMetadata: { paymentIntentId: "pi_paid" },
     });
-    const ctx = createMockCtx(makeSession({ cartHash: hashCart([]) }), adapter);
+    const ctx = createMockCtx(
+      makeSession({
+        cartHash: hashCart(UNPRICED),
+        totals: { subtotal: 3900, tax: 0, shipping: 500, total: 4400, currency: "CHF" },
+      }),
+      adapter
+    );
     const res = await handlePay(
       createMockReq({ gateway: "stripe", confirmation_token: "ctok" }),
       ctx

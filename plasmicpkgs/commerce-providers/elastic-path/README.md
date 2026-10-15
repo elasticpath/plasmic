@@ -377,11 +377,12 @@ cart: do not put it in a URL or send it to a third-party service.
 **`next dev` exposes the session.** Next's React Server Components debug
 instrumentation serializes a server component's local variables into the page
 payload, and the session is one of them. Under `next dev`, the page source
-contains the shopper's access token and, once a member selects an
-organisation, that organisation's account credential. The account credential
-unlocks the organisation's order history, account and member records, and
-addresses. Neither is in `next build` output, and nothing this package does
-can suppress it. Treat a dev server as holding a live shopper credential:
+contains the shopper's access token, the session's cart id and, once a member
+selects an organisation, that organisation's account credential. A server
+component that reads the cart also adds the raw Elastic Path cart response,
+which carries the cart id. The account credential unlocks the organisation's
+order history, account and member records, and addresses. None of these is in
+`next build` output, and nothing this package does can suppress it. Treat a dev server as holding a live shopper credential:
 never run one on a shared host or against a production store.
 
 ### API Routes
@@ -537,6 +538,18 @@ Pass the session cart as `sessionCartId`, from `session.cart?.id` on the same
 id in the request; without it, creating a checkout session returns `409` with
 code `NO_CART`. Every later checkout-session route works on the cart the
 session was created with.
+
+A cart with nothing to buy (no lines, or only the shipping line and
+promotions) returns `409` with code `EMPTY_CART`, both when a checkout session
+is created and at pay. Pay charges only the total the session last returned.
+When the cart's total differs, pay charges nothing and returns `409` with
+code `CART_MISMATCH` (the lines changed) or `TOTAL_CHANGED`, and the session
+it returns carries the new total. Pay settles at most one order per cart: while
+a pay for a cart runs, another pay from the same checkout session gets the same
+response, and one from a different checkout session gets `409` with code
+`CHECKOUT_IN_PROGRESS`, as does a session update. This guard holds within one
+server process. With more than one server instance, send each checkout
+session's requests to the same instance.
 
 Pass the session's `locale` and `currency` on `SessionHandlerContext` as well,
 from the same `getSession`:

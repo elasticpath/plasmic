@@ -416,6 +416,34 @@ changes: same props, same slots, same data.
 
 ### Fixed
 
+Pay settles at most one order per checkout. While a pay for a cart runs, a
+second pay from the same checkout session gets the first one's response, and
+a pay or session update from another checkout session gets `409` with
+`CHECKOUT_IN_PROGRESS`. The guard holds within one server process; send a
+checkout session's requests to one instance when you run several. The
+shipping line stays one line at quantity 1: a line that already matches the
+selected rate is left alone, and a concurrent write is folded back.
+
+Pay charges only the total the session last returned to the browser. When
+the cart total differs, pay charges nothing and returns `409` with
+`CART_MISMATCH` or the new `TOTAL_CHANGED`; the session in that response, and
+in the next `GET`, carries the new total. Before this release the
+`CART_MISMATCH` session kept the old total. An order-first gateway (such as
+`manual`) takes no payment for an order whose total is not that total, and
+drops an unpaid order from an earlier attempt when its total no longer
+matches.
+
+Creating a checkout session for, or paying, a cart with nothing to buy (no
+lines, or only the shipping line and promotions) returns `409` with
+`EMPTY_CART`.
+
+`epPlaceOrder` returns the order status Elastic Path reports after payment,
+not the status from before payment. It is empty when that read fails.
+
+The README warning about `next dev` now names the cart id: the page source of
+a dev server holds the session's cart id as well as the shopper's
+credentials.
+
 A zero-total checkout completes only when Elastic Path reports the `manual`
 payment as complete. `/pay` answers `502` when that payment fails, and `409`
 with `ORDER_TOTAL_CHANGED`, without taking payment, when the order it created
