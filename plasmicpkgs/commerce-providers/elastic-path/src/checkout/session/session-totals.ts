@@ -24,7 +24,9 @@ export function totalsFromDisplayPrice(
   shipping: number
 ): SessionTotals | null {
   const total = num(displayPrice?.with_tax?.amount);
-  if (total === null) return null;
+  if (total === null) {
+    return null;
+  }
   const tax = num(displayPrice?.tax?.amount) ?? 0;
   const currency = displayPrice?.with_tax?.currency;
   return {
@@ -41,10 +43,16 @@ export function totalsFromCart(cartResponse: unknown): SessionTotals | null {
   const shipping = cartLines(cartResponse)
     .filter((it) => (it as { sku?: unknown })?.sku === EP_SHIPPING_LINE_SKU)
     .reduce<number>((sum, it) => {
-      const line = it as { quantity?: unknown; unit_price?: { amount?: unknown } };
-      return sum + (num(line.unit_price?.amount) ?? 0) * (num(line.quantity) ?? 1);
+      const line = it as {
+        quantity?: unknown;
+        unit_price?: { amount?: unknown };
+      };
+      return (
+        sum + (num(line.unit_price?.amount) ?? 0) * (num(line.quantity) ?? 1)
+      );
     }, 0);
-  const meta = (cartResponse as { data?: { meta?: { display_price?: DisplayPrice } } })
-    ?.data?.meta;
+  const meta = (
+    cartResponse as { data?: { meta?: { display_price?: DisplayPrice } } }
+  )?.data?.meta;
   return totalsFromDisplayPrice(meta?.display_price, shipping);
 }

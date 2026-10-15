@@ -78,8 +78,9 @@ async function readShippingLines(
     query: { include: ["items"] },
   });
   const items: ShippingLine[] =
-    (current.data as { included?: { items?: unknown } })?.included?.items as never ??
-    (current.data as { data?: { items?: unknown } })?.data?.items as never ??
+    ((current.data as { included?: { items?: unknown } })?.included
+      ?.items as never) ??
+    ((current.data as { data?: { items?: unknown } })?.data?.items as never) ??
     [];
   return (Array.isArray(items) ? items : []).filter(isManagedShippingLine);
 }
@@ -104,12 +105,17 @@ async function foldToOneLine(
   added: unknown
 ): Promise<void> {
   const after = (added as { data?: { data?: unknown } })?.data?.data;
-  if (!Array.isArray(after)) return;
+  if (!Array.isArray(after)) {
+    return;
+  }
   const lines: ShippingLine[] = after.filter(isManagedShippingLine);
   const keep = lines.find((l) => chargesRate(l, rate)) ?? lines[0];
   for (const line of lines) {
     if (line !== keep && line.id) {
-      await deleteACartItem({ client, path: { cartID: cartId, cartitemID: line.id } });
+      await deleteACartItem({
+        client,
+        path: { cartID: cartId, cartitemID: line.id },
+      });
     }
   }
   if (keep?.id && keep.quantity !== 1) {
@@ -161,7 +167,11 @@ export async function setCartShippingLine(
   }
   // The rate is server-resolved and trusted; this guards against a malformed
   // source, never against a client value.
-  if (!rate || typeof rate.amount !== "number" || !Number.isFinite(rate.amount)) {
+  if (
+    !rate ||
+    typeof rate.amount !== "number" ||
+    !Number.isFinite(rate.amount)
+  ) {
     throw new Error(
       "setCartShippingLine: a resolved shipping rate with a numeric amount is required"
     );
@@ -169,11 +179,16 @@ export async function setCartShippingLine(
 
   const lines = await readShippingLines(client, cartId);
   const inPlace =
-    lines.length === 1 && lines[0].quantity === 1 && chargesRate(lines[0], rate);
+    lines.length === 1 &&
+    lines[0].quantity === 1 &&
+    chargesRate(lines[0], rate);
   if (!inPlace) {
     for (const line of lines) {
       if (line.id) {
-        await deleteACartItem({ client, path: { cartID: cartId, cartitemID: line.id } });
+        await deleteACartItem({
+          client,
+          path: { cartID: cartId, cartitemID: line.id },
+        });
       }
     }
     const added = await manageCarts({

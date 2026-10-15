@@ -23,7 +23,10 @@ jest.mock("@epcc-sdk/sdks-shopper", () => {
   ];
   return {
     ...Object.fromEntries(
-      names.map((name) => [name, (...args: unknown[]) => sdkImpl[name](...args)])
+      names.map((name) => [
+        name,
+        (...args: unknown[]) => sdkImpl[name](...args),
+      ])
     ),
     createShopperClient: jest.fn(
       require("../../../../checkout/session/__tests__/fake-shopper-client")
@@ -33,22 +36,28 @@ jest.mock("@epcc-sdk/sdks-shopper", () => {
 });
 
 /* eslint-disable @typescript-eslint/no-var-requires */
-const { handleCreateSession } = require("../create-session") as typeof import("../create-session");
-const { handleUpdateSession } = require("../update-session") as typeof import("../update-session");
+const { handleCreateSession } =
+  require("../create-session") as typeof import("../create-session");
+const { handleUpdateSession } =
+  require("../update-session") as typeof import("../update-session");
 const { handlePay } = require("../pay") as typeof import("../pay");
-const { createAdapterRegistry } = require("../../../../checkout/session/adapter-registry") as typeof import("../../../../checkout/session/adapter-registry");
-const { createManualAdapter } = require("../../../../checkout/session/adapters/manual-adapter") as typeof import("../../../../checkout/session/adapters/manual-adapter");
-const { EP_SHIPPING_LINE_SKU } = require("../../../../checkout/session/set-shipping-line") as typeof import("../../../../checkout/session/set-shipping-line");
-const { FakeEpStore } = require("../../../../checkout/session/__tests__/fake-ep-store") as typeof import("../../../../checkout/session/__tests__/fake-ep-store");
+const { createAdapterRegistry } =
+  require("../../../../checkout/session/adapter-registry") as typeof import("../../../../checkout/session/adapter-registry");
+const { createManualAdapter } =
+  require("../../../../checkout/session/adapters/manual-adapter") as typeof import("../../../../checkout/session/adapters/manual-adapter");
+const { EP_SHIPPING_LINE_SKU } =
+  require("../../../../checkout/session/set-shipping-line") as typeof import("../../../../checkout/session/set-shipping-line");
+const { FakeEpStore } =
+  require("../../../../checkout/session/__tests__/fake-ep-store") as typeof import("../../../../checkout/session/__tests__/fake-ep-store");
 /* eslint-enable @typescript-eslint/no-var-requires */
 
 import type {
+  AdapterRegistry,
   CheckoutSession,
   SessionHandlerContext,
   SessionRequest,
   SessionResponse,
   SessionShippingRate,
-  AdapterRegistry,
 } from "../../../../checkout/session/types";
 
 const RATE: SessionShippingRate = {
@@ -113,7 +122,10 @@ class Browser {
     return handleUpdateSession(this.req(body), this.ctx());
   }
 
-  pay(body: Record<string, unknown>, pay = handlePay): Promise<SessionResponse> {
+  pay(
+    body: Record<string, unknown>,
+    pay = handlePay
+  ): Promise<SessionResponse> {
     return pay(this.req(body), this.ctx());
   }
 
@@ -122,7 +134,16 @@ class Browser {
   }
 }
 
-function newCart(lines = [{ product_id: "p-plus", sku: "p-plus-sub", quantity: 1, unit_price: { amount: 2200 } }]): string {
+function newCart(
+  lines = [
+    {
+      product_id: "p-plus",
+      sku: "p-plus-sub",
+      quantity: 1,
+      unit_price: { amount: 2200 },
+    },
+  ]
+): string {
   cartSeq += 1;
   const cartId = `cart-${cartSeq}`;
   ep.addCart(cartId, lines);
@@ -140,13 +161,15 @@ async function readyToPay(browser: Browser): Promise<void> {
   expect(selected.status).toBe(200);
 }
 
-function session(res: SessionResponse): any {
+function sessionIn(res: SessionResponse): any {
   return (res.body as any).data?.session;
 }
 
 beforeEach(() => {
   ep = new FakeEpStore();
-  for (const key of Object.keys(sdkImpl)) delete sdkImpl[key];
+  for (const key of Object.keys(sdkImpl)) {
+    delete sdkImpl[key];
+  }
   Object.assign(sdkImpl, ep.sdk());
   registry = createAdapterRegistry();
   registry.register("manual", createManualAdapter({ allow: () => true }));
@@ -154,7 +177,11 @@ beforeEach(() => {
     paymentSequence: "cart_payment_intent",
     initializePayment: async (s: CheckoutSession) => {
       const pi = await ep.chargeCart(s.cartId);
-      return { status: "succeeded", gatewayOrderId: pi, gatewayMetadata: { paymentIntentId: pi } };
+      return {
+        status: "succeeded",
+        gatewayOrderId: pi,
+        gatewayMetadata: { paymentIntentId: pi },
+      };
     },
   });
 });
@@ -186,14 +213,14 @@ describe("the total the shopper sees is the total pay charges", () => {
 
     expect(changed.status).toBe(409);
     expect((changed.body as any).error.code).toBe("CART_MISMATCH");
-    expect(session(changed).totals.total).toBe(4999);
+    expect(sessionIn(changed).totals.total).toBe(4999);
     expect(browser.shownTotal()).toBe(4999);
     expect(ep.orders).toEqual([]);
 
     const paid = await browser.pay({ gateway: "manual" });
 
     expect(paid.status).toBe(200);
-    expect(session(paid).status).toBe("complete");
+    expect(sessionIn(paid).status).toBe("complete");
     expect(ep.paidOrders().map((o) => o.total)).toEqual([4999]);
   });
 
@@ -217,7 +244,7 @@ describe("the total the shopper sees is the total pay charges", () => {
 
     expect(first.status).toBe(409);
     expect((first.body as any).error.code).toBe("TOTAL_CHANGED");
-    expect(session(first).totals.total).toBe(2799);
+    expect(sessionIn(first).totals.total).toBe(2799);
     expect(ep.charges).toEqual([]);
     expect(ep.orders).toEqual([]);
 
@@ -242,14 +269,16 @@ describe("pay settles at most one order per checkout", () => {
       ]);
 
       expect([a.status, b.status]).toEqual([200, 200]);
-      expect(session(a).status).toBe("complete");
-      expect(session(b).order.id).toBe(session(a).order.id);
+      expect(sessionIn(a).status).toBe("complete");
+      expect(sessionIn(b).order.id).toBe(sessionIn(a).order.id);
       expect(ep.orders).toHaveLength(1);
       expect(ep.paidOrders().map((o) => o.total)).toEqual([2799]);
       expect(
         ep.orders[0].lines.filter((l) => l.sku === EP_SHIPPING_LINE_SKU)
       ).toEqual([{ sku: EP_SHIPPING_LINE_SKU, quantity: 1, amount: 599 }]);
-      if (gateway === "stripe") expect(ep.charges).toEqual([2799]);
+      if (gateway === "stripe") {
+        expect(ep.charges).toEqual([2799]);
+      }
     }
   );
 
@@ -337,9 +366,9 @@ describe("the shipping line", () => {
     expect(results.some((r) => r.status === 200)).toBe(true);
     for (const order of ep.orders) {
       expect(order.total).toBe(2799);
-      expect(order.lines.filter((l) => l.sku === EP_SHIPPING_LINE_SKU)).toEqual([
-        { sku: EP_SHIPPING_LINE_SKU, quantity: 1, amount: 599 },
-      ]);
+      expect(order.lines.filter((l) => l.sku === EP_SHIPPING_LINE_SKU)).toEqual(
+        [{ sku: EP_SHIPPING_LINE_SKU, quantity: 1, amount: 599 }]
+      );
     }
   });
 });

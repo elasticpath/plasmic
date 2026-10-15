@@ -35,7 +35,10 @@ interface FakeCart {
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 function cartTotal(cart: FakeCart): number {
-  return cart.lines.reduce((sum, l) => sum + l.unit_price.amount * l.quantity, 0);
+  return cart.lines.reduce(
+    (sum, l) => sum + l.unit_price.amount * l.quantity,
+    0
+  );
 }
 
 export class FakeEpStore {
@@ -52,7 +55,9 @@ export class FakeEpStore {
 
   addCart(
     cartId: string,
-    lines: Array<Partial<FakeLine> & { quantity: number; unit_price: { amount: number } }>
+    lines: Array<
+      Partial<FakeLine> & { quantity: number; unit_price: { amount: number } }
+    >
   ): void {
     this.carts.set(cartId, {
       deleted: false,
@@ -70,7 +75,9 @@ export class FakeEpStore {
 
   cart(cartId: string): FakeCart {
     const cart = this.carts.get(cartId);
-    if (!cart || cart.deleted) throw new Error(`no cart ${cartId}`);
+    if (!cart || cart.deleted) {
+      throw new Error(`no cart ${cartId}`);
+    }
     return cart;
   }
 
@@ -88,7 +95,10 @@ export class FakeEpStore {
     const read = (cartID: string) => {
       const cart = store.carts.get(cartID);
       if (!cart || cart.deleted) {
-        return { data: undefined, error: { errors: [{ status: 404, detail: "cart not found" }] } };
+        return {
+          data: undefined,
+          error: { errors: [{ status: 404, detail: "cart not found" }] },
+        };
       }
       const amount = cartTotal(cart);
       return {
@@ -96,7 +106,9 @@ export class FakeEpStore {
           data: {
             id: cartID,
             type: "cart",
-            ...(cart.paymentIntentId ? { payment_intent_id: cart.paymentIntentId } : {}),
+            ...(cart.paymentIntentId
+              ? { payment_intent_id: cart.paymentIntentId }
+              : {}),
             meta: {
               display_price: {
                 with_tax: { amount, currency: "USD" },
@@ -172,7 +184,9 @@ export class FakeEpStore {
       deleteACart: ({ path }: any) =>
         after(() => {
           const cart = store.carts.get(path.cartID);
-          if (cart) cart.deleted = true;
+          if (cart) {
+            cart.deleted = true;
+          }
           return { data: undefined };
         }),
       checkoutApi: ({ path }: any) =>
@@ -196,7 +210,9 @@ export class FakeEpStore {
       getAnOrder: ({ path }: any) =>
         after(() => {
           const order = store.orders.find((o) => o.id === path.orderID);
-          return order ? { data: { data: store.orderResource(order) } } : { data: undefined };
+          return order
+            ? { data: { data: store.orderResource(order) } }
+            : { data: undefined };
         }),
       paymentSetup: ({ path }: any) =>
         after(() => {
@@ -234,7 +250,9 @@ export class FakeEpStore {
     return (async () => {
       await tick();
       const cart = this.cart(cartId);
-      if (!cart.paymentIntentId) cart.paymentIntentId = this.nextId("pi");
+      if (!cart.paymentIntentId) {
+        cart.paymentIntentId = this.nextId("pi");
+      }
       this.charges.push(cartTotal(cart));
       await tick();
       return cart.paymentIntentId;
