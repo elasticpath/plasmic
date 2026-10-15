@@ -61,7 +61,9 @@ creates an order, it checks the requested gateway against that order:
 - For an order with a total, the `manual` adapter is refused unless the host
   gives it a rule: `createManualAdapter({ allow })`. The rule receives the cart
   and the account (`{ cart, account }`) and must return `true`. A rule that
-  throws refuses. `/pay` answers `400` with `GATEWAY_NOT_ALLOWED`.
+  throws refuses. `/pay` answers `400` with `GATEWAY_NOT_ALLOWED`. The input
+  type is `PaymentAdapterOrderRuleInput`, from `/server`;
+  `ManualPaymentRuleInput` is the same type.
 - `epPlaceOrder(input, { allowManual })` follows the same rule, reads the cart
   before it creates the order, and throws when payment does not succeed.
 
@@ -313,6 +315,7 @@ one option. A field keyed by currency, such as `price`, is listed once per
 currency (`price.USD.float_price`). A saved value stays selectable even when
 the store does not list it. To use a field the list does not show, bind a
 value. Without the design-time route the dropdown lists only the saved value.
+When the route fails, the next filter render on the canvas asks again.
 
 These three filters no longer fall back to `"brand"`,
 `"categories.lvl0,categories.lvl1,categories.lvl2"` or `"price.USD.float_price"`
@@ -403,7 +406,9 @@ changes: same props, same slots, same data.
 A zero-total checkout completes only when Elastic Path reports the `manual`
 payment as complete. `/pay` answers `502` when that payment fails, and `409`
 with `ORDER_TOTAL_CHANGED`, without taking payment, when the order it created
-has a total.
+has a total. When the checkout response carries no total, `/pay` and
+`epPlaceOrder` read the order back; when Elastic Path still reports none,
+`/pay` answers `502` and `epPlaceOrder` throws, without taking payment.
 
 A product card inside EP Product Grid now has a link to its product page.
 EP Product Grid publishes `$ctx.currentHit.path`, built exactly as EP Search
