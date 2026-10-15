@@ -196,7 +196,7 @@ cart** is reselected.
 
 **Session cart**:
 The one Elastic Path cart the shopper envelope points at, held as `epCartId`.
-A shopper has exactly one at a time.
+A shopper has exactly one at a time. Only server code reads or sets it.
 _Avoid_: active cart, current cart, basket
 
 **Guest cart**:

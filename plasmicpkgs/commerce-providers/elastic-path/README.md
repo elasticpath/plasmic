@@ -356,10 +356,23 @@ can rely on:
   relationship is an appendable set, so any account that learns a cart id can
   attach itself and then list that cart.
 
-**The cart id still reaches page scripts.** `get-session` returns `epCartId`,
-although nothing in this package reads it in the browser: checkout takes the
-cart from the session on the server. Treat it as a credential for that one
-cart: do not log it, put it in a URL, or send it to a third-party script.
+**The cart id stays on the server.** The id alone is enough to read and change
+a cart, and this is also true for a cart linked to an account. So nothing the
+storefront sends to the browser contains it:
+
+- `$ctx.cart`, and every cart the cart functions return, has no `id` and no
+  `links`.
+- `get-session` and the account routes do not return `epCartId`.
+- Checkout session responses have no `cartId`.
+- The browser cannot set the session's cart. When a cart write creates a cart,
+  the proxy route records it on the session.
+
+Server code that needs the id reads `session.cart?.id` from
+`epAuth.api.getSession`. This keeps the id away from page scripts, browser
+extensions and anything that records what a page receives. It does not make the
+id less powerful: a person who gets the id in a different way can still read
+and change the cart. In server code, treat the id as a credential for that one
+cart: do not put it in a URL or send it to a third-party service.
 
 **`next dev` exposes the session.** Next's React Server Components debug
 instrumentation serializes a server component's local variables into the page
@@ -380,7 +393,6 @@ never run one on a shared host or against a production store.
 |--------|------|-------------|
 | POST | `/api/ep/ep/anonymous` | Mint an anonymous session |
 | POST | `/api/ep/ep/refresh` | Rotate the EP token |
-| POST | `/api/ep/ep/cart` | Persist `epCartId` on the session |
 | POST | `/api/ep/ep/account/login` | Sign an account member in |
 | POST | `/api/ep/ep/account/register` | Register an account member |
 | POST | `/api/ep/ep/account/roster` | Read the accounts the member belongs to |
@@ -465,7 +477,6 @@ function SignIn() {
 | `getSession()` | — | the session, or `null` |
 | `signInAnonymously()` | — | the session |
 | `refresh()` | — | the session |
-| `setCart({ cartId })` | cart id | the session |
 | `login({ username, password, name? })` | credentials | the session, plus the member's organisations |
 | `register({ username, password, name, email })` | credentials | the session, plus the member's organisations |
 | `roster({ limit?, offset? })` | paging | every organisation, or one page when `limit` or `offset` is set |
@@ -592,9 +603,9 @@ own `authentication failed`, which says nothing about profiles. With one
 profile the package finds it.
 
 `get-session` releases `id`, `userId`, `expiresAt`, `createdAt`,
-`updatedAt`, `epCartId`, `epExpires`, `epMemberId`, `epAccount.{id,name}` and
-`epLapsedAccount.{id,name}`. The account credential and its expiry are
-withheld: the response is filtered to an allowlist of **paths**, so a field
+`updatedAt`, `epExpires`, `epMemberId`, `epAccount.{id,name}` and
+`epLapsedAccount.{id,name}`. The cart id is withheld, and so are the account
+credential and its expiry: the response is filtered to an allowlist of **paths**, so a field
 added inside `epAccount` later is withheld by default. `epLapsedAccount`
 states that a selection's credential ran out, rather than reverting the
 shopper to list prices with no signal.
