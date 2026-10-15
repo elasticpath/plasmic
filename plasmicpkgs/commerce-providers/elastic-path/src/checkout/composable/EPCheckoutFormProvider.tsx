@@ -5,8 +5,9 @@
  * whose checkout is one page (no step orchestration, optionally no
  * shipping). It owns a shared form store that the self-contained field
  * primitives (EPFormField / EPSelectField / EPConsentCheckbox) register
- * into and write to, and a `placeOrder` action that maps the collected
- * values onto an EP order and calls the consumer's `/api/ep/proxy/placeOrder`.
+ * into and write to, and a `placeOrder` action that pushes the collected
+ * values into the checkout session of an ancestor EP Checkout Session
+ * Provider and pays through it. Without one it shows a setup error.
  *
  * Why self-contained primitives + a context (rather than headless
  * providers wired by Plasmic interactions): the primitives glue themselves
@@ -60,8 +61,6 @@ import React, {
 } from "react";
 import debounce from "debounce";
 import { Registerable } from "../../registerable";
-import { callEpProxy } from "../../ep-server-functions/proxy-fetch";
-import type { EpPlaceOrderResult } from "../../ep-server-functions/place-order";
 import { DEFAULT_DEBOUNCE_MS } from "../../const";
 import { createLogger } from "../../utils/logger";
 import { sessionAddressesEquivalent } from "../session/address-utils";
@@ -74,6 +73,9 @@ import {
 } from "./shipping-form-fields";
 
 const log = createLogger("EPCheckoutFormProvider");
+
+const SETUP_ERROR =
+  'EP Checkout Form Provider places orders through an EP Checkout Session Provider. Put this form inside an EP Checkout Session Provider and set Payment Mode to "auto" or "session".';
 
 // ---------------------------------------------------------------------------
 // Field-name → order mapping
@@ -172,16 +174,14 @@ interface EPCheckoutFormProviderProps {
   children?: React.ReactNode;
   className?: string;
   fieldMapping?: Partial<CheckoutFieldMapping>;
-  /** Payment gateway override (default "manual" — completes free orders). */
+  /** Unused. Kept so saved pages still load. */
   paymentGateway?: string;
+  /** Unused. Kept so saved pages still load. */
   paymentMethod?: string;
   /**
-   * How placeOrder takes payment:
-   *   - "auto" (default): drive the checkout session (Stripe / gateway) when
-   *     an EPCheckoutSessionProvider is an ancestor; otherwise fall back to
-   *     the direct proxy `placeOrder` (manual, no card).
-   *   - "session": always drive the session (errors if none is present).
-   *   - "proxy": always use the direct proxy placeOrder.
+   * "auto" and "session" both pay through the ancestor EP Checkout Session
+   * Provider. "proxy" is no longer offered; a page that stored it shows the
+   * setup error.
    */
   paymentMode?: "auto" | "session" | "proxy";
   /**
@@ -241,8 +241,6 @@ export const EPCheckoutFormProvider = React.forwardRef<
     children,
     className,
     fieldMapping,
-    paymentGateway,
-    paymentMethod,
     paymentMode = "auto",
     requiresShipping = false,
     onPlaced,
@@ -263,17 +261,19 @@ export const EPCheckoutFormProvider = React.forwardRef<
 
   const inEditor = !!usePlasmicCanvasContext();
 
-  // Bridge to an ancestor EPCheckoutSessionProvider, when present. In session
-  // mode placeOrder pushes the collected fields into the server session and
-  // delegates payment to the registered gateway (Stripe) — keeping the form
-  // primitives self-wiring (no designer interactions required).
+  // Bridge to an ancestor EPCheckoutSessionProvider. placeOrder pushes the
+  // collected fields into the server session and delegates payment to the
+  // registered gateway — keeping the form primitives self-wiring (no designer
+  // interactions required).
   const dataEnv = useDataEnv?.();
   const sessionBridge = (dataEnv as any)?.checkoutSession as
     | SessionBridge
     | undefined;
-  const useSession =
-    paymentMode === "session" ||
-    (paymentMode === "auto" && typeof sessionBridge?.placeOrder === "function");
+  const setupError =
+    paymentMode === "proxy" || typeof sessionBridge?.placeOrder !== "function"
+      ? SETUP_ERROR
+      : null;
+  const useSession = setupError === null;
 
   const mapping = useMemo<CheckoutFieldMapping>(
     () => ({ ...DEFAULT_MAPPING, ...(fieldMapping ?? {}) }),
@@ -433,6 +433,14 @@ export const EPCheckoutFormProvider = React.forwardRef<
       log.debug("placeOrder is a no-op in the Studio canvas");
       return;
     }
+    if (setupError || !sessionBridge) {
+      const message = setupError ?? SETUP_ERROR;
+      setStatus("error");
+      setError(message);
+      onError?.({ message });
+      log.error(message);
+      return;
+    }
     if (!validateAll()) {
       setStatus("error");
       setError("Please complete the required fields.");
@@ -461,109 +469,63 @@ export const EPCheckoutFormProvider = React.forwardRef<
       customAttributes[name] = checked;
     }
 
-    // --- Session mode: push fields into the checkout session, then let the
-    // session's registered gateway (Stripe) take payment. ---
-    if (useSession && sessionBridge) {
-      shippingSyncRef.current?.clear();
-      const customerInfo = {
-        name: `${v[mapping.firstName] ?? ""} ${v[mapping.lastName] ?? ""}`.trim(),
-        email: v[mapping.email] ?? "",
-      };
-      const sessionBilling = {
-        firstName: v[mapping.firstName] ?? "",
-        lastName: v[mapping.lastName] ?? "",
-        company: v[mapping.company] ?? "",
-        line1: v[mapping.line1] ?? "",
-        line2: v[mapping.line2] ?? "",
-        city: v[mapping.city] ?? "",
-        county: v[mapping.county] ?? "",
-        country: v[mapping.country] ?? "",
-        postcode: v[mapping.postcode] ?? "",
-      };
-      const sessionUpdate: Record<string, unknown> = {
-        customerInfo,
-        billingAddress: sessionBilling,
-        requiresShipping,
-        customAttributes,
-      };
-      if (formHasShippingFields(v, registry.current)) {
-        sessionUpdate.shippingAddress =
-          mapShippingFormValuesToSessionAddress(v);
-      }
-      try {
-        await sessionBridge.updateSession?.(sessionUpdate);
-        // Session provider.placeOrder awaits Stripe 3DS (handleNextAction +
-        // resumePayment) when /pay returns requires_action, so a successful
-        // return here is a completed session — not an intermediate open one.
-        const resp = await sessionBridge.placeOrder?.();
-        const s = resp?.data?.session;
-        if (resp?.success && s?.status === "complete") {
-          const oid = s.order?.id ?? "";
-          const free = (s.totals?.total ?? 0) === 0;
-          setOrderId(oid);
-          setIsFree(free);
-          setStatus("placed");
-          onPlaced?.({ orderId: oid, isFree: free });
-          redirectToConfirmation(oid);
-        } else {
-          throw new Error(
-            resp?.error?.message ??
-              resp?.paymentError ??
-              "Payment did not complete. Please check your details and try again."
-          );
-        }
-      } catch (err) {
-        const msg =
-          err instanceof Error ? err.message : "Order could not be placed.";
-        setError(msg);
-        setStatus("error");
-        onError?.({ message: msg });
-        log.error("session placeOrder failed", { error: msg });
-      } finally {
-        placingRef.current = false;
-      }
-      return;
-    }
-
-    // --- Proxy mode: single server call (manual gateway, no card). ---
-    const customer = {
+    // Push fields into the checkout session, then let the session's
+    // registered gateway take payment.
+    shippingSyncRef.current?.clear();
+    const customerInfo = {
       name: `${v[mapping.firstName] ?? ""} ${v[mapping.lastName] ?? ""}`.trim(),
       email: v[mapping.email] ?? "",
     };
-    const billingAddress = {
-      first_name: v[mapping.firstName] ?? "",
-      last_name: v[mapping.lastName] ?? "",
-      company_name: v[mapping.company] ?? "",
-      line_1: v[mapping.line1] ?? "",
-      line_2: v[mapping.line2] ?? "",
+    const sessionBilling = {
+      firstName: v[mapping.firstName] ?? "",
+      lastName: v[mapping.lastName] ?? "",
+      company: v[mapping.company] ?? "",
+      line1: v[mapping.line1] ?? "",
+      line2: v[mapping.line2] ?? "",
       city: v[mapping.city] ?? "",
       county: v[mapping.county] ?? "",
-      postcode: v[mapping.postcode] ?? "",
       country: v[mapping.country] ?? "",
+      postcode: v[mapping.postcode] ?? "",
     };
-
+    const sessionUpdate: Record<string, unknown> = {
+      customerInfo,
+      billingAddress: sessionBilling,
+      requiresShipping,
+      customAttributes,
+    };
+    if (formHasShippingFields(v, registry.current)) {
+      sessionUpdate.shippingAddress =
+        mapShippingFormValuesToSessionAddress(v);
+    }
     try {
-      const result = await callEpProxy<EpPlaceOrderResult | null>("placeOrder", {
-        customer,
-        billingAddress,
-        customAttributes,
-        ...(paymentGateway ? { paymentGateway } : {}),
-        ...(paymentMethod ? { paymentMethod } : {}),
-      });
-      if (!result || !result.orderId) {
-        throw new Error("Order could not be placed. Please try again.");
+      await sessionBridge.updateSession?.(sessionUpdate);
+      // Session provider.placeOrder awaits Stripe 3DS (handleNextAction +
+      // resumePayment) when /pay returns requires_action, so a successful
+      // return here is a completed session — not an intermediate open one.
+      const resp = await sessionBridge.placeOrder?.();
+      const s = resp?.data?.session;
+      if (resp?.success && s?.status === "complete") {
+        const oid = s.order?.id ?? "";
+        const free = (s.totals?.total ?? 0) === 0;
+        setOrderId(oid);
+        setIsFree(free);
+        setStatus("placed");
+        onPlaced?.({ orderId: oid, isFree: free });
+        redirectToConfirmation(oid);
+      } else {
+        throw new Error(
+          resp?.error?.message ??
+            resp?.paymentError ??
+            "Payment did not complete. Please check your details and try again."
+        );
       }
-      setOrderId(result.orderId);
-      setIsFree(result.isFree);
-      setStatus("placed");
-      onPlaced?.({ orderId: result.orderId, isFree: result.isFree });
-      redirectToConfirmation(result.orderId);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Order could not be placed.";
+      const msg =
+        err instanceof Error ? err.message : "Order could not be placed.";
       setError(msg);
       setStatus("error");
       onError?.({ message: msg });
-      log.error("placeOrder failed", { error: msg });
+      log.error("session placeOrder failed", { error: msg });
     } finally {
       placingRef.current = false;
     }
@@ -573,11 +535,9 @@ export const EPCheckoutFormProvider = React.forwardRef<
     values,
     booleans,
     mapping,
-    useSession,
+    setupError,
     sessionBridge,
     requiresShipping,
-    paymentGateway,
-    paymentMethod,
     onPlaced,
     onError,
     redirectToConfirmation,
@@ -642,6 +602,11 @@ export const EPCheckoutFormProvider = React.forwardRef<
     <CheckoutFormContext.Provider value={ctx}>
       <DataProvider name="checkoutFormData" data={checkoutFormData}>
         <div className={className} data-ep-checkout-form-provider="">
+          {setupError ? (
+            <div role="alert" data-ep-checkout-setup-error="">
+              {setupError}
+            </div>
+          ) : null}
           {children}
         </div>
       </DataProvider>
@@ -674,11 +639,11 @@ export const epCheckoutFormProviderMeta: CodeComponentMeta<EPCheckoutFormProvide
       },
       paymentMode: {
         type: "choice",
-        options: ["auto", "session", "proxy"],
+        options: ["auto", "session"],
         defaultValue: "auto",
         displayName: "Payment Mode",
         description:
-          'How payment is taken. "auto" drives the checkout session (Stripe / gateway) when an EP Checkout Session Provider is an ancestor, else falls back to the direct manual proxy. "session" forces the session path; "proxy" forces the manual proxy.',
+          "Orders are placed through the EP Checkout Session Provider above this form. Without one, the form shows a setup error.",
         advanced: true,
       },
       requiresShipping: {
@@ -692,14 +657,18 @@ export const epCheckoutFormProviderMeta: CodeComponentMeta<EPCheckoutFormProvide
       paymentGateway: {
         type: "string",
         displayName: "Payment Gateway",
-        description: 'Proxy mode only — EP payment gateway. Default "manual" (completes free / zero-total orders with no card step).',
+        description:
+          "Unused. The payment component inside the EP Checkout Session Provider selects the gateway.",
         advanced: true,
+        hidden: () => true,
       },
       paymentMethod: {
         type: "string",
         displayName: "Payment Method",
-        description: 'Proxy mode only — EP payment method. Default "purchase".',
+        description:
+          "Unused. The payment component inside the EP Checkout Session Provider selects the gateway.",
         advanced: true,
+        hidden: () => true,
       },
       confirmationUrl: {
         type: "string",
