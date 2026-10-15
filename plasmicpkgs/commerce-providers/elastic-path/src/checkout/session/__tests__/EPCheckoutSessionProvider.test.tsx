@@ -182,21 +182,7 @@ describe("EPCheckoutSessionProvider", () => {
   });
 
   describe("refActions", () => {
-    it("exposes createSession refAction", async () => {
-      const ref = React.createRef<any>();
-      render(
-        <EPCheckoutSessionProvider ref={ref}>
-          <span>content</span>
-        </EPCheckoutSessionProvider>
-      );
-      expect(ref.current?.createSession).toBeDefined();
-      await act(async () => {
-        await ref.current.createSession("cart-xyz");
-      });
-      expect(mockCreateSession).toHaveBeenCalledWith("cart-xyz");
-    });
-
-    it("createSession forwards undefined cartId — server resolves from better-auth session", async () => {
+    it("createSession refAction ignores a cart id passed to it", async () => {
       const ref = React.createRef<any>();
       render(
         <EPCheckoutSessionProvider ref={ref} autoCreate={false}>
@@ -204,9 +190,10 @@ describe("EPCheckoutSessionProvider", () => {
         </EPCheckoutSessionProvider>
       );
       await act(async () => {
-        await ref.current.createSession();
+        await ref.current.createSession("cart-xyz");
       });
-      expect(mockCreateSession).toHaveBeenCalledWith(undefined);
+      expect(mockCreateSession).toHaveBeenCalledTimes(1);
+      expect(mockCreateSession.mock.calls[0]).toEqual([]);
     });
 
     it("auto-creates a session on mount when none exists and autoCreate=true (default)", async () => {

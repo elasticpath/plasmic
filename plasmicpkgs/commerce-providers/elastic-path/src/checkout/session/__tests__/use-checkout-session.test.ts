@@ -153,20 +153,20 @@ describe("useCheckoutSession", () => {
   });
 
   describe("createSession", () => {
-    it("calls POST /checkout/sessions with cartId", async () => {
+    it("posts an empty body: the server takes the cart from the shopper's session", async () => {
       mockSWRData = { success: true, data: { session: null } };
       mockFetchResponse({ success: true, data: { session: { id: "new" } } });
 
       const { result } = renderHook(() => useCheckoutSession("/api"));
       await act(async () => {
-        await result.current.createSession("cart-abc");
+        await result.current.createSession();
       });
 
       expect(global.fetch).toHaveBeenCalledWith(
         "/api/checkout/sessions",
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({ cartId: "cart-abc" }),
+          body: "{}",
           credentials: "same-origin",
         })
       );
@@ -178,7 +178,7 @@ describe("useCheckoutSession", () => {
 
       const { result } = renderHook(() => useCheckoutSession("/api"));
       await act(async () => {
-        await result.current.createSession("cart-abc");
+        await result.current.createSession();
       });
 
       expect(mockMutate).toHaveBeenCalled();
