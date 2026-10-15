@@ -346,6 +346,12 @@ describe("EPCheckoutButton", () => {
       ).toMatch(/^Editor only\./);
     });
 
+    it("keeps the deprecated On Complete off Studio's Interactions section", () => {
+      expect((epCheckoutButtonMeta.props as any).onComplete.advanced).toBe(
+        true
+      );
+    });
+
     it("has correct meta shape", () => {
       expect(epCheckoutButtonMeta.name).toBe(
         "plasmic-commerce-ep-checkout-button"

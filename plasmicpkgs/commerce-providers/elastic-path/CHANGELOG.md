@@ -167,10 +167,12 @@ removed component or a removed published prop. All are empty instead.
   (deprecated)". It posted to `/checkout/create-order`, which nothing serves,
   so it could not place an order. It renders nothing and makes no request.
   Every prop, `Cart ID` included, is hidden and ignored. Build checkout with
-  EP Checkout Session Provider.
+  EP Checkout Session Provider. `On Complete` and `On Error` are advanced, so
+  the Interactions section no longer lists them unless an action is already
+  wired; they are still in its add menu, and they never fire.
 - **EP Checkout Button**'s descriptions no longer call it step-aware: on a
   page it is always the "Checkout" link to `Checkout URL`. `On Complete` never
-  fires. `Preview State` acts only in Studio: a published page shows
+  fires, and is advanced like the Checkout Form's handlers. `Preview State` acts only in Studio: a published page shows
   "Checkout" whatever value is saved, and on the canvas `auto` shows
   "Checkout" too, not a step label.
 - **EP Checkout Session Provider**'s `createSession` ignores its `cartId`

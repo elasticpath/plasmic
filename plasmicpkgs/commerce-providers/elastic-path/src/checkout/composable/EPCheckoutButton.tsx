@@ -212,6 +212,7 @@ export const epCheckoutButtonMeta: CodeComponentMeta<EPCheckoutButtonProps> = {
           type: "object",
         },
       ],
+      advanced: true,
     } as any,
     previewState: {
       type: "choice",
