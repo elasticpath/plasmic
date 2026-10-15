@@ -899,11 +899,11 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 
 ### Checkout (Composable)
 - **EPCheckoutProvider** — Deprecated. Renders its children and nothing else. Use **EPCheckoutSessionProvider**
-- **EPCheckoutStepIndicator** — Multi-step progress
+- **EPCheckoutStepIndicator** — Deprecated. Renders nothing; it read its step from EPCheckoutProvider
 - **EPCustomerInfoFields** / **EPShippingAddressFields** / **EPBillingAddressFields** — Form fields
 - **EPShippingMethodSelector** — Shipping options
-- **EPPaymentElements** — Stripe Payment Element. It took its client secret only from EPCheckoutProvider, so it no longer renders a form; use **EPStripePayment**
-- **EPCheckoutButton** — Step-aware button: continue to shipping, continue to payment, place order. Outside a checkout provider it links to `checkoutUrl`
+- **EPPaymentElements** — Deprecated. Renders its children and nothing else; it took its client secret only from EPCheckoutProvider. Use **EPStripePayment**
+- **EPCheckoutButton** — "Checkout" control that goes to `checkoutUrl`, for a cart page
 - **EPPlaceOrderButton** — Places the order
 - **EPOrderTotalsBreakdown** — Order summary
 - **EPCheckoutCartSummary** / **EPCheckoutCartItemList** — Cart in checkout

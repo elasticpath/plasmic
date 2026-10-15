@@ -137,10 +137,25 @@ removed component or a removed published prop. All are empty instead.
   which nothing serves, so it could not place an order. It renders its
   children and nothing else, publishes no `checkoutData`, and its ref actions
   do nothing. Every prop but its children slot, `Cart ID` included, is hidden
-  and ignored. Build checkout with EP Checkout Session Provider. EP Payment
-  Elements took its client secret only from this provider, so it no longer
-  renders a form; use EP Stripe Payment.
-- **Elastic Path Checkout Form**'s `Cart ID` is hidden and ignored.
+  and ignored. Build checkout with EP Checkout Session Provider.
+- **EP Payment Elements** is now "EP Payment Elements (deprecated)". It took
+  its client secret only from EP Checkout Provider, so it could not show a card
+  form. It renders its children and nothing else, loads no Stripe.js and
+  publishes no `paymentData`. Its other props are hidden and ignored. Use EP
+  Stripe Payment.
+- **EP Checkout Step Indicator** is now "EP Checkout Step Indicator
+  (deprecated)". It read the step from EP Checkout Provider, so it always
+  showed the first step. It renders nothing and publishes no `currentStep`;
+  `Preview State` is hidden and ignored. Show progress from
+  `$ctx.checkoutSession`.
+- **Elastic Path Checkout Form** is now "Elastic Path Checkout Form
+  (deprecated)". It posted to `/checkout/create-order`, which nothing serves,
+  so it could not place an order. It renders nothing and makes no request.
+  Every prop, `Cart ID` included, is hidden and ignored. Build checkout with
+  EP Checkout Session Provider.
+- **EP Checkout Button**'s descriptions no longer call it step-aware: on a
+  page it is always the "Checkout" link to `Checkout URL`. `On Complete` never
+  fires.
 - **EP Checkout Session Provider**'s `createSession` ignores its `cartId`
   argument. The session checks out the shopper's session cart.
 

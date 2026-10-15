@@ -271,38 +271,29 @@ stays registered because hostless publishing rejects a removed component
 ([ADR-0004](docs/adr/0004-registered-surfaces-are-append-only.md)). It renders
 its children and nothing else, publishes no `checkoutData`, and every ref
 action does nothing. Every prop except its children slot, `cartId` included,
-is hidden and ignored. Without its `checkoutData`, EPCheckoutStepIndicator
-shows the first step active and EPCheckoutButton links to `checkoutUrl`. Use
-EP Checkout Session Provider.
+is hidden and ignored. EPPaymentElements and EPCheckoutStepIndicator depended
+on it and are deprecated too. Use EP Checkout Session Provider.
 
 ---
 
-### EPCheckoutStepIndicator
+### EPCheckoutStepIndicator (deprecated)
 
-Repeater over the 4 checkout steps. Provides per-step data for building step nav/progress bars.
-
-**DataProvider `currentStep`** (per iteration):
-
-```ts
-{
-  name: string;        // "Customer Info", "Shipping", "Payment", "Confirmation"
-  stepKey: string;     // "customer_info", "shipping", "payment", "confirmation"
-  index: number;       // 0-3
-  isActive: boolean;
-  isCompleted: boolean;
-  isFuture: boolean;
-}
-```
-
-**DataProvider `currentStepIndex`** (per iteration): `number`
-
-**Props:** `previewState?: "auto" | "withData"`, `className?`
+Renders nothing. It read the current step from EPCheckoutProvider, which is
+inert, so it always showed the first step. It stays registered
+([ADR-0004](docs/adr/0004-registered-surfaces-are-append-only.md)); its
+children slot is ignored and `previewState` is hidden and ignored. It publishes
+no `currentStep` or `currentStepIndex`. Show checkout progress from
+`$ctx.checkoutSession` under EP Checkout Session Provider.
 
 ---
 
 ### EPCheckoutButton
 
-Step-aware button that derives its label and behavior from the current checkout step.
+A "Checkout" control that goes to `checkoutUrl` (default `/checkout`), for a
+cart page. Its step-aware mode needed EPCheckoutProvider's `checkoutData`,
+which is never published, so on a page it is always the "Checkout" link.
+`previewState` shows a step's label on the canvas only. `onComplete` never
+fires.
 
 **DataProvider `checkoutButtonData`:**
 
@@ -495,31 +486,14 @@ Rates come from the `shippingRateResolver` configured on the server; see the REA
 
 ---
 
-### EPPaymentElements
+### EPPaymentElements (deprecated)
 
-Stripe Payment Element wrapper. Loads Stripe.js from `https://js.stripe.com/v3` when it mounts in the browser.
-
-**DataProvider `paymentData`:**
-
-```ts
-{
-  isReady: boolean;
-  isProcessing: boolean;
-  error: string | null;
-  paymentMethodType: string;
-  clientSecret: string | null;
-}
-```
-
-**Props:**
-
-| Prop | Type | Description |
-|------|------|-------------|
-| `stripePublishableKey` | `string?` | Stripe publishable key (pk_test_... or pk_live_...) |
-| `appearance` | `Record<string, any>?` | Stripe Elements appearance theme |
-| `previewState` | `"auto" \| "ready" \| "processing" \| "error"` | |
-
-It took `clientSecret` only from EPCheckoutProvider, which is deprecated and sets none, so it no longer renders a payment form. Use `EPStripePayment` inside EP Checkout Session Provider.
+Renders its children and nothing else. It took its client secret only from
+EPCheckoutProvider, which is inert, so it could not show a card form. It stays
+registered ([ADR-0004](docs/adr/0004-registered-surfaces-are-append-only.md));
+`stripePublishableKey`, `appearance` and `previewState` are hidden and ignored.
+It loads no Stripe.js and publishes no `paymentData`. Use `EPStripePayment`
+inside EP Checkout Session Provider.
 
 ---
 
@@ -699,9 +673,9 @@ Lookup table for Plasmic dynamic value bindings (`$ctx.xxx`).
 | DataProvider Name | Source Component | Key Fields |
 |-------------------|-----------------|------------|
 | `checkoutSession` | EPCheckoutSessionProvider | `session`, `isLoading`, `error` |
-| `checkoutData` | EPCheckoutProvider (deprecated) | Never published. Without it, EPCheckoutStepIndicator shows the first step active and EPCheckoutButton links to `checkoutUrl` |
-| `currentStep` | EPCheckoutStepIndicator | `name`, `stepKey`, `index`, `isActive`, `isCompleted`, `isFuture` |
-| `currentStepIndex` | EPCheckoutStepIndicator | `number` |
+| `checkoutData` | EPCheckoutProvider (deprecated) | Never published |
+| `currentStep` | EPCheckoutStepIndicator (deprecated) | Never published |
+| `currentStepIndex` | EPCheckoutStepIndicator (deprecated) | Never published |
 | `checkoutButtonData` | EPCheckoutButton | `label`, `isDisabled`, `isProcessing`, `step` |
 | `orderTotalsData` | EPOrderTotalsBreakdown | `subtotalFormatted`, `taxFormatted`, `shippingFormatted`, `discountFormatted`, `totalFormatted`, `hasDiscount`, `currency`, `itemCount` |
 | `customerInfoFieldsData` | EPCustomerInfoFields | `firstName`, `lastName`, `email`, `errors`, `touched`, `isValid`, `isDirty` |
@@ -709,7 +683,7 @@ Lookup table for Plasmic dynamic value bindings (`$ctx.xxx`).
 | `billingAddressFieldsData` | EPBillingAddressFields | `firstName`..`country`, `errors`, `touched`, `isValid`, `isDirty`, `isMirroringShipping` |
 | `currentShippingMethod` | EPShippingMethodSelector | `id`, `name`, `price`, `priceFormatted`, `estimatedDays`, `carrier`, `isSelected` |
 | `currentShippingMethodIndex` | EPShippingMethodSelector | `number` |
-| `paymentData` | EPPaymentElements | `isReady`, `isProcessing`, `error`, `paymentMethodType`, `clientSecret` |
+| `paymentData` | EPPaymentElements (deprecated) | Never published |
 | `cart` | EPCheckoutCartSummary | `items`, `itemCount`, `meta.display_price.{without_tax,tax,with_tax}` — Elastic Path's cart |
 | `currentCheckoutItem` | EPCheckoutCartItemList | Elastic Path's cart line: `id`, `name`, `sku`, `quantity`, `product_id`, `image.href`, `meta.display_price.*` |
 | `currentCheckoutItemIndex` | EPCheckoutCartItemList | `number` |

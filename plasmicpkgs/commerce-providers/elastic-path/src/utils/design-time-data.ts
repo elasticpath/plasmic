@@ -397,42 +397,6 @@ export const MOCK_EMPTY_CHECKOUT_CART_DATA: Cart = {
 // API convention.
 // ---------------------------------------------------------------------------
 
-/** Step indicator mock — Shipping active (index 1). */
-export const MOCK_CHECKOUT_STEP_DATA = [
-  {
-    name: "Customer Info",
-    stepKey: "customer_info",
-    index: 0,
-    isActive: false,
-    isCompleted: true,
-    isFuture: false,
-  },
-  {
-    name: "Shipping",
-    stepKey: "shipping",
-    index: 1,
-    isActive: true,
-    isCompleted: false,
-    isFuture: false,
-  },
-  {
-    name: "Payment",
-    stepKey: "payment",
-    index: 2,
-    isActive: false,
-    isCompleted: false,
-    isFuture: true,
-  },
-  {
-    name: "Confirmation",
-    stepKey: "confirmation",
-    index: 3,
-    isActive: false,
-    isCompleted: false,
-    isFuture: true,
-  },
-];
-
 /** Order totals breakdown mock. */
 export const MOCK_ORDER_TOTALS_DATA = {
   subtotal: 6200,
