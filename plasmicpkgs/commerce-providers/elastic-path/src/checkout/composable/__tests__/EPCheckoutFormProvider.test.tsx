@@ -520,6 +520,15 @@ describe("EPCheckoutFormProvider setup", () => {
     ]);
   });
 
+  it.each(["paymentGateway", "paymentMethod"])(
+    "hides %s and describes it as ignored",
+    (name) => {
+      const prop = epCheckoutFormProviderMeta.props[name];
+      expect(prop.hidden()).toBe(true);
+      expect(prop.description).toMatch(/^Deprecated — ignored\./);
+    }
+  );
+
   it("shows a setup error for a stored proxy Payment Mode and places no order", async () => {
     const form = await placeWith({ paymentMode: "proxy" });
 
