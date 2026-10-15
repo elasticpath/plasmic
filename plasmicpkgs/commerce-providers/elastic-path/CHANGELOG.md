@@ -54,9 +54,35 @@ context, from the same `getSession` that gives `shopperAccessToken`, and stop
 copying a cart id into the request. Without it, creating a checkout session
 returns `409` with code `NO_CART`.
 
-The Elastic Path cart id no longer reaches the browser. The id alone is enough
-to read and change a cart, also a cart linked to an account, so it stays on the
-server.
+**The server decides which payment methods an order may use.** Before `/pay`
+creates an order, it checks the requested gateway against that order:
+
+- `manual` completes an order whose total is zero, with no adapter and no rule.
+- For an order with a total, the `manual` adapter is refused unless the host
+  gives it a rule: `createManualAdapter({ allow })`. The rule receives the cart
+  and the account (`{ cart, account }`) and must return `true`. A rule that
+  throws refuses. `/pay` answers `400` with `GATEWAY_NOT_ALLOWED`.
+- `epPlaceOrder(input, { allowManual })` follows the same rule, reads the cart
+  before it creates the order, and throws when payment does not succeed.
+
+A host that registers `createManualAdapter()` for paid orders, for example for
+offline or invoice payment, must add an `allow` rule. To give the rule the
+account, set `accountId` on the `SessionHandlerContext` from the session
+(`session.session.account?.id`). The example storefront no longer registers
+`manual`; its README shows a rule.
+
+**Orders are placed only through the checkout-session routes.** The EP proxy
+route does not dispatch `placeOrder`, and `epPlaceOrder` no longer calls it
+from the browser; it runs only inside a `withEpSession` scope. EP Checkout Form
+Provider pays only through an EP Checkout Session Provider above it. Its
+Payment Mode no longer offers `"proxy"`. A page that stored `"proxy"`, or whose
+form has no EP Checkout Session Provider above it, shows a setup error that
+names EP Checkout Session Provider. Its Payment Gateway and Payment Method
+props are hidden and ignored.
+
+**The Elastic Path cart id no longer reaches the browser.** The id alone is
+enough to read and change a cart, also a cart linked to an account, so it stays
+on the server.
 
 | Removed | Migrate to |
 | --- | --- |
@@ -185,10 +211,11 @@ stay on the server. An Elastic Path `4xx` other than `401` is
 `registration_rejected` with Elastic Path's status and error detail; a `401` or
 `5xx` is `account_token_mint_failed`, as for login.
 
-`createEpDesignRoutes` serves Studio design time. It answers four catalog
-reads, `getProduct`, `getProductList`, `getProductPage` and
-`getRelatedProducts`, under the store's public credential, and refuses every
-other name. It reads no shopper session, so it works inside Studio's editing
+`createEpDesignRoutes` serves Studio design time. It answers the catalog
+reads `getProduct`, `getProductList`, `getProductPage` and
+`getRelatedProducts`, and `getSearchAttributes`, which lists the fields the
+store's catalog search can filter on. It answers under the store's public
+credential and refuses every other name. It reads no shopper session, so it works inside Studio's editing
 frame, where the browser never sends the shopper envelope. Mount it at
 `app/api/ep/design/[fn]/route.ts`. Without it, the canvas shows labelled
 `"Sample"` fixtures and the console says once which route is missing.
@@ -262,6 +289,21 @@ one of those providers. Nothing substitutes another data source.
 
 ### Changed
 
+EP Refinement List `attribute`, EP Hierarchical Menu `attributes` and EP Range
+Filter `attribute` are dropdowns in Studio instead of free text. The list comes
+from the connected store: on the canvas the components ask the design-time
+route for the fields the store's catalog search can filter on. EP Range Filter
+lists only numeric fields, and EP Hierarchical Menu lists each `….lvlN` set as
+one option. A field keyed by currency, such as `price`, is listed once per
+currency (`price.USD.float_price`). A saved value stays selectable even when
+the store does not list it. To use a field the list does not show, bind a
+value. The props have no default value any more, because the old ones were
+guesses that a store need not have. An unset prop renders as before: the
+components still fall back to `"brand"`, `"categories.lvl0,categories.lvl1,categories.lvl2"`
+and `"price.USD.float_price"`. Rendering, on the canvas and on the page, does
+not change. Without the design-time route the dropdown lists only the saved
+value.
+
 EP Add To Cart Button, EP Cart Item Quantity Control and EP Cart Item Remove
 Button show the cart write's rejection message as their `error`. They show
 shopper copy for a network failure instead of the browser's own message, and on
@@ -277,12 +319,25 @@ release removes the option that described the old default. Configure
 On a Studio canvas, the catalog components read through the design-time route
 at the relative path `/api/ep/design/<fn>`. The path resolves against whatever
 document serves the artboard. With an app host configured, that is your
-storefront, and EP Product Provider shows your own catalog. With no app host,
-it is Studio's renderer, which has no such route, so the read fails and the
-canvas shows the labelled `"Sample"` fixtures. To see real catalog data at
-design time, configure an app host and mount `createEpDesignRoutes`. EP Product
-List Provider and EP Related Products Provider still show fixtures on the
-canvas either way; their data-query Configure panel reads the real catalog.
+storefront, and EP Product Provider, EP Product List Provider and EP Related
+Products Provider show your own catalog. With no app host, it is Studio's
+renderer, which has no such route, so the read fails and the canvas shows the
+labelled `"Sample"` fixtures. To see real catalog data at design time,
+configure an app host and mount `createEpDesignRoutes`. EP Catalog Search
+Provider still shows fixtures on the canvas.
+
+On the canvas, EP Product List Provider and EP Related Products Provider show
+Loading Content while the read runs and Empty Content when it finds nothing.
+EP Related Products Provider shows sample products when no product is chosen,
+for example on a product page template. The Preview State values `loading`,
+`error`, `empty` and `withData` now apply only on the canvas, on these two
+providers and on EP Product Grid. Before this release, `withData` also showed
+sample products on a published page.
+
+A newly inserted EP Product Grid's card shows each product's image, name and
+price through EP Product Field, in place of static "Product Name" and "$0.00"
+text. EP Product Field's **Show** prop gains an **Image** value, which renders
+a URL field, such as First image URL, as an image.
 
 A shopper whose account credential lapses now keeps the cart they build after
 the lapse. The package clears the session cart once, at the moment it sees the
@@ -327,6 +382,11 @@ only the ones that were already server-rendered. Nothing about the components
 changes: same props, same slots, same data.
 
 ### Fixed
+
+A zero-total checkout completes only when Elastic Path reports the `manual`
+payment as complete. `/pay` answers `502` when that payment fails, and `409`
+with `ORDER_TOTAL_CHANGED`, without taking payment, when the order it created
+has a total.
 
 A product card inside EP Product Grid now has a link to its product page.
 EP Product Grid publishes `$ctx.currentHit.path`, built exactly as EP Search

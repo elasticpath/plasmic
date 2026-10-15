@@ -8,17 +8,24 @@
 
 import { DataProvider, usePlasmicCanvasContext } from "@plasmicapp/host";
 import registerComponent, {
+  CanvasComponentProps,
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useCallback, useImperativeHandle } from "react";
 import { Registerable } from "../registerable";
 import { MOCK_RANGE_DATA } from "./design-time-data";
 import type { RangeData } from "./design-time-data";
+import {
+  SearchAttributeContext,
+  numericAttributeOptions,
+  useSearchAttributeDiscovery,
+} from "./search-attributes";
 import { useRange } from "react-instantsearch";
 
 type PreviewState = "auto" | "withData";
 
-interface EPRangeFilterProps {
+interface EPRangeFilterProps
+  extends CanvasComponentProps<SearchAttributeContext> {
   children?: React.ReactNode;
   attribute?: string;
   className?: string;
@@ -43,11 +50,13 @@ export const epRangeFilterMeta: CodeComponentMeta<EPRangeFilterProps> = {
       },
     },
     attribute: {
-      type: "string",
+      type: "choice",
       displayName: "Attribute",
       description:
-        'Numeric attribute name (e.g., "price.USD.float_price", "rating")',
-      defaultValue: "price.USD.float_price",
+        'Numeric field to filter on, listed from the connected store\'s catalog search. Unset filters on "price.USD.float_price". For a field the list does not show, bind a value.',
+      options: (props, ctx) => numericAttributeOptions(props.attribute, ctx),
+      allowSearch: true,
+      defaultValueHint: "price.USD.float_price",
     },
     previewState: {
       type: "choice",
@@ -76,7 +85,15 @@ export const EPRangeFilter = React.forwardRef<
   EPRangeFilterActions,
   EPRangeFilterProps
 >(function EPRangeFilter(props, ref) {
-  const { children, attribute, className, previewState = "auto" } = props;
+  const {
+    children,
+    attribute,
+    className,
+    previewState = "auto",
+    setControlContextData,
+  } = props;
+
+  useSearchAttributeDiscovery(setControlContextData);
 
   const inEditor = !!usePlasmicCanvasContext();
   const useMock =

@@ -11,17 +11,24 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
+  CanvasComponentProps,
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useImperativeHandle, useMemo } from "react";
 import { Registerable } from "../registerable";
 import { MOCK_CATEGORY_ITEMS } from "./design-time-data";
 import type { CategoryItem } from "./design-time-data";
+import {
+  SearchAttributeContext,
+  hierarchyOptions,
+  useSearchAttributeDiscovery,
+} from "./search-attributes";
 import { useHierarchicalMenu } from "react-instantsearch";
 
 type PreviewState = "auto" | "withData";
 
-interface EPHierarchicalMenuProps {
+interface EPHierarchicalMenuProps
+  extends CanvasComponentProps<SearchAttributeContext> {
   children?: React.ReactNode;
   attributes?: string;
   className?: string;
@@ -45,11 +52,13 @@ export const epHierarchicalMenuMeta: CodeComponentMeta<EPHierarchicalMenuProps> 
       hidePlaceholder: true,
     },
     attributes: {
-      type: "string",
+      type: "choice",
       displayName: "Attributes",
       description:
-        'Comma-separated hierarchy levels (e.g., "categories.lvl0,categories.lvl1,categories.lvl2")',
-      defaultValue: "categories.lvl0,categories.lvl1,categories.lvl2",
+        'Hierarchy levels to navigate, listed from the connected store\'s catalog search. Unset uses "categories.lvl0,categories.lvl1,categories.lvl2". For levels the list does not show, bind a comma-separated value.',
+      options: (props, ctx) => hierarchyOptions(props.attributes, ctx),
+      allowSearch: true,
+      defaultValueHint: "categories.lvl0,categories.lvl1,categories.lvl2",
     },
     previewState: {
       type: "choice",
@@ -130,7 +139,15 @@ export const EPHierarchicalMenu = React.forwardRef<
   EPHierarchicalMenuActions,
   EPHierarchicalMenuProps
 >(function EPHierarchicalMenu(props, ref) {
-  const { children, attributes, className, previewState = "auto" } = props;
+  const {
+    children,
+    attributes,
+    className,
+    previewState = "auto",
+    setControlContextData,
+  } = props;
+
+  useSearchAttributeDiscovery(setControlContextData);
 
   const inEditor = !!usePlasmicCanvasContext();
   const useMock =

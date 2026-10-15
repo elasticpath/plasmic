@@ -616,6 +616,17 @@ describe("handlePay", () => {
           ? cartIn("EUR", FREE_ITEMS, 0)
           : cartIn("USD", FREE_ITEMS, 700);
       });
+      epSdk.checkoutApi.mockResolvedValue({
+        data: {
+          data: {
+            id: "order-1",
+            meta: { display_price: { with_tax: { amount: 0, currency: "EUR" } } },
+          },
+        },
+      } as any);
+      epSdk.paymentSetup.mockResolvedValueOnce({
+        data: { data: { id: "txn-1", status: "complete" } },
+      });
       const adapter = createMockAdapter();
 
       const res = await handlePay(

@@ -432,8 +432,9 @@ export const OPTIONS = routes.options;
 The design route reads no shopper session, which is what lets it answer inside
 Studio's editing frame: the session cookie is `SameSite=Lax` and never travels
 there once the app host is served from the storefront's own domain. It serves
-four catalog reads — `getProduct`, `getProductList`, `getProductPage`,
-`getRelatedProducts` — under a bare implicit token, and refuses every other
+the catalog reads `getProduct`, `getProductList`, `getProductPage` and
+`getRelatedProducts`, plus `getSearchAttributes` for the search filters'
+attribute dropdowns, under a bare implicit token, and refuses every other
 name. Mount it in production: designers edit against a deployed app host.
 
 Its CORS is `Access-Control-Allow-Origin: *` with no credentials and no origin
@@ -635,6 +636,44 @@ A saved shipping address is a quoted address: the update runs the
 `shippingRateResolver` in the same write, so a host that mounts only the
 session route still offers rates. A resolver failure leaves the address saved
 with no rates; the `/shipping` route is the retry.
+
+### Payment methods
+
+Orders are placed only through the checkout-session routes. The proxy route
+does not dispatch `placeOrder`.
+
+The server decides which gateway an order may use, before `/pay` creates the
+order:
+
+- A zero-total order completes with Elastic Path's `manual` gateway. It needs
+  no adapter and no rule.
+- An order with a total needs a registered adapter. The Manual adapter is
+  refused (`400`, `GATEWAY_NOT_ALLOWED`) unless the host gives it an `allow`
+  rule that returns `true` for that cart and account. A rule that throws
+  refuses.
+
+To offer offline or invoice payment, register the Manual adapter with a rule
+and give the context the selected account's id:
+
+```ts
+adapterRegistry.register(
+  "manual",
+  createManualAdapter({
+    method: "purchase",
+    allow: async ({ cart, account }) =>
+      account !== null && (await isApprovedForInvoice(account.id)),
+  })
+);
+
+const ctx: SessionHandlerContext = {
+  // ...
+  accountId: session?.session?.account?.id,
+};
+```
+
+`cart` is the cart as Elastic Path returns it, with its items under
+`included`. `epPlaceOrder(input, { allowManual })` takes the same rule, runs
+only inside `withEpSession`, and throws when payment does not succeed.
 
 ### Which cart wins at sign-in
 
@@ -873,7 +912,9 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 
 ### Checkout (Session-based)
 - **EPCheckoutSessionProvider** — The checkout path. Server-authoritative session for the cart in the shopper's session
+- **EPCheckoutFormProvider** — Single-page form; places orders through the session provider above it, and shows a setup error without one
 - **EPStripePayment** / **EPCloverPayment** — Payment adapters
+- **EPManualPayment** — Manual payment (no card); needs the host's Manual payment rule for orders with a total (see [Payment methods](#payment-methods))
 
 ### Accounts (Composable)
 - **EPAccountProvider** — Publishes `$ctx.account` from the shopper session: `accountMember`, `selectedAccount`, `accountRoster` (`{ accounts, total }`), `lapsedAccount`, derived `state` (`anonymous | memberOnly | selected | lapsed`), `isLoading` (true until the session read settles; Gates render nothing while it is true), and `isSelecting`. Tokens stay server-side; the Provider maps browser-readable identity only. Preview State is Studio only: explicit values force fixtures so Gates and Fields can be composed; `auto` uses live session identity when a member is present (otherwise the selected-account fixture). The published page always reads the live session and ignores Preview State. A normal Studio button calls this Provider's `logout()` ref action. `logout()` no-ops in the Plasmic canvas; the real sign-out runs at runtime and in interactive preview, then account state reloads. A normal Studio button calls `selectAccount(accountId)` to choose an organisation from `$ctx.account.accountRoster`. It no-ops in the Plasmic canvas. At runtime the already-selected id returns without a request or a reload; any other id selects through the identity client and then reloads account state. A further call while that selection is still in progress returns without another request or reload. `$ctx.account.isSelecting` is true only while that call is in progress, including its immediate reload, and is false again when the call resolves or rejects. Bind a selection button's Disabled prop to `$ctx.account.isSelecting`. Canvas and the already-selected id leave it false. It does not replace `isLoading`; Gates still close only while `isLoading` is true
@@ -904,7 +945,7 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 - **EPCatalogSearchProvider** — InstantSearch over the store's Catalog Search index. See [Choosing a listing path](COMPONENTS.md#3-choosing-a-listing-path)
 - **EPSearchBox** / **EPSearchHits** / **EPSearchPagination** — Search UI
 - **EPSearchInfiniteHits** — Search results with load more, appended in place
-- **EPRefinementList** / **EPHierarchicalMenu** / **EPRangeFilter** — Faceted filtering
+- **EPRefinementList** / **EPHierarchicalMenu** / **EPRangeFilter** — Faceted filtering. In Studio, the attribute is picked from a list of the fields the store's catalog search can filter on, read through the design-time route
 - **EPSearchStats** / **EPSearchSortBy** — Search metadata
 
 ## Styling contract (catalog-search components)

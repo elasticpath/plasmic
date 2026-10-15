@@ -544,9 +544,9 @@ describe("EPProductGrid", () => {
     ).toMatch(/^\/product\/.+/);
   });
 
-  it("should use withData previewState to force mock products", () => {
-    mockUseSelector.mockReturnValue(undefined);
-    mockUsePlasmicCanvasContext.mockReturnValue(null);
+  it("should use withData previewState to force mock products in editor", () => {
+    mockUseSelector.mockReturnValue({ products: [] });
+    mockUsePlasmicCanvasContext.mockReturnValue({});
 
     const { container } = render(
       <EPProductGrid previewState="withData">

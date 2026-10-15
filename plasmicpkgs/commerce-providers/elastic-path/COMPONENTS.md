@@ -95,10 +95,30 @@ storefront uses a nonce-based policy, send the nonce on the page request in an
 policy blocks the script, the browser discards the server render and searches
 again.
 
-**Design time.** Both providers show labelled `"Sample"` fixtures on the Studio
-canvas, not your catalog. Catalog search never mounts its inner component on
-the canvas. EP Product List Provider's Server Query reads the real catalog in
-the data-query Configure panel.
+**Design time.** On the Studio canvas, EP Product List Provider and EP Related
+Products Provider read your catalog through the design-time route
+(`/api/ep/design/<fn>`), as EP Product Provider does. The route needs an app
+host with `createEpDesignRoutes` mounted. While the read runs they show Loading
+Content, and when it finds nothing they show Empty Content. When the read
+fails, including when the route is not mounted, they show labelled `"Sample"`
+fixtures. EP Related Products Provider also shows the fixtures when no product
+is chosen. EP Catalog Search Provider always shows fixtures on the canvas: it
+never mounts its inner component there.
+
+| Component | On the Studio canvas |
+| --- | --- |
+| EP Product Provider | Your catalog |
+| EP Product List Provider | Your catalog |
+| EP Related Products Provider | Your catalog; fixtures when no product is chosen |
+| EP Catalog Search Provider | Fixtures |
+
+Preview State (`loading`, `error`, `empty`, `withData`) forces a state on the
+canvas only. Published pages always fetch.
+
+A newly inserted EP Product Grid's card is three EP Product Field components:
+the first image, the name and the price. EP Product Field reads
+`currentProduct`, which the grid publishes for each card, so the card needs no
+bindings.
 
 **Switching paths.** Three things change, and card layouts survive, because
 both repeaters publish the same `currentProduct` and the same
@@ -503,6 +523,28 @@ It took `clientSecret` only from EPCheckoutProvider, which is deprecated and set
 
 ---
 
+### EPCheckoutFormProvider payment
+
+EP Checkout Form Provider places orders only through an EP Checkout Session
+Provider above it. **Payment Mode** offers `"auto"` and `"session"`; both pay
+through that provider. A page that stored `"proxy"`, or a form with no EP
+Checkout Session Provider above it, renders a setup error (`role="alert"`)
+that names EP Checkout Session Provider, and Place Order sets the same message
+as `checkoutFormData.error`. **Payment Gateway** and **Payment Method** are
+hidden and ignored; the payment component inside the session provider selects
+the gateway.
+
+### EPManualPayment
+
+Selects Elastic Path's `manual` gateway (no card) inside EP Checkout Session
+Provider, for offline or invoice payment. A zero-total order completes without
+it. For an order with a total, the server allows `manual` only when the host
+registers `createManualAdapter({ allow })` and the rule returns `true` for that
+cart and account; otherwise Place Order fails with `GATEWAY_NOT_ALLOWED`. The
+README's Payment methods section shows the rule.
+
+---
+
 ### Checkout API Routes
 
 Checkout runs on the checkout-session routes, whose handlers this package
@@ -557,7 +599,7 @@ Every count `ep.getStock` returns is a `number`, not the SDK's `BigInt` — the 
 
 Neither function takes a `sort`; see [Choosing a listing path](#3-choosing-a-listing-path).
 
-The session (`accessToken`, `host`, `clientId`, `cartId?`, `accountId?`, `accountToken?`, `locale?`, `currency?`) is **not** an argument. `withEpSession(epCtx, callback)` establishes a per-request `AsyncLocalStorage` scope; each `ep.*` function reads the active session via `getCurrentEpSession()` internally. On the server, outside any `withEpSession` scope, they fail-soft to `null` / `[]` without calling Elastic Path. On a published page in the browser, they post to the proxy route. `locale` and `currency` come from `createEpAuth`'s `resolveLocaleAndCurrency`, which runs on every `getSession` with the request's cookies and headers (a server render that passes no headers gets the page request's), so the server render and the proxy route send Elastic Path the same `Accept-Language` and `X-Moltin-Currency`. Checkout reads the cart with the same pair when the host passes the session's `locale` and `currency` on `SessionHandlerContext`. In Studio they post to the design-time route, which serves the four catalog reads only: any other function returns its empty shape on the canvas and throws in the data-query Configure panel.
+The session (`accessToken`, `host`, `clientId`, `cartId?`, `accountId?`, `accountToken?`, `locale?`, `currency?`) is **not** an argument. `withEpSession(epCtx, callback)` establishes a per-request `AsyncLocalStorage` scope; each `ep.*` function reads the active session via `getCurrentEpSession()` internally. On the server, outside any `withEpSession` scope, they fail-soft to `null` / `[]` without calling Elastic Path. On a published page in the browser, they post to the proxy route. `locale` and `currency` come from `createEpAuth`'s `resolveLocaleAndCurrency`, which runs on every `getSession` with the request's cookies and headers (a server render that passes no headers gets the page request's), so the server render and the proxy route send Elastic Path the same `Accept-Language` and `X-Moltin-Currency`. Checkout reads the cart with the same pair when the host passes the session's `locale` and `currency` on `SessionHandlerContext`. In Studio they post to the design-time route, which serves the catalog reads only: any other function returns its empty shape on the canvas and throws in the data-query Configure panel.
 
 ### Studio binding
 

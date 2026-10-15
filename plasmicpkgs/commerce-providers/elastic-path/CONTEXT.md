@@ -79,8 +79,16 @@ The server-authoritative checkout state managed by
 checkout path. Holds orchestration and selection state only — never an
 authoritative amount. It checks out the **session cart**, which the server
 takes from the shopper envelope when the session is created; the browser never
-names a cart. The managed form auto-detects it (`paymentMode: "auto"`) and
-submits through it.
+names a cart. The managed form submits through it, and shows a setup error
+without one. The checkout-session routes are the only place orders are placed;
+the proxy route never places one.
+
+**Manual payment rule**:
+The host's rule, `createManualAdapter({ allow })` or `epPlaceOrder`'s
+`allowManual`, that lets an order with a total use the `manual` gateway. It
+sees the cart and the account and must return `true`. A zero-total order uses
+`manual` without one. The server applies it before it creates the order.
+_Avoid_: payment whitelist, invoice mode
 
 ### Session & security
 
@@ -264,8 +272,8 @@ deliberately not used)
 **Design-time catalog route**:
 `createEpDesignRoutes`, mounted at `app/api/ep/design/[fn]/route.ts`. The
 session-free route serving the store's default catalog to Studio under an
-anonymous implicit token, with four declared names and no cart or order
-access. Distinct from the shopper proxy, which carries session identity.
+anonymous implicit token, with a closed list of declared names and no cart
+or order access. Distinct from the shopper proxy, which carries session identity.
 
 **Mock floor**:
 The automatic canvas fallback to `"Sample"` fixtures beneath any design-time

@@ -60,7 +60,7 @@ describe("callEpProxy at design time", () => {
     );
   });
 
-  it("serves all four declared names and nothing else", async () => {
+  it("serves the declared names and nothing else", async () => {
     inArtboard();
     mockFetch.mockResolvedValue({ ok: true, json: async () => null });
 
@@ -69,10 +69,11 @@ describe("callEpProxy at design time", () => {
       "getProductList",
       "getProductPage",
       "getRelatedProducts",
+      "getSearchAttributes",
     ]) {
       await callEpProxy(fn, {}, null);
     }
-    expect(mockFetch).toHaveBeenCalledTimes(4);
+    expect(mockFetch).toHaveBeenCalledTimes(5);
 
     mockFetch.mockReset();
     for (const fn of ["getCart", "getStock", "multiSearch"]) {
@@ -133,7 +134,7 @@ describe("an operation the design route cannot serve", () => {
       /"getCart" is not served at design time/
     );
     await expect(callEpProxy("getCart", {}, null)).rejects.toThrow(
-      /getProduct, getProductList, getProductPage, getRelatedProducts/
+      /getProduct, getProductList, getProductPage, getRelatedProducts, getSearchAttributes/
     );
   });
 });

@@ -6,26 +6,37 @@ import {
 } from "@epcc-sdk/sdks-shopper";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
-import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
+import { readCartResponse } from "./read-cart";
+import {
+  manualPaymentAllowed,
+  type ManualPaymentRule,
+} from "../checkout/session/manual-payment-rule";
+import { mapTransactionResponse } from "../checkout/session/payment-sequence";
+
+const MANUAL_GATEWAY = "manual";
+const NOT_AVAILABLE =
+  "epPlaceOrder: this payment method is not available for this order";
+
+export interface EpPlaceOrderOptions {
+  /**
+   * Allows the `manual` gateway for an order with a total above zero. The
+   * same rule a host gives `createManualAdapter({ allow })`.
+   */
+  allowManual?: ManualPaymentRule;
+}
 
 /**
- * Generic single-page order placement for the composable checkout.
+ * Server-side order placement for host code: converts the session's cart into
+ * an order, takes payment, and clears the cart. It needs a `withEpSession`
+ * scope and never runs from the browser; the EP proxy route does not place
+ * orders.
  *
- * Converts the current shopper's cart into an order, takes payment, and
- * clears the cart — the whole "place order" action in one server call, so
- * a single-page checkout (no multi-step flow, optionally no shipping) can
- * complete without orchestrating the 4-step EPCheckoutProvider.
- *
- * Payment defaults to the EP **manual** gateway with the **purchase**
- * method. Manual/purchase authorises-and-captures in one call and requires
- * no card UI, which is exactly the zero-total / free-product short-circuit:
- * a CHF 0 order is completed with no payment step. A store with a real
- * gateway overrides `paymentGateway` / `paymentMethod`.
- *
- * Isomorphic, mirroring `epGetCart`: when there is no SSR session (the
- * shopper-facing browser case — this runs from a button onClick) it POSTs
- * to the consumer's `/api/ep/proxy/placeOrder`, which re-enters this
- * function server-side under `withEpSession` with the real cart + token.
+ * Payment defaults to the `manual` gateway with the `purchase` method.
+ * `manual` is allowed for an order whose total is zero. For an order with a
+ * total above zero it is allowed only when `options.allowManual` returns
+ * `true` for the cart and account. The rule runs before the order is
+ * created. Any other gateway is passed to Elastic Path unchanged. The call
+ * throws when payment does not succeed.
  */
 
 /** A billing or shipping address. Missing parts are sent as empty strings. */
@@ -124,22 +135,10 @@ export function normalizeAddress(a: EpPlaceOrderAddress | undefined) {
 }
 
 export async function epPlaceOrder(
-  input: EpPlaceOrderInput
+  input: EpPlaceOrderInput,
+  options: EpPlaceOrderOptions = {}
 ): Promise<EpPlaceOrderResult> {
   const auth = getCurrentEpSession();
-
-  // Browser path: no SSR session → go through the consumer proxy, which
-  // re-enters this function server-side with the real session.
-  if (!isUsableAuth(auth) && shouldUseProxy()) {
-    const result = await callEpProxy<EpPlaceOrderResult | null>(
-      "placeOrder",
-      input as unknown as Record<string, unknown>
-    );
-    if (!result || !result.orderId) {
-      throw new Error("epPlaceOrder: order could not be placed");
-    }
-    return result;
-  }
 
   if (!isUsableAuth(auth)) {
     throw new Error("epPlaceOrder: no EP session");
@@ -150,6 +149,24 @@ export async function epPlaceOrder(
   }
 
   const client = buildEpClient(auth);
+
+  const gateway = input.paymentGateway ?? MANUAL_GATEWAY;
+  const isManual = gateway.trim().toLowerCase() === MANUAL_GATEWAY;
+  let manualForFreeOrder = false;
+  if (isManual) {
+    const cart = await readCartResponse(client, cartId, auth);
+    manualForFreeOrder =
+      cart.data?.meta?.display_price?.with_tax?.amount === 0;
+    if (
+      !manualForFreeOrder &&
+      !(await manualPaymentAllowed(options.allowManual, {
+        cart,
+        account: auth.accountId ? { id: auth.accountId } : null,
+      }))
+    ) {
+      throw new Error(NOT_AVAILABLE);
+    }
+  }
 
   // 1. Persist extra fields + consents as cart custom attributes. A single
   //    update wins because EP replaces all custom attributes per write.
@@ -195,19 +212,37 @@ export async function epPlaceOrder(
   const currency =
     order.meta?.display_price?.with_tax?.currency ?? auth.currency ?? "";
 
-  // 3. Take payment. Manual/purchase completes the order with no card step,
-  //    which also satisfies the zero-total / free-product short-circuit.
-  const payRes = await paymentSetup({
-    client,
-    path: { orderID: order.id },
-    body: {
-      data: {
-        gateway: input.paymentGateway ?? "manual",
-        method: input.paymentMethod ?? "purchase",
-      } as never,
-    },
-  });
-  const payment = payRes.data?.data;
+  if (manualForFreeOrder && order.meta?.display_price?.with_tax?.amount !== 0) {
+    throw new Error(NOT_AVAILABLE);
+  }
+
+  // 3. Take payment.
+  let payRes: unknown;
+  let payThrown: unknown;
+  try {
+    payRes = await paymentSetup({
+      client,
+      path: { orderID: order.id },
+      body: {
+        data: {
+          gateway,
+          method: input.paymentMethod ?? "purchase",
+        } as never,
+      },
+    });
+  } catch (err) {
+    payThrown = err;
+  }
+  const paid = mapTransactionResponse(payRes, payThrown);
+  if (paid.status !== "succeeded") {
+    throw new Error(
+      `epPlaceOrder: payment failed for order ${order.id} (${
+        paid.errorMessage ?? paid.status
+      })`
+    );
+  }
+  const payment = (payRes as { data?: { data?: { status?: unknown } } })
+    ?.data?.data;
 
   // 4. Clear the cart on success (best-effort — a failed clear is non-fatal).
   if (input.clearCart !== false) {
