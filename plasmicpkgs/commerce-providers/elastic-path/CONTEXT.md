@@ -76,7 +76,16 @@ _Avoid_: composable checkout (ambiguous — both families are composable)
 The server-authoritative checkout state managed by
 `EPCheckoutSessionProvider` and the `/api/…/checkout/sessions*` routes. Holds
 orchestration and selection state only — never an authoritative amount. The
-managed form auto-detects it (`paymentMode: "auto"`) and submits through it.
+managed form submits through it, and shows a setup error without one. The
+checkout-session routes are the only place orders are placed; the proxy route
+never places one.
+
+**Manual payment rule**:
+The host's rule, `createManualAdapter({ allow })` or `epPlaceOrder`'s
+`allowManual`, that lets an order with a total use the `manual` gateway. It
+sees the cart and the account and must return `true`. A zero-total order uses
+`manual` without one. The server applies it before it creates the order.
+_Avoid_: payment whitelist, invoice mode
 
 ### Session & security
 

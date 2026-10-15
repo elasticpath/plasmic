@@ -544,6 +544,28 @@ Reads `clientSecret` from EPCheckoutProvider's internal context, which it sets a
 
 ---
 
+### EPCheckoutFormProvider payment
+
+EP Checkout Form Provider places orders only through an EP Checkout Session
+Provider above it. **Payment Mode** offers `"auto"` and `"session"`; both pay
+through that provider. A page that stored `"proxy"`, or a form with no EP
+Checkout Session Provider above it, renders a setup error (`role="alert"`)
+that names EP Checkout Session Provider, and Place Order sets the same message
+as `checkoutFormData.error`. **Payment Gateway** and **Payment Method** are
+hidden and ignored; the payment component inside the session provider selects
+the gateway.
+
+### EPManualPayment
+
+Selects Elastic Path's `manual` gateway (no card) inside EP Checkout Session
+Provider, for offline or invoice payment. A zero-total order completes without
+it. For an order with a total, the server allows `manual` only when the host
+registers `createManualAdapter({ allow })` and the rule returns `true` for that
+cart and account; otherwise Place Order fails with `GATEWAY_NOT_ALLOWED`. The
+README's Payment methods section shows the rule.
+
+---
+
 ### Checkout API Routes
 
 The supported checkout runs on the checkout-session routes, whose handlers this

@@ -46,6 +46,32 @@ Path's reason from the rejection's `cause`, not its `message`, and branch on
 `code`. In development the proxy route still forwards Elastic Path's reason, so
 a rejection in the browser there has that reason as its `message`.
 
+**The server decides which payment methods an order may use.** Before `/pay`
+creates an order, it checks the requested gateway against that order:
+
+- `manual` completes an order whose total is zero, with no adapter and no rule.
+- For an order with a total, the `manual` adapter is refused unless the host
+  gives it a rule: `createManualAdapter({ allow })`. The rule receives the cart
+  and the account (`{ cart, account }`) and must return `true`. A rule that
+  throws refuses. `/pay` answers `400` with `GATEWAY_NOT_ALLOWED`.
+- `epPlaceOrder(input, { allowManual })` follows the same rule, reads the cart
+  before it creates the order, and throws when payment does not succeed.
+
+A host that registers `createManualAdapter()` for paid orders, for example for
+offline or invoice payment, must add an `allow` rule. To give the rule the
+account, set `accountId` on the `SessionHandlerContext` from the session
+(`session.session.account?.id`). The example storefront no longer registers
+`manual`; its README shows a rule.
+
+**Orders are placed only through the checkout-session routes.** The EP proxy
+route does not dispatch `placeOrder`, and `epPlaceOrder` no longer calls it
+from the browser; it runs only inside a `withEpSession` scope. EP Checkout Form
+Provider pays only through an EP Checkout Session Provider above it. Its
+Payment Mode no longer offers `"proxy"`. A page that stored `"proxy"`, or whose
+form has no EP Checkout Session Provider above it, shows a setup error that
+names EP Checkout Session Provider. Its Payment Gateway and Payment Method
+props are hidden and ignored.
+
 ### Removed
 
 | Removed | Replacement |
@@ -295,6 +321,11 @@ only the ones that were already server-rendered. Nothing about the components
 changes: same props, same slots, same data.
 
 ### Fixed
+
+A zero-total checkout completes only when Elastic Path reports the `manual`
+payment as complete. `/pay` answers `502` when that payment fails, and `409`
+with `ORDER_TOTAL_CHANGED`, without taking payment, when the order it created
+has a total.
 
 A product card inside EP Product Grid now has a link to its product page.
 EP Product Grid publishes `$ctx.currentHit.path`, built exactly as EP Search
