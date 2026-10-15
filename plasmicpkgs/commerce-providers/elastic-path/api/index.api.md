@@ -1299,6 +1299,9 @@ export function EPSearchEmpty(props: EPSearchEmptyProps): React_2.JSX.Element;
 export function EPSearchHits(props: EPSearchHitsProps): React_2.JSX.Element;
 
 // @public (undocumented)
+export const EPSearchInfiniteHits: React_2.ForwardRefExoticComponent<EPSearchInfiniteHitsProps & React_2.RefAttributes<EPSearchInfiniteHitsActions>>;
+
+// @public (undocumented)
 export const EPSearchPagination: React_2.ForwardRefExoticComponent<EPSearchPaginationProps & React_2.RefAttributes<EPSearchPaginationActions>>;
 
 // @public (undocumented)
@@ -1932,6 +1935,9 @@ export function registerEPSearchEmpty(loader?: Registerable, customMeta?: CodeCo
 export function registerEPSearchHits(loader?: Registerable, customMeta?: CodeComponentMeta<EPSearchHitsProps>): void;
 
 // @public (undocumented)
+export function registerEPSearchInfiniteHits(loader?: Registerable, customMeta?: CodeComponentMeta<EPSearchInfiniteHitsProps>): void;
+
+// @public (undocumented)
 export function registerEPSearchPagination(loader?: Registerable, customMeta?: CodeComponentMeta<EPSearchPaginationProps>): void;
 
 // @public (undocumented)
@@ -2054,6 +2060,17 @@ export function resolveExtensionField(templates: ExtensionTemplate[] | undefined
 
 // @public
 export function resolveTopLevelField(product: Product | undefined | null, leafId: string, format?: FormatSpec, locale?: string): ResolvedField;
+
+// @public (undocumented)
+export interface SearchInfiniteHitsData {
+    // (undocumented)
+    isFirstPage: boolean;
+    // (undocumented)
+    isLastPage: boolean;
+    loadMore: () => void;
+    // (undocumented)
+    loadPrevious: () => void;
+}
 
 // @public (undocumented)
 export interface SearchPaginationData {

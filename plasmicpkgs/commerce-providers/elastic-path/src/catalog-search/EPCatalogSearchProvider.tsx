@@ -35,6 +35,7 @@ import {
 import { InstantSearchNext } from "react-instantsearch-nextjs";
 import { readEpErrorCode } from "../browser-call";
 import { DEFAULT_CURRENCY_CODE } from "../const";
+import { ListingSourceContext } from "../product-discovery/listing-source";
 import { Registerable } from "../registerable";
 import type { CatalogSearchData } from "./design-time-data";
 import { MOCK_CATALOG_SEARCH_DATA } from "./design-time-data";
@@ -161,6 +162,14 @@ export const epCatalogSearchProviderMeta: CodeComponentMeta<EPCatalogSearchProvi
   };
 
 export function EPCatalogSearchProvider(props: EPCatalogSearchProviderProps) {
+  return (
+    <ListingSourceContext.Provider value="catalog-search">
+      <EPCatalogSearchProviderContent {...props} />
+    </ListingSourceContext.Provider>
+  );
+}
+
+function EPCatalogSearchProviderContent(props: EPCatalogSearchProviderProps) {
   useHeadlessStyling();
 
   const {

@@ -886,6 +886,7 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 ### Catalog Search
 - **EPCatalogSearchProvider** — InstantSearch over the store's Catalog Search index. See [Choosing a listing path](COMPONENTS.md#3-choosing-a-listing-path)
 - **EPSearchBox** / **EPSearchHits** / **EPSearchPagination** — Search UI
+- **EPSearchInfiniteHits** — Search results with load more, appended in place
 - **EPRefinementList** / **EPHierarchicalMenu** / **EPRangeFilter** — Faceted filtering
 - **EPSearchStats** / **EPSearchSortBy** — Search metadata
 
@@ -907,6 +908,7 @@ The contract that every catalog-search component honours:
    | `EPSearchBox` | n/a — provider only, no DOM (see below) |
    | `EPCatalogSearchProvider` | the wrapper `<div data-ep-catalog-search-provider>` |
    | `EPSearchHits` | the grid `<div data-ep-search-hits>` |
+   | `EPSearchInfiniteHits` | the wrapper `<div data-ep-search-infinite-hits>`; the grid inside it is `<div data-ep-search-hits>` |
    | `EPRefinementList` | the wrapper `<div data-ep-refinement-list>` |
    | `EPHierarchicalMenu` | the wrapper `<div data-ep-hierarchical-menu>` |
    | `EPRangeFilter` | the wrapper `<div data-ep-range-filter>` |
@@ -1022,6 +1024,24 @@ Wiring a fresh EPSearchPagination in Plasmic Studio:
    `$ctx.searchPaginationData.hasPrev`.
 4. Wire the Next button's `onClick` → invoke ref-action `nextPage`. Bind
    its visibility to `$ctx.searchPaginationData.hasNext`.
+
+### Composing EPSearchInfiniteHits
+
+`EPSearchInfiniteHits` is `EPSearchHits` with load more: each page of results
+is added below the ones already shown. Cards get the same `currentProduct`,
+`currentHit` and `currentProductIndex`. Use it instead of `EPSearchHits` and
+`EPSearchPagination`, not with them.
+
+| What `EPSearchInfiniteHits` exposes | Type | Use it for |
+| --- | --- | --- |
+| `$ctx.searchInfiniteHitsData.isLastPage` | `boolean` | hide the Load More button when true |
+| `$ctx.searchInfiniteHitsData.isFirstPage` | `boolean` | hide the Load Previous button when true |
+| `loadMore()` ref-action | | call from the Load More button's `onClick` |
+| `loadPrevious()` ref-action | | call from the Load Previous button's `onClick` |
+
+The page number goes in the URL, as with `EPSearchPagination`. A shopper who
+reloads after loading more starts on that page, so put a button in the
+**Load Previous Button** slot to load the pages above it.
 
 ### Composing EPSearchSortBy
 

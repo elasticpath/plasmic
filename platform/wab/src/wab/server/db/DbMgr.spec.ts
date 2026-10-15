@@ -12,7 +12,10 @@ import {
   User,
 } from "@/wab/server/entities/Entities";
 import { getTeamAndWorkspace, withDb } from "@/wab/server/test/backend-util";
-import { BadRequestError } from "@/wab/shared/ApiErrors/errors";
+import {
+  BadRequestError,
+  UnauthorizedError,
+} from "@/wab/shared/ApiErrors/errors";
 import { ApiCmsQuery, FilterClause } from "@/wab/shared/api/cms";
 import { CmsMetaType, CmsTableId } from "@/wab/shared/ApiSchema";
 import { ensure, filterMapTruthy } from "@/wab/shared/common";
@@ -1840,6 +1843,20 @@ describe("DbMgr.user", () => {
       );
     });
   });
+
+  it("rejects personal API token calls from anonymous users", () =>
+    withDb(async (_sudo, _users, [userMgr], _project, entMgr) => {
+      const anonMgr = new DbMgr(entMgr, ANON_USER);
+      await expect(anonMgr.listPersonalApiTokens()).rejects.toBeInstanceOf(
+        UnauthorizedError
+      );
+      await expect(anonMgr.createPersonalApiToken()).rejects.toBeInstanceOf(
+        UnauthorizedError
+      );
+
+      await userMgr().createPersonalApiToken();
+      expect(await userMgr().listPersonalApiTokens()).toHaveLength(1);
+    }));
 });
 
 describe("DbMgr.isOrgStarter", () => {
