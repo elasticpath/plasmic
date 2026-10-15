@@ -662,6 +662,20 @@ type MergeArgs = MergeSrcDst & {
   tags?: string[];
 };
 
+type PreparedMerge = {
+  status: "prepared";
+  mergeResult: Extract<
+    MergeResult,
+    { status: "can be merged" | "resolution accepted" }
+  >;
+  projectId: string;
+  fromBranchId: BranchId | undefined;
+  toBranchId: BranchId | undefined;
+  latestFromPkgVersionId: PkgVersionId;
+  latestToRevisionNum: number;
+  mergedData: string;
+};
+
 function getCommitChainFromCommit(
   g: Draft<CommitGraph>,
   pkgVersionId: PkgVersionId | undefined
@@ -8353,17 +8367,104 @@ export class DbMgr implements MigrationDbMgr {
   // We never care about doing things real git does, such as fast-forwards (reusing commits).
   // We always blindly create new commits.
   private async _tryMergeBranch(
+    args: MergeArgs,
+    opts: { mode: "preview" | "try" }
+  ): Promise<MergeResult> {
+    const {
+      resolution,
+      autoCommitOnToBranch = false,
+      description = "Auto-generated commit post-merge",
+      tags = [],
+    } = args;
+
+    const outcome = await this._prepareMerge(args, opts);
+    if (outcome.status !== "prepared") {
+      return outcome;
+    }
+    const {
+      mergeResult,
+      projectId,
+      fromBranchId,
+      toBranchId,
+      latestFromPkgVersionId,
+      latestToRevisionNum,
+      mergedData,
+    } = outcome;
+
+    const autoCommit = async (branchId: BranchId | undefined) =>
+      (
+        await this.publishProject(
+          projectId,
+          // TODO compute the semantic version bump
+          undefined,
+          [],
+          "Auto-generated commit pre-merge",
+          undefined,
+          undefined,
+          branchId
+        )
+      ).pkgVersion;
+
+    // Auto-commit if there are outstanding changes in source
+    const finalFromCommitId = mergeResult.fromHasOutstandingChanges
+      ? (await autoCommit(fromBranchId)).id
+      : latestFromPkgVersionId;
+
+    // Auto-commit if there are outstanding changes in destination and option is enabled
+    if (mergeResult.toHasOutstandingChanges && autoCommitOnToBranch) {
+      await autoCommit(toBranchId);
+    }
+
+    // Make the merge commit.
+    // Note that we do not want to make this on the source branch. Its terminal commit should be the one pre-merge - it
+    // shouldn't ever be part of the destination branch (or you won't know which ancestor path is the source vs destination)!
+    // Make the final revision (so that this can become the merge commit).
+    await this.saveProjectRev({
+      projectId,
+      data: mergedData,
+      revisionNum: latestToRevisionNum + 1,
+      branchId: toBranchId,
+    });
+
+    const { pkgVersion } = await this.publishProject(
+      projectId,
+      // TODO compute the semantic version bump
+      undefined,
+      tags,
+      description,
+      undefined,
+      undefined,
+      toBranchId,
+      finalFromCommitId,
+      resolution?.picks
+    );
+
+    if (fromBranchId) {
+      await this.updateBranch(fromBranchId, {
+        status: "merged",
+      });
+    }
+
+    return {
+      ...mergeResult,
+      pkgVersion: omit(pkgVersion, ["model"]),
+    };
+  }
+
+  // The merge phase of _tryMergeBranch: everything that loads sites lives here,
+  // and only plain values leave it (no site, bundler or row). That lets the
+  // sites be collected before the publishes load their own.
+  // Returns early for everything but a merge that is ready to be committed.
+  private async _prepareMerge(
     {
       fromBranchId: from,
       toBranchId: to,
       resolution,
       autoCommitOnToBranch = false,
       excludeMergeStepFromResult = false,
-      description = "Auto-generated commit post-merge",
-      tags = [],
     }: MergeArgs,
     { mode }: { mode: "preview" | "try" }
-  ): Promise<MergeResult> {
+  ): Promise<MergeResult | PreparedMerge> {
     check(from !== to, "Cannot merge a branch into itself");
 
     const tryGetProjectId = async (maybeBranchId: BranchId | MainBranchId) => {
@@ -8492,7 +8593,7 @@ export class DbMgr implements MigrationDbMgr {
       ancestorPkgVersion
     );
 
-    let result: MergeResult;
+    let result: PreparedMerge["mergeResult"];
     let mergeStepRaw: MergeStep | undefined = undefined;
     const mergedUuid = mkUuid();
     const mergedSite = (
@@ -8605,65 +8706,23 @@ export class DbMgr implements MigrationDbMgr {
       }
     }
 
-    // Auto-commit if there are outstanding changes in source
-    const finalFromCommit = !extras.fromHasOutstandingChanges
-      ? latestFromPkgVersion
-      : (
-          await this.publishProject(
-            projectId,
-            // TODO compute the semantic version bump
-            undefined,
-            [],
-            "Auto-generated commit pre-merge",
-            undefined,
-            undefined,
-            fromBranchId
-          )
-        ).pkgVersion;
-
-    // Auto-commit if there are outstanding changes in destination and option is enabled
-    if (extras.toHasOutstandingChanges && autoCommitOnToBranch) {
-      await this.publishProject(
-        projectId,
-        // TODO compute the semantic version bump
-        undefined,
-        [],
-        "Auto-generated commit pre-merge",
-        undefined,
-        undefined,
-        toBranchId
-      );
-    }
-
-    // Make the merge commit.
-    // Note that we do not want to make this on the source branch. Its terminal commit should be the one pre-merge - it
-    // shouldn't ever be part of the destination branch (or you won't know which ancestor path is the source vs destination)!
+    let mergedData: string;
     if (resolution) {
-      // Make the final resolved revision (so that this can become the merge commit).
       // Either we use the given resolvedSite if available,
       // or we use mergedSite which should have been produced earlier using `picks`.
-      await this.saveProjectRev({
-        projectId: projectId,
-        data: resolution.resolvedSite
-          ? L.isString(resolution.resolvedSite)
-            ? resolution.resolvedSite
-            : JSON.stringify(
-                bundler.bundle(
-                  resolution.resolvedSite,
-                  projectId,
-                  await getLastBundleVersion()
-                )
-              )
+      mergedData = resolution.resolvedSite
+        ? L.isString(resolution.resolvedSite)
+          ? resolution.resolvedSite
           : JSON.stringify(
               bundler.bundle(
-                mergedSite,
-                mergedUuid,
+                resolution.resolvedSite,
+                projectId,
                 await getLastBundleVersion()
               )
-            ),
-        revisionNum: latestToRev.revision + 1,
-        branchId: toBranchId,
-      });
+            )
+        : JSON.stringify(
+            bundler.bundle(mergedSite, mergedUuid, await getLastBundleVersion())
+          );
     } else {
       assert(
         result.status === "can be merged" &&
@@ -8671,44 +8730,26 @@ export class DbMgr implements MigrationDbMgr {
           mergeStepRaw.status === "merged",
         "Should be merge-able by this point"
       );
-      await this.saveProjectRev({
-        projectId,
-        data: JSON.stringify(
-          bundler.bundle(
-            mergeStepRaw.mergedSite,
-            // Make sure to bundle with the correct mergedUuid,
-            // since the mergedSite was originally unbundled with that.
-            mergedUuid,
-            await getLastBundleVersion()
-          )
-        ),
-        revisionNum: latestToRev.revision + 1,
-        branchId: toBranchId,
-      });
-    }
-
-    const { pkgVersion } = await this.publishProject(
-      projectId,
-      // TODO compute the semantic version bump
-      undefined,
-      tags,
-      description,
-      undefined,
-      undefined,
-      toBranchId,
-      finalFromCommit.id,
-      resolution?.picks
-    );
-
-    if (fromBranchId) {
-      await this.updateBranch(fromBranchId, {
-        status: "merged",
-      });
+      mergedData = JSON.stringify(
+        bundler.bundle(
+          mergeStepRaw.mergedSite,
+          // Make sure to bundle with the correct mergedUuid,
+          // since the mergedSite was originally unbundled with that.
+          mergedUuid,
+          await getLastBundleVersion()
+        )
+      );
     }
 
     return {
-      ...result,
-      pkgVersion: omit(pkgVersion, ["model"]),
+      status: "prepared",
+      mergeResult: result,
+      projectId,
+      fromBranchId,
+      toBranchId,
+      latestFromPkgVersionId: latestFromPkgVersion.id,
+      latestToRevisionNum: latestToRev.revision,
+      mergedData,
     };
   }
 
