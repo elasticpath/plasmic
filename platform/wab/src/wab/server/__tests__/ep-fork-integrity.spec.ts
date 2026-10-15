@@ -537,6 +537,16 @@ describe("EP Fork Integrity", () => {
     });
   });
 
+  describe("EP 401 for logged-out personal API token calls", () => {
+    it("checkUserIdIsSelf throws UnauthorizedError when there is no user", () => {
+      const dbMgr = readFile("platform/wab/src/wab/server/db/DbMgr.ts");
+      expect(dbMgr).toContain(
+        'throw new UnauthorizedError("Must be logged in")'
+      );
+      expect(dbMgr).not.toContain('ensure(userId, "User id should exist")');
+    });
+  });
+
 
   // -------------------------------------------------------------------------
   // Absence guards — elasticpath/plasmic#544. One token surface: the shopper
