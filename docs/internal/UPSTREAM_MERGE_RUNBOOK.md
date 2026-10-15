@@ -44,6 +44,14 @@ EP fix to preserve: with no user id, `checkUserIdIsSelf` throws
 token routes reach it (#717). It goes upstream as its own PR; once upstream has the
 same change, take upstream's version and delete its check from `ep-fork-integrity.spec.ts`.
 
+**`platform/wab/src/wab/server/routes/hosts.ts` — `addTrustedHost` (fork-first)**
+
+EP fix to preserve: a missing, non-string or blank `url` throws
+`BadRequestError("Missing url for trusted host")` (400) instead of crashing on
+`url.trim()` in `DbMgr.addTrustedHost` (500). It goes upstream as its own PR; once
+upstream has the same change, take upstream's version and delete its check from
+`ep-fork-integrity.spec.ts`.
+
 **`platform/loader-bundle-env/package.json`**
 
 EP dependency to preserve:
