@@ -310,59 +310,30 @@ function EPRelatedProductsProviderInner(props: {
     isEmpty,
   };
 
-  if (isLoading && products.length === 0) {
-    return (
-      <DataProvider name="productGridData" data={productGridData}>
-        <DataProvider name="relatedProductsData" data={relatedProductsData}>
-          <div className={className} data-ep-related-products-provider="">
-            {loadingContent}
-          </div>
-        </DataProvider>
-      </DataProvider>
-    );
-  }
-
-  if (error && products.length === 0 && sampleOnError) {
-    return (
-      <DataProvider name="productGridData" data={MOCK_RELATED_PRODUCT_GRID_DATA}>
-        <DataProvider name="relatedProductsData" data={MOCK_RELATED_PRODUCTS_DATA}>
-          <div className={className} data-ep-related-products-provider="">
-            {children}
-          </div>
-        </DataProvider>
-      </DataProvider>
-    );
-  }
-
-  if (error && products.length === 0) {
-    return (
-      <DataProvider name="productGridData" data={productGridData}>
-        <DataProvider name="relatedProductsData" data={relatedProductsData}>
-          <div className={className} data-ep-related-products-provider="">
-            {errorContent}
-          </div>
-        </DataProvider>
-      </DataProvider>
-    );
-  }
-
-  if (isEmpty) {
-    return (
-      <DataProvider name="productGridData" data={productGridData}>
-        <DataProvider name="relatedProductsData" data={relatedProductsData}>
-          <div className={className} data-ep-related-products-provider="">
-            {emptyContent}
-          </div>
-        </DataProvider>
-      </DataProvider>
-    );
-  }
+  const failed = !!error && products.length === 0;
+  const showSample = failed && !!sampleOnError;
+  const content =
+    isLoading && products.length === 0
+      ? loadingContent
+      : showSample
+        ? children
+        : failed
+          ? errorContent
+          : isEmpty
+            ? emptyContent
+            : children;
 
   return (
-    <DataProvider name="productGridData" data={productGridData}>
-      <DataProvider name="relatedProductsData" data={relatedProductsData}>
+    <DataProvider
+      name="productGridData"
+      data={showSample ? MOCK_RELATED_PRODUCT_GRID_DATA : productGridData}
+    >
+      <DataProvider
+        name="relatedProductsData"
+        data={showSample ? MOCK_RELATED_PRODUCTS_DATA : relatedProductsData}
+      >
         <div className={className} data-ep-related-products-provider="">
-          {children}
+          {content}
         </div>
       </DataProvider>
     </DataProvider>

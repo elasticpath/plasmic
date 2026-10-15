@@ -508,51 +508,26 @@ const EPProductListProviderInner = React.forwardRef<
     loadMore: handleLoadMore,
   }));
 
-  // Show loading/error/empty states
-  if (isLoading && displayProducts.length === 0) {
-    return (
-      <DataProvider name="productGridData" data={productGridData}>
-        <div className={className} data-ep-product-list-provider="">
-          {loadingContent}
-        </div>
-      </DataProvider>
-    );
-  }
-
-  if (error && displayProducts.length === 0 && sampleOnError) {
-    return (
-      <DataProvider name="productGridData" data={MOCK_PRODUCT_GRID_DATA}>
-        <div className={className} data-ep-product-list-provider="">
-          {children}
-        </div>
-      </DataProvider>
-    );
-  }
-
-  if (error && displayProducts.length === 0) {
-    return (
-      <DataProvider name="productGridData" data={productGridData}>
-        <div className={className} data-ep-product-list-provider="">
-          {errorContent}
-        </div>
-      </DataProvider>
-    );
-  }
-
-  if (isEmpty) {
-    return (
-      <DataProvider name="productGridData" data={productGridData}>
-        <div className={className} data-ep-product-list-provider="">
-          {emptyContent}
-        </div>
-      </DataProvider>
-    );
-  }
+  const failed = !!error && displayProducts.length === 0;
+  const showSample = failed && !!sampleOnError;
+  const content =
+    isLoading && displayProducts.length === 0
+      ? loadingContent
+      : showSample
+        ? children
+        : failed
+          ? errorContent
+          : isEmpty
+            ? emptyContent
+            : children;
 
   return (
-    <DataProvider name="productGridData" data={productGridData}>
+    <DataProvider
+      name="productGridData"
+      data={showSample ? MOCK_PRODUCT_GRID_DATA : productGridData}
+    >
       <div className={className} data-ep-product-list-provider="">
-        {children}
+        {content}
       </div>
     </DataProvider>
   );
