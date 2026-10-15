@@ -819,6 +819,7 @@ export const epCheckoutFormMeta: {
                 type: "object";
             }[];
             hidden: () => boolean;
+            advanced: boolean;
         };
         onError: {
             type: "eventHandler";
@@ -829,6 +830,7 @@ export const epCheckoutFormMeta: {
                 type: "object";
             }[];
             hidden: () => boolean;
+            advanced: boolean;
         };
     };
     trapsFocus: boolean;

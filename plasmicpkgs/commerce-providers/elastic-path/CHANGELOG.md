@@ -167,10 +167,14 @@ removed component or a removed published prop. All are empty instead.
   (deprecated)". It posted to `/checkout/create-order`, which nothing serves,
   so it could not place an order. It renders nothing and makes no request.
   Every prop, `Cart ID` included, is hidden and ignored. Build checkout with
-  EP Checkout Session Provider.
+  EP Checkout Session Provider. `On Complete` and `On Error` are advanced, so
+  the Interactions section no longer lists them unless an action is already
+  wired; they are still in its add menu, and they never fire.
 - **EP Checkout Button**'s descriptions no longer call it step-aware: on a
   page it is always the "Checkout" link to `Checkout URL`. `On Complete` never
-  fires.
+  fires, and is advanced like the Checkout Form's handlers. `Preview State` acts only in Studio: a published page shows
+  "Checkout" whatever value is saved, and on the canvas `auto` shows
+  "Checkout" too, not a step label.
 - **EP Checkout Session Provider**'s `createSession` ignores its `cartId`
   argument. The session checks out the shopper's session cart.
 
@@ -328,7 +332,10 @@ one option. A field keyed by currency, such as `price`, is listed once per
 currency (`price.USD.float_price`). A saved value stays selectable even when
 the store does not list it. To use a field the list does not show, bind a
 value. Without the design-time route the dropdown lists only the saved value.
-When the route fails, the next filter render on the canvas asks again.
+The canvas asks the route once per page load for all filters. When the route
+fails, it asks again a few times with growing delays, then when the canvas
+regains focus or a filter is added; every filter already on the canvas gets
+the list when an attempt succeeds.
 
 EP Add To Cart Button, EP Cart Item Quantity Control and EP Cart Item Remove
 Button show the cart write's rejection message as their `error`. They show
