@@ -1,7 +1,6 @@
 import {
   checkoutApi,
   deleteAllCartItems,
-  paymentSetup,
   updateACart,
 } from "@epcc-sdk/sdks-shopper";
 import { buildEpClient, isUsableAuth } from "./ep-client";
@@ -11,18 +10,20 @@ import {
   manualPaymentAllowed,
   type ManualPaymentRule,
 } from "../checkout/session/manual-payment-rule";
-import { mapTransactionResponse } from "../checkout/session/payment-sequence";
 import { readOrderTotal } from "../checkout/session/order-total";
-
-const MANUAL_GATEWAY = "manual";
+import {
+  orderRuleInput,
+  takeOrderPayment,
+} from "../checkout/session/order-payment";
+import {
+  MANUAL_GATEWAY,
+  MANUAL_PURCHASE_METHOD,
+} from "../checkout/session/adapters/manual-adapter";
 const NOT_AVAILABLE =
   "epPlaceOrder: this payment method is not available for this order";
 
 export interface EpPlaceOrderOptions {
-  /**
-   * Allows the `manual` gateway for an order with a total above zero. The
-   * same rule a host gives `createManualAdapter({ allow })`.
-   */
+  /** The same rule a host gives `createManualAdapter({ allow })`. */
   allowManual?: ManualPaymentRule;
 }
 
@@ -32,12 +33,9 @@ export interface EpPlaceOrderOptions {
  * scope and never runs from the browser; the EP proxy route does not place
  * orders.
  *
- * Payment defaults to the `manual` gateway with the `purchase` method.
- * `manual` is allowed for an order whose total is zero. For an order with a
- * total above zero it is allowed only when `options.allowManual` returns
- * `true` for the cart and account. The rule runs before the order is
- * created. Any other gateway is passed to Elastic Path unchanged. The call
- * throws when payment does not succeed.
+ * Payment defaults to the `manual` gateway with the `purchase` method, under
+ * `options.allowManual`. Any other gateway is passed to Elastic Path
+ * unchanged. The call throws when payment does not succeed.
  */
 
 /** A billing or shipping address. Missing parts are sent as empty strings. */
@@ -160,10 +158,10 @@ export async function epPlaceOrder(
       cart.data?.meta?.display_price?.with_tax?.amount === 0;
     if (
       !manualForFreeOrder &&
-      !(await manualPaymentAllowed(options.allowManual, {
-        cart,
-        account: auth.accountId ? { id: auth.accountId } : null,
-      }))
+      !(await manualPaymentAllowed(
+        options.allowManual,
+        orderRuleInput(cart, auth.accountId)
+      ))
     ) {
       throw new Error(NOT_AVAILABLE);
     }
@@ -221,23 +219,11 @@ export async function epPlaceOrder(
   }
 
   // 3. Take payment.
-  let payRes: unknown;
-  let payThrown: unknown;
-  try {
-    payRes = await paymentSetup({
-      client,
-      path: { orderID: order.id },
-      body: {
-        data: {
-          gateway,
-          method: input.paymentMethod ?? "purchase",
-        } as never,
-      },
-    });
-  } catch (err) {
-    payThrown = err;
-  }
-  const paid = mapTransactionResponse(payRes, payThrown);
+  const { result: paid, response: payRes } = await takeOrderPayment(
+    client,
+    order.id,
+    { gateway, method: input.paymentMethod ?? MANUAL_PURCHASE_METHOD }
+  );
   if (paid.status !== "succeeded") {
     throw new Error(
       `epPlaceOrder: payment failed for order ${order.id} (${

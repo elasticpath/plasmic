@@ -27,7 +27,6 @@ import {
   getAnOrder,
   checkoutApi,
   confirmOrder,
-  paymentSetup,
   updateACart,
 } from "@epcc-sdk/sdks-shopper";
 import type { Client } from "@epcc-sdk/sdks-shopper";
@@ -45,7 +44,6 @@ import {
   isCartPaymentIntentAdapter,
   isLegacyPaymentAdapter,
   isOrderFirstAdapter,
-  mapTransactionResponse,
 } from "../../../checkout/session/payment-sequence";
 import { hashCart } from "../../../checkout/session/cart-hash";
 import { readCartResponse } from "../../../ep-server-functions/read-cart";
@@ -75,17 +73,20 @@ import {
 } from "../../../checkout/session/session-state-transition";
 import { finalizePaidSession } from "../../../checkout/session/finalize-paid-session";
 import { readOrderTotal } from "../../../checkout/session/order-total";
+import {
+  orderRuleInput,
+  takeOrderPayment,
+} from "../../../checkout/session/order-payment";
 import { toCustomAttributes } from "../../../ep-server-functions/place-order";
 import { createLogger } from "../../../utils/logger";
 import { toClientSession } from "../../../checkout/session/client-session";
-import type { EpCartResponse } from "../../../checkout/session/manual-payment-rule";
+import type { EpCartResponse } from "../../../checkout/session/types";
+import {
+  MANUAL_GATEWAY as FREE_ORDER_GATEWAY,
+  MANUAL_PURCHASE_METHOD as FREE_ORDER_METHOD,
+} from "../../../checkout/session/adapters/manual-adapter";
 
 const log = createLogger("Pay");
-
-/** Gateway + method used to settle a zero-total (free) order — EP best
- * practice, since third-party gateways reject a 0 charge. */
-const FREE_ORDER_GATEWAY = "manual";
-const FREE_ORDER_METHOD = "purchase";
 
 /** OrderResponse.payment values that mean funds are already captured or held. */
 const SETTLED_ORDER_PAYMENTS = new Set(["paid", "authorized"]);
@@ -227,20 +228,10 @@ async function settleFreeOrder(
   });
 
   // 2. manual/purchase settles the zero-total order with no card step.
-  let payRes: unknown;
-  let payThrown: unknown;
-  try {
-    payRes = await paymentSetup({
-      client: adminClient,
-      path: { orderID: orderId },
-      body: {
-        data: { gateway: FREE_ORDER_GATEWAY, method: FREE_ORDER_METHOD },
-      } as never,
-    });
-  } catch (err) {
-    payThrown = err;
-  }
-  const settled = mapTransactionResponse(payRes, payThrown);
+  const { result: settled } = await takeOrderPayment(adminClient, orderId, {
+    gateway: FREE_ORDER_GATEWAY,
+    method: FREE_ORDER_METHOD,
+  });
   if (settled.status !== "succeeded") {
     log.error("Manual settlement of free order failed", {
       orderId,
@@ -707,19 +698,11 @@ async function handleOrderFirstPay(
     });
   }
 
-  let payRes: unknown;
-  let payThrown: unknown;
-  try {
-    payRes = await paymentSetup({
-      client: adminClient,
-      path: { orderID: orderId },
-      body: { data: setup } as never,
-    });
-  } catch (err) {
-    payThrown = err;
-  }
-
-  const adapterResult = mapTransactionResponse(payRes, payThrown);
+  const { result: adapterResult } = await takeOrderPayment(
+    adminClient,
+    orderId,
+    setup
+  );
 
   if (adapterResult.status === "requires_action") {
     return persistRequiresAction(withOrder, adapterResult);
@@ -1134,10 +1117,7 @@ export async function handlePay(
 
   if (
     adapter.allowsOrder &&
-    !(await adapter.allowsOrder({
-      cart: cartResponse,
-      account: ctx.accountId ? { id: ctx.accountId } : null,
-    }))
+    !(await adapter.allowsOrder(orderRuleInput(cartResponse, ctx.accountId)))
   ) {
     log.warn("Gateway refused for this order", {
       sessionId: session.id,
