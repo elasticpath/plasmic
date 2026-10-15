@@ -14,8 +14,9 @@ export const epCheckoutFormMeta = {
     cartId: {
       type: "string" as const,
       displayName: "Cart ID",
-      description: "The cart ID to checkout",
-      defaultValue: "",
+      description:
+        "Deprecated — ignored. Checkout uses the cart in the shopper's session.",
+      hidden: () => true,
     },
     apiBaseUrl: {
       type: "string" as const,
