@@ -6,8 +6,7 @@
  *   - accountToken: the selected account's credential, from the same session.
  *   - getClientCredentialsToken: a closure-memoized admin token minter,
  *     scoped to this request only (no process-level cache).
- *   - epCartId from the better-auth session (lets routes that need a cartId
- *     read it server-side instead of trusting the client).
+ *   - sessionCartId: the shopper's session cart, the only cart checkout uses.
  *   - adapterRegistry with Stripe and Manual registered when EP_CLIENT_SECRET is set.
  *   - sessionStore (cookie-based JWE).
  *   - shippingRateResolver: one static example rate (demo only).
@@ -34,8 +33,6 @@ const EXAMPLE_STANDARD_SHIPPING_AMOUNT_MINOR = 599;
 
 export interface RequestCheckoutContext {
   ctx: SessionHandlerContext;
-  /** epCartId from the better-auth session — used by /sessions create. */
-  epCartId: string | null;
 }
 
 export async function buildCheckoutContext(
@@ -63,7 +60,7 @@ export async function buildCheckoutContext(
 
   const shopperAccessToken = session?.session?.accessToken ?? "";
   const accountToken = session?.session?.account?.token;
-  const epCartId = session?.cart?.id ?? null;
+  const sessionCartId = session?.cart?.id ?? undefined;
 
   // Per-request admin-token resolver. Built only when EP_CLIENT_SECRET is
   // present; absence cleanly disables admin-side EP calls (Stripe gateway
@@ -103,6 +100,7 @@ export async function buildCheckoutContext(
     sessionStore,
     shopperAccessToken,
     accountToken,
+    sessionCartId,
     getClientCredentialsToken,
     // Example/demo pricing only. Production hosts must replace this with real
     // server-side rate logic (carrier API, EP rules, etc.).
@@ -119,5 +117,5 @@ export async function buildCheckoutContext(
     ],
   };
 
-  return { ctx, epCartId };
+  return { ctx };
 }

@@ -50,9 +50,7 @@ export interface EPCheckoutSessionProviderProps {
   className?: string;
   /**
    * When true (default), the provider auto-creates a checkout session on
-   * first render if none exists. The server resolves `cartId` from the
-   * better-auth session, so designers don't have to thread it through
-   * Plasmic interactions.
+   * first render if none exists, for the shopper's session cart.
    */
   autoCreate?: boolean;
 }
@@ -102,11 +100,9 @@ const EPCheckoutSessionRuntime = React.forwardRef<
 
   // RefActions
   const handleCreateSession = useCallback(
-    async (cartId?: string) => {
-      // cartId is now optional — server resolves from the better-auth
-      // session when omitted.
+    async (_ignoredCartId?: string) => {
       try {
-        await createSession(cartId);
+        await createSession();
       } catch (err) {
         log.error("createSession failed", {
           error: err instanceof Error ? err.message : String(err),
@@ -376,7 +372,7 @@ export const epCheckoutSessionProviderMeta: CodeComponentMeta<EPCheckoutSessionP
         defaultValue: true,
         displayName: "Auto-create Session",
         description:
-          "Create a session on first render if none exists. Server resolves cartId from the better-auth session.",
+          "Create a session on first render if none exists. The session checks out the shopper's own cart.",
         advanced: true,
       },
     },
@@ -386,7 +382,7 @@ export const epCheckoutSessionProviderMeta: CodeComponentMeta<EPCheckoutSessionP
     refActions: {
       createSession: {
         description:
-          "Create a new checkout session. cartId is optional — server resolves from the better-auth session when omitted.",
+          "Create a new checkout session for the shopper's own cart. The server takes the cart from the shopper's session; a Cart ID passed here is ignored.",
         argTypes: [{ name: "cartId", type: "string" }],
       },
       updateSession: {

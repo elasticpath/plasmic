@@ -41,8 +41,8 @@ export interface UseCheckoutSessionReturn {
   session: ClientCheckoutSession | null;
   isLoading: boolean;
   error: Error | null;
-  /** Create a new session for the given cart. */
-  createSession: (cartId?: string) => Promise<SessionApiResponse>;
+  /** Create a new session for the shopper's session cart. */
+  createSession: () => Promise<SessionApiResponse>;
   /** Merge partial updates into the session. */
   updateSession: (data: UpdateSessionRequest) => Promise<SessionApiResponse>;
   /** Requote shipping rates on demand, for example after the cart changes. A shipping-address update already requotes. */
@@ -79,16 +79,12 @@ export function useCheckoutSession(
   const session = data?.success ? (data.data?.session ?? null) : null;
 
   const createSession = useCallback(
-    async (cartId?: string): Promise<SessionApiResponse> => {
-      // cartId is optional — when omitted, the server resolves it from the
-      // better-auth session (cookie-based). Designers don't have to thread
-      // cartId through Plasmic interactions.
-      const body = cartId ? JSON.stringify({ cartId }) : "{}";
+    async (): Promise<SessionApiResponse> => {
       const resp = await sessionFetch<SessionApiResponse>(
         `${baseUrl}/checkout/sessions`,
         {
           method: "POST",
-          body,
+          body: "{}",
         }
       );
       await mutate();

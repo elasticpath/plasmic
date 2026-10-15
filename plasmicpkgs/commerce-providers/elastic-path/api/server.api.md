@@ -855,6 +855,7 @@ export interface SessionHandlerContext extends EpLocaleAndCurrency {
     // (undocumented)
     epCredentials: EPCredentials;
     getClientCredentialsToken?: () => Promise<string>;
+    sessionCartId?: string;
     // (undocumented)
     sessionStore: SessionStore;
     sessionTtlSeconds?: number;
