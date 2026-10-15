@@ -42,11 +42,13 @@ import {
 } from "./envelope";
 import type { EpAccountSlot, EpAnchorTokenSlot } from "./envelope";
 import {
+  AccountMemberReadError,
   EpAccountTokenError,
   collectAccountTokens,
   discoverPasswordProfileId,
   findAccountToken,
   mintAccountTokens,
+  readAccountMember,
   toAccountRoster,
 } from "./account-tokens";
 import type {
@@ -218,6 +220,13 @@ function noAccountMemberError(): Response {
     401,
     "No account member is signed in."
   );
+}
+
+/** `identity.member()` posts `{}`. Anything else is a selector the browser must not send. */
+function isEmptyRequestBody(body: unknown): boolean {
+  if (body == null) return true;
+  if (typeof body !== "object" || Array.isArray(body)) return false;
+  return Object.keys(body).length === 0;
 }
 
 /**
@@ -834,6 +843,68 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
 
           await setSessionCookie(ctx, { session, user } as any);
           return ctx.json(epIdentityPayload("logout", { user, session }));
+        }
+      ),
+
+      epAccountMember: createAuthEndpoint(
+        "/ep/account/member",
+        { method: "POST" },
+        async (ctx) => {
+          const existing = await readExistingSession(ctx);
+          if (!existing?.user || !existing?.session) return noSessionError();
+
+          if (!isEmptyRequestBody(ctx.body)) {
+            return jsonError("invalid_input", 400, "Body must be empty.");
+          }
+
+          const session = sessionWithLapseApplied(existing.session);
+          const memberId = session.epMemberId;
+          if (typeof memberId !== "string" || !memberId) {
+            return noAccountMemberError();
+          }
+
+          const accountToken = heldAccountCredential(session);
+          if (!accountToken) {
+            return ctx.json(epIdentityPayload("member", { id: memberId }));
+          }
+
+          if (
+            typeof session.epAccessToken !== "string" ||
+            !session.epAccessToken ||
+            typeof session.epHost !== "string" ||
+            !session.epHost
+          ) {
+            return jsonError(
+              "account_member_read_failed",
+              502,
+              "Elastic Path was unreachable."
+            );
+          }
+
+          try {
+            const profile = await readAccountMember({
+              host: session.epHost,
+              implicitToken: session.epAccessToken,
+              accountToken,
+              memberId,
+            });
+            return ctx.json(
+              epIdentityPayload("member", { id: memberId, ...profile })
+            );
+          } catch (err) {
+            if (err instanceof AccountMemberReadError) {
+              return jsonError(
+                "account_member_read_failed",
+                err.status,
+                err.message
+              );
+            }
+            return jsonError(
+              "account_member_read_failed",
+              502,
+              "Elastic Path rejected the account-member read."
+            );
+          }
         }
       ),
 

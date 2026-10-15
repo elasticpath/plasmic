@@ -499,6 +499,16 @@ export interface EpAccountLoginResult extends EpSessionEnvelope {
     total: number;
 }
 
+// @public
+export interface EpAccountMemberResult {
+    // (undocumented)
+    email?: string;
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    name?: string;
+}
+
 // @public (undocumented)
 export const EPAccountProvider: React_2.ForwardRefExoticComponent<EPAccountProviderProps & React_2.RefAttributes<EPAccountProviderActions>>;
 
@@ -980,6 +990,11 @@ export interface EpIdentityOperations {
     logout: {
         request: void;
         response: EpSessionEnvelope;
+    };
+    // (undocumented)
+    member: {
+        request: void;
+        response: EpAccountMemberResult;
     };
     // (undocumented)
     refresh: {

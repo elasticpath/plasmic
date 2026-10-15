@@ -38,6 +38,13 @@ export interface EpSetCartRequest {
   cartId: string;
 }
 
+/** The authenticated member's profile. `id` is always the session's member id. */
+export interface EpAccountMemberResult {
+  id: string;
+  name?: string;
+  email?: string;
+}
+
 /**
  * The identity operations. `void` marks one that takes no input; a union with
  * `void` marks one whose input is optional.
@@ -62,6 +69,7 @@ export interface EpIdentityOperations {
   };
   rollAccount: { request: void; response: EpSessionEnvelope };
   logout: { request: void; response: EpSessionEnvelope };
+  member: { request: void; response: EpAccountMemberResult };
 }
 
 export type EpIdentityOperationName = keyof EpIdentityOperations;
@@ -88,6 +96,7 @@ export const EP_IDENTITY_ROUTES: {
   selectAccount: { path: "/ep/account/select", method: "POST" },
   rollAccount: { path: "/ep/account/roll", method: "POST" },
   logout: { path: "/ep/account/logout", method: "POST" },
+  member: { path: "/ep/account/member", method: "POST" },
 };
 
 export const EP_IDENTITY_OPERATION_NAMES = Object.keys(
