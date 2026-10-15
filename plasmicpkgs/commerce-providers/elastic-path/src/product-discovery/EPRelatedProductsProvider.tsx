@@ -24,6 +24,8 @@ import React from "react";
 import { Registerable } from "../registerable";
 import { ListingSourceContext } from "./listing-source";
 import { useRelatedProducts } from "./use-related-products";
+import { useEpCommerce } from "../shopper-context/EpCommerceContext";
+import { SAMPLE_PRODUCT_ID } from "../utils/design-time-data";
 import {
   MOCK_RELATED_PRODUCTS_DATA,
   MOCK_RELATED_PRODUCT_GRID_DATA,
@@ -121,7 +123,7 @@ export const epRelatedProductsProviderMeta: CodeComponentMeta<EPRelatedProductsP
         defaultValue: "auto",
         displayName: "Preview State",
         description:
-          "Force a preview state with sample data for design-time editing",
+          "Studio only. `auto` shows the store's related products, and labelled sample products when the read fails. With no product to look up, it shows sample products. The other values force a state on the canvas. Published pages always fetch.",
         advanced: true,
       },
     },
@@ -157,6 +159,7 @@ function EPRelatedProductsProviderContent(
   } = props;
 
   const inEditor = !!usePlasmicCanvasContext();
+  const hasStore = !!useEpCommerce();
 
   // Read product ID from parent context if not provided as prop
   const currentProduct = useSelector("currentProduct") as
@@ -208,10 +211,11 @@ function EPRelatedProductsProviderContent(
     }
   }
 
-  const useMock =
-    previewState === "withData" || (previewState === "auto" && inEditor);
-
-  if (useMock) {
+  const nothingToLookUp = !productId || productId === SAMPLE_PRODUCT_ID;
+  if (
+    inEditor &&
+    (previewState === "withData" || !hasStore || nothingToLookUp)
+  ) {
     return (
       <DataProvider
         name="productGridData"
@@ -239,6 +243,7 @@ function EPRelatedProductsProviderContent(
       loadingContent={loadingContent}
       errorContent={errorContent}
       emptyContent={emptyContent}
+      sampleOnError={inEditor}
     >
       {children}
     </EPRelatedProductsProviderInner>
@@ -256,6 +261,7 @@ function EPRelatedProductsProviderInner(props: {
   loadingContent?: React.ReactNode;
   errorContent?: React.ReactNode;
   emptyContent?: React.ReactNode;
+  sampleOnError?: boolean;
 }) {
   const {
     children,
@@ -267,6 +273,7 @@ function EPRelatedProductsProviderInner(props: {
     loadingContent,
     errorContent,
     emptyContent,
+    sampleOnError,
   } = props;
 
   const { products, totalCount, isLoading, error } = useRelatedProducts({
@@ -309,6 +316,18 @@ function EPRelatedProductsProviderInner(props: {
         <DataProvider name="relatedProductsData" data={relatedProductsData}>
           <div className={className} data-ep-related-products-provider="">
             {loadingContent}
+          </div>
+        </DataProvider>
+      </DataProvider>
+    );
+  }
+
+  if (error && products.length === 0 && sampleOnError) {
+    return (
+      <DataProvider name="productGridData" data={MOCK_RELATED_PRODUCT_GRID_DATA}>
+        <DataProvider name="relatedProductsData" data={MOCK_RELATED_PRODUCTS_DATA}>
+          <div className={className} data-ep-related-products-provider="">
+            {children}
           </div>
         </DataProvider>
       </DataProvider>

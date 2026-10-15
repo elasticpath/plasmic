@@ -38,6 +38,7 @@ import React, {
 import { Registerable } from "../registerable";
 import { ListingSourceContext } from "./listing-source";
 import { useProductList } from "./use-product-list";
+import { useEpCommerce } from "../shopper-context/EpCommerceContext";
 import { MOCK_PRODUCT_GRID_DATA, ProductGridData } from "./design-time-data";
 import type { Product } from "../types/product";
 
@@ -164,7 +165,7 @@ export const epProductListProviderMeta: CodeComponentMeta<EPProductListProviderP
       defaultValue: "auto",
       displayName: "Preview State",
       description:
-        "Force a preview state with sample data for design-time editing",
+        "Studio only. `auto` shows the store's products, and labelled sample products when the read fails. The other values force a state on the canvas. Published pages always fetch.",
       advanced: true,
     },
   },
@@ -225,6 +226,7 @@ const EPProductListProviderContent = React.forwardRef<
   } = props;
 
   const inEditor = !!usePlasmicCanvasContext();
+  const hasStore = !!useEpCommerce();
 
   // --- Design-time preview handling ---
   if (inEditor) {
@@ -262,10 +264,7 @@ const EPProductListProviderContent = React.forwardRef<
     }
   }
 
-  const useMock =
-    previewState === "withData" || (previewState === "auto" && inEditor);
-
-  if (useMock) {
+  if (inEditor && (previewState === "withData" || !hasStore)) {
     return (
       <MockProductListProvider ref={ref} className={className}>
         {children}
@@ -284,6 +283,7 @@ const EPProductListProviderContent = React.forwardRef<
       loadingContent={loadingContent}
       errorContent={errorContent}
       emptyContent={emptyContent}
+      sampleOnError={inEditor}
     >
       {children}
     </EPProductListProviderInner>
@@ -326,6 +326,7 @@ const EPProductListProviderInner = React.forwardRef<
     loadingContent?: React.ReactNode;
     errorContent?: React.ReactNode;
     emptyContent?: React.ReactNode;
+    sampleOnError?: boolean;
   }
 >(function EPProductListProviderInner(props, ref) {
   const {
@@ -338,6 +339,7 @@ const EPProductListProviderInner = React.forwardRef<
     loadingContent,
     errorContent,
     emptyContent,
+    sampleOnError,
   } = props;
 
   const [currentPage, setCurrentPage] = useState(0);
@@ -512,6 +514,16 @@ const EPProductListProviderInner = React.forwardRef<
       <DataProvider name="productGridData" data={productGridData}>
         <div className={className} data-ep-product-list-provider="">
           {loadingContent}
+        </div>
+      </DataProvider>
+    );
+  }
+
+  if (error && displayProducts.length === 0 && sampleOnError) {
+    return (
+      <DataProvider name="productGridData" data={MOCK_PRODUCT_GRID_DATA}>
+        <div className={className} data-ep-product-list-provider="">
+          {children}
         </div>
       </DataProvider>
     );

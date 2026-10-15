@@ -295,6 +295,16 @@ carries a deprecation signal, and under ADR-0004 neither can be removed anyway.
 - Catalog search shows fixtures at design time permanently — the canvas never
   mounts the provider's inner component — which is the one axis where the on-ramp
   path is better. Documented as a limitation, not closed here.
+- Which components read the store at design time (#662). Each one that does
+  drops to the labelled fixtures when its read fails, including when the route
+  is not mounted:
+
+  | Component | Design time |
+  | --- | --- |
+  | EP Product Provider | fetches through the design-time route |
+  | EP Product List Provider | fetches through the design-time route |
+  | EP Related Products Provider | fetches through the design-time route; fixtures when no product is chosen |
+  | EP Catalog Search Provider | fixtures |
 - Designers get no account-scoped design time. There are zero account-scoped
   components in this package, so there is no parity to preserve. The effort that
   adds them inherits two facts: a route that can name an account cannot be

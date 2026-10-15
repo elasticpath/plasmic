@@ -95,10 +95,30 @@ storefront uses a nonce-based policy, send the nonce on the page request in an
 policy blocks the script, the browser discards the server render and searches
 again.
 
-**Design time.** Both providers show labelled `"Sample"` fixtures on the Studio
-canvas, not your catalog. Catalog search never mounts its inner component on
-the canvas. EP Product List Provider's Server Query reads the real catalog in
-the data-query Configure panel.
+**Design time.** On the Studio canvas, EP Product List Provider and EP Related
+Products Provider read your catalog through the design-time route
+(`/api/ep/design/<fn>`), as EP Product Provider does. The route needs an app
+host with `createEpDesignRoutes` mounted. While the read runs they show Loading
+Content, and when it finds nothing they show Empty Content. When the read
+fails, including when the route is not mounted, they show labelled `"Sample"`
+fixtures. EP Related Products Provider also shows the fixtures when no product
+is chosen. EP Catalog Search Provider always shows fixtures on the canvas: it
+never mounts its inner component there.
+
+| Component | On the Studio canvas |
+| --- | --- |
+| EP Product Provider | Your catalog |
+| EP Product List Provider | Your catalog |
+| EP Related Products Provider | Your catalog; fixtures when no product is chosen |
+| EP Catalog Search Provider | Fixtures |
+
+Preview State (`loading`, `error`, `empty`, `withData`) forces a state on the
+canvas only. Published pages always fetch.
+
+A newly inserted EP Product Grid's card is three EP Product Field components:
+the first image, the name and the price. EP Product Field reads
+`currentProduct`, which the grid publishes for each card, so the card needs no
+bindings.
 
 **Switching paths.** Three things change, and card layouts survive, because
 both repeaters publish the same `currentProduct` and the same

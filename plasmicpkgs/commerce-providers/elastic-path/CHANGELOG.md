@@ -306,12 +306,25 @@ release removes the option that described the old default. Configure
 On a Studio canvas, the catalog components read through the design-time route
 at the relative path `/api/ep/design/<fn>`. The path resolves against whatever
 document serves the artboard. With an app host configured, that is your
-storefront, and EP Product Provider shows your own catalog. With no app host,
-it is Studio's renderer, which has no such route, so the read fails and the
-canvas shows the labelled `"Sample"` fixtures. To see real catalog data at
-design time, configure an app host and mount `createEpDesignRoutes`. EP Product
-List Provider and EP Related Products Provider still show fixtures on the
-canvas either way; their data-query Configure panel reads the real catalog.
+storefront, and EP Product Provider, EP Product List Provider and EP Related
+Products Provider show your own catalog. With no app host, it is Studio's
+renderer, which has no such route, so the read fails and the canvas shows the
+labelled `"Sample"` fixtures. To see real catalog data at design time,
+configure an app host and mount `createEpDesignRoutes`. EP Catalog Search
+Provider still shows fixtures on the canvas.
+
+On the canvas, EP Product List Provider and EP Related Products Provider show
+Loading Content while the read runs and Empty Content when it finds nothing.
+EP Related Products Provider shows sample products when no product is chosen,
+for example on a product page template. The Preview State values `loading`,
+`error`, `empty` and `withData` now apply only on the canvas, on these two
+providers and on EP Product Grid. Before this release, `withData` also showed
+sample products on a published page.
+
+A newly inserted EP Product Grid's card shows each product's image, name and
+price through EP Product Field, in place of static "Product Name" and "$0.00"
+text. EP Product Field's **Show** prop gains an **Image** value, which renders
+a URL field, such as First image URL, as an image.
 
 A shopper whose account credential lapses now keeps the cart they build after
 the lapse. The package clears the session cart once, at the moment it sees the
