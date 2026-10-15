@@ -235,4 +235,40 @@ describe("discovery on the canvas", () => {
     const passed = setControlContextData.mock.calls.map((c) => c[0]);
     expect(passed.every((d) => !d?.attributes?.length)).toBe(true);
   });
+
+  it.each([
+    [
+      "answers with an error",
+      () =>
+        fetchMock.mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          json: async () => ({}),
+        }),
+    ],
+    [
+      "cannot be reached",
+      () => fetchMock.mockRejectedValueOnce(new TypeError("network down")),
+    ],
+  ])("asks again on a later render after the route %s", async (_label, fail) => {
+    fail();
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    const first = render(
+      <EPRefinementList setControlContextData={jest.fn() as any} />
+    );
+    await settle();
+    first.unmount();
+
+    const setControlContextData = jest.fn();
+    render(
+      <EPRefinementList setControlContextData={setControlContextData as any} />
+    );
+    await settle();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(setControlContextData).toHaveBeenLastCalledWith({
+      attributes: STORE_ATTRIBUTES,
+    });
+  });
 });
