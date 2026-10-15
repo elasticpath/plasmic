@@ -67,10 +67,9 @@ export const epRefinementListMeta: CodeComponentMeta<EPRefinementListProps> = {
       type: "choice",
       displayName: "Attribute",
       description:
-        'Field to filter on, listed from the connected store\'s catalog search. Unset filters on "brand". For a field the list does not show, bind a value.',
+        "Field to filter on, listed from the connected store's catalog search. For a field the list does not show, bind a value. Unset: the filter is left out of the search and shows nothing on a live page.",
       options: (props, ctx) => attributeOptions(props.attribute, ctx),
       allowSearch: true,
-      defaultValueHint: "brand",
     },
     label: {
       type: "string",
@@ -190,6 +189,8 @@ export const EPRefinementList = React.forwardRef<
     );
   }
 
+  if (!attribute) return null;
+
   // Separate inner components — the backing InstantSearch hook differs
   // (useMenu vs useRefinementList) and hooks cannot be picked conditionally
   // within one component.
@@ -197,7 +198,7 @@ export const EPRefinementList = React.forwardRef<
     return (
       <EPMenuListInner
         ref={ref}
-        attribute={attribute || "brand"}
+        attribute={attribute}
         label={label}
         limit={limit}
         showMore={showMore}
@@ -212,7 +213,7 @@ export const EPRefinementList = React.forwardRef<
   return (
     <EPRefinementListInner
       ref={ref}
-      attribute={attribute || "brand"}
+      attribute={attribute}
       label={label}
       limit={limit}
       showMore={showMore}

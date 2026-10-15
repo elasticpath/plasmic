@@ -1672,6 +1672,65 @@ describe("EPRangeFilter", () => {
   });
 });
 
+describe("filters with no field chosen", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUsePlasmicCanvasContext.mockReturnValue(null);
+  });
+
+  it.each([
+    ["EPRefinementList", () => <EPRefinementList><span>v</span></EPRefinementList>],
+    [
+      "EPRefinementList (single select)",
+      () => <EPRefinementList singleSelect><span>v</span></EPRefinementList>,
+    ],
+    ["EPHierarchicalMenu", () => <EPHierarchicalMenu><span>v</span></EPHierarchicalMenu>],
+    [
+      "EPHierarchicalMenu (blank list)",
+      () => <EPHierarchicalMenu attributes=" , "><span>v</span></EPHierarchicalMenu>,
+    ],
+    ["EPRangeFilter", () => <EPRangeFilter><span>v</span></EPRangeFilter>],
+  ])("%s adds no facet to the search and renders nothing on a live page", (_name, el) => {
+    const { container } = render(el());
+
+    expect(container.innerHTML).toBe("");
+    expect(mockUseRefinementList).not.toHaveBeenCalled();
+    expect(mockUseMenu).not.toHaveBeenCalled();
+    expect(mockUseHierarchicalMenu).not.toHaveBeenCalled();
+    expect(mockUseRange).not.toHaveBeenCalled();
+  });
+
+  it("still shows sample values on the Studio canvas", () => {
+    mockUsePlasmicCanvasContext.mockReturnValue({});
+
+    const { container } = render(
+      <>
+        <EPRefinementList />
+        <EPHierarchicalMenu />
+        <EPRangeFilter>
+          <span>range</span>
+        </EPRangeFilter>
+      </>
+    );
+
+    expect(container.querySelector("[data-ep-refinement-list]")).not.toBeNull();
+    expect(container.querySelector("[data-ep-hierarchical-menu]")).not.toBeNull();
+    expect(container.querySelector("[data-ep-range-filter]")).not.toBeNull();
+  });
+
+  it("does not hint a field the store may not have", () => {
+    expect(
+      (epRefinementListMeta.props as any).attribute.defaultValueHint
+    ).toBeUndefined();
+    expect(
+      (epHierarchicalMenuMeta.props as any).attributes.defaultValueHint
+    ).toBeUndefined();
+    expect(
+      (epRangeFilterMeta.props as any).attribute.defaultValueHint
+    ).toBeUndefined();
+  });
+});
+
 /* ================================================================
  * EPSearchPagination tests
  * ================================================================ */
@@ -2680,7 +2739,10 @@ describeHeadlessStylingContract({
       refine: jest.fn(),
     });
     return (
-      <EPHierarchicalMenu className={className}>
+      <EPHierarchicalMenu
+        attributes="categories.lvl0,categories.lvl1"
+        className={className}
+      >
         <div>row</div>
       </EPHierarchicalMenu>
     );

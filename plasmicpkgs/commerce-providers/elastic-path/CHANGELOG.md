@@ -297,12 +297,14 @@ lists only numeric fields, and EP Hierarchical Menu lists each `….lvlN` set as
 one option. A field keyed by currency, such as `price`, is listed once per
 currency (`price.USD.float_price`). A saved value stays selectable even when
 the store does not list it. To use a field the list does not show, bind a
-value. The props have no default value any more, because the old ones were
-guesses that a store need not have. An unset prop renders as before: the
-components still fall back to `"brand"`, `"categories.lvl0,categories.lvl1,categories.lvl2"`
-and `"price.USD.float_price"`. Rendering, on the canvas and on the page, does
-not change. Without the design-time route the dropdown lists only the saved
-value.
+value. Without the design-time route the dropdown lists only the saved value.
+
+These three filters no longer fall back to `"brand"`,
+`"categories.lvl0,categories.lvl1,categories.lvl2"` or `"price.USD.float_price"`
+when the prop is unset. Those were guesses, and on a store without the field
+the whole search answered 400. On a page, a filter with no field adds nothing
+to the search and renders nothing. The canvas still shows sample values. Set
+the field on each filter you use.
 
 EP Add To Cart Button, EP Cart Item Quantity Control and EP Cart Item Remove
 Button show the cart write's rejection message as their `error`. They show
