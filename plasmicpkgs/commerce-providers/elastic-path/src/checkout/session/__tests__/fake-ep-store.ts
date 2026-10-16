@@ -61,6 +61,15 @@ export class FakeEpStore {
   paymentIntents = new Map<string, FakePaymentIntent>();
   /** Order items arrive without the cart line they came from. */
   orderItemsWithoutCartLines = false;
+  /**
+   * Carts that are the last cart of an account: Elastic Path refuses to delete
+   * them (400 "Last cart") but lets their items be deleted.
+   */
+  lastAccountCarts = new Set<string>();
+  /** Carts whose items Elastic Path will not delete (a store outage). */
+  undeletableItems = new Set<string>();
+  /** The next checkouts answer this Elastic Path error instead of an order. */
+  checkoutRejection: { status: number; detail: string } | null = null;
   private seq = 0;
 
   private nextId(prefix: string): string {
@@ -175,6 +184,9 @@ export class FakeEpStore {
         }),
       deleteACartItem: ({ path }: any) =>
         after(() => {
+          if (store.undeletableItems.has(path.cartID)) {
+            return { error: { errors: [{ status: 503 }] }, response: { status: 503 } };
+          }
           const cart = store.cart(path.cartID);
           cart.lines = cart.lines.filter((l) => l.id !== path.cartitemID);
           return read(path.cartID);
@@ -198,6 +210,21 @@ export class FakeEpStore {
         }),
       deleteACart: ({ path }: any) =>
         after(() => {
+          if (store.lastAccountCarts.has(path.cartID)) {
+            return {
+              error: {
+                errors: [
+                  {
+                    status: 400,
+                    title: "Last cart",
+                    detail:
+                      "This is the last cart associated with an account and it cannot be deleted, try disassociating instead",
+                  },
+                ],
+              },
+              response: { status: 400 },
+            };
+          }
           const cart = store.carts.get(path.cartID);
           if (cart) {
             cart.deleted = true;
@@ -206,6 +233,13 @@ export class FakeEpStore {
         }),
       checkoutApi: ({ path }: any) =>
         after(() => {
+          if (store.checkoutRejection) {
+            const { status, detail } = store.checkoutRejection;
+            return {
+              error: { errors: [{ status, title: "Checkout failed", detail }] },
+              response: { status },
+            };
+          }
           const cart = store.cart(path.cartID);
           const order: FakeOrder = {
             id: store.nextId("order"),
@@ -297,6 +331,9 @@ export class FakeEpStore {
         }),
       deleteAllCartItems: ({ path }: any) =>
         after(() => {
+          if (store.undeletableItems.has(path.cartID)) {
+            return { error: { errors: [{ status: 503 }] }, response: { status: 503 } };
+          }
           store.cart(path.cartID).lines = [];
           return { data: {} };
         }),

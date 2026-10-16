@@ -14,7 +14,7 @@ import type {
 import { readOrderTotal } from "./order-total";
 import { takeOrderPayment } from "./order-payment";
 import { clearCartPaymentIntentId } from "./clear-cart-payment-intent";
-import { runCartCleanup } from "./cart-cleanup";
+import { CART_CLEANUP_PENDING, runCartCleanup } from "./cart-cleanup";
 import { applyPaymentSucceeded } from "./session-state-transition";
 import { toClientSession } from "./client-session";
 import {
@@ -111,18 +111,21 @@ export async function settleFreeOrder(
     } as Record<string, unknown>);
   }
 
-  if (ctx.getClientCredentialsToken) {
-    await runCartCleanup({
-      host: ctx.epCredentials.apiBaseUrl,
-      clientId: ctx.epCredentials.clientId,
-      getClientCredentialsToken: ctx.getClientCredentialsToken,
-      cartId: session.cartId,
-    });
-  }
+  const cartCleaned = ctx.getClientCredentialsToken
+    ? await runCartCleanup({
+        host: ctx.epCredentials.apiBaseUrl,
+        clientId: ctx.epCredentials.clientId,
+        getClientCredentialsToken: ctx.getClientCredentialsToken,
+        cartId: session.cartId,
+      })
+    : true;
 
   const completeSession = applyPaymentSucceeded(
     { ...session, payment: { ...session.payment, gateway: FREE_ORDER_GATEWAY } },
-    { orderId, gatewayMetadata: { free: true } }
+    {
+      orderId,
+      gatewayMetadata: { free: true, ...(cartCleaned ? {} : { [CART_CLEANUP_PENDING]: true }) },
+    }
   );
 
   let setResult: { headers: Record<string, string> };

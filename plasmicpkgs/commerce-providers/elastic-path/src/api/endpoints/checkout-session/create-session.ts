@@ -22,10 +22,50 @@ import { buildShopperEpClient } from "../../../checkout/session/shopper-client";
 import { EP_SHIPPING_LINE_SKU } from "../../../checkout/session/set-shipping-line";
 import { hasPurchasableItem } from "../../../checkout/session/purchasable-items";
 import { totalsFromCart } from "../../../checkout/session/session-totals";
+import { CART_CLEANUP_PENDING, runCartCleanup } from "../../../checkout/session/cart-cleanup";
 import { createLogger } from "../../../utils/logger";
 import { toClientSession } from "../../../checkout/session/client-session";
 
 const log = createLogger("CreateSession");
+
+async function refuseIfCleanupPending(
+  req: SessionRequest,
+  ctx: SessionHandlerContext,
+  cartId: string
+): Promise<SessionResponse | null> {
+  let previous: CheckoutSession | null = null;
+  try {
+    previous = await ctx.sessionStore.get("current", req);
+  } catch {
+    previous = null;
+  }
+  const pending =
+    previous?.status === "complete" &&
+    previous.cartId === cartId &&
+    previous.payment.gatewayMetadata?.[CART_CLEANUP_PENDING] === true;
+  if (!pending) return null;
+
+  const cleaned = ctx.getClientCredentialsToken
+    ? await runCartCleanup({
+        host: ctx.epCredentials.apiBaseUrl,
+        clientId: ctx.epCredentials.clientId,
+        getClientCredentialsToken: ctx.getClientCredentialsToken,
+        cartId,
+      })
+    : false;
+  if (cleaned) return null;
+  return {
+    status: 409,
+    body: {
+      success: false,
+      error: {
+        message:
+          "Your last order's items are still in your cart and could not be removed yet, so checkout cannot start. Please try again in a moment.",
+        code: "CART_CLEANUP_PENDING",
+      },
+    },
+  };
+}
 
 export async function handleCreateSession(
   req: SessionRequest,
@@ -45,6 +85,11 @@ export async function handleCreateSession(
   }
 
   const ttl = ctx.sessionTtlSeconds ?? 1800;
+
+  // The last checkout on this cart could not remove its ordered lines: finish
+  // that first, so this checkout cannot buy them again.
+  const pending = await refuseIfCleanupPending(req, ctx, cartId);
+  if (pending) return pending;
 
   // Authenticated client to read the cart (compute hash + totals). Prefer the
   // shopper token; fall back to the admin token when no shopper token is

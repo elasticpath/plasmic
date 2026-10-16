@@ -563,7 +563,16 @@ or cancel it (abandon) first. EP Checkout Session Provider and EP Stripe
 Payment do this for you, and EP Checkout Form Provider shows its fields
 locked until the check ends. When the order completes, the cart keeps any
 line the shopper added during the challenge; the lines the order took are
-removed (the whole cart is deleted when that cannot be done safely).
+removed (the whole cart is emptied when that cannot be done safely).
+
+After any paid order the ordered lines leave the cart. An account's last cart
+cannot be deleted in Elastic Path, so its items are deleted instead and the
+cart stays linked to the account. If the lines cannot be removed, the next
+checkout session for that cart retries first and answers `409`
+`CART_CLEANUP_PENDING` until it can. A checkout Elastic Path refuses (for
+example, not enough stock) answers `409` `CHECKOUT_REJECTED` with Elastic
+Path's reason and takes no payment; if a card payment was already taken, the
+checkout ends with `409` `PAYMENT_NEEDS_REVIEW`.
 
 Resume confirms the order only after Stripe reports that the payment was
 taken. Elastic Path cannot report this, and its confirm on a payment still

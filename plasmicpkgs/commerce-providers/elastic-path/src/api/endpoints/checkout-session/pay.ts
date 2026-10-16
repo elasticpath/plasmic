@@ -63,8 +63,10 @@ import {
 import { finalizePaidSession } from "../../../checkout/session/finalize-paid-session";
 import { readOrderTotal, type OrderTotal } from "../../../checkout/session/order-total";
 import {
+  checkoutRejectedReviewMessage,
   confirmCartPaymentOrder,
   createOrderFromCart,
+  endCheckoutForReview,
   refuseOrderTotal,
   shopperLines,
   writeOrderCustomFields,
@@ -395,6 +397,19 @@ async function handleInitializePaymentPay(
     message: "Payment succeeded but order creation failed",
     logMessage: "EP checkoutApi failed after payment success",
   });
+  if (created.rejection !== undefined) {
+    // The payment was taken; Elastic Path will not create its order.
+    return endCheckoutForReview({
+      req,
+      ctx,
+      ttl,
+      session: { ...session, payment: { ...session.payment, gateway } },
+      client: adminClient,
+      paymentReference: adapterResult.gatewayOrderId ?? "unknown",
+      reason: created.rejection,
+      message: checkoutRejectedReviewMessage(created.rejection),
+    });
+  }
   if (created.response) return created.response;
   const orderId = created.order.id;
 

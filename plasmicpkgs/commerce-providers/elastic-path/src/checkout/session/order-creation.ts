@@ -21,6 +21,7 @@ import { EP_SHIPPING_LINE_SKU } from "./set-shipping-line";
 import { buildShopperEpClient } from "./shopper-client";
 import { toClientSession } from "./client-session";
 import { readCartResponse } from "../../ep-server-functions/read-cart";
+import { clearCartPaymentIntentId } from "./clear-cart-payment-intent";
 import { createLogger } from "../../utils/logger";
 
 const log = createLogger("OrderCreation");
@@ -37,46 +38,164 @@ export interface CreatedOrder {
 }
 
 export type OrderCreation =
-  | { order: CreatedOrder; response?: undefined }
-  | { order?: undefined; response: SessionResponse };
+  | { order: CreatedOrder; response?: undefined; rejection?: undefined }
+  | {
+      order?: undefined;
+      response: SessionResponse;
+      /** Elastic Path refused the checkout (a 4xx), with its own reason. */
+      rejection?: string;
+    };
+
+interface CheckoutResult {
+  data?: { data?: Partial<CreatedOrder> };
+  error?: { errors?: Array<{ detail?: unknown; title?: unknown }> };
+  response?: { status?: number };
+}
+
+/** Elastic Path's own words for a refused request, joined. */
+function epReason(error: CheckoutResult["error"]): string {
+  const parts = (error?.errors ?? [])
+    .map((e) => (typeof e?.detail === "string" && e.detail) || (typeof e?.title === "string" && e.title) || "")
+    .filter(Boolean);
+  return parts.join(" ") || "The order could not be placed.";
+}
 
 /**
- * Checks out the session's cart. On failure, the 502 to send back: `message`
- * is what the shopper's client sees, `logMessage` what the server logs.
+ * Checks out the session's cart. Elastic Path refusing the checkout (a 4xx,
+ * such as not enough stock) gives 409 `CHECKOUT_REJECTED` with Elastic Path's
+ * reason; any other failure gives 502 `EP_ERROR` with `failure.message`.
+ * `failure.logMessage` is what the server logs.
  */
 export async function createOrderFromCart(
   client: Client,
   session: CheckoutSession,
   failure: { message: string; logMessage: string }
 ): Promise<OrderCreation> {
+  let res: CheckoutResult;
   try {
-    const res = await checkoutApi({
+    res = (await checkoutApi({
       client,
       path: { cartID: session.cartId },
       // Elastic Path accepts a shipping address without phone_number and
       // instructions; the SDK type marks them required.
       body: buildGuestCheckoutBody(session) as unknown as CustomerCheckout,
-    });
-    const created = (res as { data?: { data?: Partial<CreatedOrder> } }).data?.data;
-    if (typeof created?.id !== "string" || !created.id) {
-      throw new Error("checkoutApi response missing order id");
-    }
-    return { order: created as CreatedOrder };
+    })) as CheckoutResult;
   } catch (err) {
+    res = {};
     log.error(failure.logMessage, {
       cartId: session.cartId,
       error: err instanceof Error ? err.message : String(err),
     } as Record<string, unknown>);
+  }
+
+  const created = res.data?.data;
+  if (typeof created?.id === "string" && created.id) {
+    return { order: created as CreatedOrder };
+  }
+
+  const status = res.response?.status ?? 0;
+  if (res.error && status >= 400 && status < 500) {
+    const reason = epReason(res.error);
+    log.warn("Elastic Path refused the checkout", {
+      cartId: session.cartId,
+      status,
+      reason,
+    } as Record<string, unknown>);
     return {
+      rejection: reason,
       response: {
-        status: 502,
-        body: {
-          success: false,
-          error: { message: failure.message, code: "EP_ERROR" },
-        },
+        status: 409,
+        body: { success: false, error: { message: reason, code: "CHECKOUT_REJECTED" } },
       },
     };
   }
+
+  if (res.error || res.data) {
+    log.error(failure.logMessage, {
+      cartId: session.cartId,
+      status,
+      error: res.error ? epReason(res.error) : "checkoutApi response missing order id",
+    } as Record<string, unknown>);
+  }
+  return {
+    response: {
+      status: 502,
+      body: { success: false, error: { message: failure.message, code: "EP_ERROR" } },
+    },
+  };
+}
+
+export const CART_CHANGED_REVIEW_MESSAGE =
+  "We received your payment, but your cart changed during the card check, so no order was placed. Please contact us and we will complete or refund it.";
+
+/** What the shopper reads when the payment was taken but Elastic Path refused the order. */
+export function checkoutRejectedReviewMessage(reason: string): string {
+  const said = reason.trim().replace(/[.\s]+$/, "");
+  return `We received your payment, but your order could not be placed: ${said}. Please contact us and we will complete or refund it.`;
+}
+
+/**
+ * A payment was taken but no order can match it. Ends the checkout so no
+ * route loops: the session completes with no order and is flagged for
+ * reconciliation, the server log records the payment, the cart is unlinked
+ * from the PaymentIntent (its lines stay), and the shopper is told plainly.
+ */
+export async function endCheckoutForReview(opts: {
+  req: SessionRequest;
+  ctx: SessionHandlerContext;
+  ttl: number;
+  session: CheckoutSession;
+  client: Client;
+  paymentReference: string;
+  reason: string;
+  message: string;
+}): Promise<SessionResponse> {
+  const { req, ctx, ttl, session, client, paymentReference, reason, message } = opts;
+  log.error("Payment taken with no matching order; needs reconciliation", {
+    sessionId: session.id,
+    cartId: session.cartId,
+    paymentReference,
+    reason,
+  } as Record<string, unknown>);
+  const cleared = await clearCartPaymentIntentId({ client, cartId: session.cartId });
+  if (!cleared.ok) {
+    log.error("Failed to unlink a reviewed PaymentIntent from the cart", {
+      cartId: session.cartId,
+      error: cleared.errorMessage,
+    } as Record<string, unknown>);
+  }
+  const ended: CheckoutSession = {
+    ...session,
+    status: "complete",
+    order: null,
+    payment: {
+      ...session.payment,
+      status: "succeeded",
+      gatewayMetadata: {
+        ...session.payment.gatewayMetadata,
+        paymentIntentId: paymentReference,
+        needsReconciliation: true,
+      },
+    },
+  };
+  let headers: Record<string, string> | undefined;
+  try {
+    headers = (await ctx.sessionStore.set("current", ended, ttl, req)).headers;
+  } catch (err) {
+    log.error("Failed to persist a session ended for review", {
+      error: err instanceof Error ? err.message : String(err),
+    } as Record<string, unknown>);
+  }
+  return {
+    status: 409,
+    body: {
+      success: false,
+      error: { message, code: "PAYMENT_NEEDS_REVIEW" },
+      data: { session: toClientSession(ended) },
+      reconciliationPending: true,
+    },
+    ...(headers ? { headers } : {}),
+  };
 }
 
 /**

@@ -33,8 +33,11 @@ import type {
 import { hashCart } from "../../../checkout/session/cart-hash";
 import { readCartResponse } from "../../../ep-server-functions/read-cart";
 import {
+  CART_CHANGED_REVIEW_MESSAGE,
+  checkoutRejectedReviewMessage,
   confirmCartPaymentOrder,
   createOrderFromCart,
+  endCheckoutForReview,
   markOrderForReconciliation,
   shopperLines,
   writeOrderCustomFields,
@@ -453,7 +456,16 @@ async function resumeWithoutHeldOrder(
   if (freshHash !== session.cartHash) {
     // The payment was taken for a cart that has since changed, and no order
     // was held for it: an order now would not match the charge.
-    return completeForReview(req, ctx, ttl, session, paymentIntentId);
+    return endCheckoutForReview({
+      req,
+      ctx,
+      ttl,
+      session,
+      client: await buildAdminEpClient(ctx),
+      paymentReference: paymentIntentId,
+      reason: "cart changed during the challenge",
+      message: CART_CHANGED_REVIEW_MESSAGE,
+    });
   }
 
   let cartHasPhysical = false;
@@ -493,6 +505,19 @@ async function resumeWithoutHeldOrder(
     message: "Failed to create order for resumed payment",
     logMessage: "EP checkoutApi failed on resume",
   });
+  if (created.rejection !== undefined) {
+    // The payment was taken; Elastic Path will not create its order.
+    return endCheckoutForReview({
+      req,
+      ctx,
+      ttl,
+      session,
+      client: adminClient,
+      paymentReference: paymentIntentId,
+      reason: created.rejection,
+      message: checkoutRejectedReviewMessage(created.rejection),
+    });
+  }
   if (created.response) return created.response;
   const orderId = created.order.id;
 
@@ -569,66 +594,6 @@ async function confirmAndSettle(
   await markOrderForReconciliation(adminClient, orderId, paymentIntentId);
   await writeOrderCustomFields(ctx, orderId, session);
   return finalize(classified.errorMessage ?? "confirm did not record the payment");
-}
-
-/**
- * A payment was taken but no order can match it. Ends the checkout so no
- * route loops: the session completes with no order and is flagged for
- * reconciliation, the server log records the payment, the cart is unlinked
- * from the PaymentIntent (its lines stay), and the shopper is told plainly.
- */
-async function completeForReview(
-  req: SessionRequest,
-  ctx: SessionHandlerContext,
-  ttl: number,
-  session: CheckoutSession,
-  paymentIntentId: string
-): Promise<SessionResponse> {
-  log.error("Payment taken with no matching order; needs reconciliation", {
-    sessionId: session.id,
-    cartId: session.cartId,
-    paymentReference: paymentIntentId,
-  } as Record<string, unknown>);
-  const cleared = await clearCartPaymentIntentId({
-    client: await buildAdminEpClient(ctx),
-    cartId: session.cartId,
-  });
-  if (!cleared.ok) {
-    log.error("Failed to unlink a reviewed PaymentIntent from the cart", {
-      cartId: session.cartId,
-      error: cleared.errorMessage,
-    } as Record<string, unknown>);
-  }
-  const ended: CheckoutSession = {
-    ...session,
-    status: "complete",
-    order: null,
-    payment: {
-      ...session.payment,
-      status: "succeeded",
-      gatewayMetadata: {
-        ...session.payment.gatewayMetadata,
-        paymentIntentId,
-        needsReconciliation: true,
-      },
-    },
-  };
-  const { headers, storeError } = await persistOpenSession(ctx, req, ttl, ended);
-  if (storeError) return storeError;
-  return {
-    status: 409,
-    body: {
-      success: false,
-      error: {
-        message:
-          "We received your payment, but your cart changed during the card check, so no order was placed. Please contact us and we will complete or refund it.",
-        code: "PAYMENT_NEEDS_REVIEW",
-      },
-      data: { session: toClientSession(ended) },
-      reconciliationPending: true,
-    },
-    headers,
-  };
 }
 
 /** The order's payment state and the PaymentIntent it still holds; null when unreadable. */
