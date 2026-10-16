@@ -890,3 +890,146 @@ describe("a 3DS checkout always reaches an end the shopper can move on from", ()
 function cartSeqId(): string {
   return `cart-${cartSeq}`;
 }
+
+describe("after a paid order, the ordered lines leave the cart", () => {
+  function remainingLines(cartId: string): string[] {
+    const cart = ep.carts.get(cartId);
+    return !cart || cart.deleted ? [] : cart.lines.map((l) => `${l.sku}x${l.quantity}`);
+  }
+
+  it.each([
+    ["manual", async (b: Browser) => b.pay({ gateway: "manual" })],
+    ["stripe", async (b: Browser) => b.pay({ gateway: "stripe" })],
+    [
+      "3DS",
+      async (b: Browser) => {
+        await b.pay({ gateway: "stripe3ds" });
+        ep.passChallenge(b.pendingPaymentIntent());
+        return b.resume();
+      },
+    ],
+  ])("empties an account's last cart, which Elastic Path will not delete (%s)", async (_label, payWith) => {
+    const browser = new Browser(newCart());
+    ep.lastAccountCarts.add(browser.cartId);
+    await readyToPay(browser);
+
+    const res = await payWith(browser);
+
+    expect(sessionIn(res).status).toBe("complete");
+    expect(remainingLines(browser.cartId)).toEqual([]);
+    expect(ep.cart(browser.cartId).paymentIntentId).toBeUndefined();
+  });
+
+  it("empties an account's last cart after a free order", async () => {
+    const browser = new Browser(
+      newCart([{ product_id: "p-free", sku: "p-free", quantity: 1, unit_price: { amount: 0 } }])
+    );
+    ep.lastAccountCarts.add(browser.cartId);
+    expect((await browser.create()).status).toBe(201);
+    await browser.update({
+      customerInfo: { name: "Walk Tester", email: "walk@example.com" },
+      billingAddress: ADDRESS,
+      requiresShipping: false,
+    });
+
+    const res = await browser.pay({ gateway: "manual" });
+
+    expect(sessionIn(res).status).toBe("complete");
+    expect(remainingLines(browser.cartId)).toEqual([]);
+  });
+
+  it("keeps the next checkout from buying lines it could not remove, until they are removed", async () => {
+    const browser = new Browser(newCart());
+    ep.lastAccountCarts.add(browser.cartId);
+    ep.undeletableItems.add(browser.cartId);
+    await readyToPay(browser);
+    expect(sessionIn(await browser.pay({ gateway: "manual" })).status).toBe("complete");
+    expect(remainingLines(browser.cartId)).not.toEqual([]);
+
+    const blocked = await browser.create();
+
+    expect(blocked.status).toBe(409);
+    expect((blocked.body as any).error.code).toBe("CART_CLEANUP_PENDING");
+    expect(ep.paidOrders()).toHaveLength(1);
+
+    ep.undeletableItems.delete(browser.cartId);
+    ep.cart(browser.cartId).lines.push({
+      id: "line-next",
+      type: "cart_item",
+      sku: "p-next",
+      product_id: "p-next",
+      quantity: 1,
+      unit_price: { amount: 1000 },
+      value: { amount: 1000 },
+    });
+    const retried = await browser.create();
+    expect(retried.status).toBe(409);
+    expect((retried.body as any).error.code).toBe("EMPTY_CART");
+    expect(remainingLines(browser.cartId)).toEqual([]);
+  });
+});
+
+describe("a checkout Elastic Path rejects", () => {
+  const STOCK = "There is not enough stock to add Test Product 1 to your cart";
+
+  it("tells the shopper why, takes no payment, and the next submit can succeed", async () => {
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+    ep.checkoutRejection = { status: 400, detail: STOCK };
+
+    const res = await browser.pay({ gateway: "manual" });
+
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("CHECKOUT_REJECTED");
+    expect((res.body as any).error.message).toBe(STOCK);
+    expect(browser.cookie?.status).toBe("open");
+    expect(ep.orders).toEqual([]);
+
+    ep.checkoutRejection = null;
+    const paid = await browser.pay({ gateway: "manual" });
+    expect(sessionIn(paid).status).toBe("complete");
+  });
+
+  it("refuses the card check before it starts, and frees the cart", async () => {
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+    ep.checkoutRejection = { status: 400, detail: STOCK };
+
+    const res = await browser.pay({ gateway: "stripe3ds" });
+
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("CHECKOUT_REJECTED");
+    expect(JSON.stringify(res.body)).not.toContain("_secret");
+    expect(ep.cart(browser.cartId).paymentIntentId).toBeUndefined();
+    expect(ep.charges).toEqual([]);
+  });
+
+  it("keeps a server error a 502", async () => {
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+    ep.checkoutRejection = { status: 503, detail: "unavailable" };
+
+    const res = await browser.pay({ gateway: "manual" });
+
+    expect(res.status).toBe(502);
+    expect((res.body as any).error.code).toBe("EP_ERROR");
+  });
+
+  it("ends a card payment taken before the checkout was rejected, without leaving the shopper stuck", async () => {
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+    ep.checkoutRejection = { status: 400, detail: STOCK };
+
+    const res = await browser.pay({ gateway: "stripe" });
+
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("PAYMENT_NEEDS_REVIEW");
+    expect((res.body as any).error.message).toMatch(/payment/i);
+    expect((res.body as any).reconciliationPending).toBe(true);
+    expect(sessionIn(res).status).toBe("complete");
+    expect(ep.cart(browser.cartId).paymentIntentId).toBeUndefined();
+
+    ep.checkoutRejection = null;
+    expect((await browser.create()).status).toBe(201);
+  });
+});

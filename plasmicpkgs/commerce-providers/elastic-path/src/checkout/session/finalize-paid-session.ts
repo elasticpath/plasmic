@@ -18,7 +18,7 @@ import type {
   SessionResponse,
 } from "./types";
 import { applyPaymentSucceeded } from "./session-state-transition";
-import { removeOrderedLines, runCartCleanup } from "./cart-cleanup";
+import { CART_CLEANUP_PENDING, removeOrderedLines, runCartCleanup } from "./cart-cleanup";
 import { clearCartPaymentIntentId } from "./clear-cart-payment-intent";
 import { isCartPaymentIntentAdapter } from "./payment-sequence";
 import { buildShopperEpClient } from "./shopper-client";
@@ -133,6 +133,7 @@ export async function finalizePaidSession(
       ? await detachCartPaymentIntentIfNeeded(ctx, gateway, session.cartId)
       : false;
 
+  let cartCleaned = true;
   if (cleanUpCart && ctx.getClientCredentialsToken) {
     const cleanup = {
       host: ctx.epCredentials.apiBaseUrl,
@@ -141,8 +142,8 @@ export async function finalizePaidSession(
       cartId: session.cartId,
     };
     // A cart kept for the shopper must not still link to the paid
-    // PaymentIntent; when it could not be unlinked, delete it instead.
-    await (keepLinesNotOrdered && detached
+    // PaymentIntent; when it could not be unlinked, empty it instead.
+    cartCleaned = await (keepLinesNotOrdered && detached
       ? removeOrderedLines({ ...cleanup, orderId })
       : runCartCleanup(cleanup));
   }
@@ -156,6 +157,8 @@ export async function finalizePaidSession(
       gatewayMetadata: {
         ...(gatewayMetadata ?? {}),
         ...(reconciliationError ? { needsReconciliation: true } : {}),
+        // The next checkout session for this cart retries the cleanup first.
+        ...(cartCleaned ? {} : { [CART_CLEANUP_PENDING]: true }),
       },
     }
   );

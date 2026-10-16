@@ -1,18 +1,23 @@
 /**
  * Cart cleanup after an order completes.
  *
- * `runCartCleanup` deletes the cart; the shopper's next add-to-cart starts it
- * again. `removeOrderedLines` keeps the lines the order did not take (added
- * while a 3DS challenge was open) and falls back to deleting the cart whenever
- * it cannot prove every ordered line was removed.
+ * `runCartCleanup` empties the cart: it deletes the cart, and when Elastic
+ * Path refuses (an account's last cart cannot be deleted) it deletes the
+ * cart's items instead, then checks the cart is empty. `removeOrderedLines`
+ * keeps the lines the order did not take (added while a 3DS challenge was
+ * open) and falls back to emptying the cart whenever it cannot prove every
+ * ordered line was removed.
  *
- * Failures are logged but never propagated: the order is genuine.
+ * Both answer whether the ordered lines are gone. Failures are logged, never
+ * thrown: the order is genuine.
  */
 import {
   deleteACart,
   deleteACartItem,
+  deleteAllCartItems,
   getCartItems,
   getOrderItems,
+  updateACart,
   updateACartItem,
 } from "@epcc-sdk/sdks-shopper";
 import { buildFixedTokenEpClient } from "../../ep-server-functions/fixed-token-ep-client";
@@ -20,6 +25,13 @@ import { EP_SHIPPING_LINE_SKU } from "./set-shipping-line";
 import { createLogger } from "../../utils/logger";
 
 const log = createLogger("CartCleanup");
+
+/**
+ * `payment.gatewayMetadata` flag on a completed session whose cart could not
+ * be emptied of the ordered lines. The next checkout session for that cart
+ * retries the cleanup and refuses to start until it succeeds.
+ */
+export const CART_CLEANUP_PENDING = "cartCleanupPending";
 
 export interface CartCleanupConfig {
   host: string;
@@ -71,9 +83,9 @@ function orderedByLine(orderItems: LineRef[]): Map<string, number> | null {
  */
 export async function removeOrderedLines(
   config: CartCleanupConfig & { orderId: string }
-): Promise<void> {
+): Promise<boolean> {
   const { host, clientId, getClientCredentialsToken, cartId, orderId } = config;
-  if (!cartId) return;
+  if (!cartId) return true;
 
   try {
     const client = buildFixedTokenEpClient({
@@ -96,8 +108,7 @@ export async function removeOrderedLines(
       return { id, quantity, left, managed };
     });
     if (!plan.some((p) => p.left > 0)) {
-      await runCartCleanup(config);
-      return;
+      return runCartCleanup(config);
     }
 
     for (const p of plan) {
@@ -115,32 +126,50 @@ export async function removeOrderedLines(
             });
       if (refused(res)) throw new Error("cart line update refused");
     }
+    return true;
   } catch (err) {
-    log.warn("Could not keep the unordered cart lines; deleting the cart", {
+    log.warn("Could not keep the unordered cart lines; emptying the cart", {
       cartId,
       orderId,
       error: err instanceof Error ? err.message : String(err),
     } as Record<string, unknown>);
-    await runCartCleanup(config);
+    return runCartCleanup(config);
   }
 }
 
-export async function runCartCleanup(config: CartCleanupConfig): Promise<void> {
+/** Empties the cart; true when Elastic Path then reports it empty. */
+export async function runCartCleanup(config: CartCleanupConfig): Promise<boolean> {
   const { host, clientId, getClientCredentialsToken, cartId } = config;
-  if (!cartId) return;
+  if (!cartId) return true;
 
   try {
-    const adminToken = await getClientCredentialsToken();
     const client = buildFixedTokenEpClient({
       host,
       clientId,
-      token: adminToken,
+      token: await getClientCredentialsToken(),
     });
-    await deleteACart({ client, path: { cartID: cartId } });
+    const deleted = await deleteACart({ client, path: { cartID: cartId } });
+    if (refused(deleted)) {
+      // An account's last cart cannot be deleted; its items can. The cart
+      // stays, so it must not keep the paid PaymentIntent either.
+      const emptied = await deleteAllCartItems({ client, path: { cartID: cartId } });
+      if (refused(emptied)) throw new Error("cart items delete refused");
+      const unlinked = await updateACart({
+        client,
+        path: { cartID: cartId },
+        body: { data: { payment_intent_id: "" } } as never,
+      });
+      if (refused(unlinked)) throw new Error("cart PaymentIntent unlink refused");
+    }
+    const left = listOf(await getCartItems({ client, path: { cartID: cartId } }));
+    if (!left) throw new Error("cart unreadable after cleanup");
+    if (left.length > 0) throw new Error("cart still holds lines after cleanup");
+    return true;
   } catch (err) {
-    log.warn("Cart cleanup failed (non-fatal)", {
+    log.error("Cart cleanup failed: the cart may still hold ordered lines", {
       cartId,
       error: err instanceof Error ? err.message : String(err),
     } as Record<string, unknown>);
+    return false;
   }
 }

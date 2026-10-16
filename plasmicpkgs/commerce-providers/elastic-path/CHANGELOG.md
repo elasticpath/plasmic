@@ -416,6 +416,25 @@ changes: same props, same slots, same data.
 
 ### Fixed
 
+After a paid order the ordered lines always leave the shopper's cart, an
+account cart included. Elastic Path will not delete the last cart linked to an
+account (400 "Last cart"), and cleanup used to log that and leave the paid
+lines in the cart, so the account's next checkout could buy them again.
+Cleanup now deletes the cart's items (and unlinks its PaymentIntent) when the
+cart itself cannot be deleted, and checks that the cart is empty. If it still
+cannot remove them, the completed session records it and the next checkout
+session for that cart retries the cleanup first, answering `409` with the new
+code `CART_CLEANUP_PENDING` until it succeeds.
+
+A checkout Elastic Path refuses, such as one for more stock than is left,
+returns `409` with the new code `CHECKOUT_REJECTED` and Elastic Path's own
+reason, takes no payment and leaves the session open for another try. It used
+to be a `502` with a generic message. A server error or no answer is still a
+`502`. When a card payment was already taken before Elastic Path refused the
+checkout, the checkout ends with `409` `PAYMENT_NEEDS_REVIEW`, the shopper is
+told the reason, the cart is unlinked from the PaymentIntent, and the payment
+is logged for reconciliation.
+
 A cart settles at most one order. `/pay`, `/resume-payment`,
 `/abandon-payment` and `handleConfirm` share one per-cart guard. While one of
 them runs for a cart, another request from the same checkout session gets the
