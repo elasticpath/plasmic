@@ -94,6 +94,11 @@ export interface FinalizePaidSessionParams {
   transactionId?: string;
   gatewayMetadata?: Record<string, unknown>;
   reconciliationError?: string | null;
+  /**
+   * Default true. False when the order was already settled by an earlier
+   * request, whose cleanup already ran: the cart may be the shopper's next one.
+   */
+  cleanUpCart?: boolean;
 }
 
 export async function finalizePaidSession(
@@ -110,15 +115,16 @@ export async function finalizePaidSession(
     transactionId,
     gatewayMetadata,
     reconciliationError = null,
+    cleanUpCart = true,
   } = params;
 
   // Keep the Cart PI association when confirmOrder reconciliation failed —
   // ops may still need the link. Clear only after a clean reconcile.
-  if (reconciliationError == null) {
+  if (cleanUpCart && reconciliationError == null) {
     await detachCartPaymentIntentIfNeeded(ctx, gateway, session.cartId);
   }
 
-  if (ctx.getClientCredentialsToken) {
+  if (cleanUpCart && ctx.getClientCredentialsToken) {
     await runCartCleanup({
       host: ctx.epCredentials.apiBaseUrl,
       clientId: ctx.epCredentials.clientId,

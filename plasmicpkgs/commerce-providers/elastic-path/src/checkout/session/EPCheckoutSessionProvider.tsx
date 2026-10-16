@@ -201,8 +201,13 @@ const EPCheckoutSessionRuntime = React.forwardRef<
       // Run the widget's completeRequiresAction (if registered) so the form
       // stays in "placing" until checkout is actually complete or failed.
       // Gateways without completeRequiresAction (e.g. Clover) are unchanged.
+      // A 409 PAYMENT_ACTION_PENDING carries a challenge an earlier pay
+      // started; the same gateway finishes or cancels it.
+      const pendingChallenge =
+        payResp?.error?.code === "PAYMENT_ACTION_PENDING" &&
+        paySession?.payment?.gateway === gw.name;
       if (
-        payResp?.success &&
+        (payResp?.success || pendingChallenge) &&
         paySession?.payment?.status === "requires_action" &&
         typeof gw.completeRequiresAction === "function"
       ) {

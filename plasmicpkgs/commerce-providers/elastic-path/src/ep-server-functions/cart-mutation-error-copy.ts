@@ -17,6 +17,8 @@ const CART_MUTATION_ERROR_COPY: Record<string, string> = {
     "That code isn't valid for this basket. Check it and try again.",
   design_fn_not_served:
     "Cart changes don't run on the Studio canvas. Preview the page to try them.",
+  checkout_in_progress:
+    "Your payment is being processed. Try again in a moment.",
 };
 
 const CONFIGURE_PANEL_COPY =

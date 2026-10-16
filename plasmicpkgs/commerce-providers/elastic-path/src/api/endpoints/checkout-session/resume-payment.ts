@@ -1,15 +1,21 @@
 /**
  * handleResumePayment - post-3DS Stripe resume.
- * 
+ *
  * After /pay stores requires_action, the client completes 3DS and POSTs here.
- * Follows the documented cart-PI flow: checkoutApi → confirmOrder to sync
- * the existing PaymentIntent. Failed confirms may leave an unpaid order;
- * subsequent resumes reuse session.order.
- * 
- * Does not create a PaymentIntent, update the cart PI, re-assert shipping,
- * or use Clover handleConfirm.
+ * /pay already holds the order for the PaymentIntent, so resume confirms that
+ * order (confirmOrder syncs the PaymentIntent). Resume runs under the same
+ * per-cart settle-once guard as /pay: concurrent resumes from one session
+ * share one result, and an order already settled is answered as is.
+ *
+ * Sessions whose challenge started before /pay held an order re-check the
+ * cart hash, then checkoutApi → confirmOrder.
+ *
+ * Does not create a PaymentIntent, re-assert shipping, or use Clover
+ * handleConfirm.
  */
-import { checkoutApi, confirmOrder } from "@epcc-sdk/sdks-shopper";
+import { checkoutApi, confirmOrder, getAnOrder } from "@epcc-sdk/sdks-shopper";
+import { settleOnceOrBusy } from "../../../checkout/session/settle-once";
+import { clearCartPaymentIntentId } from "../../../checkout/session/clear-cart-payment-intent";
 import type {
   SessionRequest,
   SessionResponse,
@@ -258,6 +264,63 @@ export async function handleResumePayment(
     };
   }
 
+  const open = session;
+  return settleOnceOrBusy(open, () =>
+    open.order?.id
+      ? settleHeldOrder(req, ctx, ttl, open, open.order!.id, paymentIntentId)
+      : resumeWithoutHeldOrder(req, ctx, ttl, open, paymentIntentId)
+  );
+}
+
+/**
+ * The order /pay held for this challenge already fixes what is bought, so a
+ * cart change during the challenge does not matter here. A request that
+ * finds the order settled (a replayed resume) answers with it and leaves the
+ * cart alone.
+ */
+async function settleHeldOrder(
+  req: SessionRequest,
+  ctx: SessionHandlerContext,
+  ttl: number,
+  session: CheckoutSession,
+  orderId: string,
+  paymentIntentId: string
+): Promise<SessionResponse> {
+  const adminClient = await buildAdminEpClient(ctx);
+
+  let orderPayment: string | undefined;
+  try {
+    const res = await getAnOrder({ client: adminClient, path: { orderID: orderId } });
+    const payment = (res as any)?.data?.data?.payment;
+    orderPayment = typeof payment === "string" ? payment : undefined;
+  } catch {
+    orderPayment = undefined;
+  }
+  if (orderPayment === "paid" || orderPayment === "authorized") {
+    return finalizePaidSession({
+      ctx,
+      req,
+      ttl,
+      session,
+      gateway: session.payment.gateway as string,
+      orderId,
+      paymentIntentId,
+      gatewayMetadata: session.payment.gatewayMetadata,
+      cleanUpCart: false,
+    });
+  }
+
+  return confirmAndSettle(req, ctx, ttl, session, adminClient, orderId, paymentIntentId);
+}
+
+/** Sessions whose challenge started before /pay held the order. */
+async function resumeWithoutHeldOrder(
+  req: SessionRequest,
+  ctx: SessionHandlerContext,
+  ttl: number,
+  session: CheckoutSession,
+  paymentIntentId: string
+): Promise<SessionResponse> {
   // Cart-hash re-check — same mechanism as /pay, no shipping rewrite.
   const shopperClient = buildShopperEpClient(ctx);
 
@@ -345,39 +408,49 @@ export async function handleResumePayment(
 
   const adminClient = await buildAdminEpClient(ctx);
 
-  let orderId = session.order?.id;
-  if (!orderId) {
-    try {
-      const checkoutResponse = await checkoutApi({
-        client: adminClient,
-        path: { cartID: session.cartId },
-        body: buildGuestCheckoutBody(session) as any,
-      });
-      const oid = (checkoutResponse.data as any)?.data?.id;
-      if (!oid) throw new Error("checkoutApi response missing order id");
-      orderId = oid as string;
-    } catch (err) {
-      log.error("EP checkoutApi failed on resume", {
-        cartId: session.cartId,
-        error: err instanceof Error ? err.message : String(err),
-      } as Record<string, unknown>);
-      return {
-        status: 502,
-        body: {
-          success: false,
-          error: {
-            message: "Failed to create order for resumed payment",
-            code: "EP_ERROR",
-          },
+  let orderId: string;
+  try {
+    const checkoutResponse = await checkoutApi({
+      client: adminClient,
+      path: { cartID: session.cartId },
+      body: buildGuestCheckoutBody(session) as any,
+    });
+    const oid = (checkoutResponse.data as any)?.data?.id;
+    if (!oid) throw new Error("checkoutApi response missing order id");
+    orderId = oid as string;
+  } catch (err) {
+    log.error("EP checkoutApi failed on resume", {
+      cartId: session.cartId,
+      error: err instanceof Error ? err.message : String(err),
+    } as Record<string, unknown>);
+    return {
+      status: 502,
+      body: {
+        success: false,
+        error: {
+          message: "Failed to create order for resumed payment",
+          code: "EP_ERROR",
         },
-      };
-    }
-
-    session = { ...session, order: { id: orderId } };
-    const { storeError } = await persistOpenSession(ctx, req, ttl, session);
-    if (storeError) return storeError;
+      },
+    };
   }
 
+  const withOrder: CheckoutSession = { ...session, order: { id: orderId } };
+  const { storeError } = await persistOpenSession(ctx, req, ttl, withOrder);
+  if (storeError) return storeError;
+
+  return confirmAndSettle(req, ctx, ttl, withOrder, adminClient, orderId, paymentIntentId);
+}
+
+async function confirmAndSettle(
+  req: SessionRequest,
+  ctx: SessionHandlerContext,
+  ttl: number,
+  session: CheckoutSession,
+  adminClient: Awaited<ReturnType<typeof buildAdminEpClient>>,
+  orderId: string,
+  paymentIntentId: string
+): Promise<SessionResponse> {
   let confirmResult: unknown;
   let confirmThrown: unknown;
   try {
@@ -415,10 +488,25 @@ export async function handleResumePayment(
   }
 
   if (classified.outcome === "failed") {
-    const failedSession = applyPaymentFailed(session, {
-      errorMessage: classified.errorMessage,
-      gatewayMetadata: session.payment.gatewayMetadata,
+    // The declined PaymentIntent cannot pay this order; unlink it so the next
+    // pay starts a new one and a new order.
+    const cleared = await clearCartPaymentIntentId({
+      client: adminClient,
+      cartId: session.cartId,
     });
+    if (!cleared.ok) {
+      log.error("Failed to unlink a declined PaymentIntent from the cart", {
+        cartId: session.cartId,
+        error: cleared.errorMessage,
+      } as Record<string, unknown>);
+    }
+    const failedSession = applyPaymentFailed(
+      { ...session, order: null },
+      {
+        errorMessage: classified.errorMessage,
+        gatewayMetadata: session.payment.gatewayMetadata,
+      }
+    );
     const { headers, storeError } = await persistOpenSession(
       ctx,
       req,

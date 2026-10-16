@@ -339,7 +339,15 @@ describe("handlePay — single-shot guest happy path", () => {
     expect(epSdk.confirmOrder).not.toHaveBeenCalled();
   });
 
-  it("requires_action persists 3DS data, leaves session open, and does not create an order", async () => {
+  it("requires_action persists 3DS data, leaves session open, and holds the order for the challenge", async () => {
+    epSdk.checkoutApi.mockResolvedValue({
+      data: {
+        data: {
+          id: "order-1",
+          meta: { display_price: { with_tax: { amount: 5400, currency: "USD" } } },
+        },
+      },
+    });
     const adapter = createMockAdapter({
       status: "requires_action",
       clientToken: "pi_3ds_secret",
@@ -368,10 +376,10 @@ describe("handlePay — single-shot guest happy path", () => {
     expect(body.data.session.payment.gatewayMetadata).toMatchObject({
       paymentIntentId: "pi_3ds",
     });
-    expect(body.data.session.order).toBeNull();
+    expect(body.data.session.order).toEqual({ id: "order-1" });
     expect(body.paymentError).toBeUndefined();
 
-    expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+    expect(epSdk.checkoutApi).toHaveBeenCalledTimes(1);
     expect(epSdk.confirmOrder).not.toHaveBeenCalled();
     expect(epSdk.deleteACart).not.toHaveBeenCalled();
     expect(epSdk.updateACart).not.toHaveBeenCalledWith(

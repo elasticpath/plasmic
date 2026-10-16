@@ -416,13 +416,42 @@ changes: same props, same slots, same data.
 
 ### Fixed
 
-Pay settles at most one order per checkout. While a pay for a cart runs, a
-second pay from the same checkout session gets the first one's response, and
-a pay or session update from another checkout session gets `409` with
-`CHECKOUT_IN_PROGRESS`. The guard holds within one server process; send a
-checkout session's requests to one instance when you run several. The
-shipping line stays one line at quantity 1: a line that already matches the
-selected rate is left alone, and a concurrent write is folded back.
+A cart settles at most one order. `/pay`, `/resume-payment`,
+`/abandon-payment` and `handleConfirm` share one per-cart guard. While one of
+them runs for a cart, another request from the same checkout session gets the
+first one's response, and a request or session update from another checkout
+session gets `409` with `CHECKOUT_IN_PROGRESS`. A shopper's cart write
+(`epAddCartItem`, `epUpdateCartItem`, `epRemoveCartItem`, `epApplyPromoCode`,
+`epRemovePromoCode`, `epApplyCartAdjustment`) made while that cart's payment
+runs is refused with code `checkout_in_progress`. The guard holds within one
+server process; send a checkout session's requests to one instance when you
+run several. The shipping line stays one line at quantity 1: a line that
+already matches the selected rate is left alone, and a concurrent write is
+folded back.
+
+A card payment that needs a 3DS challenge always ends in exactly the order
+the shopper was shown and charged for. When Stripe asks for a challenge,
+`/pay` creates the order before it returns the challenge, and returns the
+challenge only when that order's total is the total the session showed;
+otherwise it answers `409` with `ORDER_TOTAL_CHANGED` and unlinks the
+PaymentIntent from the cart. `/resume-payment` confirms that order, so a cart
+change made while the challenge is open does not change what is ordered or
+stop the order. A resume sent again after the order is paid answers with the
+same order and does not touch the cart. While the challenge is open, `/pay`
+and session updates answer `409` with the new code `PAYMENT_ACTION_PENDING`
+and the open session, and take no new payment; EP Checkout Session Provider
+then continues that challenge with the gateway that started it.
+`/abandon-payment`, and a resume whose PaymentIntent was declined, unlink the
+PaymentIntent from the cart and drop the held order from the session, so the
+next pay starts a new PaymentIntent and a new order. The held order stays
+unpaid in Elastic Path.
+
+EP Stripe Payment resumes a checkout only for a PaymentIntent that took the
+payment, and abandons it only for one that can no longer take it. When
+Stripe.js reports no PaymentIntent state, for example because the challenge
+was already passed, the component reads the state with
+`retrievePaymentIntent`. When it cannot read the state, it does neither and
+shows an error; the next Place order continues the challenge.
 
 Pay charges only the total the session last returned to the browser. When
 the cart total differs, pay charges nothing and returns `409` with
@@ -437,8 +466,11 @@ Creating a checkout session for, or paying, a cart with nothing to buy (no
 lines, or only the shipping line and promotions) returns `409` with
 `EMPTY_CART`.
 
-`epPlaceOrder` returns the order status Elastic Path reports after payment,
-not the status from before payment. It is empty when that read fails.
+`epPlaceOrder` returns the order status the payment sets, not the status from
+before payment: `complete` after a purchase or capture, `processing` after an
+authorization, and empty for any other payment. The status comes from the
+payment response, because Elastic Path does not let the shopper's token read
+the order.
 
 The README warning about `next dev` now names the cart id: the page source of
 a dev server holds the session's cart id as well as the shopper's
@@ -447,9 +479,10 @@ credentials.
 A zero-total checkout completes only when Elastic Path reports the `manual`
 payment as complete. `/pay` answers `502` when that payment fails, and `409`
 with `ORDER_TOTAL_CHANGED`, without taking payment, when the order it created
-has a total. When the checkout response carries no total, `/pay` and
-`epPlaceOrder` read the order back; when Elastic Path still reports none,
-`/pay` answers `502` and `epPlaceOrder` throws, without taking payment.
+has a total. When the checkout response carries no total, `/pay` reads the
+order back; when Elastic Path still reports none, `/pay` answers `502`
+without taking payment. `epPlaceOrder` throws, without taking payment, when
+the checkout response carries no total.
 
 A product card inside EP Product Grid now has a link to its product page.
 EP Product Grid publishes `$ctx.currentHit.path`, built exactly as EP Search

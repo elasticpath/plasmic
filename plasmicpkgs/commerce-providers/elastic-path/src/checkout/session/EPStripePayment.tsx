@@ -63,6 +63,22 @@ const FAILED_PI_STATUSES = new Set([
   "cancelled",
 ]);
 
+const SETTLED_PI_STATUSES = new Set(["succeeded", "processing", "requires_capture"]);
+
+async function readPaymentIntentStatus(
+  stripe: { retrievePaymentIntent?: (clientSecret: string) => Promise<any> },
+  clientSecret: string
+): Promise<string | undefined> {
+  if (typeof stripe.retrievePaymentIntent !== "function") return undefined;
+  try {
+    const result = await stripe.retrievePaymentIntent(clientSecret);
+    const status = result?.paymentIntent?.status;
+    return typeof status === "string" ? status : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function stripeNextActionFailureMessage(
   err: { code?: string; message?: string } | null | undefined,
   piStatus: string | undefined
@@ -119,10 +135,16 @@ function resumeFailureMessage(resp: GatewayContinuationResult): string {
  *
  * handleNextAction success is not checkout completion — resumePayment is.
  * Auth failure / cancel must not call resumePayment; they abandon the cart
- * PI association so /pay can create a new PaymentIntent.
+ * PI association so /pay can create a new PaymentIntent. When
+ * handleNextAction gives no PaymentIntent state (it throws for a challenge
+ * already passed), the state is read with retrievePaymentIntent: a paid
+ * PaymentIntent resumes, an unreadable one does neither.
  */
 export async function runStripeRequiresAction(options: {
-  stripe: { handleNextAction: (args: { clientSecret: string }) => Promise<any> };
+  stripe: {
+    handleNextAction: (args: { clientSecret: string }) => Promise<any>;
+    retrievePaymentIntent?: (clientSecret: string) => Promise<any>;
+  };
   clientSecret: string;
   resumePayment: () => Promise<GatewayContinuationResult>;
   abandonPayment: () => Promise<GatewayContinuationResult>;
@@ -135,22 +157,47 @@ export async function runStripeRequiresAction(options: {
     };
   }
 
-  let failMessage: string | undefined;
+  let stripeError: { code?: string; message?: string } | undefined;
+  let piStatus: string | undefined;
+  let completed = false;
   try {
     const result = await stripe.handleNextAction({ clientSecret });
-    const stripeError = result?.error as
-      | { code?: string; message?: string }
-      | undefined;
-    const piStatus: string | undefined = result?.paymentIntent?.status;
+    stripeError = result?.error;
+    piStatus = result?.paymentIntent?.status ?? result?.error?.payment_intent?.status;
+    completed = !stripeError;
+  } catch {
+    // Stripe.js throws when the PaymentIntent has no action left, e.g. a
+    // challenge passed in an earlier attempt. Its state decides below.
+  }
+  if (!piStatus && !completed) {
+    piStatus = await readPaymentIntentStatus(stripe, clientSecret);
+  }
 
-    if (stripeError || FAILED_PI_STATUSES.has(piStatus ?? "")) {
-      failMessage = stripeNextActionFailureMessage(stripeError, piStatus);
-    }
-  } catch (err) {
-    failMessage =
-      err instanceof Error
-        ? err.message
-        : "Payment authentication failed. Please try again.";
+  // Only a PaymentIntent that took the payment may settle the order, and only
+  // one that can no longer take it may be abandoned: abandoning a paid one, or
+  // settling one still waiting, would leave the charge without its order.
+  if (piStatus && !SETTLED_PI_STATUSES.has(piStatus) && !FAILED_PI_STATUSES.has(piStatus)) {
+    return {
+      success: false,
+      error: {
+        message: "Your card check is not finished. Please complete it and try again.",
+        code: "PAYMENT_ACTION_PENDING",
+      },
+    };
+  }
+  if (!piStatus && !completed) {
+    return {
+      success: false,
+      error: {
+        message: "We couldn't confirm your payment status. Please try again.",
+        code: "PAYMENT_STATUS_UNKNOWN",
+      },
+    };
+  }
+
+  let failMessage: string | undefined;
+  if (FAILED_PI_STATUSES.has(piStatus ?? "")) {
+    failMessage = stripeNextActionFailureMessage(stripeError, piStatus);
   }
 
   if (failMessage) {
