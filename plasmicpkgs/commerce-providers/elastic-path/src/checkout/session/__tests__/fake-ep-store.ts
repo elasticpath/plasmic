@@ -31,16 +31,17 @@ export interface FakeOrder {
   paid: number;
   /** Copied from the cart at checkout; a confirm consumes it, as Elastic Path does. */
   paymentIntentId?: string;
-  lines: Array<{ sku?: string; quantity: number; amount: number }>;
+  lines: Array<{ sku?: string; quantity: number; amount: number; productId?: string }>;
   /** The cart line each order item came from, as `relationships.cart_item`. */
-  cartItems: Array<{ cartItemId: string; sku?: string; quantity: number }>;
+  cartItems: Array<{ cartItemId: string; sku?: string; quantity: number; productId?: string }>;
   externalRef?: string;
+  transactions: Array<{ id: string; status: "pending" | "complete" | "cancelled"; piId: string }>;
 }
 
 export interface FakePaymentIntent {
   id: string;
   amount: number;
-  status: "requires_action" | "succeeded" | "requires_payment_method";
+  status: "requires_action" | "succeeded" | "requires_payment_method" | "canceled";
 }
 
 interface FakeCart {
@@ -86,6 +87,12 @@ export class FakeEpStore {
   lastAccountCarts = new Set<string>();
   /** Carts whose items Elastic Path will not delete (a store outage). */
   undeletableItems = new Set<string>();
+  /** Stock-tracked products: units allocated (order confirm allocates, as Elastic Path does). */
+  allocated = new Map<string, number>();
+  /** Transaction cancels answer a server error while true. */
+  cancelFails = false;
+  /** Runs just before a transaction cancel acts (to land a race there). */
+  beforeCancel: (() => void) | null = null;
   /** The next checkouts answer this Elastic Path error instead of an order. */
   checkoutRejection: { status: number; detail: string } | null = null;
   private seq = 0;
@@ -269,15 +276,18 @@ export class FakeEpStore {
             total: cartTotal(cart),
             paid: 0,
             paymentIntentId: cart.paymentIntentId,
+            transactions: [],
             lines: cart.lines.map((l) => ({
               sku: l.sku,
               quantity: l.quantity,
               amount: l.unit_price.amount * l.quantity,
+              ...(l.product_id ? { productId: l.product_id } : {}),
             })),
             cartItems: cart.lines.map((l) => ({
               cartItemId: l.id,
               sku: l.sku,
               quantity: l.quantity,
+              ...(l.product_id ? { productId: l.product_id } : {}),
             })),
           };
           store.orders.push(order);
@@ -306,6 +316,50 @@ export class FakeEpStore {
           };
         }),
       confirmOrder: ({ path }: any) => after(() => store.confirm(path.orderID)),
+      getOrderTransactions: ({ path }: any) =>
+        after(() => {
+          const order = store.orders.find((o) => o.id === path.orderID);
+          return order
+            ? {
+                data: {
+                  data: order.transactions.map((t) => ({
+                    id: t.id,
+                    type: "transaction",
+                    status: t.status,
+                    transaction_type: "purchase",
+                    reference: t.piId,
+                  })),
+                },
+              }
+            : { error: { errors: [{ status: 404 }] }, response: { status: 404 } };
+        }),
+      cancelATransaction: ({ path }: any) =>
+        after(() => {
+          if (store.cancelFails) {
+            return { error: { errors: [{ status: 500, detail: "unavailable" }] }, response: { status: 500 } };
+          }
+          store.beforeCancel?.();
+          const order = store.orders.find((o) => o.id === path.orderID);
+          const tx = order?.transactions.find((t) => t.id === path.transactionID);
+          if (!order || !tx) return { error: { errors: [{ status: 404 }] }, response: { status: 404 } };
+          const pi = store.paymentIntents.get(tx.piId)!;
+          if (pi.status === "succeeded") {
+            return {
+              error: {
+                errors: [
+                  {
+                    status: 400,
+                    detail: "This PaymentIntent has already succeeded after being previously confirmed.",
+                  },
+                ],
+              },
+              response: { status: 400 },
+            };
+          }
+          pi.status = "canceled";
+          tx.status = "cancelled";
+          return { data: { data: { id: tx.id, type: "transaction", status: "cancelled" } } };
+        }),
       getOrderItems: ({ path }: any) =>
         after(() => {
           const order = store.orders.find((o) => o.id === path.orderID);
@@ -319,6 +373,7 @@ export class FakeEpStore {
                 type: "order_item",
                 sku: item.sku,
                 quantity: item.quantity,
+                ...(item.productId ? { product_id: item.productId } : {}),
                 ...(store.orderItemsWithoutCartLines
                   ? {}
                   : {
@@ -359,6 +414,29 @@ export class FakeEpStore {
         }),
     };
   }
+
+  /**
+   * `fetch` for the Elastic Path inventory API (multi-location stock
+   * transactions). Anything else is refused.
+   */
+  fetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+    const m = url.pathname.match(/^\/v2\/inventories\/([^/]+)\/transactions$/);
+    if (!m || (init?.method ?? "GET") !== "POST") {
+      return new Response(JSON.stringify({ errors: [{ status: 404 }] }), { status: 404 });
+    }
+    const pid = decodeURIComponent(m[1]);
+    if (!this.allocated.has(pid)) {
+      return new Response(JSON.stringify({ errors: [{ status: 404, detail: `product ${pid} not found` }] }), { status: 404 });
+    }
+    const body = JSON.parse(String(init?.body ?? "{}"));
+    const { action, quantity } = body?.data?.attributes ?? {};
+    if (action !== "deallocate" || typeof quantity !== "number") {
+      return new Response(JSON.stringify({ errors: [{ status: 400 }] }), { status: 400 });
+    }
+    this.allocated.set(pid, this.allocated.get(pid)! - quantity);
+    return new Response(JSON.stringify({ data: { type: "stock-transaction" } }), { status: 201 });
+  };
 
   /** A cart PaymentIntent that charges the cart's total at the moment it runs. */
   chargeCart(cartId: string): Promise<string> {
@@ -404,10 +482,12 @@ export class FakeEpStore {
   }
 
   /** The shopper passes the challenge: the PaymentIntent takes its amount. */
-  passChallenge(piId: string): void {
+  passChallenge(piId: string): boolean {
     const pi = this.paymentIntents.get(piId)!;
+    if (pi.status !== "requires_action") return false;
     pi.status = "succeeded";
     this.charges.push(pi.amount);
+    return true;
   }
 
   failChallenge(piId: string): void {
@@ -427,7 +507,18 @@ export class FakeEpStore {
       : undefined;
     if (!pi) return fail("This order has no Stripe Payment Intent ID.");
     order.paymentIntentId = undefined;
+    for (const line of order.lines) {
+      const pid = line.productId;
+      if (pid && this.allocated.has(pid)) {
+        this.allocated.set(pid, this.allocated.get(pid)! + line.quantity);
+      }
+    }
     const succeeded = pi.status === "succeeded";
+    order.transactions.push({
+      id: this.nextId("txn"),
+      status: succeeded ? "complete" : "pending",
+      piId: pi.id,
+    });
     if (succeeded) {
       order.paid += pi.amount;
       order.payment = order.paid >= order.total ? "paid" : "partially_paid";

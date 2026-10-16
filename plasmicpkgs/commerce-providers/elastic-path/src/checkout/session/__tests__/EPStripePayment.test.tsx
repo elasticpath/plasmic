@@ -804,6 +804,29 @@ describe("runStripeRequiresAction", () => {
     expect(result.success).toBe(true);
   });
 
+  it("reports the order placed when abandon finds the payment already completed it", async () => {
+    mockHandleNextAction.mockResolvedValue({
+      error: { message: "canceled" },
+      paymentIntent: { status: "canceled" },
+    });
+    mockAbandonPayment.mockResolvedValue({
+      success: false,
+      error: { code: "PAYMENT_ALREADY_TAKEN", message: "Your payment went through." },
+      data: { session: { status: "complete", order: { id: "ord-9" } } },
+    });
+
+    const result = await runStripeRequiresAction({
+      stripe,
+      clientSecret: "pi_abc_secret",
+      resumePayment: mockResumePayment,
+      abandonPayment: mockAbandonPayment,
+    });
+
+    expect(mockResumePayment).not.toHaveBeenCalled();
+    expect(result.success).toBe(true);
+    expect(result.data.session.status).toBe("complete");
+  });
+
   it("does not resume while the challenge is still open", async () => {
     mockHandleNextAction.mockResolvedValue({
       paymentIntent: { status: "requires_action" },

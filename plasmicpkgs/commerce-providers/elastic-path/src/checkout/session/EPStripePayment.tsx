@@ -237,7 +237,13 @@ export async function runStripeRequiresAction(options: {
       };
     }
 
-    if (abandoned.error?.code === "PAYMENT_ALREADY_TAKEN") {
+    if (
+      abandoned.error?.code === "PAYMENT_ALREADY_TAKEN" &&
+      abandoned.data?.session?.status === "complete"
+    ) {
+      // The payment completed the order while it was being abandoned.
+      return { ...abandoned, success: true, error: undefined };
+    } else if (abandoned.error?.code === "PAYMENT_ALREADY_TAKEN") {
       // The server found the payment taken after all: settle the order.
       failMessage = undefined;
     } else if (!abandoned.success) {

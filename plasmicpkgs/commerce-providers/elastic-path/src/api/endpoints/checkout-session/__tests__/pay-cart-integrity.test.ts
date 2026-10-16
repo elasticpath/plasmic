@@ -18,6 +18,8 @@ jest.mock("@epcc-sdk/sdks-shopper", () => {
     "paymentSetup",
     "confirmOrder",
     "getOrderItems",
+    "getOrderTransactions",
+    "cancelATransaction",
     "getCartItems",
     "updateAnOrder",
     "deleteAllCartItems",
@@ -183,8 +185,14 @@ function sessionIn(res: SessionResponse): any {
   return (res.body as any).data?.session;
 }
 
+const realFetch = global.fetch;
+afterEach(() => {
+  global.fetch = realFetch;
+});
+
 beforeEach(() => {
   ep = new FakeEpStore();
+  global.fetch = ep.fetch as typeof fetch;
   for (const key of Object.keys(sdkImpl)) {
     delete sdkImpl[key];
   }
@@ -1139,5 +1147,118 @@ describe("the cart check and promotions", () => {
 
     expect(res.status).toBe(409);
     expect((res.body as any).error.code).toBe("CART_MISMATCH");
+  });
+});
+
+describe("abandoning a card check that can still complete", () => {
+  async function challenged(browser: Browser): Promise<string> {
+    await readyToPay(browser);
+    const res = await browser.pay({ gateway: "stripe3ds" });
+    expect(sessionIn(res).payment.status).toBe("requires_action");
+    return browser.pendingPaymentIntent();
+  }
+
+  it("voids the payment, so completing the challenge later charges nothing, and the next pay settles one order", async () => {
+    const browser = new Browser(newCart());
+    const piId = await challenged(browser);
+    const held = heldOrder();
+
+    const abandoned = await browser.abandon();
+
+    expect(abandoned.status).toBe(200);
+    expect(sessionIn(abandoned).payment.status).toBe("failed");
+    expect(ep.paymentIntents.get(piId)!.status).toBe("canceled");
+    expect(held.status).toBe("cancelled");
+    expect(ep.cart(browser.cartId).paymentIntentId).toBeUndefined();
+    expect(ep.passChallenge(piId)).toBe(false);
+
+    const paid = await browser.pay({ gateway: "stripe" });
+    expect(sessionIn(paid).status).toBe("complete");
+    expect(ep.charges).toEqual([2799]);
+    expect(ep.chargedOrders().map((o) => o.total)).toEqual([2799]);
+  });
+
+  it("returns the stock the voided order took", async () => {
+    ep.allocated.set("p-plus", 0);
+    const browser = new Browser(newCart());
+    await challenged(browser);
+
+    expect((await browser.abandon()).status).toBe(200);
+
+    expect(ep.allocated.get("p-plus")).toBe(0);
+  });
+
+  it("when the challenge completes just before the void, keeps the order and does not free the cart for a second charge", async () => {
+    const browser = new Browser(newCart());
+    const piId = await challenged(browser);
+    ep.beforeCancel = () => {
+      ep.passChallenge(piId);
+      ep.beforeCancel = null;
+    };
+
+    const res = await browser.abandon();
+
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("PAYMENT_ALREADY_TAKEN");
+    expect((res.body as any).reconciliationPending).toBe(true);
+    expect(sessionIn(res).status).toBe("complete");
+    expect(heldOrder().externalRef).toContain(piId);
+    expect((await browser.pay({ gateway: "stripe" })).status).toBe(400);
+    expect(ep.charges).toEqual([2799]);
+  });
+
+  it("when the challenge completed before the void began, settles the held order instead", async () => {
+    const browser = new Browser(newCart());
+    const piId = await challenged(browser);
+    registry.register("stripe3dsStale", {
+      paymentSequence: "cart_payment_intent",
+      initializePayment: async () => ({ status: "failed" as const }),
+      // The read says the challenge is open; it completes right after.
+      readPaymentIntentState: async () => {
+        ep.passChallenge(piId);
+        return "awaiting_action";
+      },
+    });
+    browser.cookie = {
+      ...browser.cookie!,
+      payment: { ...browser.cookie!.payment, gateway: "stripe3dsStale" },
+    };
+
+    const res = await browser.abandon();
+
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("PAYMENT_ALREADY_TAKEN");
+    expect(sessionIn(res).status).toBe("complete");
+    expect(heldOrder().payment).toBe("paid");
+    expect(ep.charges).toEqual([2799]);
+  });
+
+  it("keeps the session open when the void cannot be done, and a retry voids it", async () => {
+    const browser = new Browser(newCart());
+    const piId = await challenged(browser);
+    ep.cancelFails = true;
+
+    const first = await browser.abandon();
+
+    expect(first.status).toBe(502);
+    expect((first.body as any).error.code).toBe("PAYMENT_STATUS_UNKNOWN");
+    expect(browser.cookie?.payment.status).toBe("requires_action");
+    expect(ep.cart(browser.cartId).paymentIntentId).toBe(piId);
+
+    ep.cancelFails = false;
+    const second = await browser.abandon();
+    expect(second.status).toBe(200);
+    expect(ep.paymentIntents.get(piId)!.status).toBe("canceled");
+  });
+
+  it("still never confirms a payment on resume before the challenge is passed", async () => {
+    const browser = new Browser(newCart());
+    await challenged(browser);
+
+    const early = await browser.resume();
+
+    expect(early.status).toBe(409);
+    expect((early.body as any).error.code).toBe("PAYMENT_STILL_REQUIRES_ACTION");
+    expect(heldOrder().transactions).toEqual([]);
   });
 });

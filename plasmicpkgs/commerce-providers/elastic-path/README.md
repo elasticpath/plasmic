@@ -549,9 +549,13 @@ resume-payment and abandon-payment share one guard per cart. While one of
 them runs for a cart, another request from the same checkout session gets the
 same response, and one from a different checkout session gets `409` with code
 `CHECKOUT_IN_PROGRESS`, as does a session update. A cart write while the
-cart's payment runs is refused with code `checkout_in_progress`. This guard
-holds within one server process. With more than one server instance, send
-each checkout session's requests to the same instance.
+cart's payment runs is refused with code `checkout_in_progress`.
+
+**Run one checkout session on one server instance.** The guard lives in one
+server process. With more than one instance, route each checkout session's
+requests to the same instance (session affinity). Across instances, a double
+submit can create a duplicate order for one payment; it cannot charge twice.
+A planned follow-up, "every charge belongs to an order", removes this limit.
 
 When a card needs a 3DS challenge, pay creates the order first and returns
 the challenge only when that order's total is the total the session showed
@@ -571,8 +575,20 @@ cart stays linked to the account. If the lines cannot be removed, the next
 checkout session for that cart retries first and answers `409`
 `CART_CLEANUP_PENDING` until it can. A checkout Elastic Path refuses (for
 example, not enough stock) answers `409` `CHECKOUT_REJECTED` with Elastic
-Path's reason and takes no payment; if a card payment was already taken, the
-checkout ends with `409` `PAYMENT_NEEDS_REVIEW`.
+Path's reason and takes no payment.
+
+**Out of stock after the charge.** Elastic Path checks stock when the order is
+created, after a card payment is taken. When stock runs out in between, the
+checkout ends with `409` `PAYMENT_NEEDS_REVIEW`, the shopper is told, and the
+server logs the payment for reconciliation; no order is created for it. The
+planned follow-up, "every charge belongs to an order", removes this limit.
+
+Abandoning a card check that can still complete voids its payment: the order
+held for the challenge is confirmed and its pending transaction cancelled,
+which cancels the PaymentIntent in Stripe, so the challenge can no longer
+charge the card. The stock that confirm took is returned and the order
+cancelled. If the challenge completes during the void, the payment is kept:
+the order is placed (or marked for reconciliation) and the checkout ends.
 
 Resume confirms the order only after Stripe reports that the payment was
 taken. Elastic Path cannot report this, and its confirm on a payment still
