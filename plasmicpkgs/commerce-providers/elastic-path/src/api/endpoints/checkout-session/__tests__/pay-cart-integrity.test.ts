@@ -198,7 +198,28 @@ beforeEach(() => {
       return {
         status: "succeeded",
         gatewayOrderId: pi,
-        gatewayMetadata: { paymentIntentId: pi },
+        gatewayMetadata: { paymentIntentId: pi, amount: ep.paymentIntents.get(pi)!.amount },
+      };
+    },
+  });
+  // A cart write from outside the storefront lands after the charge and
+  // before the order is created.
+  registry.register("stripeLateWrite", {
+    paymentSequence: "cart_payment_intent",
+    initializePayment: async (s: CheckoutSession) => {
+      const pi = await ep.chargeCart(s.cartId);
+      ep.cart(s.cartId).lines.push({
+        id: "line-late",
+        type: "custom_item",
+        sku: "late-write",
+        quantity: 1,
+        unit_price: { amount: 100 },
+        value: { amount: 100 },
+      });
+      return {
+        status: "succeeded",
+        gatewayOrderId: pi,
+        gatewayMetadata: { paymentIntentId: pi, amount: ep.paymentIntents.get(pi)!.amount },
       };
     },
   });
@@ -1031,5 +1052,92 @@ describe("a checkout Elastic Path rejects", () => {
 
     ep.checkoutRejection = null;
     expect((await browser.create()).status).toBe(201);
+  });
+});
+
+describe("an order whose total is not the amount charged", () => {
+  it("is never reported cleanly complete: it is marked for reconciliation and the shopper is told", async () => {
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+
+    const res = await browser.pay({ gateway: "stripeLateWrite" });
+
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("PAYMENT_NEEDS_REVIEW");
+    expect((res.body as any).error.message).toMatch(/27\.99/);
+    expect((res.body as any).reconciliationPending).toBe(true);
+    expect(sessionIn(res).status).toBe("complete");
+    const order = ep.orders[0];
+    expect(order.total).toBe(2899);
+    expect(order.paid).toBe(2799);
+    expect(order.externalRef).toContain("needs-reconciliation");
+  });
+
+  it("completes normally when the order total is the amount charged", async () => {
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+
+    const res = await browser.pay({ gateway: "stripe" });
+
+    expect(res.status).toBe(200);
+    expect((res.body as any).reconciliationPending).toBeUndefined();
+    expect(ep.orders[0].externalRef).toBeUndefined();
+  });
+});
+
+describe("the cart check and promotions", () => {
+  const PROMO_CART = [
+    { product_id: "p-plus", sku: "p-plus-sub", quantity: 1, unit_price: { amount: 2200 } },
+    {
+      id: "promo-1",
+      type: "promotion_item",
+      sku: "TEST1",
+      quantity: 1,
+      unit_price: { amount: 0 },
+      percentOff: 10,
+    },
+  ];
+
+  it("does not count a promotion re-priced by the shipping line as a cart change", async () => {
+    const browser = new Browser(newCart(PROMO_CART as any));
+    await readyToPay(browser);
+    expect(browser.shownTotal()).toBe(2519);
+
+    const res = await browser.pay({ gateway: "manual" });
+
+    expect(res.status).toBe(200);
+    expect(sessionIn(res).status).toBe("complete");
+    expect(ep.paidOrders().map((o) => o.total)).toEqual([2519]);
+  });
+
+  it("still counts a promotion removed after the session was created", async () => {
+    const browser = new Browser(newCart(PROMO_CART as any));
+    await readyToPay(browser);
+    const cart = ep.cart(browser.cartId);
+    cart.lines = cart.lines.filter((l) => l.type !== "promotion_item");
+
+    const res = await browser.pay({ gateway: "manual" });
+
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("CART_MISMATCH");
+  });
+
+  it("still counts a promotion added after the session was created", async () => {
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+    ep.cart(browser.cartId).lines.push({
+      id: "promo-late",
+      type: "promotion_item",
+      sku: "TEST1",
+      quantity: 1,
+      unit_price: { amount: 0 },
+      value: { amount: 0 },
+      percentOff: 10,
+    });
+
+    const res = await browser.pay({ gateway: "manual" });
+
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("CART_MISMATCH");
   });
 });

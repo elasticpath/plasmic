@@ -67,6 +67,7 @@ import {
   confirmCartPaymentOrder,
   createOrderFromCart,
   endCheckoutForReview,
+  markOrderForReconciliation,
   refuseOrderTotal,
   shopperLines,
   writeOrderCustomFields,
@@ -412,6 +413,8 @@ async function handleInitializePaymentPay(
   }
   if (created.response) return created.response;
   const orderId = created.order.id;
+  const orderTotal = await readOrderTotal(adminClient, orderId, created.order);
+  const charged = chargedAmount(adapterResult, params.expectedTotal);
 
   await writeOrderCustomFields(ctx, orderId, session);
 
@@ -435,13 +438,21 @@ async function handleInitializePaymentPay(
     }
   }
 
+  // A cart write that landed between the charge and the order (from outside
+  // this storefront) gives an order the charge does not cover.
+  const totalDiffers = orderTotal !== null && orderTotal.amount !== charged;
+  if (totalDiffers) {
+    reconciliationError ??= "order total differs from the amount charged";
+    await markOrderForReconciliation(adminClient, orderId, paymentID ?? "unknown");
+  }
+
   log.info("Pay handler completed", {
     sessionId: session.id,
     orderId,
     reconciliationPending: reconciliationError !== null,
   } as Record<string, unknown>);
 
-  return finalizePaidSession({
+  const finalized = await finalizePaidSession({
     ctx,
     req,
     ttl,
@@ -452,6 +463,40 @@ async function handleInitializePaymentPay(
     gatewayMetadata: adapterResult.gatewayMetadata,
     reconciliationError,
   });
+  if (!totalDiffers || finalized.status !== 200) return finalized;
+  return {
+    ...finalized,
+    status: 409,
+    body: {
+      ...(finalized.body as Record<string, unknown>),
+      success: false,
+      error: {
+        message: orderTotalDiffersMessage(charged, orderTotal?.amount, orderTotal?.currency),
+        code: "PAYMENT_NEEDS_REVIEW",
+      },
+      reconciliationPending: true,
+    },
+  };
+}
+
+/** The amount the gateway took: its own figure when it reports one, else the shown total. */
+function chargedAmount(result: PaymentAdapterResult, shownTotal: number): number {
+  const amount = result.gatewayMetadata?.amount;
+  return typeof amount === "number" && Number.isFinite(amount) ? amount : shownTotal;
+}
+
+function money(amount: number | undefined, currency: string | undefined): string {
+  if (typeof amount !== "number") return "a different amount";
+  const value = (amount / 100).toFixed(2);
+  return currency ? `${value} ${currency}` : value;
+}
+
+function orderTotalDiffersMessage(
+  charged: number,
+  orderTotal: number | undefined,
+  currency: string | undefined
+): string {
+  return `Your order was placed, but its total (${money(orderTotal, currency)}) is not the amount we charged (${money(charged, currency)}) because your cart changed while paying. We will contact you to settle the difference.`;
 }
 
 async function handleOrderFirstPay(

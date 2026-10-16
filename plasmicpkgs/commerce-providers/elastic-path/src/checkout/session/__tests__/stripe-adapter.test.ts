@@ -135,6 +135,26 @@ describe("createStripeAdapter — Cart Payment Intent (EP-native)", () => {
       });
     });
 
+    it("reports the amount the PaymentIntent is for", async () => {
+      epSdk.createCartPaymentIntent.mockResolvedValue({
+        data: {
+          data: { id: "cart_abc", payment_intent_id: "pi_amt" },
+          meta: {
+            payment_intent: {
+              payment_intent: { id: "pi_amt", status: "succeeded", amount: 2799 },
+            },
+          },
+        },
+      });
+
+      const result = await createStripeAdapter(ADAPTER_CONFIG).initializePayment(
+        makeSession(),
+        { confirmation_token: "ctoken_abc" }
+      );
+
+      expect(result.gatewayMetadata).toEqual({ paymentIntentId: "pi_amt", amount: 2799 });
+    });
+
     it("uses the admin token resolver before posting (request-scoped auth)", async () => {
       epSdk.createCartPaymentIntent.mockResolvedValue({
         data: {

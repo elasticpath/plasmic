@@ -15,6 +15,11 @@ export interface FakeLine {
   unit_price: { amount: number };
   value: { amount: number };
   custom_inputs?: Record<string, unknown>;
+  /**
+   * A `promotion_item` worth this percent off every other line, shipping
+   * included: Elastic Path re-prices it whenever the cart changes.
+   */
+  percentOff?: number;
 }
 
 export interface FakeOrder {
@@ -46,7 +51,20 @@ interface FakeCart {
 
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 
+/** Re-prices percent promotions against the rest of the cart, as Elastic Path does. */
+function repricePromotions(cart: FakeCart): void {
+  const base = cart.lines
+    .filter((l) => l.percentOff === undefined)
+    .reduce((sum, l) => sum + l.unit_price.amount * l.quantity, 0);
+  for (const l of cart.lines) {
+    if (l.percentOff === undefined) continue;
+    l.unit_price = { amount: -Math.round((base * l.percentOff) / 100) };
+    l.value = { amount: l.unit_price.amount * l.quantity };
+  }
+}
+
 function cartTotal(cart: FakeCart): number {
+  repricePromotions(cart);
   return cart.lines.reduce(
     (sum, l) => sum + l.unit_price.amount * l.quantity,
     0
@@ -93,6 +111,7 @@ export class FakeEpStore {
         quantity: l.quantity,
         unit_price: { amount: l.unit_price.amount },
         value: { amount: l.unit_price.amount * l.quantity },
+        ...(l.percentOff !== undefined ? { percentOff: l.percentOff } : {}),
       })),
     });
   }
@@ -125,6 +144,7 @@ export class FakeEpStore {
         };
       }
       const amount = cartTotal(cart);
+      // cartTotal re-priced the promotions; the lines below carry the new values.
       return {
         data: {
           data: {

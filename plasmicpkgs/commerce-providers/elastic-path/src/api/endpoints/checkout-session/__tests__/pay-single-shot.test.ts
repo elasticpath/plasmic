@@ -628,6 +628,14 @@ describe("handlePay — zero-total (free) order", () => {
         data: { meta: { display_price: { with_tax: { amount: 4400, currency: "CHF" } } } },
       },
     });
+    epSdk.checkoutApi.mockResolvedValue({
+      data: {
+        data: {
+          id: "order-1",
+          meta: { display_price: { with_tax: { amount: 4400, currency: "CHF" } } },
+        },
+      },
+    });
     const adapter = createMockAdapter({
       status: "succeeded",
       gatewayOrderId: "pi_paid",
