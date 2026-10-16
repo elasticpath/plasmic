@@ -1,5 +1,6 @@
 import type {
   CheckoutSession,
+  PaymentIntentReadKeys,
   SessionHandlerContext,
   SessionResponse,
 } from "./types";
@@ -20,6 +21,30 @@ export function awaitsCartPaymentChallenge(
     ? ctx.adapterRegistry.getAdapter(session.payment.gateway)
     : undefined;
   return !!adapter && isCartPaymentIntentAdapter(adapter);
+}
+
+const PUBLISHABLE_KEY = /^pk_(test|live)_[A-Za-z0-9]+$/;
+const CONNECTED_ACCOUNT = /^acct_[A-Za-z0-9]+$/;
+
+/**
+ * The PaymentIntent read keys a resume or abandon request carries, when well
+ * formed. The server only uses them to ask Stripe about the session's own
+ * PaymentIntent, so a key from the browser cannot change the answer.
+ */
+export function readKeysFrom(body: unknown): PaymentIntentReadKeys | undefined {
+  const b = body as Record<string, unknown> | undefined;
+  const publishableKey = b?.publishableKey;
+  const stripeAccount = b?.stripeAccount;
+  if (typeof publishableKey !== "string" || !PUBLISHABLE_KEY.test(publishableKey)) {
+    return undefined;
+  }
+  if (stripeAccount !== undefined && stripeAccount !== null && stripeAccount !== "") {
+    if (typeof stripeAccount !== "string" || !CONNECTED_ACCOUNT.test(stripeAccount)) {
+      return undefined;
+    }
+    return { publishableKey, stripeAccount };
+  }
+  return { publishableKey };
 }
 
 /** 409 with the open challenge, so the client can finish or cancel it. */

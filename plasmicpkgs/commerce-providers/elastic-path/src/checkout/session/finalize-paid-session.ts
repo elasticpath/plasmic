@@ -18,7 +18,7 @@ import type {
   SessionResponse,
 } from "./types";
 import { applyPaymentSucceeded } from "./session-state-transition";
-import { runCartCleanup } from "./cart-cleanup";
+import { removeOrderedLines, runCartCleanup } from "./cart-cleanup";
 import { clearCartPaymentIntentId } from "./clear-cart-payment-intent";
 import { isCartPaymentIntentAdapter } from "./payment-sequence";
 import { buildShopperEpClient } from "./shopper-client";
@@ -99,6 +99,11 @@ export interface FinalizePaidSessionParams {
    * request, whose cleanup already ran: the cart may be the shopper's next one.
    */
   cleanUpCart?: boolean;
+  /**
+   * Keep cart lines the order did not take (added after the order was
+   * created) instead of deleting the cart.
+   */
+  keepLinesNotOrdered?: boolean;
 }
 
 export async function finalizePaidSession(
@@ -116,6 +121,7 @@ export async function finalizePaidSession(
     gatewayMetadata,
     reconciliationError = null,
     cleanUpCart = true,
+    keepLinesNotOrdered = false,
   } = params;
 
   // Keep the Cart PI association when confirmOrder reconciliation failed —
@@ -125,12 +131,15 @@ export async function finalizePaidSession(
   }
 
   if (cleanUpCart && ctx.getClientCredentialsToken) {
-    await runCartCleanup({
+    const cleanup = {
       host: ctx.epCredentials.apiBaseUrl,
       clientId: ctx.epCredentials.clientId,
       getClientCredentialsToken: ctx.getClientCredentialsToken,
       cartId: session.cartId,
-    });
+    };
+    await (keepLinesNotOrdered
+      ? removeOrderedLines({ ...cleanup, orderId })
+      : runCartCleanup(cleanup));
   }
 
   const completeSession = applyPaymentSucceeded(

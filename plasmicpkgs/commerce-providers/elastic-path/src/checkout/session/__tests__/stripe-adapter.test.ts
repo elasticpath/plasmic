@@ -258,4 +258,128 @@ describe("createStripeAdapter — Cart Payment Intent (EP-native)", () => {
       expect(required).toEqual([]);
     });
   });
+
+  describe("readPaymentIntentState", () => {
+    const pending = makeSession({
+      payment: {
+        gateway: "stripe",
+        status: "requires_action",
+        clientToken: "pi_3ds_secret_abc",
+        gatewayMetadata: { paymentIntentId: "pi_3ds" },
+        actionData: null,
+      },
+    });
+    let fetchMock: jest.Mock;
+    const realFetch = global.fetch;
+
+    function stripeAnswers(body: unknown, status = 200) {
+      fetchMock.mockResolvedValue({
+        ok: status < 400,
+        status,
+        json: async () => body,
+      });
+    }
+
+    beforeEach(() => {
+      fetchMock = jest.fn();
+      global.fetch = fetchMock as any;
+    });
+    afterEach(() => {
+      global.fetch = realFetch;
+    });
+
+    it("reads the PaymentIntent from Stripe with its client secret and the configured keys", async () => {
+      stripeAnswers({ id: "pi_3ds", status: "succeeded" });
+      const adapter = createStripeAdapter({
+        ...ADAPTER_CONFIG,
+        publishableKey: "pk_test_config",
+        stripeAccount: "acct_config",
+      });
+
+      const state = await adapter.readPaymentIntentState!(pending, {
+        publishableKey: "pk_test_request",
+        stripeAccount: "acct_request",
+      });
+
+      expect(state).toBe("settled");
+      const url = new URL(fetchMock.mock.calls[0][0]);
+      expect(url.origin + url.pathname).toBe(
+        "https://api.stripe.com/v1/payment_intents/pi_3ds"
+      );
+      expect(url.searchParams.get("client_secret")).toBe("pi_3ds_secret_abc");
+      expect(url.searchParams.get("key")).toBe("pk_test_config");
+      expect(url.searchParams.get("_stripe_account")).toBe("acct_config");
+    });
+
+    it("uses the keys the request carries when none are configured", async () => {
+      stripeAnswers({ id: "pi_3ds", status: "requires_source_action" });
+      const adapter = createStripeAdapter(ADAPTER_CONFIG);
+
+      const state = await adapter.readPaymentIntentState!(pending, {
+        publishableKey: "pk_test_request",
+        stripeAccount: "acct_request",
+      });
+
+      expect(state).toBe("awaiting_action");
+      const url = new URL(fetchMock.mock.calls[0][0]);
+      expect(url.searchParams.get("key")).toBe("pk_test_request");
+      expect(url.searchParams.get("_stripe_account")).toBe("acct_request");
+    });
+
+    it("tries the request's keys when the configured keys cannot read the PaymentIntent", async () => {
+      fetchMock
+        .mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({}) })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ id: "pi_3ds", status: "succeeded" }),
+        });
+      const adapter = createStripeAdapter({
+        ...ADAPTER_CONFIG,
+        publishableKey: "pk_test_stale",
+      });
+
+      const state = await adapter.readPaymentIntentState!(pending, {
+        publishableKey: "pk_test_request",
+      });
+
+      expect(state).toBe("settled");
+      expect(new URL(fetchMock.mock.calls[1][0]).searchParams.get("key")).toBe(
+        "pk_test_request"
+      );
+    });
+
+    it("cannot verify without any keys, and asks Stripe nothing", async () => {
+      const adapter = createStripeAdapter(ADAPTER_CONFIG);
+
+      expect(await adapter.readPaymentIntentState!(pending)).toBe("unverifiable");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["succeeded", "settled"],
+      ["processing", "settled"],
+      ["requires_capture", "settled"],
+      ["requires_action", "awaiting_action"],
+      ["requires_confirmation", "awaiting_action"],
+      ["requires_payment_method", "failed"],
+      ["requires_source", "failed"],
+      ["canceled", "failed"],
+    ])("maps Stripe status %s to %s", async (status, state) => {
+      stripeAnswers({ id: "pi_3ds", status });
+      const adapter = createStripeAdapter({ ...ADAPTER_CONFIG, publishableKey: "pk_test_x" });
+
+      expect(await adapter.readPaymentIntentState!(pending)).toBe(state);
+    });
+
+    it("is unreadable when Stripe answers an error, another PaymentIntent, or nothing", async () => {
+      const adapter = createStripeAdapter({ ...ADAPTER_CONFIG, publishableKey: "pk_test_x" });
+      stripeAnswers({ error: { message: "No such payment_intent" } }, 404);
+      expect(await adapter.readPaymentIntentState!(pending)).toBe("unreadable");
+      stripeAnswers({ id: "pi_other", status: "succeeded" });
+      expect(await adapter.readPaymentIntentState!(pending)).toBe("unreadable");
+      fetchMock.mockRejectedValue(new Error("network down"));
+      expect(await adapter.readPaymentIntentState!(pending)).toBe("unreadable");
+    });
+  });
 });

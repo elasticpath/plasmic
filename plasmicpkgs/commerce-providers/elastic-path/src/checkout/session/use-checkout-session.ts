@@ -55,7 +55,7 @@ export interface UseCheckoutSessionReturn {
    * Unlink the cart PaymentIntent after a failed/cancelled customer action
    * (POST …/abandon-payment).
    */
-  abandonPayment: () => Promise<SessionApiResponse>;
+  abandonPayment: (abandonData?: Record<string, unknown>) => Promise<SessionApiResponse>;
   /** Confirm a gateway action (e.g. Clover 3DS). */
   confirmPayment: (confirmData: Record<string, unknown>) => Promise<SessionApiResponse>;
   /** Clear the session cookie and reset local state. */
@@ -146,12 +146,14 @@ export function useCheckoutSession(
     [sessionUrl, mutate]
   );
 
-  const abandonPayment = useCallback(async (): Promise<SessionApiResponse> => {
+  const abandonPayment = useCallback(async (
+    abandonData: Record<string, unknown> = {}
+  ): Promise<SessionApiResponse> => {
     const resp = await sessionFetch<SessionApiResponse>(
       `${sessionUrl}/abandon-payment`,
       {
         method: "POST",
-        body: JSON.stringify({}),
+        body: JSON.stringify(abandonData),
       }
     );
     await mutate();

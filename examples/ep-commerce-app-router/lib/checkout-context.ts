@@ -85,6 +85,11 @@ export async function buildCheckoutContext(
         host: apiBaseUrl,
         clientId,
         getClientCredentialsToken,
+        // Lets resume read the PaymentIntent from Stripe before it confirms
+        // the order. Without them, resume relies on the keys EP Stripe
+        // Payment sends.
+        publishableKey: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || undefined,
+        stripeAccount: process.env.NEXT_PUBLIC_STRIPE_ACCOUNT_ID || undefined,
       })
     );
   }

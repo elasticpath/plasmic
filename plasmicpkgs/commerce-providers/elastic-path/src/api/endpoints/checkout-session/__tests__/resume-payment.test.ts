@@ -147,6 +147,7 @@ function createMockAdapter(): PaymentAdapter {
     paymentSequence: "cart_payment_intent",
     initializePayment: jest.fn().mockResolvedValue({ status: "succeeded" }),
     confirmPayment: jest.fn().mockResolvedValue({ status: "succeeded" }),
+    readPaymentIntentState: jest.fn().mockResolvedValue("settled"),
   } as PaymentAdapter;
 }
 
@@ -370,6 +371,31 @@ describe("handleResumePayment — guards", () => {
     expect(res.status).toBe(400);
     expect((res.body as any).error.code).toBe("SESSION_NOT_RESUMABLE");
     expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ publishableKey: "pk_test_abc", stripeAccount: "acct_123" }, { publishableKey: "pk_test_abc", stripeAccount: "acct_123" }],
+    [{ publishableKey: "pk_test_abc" }, { publishableKey: "pk_test_abc" }],
+    [{ publishableKey: "sk_test_secret" }, undefined],
+    [{ publishableKey: "pk_test_abc", stripeAccount: "https://evil" }, undefined],
+    [{}, undefined],
+  ])("reads the payment with well-formed request keys only (%j)", async (body, keys) => {
+    const adapter = createMockAdapter();
+    (adapter as any).readPaymentIntentState.mockResolvedValue("unverifiable");
+
+    const res = await handleResumePayment(
+      createMockReq(body),
+      createMockCtx(makeSession(), {}, adapter)
+    );
+
+    expect((adapter as any).readPaymentIntentState).toHaveBeenCalledWith(
+      expect.anything(),
+      keys
+    );
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("PAYMENT_STATUS_UNVERIFIED");
+    expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+    expect(epSdk.confirmOrder).not.toHaveBeenCalled();
   });
 
   it("returns 409 CART_MISMATCH when the cart has changed", async () => {

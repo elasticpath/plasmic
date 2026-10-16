@@ -208,6 +208,7 @@ function createMockAdapter(
     paymentSequence: "cart_payment_intent",
     initializePayment: jest.fn().mockResolvedValue(initResult),
     confirmPayment: jest.fn().mockResolvedValue(confirmResult),
+    readPaymentIntentState: jest.fn().mockResolvedValue("settled"),
   } as PaymentAdapter;
 }
 

@@ -26,6 +26,7 @@ import { isCartPaymentIntentAdapter } from "../../../checkout/session/payment-se
 import { clearCartPaymentIntentId } from "../../../checkout/session/clear-cart-payment-intent";
 import { buildShopperEpClient } from "../../../checkout/session/shopper-client";
 import { settleOnceOrBusy } from "../../../checkout/session/settle-once";
+import { readKeysFrom } from "../../../checkout/session/payment-challenge";
 import { createLogger } from "../../../utils/logger";
 import { toClientSession } from "../../../checkout/session/client-session";
 
@@ -108,7 +109,25 @@ export async function handleAbandonPayment(
   }
 
   const open = session;
-  return settleOnceOrBusy(open, () => abandonOpenChallenge(req, ctx, ttl, open));
+  const read = adapter.readPaymentIntentState?.bind(adapter);
+  return settleOnceOrBusy(open, async () => {
+    // A PaymentIntent that already took the payment must settle its order,
+    // not be unlinked from it. Unknown states keep the old behaviour.
+    if (read && (await read(open, readKeysFrom(req.body)).catch(() => null)) === "settled") {
+      return {
+        status: 409,
+        body: {
+          success: false,
+          error: {
+            message: "Your payment went through. Finishing your order.",
+            code: "PAYMENT_ALREADY_TAKEN",
+          },
+          data: { session: toClientSession(open) },
+        },
+      };
+    }
+    return abandonOpenChallenge(req, ctx, ttl, open);
+  });
 }
 
 async function abandonOpenChallenge(

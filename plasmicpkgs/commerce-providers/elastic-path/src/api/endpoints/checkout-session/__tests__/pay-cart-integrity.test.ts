@@ -17,6 +17,8 @@ jest.mock("@epcc-sdk/sdks-shopper", () => {
     "getAnOrder",
     "paymentSetup",
     "confirmOrder",
+    "getOrderItems",
+    "getCartItems",
     "updateAnOrder",
     "deleteAllCartItems",
     "getByContextAllProducts",
@@ -200,22 +202,35 @@ beforeEach(() => {
       };
     },
   });
-  registry.register("stripe3ds", {
-    paymentSequence: "cart_payment_intent",
+  const challengeAdapter = {
+    paymentSequence: "cart_payment_intent" as const,
     initializePayment: async (s: CheckoutSession) => {
       try {
         const pi = await ep.startChallenge(s.cartId);
         return {
-          status: "requires_action",
+          status: "requires_action" as const,
           clientToken: `${pi.id}_secret`,
           gatewayMetadata: { paymentIntentId: pi.id },
           actionData: { type: "stripe_3ds", paymentIntentId: pi.id },
         };
       } catch (err) {
-        return { status: "failed", errorMessage: (err as Error).message };
+        return { status: "failed" as const, errorMessage: (err as Error).message };
       }
     },
+  };
+  registry.register("stripe3ds", {
+    ...challengeAdapter,
+    readPaymentIntentState: async (s: CheckoutSession) => {
+      const pi = ep.paymentIntents.get(
+        s.payment.gatewayMetadata?.paymentIntentId as string
+      );
+      if (!pi) return "unreadable";
+      if (pi.status === "succeeded") return "settled";
+      if (pi.status === "requires_action") return "awaiting_action";
+      return "failed";
+    },
   });
+  registry.register("stripe3dsUnverified", challengeAdapter);
 });
 
 describe("a cart with nothing to buy", () => {
@@ -559,5 +574,107 @@ describe("a card that needs a 3DS challenge", () => {
     expect(browser.cookie?.payment.status).not.toBe("requires_action");
     expect(ep.cart(browser.cartId).paymentIntentId).toBeUndefined();
     expect(ep.charges).toEqual([]);
+  });
+
+  it("refuses a resume sent before the challenge is passed, and settles the order after it is", async () => {
+    const browser = new Browser(newCart());
+    await challenged(browser);
+
+    const early = await browser.resume();
+
+    expect(early.status).toBe(409);
+    expect((early.body as any).error.code).toBe("PAYMENT_STILL_REQUIRES_ACTION");
+    expect(sessionIn(early).payment.status).toBe("requires_action");
+    ep.passChallenge(browser.pendingPaymentIntent());
+    const done = await browser.resume();
+    expect(sessionIn(done).status).toBe("complete");
+    expect(ep.charges).toEqual([2799]);
+    expect(ep.chargedOrders().map((o) => [o.payment, o.total])).toEqual([
+      ["paid", 2799],
+    ]);
+  });
+
+  it("refuses to confirm when the gateway cannot report the payment's state, and the order can still settle", async () => {
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+    await browser.pay({ gateway: "stripe3dsUnverified" });
+    ep.passChallenge(browser.pendingPaymentIntent());
+
+    const res = await browser.resume();
+
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("PAYMENT_STATUS_UNVERIFIED");
+    expect((res.body as any).error.message).toBeTruthy();
+    expect(ep.orders[0].payment).toBe("unpaid");
+    expect(ep.orders[0].paymentIntentId).toBe(browser.pendingPaymentIntent());
+  });
+
+  it("refuses to abandon a challenge that was passed, and the order still settles", async () => {
+    const browser = new Browser(newCart());
+    await challenged(browser);
+    ep.passChallenge(browser.pendingPaymentIntent());
+
+    const abandoned = await browser.abandon();
+
+    expect(abandoned.status).toBe(409);
+    expect((abandoned.body as any).error.code).toBe("PAYMENT_ALREADY_TAKEN");
+    expect(ep.cart(browser.cartId).paymentIntentId).toBe(browser.pendingPaymentIntent());
+    const done = await browser.resume();
+    expect(sessionIn(done).status).toBe("complete");
+    expect(ep.paidOrders().map((o) => o.total)).toEqual([2799]);
+  });
+
+  it("drops the order and frees the cart when the challenge failed", async () => {
+    const browser = new Browser(newCart());
+    await challenged(browser);
+    ep.failChallenge(browser.pendingPaymentIntent());
+
+    const res = await browser.resume();
+
+    expect(sessionIn(res).payment.status).toBe("failed");
+    expect(sessionIn(res).order).toBeNull();
+    const paid = await browser.pay({ gateway: "stripe" });
+    expect(sessionIn(paid).status).toBe("complete");
+    expect(ep.chargedOrders().map((o) => o.total)).toEqual([2799]);
+  });
+
+  it("keeps the lines the shopper added during the challenge in the cart after the order completes", async () => {
+    const browser = new Browser(newCart());
+    await challenged(browser);
+    const cart = ep.cart(browser.cartId);
+    cart.lines.find((l) => l.sku === "p-plus-sub")!.quantity += 1;
+    cart.lines.push({
+      id: "line-added",
+      type: "cart_item",
+      sku: "p-extra",
+      product_id: "p-extra",
+      quantity: 2,
+      unit_price: { amount: 1000 },
+      value: { amount: 2000 },
+    });
+    ep.passChallenge(browser.pendingPaymentIntent());
+
+    const res = await browser.resume();
+
+    expect(sessionIn(res).status).toBe("complete");
+    expect(ep.paidOrders().map((o) => o.total)).toEqual([2799]);
+    const left = ep.cart(browser.cartId);
+    expect(
+      left.lines.map((l) => [l.sku, l.quantity]).sort()
+    ).toEqual([
+      ["p-extra", 2],
+      ["p-plus-sub", 1],
+    ]);
+    expect(left.paymentIntentId).toBeUndefined();
+  });
+
+  it("deletes the cart after the order completes when nothing was added", async () => {
+    const browser = new Browser(newCart());
+    await challenged(browser);
+    ep.passChallenge(browser.pendingPaymentIntent());
+
+    await browser.resume();
+
+    expect(ep.carts.get(browser.cartId)!.deleted).toBe(true);
   });
 });

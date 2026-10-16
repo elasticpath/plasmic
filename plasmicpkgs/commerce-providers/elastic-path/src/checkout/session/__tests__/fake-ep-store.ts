@@ -27,6 +27,8 @@ export interface FakeOrder {
   /** Copied from the cart at checkout; a confirm consumes it, as Elastic Path does. */
   paymentIntentId?: string;
   lines: Array<{ sku?: string; quantity: number; amount: number }>;
+  /** The cart line each order item came from, as `relationships.cart_item`. */
+  cartItems: Array<{ cartItemId: string; sku?: string; quantity: number }>;
 }
 
 export interface FakePaymentIntent {
@@ -215,6 +217,11 @@ export class FakeEpStore {
               quantity: l.quantity,
               amount: l.unit_price.amount * l.quantity,
             })),
+            cartItems: cart.lines.map((l) => ({
+              cartItemId: l.id,
+              sku: l.sku,
+              quantity: l.quantity,
+            })),
           };
           store.orders.push(order);
           return { data: { data: store.orderResource(order) } };
@@ -242,6 +249,33 @@ export class FakeEpStore {
           };
         }),
       confirmOrder: ({ path }: any) => after(() => store.confirm(path.orderID)),
+      getOrderItems: ({ path }: any) =>
+        after(() => {
+          const order = store.orders.find((o) => o.id === path.orderID);
+          if (!order) {
+            return { error: { errors: [{ status: 404, detail: "order not found" }] } };
+          }
+          return {
+            data: {
+              data: order.cartItems.map((item, i) => ({
+                id: `${order.id}-item-${i}`,
+                type: "order_item",
+                sku: item.sku,
+                quantity: item.quantity,
+                relationships: {
+                  cart_item: { data: { type: "cart_item", id: item.cartItemId } },
+                },
+              })),
+            },
+          };
+        }),
+      getCartItems: ({ path }: any) =>
+        after(() => {
+          const read = store.carts.get(path.cartID);
+          return read && !read.deleted
+            ? { data: { data: read.lines.map((l) => ({ ...l })) } }
+            : { data: { data: [] } };
+        }),
       updateAnOrder: () => after(() => ({ data: { data: {} } })),
       deleteAllCartItems: ({ path }: any) =>
         after(() => {
