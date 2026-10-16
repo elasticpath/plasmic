@@ -416,6 +416,21 @@ changes: same props, same slots, same data.
 
 ### Fixed
 
+A card payment whose order total is not the amount charged is no longer
+reported as a clean order. When a cart change made outside the storefront
+lands between the charge and the order, `/pay` marks the order for
+reconciliation (`external_ref`), answers `409` `PAYMENT_NEEDS_REVIEW` with
+`reconciliationPending: true` and the completed session, and tells the shopper
+both amounts. The Stripe adapter now reports the PaymentIntent's `amount` in
+`gatewayMetadata`.
+
+A cart with a promotion no longer answers `409` `CART_MISMATCH` on the first
+pay after a shipping rate is chosen. The cart check counts a promotion by its
+id and code, not its amount, which Elastic Path re-prices when the shipping
+line is added. Adding or removing a promotion, or changing an item, still
+answers `CART_MISMATCH`, and the charge is still checked against the shown
+total.
+
 After a paid order the ordered lines always leave the shopper's cart, an
 account cart included. Elastic Path will not delete the last cart linked to an
 account (400 "Last cart"), and cleanup used to log that and leave the paid

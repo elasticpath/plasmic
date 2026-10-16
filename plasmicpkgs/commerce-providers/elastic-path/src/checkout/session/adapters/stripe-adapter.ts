@@ -63,6 +63,13 @@ export interface StripeAdapterConfig {
   stripeAccount?: string;
 }
 
+/** The PaymentIntent's amount (minor units), when Elastic Path reports it. */
+function amountOf(pi: { amount?: unknown } | undefined): { amount?: number } {
+  return typeof pi?.amount === "number" && Number.isFinite(pi.amount)
+    ? { amount: pi.amount }
+    : {};
+}
+
 /**
  * Reads a PaymentIntent the way Stripe.js `retrievePaymentIntent` does: its
  * client secret plus a publishable key. The read changes nothing.
@@ -203,7 +210,7 @@ export function createStripeAdapter(
         return {
           status: "requires_action",
           clientToken: clientSecret,
-          gatewayMetadata: { paymentIntentId: piId },
+          gatewayMetadata: { paymentIntentId: piId, ...amountOf(pi) },
           actionData: {
             type: piStatus === "processing" ? "stripe_processing" : "stripe_3ds",
             paymentIntentId: piId,
@@ -221,7 +228,7 @@ export function createStripeAdapter(
         return {
           status: "succeeded",
           gatewayOrderId: piId!,
-          gatewayMetadata: { paymentIntentId: piId! },
+          gatewayMetadata: { paymentIntentId: piId!, ...amountOf(pi) },
         };
       }
 

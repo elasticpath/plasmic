@@ -605,6 +605,14 @@ describe("handlePay", () => {
           ? cartIn("EUR", EUR_ITEMS, 4860)
           : cartIn("USD", CART_ITEMS, 5400)
       );
+      epSdk.checkoutApi.mockResolvedValue({
+        data: {
+          data: {
+            id: "order-1",
+            meta: { display_price: { with_tax: { amount: 4860, currency: "EUR" } } },
+          },
+        },
+      } as any);
       const session = makeSession({
         cartHash: hashCart(EUR_ITEMS),
         totals: { subtotal: 4410, tax: 0, shipping: 450, total: 4860, currency: "EUR" },
