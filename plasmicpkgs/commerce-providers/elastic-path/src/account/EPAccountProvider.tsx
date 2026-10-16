@@ -181,6 +181,32 @@ async function loadAccountRoster(
   }
 }
 
+/**
+ * Name and email only. The public member id stays the one from get-session.
+ * A profile for any other id is ignored.
+ */
+function profileFieldsForMember(
+  member: { id?: unknown; name?: unknown; email?: unknown } | null | undefined,
+  sessionMemberId: string
+): { name?: string; email?: string } {
+  if (member?.id !== sessionMemberId) return {};
+  const profile: { name?: string; email?: string } = {};
+  if (typeof member.name === "string") profile.name = member.name;
+  if (typeof member.email === "string") profile.email = member.email;
+  return profile;
+}
+
+async function loadMemberProfile(
+  identity: EpIdentityClient,
+  sessionMemberId: string
+): Promise<{ name?: string; email?: string }> {
+  try {
+    return profileFieldsForMember(await identity.member(), sessionMemberId);
+  } catch {
+    return {};
+  }
+}
+
 export async function loadLiveAccountContext(
   identity: EpIdentityClient,
   options?: { rethrow?: boolean }
@@ -194,8 +220,16 @@ export async function loadLiveAccountContext(
     return accountContextFromSession(null);
   }
   if (!mapped.accountMember) return mapped;
-  const accountRoster = await loadAccountRoster(identity);
-  return { ...mapped, accountRoster };
+  const sessionMemberId = mapped.accountMember.id;
+  const [accountRoster, profile] = await Promise.all([
+    loadAccountRoster(identity),
+    loadMemberProfile(identity, sessionMemberId),
+  ]);
+  return {
+    ...mapped,
+    accountRoster,
+    accountMember: { id: sessionMemberId, ...profile },
+  };
 }
 
 function hasMemberIdentity(account: AccountContext): boolean {

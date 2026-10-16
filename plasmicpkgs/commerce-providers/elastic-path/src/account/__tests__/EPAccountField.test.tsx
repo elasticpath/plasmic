@@ -66,6 +66,8 @@ describe("EPAccountField", () => {
 
   it.each([
     ["accountMember.id", "sample-member"],
+    ["accountMember.name", "Sample Member"],
+    ["accountMember.email", "member@example.com"],
     ["selectedAccount.name", "Sample Company A"],
     ["selectedAccount.id", "sample-account-a"],
     ["lapsedAccount.name", ""],
@@ -100,6 +102,52 @@ describe("EPAccountField", () => {
     expect(container.textContent).toBe("");
   });
 
+  it("renders an empty member name and email for an id-only member", () => {
+    mockUseSelector.mockReturnValue(MOCK_ACCOUNT_LAPSED);
+    const { container: nameContainer } = render(
+      <EPAccountField field="accountMember.name" />
+    );
+    expect(nameContainer.textContent).toBe("");
+    const { container: emailContainer } = render(
+      <EPAccountField field="accountMember.email" />
+    );
+    expect(emailContainer.textContent).toBe("");
+    expect(
+      nameContainer.querySelector("[data-ep-account-field]")
+    ).not.toBeNull();
+  });
+
+  it("renders an empty member name and email for an anonymous shopper", () => {
+    mockUseSelector.mockReturnValue(MOCK_ACCOUNT_ANONYMOUS);
+    const { container } = render(
+      <EPAccountField field="accountMember.email" />
+    );
+    expect(container.textContent).toBe("");
+  });
+
+  it("renders an empty member name while the account is loading", () => {
+    mockUseSelector.mockReturnValue({
+      ...MOCK_ACCOUNT_SELECTED,
+      accountMember: null,
+      isLoading: true,
+    });
+    const { container } = render(
+      <EPAccountField field="accountMember.name" />
+    );
+    expect(container.textContent).toBe("");
+  });
+
+  it("renders an empty string when the member profile omits email", () => {
+    mockUseSelector.mockReturnValue({
+      ...MOCK_ACCOUNT_SELECTED,
+      accountMember: { id: "sample-member", name: "Sample Member" },
+    });
+    const { container } = render(
+      <EPAccountField field="accountMember.email" />
+    );
+    expect(container.textContent).toBe("");
+  });
+
   it("renders an empty string for selected account fields when none is selected", () => {
     mockUseSelector.mockReturnValue(MOCK_ACCOUNT_ANONYMOUS);
     const { container } = render(
@@ -127,26 +175,33 @@ describe("EPAccountField", () => {
       );
       expect(epAccountFieldMeta.importName).toBe("EPAccountField");
       const field = (epAccountFieldMeta.props as any).field;
-      expect(field.options.map((o: { value: string }) => o.value)).toEqual([
-        "accountMember.id",
-        "selectedAccount.name",
-        "selectedAccount.id",
-        "lapsedAccount.name",
-        "lapsedAccount.id",
+      expect(field.options).toEqual([
+        { label: "Member id", value: "accountMember.id" },
+        { label: "Member name", value: "accountMember.name" },
+        { label: "Member email", value: "accountMember.email" },
+        { label: "Selected account name", value: "selectedAccount.name" },
+        { label: "Selected account id", value: "selectedAccount.id" },
+        { label: "Lapsed account name", value: "lapsedAccount.name" },
+        { label: "Lapsed account id", value: "lapsedAccount.id" },
       ]);
       expect(field.defaultValue).toBe("selectedAccount.name");
     });
 
-    it("does not register member profile field choices", () => {
+    it("registers member name and email and no other member profile fields", () => {
       const values = (epAccountFieldMeta.props as any).field.options.map(
         (o: { value: string }) => o.value
       );
+      expect(values).toEqual(
+        expect.arrayContaining(["accountMember.name", "accountMember.email"])
+      );
       expect(values).not.toEqual(
         expect.arrayContaining([
-          "accountMember.name",
+          "accountMember.username",
+          "accountMember.givenName",
+          "accountMember.middleName",
+          "accountMember.familyName",
           "accountMember.firstName",
           "accountMember.lastName",
-          "accountMember.email",
         ])
       );
     });

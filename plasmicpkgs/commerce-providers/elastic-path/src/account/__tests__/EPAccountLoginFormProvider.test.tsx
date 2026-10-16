@@ -125,6 +125,8 @@ function installFetch(options?: {
   /** Session `get-session` returns after the first, anonymous read. */
   postLoginSession?: Record<string, unknown>;
   roster?: { accounts: unknown[]; total: number };
+  member?: unknown;
+  memberFails?: boolean;
 }) {
   let getSessionCount = 0;
   let releaseLogin: () => void = () => {};
@@ -167,6 +169,24 @@ function installFetch(options?: {
     }
     if (target.includes("/account/roster")) {
       return jsonResponse(options?.roster ?? { accounts: [], total: 0 });
+    }
+    if (target.includes("/account/member")) {
+      if (options?.memberFails) {
+        return jsonResponse(
+          {
+            code: "account_member_read_failed",
+            message: "Elastic Path rejected the account-member read.",
+          },
+          false
+        );
+      }
+      if (options?.member !== undefined) return jsonResponse(options.member);
+      const session = options?.postLoginSession;
+      const id =
+        session && typeof session.epMemberId === "string"
+          ? session.epMemberId
+          : "member-1";
+      return jsonResponse({ id });
     }
     return jsonResponse({}, false);
   });
@@ -253,6 +273,7 @@ describe("EPAccountLoginFormProvider", () => {
     async function signIn(options: {
       postLoginSession: Record<string, unknown>;
       roster: { accounts: unknown[]; total: number };
+      member?: unknown;
     }) {
       const installed = installFetch(options);
       const ref = renderForm();
@@ -326,6 +347,31 @@ describe("EPAccountLoginFormProvider", () => {
         lapsedAccount: null,
         isLoading: false,
         isSelecting: false,
+      });
+    });
+
+    it("publishes member name and email from identity.member()", async () => {
+      await signIn({
+        postLoginSession: {
+          epMemberId: "member-1",
+          epAccount: { id: "acct-1", name: "Acme" },
+        },
+        roster: { accounts: [{ id: "acct-1", name: "Acme" }], total: 1 },
+        member: {
+          id: "member-1",
+          name: "Ada Lovelace",
+          email: "ada@example.com",
+        },
+      });
+
+      expect(publishedAccount().accountMember).toEqual({
+        id: "member-1",
+        name: "Ada Lovelace",
+        email: "ada@example.com",
+      });
+      expect(publishedAccount().selectedAccount).toEqual({
+        id: "acct-1",
+        name: "Acme",
       });
     });
 
@@ -658,6 +704,44 @@ describe("EPAccountLoginFormProvider", () => {
         await ref.current!.submit();
       });
     }
+
+    it("navigates after a failed member profile read", async () => {
+      const { fetchImpl } = installFetch({
+        postLoginSession: {
+          epMemberId: "member-1",
+          epAccount: { id: "acct-1", name: "Acme" },
+        },
+        roster: { accounts: [{ id: "acct-1", name: "Acme" }], total: 1 },
+        memberFails: true,
+      });
+      const ref = renderForm({ redirectUrl: "/account" });
+      await waitFor(() => {
+        expect(publishedAccount().isLoading).toBe(false);
+      });
+      fireEvent.click(screen.getByTestId("fill"));
+      await act(async () => {
+        await ref.current!.submit();
+      });
+
+      expect(
+        fetchImpl.mock.calls.filter(([url]) =>
+          String(url).includes("/account/member")
+        )
+      ).not.toHaveLength(0);
+      expect(publishedForm()).toEqual({
+        status: "submitted",
+        error: null,
+        isSubmitting: false,
+      });
+      expect(publishedAccount().accountMember).toEqual({ id: "member-1" });
+      expect(publishedAccount().selectedAccount).toEqual({
+        id: "acct-1",
+        name: "Acme",
+      });
+      expect(publishedAccount().isLoading).toBe(false);
+      expect(window.location.assign).toHaveBeenCalledTimes(1);
+      expect(window.location.assign).toHaveBeenCalledWith("/account");
+    });
 
     it("navigates to a configured /account after the reload fulfills", async () => {
       await signIn({ redirectUrl: "/account" });

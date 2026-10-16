@@ -801,8 +801,16 @@ export const MOCK_SHIPPING_RATES = [
 // Account identity mock data ($ctx.account)
 // ---------------------------------------------------------------------------
 
+/** Authenticated member whose profile cannot be read. */
+const SAMPLE_ACCOUNT_MEMBER_ID_ONLY: AccountMember = {
+  id: "sample-member",
+};
+
+/** Authenticated member with a readable account-member profile. */
 const SAMPLE_ACCOUNT_MEMBER: AccountMember = {
   id: "sample-member",
+  name: "Sample Member",
+  email: "member@example.com",
 };
 
 const SAMPLE_COMPANY_A: AccountRef = {
@@ -861,7 +869,7 @@ export const MOCK_ACCOUNT_SELECTED: AccountContext = {
 /** Signed-in member whose organisation credential has lapsed. */
 export const MOCK_ACCOUNT_LAPSED: AccountContext = {
   state: "lapsed",
-  accountMember: SAMPLE_ACCOUNT_MEMBER,
+  accountMember: SAMPLE_ACCOUNT_MEMBER_ID_ONLY,
   selectedAccount: null,
   accountRoster: SAMPLE_ACCOUNT_ROSTER,
   lapsedAccount: SAMPLE_COMPANY_A,
