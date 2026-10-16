@@ -19,6 +19,7 @@ import type {
   CheckoutSession,
   PaymentAdapterResult,
 } from "../../../checkout/session/types";
+import { settleOnceOrBusy } from "../../../checkout/session/settle-once";
 import { createLogger } from "../../../utils/logger";
 import { toClientSession } from "../../../checkout/session/client-session";
 
@@ -89,8 +90,18 @@ export async function handleConfirm(
     };
   }
 
+  const open = session;
+  return settleOnceOrBusy(open, () => confirmOpenSession(req, ctx, ttl, open));
+}
+
+async function confirmOpenSession(
+  req: SessionRequest,
+  ctx: SessionHandlerContext,
+  ttl: number,
+  session: CheckoutSession
+): Promise<SessionResponse> {
   // 3. Delegate to adapter
-  const adapter = ctx.adapterRegistry.getAdapter(session.payment.gateway);
+  const adapter = ctx.adapterRegistry.getAdapter(session.payment.gateway!);
   if (!adapter) {
     return {
       status: 400,
@@ -146,8 +157,8 @@ export async function handleConfirm(
 
   if (adapterResult.status === "succeeded") {
     // Capture the EP transaction
-    const orderId = session.order.id;
-    const transactionId = session.order.transactionId;
+    const orderId = session.order!.id;
+    const transactionId = session.order!.transactionId;
 
     if (!transactionId) {
       log.error("Cannot capture EP transaction — transactionId missing from session.order", {

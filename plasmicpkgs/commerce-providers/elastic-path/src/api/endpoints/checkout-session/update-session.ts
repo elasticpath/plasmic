@@ -24,6 +24,10 @@ import { sessionAddressesEquivalent } from "../../../checkout/session/address-ut
 import { createLogger } from "../../../utils/logger";
 import { toClientSession } from "../../../checkout/session/client-session";
 import { isSettling } from "../../../checkout/session/settle-once";
+import {
+  awaitsCartPaymentChallenge,
+  paymentActionPending,
+} from "../../../checkout/session/payment-challenge";
 
 const log = createLogger("UpdateSession");
 
@@ -104,6 +108,10 @@ export async function handleUpdateSession(
         },
       },
     };
+  }
+
+  if (awaitsCartPaymentChallenge(session, ctx)) {
+    return paymentActionPending(session);
   }
 
   if (isSettling(session.cartId)) {

@@ -81,6 +81,13 @@ beforeEach(() => {
   mockGetACart.mockResolvedValue(CART_RESPONSE(0));
   mockCheckoutApi.mockReset();
   mockGetAnOrder.mockReset();
+  // Elastic Path refuses an order read with the shopper's implicit token.
+  mockGetAnOrder.mockResolvedValue({
+    data: undefined,
+    error: {
+      errors: [{ status: 403, code: "gateway.scopes.authorise", title: "Unauthorised call" }],
+    },
+  });
   mockPaymentSetup.mockReset();
   mockDeleteAllCartItems.mockReset();
   mockUpdateACart.mockReset();
@@ -194,31 +201,10 @@ describe("epPlaceOrder payment method rule", () => {
     expect(mockDeleteAllCartItems).not.toHaveBeenCalled();
   });
 
-  it("reads the order back when checkout reports no total, and completes a free one", async () => {
-    mockCheckoutApi.mockResolvedValue({
-      data: { data: { id: "order-1", type: "order", status: "complete" } },
-    });
-    mockGetAnOrder.mockResolvedValue(ORDER_RESPONSE(0));
-    mockPaymentSetup.mockResolvedValue({
-      data: { data: { id: "txn-1", status: "complete" } },
-    });
-
-    const result = await withEpSession({ ...SESSION_BASE, cartId: "cart-1" }, () =>
-      epPlaceOrder({
-        customer: { name: "Ada Lovelace", email: "ada@ep.com" },
-        billingAddress: BILLING,
-      })
-    );
-
-    expect(result).toMatchObject({ total: 0, currency: "CHF", isFree: true });
-    expect(mockPaymentSetup).toHaveBeenCalled();
-  });
-
-  it("takes no payment when no order total can be read", async () => {
+  it("takes no payment when checkout reports no order total", async () => {
     mockCheckoutApi.mockResolvedValue({
       data: { data: { id: "order-1", type: "order" } },
     });
-    mockGetAnOrder.mockResolvedValue({ data: { data: { id: "order-1" } } });
 
     await expect(
       withEpSession({ ...SESSION_BASE, cartId: "cart-1" }, () =>
@@ -296,9 +282,8 @@ describe("epPlaceOrder", () => {
     mockGetACart.mockResolvedValue(CART_RESPONSE(91900));
     mockCheckoutApi.mockResolvedValue(ORDER_RESPONSE(91900));
     mockPaymentSetup.mockResolvedValue({
-      data: { data: { id: "txn-1", status: "complete" } },
+      data: { data: { id: "txn-1", status: "complete", transaction_type: "purchase" } },
     });
-    mockGetAnOrder.mockResolvedValue(ORDER_RESPONSE(91900));
     mockDeleteAllCartItems.mockResolvedValue({});
 
     const result = await withEpSession({ ...SESSION_BASE, cartId: "cart-1" }, () =>
@@ -346,30 +331,36 @@ describe("epPlaceOrder", () => {
     });
   });
 
-  it("reports the order status after payment, not the status checkout returned", async () => {
-    mockGetACart.mockResolvedValue(CART_RESPONSE(91900));
-    const unpaid = ORDER_RESPONSE(91900);
-    unpaid.data.data.status = "incomplete";
-    unpaid.data.data.payment = "unpaid";
-    mockCheckoutApi.mockResolvedValue(unpaid);
-    mockPaymentSetup.mockResolvedValue({
-      data: { data: { id: "txn-1", status: "complete" } },
-    });
-    mockGetAnOrder.mockResolvedValue(ORDER_RESPONSE(91900));
-    mockDeleteAllCartItems.mockResolvedValue({});
+  it.each([
+    ["purchase", "complete"],
+    ["authorize", "processing"],
+  ])(
+    "reports the order status a %s sets, not the status checkout returned",
+    async (method, status) => {
+      mockGetACart.mockResolvedValue(CART_RESPONSE(91900));
+      const unpaid = ORDER_RESPONSE(91900);
+      unpaid.data.data.status = "incomplete";
+      unpaid.data.data.payment = "unpaid";
+      mockCheckoutApi.mockResolvedValue(unpaid);
+      mockPaymentSetup.mockResolvedValue({
+        data: { data: { id: "txn-1", status: "complete", transaction_type: method } },
+      });
+      mockDeleteAllCartItems.mockResolvedValue({});
 
-    const result = await withEpSession({ ...SESSION_BASE, cartId: "cart-1" }, () =>
-      epPlaceOrder(
-        {
-          customer: { name: "Ada Lovelace", email: "ada@ep.com" },
-          billingAddress: BILLING,
-        },
-        { allowManual: () => true }
-      )
-    );
+      const result = await withEpSession({ ...SESSION_BASE, cartId: "cart-1" }, () =>
+        epPlaceOrder(
+          {
+            customer: { name: "Ada Lovelace", email: "ada@ep.com" },
+            billingAddress: BILLING,
+            paymentMethod: method,
+          },
+          { allowManual: () => true }
+        )
+      );
 
-    expect(result.status).toBe("complete");
-  });
+      expect(result.status).toBe(status);
+    }
+  );
 
   it("flags a zero-total order as free and still completes it via manual purchase", async () => {
     mockCheckoutApi.mockResolvedValue(ORDER_RESPONSE(0));

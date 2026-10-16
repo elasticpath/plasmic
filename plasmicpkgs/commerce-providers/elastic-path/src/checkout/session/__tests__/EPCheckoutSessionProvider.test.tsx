@@ -614,6 +614,45 @@ describe("EPCheckoutSessionProvider placeOrder 3DS continuation", () => {
     expect(result.data.session.status).toBe("complete");
   });
 
+  it("continues the open challenge when pay answers that one is pending", async () => {
+    const pending = {
+      status: "open",
+      payment: {
+        gateway: "stripe",
+        status: "requires_action",
+        clientToken: "pi_secret",
+      },
+    };
+    mockPlaceOrder.mockResolvedValue({
+      success: false,
+      error: { code: "PAYMENT_ACTION_PENDING", message: "Finish the card check" },
+      data: { session: pending },
+    });
+
+    const result = await placeWithGateway("stripe", mockCompleteRequiresAction);
+
+    expect(mockCompleteRequiresAction).toHaveBeenCalledWith(pending);
+    expect(result.data.session.status).toBe("complete");
+  });
+
+  it("does not continue another gateway's pending challenge", async () => {
+    mockPlaceOrder.mockResolvedValue({
+      success: false,
+      error: { code: "PAYMENT_ACTION_PENDING", message: "Finish the card check" },
+      data: {
+        session: {
+          status: "open",
+          payment: { gateway: "stripe", status: "requires_action", clientToken: "pi_secret" },
+        },
+      },
+    });
+
+    const result = await placeWithGateway("paypal", mockCompleteRequiresAction);
+
+    expect(mockCompleteRequiresAction).not.toHaveBeenCalled();
+    expect(result.error.code).toBe("PAYMENT_ACTION_PENDING");
+  });
+
   it("invokes completeRequiresAction for a non-stripe gateway that registered it", async () => {
     const paySession = {
       status: "open",

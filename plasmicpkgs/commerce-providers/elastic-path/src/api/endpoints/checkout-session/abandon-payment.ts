@@ -9,6 +9,8 @@
  * Only valid while session.payment.status is requires_action (the 3DS
  * challenge is still open). Must not run after a successful handleNextAction
  * → resumePayment path (resume requires the same status and consumes it).
+ * Runs under the per-cart settle-once guard, so it never races a resume.
+ * The session drops the order /pay held for the abandoned PaymentIntent.
  *
  * Does not create a PaymentIntent, call updateCartPaymentIntent, confirmOrder,
  * checkoutApi, or /confirm.
@@ -23,6 +25,7 @@ import { applyAbandonedRequiresAction } from "../../../checkout/session/session-
 import { isCartPaymentIntentAdapter } from "../../../checkout/session/payment-sequence";
 import { clearCartPaymentIntentId } from "../../../checkout/session/clear-cart-payment-intent";
 import { buildShopperEpClient } from "../../../checkout/session/shopper-client";
+import { settleOnceOrBusy } from "../../../checkout/session/settle-once";
 import { createLogger } from "../../../utils/logger";
 import { toClientSession } from "../../../checkout/session/client-session";
 
@@ -104,6 +107,16 @@ export async function handleAbandonPayment(
     };
   }
 
+  const open = session;
+  return settleOnceOrBusy(open, () => abandonOpenChallenge(req, ctx, ttl, open));
+}
+
+async function abandonOpenChallenge(
+  req: SessionRequest,
+  ctx: SessionHandlerContext,
+  ttl: number,
+  session: CheckoutSession
+): Promise<SessionResponse> {
   const clearResult = await clearCartPaymentIntentId({
     client: buildShopperEpClient(ctx),
     cartId: session.cartId,

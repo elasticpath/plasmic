@@ -1,7 +1,6 @@
 import {
   checkoutApi,
   deleteAllCartItems,
-  getAnOrder,
   updateACart,
 } from "@epcc-sdk/sdks-shopper";
 import { buildEpClient, isUsableAuth } from "./ep-client";
@@ -11,7 +10,7 @@ import {
   manualPaymentAllowed,
   type ManualPaymentRule,
 } from "../checkout/session/manual-payment-rule";
-import { readOrderTotal } from "../checkout/session/order-total";
+import { totalOf } from "../checkout/session/order-total";
 import {
   orderRuleInput,
   takeOrderPayment,
@@ -83,7 +82,10 @@ export interface EpPlaceOrderInput {
 
 export interface EpPlaceOrderResult {
   orderId: string;
-  /** Order status read after payment; empty when that read fails. */
+  /**
+   * The order status the payment sets: `complete` after a purchase or
+   * capture, `processing` after an authorization; empty for any other.
+   */
   status: string;
   payment: string;
   total: number;
@@ -135,18 +137,25 @@ export function normalizeAddress(a: EpPlaceOrderAddress | undefined) {
   };
 }
 
-/** The order status Elastic Path reports once payment is taken; undefined when the read fails. */
-async function orderStatusAfterPayment(
-  client: Parameters<typeof getAnOrder>[0]["client"],
-  orderId: string
-): Promise<string | undefined> {
-  try {
-    const res = await getAnOrder({ client, path: { orderID: orderId } });
-    const status = (res as { data?: { data?: { status?: unknown } } })?.data
-      ?.data?.status;
-    return typeof status === "string" ? status : undefined;
-  } catch {
-    return undefined;
+/**
+ * The order status Elastic Path sets for the payment taken. The shopper's
+ * token cannot read the order back (Elastic Path answers 403), so the status
+ * comes from the transaction: a completed purchase or capture leaves the
+ * order `complete`, a completed authorization leaves it `processing`.
+ */
+function orderStatusAfterPayment(transaction: {
+  status?: unknown;
+  transaction_type?: unknown;
+} | undefined): string {
+  if (transaction?.status !== "complete") return "";
+  switch (transaction.transaction_type) {
+    case "purchase":
+    case "capture":
+      return "complete";
+    case "authorize":
+      return "processing";
+    default:
+      return "";
   }
 }
 
@@ -224,7 +233,9 @@ export async function epPlaceOrder(
     throw new Error(`epPlaceOrder: checkout did not return an order (${detail})`);
   }
 
-  const orderTotal = await readOrderTotal(client, order.id, order);
+  // The shopper's token cannot read the order back, so the total is the one
+  // checkout returned.
+  const orderTotal = totalOf(order);
   if (!orderTotal) {
     throw new Error(`epPlaceOrder: no order total for order ${order.id}`);
   }
@@ -248,9 +259,10 @@ export async function epPlaceOrder(
       })`
     );
   }
-  const payment = (payRes as { data?: { data?: { status?: unknown } } })
-    ?.data?.data;
-  const status = await orderStatusAfterPayment(client, order.id);
+  const payment = (
+    payRes as { data?: { data?: { status?: unknown; transaction_type?: unknown } } }
+  )?.data?.data;
+  const status = orderStatusAfterPayment(payment);
 
   // 4. Clear the cart on success (best-effort — a failed clear is non-fatal).
   if (input.clearCart !== false) {
@@ -263,7 +275,7 @@ export async function epPlaceOrder(
 
   return {
     orderId: order.id,
-    status: status ?? "",
+    status,
     payment:
       (payment?.status as string | undefined) ??
       (order.payment as string | undefined) ??

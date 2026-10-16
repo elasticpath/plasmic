@@ -720,7 +720,7 @@ describe("handleResumePayment — unknown confirmOrder error", () => {
 });
 
 describe("handleResumePayment — failed / cancelled PaymentIntent", () => {
-  it("marks payment failed, keeps session open, and does not complete", async () => {
+  it("marks payment failed, keeps session open, does not complete, and frees the cart for a new payment", async () => {
     epSdk.confirmOrder.mockRejectedValue(
       new Error("PaymentIntent canceled")
     );
@@ -734,7 +734,10 @@ describe("handleResumePayment — failed / cancelled PaymentIntent", () => {
     const session = (res.body as any).data.session;
     expect(session.status).toBe("open");
     expect(session.payment.status).toBe("failed");
-    expect(session.order?.id).toBe("order-1");
+    expect(session.order).toBeNull();
+    expect(epSdk.updateACart).toHaveBeenCalledWith(
+      expect.objectContaining({ body: { data: { payment_intent_id: "" } } })
+    );
     expect(epSdk.deleteACart).not.toHaveBeenCalled();
     expect(epSdk.createCartPaymentIntent).not.toHaveBeenCalled();
   });
@@ -750,7 +753,7 @@ describe("handleResumePayment — failed / cancelled PaymentIntent", () => {
     expect(res.status).toBe(200);
     expect((res.body as any).data.session.status).toBe("open");
     expect((res.body as any).data.session.payment.status).toBe("failed");
-    expect((res.body as any).data.session.order?.id).toBe("order-1");
+    expect((res.body as any).data.session.order).toBeNull();
   });
 });
 

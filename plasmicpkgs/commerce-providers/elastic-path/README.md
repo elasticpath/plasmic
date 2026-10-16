@@ -544,12 +544,23 @@ promotions) returns `409` with code `EMPTY_CART`, both when a checkout session
 is created and at pay. Pay charges only the total the session last returned.
 When the cart's total differs, pay charges nothing and returns `409` with
 code `CART_MISMATCH` (the lines changed) or `TOTAL_CHANGED`, and the session
-it returns carries the new total. Pay settles at most one order per cart: while
-a pay for a cart runs, another pay from the same checkout session gets the same
-response, and one from a different checkout session gets `409` with code
-`CHECKOUT_IN_PROGRESS`, as does a session update. This guard holds within one
-server process. With more than one server instance, send each checkout
-session's requests to the same instance.
+it returns carries the new total. A cart settles at most one order: pay,
+resume-payment and abandon-payment share one guard per cart. While one of
+them runs for a cart, another request from the same checkout session gets the
+same response, and one from a different checkout session gets `409` with code
+`CHECKOUT_IN_PROGRESS`, as does a session update. A cart write while the
+cart's payment runs is refused with code `checkout_in_progress`. This guard
+holds within one server process. With more than one server instance, send
+each checkout session's requests to the same instance.
+
+When a card needs a 3DS challenge, pay creates the order first and returns
+the challenge only when that order's total is the total the session showed
+(else `409` with `ORDER_TOTAL_CHANGED`). Resume-payment confirms that order,
+so a cart change during the challenge does not change what is ordered. While
+the challenge is open, pay and session updates return `409` with code
+`PAYMENT_ACTION_PENDING` and the open session; finish the challenge (resume)
+or cancel it (abandon) first. EP Checkout Session Provider and EP Stripe
+Payment do this for you.
 
 Pass the session's `locale` and `currency` on `SessionHandlerContext` as well,
 from the same `getSession`:

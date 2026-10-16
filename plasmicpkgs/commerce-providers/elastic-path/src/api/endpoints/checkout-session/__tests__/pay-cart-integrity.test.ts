@@ -41,6 +41,10 @@ const { handleCreateSession } =
 const { handleUpdateSession } =
   require("../update-session") as typeof import("../update-session");
 const { handlePay } = require("../pay") as typeof import("../pay");
+const { handleResumePayment } =
+  require("../resume-payment") as typeof import("../resume-payment");
+const { handleAbandonPayment } =
+  require("../abandon-payment") as typeof import("../abandon-payment");
 const { createAdapterRegistry } =
   require("../../../../checkout/session/adapter-registry") as typeof import("../../../../checkout/session/adapter-registry");
 const { createManualAdapter } =
@@ -129,6 +133,18 @@ class Browser {
     return pay(this.req(body), this.ctx());
   }
 
+  resume(): Promise<SessionResponse> {
+    return handleResumePayment(this.req({}), this.ctx());
+  }
+
+  abandon(): Promise<SessionResponse> {
+    return handleAbandonPayment(this.req({}), this.ctx());
+  }
+
+  pendingPaymentIntent(): string {
+    return this.cookie!.payment.gatewayMetadata!.paymentIntentId as string;
+  }
+
   shownTotal(): number | undefined {
     return this.cookie?.totals?.total;
   }
@@ -182,6 +198,22 @@ beforeEach(() => {
         gatewayOrderId: pi,
         gatewayMetadata: { paymentIntentId: pi },
       };
+    },
+  });
+  registry.register("stripe3ds", {
+    paymentSequence: "cart_payment_intent",
+    initializePayment: async (s: CheckoutSession) => {
+      try {
+        const pi = await ep.startChallenge(s.cartId);
+        return {
+          status: "requires_action",
+          clientToken: `${pi.id}_secret`,
+          gatewayMetadata: { paymentIntentId: pi.id },
+          actionData: { type: "stripe_3ds", paymentIntentId: pi.id },
+        };
+      } catch (err) {
+        return { status: "failed", errorMessage: (err as Error).message };
+      }
     },
   });
 });
@@ -370,5 +402,162 @@ describe("the shipping line", () => {
         [{ sku: EP_SHIPPING_LINE_SKU, quantity: 1, amount: 599 }]
       );
     }
+  });
+});
+
+describe("a card that needs a 3DS challenge", () => {
+  async function challenged(browser: Browser): Promise<SessionResponse> {
+    await readyToPay(browser);
+    const res = await browser.pay({ gateway: "stripe3ds" });
+    expect(res.status).toBe(200);
+    expect(sessionIn(res).payment.status).toBe("requires_action");
+    return res;
+  }
+
+  it("settles one order when the browser sends three resumes at once", async () => {
+    const browser = new Browser(newCart());
+    await challenged(browser);
+    ep.passChallenge(browser.pendingPaymentIntent());
+
+    const results = await Promise.all([
+      browser.resume(),
+      browser.resume(),
+      browser.resume(),
+    ]);
+
+    expect(results.map((r) => r.status)).toEqual([200, 200, 200]);
+    const ids = results.map((r) => sessionIn(r).order.id);
+    expect(new Set(ids).size).toBe(1);
+    expect(ep.charges).toEqual([2799]);
+    expect(ep.chargedOrders().map((o) => [o.payment, o.total])).toEqual([
+      ["paid", 2799],
+    ]);
+  });
+
+  it("settles one order when a pay and a resume from one browser arrive together", async () => {
+    const browser = new Browser(newCart());
+    await challenged(browser);
+    ep.passChallenge(browser.pendingPaymentIntent());
+
+    await Promise.all([browser.resume(), browser.pay({ gateway: "stripe3ds" })]);
+
+    expect(ep.chargedOrders()).toHaveLength(1);
+    expect(ep.paidOrders().map((o) => o.total)).toEqual([2799]);
+  });
+
+  it("answers a resume replayed with the pre-resume session with the same order and leaves the next cart alone", async () => {
+    const browser = new Browser(newCart());
+    await challenged(browser);
+    ep.passChallenge(browser.pendingPaymentIntent());
+    const stale = clone(browser.cookie);
+    const first = await browser.resume();
+    expect(sessionIn(first).status).toBe("complete");
+    ep.addCart(browser.cartId, [
+      { product_id: "p-next", sku: "p-next", quantity: 1, unit_price: { amount: 1000 } },
+    ]);
+    browser.cookie = stale;
+
+    const replay = await browser.resume();
+
+    expect(replay.status).toBe(200);
+    expect(sessionIn(replay).order.id).toBe(sessionIn(first).order.id);
+    expect(ep.orders).toHaveLength(1);
+    expect(ep.total(browser.cartId)).toBe(1000);
+  });
+
+  it("orders exactly what was charged when the cart changes while the challenge is open", async () => {
+    const browser = new Browser(newCart());
+    await challenged(browser);
+    ep.cart(browser.cartId).lines.push({
+      id: "line-added",
+      type: "cart_item",
+      sku: "p-extra",
+      product_id: "p-extra",
+      quantity: 1,
+      unit_price: { amount: 2200 },
+      value: { amount: 2200 },
+    });
+    ep.passChallenge(browser.pendingPaymentIntent());
+
+    const res = await browser.resume();
+
+    expect(res.status).toBe(200);
+    expect(sessionIn(res).status).toBe("complete");
+    expect(ep.charges).toEqual([2799]);
+    expect(ep.chargedOrders().map((o) => [o.payment, o.total])).toEqual([
+      ["paid", 2799],
+    ]);
+    expect(ep.orders[0].lines.map((l) => l.sku)).not.toContain("p-extra");
+  });
+
+  it("answers a pay sent while the challenge is open with the open challenge, and takes no new payment", async () => {
+    const browser = new Browser(newCart());
+    const first = await challenged(browser);
+
+    const again = await browser.pay({ gateway: "stripe3ds" });
+
+    expect(again.status).toBe(409);
+    expect((again.body as any).error.code).toBe("PAYMENT_ACTION_PENDING");
+    expect(sessionIn(again).payment.status).toBe("requires_action");
+    expect(sessionIn(again).payment.clientToken).toBe(
+      sessionIn(first).payment.clientToken
+    );
+    ep.passChallenge(browser.pendingPaymentIntent());
+    const resumed = await browser.resume();
+    expect(sessionIn(resumed).status).toBe("complete");
+    expect(ep.charges).toEqual([2799]);
+    expect(ep.paidOrders().map((o) => o.total)).toEqual([2799]);
+  });
+
+  it("refuses a checkout change while the challenge is open", async () => {
+    const browser = new Browser(newCart());
+    await challenged(browser);
+
+    const change = await browser.update({ selectedShippingRateId: RATE.id });
+
+    expect(change.status).toBe(409);
+    expect((change.body as any).error.code).toBe("PAYMENT_ACTION_PENDING");
+  });
+
+  it("lets the shopper pay again after a failed challenge, and settles one order", async () => {
+    const browser = new Browser(newCart());
+    await challenged(browser);
+    ep.failChallenge(browser.pendingPaymentIntent());
+
+    const abandoned = await browser.abandon();
+    expect(abandoned.status).toBe(200);
+    const paid = await browser.pay({ gateway: "stripe" });
+
+    expect(paid.status).toBe(200);
+    expect(sessionIn(paid).status).toBe("complete");
+    expect(ep.charges).toEqual([2799]);
+    expect(ep.chargedOrders().map((o) => [o.payment, o.total])).toEqual([
+      ["paid", 2799],
+    ]);
+  });
+
+  it("does not start a challenge when the cart changes before its order is held", async () => {
+    registry.register("stripe3dsRace", {
+      paymentSequence: "cart_payment_intent",
+      initializePayment: async (s: CheckoutSession) => {
+        const pi = await ep.startChallenge(s.cartId);
+        ep.cart(s.cartId).lines[0].quantity += 1;
+        return {
+          status: "requires_action",
+          clientToken: `${pi.id}_secret`,
+          gatewayMetadata: { paymentIntentId: pi.id },
+        };
+      },
+    });
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+
+    const res = await browser.pay({ gateway: "stripe3dsRace" });
+
+    expect(res.status).toBe(409);
+    expect(JSON.stringify(res.body)).not.toContain("_secret");
+    expect(browser.cookie?.payment.status).not.toBe("requires_action");
+    expect(ep.cart(browser.cartId).paymentIntentId).toBeUndefined();
+    expect(ep.charges).toEqual([]);
   });
 });

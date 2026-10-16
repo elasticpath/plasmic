@@ -16,8 +16,11 @@
  *      c. Run cart cleanup (deletes the EP cart; failures swallowed)
  *      d. applyPaymentSucceeded → session.status = "complete"
  *   6. On failed: applyPaymentFailed → session stays open, payment.status=failed
- *   7. On requires_action: applyPaymentRequiresAction → session stays open,
- *      payment.status=requires_action. No order, no cart cleanup.
+ *   7. On requires_action: a cart PaymentIntent's order is created at once
+ *      (its total must be the shown total, else the challenge is refused);
+ *      session stays open with payment.status=requires_action. No cart
+ *      cleanup. While that challenge is open, pay answers 409
+ *      PAYMENT_ACTION_PENDING with the session.
  *   8. Persist session, return 200
  *
  * Slices 2+ add: resume-payment route, subscription gate (ACCOUNT_REQUIRED),
@@ -88,7 +91,11 @@ import {
   totalsFromDisplayPrice,
 } from "../../../checkout/session/session-totals";
 import { resolveShippingRate } from "../../../checkout/session/cart-shipping";
-import { settleOnce } from "../../../checkout/session/settle-once";
+import { settleOnceOrBusy } from "../../../checkout/session/settle-once";
+import {
+  awaitsCartPaymentChallenge,
+  paymentActionPending,
+} from "../../../checkout/session/payment-challenge";
 import {
   MANUAL_GATEWAY as FREE_ORDER_GATEWAY,
   MANUAL_PURCHASE_METHOD as FREE_ORDER_METHOD,
@@ -470,6 +477,82 @@ async function persistFailedPayment(
   }
 }
 
+/**
+ * A cart PaymentIntent waits for a 3DS challenge. The order is created now,
+ * from the cart the PaymentIntent was priced on, so a cart change during the
+ * challenge cannot change what is ordered. The challenge is handed to the
+ * shopper only when that order's total is the total the shopper was shown.
+ */
+async function holdOrderForChallenge(
+  params: PayContinuation,
+  adapterResult: PaymentAdapterResult
+): Promise<SessionResponse> {
+  const { ctx, session, adminClient, expectedTotal } = params;
+
+  const release = async () => {
+    const cleared = await clearCartPaymentIntentId({
+      client: adminClient,
+      cartId: session.cartId,
+    });
+    if (!cleared.ok) {
+      log.error("Failed to unlink a refused PaymentIntent from the cart", {
+        cartId: session.cartId,
+        error: cleared.errorMessage,
+      } as Record<string, unknown>);
+    }
+  };
+
+  let orderId: string;
+  let total: Awaited<ReturnType<typeof readOrderTotal>>;
+  try {
+    const checkoutResponse = await checkoutApi({
+      client: adminClient,
+      path: { cartID: session.cartId },
+      body: buildGuestCheckoutBody(session) as any,
+    });
+    const created = (checkoutResponse.data as any)?.data;
+    if (!created?.id) throw new Error("checkoutApi response missing order id");
+    orderId = created.id;
+    total = await readOrderTotal(adminClient, orderId, created);
+  } catch (err) {
+    log.error("EP checkoutApi failed before the payment challenge", {
+      cartId: session.cartId,
+      error: err instanceof Error ? err.message : String(err),
+    } as Record<string, unknown>);
+    await release();
+    return {
+      status: 502,
+      body: {
+        success: false,
+        error: { message: "Order creation failed", code: "EP_ERROR" },
+      },
+    };
+  }
+
+  if (total?.amount !== expectedTotal) {
+    log.warn("Order total differs from the session total; not starting the challenge", {
+      sessionId: session.id,
+      orderId,
+    } as Record<string, unknown>);
+    await release();
+    return orderTotalChanged();
+  }
+
+  await persistOrderCustomFields({
+    host: ctx.epCredentials.apiBaseUrl,
+    token: ctx.getClientCredentialsToken
+      ? await ctx.getClientCredentialsToken()
+      : "",
+    orderId,
+    input: session.customAttributes,
+  });
+
+  return persistRequiresAction(
+    { ...params, session: { ...session, order: { id: orderId } } },
+    adapterResult
+  );
+}
+
 /** Cart PaymentIntent sequence (Stripe) and Clover legacy initializePayment. */
 async function handleInitializePaymentPay(
   params: PayContinuation,
@@ -495,7 +578,9 @@ async function handleInitializePaymentPay(
   }
 
   if (adapterResult.status === "requires_action") {
-    return persistRequiresAction(params, adapterResult);
+    return isCartPaymentIntentAdapter(adapter)
+      ? holdOrderForChallenge(params, adapterResult)
+      : persistRequiresAction(params, adapterResult);
   }
 
   if (adapterResult.status === "failed") {
@@ -850,23 +935,12 @@ export async function handlePay(
     };
   }
 
-  const open = session;
-  const settled = settleOnce(open.cartId, open.id, () =>
-    payOpenSession(req, ctx, open, ttl)
-  );
-  if (settled === "busy") {
-    return {
-      status: 409,
-      body: {
-        success: false,
-        error: {
-          message: "Another checkout for this cart is in progress",
-          code: "CHECKOUT_IN_PROGRESS",
-        },
-      },
-    };
+  if (awaitsCartPaymentChallenge(session, ctx)) {
+    return paymentActionPending(session);
   }
-  return settled;
+
+  const open = session;
+  return settleOnceOrBusy(open, () => payOpenSession(req, ctx, open, ttl));
 }
 
 async function payOpenSession(

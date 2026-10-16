@@ -23,7 +23,16 @@ export interface FakeOrder {
   status: string;
   payment: string;
   total: number;
+  paid: number;
+  /** Copied from the cart at checkout; a confirm consumes it, as Elastic Path does. */
+  paymentIntentId?: string;
   lines: Array<{ sku?: string; quantity: number; amount: number }>;
+}
+
+export interface FakePaymentIntent {
+  id: string;
+  amount: number;
+  status: "requires_action" | "succeeded" | "requires_payment_method";
 }
 
 interface FakeCart {
@@ -46,6 +55,7 @@ export class FakeEpStore {
   orders: FakeOrder[] = [];
   /** Amounts taken by a cart PaymentIntent, one entry per charge. */
   charges: number[] = [];
+  paymentIntents = new Map<string, FakePaymentIntent>();
   private seq = 0;
 
   private nextId(prefix: string): string {
@@ -198,6 +208,8 @@ export class FakeEpStore {
             status: "incomplete",
             payment: "unpaid",
             total: cartTotal(cart),
+            paid: 0,
+            paymentIntentId: cart.paymentIntentId,
             lines: cart.lines.map((l) => ({
               sku: l.sku,
               quantity: l.quantity,
@@ -229,13 +241,7 @@ export class FakeEpStore {
             },
           };
         }),
-      confirmOrder: ({ path }: any) =>
-        after(() => {
-          const order = store.orders.find((o) => o.id === path.orderID)!;
-          order.payment = "paid";
-          order.status = "complete";
-          return { data: { data: store.orderResource(order) } };
-        }),
+      confirmOrder: ({ path }: any) => after(() => store.confirm(path.orderID)),
       updateAnOrder: () => after(() => ({ data: { data: {} } })),
       deleteAllCartItems: ({ path }: any) =>
         after(() => {
@@ -253,10 +259,83 @@ export class FakeEpStore {
       if (!cart.paymentIntentId) {
         cart.paymentIntentId = this.nextId("pi");
       }
-      this.charges.push(cartTotal(cart));
+      const amount = cartTotal(cart);
+      this.paymentIntents.set(cart.paymentIntentId, {
+        id: cart.paymentIntentId,
+        amount,
+        status: "succeeded",
+      });
+      this.charges.push(amount);
       await tick();
       return cart.paymentIntentId;
     })();
+  }
+
+  /**
+   * A cart PaymentIntent for the cart's total that waits for a 3DS challenge.
+   * Fails like Elastic Path when the cart already has one.
+   */
+  startChallenge(cartId: string): Promise<FakePaymentIntent> {
+    return (async () => {
+      await tick();
+      const cart = this.cart(cartId);
+      if (cart.paymentIntentId) {
+        throw new Error("Payment Intent already exists for this cart");
+      }
+      const pi: FakePaymentIntent = {
+        id: this.nextId("pi"),
+        amount: cartTotal(cart),
+        status: "requires_action",
+      };
+      cart.paymentIntentId = pi.id;
+      this.paymentIntents.set(pi.id, pi);
+      await tick();
+      return pi;
+    })();
+  }
+
+  /** The shopper passes the challenge: the PaymentIntent takes its amount. */
+  passChallenge(piId: string): void {
+    const pi = this.paymentIntents.get(piId)!;
+    pi.status = "succeeded";
+    this.charges.push(pi.amount);
+  }
+
+  failChallenge(piId: string): void {
+    this.paymentIntents.get(piId)!.status = "requires_payment_method";
+  }
+
+  /** `POST /v2/orders/:id/confirm`, as measured on the integration store. */
+  confirm(orderId: string) {
+    const fail = (detail: string) => ({
+      error: { errors: [{ status: 400, detail }] },
+    });
+    const order = this.orders.find((o) => o.id === orderId);
+    if (!order) return fail("order not found");
+    if (order.status === "cancelled") return fail("This order has been cancelled.");
+    const pi = order.paymentIntentId
+      ? this.paymentIntents.get(order.paymentIntentId)
+      : undefined;
+    if (!pi) return fail("This order has no Stripe Payment Intent ID.");
+    order.paymentIntentId = undefined;
+    const succeeded = pi.status === "succeeded";
+    if (succeeded) {
+      order.paid += pi.amount;
+      order.payment = order.paid >= order.total ? "paid" : "partially_paid";
+      order.status = order.payment === "paid" ? "complete" : "incomplete";
+    }
+    return {
+      data: {
+        data: {
+          id: this.nextId("txn"),
+          type: "transaction",
+          transaction_type: "purchase",
+          status: succeeded ? "complete" : "pending",
+          amount: pi.amount,
+          payment_intent: { id: pi.id, status: pi.status, amount: pi.amount },
+        },
+      },
+    };
   }
 
   orderResource(order: FakeOrder) {
@@ -273,5 +352,10 @@ export class FakeEpStore {
 
   paidOrders(): FakeOrder[] {
     return this.orders.filter((o) => o.payment === "paid");
+  }
+
+  /** Orders that took money, whether or not it covered the order. */
+  chargedOrders(): FakeOrder[] {
+    return this.orders.filter((o) => o.paid > 0);
   }
 }
