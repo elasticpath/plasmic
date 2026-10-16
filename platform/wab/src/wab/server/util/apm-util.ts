@@ -63,9 +63,13 @@ export async function withSpan<T>(
       });
       return result;
     } catch (err) {
-      logger().error(
-        `span "${name}" failed in ${new Date().getTime() - start}ms${suffix}`
-      );
+      const durationMs = new Date().getTime() - start;
+      logger().error(`span "${name}" failed in ${durationMs}ms${suffix}`, {
+        operation_name: name,
+        duration_ms: durationMs,
+        err,
+        ...payload,
+      });
       throw err;
     } finally {
       recordTiming(name, new Date().getTime() - start);
