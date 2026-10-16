@@ -114,15 +114,34 @@ function jsonResponse(body: unknown, ok = true) {
 
 function mockSessionAndRoster(
   session: unknown,
-  roster: unknown = { accounts: [], total: 0 }
+  roster: unknown = { accounts: [], total: 0 },
+  member?: unknown,
+  user?: unknown
 ) {
   const fetchImpl = jest.fn((url: string, init?: RequestInit) => {
     if (String(url).endsWith("/get-session")) {
-      return jsonResponse({ session });
+      const body: { session: unknown; user?: unknown } = { session };
+      if (user !== undefined) body.user = user;
+      return jsonResponse(body);
     }
     if (String(url).includes("/account/roster")) {
       expect(init?.method).toBe("POST");
       return jsonResponse(roster);
+    }
+    if (String(url).includes("/account/member")) {
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse(String(init?.body ?? "{}"))).toEqual({});
+      if (member !== undefined) return jsonResponse(member);
+      const sessionMemberId =
+        session &&
+        typeof session === "object" &&
+        "epMemberId" in session &&
+        typeof (session as { epMemberId?: unknown }).epMemberId === "string"
+          ? (session as { epMemberId: string }).epMemberId
+          : undefined;
+      return jsonResponse(
+        sessionMemberId ? { id: sessionMemberId } : { id: "member" }
+      );
     }
     return jsonResponse({}, false);
   });
@@ -547,6 +566,698 @@ describe("EPAccountProvider", () => {
     expect(fetchImpl.mock.calls.some(([url]: [string]) => String(url).includes("roster"))).toBe(
       false
     );
+    expect(
+      fetchImpl.mock.calls.some(([url]: [string]) =>
+        String(url).includes("/account/member")
+      )
+    ).toBe(false);
+  });
+
+  describe("member profile", () => {
+    const selectedSession = {
+      epMemberId: "member-1",
+      epAccount: { id: "acct-1", name: "Acme" },
+    };
+    const selectedRoster = {
+      accounts: [{ id: "acct-1", name: "Acme" }],
+      total: 1,
+    };
+    const sessionUser = {
+      id: "user-1",
+      name: "Session Name",
+      email: "session@example.com",
+    };
+
+    it("publishes name and email from identity.member()", async () => {
+      mockSessionAndRoster(
+        selectedSession,
+        selectedRoster,
+        {
+          id: "member-1",
+          name: "Ada Lovelace",
+          email: "ada@example.com",
+          username: "ada",
+          given_name: "Ada",
+        },
+        sessionUser
+      );
+
+      render(
+        <EPAccountProvider>
+          <span>child</span>
+        </EPAccountProvider>
+      );
+
+      await waitFor(() => {
+        expect(publishedAccount().isLoading).toBe(false);
+      });
+      expect(publishedAccount().accountMember).toEqual({
+        id: "member-1",
+        name: "Ada Lovelace",
+        email: "ada@example.com",
+      });
+      expect(publishedAccount().selectedAccount).toEqual({
+        id: "acct-1",
+        name: "Acme",
+      });
+      expect(publishedAccount().accountRoster).toEqual(selectedRoster);
+      const json = JSON.stringify(publishedAccount());
+      expect(json).not.toMatch(/Session Name/);
+      expect(json).not.toMatch(/session@example.com/);
+      expect(json).not.toMatch(/username/);
+      expect(json).not.toMatch(/given_name/);
+    });
+
+    it("does not fall back to session user name or email", async () => {
+      mockSessionAndRoster(
+        { epMemberId: "member-1" },
+        { accounts: [], total: 0 },
+        { id: "member-1" },
+        sessionUser
+      );
+
+      render(
+        <EPAccountProvider>
+          <span>child</span>
+        </EPAccountProvider>
+      );
+
+      await waitFor(() => {
+        expect(publishedAccount().isLoading).toBe(false);
+      });
+      expect(publishedAccount().accountMember).toEqual({ id: "member-1" });
+      expect(publishedAccount().state).toBe("memberOnly");
+      const json = JSON.stringify(publishedAccount());
+      expect(json).not.toMatch(/Session Name/);
+      expect(json).not.toMatch(/session@example.com/);
+    });
+
+    it("keeps a zero-organisation member id-only", async () => {
+      const fetchImpl = mockSessionAndRoster(
+        { epMemberId: "member-1" },
+        { accounts: [], total: 0 },
+        { id: "member-1" }
+      );
+
+      render(
+        <EPAccountProvider>
+          <span>child</span>
+        </EPAccountProvider>
+      );
+
+      await waitFor(() => {
+        expect(publishedAccount().isLoading).toBe(false);
+      });
+      expect(publishedAccount()).toEqual({
+        state: "memberOnly",
+        accountMember: { id: "member-1" },
+        selectedAccount: null,
+        accountRoster: { accounts: [], total: 0 },
+        lapsedAccount: null,
+        isLoading: false,
+        isSelecting: false,
+      });
+      expect(
+        fetchImpl.mock.calls.some(([url]) =>
+          String(url).includes("/account/member")
+        )
+      ).toBe(true);
+    });
+
+    it("publishes an anchor profile when no organisation is selected", async () => {
+      const roster = {
+        accounts: [
+          { id: "acct-1", name: "Acme" },
+          { id: "acct-2", name: "Beta" },
+        ],
+        total: 2,
+      };
+      mockSessionAndRoster({ epMemberId: "member-1" }, roster, {
+        id: "member-1",
+        name: "Ada Lovelace",
+        email: "ada@example.com",
+      });
+
+      render(
+        <EPAccountProvider>
+          <span>child</span>
+        </EPAccountProvider>
+      );
+
+      await waitFor(() => {
+        expect(publishedAccount().accountMember).toEqual({
+          id: "member-1",
+          name: "Ada Lovelace",
+          email: "ada@example.com",
+        });
+      });
+      expect(publishedAccount().state).toBe("memberOnly");
+      expect(publishedAccount().selectedAccount).toBeNull();
+      expect(publishedAccount().accountRoster).toEqual(roster);
+    });
+
+    it("keeps a lapsed member id-only when the profile read returns only an id", async () => {
+      mockSessionAndRoster(
+        {
+          epMemberId: "member-1",
+          epLapsedAccount: { id: "acct-1", name: "Acme" },
+        },
+        selectedRoster,
+        { id: "member-1" }
+      );
+
+      render(
+        <EPAccountProvider>
+          <span>child</span>
+        </EPAccountProvider>
+      );
+
+      await waitFor(() => {
+        expect(publishedAccount().state).toBe("lapsed");
+      });
+      expect(publishedAccount().accountMember).toEqual({ id: "member-1" });
+      expect(publishedAccount().lapsedAccount).toEqual({
+        id: "acct-1",
+        name: "Acme",
+      });
+      expect(publishedAccount().selectedAccount).toBeNull();
+    });
+
+    it("omits a profile whose id is not the session member", async () => {
+      mockSessionAndRoster(
+        selectedSession,
+        selectedRoster,
+        {
+          id: "different-member",
+          name: "Other Person",
+          email: "other@example.com",
+        },
+        sessionUser
+      );
+
+      render(
+        <EPAccountProvider>
+          <EPAccountGate when="authenticated">
+            <span data-testid="signed-in">Signed in</span>
+          </EPAccountGate>
+        </EPAccountProvider>
+      );
+
+      await waitFor(() => {
+        expect(publishedAccount().isLoading).toBe(false);
+      });
+      expect(publishedAccount().accountMember).toEqual({ id: "member-1" });
+      expect(publishedAccount().selectedAccount).toEqual({
+        id: "acct-1",
+        name: "Acme",
+      });
+      expect(publishedAccount().accountRoster).toEqual(selectedRoster);
+      expect(publishedAccount().state).toBe("selected");
+      expect(screen.getByTestId("signed-in")).toBeTruthy();
+      const json = JSON.stringify(publishedAccount());
+      expect(json).not.toMatch(/Other Person/);
+      expect(json).not.toMatch(/other@example.com/);
+      expect(json).not.toMatch(/Session Name/);
+    });
+
+    it("copies a present empty string and omits an absent email", async () => {
+      mockSessionAndRoster(selectedSession, selectedRoster, {
+        id: "member-1",
+        name: "",
+      });
+
+      render(
+        <EPAccountProvider>
+          <span>child</span>
+        </EPAccountProvider>
+      );
+
+      await waitFor(() => {
+        expect(publishedAccount().isLoading).toBe(false);
+      });
+      expect(publishedAccount().accountMember).toEqual({
+        id: "member-1",
+        name: "",
+      });
+      expect(publishedAccount().accountMember).not.toHaveProperty("email");
+    });
+
+    it("keeps the session member and roster when the profile read fails", async () => {
+      jest.useFakeTimers();
+      const flushPromises = async () => {
+        await act(async () => {
+          for (let i = 0; i < 20; i += 1) await Promise.resolve();
+        });
+      };
+      const advance = async (ms: number) => {
+        await act(async () => {
+          jest.advanceTimersByTime(ms);
+        });
+        await flushPromises();
+      };
+      try {
+        let sessionReads = 0;
+        let memberCalls = 0;
+        (global as unknown as { fetch: typeof fetch }).fetch = jest.fn(
+          (url: string) => {
+            const target = String(url);
+            if (target.endsWith("/get-session")) {
+              sessionReads += 1;
+              return jsonResponse({
+                user: sessionUser,
+                session: selectedSession,
+              });
+            }
+            if (target.includes("/account/roster")) {
+              return jsonResponse(selectedRoster);
+            }
+            if (target.includes("/account/member")) {
+              memberCalls += 1;
+              return jsonResponse(
+                {
+                  code: "account_member_read_failed",
+                  message: "Elastic Path rejected the account-member read.",
+                },
+                false
+              );
+            }
+            return jsonResponse({}, false);
+          }
+        ) as typeof fetch;
+
+        const handle: { reload?: () => Promise<void> } = {};
+        render(
+          <EPAccountProvider>
+            <ReloadHandle handle={handle} />
+            <EPAccountGate when="authenticated">
+              <span data-testid="signed-in">Signed in</span>
+            </EPAccountGate>
+          </EPAccountProvider>
+        );
+        await flushPromises();
+
+        expect(publishedAccount().accountMember).toEqual({ id: "member-1" });
+        expect(publishedAccount().accountRoster).toEqual(selectedRoster);
+        expect(publishedAccount().selectedAccount).toEqual({
+          id: "acct-1",
+          name: "Acme",
+        });
+        expect(publishedAccount().isLoading).toBe(false);
+        expect(publishedAccount().state).toBe("selected");
+        expect(screen.getByTestId("signed-in")).toBeTruthy();
+        expect(memberCalls).toBe(1);
+        expect(sessionReads).toBe(1);
+
+        let settled = "pending";
+        await act(async () => {
+          await handle.reload!().then(
+            () => {
+              settled = "fulfilled";
+            },
+            () => {
+              settled = "rejected";
+            }
+          );
+        });
+        expect(settled).toBe("fulfilled");
+        expect(publishedAccount().accountMember).toEqual({ id: "member-1" });
+        expect(publishedAccount().accountRoster).toEqual(selectedRoster);
+        expect(publishedAccount().isLoading).toBe(false);
+        expect(screen.getByTestId("signed-in")).toBeTruthy();
+        expect(sessionReads).toBe(2);
+        expect(memberCalls).toBe(2);
+
+        await advance(RELOAD_RETRY_BACKOFF_MS[0]);
+        expect(sessionReads).toBe(2);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it("does not let a slow profile from an older reload overwrite a newer one", async () => {
+      let sessionReads = 0;
+      let memberReads = 0;
+      const releases: Array<() => void> = [];
+      (global as unknown as { fetch: typeof fetch }).fetch = jest.fn(
+        (url: string) => {
+          const target = String(url);
+          if (target.endsWith("/get-session")) {
+            sessionReads += 1;
+            const label =
+              sessionReads === 1
+                ? "Initial"
+                : sessionReads === 2
+                ? "Older"
+                : "Newer";
+            return jsonResponse({
+              session: {
+                epMemberId: "member-1",
+                epAccount: { id: "acct-1", name: label },
+              },
+            });
+          }
+          if (target.includes("/account/roster")) {
+            return jsonResponse({
+              accounts: [{ id: "acct-1", name: "Acme" }],
+              total: 1,
+            });
+          }
+          if (target.includes("/account/member")) {
+            memberReads += 1;
+            if (memberReads === 1) {
+              return jsonResponse({
+                id: "member-1",
+                name: "Initial",
+                email: "initial@example.com",
+              });
+            }
+            let release: () => void = () => {};
+            const gate = new Promise<void>((resolve) => {
+              release = resolve;
+            });
+            releases.push(release);
+            const name = memberReads === 2 ? "Older" : "Newer";
+            return gate.then(() =>
+              jsonResponse({
+                id: "member-1",
+                name,
+                email: `${name.toLowerCase()}@example.com`,
+              })
+            );
+          }
+          return jsonResponse({}, false);
+        }
+      ) as typeof fetch;
+
+      const handle: { reload?: () => Promise<void> } = {};
+      render(
+        <EPAccountProvider>
+          <ReloadHandle handle={handle} />
+        </EPAccountProvider>
+      );
+      await waitFor(() => {
+        expect(publishedAccount().accountMember).toEqual({
+          id: "member-1",
+          name: "Initial",
+          email: "initial@example.com",
+        });
+      });
+
+      let first: Promise<void> = Promise.resolve();
+      let second: Promise<void> = Promise.resolve();
+      await act(async () => {
+        first = handle.reload!();
+      });
+      await act(async () => {
+        second = handle.reload!();
+      });
+      expect(publishedAccount().isLoading).toBe(true);
+
+      await act(async () => {
+        releases[1]();
+        await second;
+      });
+      expect(publishedAccount().accountMember).toEqual({
+        id: "member-1",
+        name: "Newer",
+        email: "newer@example.com",
+      });
+      expect(publishedAccount().selectedAccount).toEqual({
+        id: "acct-1",
+        name: "Newer",
+      });
+      expect(publishedAccount().isLoading).toBe(false);
+
+      await act(async () => {
+        releases[0]();
+        await first;
+      });
+      expect(publishedAccount().accountMember).toEqual({
+        id: "member-1",
+        name: "Newer",
+        email: "newer@example.com",
+      });
+      expect(publishedAccount().selectedAccount).toEqual({
+        id: "acct-1",
+        name: "Newer",
+      });
+    });
+
+    it("keeps the previous roster while a switch profile read is in flight", async () => {
+      const previousRoster = {
+        accounts: [
+          { id: "acct-a", name: "Acme" },
+          { id: "acct-b", name: "Northwind" },
+        ],
+        total: 2,
+      };
+      const nextRoster = {
+        accounts: [
+          { id: "acct-a", name: "Acme" },
+          { id: "acct-b", name: "Northwind" },
+          { id: "acct-c", name: "Contoso" },
+        ],
+        total: 3,
+      };
+      let getSessionCount = 0;
+      let rosterCount = 0;
+      let memberCount = 0;
+      let releaseSwitchMember: () => void = () => {};
+      const switchMemberGate = new Promise<void>((resolve) => {
+        releaseSwitchMember = resolve;
+      });
+      (global as unknown as { fetch: typeof fetch }).fetch = jest.fn(
+        (url: string, init?: RequestInit) => {
+          const target = String(url);
+          if (target.endsWith("/get-session")) {
+            getSessionCount += 1;
+            const account =
+              getSessionCount === 1
+                ? { id: "acct-a", name: "Acme" }
+                : { id: "acct-b", name: "Northwind" };
+            return jsonResponse({
+              session: { epMemberId: "member-1", epAccount: account },
+            });
+          }
+          if (target.includes("/account/select")) {
+            expect(init?.method).toBe("POST");
+            return jsonResponse({ session: {} });
+          }
+          if (target.includes("/account/roster")) {
+            rosterCount += 1;
+            return jsonResponse(rosterCount === 1 ? previousRoster : nextRoster);
+          }
+          if (target.includes("/account/member")) {
+            memberCount += 1;
+            if (memberCount === 1) {
+              return jsonResponse({
+                id: "member-1",
+                name: "Ada Lovelace",
+                email: "ada@example.com",
+              });
+            }
+            return switchMemberGate.then(() =>
+              jsonResponse({
+                id: "member-1",
+                name: "Bea Owner",
+                email: "bea@example.com",
+              })
+            );
+          }
+          return jsonResponse({}, false);
+        }
+      ) as typeof fetch;
+
+      const ref = React.createRef<AccountActions>();
+      render(
+        <EPAccountProvider ref={ref}>
+          <EPAccountGate when="authenticated">
+            <span data-testid="signed-in">Signed in</span>
+          </EPAccountGate>
+        </EPAccountProvider>
+      );
+      await waitFor(() => {
+        expect(publishedAccount().accountRoster).toEqual(previousRoster);
+      });
+      expect(publishedAccount().accountMember).toEqual({
+        id: "member-1",
+        name: "Ada Lovelace",
+        email: "ada@example.com",
+      });
+
+      let pending: Promise<void> = Promise.resolve();
+      await act(async () => {
+        pending = ref.current!.selectAccount("acct-b");
+      });
+
+      expect(getSessionCount).toBe(2);
+      expect(rosterCount).toBe(2);
+      expect(memberCount).toBe(2);
+      expect(publishedAccount().isLoading).toBe(true);
+      expect(publishedAccount().accountMember).toBeNull();
+      expect(publishedAccount().accountRoster).toEqual(previousRoster);
+      expect(screen.queryByTestId("signed-in")).toBeNull();
+
+      await act(async () => {
+        releaseSwitchMember();
+        await pending;
+      });
+      expect(publishedAccount().isLoading).toBe(false);
+      expect(publishedAccount().accountRoster).toEqual(nextRoster);
+      expect(publishedAccount().selectedAccount).toEqual({
+        id: "acct-b",
+        name: "Northwind",
+      });
+      expect(publishedAccount().accountMember).toEqual({
+        id: "member-1",
+        name: "Bea Owner",
+        email: "bea@example.com",
+      });
+      expect(screen.getByTestId("signed-in")).toBeTruthy();
+    });
+
+    it("does not let an older switch profile overwrite a newer reload", async () => {
+      const previousRoster = {
+        accounts: [
+          { id: "acct-a", name: "Acme" },
+          { id: "acct-b", name: "Northwind" },
+        ],
+        total: 2,
+      };
+      const switchedRoster = {
+        accounts: [{ id: "acct-b", name: "Northwind" }],
+        total: 1,
+      };
+      let getSessionCount = 0;
+      let memberCount = 0;
+      const memberReleases: Array<() => void> = [];
+      (global as unknown as { fetch: typeof fetch }).fetch = jest.fn(
+        (url: string) => {
+          const target = String(url);
+          if (target.endsWith("/get-session")) {
+            getSessionCount += 1;
+            if (getSessionCount === 1) {
+              return jsonResponse({
+                session: {
+                  epMemberId: "member-1",
+                  epAccount: { id: "acct-a", name: "Acme" },
+                },
+              });
+            }
+            const account =
+              getSessionCount === 2
+                ? { id: "acct-b", name: "Northwind" }
+                : { id: "acct-c", name: "Contoso" };
+            return jsonResponse({
+              session: { epMemberId: "member-1", epAccount: account },
+            });
+          }
+          if (target.includes("/account/select")) {
+            return jsonResponse({ session: {} });
+          }
+          if (target.includes("/account/roster")) {
+            const roster =
+              getSessionCount <= 1
+                ? previousRoster
+                : getSessionCount === 2
+                ? switchedRoster
+                : {
+                    accounts: [{ id: "acct-c", name: "Contoso" }],
+                    total: 1,
+                  };
+            return jsonResponse(roster);
+          }
+          if (target.includes("/account/member")) {
+            memberCount += 1;
+            if (memberCount === 1) {
+              return jsonResponse({
+                id: "member-1",
+                name: "Initial",
+                email: "initial@example.com",
+              });
+            }
+            let release: () => void = () => {};
+            const gate = new Promise<void>((resolve) => {
+              release = resolve;
+            });
+            memberReleases.push(release);
+            const name = memberCount === 2 ? "Switch" : "Newer";
+            return gate.then(() =>
+              jsonResponse({
+                id: "member-1",
+                name,
+                email: `${name.toLowerCase()}@example.com`,
+              })
+            );
+          }
+          return jsonResponse({}, false);
+        }
+      ) as typeof fetch;
+
+      const ref = React.createRef<AccountActions>();
+      const handle: { reload?: () => Promise<void> } = {};
+      render(
+        <EPAccountProvider ref={ref}>
+          <ReloadHandle handle={handle} />
+        </EPAccountProvider>
+      );
+      await waitFor(() => {
+        expect(publishedAccount().selectedAccount).toEqual({
+          id: "acct-a",
+          name: "Acme",
+        });
+      });
+
+      let switching: Promise<void> = Promise.resolve();
+      await act(async () => {
+        switching = ref.current!.selectAccount("acct-b");
+      });
+      expect(publishedAccount().isLoading).toBe(true);
+      expect(publishedAccount().accountRoster).toEqual(previousRoster);
+
+      let newer: Promise<void> = Promise.resolve();
+      await act(async () => {
+        newer = handle.reload!();
+      });
+      expect(memberReleases).toHaveLength(2);
+      expect(publishedAccount().isLoading).toBe(true);
+
+      await act(async () => {
+        memberReleases[1]();
+        await newer;
+      });
+      expect(publishedAccount().accountMember).toEqual({
+        id: "member-1",
+        name: "Newer",
+        email: "newer@example.com",
+      });
+      expect(publishedAccount().selectedAccount).toEqual({
+        id: "acct-c",
+        name: "Contoso",
+      });
+      expect(publishedAccount().accountRoster).toEqual({
+        accounts: [{ id: "acct-c", name: "Contoso" }],
+        total: 1,
+      });
+
+      await act(async () => {
+        memberReleases[0]();
+        await switching;
+      });
+      expect(publishedAccount().accountMember).toEqual({
+        id: "member-1",
+        name: "Newer",
+        email: "newer@example.com",
+      });
+      expect(publishedAccount().selectedAccount).toEqual({
+        id: "acct-c",
+        name: "Contoso",
+      });
+      expect(publishedAccount().accountRoster).toEqual({
+        accounts: [{ id: "acct-c", name: "Contoso" }],
+        total: 1,
+      });
+    });
   });
 
   describe("logout", () => {

@@ -2,9 +2,9 @@
  * Studio-facing account identity published as `$ctx.account`.
  *
  * This is the Provider boundary. Tokens, expiry, and session internals never
- * appear here. Member profile fields (name, email) are not part of this
- * contract. `state` is a derived discriminator — Gate matches slots, not
- * `state` alone.
+ * appear here. `accountMember` carries the session member id, plus name and
+ * email when the account-member read returns that same id. `state` is a
+ * derived discriminator — Gate matches slots, not `state` alone.
  */
 
 export type AccountState =
@@ -22,6 +22,8 @@ export type AccountRef = {
 
 export type AccountMember = {
   id: string;
+  name?: string;
+  email?: string;
 };
 
 export type AccountRoster = {
@@ -47,6 +49,8 @@ export type AccountGateWhen =
 
 export type AccountFieldName =
   | "accountMember.id"
+  | "accountMember.name"
+  | "accountMember.email"
   | "selectedAccount.name"
   | "selectedAccount.id"
   | "lapsedAccount.name"

@@ -26,12 +26,14 @@ export const epAccountFieldMeta: CodeComponentMeta<EPAccountFieldProps> = {
   name: "plasmic-commerce-ep-account-field",
   displayName: "EP Account Field",
   description:
-    "Displays one account identity field (member id, selected organisation, lapsed organisation). Place inside an EP Account Provider; Studio uses a sample identity when none is published.",
+    "Displays one account identity field (member id, member name, member email, selected organisation, lapsed organisation). Place inside an EP Account Provider; Studio uses a sample identity when none is published.",
   props: {
     field: {
       type: "choice",
       options: [
         { label: "Member id", value: "accountMember.id" },
+        { label: "Member name", value: "accountMember.name" },
+        { label: "Member email", value: "accountMember.email" },
         { label: "Selected account name", value: "selectedAccount.name" },
         { label: "Selected account id", value: "selectedAccount.id" },
         { label: "Lapsed account name", value: "lapsedAccount.name" },
@@ -53,6 +55,10 @@ function accountFieldValue(
   switch (field) {
     case "accountMember.id":
       return account.accountMember?.id ?? "";
+    case "accountMember.name":
+      return account.accountMember?.name ?? "";
+    case "accountMember.email":
+      return account.accountMember?.email ?? "";
     case "selectedAccount.name":
       return account.selectedAccount?.name ?? "";
     case "selectedAccount.id":
