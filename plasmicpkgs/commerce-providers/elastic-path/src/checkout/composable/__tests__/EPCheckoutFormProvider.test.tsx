@@ -13,17 +13,20 @@ const mockPlaceOrder = jest.fn().mockResolvedValue({
   },
 });
 
+const sessionDataEnv = () => ({
+  checkoutSession: {
+    session: { status: "open" },
+    updateSession: mockUpdateSession,
+    calculateShipping: mockCalculateShipping,
+    placeOrder: mockPlaceOrder,
+  },
+});
+const mockUseDataEnv = jest.fn(sessionDataEnv);
+
 jest.mock("@plasmicapp/host", () => ({
   DataProvider: ({ children }: any) => children,
   usePlasmicCanvasContext: jest.fn().mockReturnValue(false),
-  useDataEnv: () => ({
-    checkoutSession: {
-      session: { status: "open" },
-      updateSession: mockUpdateSession,
-      calculateShipping: mockCalculateShipping,
-      placeOrder: mockPlaceOrder,
-    },
-  }),
+  useDataEnv: () => mockUseDataEnv(),
 }));
 
 jest.mock("@plasmicapp/host/registerComponent", () => {
@@ -32,16 +35,18 @@ jest.mock("@plasmicapp/host/registerComponent", () => {
   return fn;
 });
 
-jest.mock("../../../ep-server-functions/proxy-fetch", () => ({
-  callEpProxy: jest.fn(),
-}));
-
 import React, { useEffect } from "react";
-import { act, render, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { DEFAULT_DEBOUNCE_MS } from "../../../const";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { EPCheckoutFormProvider, useCheckoutForm } = require("../EPCheckoutFormProvider");
+const {
+  EPCheckoutFormProvider,
+  useCheckoutForm,
+  epCheckoutFormProviderMeta,
+} = require("../EPCheckoutFormProvider");
+const fetchMock = jest.fn();
+global.fetch = fetchMock as any;
 
 const COMPLETE_SHIPPING = {
   shippingAddress: "123 Main St",
@@ -369,6 +374,72 @@ describe("EPCheckoutFormProvider shipping sync", () => {
     expect(handleRef.current?.error).toBeNull();
   });
 
+  it("shows a refused checkout update and places no order", async () => {
+    mockUpdateSession.mockResolvedValueOnce({
+      success: false,
+      error: {
+        code: "PAYMENT_ACTION_PENDING",
+        message: "Finish or cancel the card check before changing this checkout",
+      },
+    });
+    const handleRef = { current: null as FormHandle | null };
+    render(
+      <EPCheckoutFormProvider>
+        <FormHarness
+          seed={{ firstName: "Jane", lastName: "Doe", email: "jane@example.com" }}
+          handleRef={handleRef}
+        />
+      </EPCheckoutFormProvider>
+    );
+
+    await act(async () => {
+      await handleRef.current?.placeOrder();
+    });
+
+    expect(mockPlaceOrder).not.toHaveBeenCalled();
+    expect(handleRef.current?.status).toBe("error");
+    expect(handleRef.current?.error).toBe(
+      "Finish or cancel the card check before changing this checkout"
+    );
+  });
+
+  it("while a card check is open, shows the form locked and finishes the check without sending edits", async () => {
+    mockUseDataEnv.mockReturnValue({
+      checkoutSession: {
+        session: {
+          status: "open",
+          payment: { status: "requires_action", gateway: "stripe" },
+        },
+        updateSession: mockUpdateSession,
+        calculateShipping: mockCalculateShipping,
+        placeOrder: mockPlaceOrder,
+      },
+    });
+    const handleRef = { current: null as FormHandle | null };
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { EPFormField } = require("../EPFormField");
+      render(
+        <EPCheckoutFormProvider>
+          <EPFormField name="email" label="Email" fieldId="email-field" />
+          <FormHarness handleRef={handleRef} />
+        </EPCheckoutFormProvider>
+      );
+
+      expect(screen.getByRole("status").textContent).toMatch(/card check/i);
+      expect((document.getElementById("email-field") as HTMLInputElement).readOnly).toBe(true);
+      await act(async () => {
+        await handleRef.current?.placeOrder();
+      });
+
+      expect(mockUpdateSession).not.toHaveBeenCalled();
+      expect(mockPlaceOrder).toHaveBeenCalledTimes(1);
+      expect(handleRef.current?.status).toBe("placed");
+    } finally {
+      mockUseDataEnv.mockImplementation(sessionDataEnv);
+    }
+  });
+
   it("treats a failed payment as an error, not success", async () => {
     mockPlaceOrder.mockResolvedValueOnce({
       success: true,
@@ -480,5 +551,81 @@ describe("EPCheckoutFormProvider shipping sync", () => {
       });
       await first;
     });
+  });
+});
+
+describe("EPCheckoutFormProvider setup", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseDataEnv.mockImplementation(sessionDataEnv);
+  });
+
+  const SEED = { firstName: "Jane", lastName: "Doe", email: "jane@example.com" };
+
+  async function placeWith(props: Record<string, unknown>) {
+    const handleRef = { current: null as FormHandle | null };
+    render(
+      <EPCheckoutFormProvider {...props}>
+        <FormHarness seed={SEED} handleRef={handleRef} />
+      </EPCheckoutFormProvider>
+    );
+    await act(async () => {
+      await handleRef.current?.placeOrder();
+    });
+    return handleRef.current!;
+  }
+
+  it("offers no proxy Payment Mode", () => {
+    expect(epCheckoutFormProviderMeta.props.paymentMode.options).toEqual([
+      "auto",
+      "session",
+    ]);
+  });
+
+  it.each(["paymentGateway", "paymentMethod"])(
+    "hides %s and describes it as ignored",
+    (name) => {
+      const prop = epCheckoutFormProviderMeta.props[name];
+      expect(prop.hidden()).toBe(true);
+      expect(prop.description).toMatch(/^Deprecated — ignored\./);
+    }
+  );
+
+  it("shows a setup error for a stored proxy Payment Mode and places no order", async () => {
+    const form = await placeWith({ paymentMode: "proxy" });
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "EP Checkout Session Provider"
+    );
+    expect(form.status).toBe("error");
+    expect(form.error).toContain("EP Checkout Session Provider");
+    expect(mockPlaceOrder).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each(["session", "auto"])(
+    "shows a setup error for %s mode with no session provider above the form",
+    async (paymentMode) => {
+      mockUseDataEnv.mockImplementation(() => ({}) as any);
+
+      const onError = jest.fn();
+      const form = await placeWith({ paymentMode, onError });
+
+      expect(screen.getByRole("alert").textContent).toContain(
+        "EP Checkout Session Provider"
+      );
+      expect(form.status).toBe("error");
+      expect(onError).toHaveBeenCalledWith({
+        message: expect.stringContaining("EP Checkout Session Provider"),
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    }
+  );
+
+  it("shows no setup error under a session provider", async () => {
+    await placeWith({ paymentMode: "session" });
+
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(mockPlaceOrder).toHaveBeenCalled();
   });
 });

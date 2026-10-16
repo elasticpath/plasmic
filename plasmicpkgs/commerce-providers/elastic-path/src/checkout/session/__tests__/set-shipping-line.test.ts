@@ -76,7 +76,7 @@ describe("setCartShippingLine — write", () => {
     expect(body.custom_inputs).toEqual(
       expect.objectContaining({ kind: "shipping", rateId: "rate-express", carrier: "DHL", serviceLevel: "express" })
     );
-    expect(result.id).toBe("cart-id");
+    expect(JSON.stringify(result)).not.toContain("cart-id");
   });
 
   it("falls back to a 'Shipping' name when the rate has no name", async () => {

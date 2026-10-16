@@ -9,6 +9,7 @@ import type { CartItemObject } from '@epcc-sdk/sdks-shopper';
 import type { CartResponse } from '@epcc-sdk/sdks-shopper';
 import type { Client } from '@epcc-sdk/sdks-shopper';
 import type { FormattedPrice as FormattedPrice_2 } from '@epcc-sdk/sdks-shopper';
+import type { getACart } from '@epcc-sdk/sdks-shopper';
 import type { NextRequest } from 'next/server.js';
 import { NextResponse } from 'next/server.js';
 import type { Product as Product_2 } from '@epcc-sdk/sdks-shopper';
@@ -56,12 +57,16 @@ export const CART_ADJUSTMENT_KINDS: readonly ["fee", "handling", "shipping"];
 export type CartAdjustmentKind = (typeof CART_ADJUSTMENT_KINDS)[number];
 
 // @public (undocumented)
-export interface CartPaymentIntentAdapter {
+export interface CartPaymentIntentAdapter extends PaymentAdapterOrderRule {
     // (undocumented)
     initializePayment(session: CheckoutSession, gatewayData: Record<string, unknown>): Promise<PaymentAdapterResult>;
     // (undocumented)
     readonly paymentSequence: "cart_payment_intent";
+    readPaymentIntentState?(session: CheckoutSession, keys?: PaymentIntentReadKeys): Promise<CartPaymentIntentState>;
 }
+
+// @public
+export type CartPaymentIntentState = "settled" | "awaiting_action" | "failed" | "unreadable" | "unverifiable";
 
 // @public
 export interface ClientCredentialsResolverConfig {
@@ -272,6 +277,9 @@ export type EpCartCacheKey = typeof EP_CART_CACHE_KEY;
 
 // @public (undocumented)
 export function epCartCacheKey(): EpCartCacheKey;
+
+// @public (undocumented)
+export type EpCartResponse = NonNullable<Awaited<ReturnType<typeof getACart>>["data"]>;
 
 // @public
 export function epConfigureBundle({ bundleId, selectedOptions, }: EpConfigureBundleInput): Promise<EpConfiguredBundle | null>;
@@ -485,7 +493,7 @@ export interface EpMultiSearchResponse extends Record<string, unknown> {
 }
 
 // @public (undocumented)
-export function epPlaceOrder(input: EpPlaceOrderInput): Promise<EpPlaceOrderResult>;
+export function epPlaceOrder(input: EpPlaceOrderInput, options?: EpPlaceOrderOptions): Promise<EpPlaceOrderResult>;
 
 // @public
 export interface EpPlaceOrderAddress {
@@ -526,6 +534,11 @@ export interface EpPlaceOrderInput {
 }
 
 // @public (undocumented)
+export interface EpPlaceOrderOptions {
+    allowManual?: ManualPaymentRule;
+}
+
+// @public (undocumented)
 export interface EpPlaceOrderResult {
     // (undocumented)
     currency: string;
@@ -534,7 +547,6 @@ export interface EpPlaceOrderResult {
     orderId: string;
     // (undocumented)
     payment: string;
-    // (undocumented)
     status: string;
     // (undocumented)
     total: number;
@@ -787,7 +799,7 @@ export function isOrderFirstAdapter(adapter: PaymentAdapter): adapter is OrderFi
 export function isTrustedOrigin(origin: string, trustedOrigins: readonly string[] | undefined): boolean;
 
 // @public
-export interface LegacyPaymentAdapter {
+export interface LegacyPaymentAdapter extends PaymentAdapterOrderRule {
     // (undocumented)
     confirmPayment(session: CheckoutSession, confirmData: Record<string, unknown>): Promise<PaymentAdapterResult>;
     // (undocumented)
@@ -796,17 +808,24 @@ export interface LegacyPaymentAdapter {
 
 // @public (undocumented)
 export interface ManualAdapterConfig {
+    allow?: ManualPaymentRule;
     method?: ManualPaymentMethod;
 }
 
 // @public (undocumented)
 export type ManualPaymentMethod = "purchase" | "authorize";
 
+// @public
+export type ManualPaymentRule = (input: ManualPaymentRuleInput) => boolean | Promise<boolean>;
+
+// @public
+export type ManualPaymentRuleInput = PaymentAdapterOrderRuleInput;
+
 // @public (undocumented)
 export const multiSearch: AdaptedFunction;
 
 // @public (undocumented)
-export interface OrderFirstAdapter {
+export interface OrderFirstAdapter extends PaymentAdapterOrderRule {
     // (undocumented)
     buildPaymentSetup(session: CheckoutSession, gatewayData: Record<string, unknown>): PaymentSetupRequest | Promise<PaymentSetupRequest>;
     // (undocumented)
@@ -818,6 +837,28 @@ export function passesOriginGate(request: Request, trustedOrigins: readonly stri
 
 // @public (undocumented)
 export type PaymentAdapter = CartPaymentIntentAdapter | OrderFirstAdapter | LegacyPaymentAdapter;
+
+// @public
+export interface PaymentAdapterOrderRule {
+    // (undocumented)
+    allowsOrder?(input: PaymentAdapterOrderRuleInput): boolean | Promise<boolean>;
+}
+
+// @public
+export interface PaymentAdapterOrderRuleInput {
+    account: {
+        id: string;
+    } | null;
+    cart: EpCartResponse;
+}
+
+// @public
+export interface PaymentIntentReadKeys {
+    // (undocumented)
+    publishableKey: string;
+    // (undocumented)
+    stripeAccount?: string;
+}
 
 // @public (undocumented)
 export type PaymentSequence = "cart_payment_intent" | "order_first";
@@ -848,6 +889,7 @@ export function seedCartFallback(): Promise<Record<string, Cart | null>>;
 
 // @public
 export interface SessionHandlerContext extends EpLocaleAndCurrency {
+    accountId?: string;
     accountToken?: string;
     // (undocumented)
     adapterRegistry: AdapterRegistry;
@@ -855,6 +897,7 @@ export interface SessionHandlerContext extends EpLocaleAndCurrency {
     // (undocumented)
     epCredentials: EPCredentials;
     getClientCredentialsToken?: () => Promise<string>;
+    sessionCartId?: string;
     // (undocumented)
     sessionStore: SessionStore;
     sessionTtlSeconds?: number;
@@ -898,6 +941,8 @@ export interface StripeAdapterConfig {
     getClientCredentialsToken: () => Promise<string>;
     getShopperToken?: () => string | Promise<string>;
     host: string;
+    publishableKey?: string;
+    stripeAccount?: string;
 }
 
 // @public (undocumented)

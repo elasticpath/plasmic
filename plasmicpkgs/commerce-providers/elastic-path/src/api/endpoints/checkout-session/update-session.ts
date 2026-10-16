@@ -11,7 +11,6 @@ import type {
   SessionResponse,
   SessionHandlerContext,
   CheckoutSession,
-  ClientCheckoutSession,
   SessionTotals,
   SessionShippingRate,
   UpdateSessionRequest,
@@ -23,13 +22,14 @@ import { resolveShippingRate } from "../../../checkout/session/cart-shipping";
 import { buildAdminEpClient } from "../../../checkout/session/admin-client";
 import { sessionAddressesEquivalent } from "../../../checkout/session/address-utils";
 import { createLogger } from "../../../utils/logger";
+import { toClientSession } from "../../../checkout/session/client-session";
+import { isSettling } from "../../../checkout/session/settle-once";
+import {
+  awaitsCartPaymentChallenge,
+  paymentActionPending,
+} from "../../../checkout/session/payment-challenge";
 
 const log = createLogger("UpdateSession");
-
-function toClientSession(s: CheckoutSession): ClientCheckoutSession {
-  const { cartHash, ...rest } = s;
-  return rest;
-}
 
 /** Authoritative cart total from a normalized Cart (minor units), or null. */
 function cartWithTaxAmount(cart: Cart): number | null {
@@ -105,6 +105,23 @@ export async function handleUpdateSession(
         error: {
           message: "Session is not open",
           code: "SESSION_NOT_OPEN",
+        },
+      },
+    };
+  }
+
+  if (awaitsCartPaymentChallenge(session, ctx)) {
+    return paymentActionPending(session);
+  }
+
+  if (isSettling(session.cartId)) {
+    return {
+      status: 409,
+      body: {
+        success: false,
+        error: {
+          message: "Payment for this checkout is in progress",
+          code: "CHECKOUT_IN_PROGRESS",
         },
       },
     };

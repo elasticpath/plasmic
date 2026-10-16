@@ -57,7 +57,7 @@ describe("epGetCart", () => {
     );
 
     expect(result).not.toBeNull();
-    expect(result?.id).toBe("cart-id");
+    expect(JSON.stringify(result)).not.toContain("cart-id");
     expect(mockGetACart).toHaveBeenCalledWith(
       expect.objectContaining({
         path: { cartID: "cart-id" },

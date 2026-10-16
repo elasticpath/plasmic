@@ -1,42 +1,33 @@
 /**
- * handlePay — single-shot checkout flow.
+ * handlePay — takes payment for the checkout session's cart.
  *
- * Slice 1 (this PR): anonymous guest happy path. Steps on success:
- *   1. Load session (→ 410 if missing)
- *   2. Guard: status open + gateway present + adapter registered + required fields
- *   3. Re-fetch cart, compare hash (→ 409 with refreshed session if mismatch)
- *   4. Dispatch on adapter.paymentSequence (explicit; no default sequence):
- *      - cart_payment_intent: initializePayment (Cart PaymentIntent)
- *      - order_first: checkoutApi (or reuse session.order.id) →
- *        buildPaymentSetup → paymentSetup. Retry never checkoutApi twice.
- *      - LegacyPaymentAdapter (Clover): existing initializePayment path only
- *   5. cart_payment_intent succeeded:
- *      a. checkoutApi (cart→order) using admin token
- *      b. confirmOrder (sync paymentID from gatewayOrderId) using admin token
- *      c. Run cart cleanup (deletes the EP cart; failures swallowed)
- *      d. applyPaymentSucceeded → session.status = "complete"
- *   6. On failed: applyPaymentFailed → session stays open, payment.status=failed
- *   7. On requires_action: applyPaymentRequiresAction → session stays open,
- *      payment.status=requires_action. No order, no cart cleanup.
- *   8. Persist session, return 200
- *
- * Slices 2+ add: resume-payment route, subscription gate (ACCOUNT_REQUIRED),
- * account checkout body.
+ *   1. Load the session (410 when missing). A session that is not open gets
+ *      400; one whose cart PaymentIntent waits for a 3DS challenge gets 409
+ *      PAYMENT_ACTION_PENDING with the session. The rest runs under the
+ *      per-cart settle-once guard.
+ *   2. Re-read the cart: 409 EMPTY_CART with nothing to buy, 409 CART_MISMATCH
+ *      (session refreshed) when its lines changed, 400 MISSING_FIELDS.
+ *   3. Re-assert (or clear) the shipping line, then charge only the total the
+ *      session last showed (409 TOTAL_CHANGED otherwise). A zero total settles
+ *      for free with the manual gateway (`free-order.ts`).
+ *   4. Dispatch on the adapter's payment sequence:
+ *      - cart_payment_intent: initializePayment. On success, checkout →
+ *        confirmOrder → finalize. When 3DS is needed, the order is created
+ *        first and the challenge is returned only when its total is the shown
+ *        total; resume-payment later confirms that held order.
+ *      - order_first: checkout (or reuse an unpaid session order) →
+ *        buildPaymentSetup → paymentSetup.
+ *      - legacy (Clover): initializePayment only.
+ *   An order whose total is not the shown total takes no payment: it is
+ *   cancelled and 409 ORDER_TOTAL_CHANGED returns the session with that total.
  */
-import {
-  getAnOrder,
-  checkoutApi,
-  confirmOrder,
-  paymentSetup,
-  updateACart,
-} from "@epcc-sdk/sdks-shopper";
+import { getAnOrder, updateACart } from "@epcc-sdk/sdks-shopper";
 import type { Client } from "@epcc-sdk/sdks-shopper";
 import type {
   SessionRequest,
   SessionResponse,
   SessionHandlerContext,
   CheckoutSession,
-  ClientCheckoutSession,
   CartPaymentIntentAdapter,
   LegacyPaymentAdapter,
   OrderFirstAdapter,
@@ -46,14 +37,10 @@ import {
   isCartPaymentIntentAdapter,
   isLegacyPaymentAdapter,
   isOrderFirstAdapter,
-  mapTransactionResponse,
 } from "../../../checkout/session/payment-sequence";
 import { hashCart } from "../../../checkout/session/cart-hash";
 import { readCartResponse } from "../../../ep-server-functions/read-cart";
-import { buildGuestCheckoutBody } from "../../../checkout/session/checkout-body-builder";
-import { runCartCleanup } from "../../../checkout/session/cart-cleanup";
 import { clearCartPaymentIntentId } from "../../../checkout/session/clear-cart-payment-intent";
-import { persistOrderCustomFields } from "../../../checkout/session/order-custom-fields";
 import { filterAllowedCustomAttributes } from "../../../checkout/session/custom-attributes-allowlist";
 import {
   resolveRequiresShipping,
@@ -70,23 +57,46 @@ import {
   clearCartShippingLine,
 } from "../../../checkout/session/set-shipping-line";
 import {
-  applyPaymentSucceeded,
   applyPaymentFailed,
   applyPaymentRequiresAction,
 } from "../../../checkout/session/session-state-transition";
 import { finalizePaidSession } from "../../../checkout/session/finalize-paid-session";
+import { readOrderTotal, type OrderTotal } from "../../../checkout/session/order-total";
+import {
+  checkoutRejectedReviewMessage,
+  confirmCartPaymentOrder,
+  createOrderFromCart,
+  endCheckoutForReview,
+  markOrderForReconciliation,
+  refuseOrderTotal,
+  shopperLines,
+  writeOrderCustomFields,
+  type ShopperLine,
+} from "../../../checkout/session/order-creation";
+import { settleFreeOrder } from "../../../checkout/session/free-order";
+import { isOrderPaid } from "../../../checkout/session/payment-intent-status";
+import {
+  orderRuleInput,
+  takeOrderPayment,
+} from "../../../checkout/session/order-payment";
 import { toCustomAttributes } from "../../../ep-server-functions/place-order";
 import { createLogger } from "../../../utils/logger";
+import { toClientSession } from "../../../checkout/session/client-session";
+import type { EpCartResponse, SessionTotals } from "../../../checkout/session/types";
+import { hasPurchasableItem } from "../../../checkout/session/purchasable-items";
+import {
+  cartLines,
+  totalsFromCart,
+  totalsFromDisplayPrice,
+} from "../../../checkout/session/session-totals";
+import { resolveShippingRate } from "../../../checkout/session/cart-shipping";
+import { settleOnceOrBusy } from "../../../checkout/session/settle-once";
+import {
+  awaitsCartPaymentChallenge,
+  paymentActionPending,
+} from "../../../checkout/session/payment-challenge";
 
 const log = createLogger("Pay");
-
-/** Gateway + method used to settle a zero-total (free) order — EP best
- * practice, since third-party gateways reject a 0 charge. */
-const FREE_ORDER_GATEWAY = "manual";
-const FREE_ORDER_METHOD = "purchase";
-
-/** OrderResponse.payment values that mean funds are already captured or held. */
-const SETTLED_ORDER_PAYMENTS = new Set(["paid", "authorized"]);
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object"
@@ -115,14 +125,9 @@ function settledOrderFromGetAnOrder(payload: unknown): {
   const payment =
     typeof order.payment === "string" ? order.payment.toLowerCase() : undefined;
   return {
-    settled: payment != null && SETTLED_ORDER_PAYMENTS.has(payment),
+    settled: isOrderPaid(payment),
     payment,
   };
-}
-
-function toClientSession(s: CheckoutSession): ClientCheckoutSession {
-  const { cartHash, ...rest } = s;
-  return rest;
 }
 
 /** Persist the session's extra fields + consent flags as cart custom
@@ -149,145 +154,6 @@ async function persistCustomAttributes(
   }
 }
 
-/**
- * Settle a zero-total order: cart → order, then a manual/purchase payment
- * (which authorises-and-captures with no card), then cart cleanup. EP's
- * documented approach for free orders — third-party gateways reject a 0
- * charge. Assumes the store has the manual gateway enabled.
- */
-async function settleFreeOrder(
-  req: SessionRequest,
-  ctx: SessionHandlerContext,
-  session: CheckoutSession,
-  adminClient: Client,
-  ttl: number
-): Promise<SessionResponse> {
-  // 1. checkoutApi (cart → order)
-  let orderId: string;
-  try {
-    const checkoutResponse = await checkoutApi({
-      client: adminClient,
-      path: { cartID: session.cartId },
-      body: buildGuestCheckoutBody(session) as any,
-    });
-    const oid = (checkoutResponse.data as any)?.data?.id;
-    if (!oid) throw new Error("checkoutApi response missing order id");
-    orderId = oid;
-  } catch (err) {
-    log.error("Free-order checkoutApi failed", {
-      cartId: session.cartId,
-      error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
-    return {
-      status: 502,
-      body: {
-        success: false,
-        error: { message: "Free order creation failed", code: "EP_ERROR" },
-      },
-    };
-  }
-
-  // 1b. Write the checkout extras/consents onto the order as flow fields
-  //     (best-effort — the order is already created). Needs the
-  //     client_credentials grant via an explicit Bearer header.
-  await persistOrderCustomFields({
-    host: ctx.epCredentials.apiBaseUrl,
-    token: ctx.getClientCredentialsToken ? await ctx.getClientCredentialsToken() : "",
-    orderId,
-    input: session.customAttributes,
-  });
-
-  // 2. manual/purchase settles the zero-total order with no card step.
-  try {
-    await paymentSetup({
-      client: adminClient,
-      path: { orderID: orderId },
-      body: {
-        data: { gateway: FREE_ORDER_GATEWAY, method: FREE_ORDER_METHOD },
-      } as never,
-    });
-  } catch (err) {
-    log.error("Manual settlement of free order failed", {
-      orderId,
-      error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
-    return {
-      status: 502,
-      body: {
-        success: false,
-        error: {
-          message:
-            "Free order could not be settled (is the manual gateway enabled?)",
-          code: "EP_ERROR",
-        },
-      },
-    };
-  }
-
-  // 3. Clear any leftover Cart PaymentIntent (e.g. earlier failed Stripe
-  //    attempt) before best-effort cart delete. Soft-fail: the free order is
-  //    already settled; do not turn cleanup into a retryable payment error.
-  const clearPi = await clearCartPaymentIntentId({
-    client: adminClient,
-    cartId: session.cartId,
-  });
-  if (!clearPi.ok) {
-    log.warn(
-      "Failed to clear cart payment_intent_id after free-order settlement (non-fatal)",
-      {
-        cartId: session.cartId,
-        error: clearPi.errorMessage,
-      } as Record<string, unknown>
-    );
-  }
-
-  // 4. Cart cleanup — best-effort housekeeping.
-  if (ctx.getClientCredentialsToken) {
-    await runCartCleanup({
-      host: ctx.epCredentials.apiBaseUrl,
-      clientId: ctx.epCredentials.clientId,
-      getClientCredentialsToken: ctx.getClientCredentialsToken,
-      cartId: session.cartId,
-    });
-  }
-
-  // 5. Mark complete and persist.
-  const completeSession = applyPaymentSucceeded(
-    { ...session, payment: { ...session.payment, gateway: FREE_ORDER_GATEWAY } },
-    { orderId, gatewayMetadata: { free: true } }
-  );
-
-  let setResult: { headers: Record<string, string> };
-  try {
-    setResult = await ctx.sessionStore.set("current", completeSession, ttl, req);
-  } catch (err) {
-    log.error("Failed to persist complete free-order session", {
-      error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
-    return {
-      status: 500,
-      body: {
-        success: false,
-        error: { message: "Failed to store session", code: "STORE_ERROR" },
-      },
-    };
-  }
-
-  log.info("Free order settled", {
-    sessionId: completeSession.id,
-    orderId,
-  } as Record<string, unknown>);
-
-  return {
-    status: 200,
-    body: {
-      success: true,
-      data: { session: toClientSession(completeSession) },
-    },
-    headers: setResult.headers,
-  };
-}
-
 type AdminClient = Client;
 
 interface PayContinuation {
@@ -298,6 +164,43 @@ interface PayContinuation {
   ttl: number;
   gateway: string;
   gatewayData: Record<string, unknown>;
+  /** The total the session last showed the shopper; the only total pay takes. */
+  expectedTotal: number;
+}
+
+async function persistTotalChanged(
+  req: SessionRequest,
+  ctx: SessionHandlerContext,
+  refreshed: CheckoutSession,
+  ttl: number
+): Promise<SessionResponse> {
+  const error = {
+    message: "The order total changed; review the total and try again",
+    code: "TOTAL_CHANGED",
+  };
+  try {
+    const setResult = await ctx.sessionStore.set("current", refreshed, ttl, req);
+    return {
+      status: 409,
+      body: {
+        success: false,
+        error,
+        data: { session: toClientSession(refreshed) },
+      },
+      headers: setResult.headers,
+    };
+  } catch {
+    return { status: 409, body: { success: false, error } };
+  }
+}
+
+function orderTotalChanged(
+  params: PayContinuation,
+  orderId: string,
+  total: OrderTotal | null
+): Promise<SessionResponse> {
+  const { req, ctx, session, adminClient, ttl } = params;
+  return refuseOrderTotal({ req, ctx, session, ttl, client: adminClient, orderId, total });
 }
 
 async function persistRequiresAction(
@@ -394,6 +297,59 @@ async function persistFailedPayment(
   }
 }
 
+/**
+ * A cart PaymentIntent waits for a 3DS challenge. The order is created now,
+ * from the cart the PaymentIntent was priced on, so a cart change during the
+ * challenge cannot change what is ordered. The challenge is handed to the
+ * shopper only when that order's total is the total the shopper was shown.
+ */
+async function holdOrderForChallenge(
+  params: PayContinuation,
+  adapterResult: PaymentAdapterResult
+): Promise<SessionResponse> {
+  const { ctx, session, adminClient, expectedTotal } = params;
+
+  const release = async () => {
+    const cleared = await clearCartPaymentIntentId({
+      client: adminClient,
+      cartId: session.cartId,
+    });
+    if (!cleared.ok) {
+      log.error("Failed to unlink a refused PaymentIntent from the cart", {
+        cartId: session.cartId,
+        error: cleared.errorMessage,
+      } as Record<string, unknown>);
+    }
+  };
+
+  const created = await createOrderFromCart(adminClient, session, {
+    message: "Order creation failed",
+    logMessage: "EP checkoutApi failed before the payment challenge",
+  });
+  if (created.response) {
+    await release();
+    return created.response;
+  }
+  const orderId = created.order.id;
+  const total = await readOrderTotal(adminClient, orderId, created.order);
+
+  if (total?.amount !== expectedTotal) {
+    log.warn("Order total differs from the session total; not starting the challenge", {
+      sessionId: session.id,
+      orderId,
+    } as Record<string, unknown>);
+    await release();
+    return orderTotalChanged(params, orderId, total);
+  }
+
+  await writeOrderCustomFields(ctx, orderId, session);
+
+  return persistRequiresAction(
+    { ...params, session: { ...session, order: { id: orderId } } },
+    adapterResult
+  );
+}
+
 /** Cart PaymentIntent sequence (Stripe) and Clover legacy initializePayment. */
 async function handleInitializePaymentPay(
   params: PayContinuation,
@@ -419,7 +375,9 @@ async function handleInitializePaymentPay(
   }
 
   if (adapterResult.status === "requires_action") {
-    return persistRequiresAction(params, adapterResult);
+    return isCartPaymentIntentAdapter(adapter)
+      ? holdOrderForChallenge(params, adapterResult)
+      : persistRequiresAction(params, adapterResult);
   }
 
   if (adapterResult.status === "failed") {
@@ -436,41 +394,29 @@ async function handleInitializePaymentPay(
     });
   }
 
-  let orderId: string;
-  try {
-    const checkoutResponse = await checkoutApi({
-      client: adminClient,
-      path: { cartID: session.cartId },
-      body: buildGuestCheckoutBody(session) as any,
-    });
-    const oid = (checkoutResponse.data as any)?.data?.id;
-    if (!oid) throw new Error("checkoutApi response missing order id");
-    orderId = oid;
-  } catch (err) {
-    log.error("EP checkoutApi failed after payment success", {
-      cartId: session.cartId,
-      error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
-    return {
-      status: 502,
-      body: {
-        success: false,
-        error: {
-          message: "Payment succeeded but order creation failed",
-          code: "EP_ERROR",
-        },
-      },
-    };
-  }
-
-  await persistOrderCustomFields({
-    host: ctx.epCredentials.apiBaseUrl,
-    token: ctx.getClientCredentialsToken
-      ? await ctx.getClientCredentialsToken()
-      : "",
-    orderId,
-    input: session.customAttributes,
+  const created = await createOrderFromCart(adminClient, session, {
+    message: "Payment succeeded but order creation failed",
+    logMessage: "EP checkoutApi failed after payment success",
   });
+  if (created.rejection !== undefined) {
+    // The payment was taken; Elastic Path will not create its order.
+    return endCheckoutForReview({
+      req,
+      ctx,
+      ttl,
+      session: { ...session, payment: { ...session.payment, gateway } },
+      client: adminClient,
+      paymentReference: adapterResult.gatewayOrderId ?? "unknown",
+      reason: created.rejection,
+      message: checkoutRejectedReviewMessage(created.rejection),
+    });
+  }
+  if (created.response) return created.response;
+  const orderId = created.order.id;
+  const orderTotal = await readOrderTotal(adminClient, orderId, created.order);
+  const charged = chargedAmount(adapterResult, params.expectedTotal);
+
+  await writeOrderCustomFields(ctx, orderId, session);
 
   const paymentID = adapterResult.gatewayOrderId;
   let reconciliationError: string | null = null;
@@ -481,11 +427,7 @@ async function handleInitializePaymentPay(
     } as Record<string, unknown>);
   } else {
     try {
-      await confirmOrder({
-        client: adminClient,
-        path: { orderID: orderId, paymentID } as any,
-        body: { data: {} } as any,
-      });
+      await confirmCartPaymentOrder(adminClient, orderId);
     } catch (err) {
       reconciliationError = err instanceof Error ? err.message : String(err);
       log.error("confirmOrder failed — order charged but unreconciled", {
@@ -496,13 +438,21 @@ async function handleInitializePaymentPay(
     }
   }
 
+  // A cart write that landed between the charge and the order (from outside
+  // this storefront) gives an order the charge does not cover.
+  const totalDiffers = orderTotal !== null && orderTotal.amount !== charged;
+  if (totalDiffers) {
+    reconciliationError ??= "order total differs from the amount charged";
+    await markOrderForReconciliation(adminClient, orderId, paymentID ?? "unknown");
+  }
+
   log.info("Pay handler completed", {
     sessionId: session.id,
     orderId,
     reconciliationPending: reconciliationError !== null,
   } as Record<string, unknown>);
 
-  return finalizePaidSession({
+  const finalized = await finalizePaidSession({
     ctx,
     req,
     ttl,
@@ -513,6 +463,40 @@ async function handleInitializePaymentPay(
     gatewayMetadata: adapterResult.gatewayMetadata,
     reconciliationError,
   });
+  if (!totalDiffers || finalized.status !== 200) return finalized;
+  return {
+    ...finalized,
+    status: 409,
+    body: {
+      ...(finalized.body as Record<string, unknown>),
+      success: false,
+      error: {
+        message: orderTotalDiffersMessage(charged, orderTotal?.amount, orderTotal?.currency),
+        code: "PAYMENT_NEEDS_REVIEW",
+      },
+      reconciliationPending: true,
+    },
+  };
+}
+
+/** The amount the gateway took: its own figure when it reports one, else the shown total. */
+function chargedAmount(result: PaymentAdapterResult, shownTotal: number): number {
+  const amount = result.gatewayMetadata?.amount;
+  return typeof amount === "number" && Number.isFinite(amount) ? amount : shownTotal;
+}
+
+function money(amount: number | undefined, currency: string | undefined): string {
+  if (typeof amount !== "number") return "a different amount";
+  const value = (amount / 100).toFixed(2);
+  return currency ? `${value} ${currency}` : value;
+}
+
+function orderTotalDiffersMessage(
+  charged: number,
+  orderTotal: number | undefined,
+  currency: string | undefined
+): string {
+  return `Your order was placed, but its total (${money(orderTotal, currency)}) is not the amount we charged (${money(charged, currency)}) because your cart changed while paying. We will contact you to settle the difference.`;
 }
 
 async function handleOrderFirstPay(
@@ -599,28 +583,32 @@ async function handleOrderFirstPay(
         },
       });
     }
-  } else {
-    try {
-      const checkoutResponse = await checkoutApi({
-        client: adminClient,
-        path: { cartID: session.cartId },
-        body: buildGuestCheckoutBody(session) as any,
-      });
-      const oid = (checkoutResponse.data as any)?.data?.id;
-      if (!oid) throw new Error("checkoutApi response missing order id");
-      orderId = oid;
-    } catch (err) {
-      log.error("EP checkoutApi failed before paymentSetup", {
-        cartId: session.cartId,
-        error: err instanceof Error ? err.message : String(err),
+    const reused = await readOrderTotal(
+      adminClient,
+      orderId,
+      orderResource as Parameters<typeof readOrderTotal>[2]
+    );
+    if (reused?.amount !== params.expectedTotal) {
+      log.warn("Unpaid order total differs from the session total; dropping it", {
+        sessionId: session.id,
+        orderId,
       } as Record<string, unknown>);
-      return {
-        status: 502,
-        body: {
-          success: false,
-          error: { message: "Order creation failed", code: "EP_ERROR" },
-        },
-      };
+      return orderTotalChanged(params, orderId, reused);
+    }
+  } else {
+    const created = await createOrderFromCart(adminClient, session, {
+      message: "Order creation failed",
+      logMessage: "EP checkoutApi failed before paymentSetup",
+    });
+    if (created.response) return created.response;
+    orderId = created.order.id;
+    const total = await readOrderTotal(adminClient, orderId, created.order);
+    if (total?.amount !== params.expectedTotal) {
+      log.warn("Order total differs from the session total; not taking payment", {
+        sessionId: session.id,
+        orderId,
+      } as Record<string, unknown>);
+      return orderTotalChanged(params, orderId, total);
     }
 
     sessionWithOrder = {
@@ -645,14 +633,7 @@ async function handleOrderFirstPay(
     }
   }
 
-  await persistOrderCustomFields({
-    host: ctx.epCredentials.apiBaseUrl,
-    token: ctx.getClientCredentialsToken
-      ? await ctx.getClientCredentialsToken()
-      : "",
-    orderId,
-    input: session.customAttributes,
-  });
+  await writeOrderCustomFields(ctx, orderId, session);
 
   const withOrder: PayContinuation = { ...params, session: sessionWithOrder };
 
@@ -672,19 +653,11 @@ async function handleOrderFirstPay(
     });
   }
 
-  let payRes: unknown;
-  let payThrown: unknown;
-  try {
-    payRes = await paymentSetup({
-      client: adminClient,
-      path: { orderID: orderId },
-      body: { data: setup } as never,
-    });
-  } catch (err) {
-    payThrown = err;
-  }
-
-  const adapterResult = mapTransactionResponse(payRes, payThrown);
+  const { result: adapterResult } = await takeOrderPayment(
+    adminClient,
+    orderId,
+    setup
+  );
 
   if (adapterResult.status === "requires_action") {
     return persistRequiresAction(withOrder, adapterResult);
@@ -757,6 +730,20 @@ export async function handlePay(
     };
   }
 
+  if (awaitsCartPaymentChallenge(session, ctx)) {
+    return paymentActionPending(session);
+  }
+
+  const open = session;
+  return settleOnceOrBusy(open, () => payOpenSession(req, ctx, open, ttl));
+}
+
+async function payOpenSession(
+  req: SessionRequest,
+  ctx: SessionHandlerContext,
+  session: CheckoutSession,
+  ttl: number
+): Promise<SessionResponse> {
   // 2b. Required-field validation is deferred to step 3a (after the cart
   //     fetch), because whether shipping is required is server-authoritative —
   //     inferred from the cart's physical items, not just the client flag — so
@@ -786,43 +773,27 @@ export async function handlePay(
 
   // 3. Re-fetch cart and compare hash
   const shopperClient = buildShopperEpClient(ctx);
-  let freshCartItems: Array<{
-    id: string;
-    quantity: number;
-    sku?: string;
-    product_id?: string;
-    unit_price?: { amount?: number };
-    value?: { amount?: number };
-  }> = [];
+  let freshCartItems: ShopperLine[] = [];
   // Authoritative cart total comes from the cart's `meta.display_price` — the
   // same source create-session uses. Summing parsed items is unreliable (the
   // item array can live in different response shapes), so the free/paid branch
   // must NOT depend on it, or a paid cart whose items don't parse would settle
   // for free with no charge.
-  let cartMetaTotal: number | null = null;
+  let latest: SessionTotals | null = null;
+  let cartResponse: EpCartResponse;
   try {
-    const cartResponse = await readCartResponse(
+    cartResponse = await readCartResponse(
       shopperClient,
       session.cartId,
       ctx
     );
-    const items =
-      (cartResponse as any)?.included?.items ??
-      (cartResponse as any)?.data?.items ??
-      [];
     // Exclude the storefront-managed shipping line (sentinel SKU) from BOTH the
     // hash and the physical-item lookup. It is server-written (during selection
     // and re-asserted at pay), not a shopper item, so its presence/absence must
     // never trip the cart-mismatch 409 — otherwise every shipping selection
     // would 409 at pay (the create-session hash predates the line).
-    freshCartItems = (Array.isArray(items) ? items : []).filter(
-      (it: { sku?: string }) => it?.sku !== EP_SHIPPING_LINE_SKU
-    );
-    const metaAmount = (cartResponse as any)?.data?.meta?.display_price
-      ?.with_tax?.amount;
-    if (typeof metaAmount === "number" && Number.isFinite(metaAmount)) {
-      cartMetaTotal = metaAmount;
-    }
+    freshCartItems = shopperLines(cartResponse);
+    latest = totalsFromCart(cartResponse);
   } catch (err) {
     log.error("Failed to re-fetch cart for hash check", {
       cartId: session.cartId,
@@ -837,9 +808,23 @@ export async function handlePay(
     };
   }
 
+  if (!hasPurchasableItem(cartLines(cartResponse))) {
+    return {
+      status: 409,
+      body: {
+        success: false,
+        error: { message: "The cart has nothing to check out", code: "EMPTY_CART" },
+      },
+    };
+  }
+
   const freshHash = hashCart(freshCartItems);
   if (freshHash !== session.cartHash) {
-    const refreshed: CheckoutSession = { ...session, cartHash: freshHash };
+    const refreshed: CheckoutSession = {
+      ...session,
+      cartHash: freshHash,
+      totals: latest ?? session.totals,
+    };
     try {
       const setResult = await ctx.sessionStore.set("current", refreshed, ttl, req);
       return {
@@ -937,11 +922,11 @@ export async function handlePay(
       const pricedCart = await applyShippingSelection(ctx, session, {
         client: adminClient,
       });
-      const metaAmount = pricedCart.meta?.display_price?.with_tax?.amount;
-      cartMetaTotal =
-        typeof metaAmount === "number" && Number.isFinite(metaAmount)
-          ? metaAmount
-          : null;
+      const rate = resolveShippingRate(
+        session.availableShippingRates,
+        session.selectedShippingRateId ?? ""
+      );
+      latest = totalsFromDisplayPrice(pricedCart.meta?.display_price, rate.amount);
     } catch (err) {
       if (err instanceof ShippingResolutionError) {
         log.warn("Selected shipping rate no longer resolvable at pay", {
@@ -972,21 +957,6 @@ export async function handlePay(
         },
       };
     }
-
-    // Fail closed: re-assertion mutates the cart; without an authoritative
-    // post-mutation total we must not free-settle or charge on a stale total.
-    if (cartMetaTotal === null) {
-      log.error("Shipping re-assertion returned cart without authoritative total", {
-        cartId: session.cartId,
-      } as Record<string, unknown>);
-      return {
-        status: 502,
-        body: {
-          success: false,
-          error: { message: "Failed to fetch cart", code: "EP_ERROR" },
-        },
-      };
-    }
   } else {
     let deletedCount = 0;
     try {
@@ -1008,8 +978,8 @@ export async function handlePay(
       };
     }
 
-    // Only refresh meta when the cart actually changed. A no-op clear leaves
-    // the hash-step cartMetaTotal authoritative.
+    // Only refresh totals when the cart actually changed. A no-op clear leaves
+    // the hash-step totals authoritative.
     if (deletedCount > 0) {
       try {
         const reread = await readCartResponse(
@@ -1017,12 +987,7 @@ export async function handlePay(
           session.cartId,
           ctx
         );
-        const metaAmount = (reread as any)?.data?.meta?.display_price
-          ?.with_tax?.amount;
-        cartMetaTotal =
-          typeof metaAmount === "number" && Number.isFinite(metaAmount)
-            ? metaAmount
-            : null;
+        latest = totalsFromCart(reread);
       } catch (err) {
         log.error("Failed to re-read cart total after clearing shipping line", {
           cartId: session.cartId,
@@ -1036,21 +1001,31 @@ export async function handlePay(
           },
         };
       }
-
-      if (cartMetaTotal === null) {
-        log.error("Post-clear cart read missing authoritative total", {
-          cartId: session.cartId,
-        } as Record<string, unknown>);
-        return {
-          status: 502,
-          body: {
-            success: false,
-            error: { message: "Failed to fetch cart", code: "EP_ERROR" },
-          },
-        };
-      }
     }
   }
+
+  // Fail closed: without an authoritative total there is nothing to check the
+  // charge against, so neither settle for free nor charge.
+  if (latest === null) {
+    log.error("Cart read returned no authoritative total before pay", {
+      cartId: session.cartId,
+    } as Record<string, unknown>);
+    return {
+      status: 502,
+      body: {
+        success: false,
+        error: { message: "Failed to fetch cart", code: "EP_ERROR" },
+      },
+    };
+  }
+
+  // 3b-ter. Charge only the total this session last showed the shopper. A
+  //     different total (shipping re-asserted, line cleared, selection write
+  //     that failed) is shown first and paid on the next submit.
+  if (session.totals?.total !== latest.total) {
+    return persistTotalChanged(req, ctx, { ...session, totals: latest }, ttl);
+  }
+  const expectedTotal = latest.total;
 
   // 3c. Free-order (zero-total) branch. Stripe and other third-party gateways
   //     reject a 0 charge, so EP best practice is to settle a free order with
@@ -1062,12 +1037,10 @@ export async function handlePay(
   //     AND exactly zero — i.e. an authoritative zero, never an *absence*. The
   //     parsed-items sum is deliberately NOT consulted here (see the note
   //     above the cart re-fetch): a paid cart whose items don't parse would
-  //     sum to 0 and route to free settlement, completing with no charge. When
-  //     the authoritative total is unavailable (cartMetaTotal === null) we fail
-  //     closed: we refuse to free-settle and fall through to the paid path,
-  //     which requires a gateway + a confirmed PaymentIntent. An unprovable-
-  //     free cart can therefore never settle for free.
-  if (cartMetaTotal === 0) {
+  //     sum to 0 and route to free settlement, completing with no charge. An
+  //     unavailable total already failed closed above, so an unprovable-free
+  //     cart can never settle for free.
+  if (expectedTotal === 0) {
     return await settleFreeOrder(req, ctx, session, adminClient, ttl);
   }
 
@@ -1096,6 +1069,26 @@ export async function handlePay(
     };
   }
 
+  if (
+    adapter.allowsOrder &&
+    !(await adapter.allowsOrder(orderRuleInput(cartResponse, ctx.accountId)))
+  ) {
+    log.warn("Gateway refused for this order", {
+      sessionId: session.id,
+      gateway,
+    } as Record<string, unknown>);
+    return {
+      status: 400,
+      body: {
+        success: false,
+        error: {
+          message: "This payment method is not available for this order",
+          code: "GATEWAY_NOT_ALLOWED",
+        },
+      },
+    };
+  }
+
   const { gateway: _gw, ...gatewayData } = req.body as Record<string, unknown>;
   const payParams: PayContinuation = {
     req,
@@ -1105,6 +1098,7 @@ export async function handlePay(
     ttl,
     gateway,
     gatewayData,
+    expectedTotal,
   };
 
   if (isCartPaymentIntentAdapter(adapter)) {

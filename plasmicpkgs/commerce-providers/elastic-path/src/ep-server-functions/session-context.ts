@@ -114,7 +114,7 @@ export function withEpSession<T>(
   session: EpSessionContext,
   callback: () => Promise<T> | T
 ): Promise<T> | T {
-  return storage.run(session, callback);
+  return storage.run({ ...session }, callback);
 }
 
 export function getCurrentEpSession(): EpSessionContext | undefined {

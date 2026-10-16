@@ -35,7 +35,7 @@ import { Registerable } from "../registerable";
 import useProduct from "./use-product";
 import { createLogger } from "../utils/logger";
 import type { Product } from "../types/product";
-import { mockProduct } from "../utils/design-time-data";
+import { SAMPLE_PRODUCT_ID, mockProduct } from "../utils/design-time-data";
 import { extractRawExtensions, normalizeExtensions } from "../utils/field-format";
 import { buildExtensionsMap } from "../utils/extensions-map";
 import { MOCK_EXTENSION_TEMPLATES } from "../utils/extensions-mock";
@@ -120,7 +120,7 @@ function CurrentVariantScope({
  * `$ctx.currentProduct.name` resolve to something sensible at design time.
  */
 const MOCK_PRODUCT: Product = mockProduct({
-  id: "mock-product",
+  id: SAMPLE_PRODUCT_ID,
   name: "Sample Product",
   description:
     "This is a placeholder product shown only at design time. Set Product ID or slug (usually bound to $ctx.params.slug) to fetch live data.",

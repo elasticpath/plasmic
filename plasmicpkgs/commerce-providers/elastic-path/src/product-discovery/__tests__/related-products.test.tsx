@@ -400,7 +400,7 @@ describe("EPRelatedProductsProvider", () => {
     setupCommerce();
   });
 
-  it("should render mock data in editor with auto preview state", () => {
+  it("should render mock data in editor when there is no product to look up", () => {
     mockUsePlasmicCanvasContext.mockReturnValue({});
 
     const { container } = render(
@@ -477,8 +477,8 @@ describe("EPRelatedProductsProvider", () => {
     expect(data.isEmpty).toBe(true);
   });
 
-  it("should show mock data when previewState is withData", () => {
-    mockUsePlasmicCanvasContext.mockReturnValue(null);
+  it("should show mock data when previewState is withData in editor", () => {
+    mockUsePlasmicCanvasContext.mockReturnValue({});
 
     const { container } = render(
       <EPRelatedProductsProvider previewState="withData">

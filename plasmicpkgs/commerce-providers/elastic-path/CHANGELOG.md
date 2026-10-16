@@ -46,6 +46,68 @@ Path's reason from the rejection's `cause`, not its `message`, and branch on
 `code`. In development the proxy route still forwards Elastic Path's reason, so
 a rejection in the browser there has that reason as its `message`.
 
+Checkout takes the cart from the shopper's session, never from the browser.
+`handleCreateSession` checks out `sessionCartId` on `SessionHandlerContext`
+and ignores any `cartId` in the request body. To migrate, set
+`sessionCartId: session.cart?.id` where the checkout routes build their
+context, from the same `getSession` that gives `shopperAccessToken`, and stop
+copying a cart id into the request. Without it, creating a checkout session
+returns `409` with code `NO_CART`.
+
+**The server decides which payment methods an order may use.** Before `/pay`
+creates an order, it checks the requested gateway against that order:
+
+- `manual` completes an order whose total is zero, with no adapter and no rule.
+- For an order with a total, the `manual` adapter is refused unless the host
+  gives it a rule: `createManualAdapter({ allow })`. The rule receives the cart
+  and the account (`{ cart, account }`) and must return `true`. A rule that
+  throws refuses. `/pay` answers `400` with `GATEWAY_NOT_ALLOWED`. The input
+  type is `PaymentAdapterOrderRuleInput`, from `/server`;
+  `ManualPaymentRuleInput` is the same type.
+- `epPlaceOrder(input, { allowManual })` follows the same rule, reads the cart
+  before it creates the order, and throws when payment does not succeed.
+
+A host that registers `createManualAdapter()` for paid orders, for example for
+offline or invoice payment, must add an `allow` rule. To give the rule the
+account, set `accountId` on the `SessionHandlerContext` from the session
+(`session.session.account?.id`). The example storefront no longer registers
+`manual`; its README shows a rule.
+
+**Orders are placed only through the checkout-session routes.** The EP proxy
+route does not dispatch `placeOrder`, and `epPlaceOrder` no longer calls it
+from the browser; it runs only inside a `withEpSession` scope. EP Checkout Form
+Provider pays only through an EP Checkout Session Provider above it. Its
+Payment Mode no longer offers `"proxy"`. A page that stored `"proxy"`, or whose
+form has no EP Checkout Session Provider above it, shows a setup error that
+names EP Checkout Session Provider. Its Payment Gateway and Payment Method
+props are hidden and ignored.
+
+**The Elastic Path cart id no longer reaches the browser.** The id alone is
+enough to read and change a cart, also a cart linked to an account, so it stays
+on the server.
+
+| Removed | Migrate to |
+| --- | --- |
+| `$ctx.cart.id` and `$ctx.cart.links`, and `id` and `links` on every `Cart` the cart functions, the proxy route and `seedCartFallback` return | Nothing. To show whether there is a cart, bind to `$ctx.cart.itemCount`. Server code reads `session.cart?.id` from `epAuth.api.getSession`. |
+| `epCartId` in the `get-session` and account route responses, on `ReleasedEpSession` and in `RELEASED_SESSION_PATHS` | Nothing in the browser. Server code reads `session.cart?.id` from `epAuth.api.getSession`. |
+| `ClientCheckoutSession.cartId`, in every checkout session response and in `getMockSession` | Nothing. Checkout takes the cart from the session. |
+| `POST /api/ep/ep/cart`, the identity client's `setCart` and `EpSetCartRequest` | Nothing. The route now returns 404. When a cart write through the proxy route creates a cart, the route records it on the session. |
+
+The development-only proxy error text no longer names the cart.
+
+**Search filters with no field set render nothing.** EP Refinement List,
+EP Hierarchical Menu and EP Range Filter no longer fall back to `"brand"`,
+`"categories.lvl0,categories.lvl1,categories.lvl2"` or
+`"price.USD.float_price"` when their field is unset. Those were guesses, and on
+a store without the field the whole search answered 400. A filter that relied
+on one of them adds nothing to the search after the upgrade, and renders nothing
+on a published page. On the Studio canvas it shows "Choose a field" and names
+the prop to set (Attribute, or Attributes on EP Hierarchical Menu), in place of
+sample values. After you upgrade, open each page with these filters in Studio,
+choose a field on every filter that shows the prompt, and publish. If the
+filter used the old default and your store has that field, choose it from the
+list. A filter with a field set is unchanged.
+
 ### Removed
 
 | Removed | Replacement |
@@ -55,7 +117,7 @@ a rejection in the browser there has that reason as its `message`.
 | `useCart`, `useAddItem`, `useUpdateItem`, `useRemoveItem` | `useEpCart` to read. To write, `epAddCartItem`, `epUpdateCartItem` and `epRemoveCartItem` from the root entry. Each returns a promise of the updated cart and rejects on failure. `epAddCartItem` takes `location`, `bundleConfiguration`, `customInputs` and `sku`. |
 | `useShopperFetch`, `useShopperContext`, `getShopperContext`, `ShopperOverrides` | None. Nothing in the page carries shopper identity. |
 | `X-Shopper-Context`, `resolveCartId`, `parseShopperHeader` | None. The shopper envelope is the only identity input. |
-| `buildCartCookieHeader`, `buildClearCartCookieHeader`, the `ep_cart` cookie | The envelope's own cart pointer, written by `setCart`. |
+| `buildCartCookieHeader`, `buildClearCartCookieHeader`, the `ep_cart` cookie | The envelope's own cart pointer, which only server code sets. |
 | `ShopperContext`'s `basePath` | None. The auth handler is always at `/api/ep`. |
 | `basePath` on `createEpAuth` | None. Mount the auth handler at `/api/ep`, the only path the components, `epAuthMiddleware` and the proxy route's cart write call. A config that still passes `basePath` now throws at startup. |
 | `basePath` on `createEpIdentityClient` | None. The client always calls `/api/ep`, where the auth handler is. Passing `basePath` now throws. |
@@ -79,12 +141,42 @@ Two capabilities go with them, not only their configuration:
 
 ### Deprecated
 
-Two registrations could not be removed, because hostless publishing rejects a
-removed component or a removed published prop. Both are empty instead.
+These registrations could not be removed, because hostless publishing rejects a
+removed component or a removed published prop. All are empty instead.
 
 - **EP Shopper Context** renders its children and nothing else. Its four props
   are hidden and ignored. Remove it from your project; nothing reads it.
 - **EP Promo Code Input**'s `Use Server Routes` is hidden and ignored.
+- **EP Checkout Provider** is now "EP Checkout Provider (deprecated)". It
+  called `/api/checkout/create-order`, `/setup-payment` and `/confirm-payment`,
+  which nothing serves, so it could not place an order. It renders its
+  children and nothing else, publishes no `checkoutData`, and its ref actions
+  do nothing. Every prop but its children slot, `Cart ID` included, is hidden
+  and ignored. Build checkout with EP Checkout Session Provider.
+- **EP Payment Elements** is now "EP Payment Elements (deprecated)". It took
+  its client secret only from EP Checkout Provider, so it could not show a card
+  form. It renders its children and nothing else, loads no Stripe.js and
+  publishes no `paymentData`. Its other props are hidden and ignored. Use EP
+  Stripe Payment.
+- **EP Checkout Step Indicator** is now "EP Checkout Step Indicator
+  (deprecated)". It read the step from EP Checkout Provider, so it always
+  showed the first step. It renders nothing and publishes no `currentStep`;
+  `Preview State` is hidden and ignored. Show progress from
+  `$ctx.checkoutSession`.
+- **Elastic Path Checkout Form** is now "Elastic Path Checkout Form
+  (deprecated)". It posted to `/checkout/create-order`, which nothing serves,
+  so it could not place an order. It renders nothing and makes no request.
+  Every prop, `Cart ID` included, is hidden and ignored. Build checkout with
+  EP Checkout Session Provider. `On Complete` and `On Error` are advanced, so
+  the Interactions section no longer lists them unless an action is already
+  wired; they are still in its add menu, and they never fire.
+- **EP Checkout Button**'s descriptions no longer call it step-aware: on a
+  page it is always the "Checkout" link to `Checkout URL`. `On Complete` never
+  fires, and is advanced like the Checkout Form's handlers. `Preview State` acts only in Studio: a published page shows
+  "Checkout" whatever value is saved, and on the canvas `auto` shows
+  "Checkout" too, not a step label.
+- **EP Checkout Session Provider**'s `createSession` ignores its `cartId`
+  argument. The session checks out the shopper's session cart.
 
 ### Added
 
@@ -163,10 +255,11 @@ stay on the server. An Elastic Path `4xx` other than `401` is
 `registration_rejected` with Elastic Path's status and error detail; a `401` or
 `5xx` is `account_token_mint_failed`, as for login.
 
-`createEpDesignRoutes` serves Studio design time. It answers four catalog
-reads, `getProduct`, `getProductList`, `getProductPage` and
-`getRelatedProducts`, under the store's public credential, and refuses every
-other name. It reads no shopper session, so it works inside Studio's editing
+`createEpDesignRoutes` serves Studio design time. It answers the catalog
+reads `getProduct`, `getProductList`, `getProductPage` and
+`getRelatedProducts`, and `getSearchAttributes`, which lists the fields the
+store's catalog search can filter on. It answers under the store's public
+credential and refuses every other name. It reads no shopper session, so it works inside Studio's editing
 frame, where the browser never sends the shopper envelope. Mount it at
 `app/api/ep/design/[fn]/route.ts`. Without it, the canvas shows labelled
 `"Sample"` fixtures and the console says once which route is missing.
@@ -240,6 +333,20 @@ one of those providers. Nothing substitutes another data source.
 
 ### Changed
 
+EP Refinement List `attribute`, EP Hierarchical Menu `attributes` and EP Range
+Filter `attribute` are dropdowns in Studio instead of free text. The list comes
+from the connected store: on the canvas the components ask the design-time
+route for the fields the store's catalog search can filter on. EP Range Filter
+lists only numeric fields, and EP Hierarchical Menu lists each `….lvlN` set as
+one option. A field keyed by currency, such as `price`, is listed once per
+currency (`price.USD.float_price`). A saved value stays selectable even when
+the store does not list it. To use a field the list does not show, bind a
+value. Without the design-time route the dropdown lists only the saved value.
+The canvas asks the route once per page load for all filters. When the route
+fails, it asks again a few times with growing delays, then when the canvas
+regains focus or a filter is added; every filter already on the canvas gets
+the list when an attempt succeeds.
+
 EP Add To Cart Button, EP Cart Item Quantity Control and EP Cart Item Remove
 Button show the cart write's rejection message as their `error`. They show
 shopper copy for a network failure instead of the browser's own message, and on
@@ -255,12 +362,25 @@ release removes the option that described the old default. Configure
 On a Studio canvas, the catalog components read through the design-time route
 at the relative path `/api/ep/design/<fn>`. The path resolves against whatever
 document serves the artboard. With an app host configured, that is your
-storefront, and EP Product Provider shows your own catalog. With no app host,
-it is Studio's renderer, which has no such route, so the read fails and the
-canvas shows the labelled `"Sample"` fixtures. To see real catalog data at
-design time, configure an app host and mount `createEpDesignRoutes`. EP Product
-List Provider and EP Related Products Provider still show fixtures on the
-canvas either way; their data-query Configure panel reads the real catalog.
+storefront, and EP Product Provider, EP Product List Provider and EP Related
+Products Provider show your own catalog. With no app host, it is Studio's
+renderer, which has no such route, so the read fails and the canvas shows the
+labelled `"Sample"` fixtures. To see real catalog data at design time,
+configure an app host and mount `createEpDesignRoutes`. EP Catalog Search
+Provider still shows fixtures on the canvas.
+
+On the canvas, EP Product List Provider and EP Related Products Provider show
+Loading Content while the read runs and Empty Content when it finds nothing.
+EP Related Products Provider shows sample products when no product is chosen,
+for example on a product page template. The Preview State values `loading`,
+`error`, `empty` and `withData` now apply only on the canvas, on these two
+providers and on EP Product Grid. Before this release, `withData` also showed
+sample products on a published page.
+
+A newly inserted EP Product Grid's card shows each product's image, name and
+price through EP Product Field, in place of static "Product Name" and "$0.00"
+text. EP Product Field's **Show** prop gains an **Image** value, which renders
+a URL field, such as First image URL, as an image.
 
 A shopper whose account credential lapses now keeps the cart they build after
 the lapse. The package clears the session cart once, at the moment it sees the
@@ -305,6 +425,183 @@ only the ones that were already server-rendered. Nothing about the components
 changes: same props, same slots, same data.
 
 ### Fixed
+
+Abandoning a card check that can still complete no longer leaves a payment
+the shopper can complete later. `/abandon-payment` voids the PaymentIntent
+through the order held for the challenge (the order's pending transaction is
+cancelled, which cancels the PaymentIntent), returns the stock that order
+took, and cancels the order before it frees the cart. If the challenge
+completes during the void, the checkout ends with `409`
+`PAYMENT_ALREADY_TAKEN` and the completed session: the order is placed, or
+marked for reconciliation when it can no longer record the payment, and the
+cart is not freed for a second charge. EP Stripe Payment treats that answer
+as a placed order. Resume still never confirms a payment Stripe has not
+reported taken.
+
+Two limits are now documented in the README. The settle-once guard holds
+within one server process: route a checkout session's requests to one
+instance; across instances a double submit can create a duplicate order, not
+a double charge. A card payment taken before Elastic Path finds the stock gone
+ends in `PAYMENT_NEEDS_REVIEW` with a reconciliation log. A planned follow-up,
+"every charge belongs to an order", removes both.
+
+A card payment whose order total is not the amount charged is no longer
+reported as a clean order. When a cart change made outside the storefront
+lands between the charge and the order, `/pay` marks the order for
+reconciliation (`external_ref`), answers `409` `PAYMENT_NEEDS_REVIEW` with
+`reconciliationPending: true` and the completed session, and tells the shopper
+both amounts. The Stripe adapter now reports the PaymentIntent's `amount` in
+`gatewayMetadata`.
+
+A cart with a promotion no longer answers `409` `CART_MISMATCH` on the first
+pay after a shipping rate is chosen. The cart check counts a promotion by its
+id and code, not its amount, which Elastic Path re-prices when the shipping
+line is added. Adding or removing a promotion, or changing an item, still
+answers `CART_MISMATCH`, and the charge is still checked against the shown
+total.
+
+After a paid order the ordered lines always leave the shopper's cart, an
+account cart included. Elastic Path will not delete the last cart linked to an
+account (400 "Last cart"), and cleanup used to log that and leave the paid
+lines in the cart, so the account's next checkout could buy them again.
+Cleanup now deletes the cart's items (and unlinks its PaymentIntent) when the
+cart itself cannot be deleted, and checks that the cart is empty. If it still
+cannot remove them, the completed session records it and the next checkout
+session for that cart retries the cleanup first, answering `409` with the new
+code `CART_CLEANUP_PENDING` until it succeeds.
+
+A checkout Elastic Path refuses, such as one for more stock than is left,
+returns `409` with the new code `CHECKOUT_REJECTED` and Elastic Path's own
+reason, takes no payment and leaves the session open for another try. It used
+to be a `502` with a generic message. A server error or no answer is still a
+`502`. When a card payment was already taken before Elastic Path refused the
+checkout, the checkout ends with `409` `PAYMENT_NEEDS_REVIEW`, the shopper is
+told the reason, the cart is unlinked from the PaymentIntent, and the payment
+is logged for reconciliation.
+
+A cart settles at most one order. `/pay`, `/resume-payment`,
+`/abandon-payment` and `handleConfirm` share one per-cart guard. While one of
+them runs for a cart, another request from the same checkout session gets the
+first one's response, and a request or session update from another checkout
+session gets `409` with `CHECKOUT_IN_PROGRESS`. A shopper's cart write
+(`epAddCartItem`, `epUpdateCartItem`, `epRemoveCartItem`, `epApplyPromoCode`,
+`epRemovePromoCode`, `epApplyCartAdjustment`) made while that cart's payment
+runs is refused with code `checkout_in_progress`. The guard holds within one
+server process; send a checkout session's requests to one instance when you
+run several. The shipping line stays one line at quantity 1: a line that
+already matches the selected rate is left alone, and a concurrent write is
+folded back.
+
+A card payment that needs a 3DS challenge always ends in exactly the order
+the shopper was shown and charged for. When Stripe asks for a challenge,
+`/pay` creates the order before it returns the challenge, and returns the
+challenge only when that order's total is the total the session showed;
+otherwise it answers `409` with `ORDER_TOTAL_CHANGED` and unlinks the
+PaymentIntent from the cart. Every `ORDER_TOTAL_CHANGED` (3DS, order-first
+and zero-total checkouts) now cancels the unused unpaid order and returns the
+session with that order's total, so the next submit pays the total on
+screen; before, the session kept the old total and each retry left another
+unpaid order. `/resume-payment` confirms that order, so a cart
+change made while the challenge is open does not change what is ordered or
+stop the order. A resume sent again after the order is paid answers with the
+same order; it finishes the cart cleanup only while the cart still links to
+that PaymentIntent (an earlier resume stopped before it), so a cart left
+holding the paid lines and the PaymentIntent no longer blocks the next
+pay. While the challenge is open, `/pay`
+and session updates answer `409` with the new code `PAYMENT_ACTION_PENDING`
+and the open session, and take no new payment; EP Checkout Session Provider
+then continues that challenge with the gateway that started it.
+`/abandon-payment`, and a resume whose PaymentIntent was declined, unlink the
+PaymentIntent from the cart and drop the held order from the session, so the
+next pay starts a new PaymentIntent and a new order. The held order stays
+unpaid in Elastic Path.
+
+`/resume-payment` confirms the order only after Stripe reports that the
+payment was taken. It reads the PaymentIntent from Stripe with its client
+secret plus a publishable key and connected account: from the new
+`publishableKey` and `stripeAccount` options of `createStripeAdapter`, or
+else from the keys EP Stripe Payment sends with the request. A resume it
+cannot check this way returns `409` with the new code
+`PAYMENT_STATUS_UNVERIFIED`; one sent before the challenge is passed returns
+`409` with `PAYMENT_STILL_REQUIRES_ACTION`; a declined challenge frees the
+cart for a new payment. When Stripe reports the payment taken but the order
+can no longer record it, the checkout completes (`reconciliationPending:
+true`) and the order's `external_ref` records the payment for
+reconciliation; when no order was held and the cart changed, the checkout
+ends with `409` and the new code `PAYMENT_NEEDS_REVIEW`, places no order for
+items that were not paid, and tells the shopper. Either way no route is left
+answering in a loop. Neither places an order, and the order can still
+take the payment once the challenge is passed. `/abandon-payment` releases a
+PaymentIntent only when it reads it as still waiting for the challenge or
+failed: one Stripe reports as paid returns `409` with the new code
+`PAYMENT_ALREADY_TAKEN` (EP Stripe Payment resumes instead), and one it
+cannot read returns `409` `PAYMENT_STATUS_UNVERIFIED` or `502`
+`PAYMENT_STATUS_UNKNOWN` and keeps the order. `useCheckoutSession().abandonPayment()`
+sends no keys by default, so without server keys it is refused rather than
+dropping an order it cannot check. A cart
+PaymentIntent adapter can report the state through the new optional
+`readPaymentIntentState`; without it, resume refuses.
+
+When a 3DS order completes, the cart keeps the lines the order did not take,
+such as an item added while the challenge was open, instead of being
+deleted. The lines the order took, the shipping line and promotions are
+removed. The whole cart is deleted instead whenever the cart cannot be
+unlinked from the PaymentIntent, an order item does not name its cart line,
+or removing a line fails, so a paid line is never left in the cart.
+
+A PaymentIntent in `processing` is no longer treated as paid. Elastic Path's
+confirm on it records a pending payment and leaves the order unable to take
+that PaymentIntent once the money arrives, so `/pay` holds the order and
+waits, as for a challenge, and resume confirms it only once Stripe reports
+`succeeded`. EP Stripe Payment says the payment is still processing.
+
+EP Checkout Form Provider no longer loses edits made while a card check is
+open. While the session's payment waits for a 3DS challenge, the form shows a
+locked message (`role="status"`, also `checkoutFormData.isLocked` and
+`lockedMessage`), its fields are read-only, and Place order finishes or
+cancels the open check without sending the form or asking for a card. A
+refused session update now stops the order and shows the reason; before, it
+was ignored and the order carried the old details. EP Checkout Session
+Provider continues an open challenge without asking the payment component
+for a new card.
+
+EP Stripe Payment resumes a checkout only for a PaymentIntent that took the
+payment, and abandons it only for one that can no longer take it. When
+Stripe.js reports no PaymentIntent state, for example because the challenge
+was already passed, the component reads the state with
+`retrievePaymentIntent`. When it cannot read the state, it does neither and
+shows an error; the next Place order continues the challenge.
+
+Pay charges only the total the session last returned to the browser. When
+the cart total differs, pay charges nothing and returns `409` with
+`CART_MISMATCH` or the new `TOTAL_CHANGED`; the session in that response, and
+in the next `GET`, carries the new total. Before this release the
+`CART_MISMATCH` session kept the old total. An order-first gateway (such as
+`manual`) takes no payment for an order whose total is not that total, and
+drops an unpaid order from an earlier attempt when its total no longer
+matches.
+
+Creating a checkout session for, or paying, a cart with nothing to buy (no
+lines, or only the shipping line and promotions) returns `409` with
+`EMPTY_CART`.
+
+`epPlaceOrder` returns the order status the payment sets, not the status from
+before payment: `complete` after a purchase or capture, `processing` after an
+authorization, and empty for any other payment. The status comes from the
+payment response, because Elastic Path does not let the shopper's token read
+the order.
+
+The README warning about `next dev` now names the cart id: the page source of
+a dev server holds the session's cart id as well as the shopper's
+credentials.
+
+A zero-total checkout completes only when Elastic Path reports the `manual`
+payment as complete. `/pay` answers `502` when that payment fails, and `409`
+with `ORDER_TOTAL_CHANGED`, without taking payment, when the order it created
+has a total. When the checkout response carries no total, `/pay` reads the
+order back; when Elastic Path still reports none, `/pay` answers `502`
+without taking payment. `epPlaceOrder` throws, without taking payment, when
+the checkout response carries no total.
 
 A product card inside EP Product Grid now has a link to its product page.
 EP Product Grid publishes `$ctx.currentHit.path`, built exactly as EP Search

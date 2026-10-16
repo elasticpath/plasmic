@@ -1,7 +1,8 @@
 /**
  * A-4.1: Create Checkout Session
  *
- * Initialises a new checkout session for the given cartId. Fetches the cart
+ * Initialises a new checkout session for the shopper's session cart
+ * (`ctx.sessionCartId`); a cart id in the request body is ignored. Fetches the cart
  * from EP to compute the initial cart hash (used later in /pay to detect
  * cart mutations), stores the session via the SessionStore, and returns a 201
  * with the client-visible session shape plus Set-Cookie headers.
@@ -12,7 +13,6 @@ import type {
   SessionResponse,
   SessionHandlerContext,
   CheckoutSession,
-  ClientCheckoutSession,
   SessionTotals,
 } from "../../../checkout/session/types";
 import { hashCart } from "../../../checkout/session/cart-hash";
@@ -20,32 +20,50 @@ import { readCartResponse } from "../../../ep-server-functions/read-cart";
 import { buildAdminEpClient } from "../../../checkout/session/admin-client";
 import { buildShopperEpClient } from "../../../checkout/session/shopper-client";
 import { EP_SHIPPING_LINE_SKU } from "../../../checkout/session/set-shipping-line";
+import { hasPurchasableItem } from "../../../checkout/session/purchasable-items";
+import { totalsFromCart } from "../../../checkout/session/session-totals";
+import { CART_CLEANUP_PENDING, runCartCleanup } from "../../../checkout/session/cart-cleanup";
 import { createLogger } from "../../../utils/logger";
+import { toClientSession } from "../../../checkout/session/client-session";
 
 const log = createLogger("CreateSession");
 
-function toClientSession(s: CheckoutSession): ClientCheckoutSession {
-  const { cartHash, ...rest } = s;
-  return rest;
-}
+async function refuseIfCleanupPending(
+  req: SessionRequest,
+  ctx: SessionHandlerContext,
+  cartId: string
+): Promise<SessionResponse | null> {
+  let previous: CheckoutSession | null = null;
+  try {
+    previous = await ctx.sessionStore.get("current", req);
+  } catch {
+    previous = null;
+  }
+  const pending =
+    previous?.status === "complete" &&
+    previous.cartId === cartId &&
+    previous.payment.gatewayMetadata?.[CART_CLEANUP_PENDING] === true;
+  if (!pending) return null;
 
-/**
- * Derive session totals from an EP cart's `meta.display_price`. Returns null
- * when the cart carries no price meta (e.g. an empty cart) — the Stripe
- * Element then falls back to its default amount and /pay recomputes the total
- * from the live cart anyway.
- */
-function extractTotals(cartData: any): SessionTotals | null {
-  const dp = cartData?.meta?.display_price;
-  if (!dp) return null;
-  const total = dp.with_tax?.amount;
-  if (typeof total !== "number") return null;
+  const cleaned = ctx.getClientCredentialsToken
+    ? await runCartCleanup({
+        host: ctx.epCredentials.apiBaseUrl,
+        clientId: ctx.epCredentials.clientId,
+        getClientCredentialsToken: ctx.getClientCredentialsToken,
+        cartId,
+      })
+    : false;
+  if (cleaned) return null;
   return {
-    subtotal: dp.without_tax?.amount ?? total,
-    tax: dp.tax?.amount ?? 0,
-    shipping: 0,
-    total,
-    currency: dp.with_tax?.currency ?? "",
+    status: 409,
+    body: {
+      success: false,
+      error: {
+        message:
+          "Your last order's items are still in your cart and could not be removed yet, so checkout cannot start. Please try again in a moment.",
+        code: "CART_CLEANUP_PENDING",
+      },
+    },
   };
 }
 
@@ -55,19 +73,23 @@ export async function handleCreateSession(
 ): Promise<SessionResponse> {
   const { body } = req;
 
-  // Validate cartId
-  if (!body.cartId || typeof body.cartId !== "string") {
+  const cartId = ctx.sessionCartId;
+  if (!cartId) {
     return {
-      status: 400,
+      status: 409,
       body: {
         success: false,
-        error: { message: "cartId is required and must be a string", code: "VALIDATION_ERROR" },
+        error: { message: "The shopper has no cart to check out", code: "NO_CART" },
       },
     };
   }
 
-  const cartId = body.cartId as string;
   const ttl = ctx.sessionTtlSeconds ?? 1800;
+
+  // The last checkout on this cart could not remove its ordered lines: finish
+  // that first, so this checkout cannot buy them again.
+  const pending = await refuseIfCleanupPending(req, ctx, cartId);
+  if (pending) return pending;
 
   // Authenticated client to read the cart (compute hash + totals). Prefer the
   // shopper token; fall back to the admin token when no shopper token is
@@ -78,6 +100,7 @@ export async function handleCreateSession(
 
   let cartItems: Array<{ id: string; quantity: number; unit_price?: { amount?: number }; value?: { amount?: number } }> = [];
   let totals: SessionTotals | null = null;
+  let purchasable = false;
 
   try {
     const cartResponse = await readCartResponse(client, cartId, ctx);
@@ -90,7 +113,8 @@ export async function handleCreateSession(
     cartItems = (Array.isArray(items) ? items : []).filter(
       (it: { sku?: string }) => it?.sku !== EP_SHIPPING_LINE_SKU
     );
-    totals = extractTotals((cartResponse as any)?.data);
+    purchasable = hasPurchasableItem(items);
+    totals = totalsFromCart(cartResponse);
   } catch (err) {
     log.error("Failed to fetch cart from EP", {
       cartId,
@@ -101,6 +125,16 @@ export async function handleCreateSession(
       body: {
         success: false,
         error: { message: "Failed to fetch cart from Elastic Path", code: "EP_ERROR" },
+      },
+    };
+  }
+
+  if (!purchasable) {
+    return {
+      status: 409,
+      body: {
+        success: false,
+        error: { message: "The cart has nothing to check out", code: "EMPTY_CART" },
       },
     };
   }

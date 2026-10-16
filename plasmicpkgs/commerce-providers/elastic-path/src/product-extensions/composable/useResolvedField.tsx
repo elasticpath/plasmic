@@ -114,15 +114,24 @@ export function useResolvedField(args: ResolveArgs): UseResolvedFieldResult {
 /** Inline scalar with no children; structural section gate with children. Canvas placeholder when unresolvable. */
 export function FieldDisplay(props: {
   resolved: ResolvedField;
-  show: "value" | "label";
+  show: "value" | "label" | "image";
+  imageAlt?: string;
   children?: React.ReactNode;
   notPresentContent?: React.ReactNode;
   className?: string;
   inEditor: boolean;
   dataAttr: string;
 }) {
-  const { resolved, show, children, notPresentContent, className, inEditor, dataAttr } =
-    props;
+  const {
+    resolved,
+    show,
+    imageAlt,
+    children,
+    notPresentContent,
+    className,
+    inEditor,
+    dataAttr,
+  } = props;
   const hasChildren = React.Children.count(children) > 0;
 
   if (hasChildren) {
@@ -140,6 +149,16 @@ export function FieldDisplay(props: {
     );
   }
 
+  if (resolved.hasValue && show === "image" && typeof resolved.value === "string") {
+    return (
+      <img
+        className={className}
+        src={resolved.value}
+        alt={imageAlt ?? ""}
+        {...{ [dataAttr]: "" }}
+      />
+    );
+  }
   if (resolved.hasValue) {
     return (
       <span className={className} {...{ [dataAttr]: "" }}>

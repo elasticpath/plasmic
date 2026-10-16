@@ -125,7 +125,7 @@ export function buildLeafOptions(): ChoiceObject[];
 export function buildTemplateOptions(templates: ExtensionTemplate[] | undefined): ChoiceObject[];
 
 // @public
-export type Cart = Omit<CartResponse, "meta"> & {
+export type Cart = Omit<CartResponse, "meta" | "id" | "links"> & {
     meta?: CartMeta;
     items: CartItem[];
     promotions: CartItem[];
@@ -232,6 +232,7 @@ export interface CheckoutFormContextValue {
     errors: Record<string, string | null>;
     // (undocumented)
     isFree: boolean;
+    locked: boolean;
     // (undocumented)
     orderId: string | null;
     // (undocumented)
@@ -781,14 +782,15 @@ export const epCheckoutConfirmationMeta: {
     };
 };
 
-// @public (undocumented)
-export function EPCheckoutForm({ cartId, apiBaseUrl, onComplete, onError, className, style }: EPCheckoutFormProps): React_2.JSX.Element;
+// @public @deprecated (undocumented)
+export function EPCheckoutForm(_props: EPCheckoutFormProps): React_2.JSX.Element;
 
 // @public (undocumented)
 export const epCheckoutFormMeta: {
     name: string;
     displayName: string;
     description: string;
+    hideFromContentCreators: boolean;
     importName: string;
     importPath: string;
     props: {
@@ -796,18 +798,20 @@ export const epCheckoutFormMeta: {
             type: "string";
             displayName: string;
             description: string;
-            defaultValue: string;
+            hidden: () => boolean;
         };
         apiBaseUrl: {
             type: "string";
             displayName: string;
             description: string;
             defaultValue: string;
+            hidden: () => boolean;
         };
         className: {
             type: "string";
             displayName: string;
             description: string;
+            hidden: () => boolean;
         };
         onComplete: {
             type: "eventHandler";
@@ -817,6 +821,8 @@ export const epCheckoutFormMeta: {
                 name: string;
                 type: "object";
             }[];
+            hidden: () => boolean;
+            advanced: boolean;
         };
         onError: {
             type: "eventHandler";
@@ -826,6 +832,8 @@ export const epCheckoutFormMeta: {
                 name: string;
                 type: "object";
             }[];
+            hidden: () => boolean;
+            advanced: boolean;
         };
     };
     trapsFocus: boolean;
@@ -856,7 +864,7 @@ export const EPCheckoutShippingRates: React_2.ForwardRefExoticComponent<EPChecko
 export const epCheckoutShippingRatesMeta: CodeComponentMeta<EPCheckoutShippingRatesProps>;
 
 // @public (undocumented)
-export function EPCheckoutStepIndicator(props: EPCheckoutStepIndicatorProps): React_2.JSX.Element;
+export function EPCheckoutStepIndicator(_props: EPCheckoutStepIndicatorProps): null;
 
 // @public (undocumented)
 export const epCheckoutStepIndicatorMeta: CodeComponentMeta<EPCheckoutStepIndicatorProps>;
@@ -1024,11 +1032,6 @@ export interface EpIdentityOperations {
         response: EpSessionEnvelope;
     };
     // (undocumented)
-    setCart: {
-        request: EpSetCartRequest;
-        response: EpSessionEnvelope;
-    };
-    // (undocumented)
     signInAnonymously: {
         request: void;
         response: EpSessionEnvelope;
@@ -1122,7 +1125,7 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps): Reac
 export const epOrderTotalsBreakdownMeta: CodeComponentMeta<EPOrderTotalsBreakdownProps>;
 
 // @public (undocumented)
-export function EPPaymentElements(props: EPPaymentElementsProps): React_2.JSX.Element;
+export function EPPaymentElements({ children }: EPPaymentElementsProps): React_2.JSX.Element;
 
 // @public (undocumented)
 export const epPaymentElementsMeta: CodeComponentMeta<EPPaymentElementsProps>;
@@ -1332,12 +1335,6 @@ export interface EpSessionEnvelope {
 }
 
 // @public (undocumented)
-export interface EpSetCartRequest {
-    // (undocumented)
-    cartId: string;
-}
-
-// @public (undocumented)
 export const EPShippingAddressFields: React_2.ForwardRefExoticComponent<EPShippingAddressFieldsProps & React_2.RefAttributes<EPShippingAddressFieldsActions>>;
 
 // @public (undocumented)
@@ -1443,7 +1440,8 @@ export function FieldContextProvider(props: {
 // @public
 export function FieldDisplay(props: {
     resolved: ResolvedField;
-    show: "value" | "label";
+    show: "value" | "label" | "image";
+    imageAlt?: string;
     children?: React_2.ReactNode;
     notPresentContent?: React_2.ReactNode;
     className?: string;
@@ -1994,7 +1992,7 @@ export function registerEPVariationPicker(loader?: Registerable, customMeta?: Co
 export function registerStripeProvider(loader?: Registerable): void;
 
 // @public
-export const RELEASED_SESSION_PATHS: readonly ["id", "userId", "expiresAt", "createdAt", "updatedAt", "epCartId", "epExpires", "epMemberId", "epAccount.id", "epAccount.name", "epLapsedAccount.id", "epLapsedAccount.name"];
+export const RELEASED_SESSION_PATHS: readonly ["id", "userId", "expiresAt", "createdAt", "updatedAt", "epExpires", "epMemberId", "epAccount.id", "epAccount.name", "epLapsedAccount.id", "epLapsedAccount.name"];
 
 // @public (undocumented)
 export interface ReleasedEpSession {
@@ -2002,8 +2000,6 @@ export interface ReleasedEpSession {
     createdAt: string;
     // (undocumented)
     epAccount?: EpAccountSummary;
-    // (undocumented)
-    epCartId?: string;
     // (undocumented)
     epExpires?: number;
     // (undocumented)

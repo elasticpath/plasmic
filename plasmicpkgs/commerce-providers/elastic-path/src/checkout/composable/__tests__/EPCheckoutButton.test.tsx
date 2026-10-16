@@ -252,6 +252,45 @@ describe("EPCheckoutButton", () => {
       const data = JSON.parse(dp.getAttribute("data-value")!);
       expect(data.label).toBe("Place Order");
     });
+
+    it("shows what the published page shows when Preview State is auto", () => {
+      const { container } = render(<EPCheckoutButton />);
+
+      expect(
+        container.querySelector("[data-ep-checkout-button-label]")?.textContent
+      ).toBe("Checkout");
+    });
+  });
+
+  describe("Preview State on a published page", () => {
+    it.each(["customerInfo", "shipping", "payment", "confirmation"])(
+      "shows the plain Checkout link for a stored %s preview",
+      (previewState) => {
+        const { container } = render(
+          <EPCheckoutButton previewState={previewState} />
+        );
+
+        expect(
+          container.querySelector("[data-ep-checkout-button-label]")
+            ?.textContent
+        ).toBe("Checkout");
+      }
+    );
+
+    it("still goes to the checkout page", () => {
+      const originalLocation = window.location;
+      delete (window as any).location;
+      (window as any).location = { assign: jest.fn() } as any;
+      try {
+        const { container } = render(
+          <EPCheckoutButton previewState="payment" />
+        );
+        fireEvent.click(container.querySelector("[data-ep-checkout-button]")!);
+        expect(window.location.assign).toHaveBeenCalledWith("/checkout");
+      } finally {
+        (window as any).location = originalLocation;
+      }
+    });
   });
 
   it("applies className to root element", () => {
@@ -286,6 +325,31 @@ describe("EPCheckoutButton", () => {
 
       expect(slot.defaultValue).toBeUndefined();
       expect(slot.hidePlaceholder).toBe(true);
+    });
+
+    it("describes the link to the checkout page, not a step-aware button", () => {
+      const texts = [
+        epCheckoutButtonMeta.description,
+        ...Object.values<any>(epCheckoutButtonMeta.props).map(
+          (p) => p.description ?? ""
+        ),
+      ].join("\n");
+
+      expect(texts).not.toMatch(/step-aware/i);
+      expect(texts).not.toMatch(/outside an EP Checkout Provider/i);
+      expect(epCheckoutButtonMeta.description).toMatch(/checkout page/i);
+      expect(
+        (epCheckoutButtonMeta.props as any).onComplete.description
+      ).toMatch(/^Deprecated — ignored\./);
+      expect(
+        (epCheckoutButtonMeta.props as any).previewState.description
+      ).toMatch(/^Editor only\./);
+    });
+
+    it("keeps the deprecated On Complete off Studio's Interactions section", () => {
+      expect((epCheckoutButtonMeta.props as any).onComplete.advanced).toBe(
+        true
+      );
     });
 
     it("has correct meta shape", () => {

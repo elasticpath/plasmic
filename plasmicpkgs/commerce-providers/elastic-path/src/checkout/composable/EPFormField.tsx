@@ -74,7 +74,7 @@ export function EPFormField(props: EPFormFieldProps) {
         autoComplete={autoComplete}
         aria-invalid={error ? true : undefined}
         onChange={(e) => form.setField(name, e.target.value)}
-        readOnly={inEditor}
+        readOnly={inEditor || form.locked}
       />
       <label data-ep-field-label="" htmlFor={id}>
         {label}

@@ -74,6 +74,7 @@ export function EPConsentCheckbox(props: EPConsentCheckboxProps) {
           data-ep-consent-input=""
           checked={checked}
           required={required}
+          disabled={form.locked}
           aria-invalid={error ? true : undefined}
           onChange={(e) => form.setBoolean(name, e.target.checked)}
         />

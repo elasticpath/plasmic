@@ -11,7 +11,8 @@
  *     the registered confirm callback returns { confirmation_token }.
  *   - After /pay returns requires_action, completeRequiresAction runs
  *     stripe.handleNextAction({ clientSecret: session.payment.clientToken })
- *     then resumePayment() with an empty body. It does not call /confirm.
+ *     then resumePayment() with its publishable key and connected account,
+ *     so the server can read the PaymentIntent. It does not call /confirm.
  *     Failed/cancelled handleNextAction calls abandonPayment() to clear the
  *     cart payment_intent_id; it does not call resumePayment.
  *   - Falls back to $ctx.stripe.publishableKey when the prop is unset
@@ -47,6 +48,7 @@ import type {
   GatewayPaySession,
 } from "./payment-registration-context";
 import { useCheckoutSession } from "./use-checkout-session";
+import { paymentIntentPhase } from "./payment-intent-status";
 
 // @stripe/stripe-js 2.x types predate confirmation tokens; Stripe.js v3 has them.
 type StripeWithConfirmationTokens = Stripe & {
@@ -56,12 +58,26 @@ type StripeWithConfirmationTokens = Stripe & {
   >;
 };
 
-const FAILED_PI_STATUSES = new Set([
-  "requires_payment_method",
-  "requires_source",
-  "canceled",
-  "cancelled",
-]);
+
+/** The keys this form reads Stripe with; resume sends them to the server. */
+type PaymentReadKeys = {
+  publishableKey: string;
+  stripeAccount?: string;
+};
+
+async function readPaymentIntentStatus(
+  stripe: { retrievePaymentIntent?: (clientSecret: string) => Promise<any> },
+  clientSecret: string
+): Promise<string | undefined> {
+  if (typeof stripe.retrievePaymentIntent !== "function") return undefined;
+  try {
+    const result = await stripe.retrievePaymentIntent(clientSecret);
+    const status = result?.paymentIntent?.status;
+    return typeof status === "string" ? status : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 function stripeNextActionFailureMessage(
   err: { code?: string; message?: string } | null | undefined,
@@ -119,15 +135,26 @@ function resumeFailureMessage(resp: GatewayContinuationResult): string {
  *
  * handleNextAction success is not checkout completion — resumePayment is.
  * Auth failure / cancel must not call resumePayment; they abandon the cart
- * PI association so /pay can create a new PaymentIntent.
+ * PI association so /pay can create a new PaymentIntent. When
+ * handleNextAction gives no PaymentIntent state (it throws for a challenge
+ * already passed), the state is read with retrievePaymentIntent: a paid
+ * PaymentIntent resumes, an unreadable one does neither. Resume carries the
+ * publishable key and connected account, so the server can read the
+ * PaymentIntent from Stripe before it confirms the order.
  */
 export async function runStripeRequiresAction(options: {
-  stripe: { handleNextAction: (args: { clientSecret: string }) => Promise<any> };
+  stripe: {
+    handleNextAction: (args: { clientSecret: string }) => Promise<any>;
+    retrievePaymentIntent?: (clientSecret: string) => Promise<any>;
+  };
   clientSecret: string;
-  resumePayment: () => Promise<GatewayContinuationResult>;
-  abandonPayment: () => Promise<GatewayContinuationResult>;
+  resumePayment: (readKeys?: PaymentReadKeys) => Promise<GatewayContinuationResult>;
+  abandonPayment: (readKeys?: PaymentReadKeys) => Promise<GatewayContinuationResult>;
+  readKeys?: PaymentReadKeys;
 }): Promise<GatewayContinuationResult> {
-  const { stripe, clientSecret, resumePayment, abandonPayment } = options;
+  const { stripe, clientSecret, abandonPayment, readKeys } = options;
+  const resumePayment = () =>
+    readKeys ? options.resumePayment(readKeys) : options.resumePayment();
   if (typeof clientSecret !== "string" || clientSecret.length === 0) {
     return {
       success: false,
@@ -135,28 +162,59 @@ export async function runStripeRequiresAction(options: {
     };
   }
 
-  let failMessage: string | undefined;
+  let stripeError: { code?: string; message?: string } | undefined;
+  let piStatus: string | undefined;
+  let completed = false;
   try {
     const result = await stripe.handleNextAction({ clientSecret });
-    const stripeError = result?.error as
-      | { code?: string; message?: string }
-      | undefined;
-    const piStatus: string | undefined = result?.paymentIntent?.status;
+    stripeError = result?.error;
+    piStatus = result?.paymentIntent?.status ?? result?.error?.payment_intent?.status;
+    completed = !stripeError;
+  } catch {
+    // Stripe.js throws when the PaymentIntent has no action left, e.g. a
+    // challenge passed in an earlier attempt. Its state decides below.
+  }
+  if (!piStatus && !completed) {
+    piStatus = await readPaymentIntentStatus(stripe, clientSecret);
+  }
 
-    if (stripeError || FAILED_PI_STATUSES.has(piStatus ?? "")) {
-      failMessage = stripeNextActionFailureMessage(stripeError, piStatus);
-    }
-  } catch (err) {
-    failMessage =
-      err instanceof Error
-        ? err.message
-        : "Payment authentication failed. Please try again.";
+  // Only a PaymentIntent that took the payment may settle the order, and only
+  // one that can no longer take it may be abandoned: abandoning a paid one, or
+  // settling one still waiting, would leave the charge without its order.
+  const phase = paymentIntentPhase(piStatus);
+  if (piStatus && phase !== "settled" && phase !== "failed") {
+    return {
+      success: false,
+      error: {
+        message:
+          piStatus === "processing"
+            ? "Your payment is still processing. Please try again in a moment."
+            : "Your card check is not finished. Please complete it and try again.",
+        code: "PAYMENT_ACTION_PENDING",
+      },
+    };
+  }
+  if (!piStatus && !completed) {
+    return {
+      success: false,
+      error: {
+        message: "We couldn't confirm your payment status. Please try again.",
+        code: "PAYMENT_STATUS_UNKNOWN",
+      },
+    };
+  }
+
+  let failMessage: string | undefined;
+  if (phase === "failed") {
+    failMessage = stripeNextActionFailureMessage(stripeError, piStatus);
   }
 
   if (failMessage) {
     let abandoned: GatewayContinuationResult;
     try {
-      const abandonResp = (await abandonPayment()) as
+      const abandonResp = (await (readKeys
+        ? abandonPayment(readKeys)
+        : abandonPayment())) as
         | GatewayContinuationResult
         | undefined;
       abandoned = abandonResp ?? {
@@ -179,7 +237,16 @@ export async function runStripeRequiresAction(options: {
       };
     }
 
-    if (!abandoned.success) {
+    if (
+      abandoned.error?.code === "PAYMENT_ALREADY_TAKEN" &&
+      abandoned.data?.session?.status === "complete"
+    ) {
+      // The payment completed the order while it was being abandoned.
+      return { ...abandoned, success: true, error: undefined };
+    } else if (abandoned.error?.code === "PAYMENT_ALREADY_TAKEN") {
+      // The server found the payment taken after all: settle the order.
+      failMessage = undefined;
+    } else if (!abandoned.success) {
       const resetMsg =
         abandoned.error?.message ||
         abandoned.paymentError ||
@@ -191,14 +258,14 @@ export async function runStripeRequiresAction(options: {
           ? { ...abandoned.error, message: resetMsg }
           : { message: resetMsg, code: "EP_ERROR" },
       };
+    } else {
+      return {
+        success: false,
+        error: { message: failMessage },
+        paymentError: failMessage,
+        data: abandoned.data,
+      };
     }
-
-    return {
-      success: false,
-      error: { message: failMessage },
-      paymentError: failMessage,
-      data: abandoned.data,
-    };
   }
 
   const resumeResp = (await resumePayment()) as
@@ -381,6 +448,10 @@ const EPStripePaymentRuntime = React.forwardRef<
   const inFlightRef = useRef(false);
   const resumePaymentRef = useRef(resumePayment);
   resumePaymentRef.current = resumePayment;
+  const readKeysRef = useRef<PaymentReadKeys | undefined>(undefined);
+  readKeysRef.current = publishableKey
+    ? { publishableKey, ...(stripeAccount ? { stripeAccount } : {}) }
+    : undefined;
   const abandonPaymentRef = useRef(abandonPayment);
   abandonPaymentRef.current = abandonPayment;
 
@@ -471,8 +542,9 @@ const EPStripePaymentRuntime = React.forwardRef<
         const resp = await runStripeRequiresAction({
           stripe,
           clientSecret,
-          resumePayment: () => resumePaymentRef.current(),
-          abandonPayment: () => abandonPaymentRef.current(),
+          resumePayment: (keys) => resumePaymentRef.current(keys),
+          abandonPayment: (keys) => abandonPaymentRef.current(keys),
+          readKeys: readKeysRef.current,
         });
 
         if (!(resp.success && resp.data?.session?.status === "complete")) {

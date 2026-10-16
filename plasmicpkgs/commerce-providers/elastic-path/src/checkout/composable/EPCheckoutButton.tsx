@@ -1,9 +1,9 @@
 /**
- * EPCheckoutButton — step-aware submit/advance button.
+ * EPCheckoutButton — a "Checkout" control that goes to the checkout page.
  *
- * Derives its label and behaviour from the current checkout step.
- * The designer slots any content inside and styles freely. Exposes
- * `checkoutButtonData` via DataProvider for label/state binding.
+ * The step-aware mode below needs `checkoutData` from EPCheckoutProvider,
+ * which is inert and publishes none, so it never runs. Exposes
+ * `checkoutButtonData` via DataProvider for label binding.
  */
 import {
   DataProvider,
@@ -101,21 +101,13 @@ export function EPCheckoutButton(props: EPCheckoutButtonProps) {
   const canProceed = checkoutData?.canProceed ?? false;
   const isProcessing = checkoutData?.isProcessing ?? false;
 
-  // Design-time preview
-  const useMock =
-    (previewState !== "auto") ||
-    (inEditor && !checkoutData);
+  const useMock = inEditor && previewState !== "auto";
 
   const buttonData = useMemo<CheckoutButtonData>(() => {
     if (useMock) {
-      const previewStep =
-        previewState !== "auto" ? previewState : "customerInfo";
-      // Map previewState camelCase to step key
-      const stepKey =
-        previewStep === "customerInfo"
-          ? "customer_info"
-          : previewStep;
-      return mockForStep(stepKey);
+      return mockForStep(
+        previewState === "customerInfo" ? "customer_info" : previewState
+      );
     }
 
     if (isStandalone) {
@@ -194,30 +186,33 @@ export const epCheckoutButtonMeta: CodeComponentMeta<EPCheckoutButtonProps> = {
   name: "plasmic-commerce-ep-checkout-button",
   displayName: "EP Checkout Button",
   description:
-    "Step-aware checkout button that derives its label from the current step. Outside an EP Checkout Provider it navigates to the checkout page instead. Bind any content to checkoutButtonData.label.",
+    "Goes to the checkout page when clicked. Bind any content to checkoutButtonData.label.",
   props: {
     children: {
       type: "slot",
       description:
-        "Optional. Leave empty for the step-aware label; fill it to compose your own against checkoutButtonData.",
+        "Optional. Leave empty for the \"Checkout\" label; fill it to compose your own against checkoutButtonData.",
       hidePlaceholder: true,
     },
     checkoutUrl: {
       type: "string",
       displayName: "Checkout URL",
       description:
-        "Where to navigate when this button is outside an EP Checkout Provider (e.g. on a cart page).",
+        "The checkout page the button goes to.",
       defaultValue: "/checkout",
     },
     onComplete: {
       type: "eventHandler",
       displayName: "On Complete",
+      description:
+        "Deprecated — ignored. It fired only on EP Checkout Provider's confirmation step, which no longer exists.",
       argTypes: [
         {
           name: "data",
           type: "object",
         },
       ],
+      advanced: true,
     } as any,
     previewState: {
       type: "choice",
@@ -230,7 +225,8 @@ export const epCheckoutButtonMeta: CodeComponentMeta<EPCheckoutButtonProps> = {
       ],
       defaultValue: "auto",
       displayName: "Preview State",
-      description: "Force a preview state for design-time editing",
+      description:
+        "Editor only. Shows a checkout step's label on the canvas. Auto shows \"Checkout\", as the published page always does.",
       advanced: true,
     },
   },

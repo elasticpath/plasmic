@@ -7,18 +7,24 @@
  * its side. The host calls one EP endpoint with `confirm: true` plus a
  * `confirmation_token` minted client-side via Stripe Elements.
  *
- * Maps Stripe PaymentIntent status to PaymentAdapterResult:
- *   succeeded / requires_capture / processing → succeeded
- *   requires_action (3DS) → requires_action with client_secret
+ * Maps Stripe PaymentIntent status (one table: `payment-intent-status.ts`)
+ * to PaymentAdapterResult:
+ *   succeeded / requires_capture → succeeded
+ *   requires_action (3DS) and processing → requires_action with the client
+ *     secret: /pay holds the order, and resume confirms it only once the
+ *     payment is taken
  *   anything else → failed
  */
 import { createCartPaymentIntent } from "@epcc-sdk/sdks-shopper";
 import type {
   CartPaymentIntentAdapter,
+  CartPaymentIntentState,
   PaymentAdapterResult,
+  PaymentIntentReadKeys,
   CheckoutSession,
 } from "../types";
 import { createLogger } from "../../../utils/logger";
+import { paymentIntentPhase } from "../payment-intent-status";
 
 const log = createLogger("StripeAdapter");
 
@@ -45,6 +51,61 @@ export interface StripeAdapterConfig {
    * token only if no shopper token is available.
    */
   getShopperToken?: () => string | Promise<string>;
+  /**
+   * Stripe publishable key (`pk_…`) the storefront's payment form uses.
+   * With it, resume reads the PaymentIntent from Stripe, as Stripe.js does,
+   * and confirms the order only once the payment was taken. When unset, or
+   * when it cannot read the PaymentIntent, resume uses the key EP Stripe
+   * Payment sends with the request, and refuses a request it cannot verify.
+   */
+  publishableKey?: string;
+  /** Connected Stripe account (`acct_…`) the PaymentIntents live on. */
+  stripeAccount?: string;
+}
+
+/** The PaymentIntent's amount (minor units), when Elastic Path reports it. */
+function amountOf(pi: { amount?: unknown } | undefined): { amount?: number } {
+  return typeof pi?.amount === "number" && Number.isFinite(pi.amount)
+    ? { amount: pi.amount }
+    : {};
+}
+
+/**
+ * Reads a PaymentIntent the way Stripe.js `retrievePaymentIntent` does: its
+ * client secret plus a publishable key. The read changes nothing.
+ */
+async function readStripePaymentIntent(
+  paymentIntentId: string,
+  clientSecret: string,
+  keys: PaymentIntentReadKeys
+): Promise<CartPaymentIntentState> {
+  const query = new URLSearchParams({
+    client_secret: clientSecret,
+    key: keys.publishableKey,
+  });
+  if (keys.stripeAccount) query.set("_stripe_account", keys.stripeAccount);
+  try {
+    const res = await fetch(
+      `https://api.stripe.com/v1/payment_intents/${encodeURIComponent(paymentIntentId)}?${query}`
+    );
+    if (!res.ok) return "unreadable";
+    const pi = (await res.json()) as { id?: unknown; status?: unknown };
+    if (pi?.id !== paymentIntentId || typeof pi.status !== "string") {
+      return "unreadable";
+    }
+    switch (paymentIntentPhase(pi.status)) {
+      case "settled":
+        return "settled";
+      case "pending":
+        return "awaiting_action";
+      case "failed":
+        return "failed";
+      default:
+        return "unreadable";
+    }
+  } catch {
+    return "unreadable";
+  }
 }
 
 interface EpPaymentIntentResponseShape {
@@ -62,9 +123,29 @@ export function createStripeAdapter(
   config: StripeAdapterConfig
 ): CartPaymentIntentAdapter {
   const { host, getClientCredentialsToken, getShopperToken } = config;
+  const configuredKeys: PaymentIntentReadKeys | undefined = config.publishableKey
+    ? { publishableKey: config.publishableKey, stripeAccount: config.stripeAccount }
+    : undefined;
 
   return {
     paymentSequence: "cart_payment_intent",
+    async readPaymentIntentState(session, requestKeys) {
+      const tries = [configuredKeys, requestKeys].filter(
+        (k): k is PaymentIntentReadKeys => !!k
+      );
+      if (tries.length === 0) return "unverifiable";
+      const clientSecret = session.payment.clientToken;
+      const paymentIntentId = session.payment.gatewayMetadata?.paymentIntentId;
+      if (typeof clientSecret !== "string" || typeof paymentIntentId !== "string") {
+        return "unreadable";
+      }
+      let state: CartPaymentIntentState = "unreadable";
+      for (const keys of tries) {
+        state = await readStripePaymentIntent(paymentIntentId, clientSecret, keys);
+        if (state !== "unreadable") break;
+      }
+      return state;
+    },
     async initializePayment(
       session: CheckoutSession,
       gatewayData: Record<string, unknown>
@@ -124,13 +205,14 @@ export function createStripeAdapter(
       const clientSecret: string | undefined =
         typeof pi?.client_secret === "string" ? pi.client_secret : undefined;
 
-      if (piStatus === "requires_action" && piId) {
+      const phase = paymentIntentPhase(piStatus);
+      if (phase === "pending" && piId) {
         return {
           status: "requires_action",
           clientToken: clientSecret,
-          gatewayMetadata: { paymentIntentId: piId },
+          gatewayMetadata: { paymentIntentId: piId, ...amountOf(pi) },
           actionData: {
-            type: "stripe_3ds",
+            type: piStatus === "processing" ? "stripe_processing" : "stripe_3ds",
             paymentIntentId: piId,
           },
         };
@@ -141,17 +223,12 @@ export function createStripeAdapter(
       // with no error (confirm:true ran). The order is then created + synced
       // via confirmOrder downstream.
       const succeeded =
-        !epError &&
-        !!piId &&
-        (piStatus === undefined ||
-          piStatus === "succeeded" ||
-          piStatus === "requires_capture" ||
-          piStatus === "processing");
+        !epError && !!piId && (piStatus === undefined || phase === "settled");
       if (succeeded) {
         return {
           status: "succeeded",
           gatewayOrderId: piId!,
-          gatewayMetadata: { paymentIntentId: piId! },
+          gatewayMetadata: { paymentIntentId: piId!, ...amountOf(pi) },
         };
       }
 

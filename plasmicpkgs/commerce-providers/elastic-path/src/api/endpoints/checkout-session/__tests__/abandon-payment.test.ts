@@ -95,6 +95,8 @@ function createMockAdapter(): PaymentAdapter {
     paymentSequence: "cart_payment_intent",
     initializePayment: jest.fn().mockResolvedValue({ status: "succeeded" }),
     confirmPayment: jest.fn().mockResolvedValue({ status: "succeeded" }),
+    // The shopper failed or cancelled the challenge.
+    readPaymentIntentState: jest.fn().mockResolvedValue("failed"),
   } as PaymentAdapter;
 }
 
@@ -211,6 +213,7 @@ describe("handleAbandonPayment — success", () => {
     const res = await handleAbandonPayment(createMockReq(), ctx);
 
     expect(res.status).toBe(200);
+    expect(JSON.stringify(res.body)).not.toContain("cart-abc");
     expect((res.body as any).success).toBe(true);
     const session = (res.body as any).data.session;
     expect(session.status).toBe("open");

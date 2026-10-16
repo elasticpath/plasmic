@@ -50,9 +50,7 @@ export interface EPCheckoutSessionProviderProps {
   className?: string;
   /**
    * When true (default), the provider auto-creates a checkout session on
-   * first render if none exists. The server resolves `cartId` from the
-   * better-auth session, so designers don't have to thread it through
-   * Plasmic interactions.
+   * first render if none exists, for the shopper's session cart.
    */
   autoCreate?: boolean;
 }
@@ -102,11 +100,9 @@ const EPCheckoutSessionRuntime = React.forwardRef<
 
   // RefActions
   const handleCreateSession = useCallback(
-    async (cartId?: string) => {
-      // cartId is now optional — server resolves from the better-auth
-      // session when omitted.
+    async (_ignoredCartId?: string) => {
       try {
-        await createSession(cartId);
+        await createSession();
       } catch (err) {
         log.error("createSession failed", {
           error: err instanceof Error ? err.message : String(err),
@@ -196,6 +192,16 @@ const EPCheckoutSessionRuntime = React.forwardRef<
         };
       }
 
+      // A card check (3DS) from an earlier attempt is still open: its order
+      // is held, so finish or cancel that check instead of taking a new card.
+      if (
+        session?.payment?.status === "requires_action" &&
+        session.payment.gateway === gw.name &&
+        typeof gw.completeRequiresAction === "function"
+      ) {
+        return await gw.completeRequiresAction(session);
+      }
+
       // Ask the gateway component for its data (e.g. tokenize the card)
       const gwData = await gw.confirm();
       const payResp = await placeOrderFn({ gateway: gw.name, ...gwData });
@@ -205,8 +211,13 @@ const EPCheckoutSessionRuntime = React.forwardRef<
       // Run the widget's completeRequiresAction (if registered) so the form
       // stays in "placing" until checkout is actually complete or failed.
       // Gateways without completeRequiresAction (e.g. Clover) are unchanged.
+      // A 409 PAYMENT_ACTION_PENDING carries a challenge an earlier pay
+      // started; the same gateway finishes or cancels it.
+      const pendingChallenge =
+        payResp?.error?.code === "PAYMENT_ACTION_PENDING" &&
+        paySession?.payment?.gateway === gw.name;
       if (
-        payResp?.success &&
+        (payResp?.success || pendingChallenge) &&
         paySession?.payment?.status === "requires_action" &&
         typeof gw.completeRequiresAction === "function"
       ) {
@@ -318,11 +329,8 @@ export const EPCheckoutSessionProvider = React.forwardRef<
   const inEditor = usePlasmicCanvasContext();
 
   if (inEditor && previewState !== "auto") {
-    const mockSession = getMockSession(previewState);
-    // Strip cartHash for client-visible shape
-    const { cartHash, ...clientSession } = mockSession;
     const mockData = {
-      session: clientSession,
+      session: getMockSession(previewState),
       isLoading: false,
       error: null,
     };
@@ -376,7 +384,7 @@ export const epCheckoutSessionProviderMeta: CodeComponentMeta<EPCheckoutSessionP
         defaultValue: true,
         displayName: "Auto-create Session",
         description:
-          "Create a session on first render if none exists. Server resolves cartId from the better-auth session.",
+          "Create a session on first render if none exists. The session checks out the shopper's own cart.",
         advanced: true,
       },
     },
@@ -386,7 +394,7 @@ export const epCheckoutSessionProviderMeta: CodeComponentMeta<EPCheckoutSessionP
     refActions: {
       createSession: {
         description:
-          "Create a new checkout session. cartId is optional — server resolves from the better-auth session when omitted.",
+          "Create a new checkout session for the shopper's own cart. The server takes the cart from the shopper's session; a Cart ID passed here is ignored.",
         argTypes: [{ name: "cartId", type: "string" }],
       },
       updateSession: {

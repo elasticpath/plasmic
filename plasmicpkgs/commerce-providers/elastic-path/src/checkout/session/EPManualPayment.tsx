@@ -4,7 +4,7 @@
  * Drop inside EPCheckoutSessionProvider. Registers gateway "manual" with
  * PaymentRegistrationContext so placeOrder() posts `{ gateway: "manual" }`.
  * No card fields, credentials, or customer-action continuation.
- * Purchase vs authorize is not exposed; the server adapter is purchase-only.
+ * Purchase vs authorize is not exposed; the server adapter chooses.
  */
 import {
   DataProvider,
@@ -93,8 +93,8 @@ export const epManualPaymentMeta: CodeComponentMeta<EPManualPaymentProps> = {
   name: "plasmic-commerce-ep-manual-payment",
   displayName: "EP Manual Payment",
   description:
-    "Selects Elastic Path Manual checkout (no card). Drop inside EPCheckoutSessionProvider. " +
-    "Place Order charges the order as a Manual purchase — no payment fields or gateway credentials.",
+    "Selects Elastic Path Manual payment (no card), for offline or invoice payment. Drop inside EP Checkout Session Provider. " +
+    "A zero-total order completes without it. For an order with a total, the server allows Manual only when the host registers the Manual adapter with a rule that allows it for that cart and account; otherwise Place Order fails.",
   props: {
     children: { type: "slot" },
   },

@@ -12,14 +12,6 @@ import { EP_PROXY_FN_NAMES } from "../proxy-routes";
 
 const SRC_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 
-/**
- * Names reachable through `callEpProxy` that the route deliberately does not
- * dispatch. Placing an order from a public proxy route is still open; until
- * that is settled it throws a legible `unknown_fn` rather than silently
- * working. It still works under SSR.
- */
-const KNOWN_UNWIRED = ["placeOrder"];
-
 // Matches every real call form in the tree: bare, generic
 // (`callEpProxy<Cart>("getCart"`), and the prettier-wrapped variant where the
 // name lands on the next line. A `callEpProxy("`-only pattern misses the
@@ -71,7 +63,6 @@ describe("callEpProxy / FN_DISPATCH parity", () => {
         "addCartItem",
         "removeCartItem",
         "applyCartAdjustment",
-        ...KNOWN_UNWIRED,
       ])
     );
   });
@@ -95,7 +86,7 @@ describe("callEpProxy / FN_DISPATCH parity", () => {
   });
 
   it("dispatches every name a call site can send", () => {
-    const dispatchable = new Set(EP_PROXY_FN_NAMES.concat(KNOWN_UNWIRED));
+    const dispatchable = new Set(EP_PROXY_FN_NAMES);
     const undispatchable = Array.from(calledFnNames().entries())
       .filter(([name]) => !dispatchable.has(name))
       .map(([name, files]) => `${name} (${files.join(", ")})`);
@@ -108,7 +99,6 @@ describe("callEpProxy / FN_DISPATCH parity", () => {
 
   it("keeps the transport choice out of the components", () => {
     const outsideServerFunctions = Array.from(calledFnNames().entries())
-      .filter(([name]) => !KNOWN_UNWIRED.includes(name))
       .flatMap(([name, files]) =>
         files
           .filter((file) => !file.startsWith("ep-server-functions/"))
@@ -121,17 +111,8 @@ describe("callEpProxy / FN_DISPATCH parity", () => {
     ).toEqual([]);
   });
 
-  it("keeps no stale entries in the unwired allowlist", () => {
-    const called = calledFnNames();
-    const dispatchable = new Set(EP_PROXY_FN_NAMES);
-
-    expect(
-      KNOWN_UNWIRED.filter((name) => !called.has(name)),
-      "allowlisted names no call site sends any more"
-    ).toEqual([]);
-    expect(
-      KNOWN_UNWIRED.filter((name) => dispatchable.has(name)),
-      "allowlisted names the route now dispatches — drop them from KNOWN_UNWIRED"
-    ).toEqual([]);
+  it("never places orders", () => {
+    expect(EP_PROXY_FN_NAMES).not.toContain("placeOrder");
+    expect(calledFnNames().has("placeOrder")).toBe(false);
   });
 });

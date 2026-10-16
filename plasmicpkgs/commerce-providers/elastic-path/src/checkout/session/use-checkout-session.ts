@@ -41,8 +41,8 @@ export interface UseCheckoutSessionReturn {
   session: ClientCheckoutSession | null;
   isLoading: boolean;
   error: Error | null;
-  /** Create a new session for the given cart. */
-  createSession: (cartId?: string) => Promise<SessionApiResponse>;
+  /** Create a new session for the shopper's session cart. */
+  createSession: () => Promise<SessionApiResponse>;
   /** Merge partial updates into the session. */
   updateSession: (data: UpdateSessionRequest) => Promise<SessionApiResponse>;
   /** Requote shipping rates on demand, for example after the cart changes. A shipping-address update already requotes. */
@@ -53,9 +53,11 @@ export interface UseCheckoutSessionReturn {
   resumePayment: (resumeData?: Record<string, unknown>) => Promise<SessionApiResponse>;
   /**
    * Unlink the cart PaymentIntent after a failed/cancelled customer action
-   * (POST …/abandon-payment).
+   * (POST …/abandon-payment). Pass `{ publishableKey, stripeAccount }` when
+   * the server has no Stripe keys configured: the server releases a payment
+   * only after reading its state, and refuses (keeping the order) otherwise.
    */
-  abandonPayment: () => Promise<SessionApiResponse>;
+  abandonPayment: (abandonData?: Record<string, unknown>) => Promise<SessionApiResponse>;
   /** Confirm a gateway action (e.g. Clover 3DS). */
   confirmPayment: (confirmData: Record<string, unknown>) => Promise<SessionApiResponse>;
   /** Clear the session cookie and reset local state. */
@@ -79,16 +81,12 @@ export function useCheckoutSession(
   const session = data?.success ? (data.data?.session ?? null) : null;
 
   const createSession = useCallback(
-    async (cartId?: string): Promise<SessionApiResponse> => {
-      // cartId is optional — when omitted, the server resolves it from the
-      // better-auth session (cookie-based). Designers don't have to thread
-      // cartId through Plasmic interactions.
-      const body = cartId ? JSON.stringify({ cartId }) : "{}";
+    async (): Promise<SessionApiResponse> => {
       const resp = await sessionFetch<SessionApiResponse>(
         `${baseUrl}/checkout/sessions`,
         {
           method: "POST",
-          body,
+          body: "{}",
         }
       );
       await mutate();
@@ -150,12 +148,14 @@ export function useCheckoutSession(
     [sessionUrl, mutate]
   );
 
-  const abandonPayment = useCallback(async (): Promise<SessionApiResponse> => {
+  const abandonPayment = useCallback(async (
+    abandonData: Record<string, unknown> = {}
+  ): Promise<SessionApiResponse> => {
     const resp = await sessionFetch<SessionApiResponse>(
       `${sessionUrl}/abandon-payment`,
       {
         method: "POST",
-        body: JSON.stringify({}),
+        body: JSON.stringify(abandonData),
       }
     );
     await mutate();
