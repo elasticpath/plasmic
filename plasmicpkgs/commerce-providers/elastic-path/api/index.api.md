@@ -230,6 +230,7 @@ export interface CheckoutFormContextValue {
     errors: Record<string, string | null>;
     // (undocumented)
     isFree: boolean;
+    locked: boolean;
     // (undocumented)
     orderId: string | null;
     // (undocumented)

@@ -222,7 +222,8 @@ describe("handlePay — single-shot guest happy path", () => {
     // EP order creation happened AFTER payment succeeded
     expect(epSdk.checkoutApi).toHaveBeenCalledTimes(1);
     expect(epSdk.confirmOrder).toHaveBeenCalledTimes(1);
-    expect(epSdk.confirmOrder.mock.calls[0][0].path.paymentID).toBe("pi_abc");
+    expect(epSdk.confirmOrder.mock.calls[0][0].path).toEqual({ orderID: "order-1" });
+    expect(epSdk.confirmOrder.mock.calls[0][0].body).toEqual({ data: {} });
 
     // Cart PI detached, then cart deleted
     expect(epSdk.updateACart).toHaveBeenCalledWith(

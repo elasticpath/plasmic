@@ -28,16 +28,17 @@ import { toClientSession } from "./client-session";
 
 const log = createLogger("FinalizePaidSession");
 
+/** True when the cart no longer links to a PaymentIntent (or never could). */
 async function detachCartPaymentIntentIfNeeded(
   ctx: SessionHandlerContext,
   gateway: string,
   cartId: string
-): Promise<void> {
+): Promise<boolean> {
   const adapter = ctx.adapterRegistry.getAdapter(gateway);
   if (!adapter || !isCartPaymentIntentAdapter(adapter)) {
-    return;
+    return true;
   }
-  if (!cartId) return;
+  if (!cartId) return true;
 
   // Prefer client_credentials (same as cart delete). A present-but-expired
   // shopper token must not block success cleanup when admin credentials exist.
@@ -61,7 +62,7 @@ async function detachCartPaymentIntentIfNeeded(
       "Cart PaymentIntent detach skipped — no shopper or admin token after successful payment",
       { cartId, gateway } as Record<string, unknown>
     );
-    return;
+    return false;
   }
 
   const result = await clearCartPaymentIntentId({
@@ -81,6 +82,7 @@ async function detachCartPaymentIntentIfNeeded(
       } as Record<string, unknown>
     );
   }
+  return result.ok;
 }
 
 export interface FinalizePaidSessionParams {
@@ -126,9 +128,10 @@ export async function finalizePaidSession(
 
   // Keep the Cart PI association when confirmOrder reconciliation failed —
   // ops may still need the link. Clear only after a clean reconcile.
-  if (cleanUpCart && reconciliationError == null) {
-    await detachCartPaymentIntentIfNeeded(ctx, gateway, session.cartId);
-  }
+  const detached =
+    cleanUpCart && reconciliationError == null
+      ? await detachCartPaymentIntentIfNeeded(ctx, gateway, session.cartId)
+      : false;
 
   if (cleanUpCart && ctx.getClientCredentialsToken) {
     const cleanup = {
@@ -137,7 +140,9 @@ export async function finalizePaidSession(
       getClientCredentialsToken: ctx.getClientCredentialsToken,
       cartId: session.cartId,
     };
-    await (keepLinesNotOrdered
+    // A cart kept for the shopper must not still link to the paid
+    // PaymentIntent; when it could not be unlinked, delete it instead.
+    await (keepLinesNotOrdered && detached
       ? removeOrderedLines({ ...cleanup, orderId })
       : runCartCleanup(cleanup));
   }

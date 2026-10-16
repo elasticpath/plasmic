@@ -96,7 +96,7 @@ export function EPSelectField(props: EPSelectFieldProps) {
         required={required}
         aria-invalid={error ? true : undefined}
         aria-label={label}
-        disabled={inEditor}
+        disabled={inEditor || form.locked}
         onChange={(e) => form.setField(name, e.target.value)}
       >
         <option value="" />

@@ -614,6 +614,26 @@ describe("EPCheckoutSessionProvider placeOrder 3DS continuation", () => {
     expect(result.data.session.status).toBe("complete");
   });
 
+  it("continues an open challenge without asking for a card or paying again", async () => {
+    const open = {
+      id: "sess-test",
+      status: "open",
+      totals: { total: 2799 },
+      payment: { gateway: "stripe", status: "requires_action", clientToken: "pi_secret" },
+    };
+    useCheckoutSession.mockReturnValue({
+      ...useCheckoutSession(),
+      session: open,
+    });
+
+    const result = await placeWithGateway("stripe", mockCompleteRequiresAction);
+
+    expect(mockConfirm).not.toHaveBeenCalled();
+    expect(mockPlaceOrder).not.toHaveBeenCalled();
+    expect(mockCompleteRequiresAction).toHaveBeenCalledWith(open);
+    expect(result.data.session.status).toBe("complete");
+  });
+
   it("continues the open challenge when pay answers that one is pending", async () => {
     const pending = {
       status: "open",
@@ -761,44 +781,29 @@ describe("EPCheckoutSessionProvider placeOrder 3DS continuation", () => {
     };
   }
 
-  it("does not abandon merely because the session is still requires_action", async () => {
-    useCheckoutSession.mockReturnValue(leftoverRequiresActionSession());
-    mockPlaceOrder.mockResolvedValue({
-      success: true,
-      data: { session: { status: "complete", order: { id: "ord-2" } } },
-    });
+  it("continues a leftover open challenge instead of abandoning it or paying again", async () => {
+    const leftover = leftoverRequiresActionSession();
+    useCheckoutSession.mockReturnValue(leftover);
 
     const result = await placeWithGateway("stripe", mockCompleteRequiresAction);
 
     expect(mockAbandonPayment).not.toHaveBeenCalled();
-    expect(mockPlaceOrder).toHaveBeenCalledTimes(1);
+    expect(mockConfirm).not.toHaveBeenCalled();
+    expect(mockPlaceOrder).not.toHaveBeenCalled();
+    expect(mockCompleteRequiresAction).toHaveBeenCalledWith(leftover.session);
     expect(mockResumePayment).not.toHaveBeenCalled();
     expect(result.data.session.status).toBe("complete");
   });
 
-  it("does not abandon a stuck resume (requires_action after 409/502, unpaid order present)", async () => {
-    useCheckoutSession.mockReturnValue(
-      leftoverRequiresActionSession({ order: { id: "order-unpaid" } })
-    );
-    const paySession = {
-      status: "open",
-      payment: {
-        gateway: "stripe",
-        status: "requires_action",
-        clientToken: "pi_old_secret",
-      },
-      order: { id: "order-unpaid" },
-    };
-    mockPlaceOrder.mockResolvedValue({
-      success: true,
-      data: { session: paySession },
-    });
+  it("continues a stuck resume (requires_action with its held order) without abandoning", async () => {
+    const leftover = leftoverRequiresActionSession({ order: { id: "order-unpaid" } });
+    useCheckoutSession.mockReturnValue(leftover);
 
     await placeWithGateway("stripe", mockCompleteRequiresAction);
 
     expect(mockAbandonPayment).not.toHaveBeenCalled();
-    expect(mockPlaceOrder).toHaveBeenCalledTimes(1);
-    expect(mockCompleteRequiresAction).toHaveBeenCalledWith(paySession);
+    expect(mockPlaceOrder).not.toHaveBeenCalled();
+    expect(mockCompleteRequiresAction).toHaveBeenCalledWith(leftover.session);
     expect(mockResumePayment).not.toHaveBeenCalled();
   });
 

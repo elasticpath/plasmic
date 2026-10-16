@@ -434,10 +434,17 @@ the shopper was shown and charged for. When Stripe asks for a challenge,
 `/pay` creates the order before it returns the challenge, and returns the
 challenge only when that order's total is the total the session showed;
 otherwise it answers `409` with `ORDER_TOTAL_CHANGED` and unlinks the
-PaymentIntent from the cart. `/resume-payment` confirms that order, so a cart
+PaymentIntent from the cart. Every `ORDER_TOTAL_CHANGED` (3DS, order-first
+and zero-total checkouts) now cancels the unused unpaid order and returns the
+session with that order's total, so the next submit pays the total on
+screen; before, the session kept the old total and each retry left another
+unpaid order. `/resume-payment` confirms that order, so a cart
 change made while the challenge is open does not change what is ordered or
 stop the order. A resume sent again after the order is paid answers with the
-same order and does not touch the cart. While the challenge is open, `/pay`
+same order; it finishes the cart cleanup only while the cart still links to
+that PaymentIntent (an earlier resume stopped before it), so a cart left
+holding the paid lines and the PaymentIntent no longer blocks the next
+pay. While the challenge is open, `/pay`
 and session updates answer `409` with the new code `PAYMENT_ACTION_PENDING`
 and the open session, and take no new payment; EP Checkout Session Provider
 then continues that challenge with the gateway that started it.
@@ -454,17 +461,46 @@ else from the keys EP Stripe Payment sends with the request. A resume it
 cannot check this way returns `409` with the new code
 `PAYMENT_STATUS_UNVERIFIED`; one sent before the challenge is passed returns
 `409` with `PAYMENT_STILL_REQUIRES_ACTION`; a declined challenge frees the
-cart for a new payment. Neither places an order, and the order can still
-take the payment once the challenge is passed. `/abandon-payment` on a
-PaymentIntent Stripe reports as paid returns `409` with the new code
-`PAYMENT_ALREADY_TAKEN`, and EP Stripe Payment resumes instead. A cart
+cart for a new payment. When Stripe reports the payment taken but the order
+can no longer record it, the checkout completes (`reconciliationPending:
+true`) and the order's `external_ref` records the payment for
+reconciliation; when no order was held and the cart changed, the checkout
+ends with `409` and the new code `PAYMENT_NEEDS_REVIEW`, places no order for
+items that were not paid, and tells the shopper. Either way no route is left
+answering in a loop. Neither places an order, and the order can still
+take the payment once the challenge is passed. `/abandon-payment` releases a
+PaymentIntent only when it reads it as still waiting for the challenge or
+failed: one Stripe reports as paid returns `409` with the new code
+`PAYMENT_ALREADY_TAKEN` (EP Stripe Payment resumes instead), and one it
+cannot read returns `409` `PAYMENT_STATUS_UNVERIFIED` or `502`
+`PAYMENT_STATUS_UNKNOWN` and keeps the order. `useCheckoutSession().abandonPayment()`
+sends no keys by default, so without server keys it is refused rather than
+dropping an order it cannot check. A cart
 PaymentIntent adapter can report the state through the new optional
 `readPaymentIntentState`; without it, resume refuses.
 
 When a 3DS order completes, the cart keeps the lines the order did not take,
 such as an item added while the challenge was open, instead of being
 deleted. The lines the order took, the shipping line and promotions are
-removed.
+removed. The whole cart is deleted instead whenever the cart cannot be
+unlinked from the PaymentIntent, an order item does not name its cart line,
+or removing a line fails, so a paid line is never left in the cart.
+
+A PaymentIntent in `processing` is no longer treated as paid. Elastic Path's
+confirm on it records a pending payment and leaves the order unable to take
+that PaymentIntent once the money arrives, so `/pay` holds the order and
+waits, as for a challenge, and resume confirms it only once Stripe reports
+`succeeded`. EP Stripe Payment says the payment is still processing.
+
+EP Checkout Form Provider no longer loses edits made while a card check is
+open. While the session's payment waits for a 3DS challenge, the form shows a
+locked message (`role="status"`, also `checkoutFormData.isLocked` and
+`lockedMessage`), its fields are read-only, and Place order finishes or
+cancels the open check without sending the form or asking for a card. A
+refused session update now stops the order and shows the reason; before, it
+was ignored and the order carried the old details. EP Checkout Session
+Provider continues an open challenge without asking the payment component
+for a new card.
 
 EP Stripe Payment resumes a checkout only for a PaymentIntent that took the
 payment, and abandons it only for one that can no longer take it. When

@@ -10,6 +10,10 @@
  * challenge is still open). Must not run after a successful handleNextAction
  * → resumePayment path (resume requires the same status and consumes it).
  * Runs under the per-cart settle-once guard, so it never races a resume.
+ * Releases the PaymentIntent only when the adapter reads it as still waiting
+ * for the challenge or failed: 409 PAYMENT_ALREADY_TAKEN when it took the
+ * payment, 409 PAYMENT_STATUS_UNVERIFIED / 502 PAYMENT_STATUS_UNKNOWN when its
+ * state cannot be read.
  * The session drops the order /pay held for the abandoned PaymentIntent.
  *
  * Does not create a PaymentIntent, call updateCartPaymentIntent, confirmOrder,
@@ -26,7 +30,10 @@ import { isCartPaymentIntentAdapter } from "../../../checkout/session/payment-se
 import { clearCartPaymentIntentId } from "../../../checkout/session/clear-cart-payment-intent";
 import { buildShopperEpClient } from "../../../checkout/session/shopper-client";
 import { settleOnceOrBusy } from "../../../checkout/session/settle-once";
-import { readKeysFrom } from "../../../checkout/session/payment-challenge";
+import {
+  readCartPaymentIntentState,
+  unreadablePaymentResponse,
+} from "../../../checkout/session/payment-challenge";
 import { createLogger } from "../../../utils/logger";
 import { toClientSession } from "../../../checkout/session/client-session";
 
@@ -109,11 +116,15 @@ export async function handleAbandonPayment(
   }
 
   const open = session;
-  const read = adapter.readPaymentIntentState?.bind(adapter);
   return settleOnceOrBusy(open, async () => {
-    // A PaymentIntent that already took the payment must settle its order,
-    // not be unlinked from it. Unknown states keep the old behaviour.
-    if (read && (await read(open, readKeysFrom(req.body)).catch(() => null)) === "settled") {
+    // Release only a PaymentIntent that has not taken the payment: one still
+    // waiting for the challenge, or one that can no longer pay. A taken
+    // payment must settle its order; an unread one is left alone.
+    const state = await readCartPaymentIntentState(adapter, open, req.body);
+    if (state === "failed" || state === "awaiting_action") {
+      return abandonOpenChallenge(req, ctx, ttl, open);
+    }
+    if (state === "settled") {
       return {
         status: 409,
         body: {
@@ -126,7 +137,11 @@ export async function handleAbandonPayment(
         },
       };
     }
-    return abandonOpenChallenge(req, ctx, ttl, open);
+    log.error("Abandon refused: the payment's state cannot be read", {
+      sessionId: open.id,
+      state,
+    } as Record<string, unknown>);
+    return unreadablePaymentResponse(state, open);
   });
 }
 

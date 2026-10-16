@@ -95,6 +95,8 @@ function createMockAdapter(): PaymentAdapter {
     paymentSequence: "cart_payment_intent",
     initializePayment: jest.fn().mockResolvedValue({ status: "succeeded" }),
     confirmPayment: jest.fn().mockResolvedValue({ status: "succeeded" }),
+    // The shopper failed or cancelled the challenge.
+    readPaymentIntentState: jest.fn().mockResolvedValue("failed"),
   } as PaymentAdapter;
 }
 

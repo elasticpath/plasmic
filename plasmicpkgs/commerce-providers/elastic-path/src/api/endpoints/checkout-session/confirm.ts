@@ -91,17 +91,23 @@ export async function handleConfirm(
   }
 
   const open = session;
-  return settleOnceOrBusy(open, () => confirmOpenSession(req, ctx, ttl, open));
+  const order = session.order;
+  const gateway = session.payment.gateway;
+  return settleOnceOrBusy(open, () =>
+    confirmOpenSession(req, ctx, ttl, open, order, gateway)
+  );
 }
 
 async function confirmOpenSession(
   req: SessionRequest,
   ctx: SessionHandlerContext,
   ttl: number,
-  session: CheckoutSession
+  session: CheckoutSession,
+  order: NonNullable<CheckoutSession["order"]>,
+  gateway: string
 ): Promise<SessionResponse> {
   // 3. Delegate to adapter
-  const adapter = ctx.adapterRegistry.getAdapter(session.payment.gateway!);
+  const adapter = ctx.adapterRegistry.getAdapter(gateway);
   if (!adapter) {
     return {
       status: 400,
@@ -157,8 +163,8 @@ async function confirmOpenSession(
 
   if (adapterResult.status === "succeeded") {
     // Capture the EP transaction
-    const orderId = session.order!.id;
-    const transactionId = session.order!.transactionId;
+    const orderId = order.id;
+    const transactionId = order.transactionId;
 
     if (!transactionId) {
       log.error("Cannot capture EP transaction — transactionId missing from session.order", {

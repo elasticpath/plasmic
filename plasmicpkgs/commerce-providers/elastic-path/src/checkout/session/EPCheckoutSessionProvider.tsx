@@ -192,6 +192,16 @@ const EPCheckoutSessionRuntime = React.forwardRef<
         };
       }
 
+      // A card check (3DS) from an earlier attempt is still open: its order
+      // is held, so finish or cancel that check instead of taking a new card.
+      if (
+        session?.payment?.status === "requires_action" &&
+        session.payment.gateway === gw.name &&
+        typeof gw.completeRequiresAction === "function"
+      ) {
+        return await gw.completeRequiresAction(session);
+      }
+
       // Ask the gateway component for its data (e.g. tokenize the card)
       const gwData = await gw.confirm();
       const payResp = await placeOrderFn({ gateway: gw.name, ...gwData });
