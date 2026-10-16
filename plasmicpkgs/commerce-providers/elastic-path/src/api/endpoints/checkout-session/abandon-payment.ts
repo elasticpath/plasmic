@@ -16,20 +16,34 @@
  * state cannot be read.
  * The session drops the order /pay held for the abandoned PaymentIntent.
  *
- * Does not create a PaymentIntent, call updateCartPaymentIntent, confirmOrder,
- * checkoutApi, or /confirm.
+ * When the PaymentIntent still waits for its challenge and an order is held
+ * for it, abandon first voids it through that order (order-void.ts): order
+ * confirm, then transaction cancel, then the order's stock is returned and the
+ * order cancelled. Otherwise it does not create a PaymentIntent, call
+ * updateCartPaymentIntent, confirmOrder, checkoutApi, or /confirm.
  */
 import type {
   SessionRequest,
   SessionResponse,
   SessionHandlerContext,
   CheckoutSession,
+  CartPaymentIntentState,
 } from "../../../checkout/session/types";
 import { applyAbandonedRequiresAction } from "../../../checkout/session/session-state-transition";
 import { isCartPaymentIntentAdapter } from "../../../checkout/session/payment-sequence";
 import { clearCartPaymentIntentId } from "../../../checkout/session/clear-cart-payment-intent";
 import { buildShopperEpClient } from "../../../checkout/session/shopper-client";
 import { settleOnceOrBusy } from "../../../checkout/session/settle-once";
+import { buildAdminEpClient } from "../../../checkout/session/admin-client";
+import { finalizePaidSession } from "../../../checkout/session/finalize-paid-session";
+import {
+  cancelUnpaidOrder,
+  markOrderForReconciliation,
+} from "../../../checkout/session/order-creation";
+import {
+  releaseOrderStock,
+  voidHeldOrderPayment,
+} from "../../../checkout/session/order-void";
 import {
   readCartPaymentIntentState,
   unreadablePaymentResponse,
@@ -121,6 +135,14 @@ export async function handleAbandonPayment(
     // waiting for the challenge, or one that can no longer pay. A taken
     // payment must settle its order; an unread one is left alone.
     const state = await readCartPaymentIntentState(adapter, open, req.body);
+    const heldOrderId = open.order?.id;
+    if (state === "awaiting_action" && heldOrderId) {
+      // The challenge can still complete after the cart lets go of it: void
+      // the PaymentIntent through the held order first.
+      return voidThenAbandon(req, ctx, ttl, open, heldOrderId, () =>
+        readCartPaymentIntentState(adapter, open, req.body)
+      );
+    }
     if (state === "failed" || state === "awaiting_action") {
       return abandonOpenChallenge(req, ctx, ttl, open);
     }
@@ -143,6 +165,93 @@ export async function handleAbandonPayment(
     } as Record<string, unknown>);
     return unreadablePaymentResponse(state, open);
   });
+}
+
+/**
+ * Voids the held order's PaymentIntent, returns the stock its confirm took,
+ * cancels the order, then abandons as usual. When the challenge completed in
+ * the meantime, the payment is taken: the order is settled (or, when it can no
+ * longer record the payment, marked for reconciliation) and the session ends,
+ * so the cart is never freed for a second charge.
+ */
+async function voidThenAbandon(
+  req: SessionRequest,
+  ctx: SessionHandlerContext,
+  ttl: number,
+  session: CheckoutSession,
+  orderId: string,
+  readState: () => Promise<CartPaymentIntentState>
+): Promise<SessionResponse> {
+  const client = await buildAdminEpClient(ctx);
+  const voided = await voidHeldOrderPayment(client, orderId);
+  const paymentIntentId = session.payment.gatewayMetadata?.paymentIntentId;
+  const reference = typeof paymentIntentId === "string" ? paymentIntentId : "unknown";
+
+  if (voided.outcome === "voided") {
+    await releaseOrderStock(ctx, client, orderId);
+    await cancelUnpaidOrder(client, orderId);
+    return abandonOpenChallenge(req, ctx, ttl, session);
+  }
+
+  if (voided.outcome === "paid") {
+    return alreadyTaken(
+      await finalizePaidSession({
+        ctx,
+        req,
+        ttl,
+        session,
+        gateway: session.payment.gateway ?? "",
+        orderId,
+        paymentIntentId: reference,
+        gatewayMetadata: session.payment.gatewayMetadata,
+        keepLinesNotOrdered: true,
+      })
+    );
+  }
+
+  // The void failed. If the challenge completed meanwhile, the payment is
+  // taken and this order can no longer record it: reconcile, never re-charge.
+  if ((await readState()) === "settled") {
+    await markOrderForReconciliation(client, orderId, reference);
+    return alreadyTaken(
+      await finalizePaidSession({
+        ctx,
+        req,
+        ttl,
+        session,
+        gateway: session.payment.gateway ?? "",
+        orderId,
+        paymentIntentId: reference,
+        gatewayMetadata: session.payment.gatewayMetadata,
+        reconciliationError: voided.reason,
+      })
+    );
+  }
+
+  log.error("Abandon could not void the payment; nothing released", {
+    sessionId: session.id,
+    orderId,
+    reason: voided.reason,
+  } as Record<string, unknown>);
+  return unreadablePaymentResponse("unreadable", session);
+}
+
+/** 409 PAYMENT_ALREADY_TAKEN carrying the session a settlement just completed. */
+function alreadyTaken(finalized: SessionResponse): SessionResponse {
+  if (finalized.status !== 200) return finalized;
+  const body = finalized.body as Record<string, unknown>;
+  return {
+    ...finalized,
+    status: 409,
+    body: {
+      ...body,
+      success: false,
+      error: {
+        message: "Your payment went through, so your order was placed.",
+        code: "PAYMENT_ALREADY_TAKEN",
+      },
+    },
+  };
 }
 
 async function abandonOpenChallenge(

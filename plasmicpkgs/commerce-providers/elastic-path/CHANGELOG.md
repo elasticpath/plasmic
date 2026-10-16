@@ -416,6 +416,25 @@ changes: same props, same slots, same data.
 
 ### Fixed
 
+Abandoning a card check that can still complete no longer leaves a payment
+the shopper can complete later. `/abandon-payment` voids the PaymentIntent
+through the order held for the challenge (the order's pending transaction is
+cancelled, which cancels the PaymentIntent), returns the stock that order
+took, and cancels the order before it frees the cart. If the challenge
+completes during the void, the checkout ends with `409`
+`PAYMENT_ALREADY_TAKEN` and the completed session: the order is placed, or
+marked for reconciliation when it can no longer record the payment, and the
+cart is not freed for a second charge. EP Stripe Payment treats that answer
+as a placed order. Resume still never confirms a payment Stripe has not
+reported taken.
+
+Two limits are now documented in the README. The settle-once guard holds
+within one server process: route a checkout session's requests to one
+instance; across instances a double submit can create a duplicate order, not
+a double charge. A card payment taken before Elastic Path finds the stock gone
+ends in `PAYMENT_NEEDS_REVIEW` with a reconciliation log. A planned follow-up,
+"every charge belongs to an order", removes both.
+
 A card payment whose order total is not the amount charged is no longer
 reported as a clean order. When a cart change made outside the storefront
 lands between the charge and the order, `/pay` marks the order for
