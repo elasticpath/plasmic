@@ -62,7 +62,11 @@ export interface CartPaymentIntentAdapter extends PaymentAdapterOrderRule {
     initializePayment(session: CheckoutSession, gatewayData: Record<string, unknown>): Promise<PaymentAdapterResult>;
     // (undocumented)
     readonly paymentSequence: "cart_payment_intent";
+    readPaymentIntentState?(session: CheckoutSession, keys?: PaymentIntentReadKeys): Promise<CartPaymentIntentState>;
 }
+
+// @public
+export type CartPaymentIntentState = "settled" | "awaiting_action" | "failed" | "unreadable" | "unverifiable";
 
 // @public
 export interface ClientCredentialsResolverConfig {
@@ -848,6 +852,14 @@ export interface PaymentAdapterOrderRuleInput {
     cart: EpCartResponse;
 }
 
+// @public
+export interface PaymentIntentReadKeys {
+    // (undocumented)
+    publishableKey: string;
+    // (undocumented)
+    stripeAccount?: string;
+}
+
 // @public (undocumented)
 export type PaymentSequence = "cart_payment_intent" | "order_first";
 
@@ -929,6 +941,8 @@ export interface StripeAdapterConfig {
     getClientCredentialsToken: () => Promise<string>;
     getShopperToken?: () => string | Promise<string>;
     host: string;
+    publishableKey?: string;
+    stripeAccount?: string;
 }
 
 // @public (undocumented)

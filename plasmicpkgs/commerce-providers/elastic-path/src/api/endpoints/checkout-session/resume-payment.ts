@@ -15,12 +15,14 @@
  */
 import { checkoutApi, confirmOrder, getAnOrder } from "@epcc-sdk/sdks-shopper";
 import { settleOnceOrBusy } from "../../../checkout/session/settle-once";
+import { readKeysFrom } from "../../../checkout/session/payment-challenge";
 import { clearCartPaymentIntentId } from "../../../checkout/session/clear-cart-payment-intent";
 import type {
   SessionRequest,
   SessionResponse,
   SessionHandlerContext,
   CheckoutSession,
+  CartPaymentIntentState,
 } from "../../../checkout/session/types";
 import { hashCart } from "../../../checkout/session/cart-hash";
 import { readCartResponse } from "../../../ep-server-functions/read-cart";
@@ -265,11 +267,134 @@ export async function handleResumePayment(
   }
 
   const open = session;
+  const readState = () =>
+    adapter.readPaymentIntentState
+      ? adapter.readPaymentIntentState(open, readKeysFrom(req.body))
+      : Promise.resolve<CartPaymentIntentState>("unverifiable");
   return settleOnceOrBusy(open, () =>
     open.order?.id
-      ? settleHeldOrder(req, ctx, ttl, open, open.order!.id, paymentIntentId)
-      : resumeWithoutHeldOrder(req, ctx, ttl, open, paymentIntentId)
+      ? settleHeldOrder(req, ctx, ttl, open, open.order!.id, paymentIntentId, readState)
+      : resumeWithoutHeldOrder(req, ctx, ttl, open, paymentIntentId, readState)
   );
+}
+
+/**
+ * Confirm only a PaymentIntent the gateway reports as settled: Elastic Path's
+ * confirm on one still awaiting 3DS records a pending payment and the order
+ * can no longer take that PaymentIntent. Returns the response to send instead
+ * of confirming, or `null` to go on.
+ */
+async function refuseUnsettled(
+  req: SessionRequest,
+  ctx: SessionHandlerContext,
+  ttl: number,
+  session: CheckoutSession,
+  readState: () => Promise<CartPaymentIntentState>
+): Promise<SessionResponse | null> {
+  let state: CartPaymentIntentState;
+  try {
+    state = await readState();
+  } catch {
+    state = "unreadable";
+  }
+  switch (state) {
+    case "settled":
+      return null;
+    case "failed":
+      return declinePayment(
+        req,
+        ctx,
+        ttl,
+        session,
+        await buildAdminEpClient(ctx),
+        "Card authentication failed"
+      );
+    case "awaiting_action":
+      return {
+        status: 409,
+        body: {
+          success: false,
+          error: {
+            message: "Finish the card check, then try again",
+            code: "PAYMENT_STILL_REQUIRES_ACTION",
+          },
+          data: { session: toClientSession(session) },
+        },
+      };
+    case "unverifiable":
+      log.error("Resume refused: the payment's state cannot be read", {
+        sessionId: session.id,
+        gateway: session.payment.gateway,
+      } as Record<string, unknown>);
+      return {
+        status: 409,
+        body: {
+          success: false,
+          error: {
+            message:
+              "We couldn't check your payment, so your order was not placed. Please try again.",
+            code: "PAYMENT_STATUS_UNVERIFIED",
+          },
+          data: { session: toClientSession(session) },
+        },
+      };
+    default:
+      return {
+        status: 502,
+        body: {
+          success: false,
+          error: {
+            message: "We couldn't check your payment. Please try again.",
+            code: "PAYMENT_STATUS_UNKNOWN",
+          },
+          data: { session: toClientSession(session) },
+        },
+      };
+  }
+}
+
+/** The PaymentIntent can no longer pay: unlink it and drop its order so the next pay starts fresh. */
+async function declinePayment(
+  req: SessionRequest,
+  ctx: SessionHandlerContext,
+  ttl: number,
+  session: CheckoutSession,
+  adminClient: Awaited<ReturnType<typeof buildAdminEpClient>>,
+  errorMessage: string | undefined
+): Promise<SessionResponse> {
+  const cleared = await clearCartPaymentIntentId({
+    client: adminClient,
+    cartId: session.cartId,
+  });
+  if (!cleared.ok) {
+    log.error("Failed to unlink a declined PaymentIntent from the cart", {
+      cartId: session.cartId,
+      error: cleared.errorMessage,
+    } as Record<string, unknown>);
+  }
+  const failedSession = applyPaymentFailed(
+    { ...session, order: null },
+    {
+      errorMessage,
+      gatewayMetadata: session.payment.gatewayMetadata,
+    }
+  );
+  const { headers, storeError } = await persistOpenSession(
+    ctx,
+    req,
+    ttl,
+    failedSession
+  );
+  if (storeError) return storeError;
+  return {
+    status: 200,
+    body: {
+      success: true,
+      data: { session: toClientSession(failedSession) },
+      ...(errorMessage ? { paymentError: errorMessage } : {}),
+    },
+    headers,
+  };
 }
 
 /**
@@ -284,7 +409,8 @@ async function settleHeldOrder(
   ttl: number,
   session: CheckoutSession,
   orderId: string,
-  paymentIntentId: string
+  paymentIntentId: string,
+  readState: () => Promise<CartPaymentIntentState>
 ): Promise<SessionResponse> {
   const adminClient = await buildAdminEpClient(ctx);
 
@@ -310,7 +436,12 @@ async function settleHeldOrder(
     });
   }
 
-  return confirmAndSettle(req, ctx, ttl, session, adminClient, orderId, paymentIntentId);
+  const refused = await refuseUnsettled(req, ctx, ttl, session, readState);
+  if (refused) return refused;
+
+  return confirmAndSettle(req, ctx, ttl, session, adminClient, orderId, paymentIntentId, {
+    keepLinesNotOrdered: true,
+  });
 }
 
 /** Sessions whose challenge started before /pay held the order. */
@@ -319,8 +450,12 @@ async function resumeWithoutHeldOrder(
   ctx: SessionHandlerContext,
   ttl: number,
   session: CheckoutSession,
-  paymentIntentId: string
+  paymentIntentId: string,
+  readState: () => Promise<CartPaymentIntentState>
 ): Promise<SessionResponse> {
+  const refused = await refuseUnsettled(req, ctx, ttl, session, readState);
+  if (refused) return refused;
+
   // Cart-hash re-check — same mechanism as /pay, no shipping rewrite.
   const shopperClient = buildShopperEpClient(ctx);
 
@@ -449,7 +584,8 @@ async function confirmAndSettle(
   session: CheckoutSession,
   adminClient: Awaited<ReturnType<typeof buildAdminEpClient>>,
   orderId: string,
-  paymentIntentId: string
+  paymentIntentId: string,
+  options: { keepLinesNotOrdered?: boolean } = {}
 ): Promise<SessionResponse> {
   let confirmResult: unknown;
   let confirmThrown: unknown;
@@ -484,47 +620,12 @@ async function confirmAndSettle(
       orderId,
       paymentIntentId,
       gatewayMetadata: session.payment.gatewayMetadata,
+      keepLinesNotOrdered: options.keepLinesNotOrdered,
     });
   }
 
   if (classified.outcome === "failed") {
-    // The declined PaymentIntent cannot pay this order; unlink it so the next
-    // pay starts a new one and a new order.
-    const cleared = await clearCartPaymentIntentId({
-      client: adminClient,
-      cartId: session.cartId,
-    });
-    if (!cleared.ok) {
-      log.error("Failed to unlink a declined PaymentIntent from the cart", {
-        cartId: session.cartId,
-        error: cleared.errorMessage,
-      } as Record<string, unknown>);
-    }
-    const failedSession = applyPaymentFailed(
-      { ...session, order: null },
-      {
-        errorMessage: classified.errorMessage,
-        gatewayMetadata: session.payment.gatewayMetadata,
-      }
-    );
-    const { headers, storeError } = await persistOpenSession(
-      ctx,
-      req,
-      ttl,
-      failedSession
-    );
-    if (storeError) return storeError;
-    return {
-      status: 200,
-      body: {
-        success: true,
-        data: { session: toClientSession(failedSession) },
-        ...(classified.errorMessage
-          ? { paymentError: classified.errorMessage }
-          : {}),
-      },
-      headers,
-    };
+    return declinePayment(req, ctx, ttl, session, adminClient, classified.errorMessage);
   }
 
   if (classified.outcome === "unknown") {

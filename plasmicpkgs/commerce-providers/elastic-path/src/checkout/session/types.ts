@@ -204,12 +204,45 @@ export interface PaymentAdapterOrderRuleInput {
   account: { id: string } | null;
 }
 
+/**
+ * A cart PaymentIntent's state, read without changing it.
+ * `settled`: the payment was taken. `awaiting_action`: the 3DS challenge is
+ * not passed yet. `failed`: it can no longer take the payment. `unreadable`:
+ * the read failed. `unverifiable`: the adapter has no way to read it.
+ */
+export type CartPaymentIntentState =
+  | "settled"
+  | "awaiting_action"
+  | "failed"
+  | "unreadable"
+  | "unverifiable";
+
+/**
+ * Keys the browser's payment component already holds (a Stripe publishable
+ * key and connected account). Resume sends them so the server can read the
+ * PaymentIntent when the adapter has no keys configured.
+ */
+export interface PaymentIntentReadKeys {
+  publishableKey: string;
+  stripeAccount?: string;
+}
+
 export interface CartPaymentIntentAdapter extends PaymentAdapterOrderRule {
   readonly paymentSequence: "cart_payment_intent";
   initializePayment(
     session: CheckoutSession,
     gatewayData: Record<string, unknown>
   ): Promise<PaymentAdapterResult>;
+  /**
+   * Reads the session's PaymentIntent state without changing it. Resume
+   * confirms the order only when this answers `settled`, because Elastic
+   * Path's confirm on a PaymentIntent still awaiting 3DS leaves the order
+   * unable to take that payment. An adapter without it cannot resume.
+   */
+  readPaymentIntentState?(
+    session: CheckoutSession,
+    keys?: PaymentIntentReadKeys
+  ): Promise<CartPaymentIntentState>;
 }
 
 export interface OrderFirstAdapter extends PaymentAdapterOrderRule {

@@ -560,7 +560,33 @@ so a cart change during the challenge does not change what is ordered. While
 the challenge is open, pay and session updates return `409` with code
 `PAYMENT_ACTION_PENDING` and the open session; finish the challenge (resume)
 or cancel it (abandon) first. EP Checkout Session Provider and EP Stripe
-Payment do this for you.
+Payment do this for you. When the order completes, the cart keeps any line
+the shopper added during the challenge; the lines the order took are removed.
+
+Resume confirms the order only after Stripe reports that the payment was
+taken. Elastic Path cannot report this, and its confirm on a payment still
+waiting for 3DS leaves the order unable to take that payment. So resume reads
+the PaymentIntent from Stripe, the same read Stripe.js makes: its client
+secret (held in the checkout session) plus a publishable key and the
+connected account. Give the Stripe adapter those keys:
+
+```ts
+createStripeAdapter({
+  host: apiBaseUrl,
+  clientId,
+  getClientCredentialsToken,
+  publishableKey: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY, // pk_…
+  stripeAccount: process.env.NEXT_PUBLIC_STRIPE_ACCOUNT_ID, // acct_…
+});
+```
+
+Both are public values; no Stripe secret is involved. Without them, resume
+uses the keys EP Stripe Payment sends with the request. A resume the server
+cannot check this way returns `409` with code `PAYMENT_STATUS_UNVERIFIED` and
+places no order. A resume sent before the challenge is passed returns `409`
+with `PAYMENT_STILL_REQUIRES_ACTION`; a declined challenge frees the cart for
+a new payment. Abandon on a payment Stripe reports as taken returns `409` with
+`PAYMENT_ALREADY_TAKEN`; resume instead.
 
 Pass the session's `locale` and `currency` on `SessionHandlerContext` as well,
 from the same `getSession`:

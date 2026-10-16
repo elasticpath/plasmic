@@ -446,6 +446,26 @@ PaymentIntent from the cart and drop the held order from the session, so the
 next pay starts a new PaymentIntent and a new order. The held order stays
 unpaid in Elastic Path.
 
+`/resume-payment` confirms the order only after Stripe reports that the
+payment was taken. It reads the PaymentIntent from Stripe with its client
+secret plus a publishable key and connected account: from the new
+`publishableKey` and `stripeAccount` options of `createStripeAdapter`, or
+else from the keys EP Stripe Payment sends with the request. A resume it
+cannot check this way returns `409` with the new code
+`PAYMENT_STATUS_UNVERIFIED`; one sent before the challenge is passed returns
+`409` with `PAYMENT_STILL_REQUIRES_ACTION`; a declined challenge frees the
+cart for a new payment. Neither places an order, and the order can still
+take the payment once the challenge is passed. `/abandon-payment` on a
+PaymentIntent Stripe reports as paid returns `409` with the new code
+`PAYMENT_ALREADY_TAKEN`, and EP Stripe Payment resumes instead. A cart
+PaymentIntent adapter can report the state through the new optional
+`readPaymentIntentState`; without it, resume refuses.
+
+When a 3DS order completes, the cart keeps the lines the order did not take,
+such as an item added while the challenge was open, instead of being
+deleted. The lines the order took, the shipping line and promotions are
+removed.
+
 EP Stripe Payment resumes a checkout only for a PaymentIntent that took the
 payment, and abandons it only for one that can no longer take it. When
 Stripe.js reports no PaymentIntent state, for example because the challenge

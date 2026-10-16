@@ -411,7 +411,10 @@ describe("EPStripePayment in a checkout session", () => {
       success: true,
       data: { session: { status: "complete" } },
     });
-    const { session } = renderCheckout();
+    const { session } = renderCheckout({
+      publishableKey: "pk_test_123",
+      stripeAccount: "acct_123",
+    });
     await screen.findByTestId("stripe-payment-element");
 
     let result: any;
@@ -422,7 +425,10 @@ describe("EPStripePayment in a checkout session", () => {
     expect(mockStripeJs.last().handleNextAction).toHaveBeenCalledWith({
       clientSecret: "pi_3ds_secret",
     });
-    expect(mockResumePayment).toHaveBeenCalled();
+    expect(mockResumePayment).toHaveBeenCalledWith({
+      publishableKey: "pk_test_123",
+      stripeAccount: "acct_123",
+    });
     expect(mockAbandonPayment).not.toHaveBeenCalled();
     expect(result.data.session.status).toBe("complete");
   });
@@ -573,15 +579,18 @@ describe("runStripeRequiresAction", () => {
     expect(result.data.session.status).toBe("complete");
   });
 
-  it("does not pass PI id, status, or client secret to resumePayment", async () => {
+  it("passes resumePayment only the keys the server reads the payment with", async () => {
     await runStripeRequiresAction({
       stripe,
       clientSecret: "pi_abc_secret",
       resumePayment: mockResumePayment,
       abandonPayment: mockAbandonPayment,
-    });
+      readKeys: { publishableKey: "pk_test_1", stripeAccount: "acct_1" },
+    } as any);
 
-    expect(mockResumePayment.mock.calls[0]).toEqual([]);
+    expect(mockResumePayment.mock.calls[0]).toEqual([
+      { publishableKey: "pk_test_1", stripeAccount: "acct_1" },
+    ]);
     expect(mockAbandonPayment).not.toHaveBeenCalled();
   });
 
@@ -770,6 +779,29 @@ describe("runStripeRequiresAction", () => {
     expect(mockResumePayment).not.toHaveBeenCalled();
     expect(result.success).toBe(false);
     expect(result.error.message).toBeTruthy();
+  });
+
+  it("abandons with the read keys, and resumes when the server finds the payment was taken", async () => {
+    mockHandleNextAction.mockResolvedValue({
+      error: { message: "canceled" },
+      paymentIntent: { status: "canceled" },
+    });
+    mockAbandonPayment.mockResolvedValue({
+      success: false,
+      error: { code: "PAYMENT_ALREADY_TAKEN", message: "Your payment went through." },
+    });
+
+    const result = await runStripeRequiresAction({
+      stripe,
+      clientSecret: "pi_abc_secret",
+      resumePayment: mockResumePayment,
+      abandonPayment: mockAbandonPayment,
+      readKeys: { publishableKey: "pk_test_1" },
+    } as any);
+
+    expect(mockAbandonPayment).toHaveBeenCalledWith({ publishableKey: "pk_test_1" });
+    expect(mockResumePayment).toHaveBeenCalledWith({ publishableKey: "pk_test_1" });
+    expect(result.success).toBe(true);
   });
 
   it("does not resume while the challenge is still open", async () => {
