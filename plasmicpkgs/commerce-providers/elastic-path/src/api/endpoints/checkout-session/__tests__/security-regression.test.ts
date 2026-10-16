@@ -546,7 +546,9 @@ describe("confirmOrder reconciliation (#369)", () => {
     const body = res.body as any;
     expect(res.status).toBe(200);
     expect(epSdk.confirmOrder).toHaveBeenCalledTimes(1);
-    expect(epSdk.confirmOrder.mock.calls[0][0].path.paymentID).toBe("pi_ok");
+    expect(epSdk.confirmOrder.mock.calls[0][0].path).toEqual({
+      orderID: expect.any(String),
+    });
     expect(body.reconciliationPending).toBeUndefined();
     expect(
       body.data.session.payment.gatewayMetadata.needsReconciliation

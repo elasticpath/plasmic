@@ -1,4 +1,6 @@
 import type {
+  CartPaymentIntentAdapter,
+  CartPaymentIntentState,
   CheckoutSession,
   PaymentIntentReadKeys,
   SessionHandlerContext,
@@ -45,6 +47,53 @@ export function readKeysFrom(body: unknown): PaymentIntentReadKeys | undefined {
     return { publishableKey, stripeAccount };
   }
   return { publishableKey };
+}
+
+/**
+ * The session's PaymentIntent state, read by the adapter with the keys the
+ * request carries. An adapter that cannot read it gives `unverifiable`; a
+ * read that throws gives `unreadable`.
+ */
+export async function readCartPaymentIntentState(
+  adapter: CartPaymentIntentAdapter,
+  session: CheckoutSession,
+  requestBody: unknown
+): Promise<CartPaymentIntentState> {
+  if (!adapter.readPaymentIntentState) return "unverifiable";
+  try {
+    return await adapter.readPaymentIntentState(session, readKeysFrom(requestBody));
+  } catch {
+    return "unreadable";
+  }
+}
+
+/**
+ * The answer when the payment's state cannot be read: nothing is confirmed or
+ * released. `unverifiable` (no way to check) is 409
+ * `PAYMENT_STATUS_UNVERIFIED`; a failed read is 502 `PAYMENT_STATUS_UNKNOWN`.
+ */
+export function unreadablePaymentResponse(
+  state: CartPaymentIntentState,
+  session: CheckoutSession
+): SessionResponse {
+  const unverifiable = state === "unverifiable";
+  return {
+    status: unverifiable ? 409 : 502,
+    body: {
+      success: false,
+      error: unverifiable
+        ? {
+            message:
+              "We couldn't check your payment, so nothing was changed. Please try again.",
+            code: "PAYMENT_STATUS_UNVERIFIED",
+          }
+        : {
+            message: "We couldn't check your payment. Please try again.",
+            code: "PAYMENT_STATUS_UNKNOWN",
+          },
+      data: { session: toClientSession(session) },
+    },
+  };
 }
 
 /** 409 with the open challenge, so the client can finish or cancel it. */

@@ -362,7 +362,14 @@ describe("handlePay — order_first retry / idempotency", () => {
     expect(res.status).toBe(409);
     expect((res.body as any).error.code).toBe("ORDER_TOTAL_CHANGED");
     expect(epSdk.paymentSetup).not.toHaveBeenCalled();
-    expect(ctx.sessionStore.set).not.toHaveBeenCalled();
+    expect((res.body as any).data.session.totals.total).toBe(9999);
+    expect((res.body as any).data.session.order).toBeNull();
+    expect(epSdk.updateAnOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { orderID: "order-1" },
+        body: { data: { type: "order", status: "cancelled" } },
+      })
+    );
   });
 
   it("drops an unpaid order whose total is not the shown total, and takes no payment", async () => {

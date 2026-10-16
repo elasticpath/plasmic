@@ -374,6 +374,72 @@ describe("EPCheckoutFormProvider shipping sync", () => {
     expect(handleRef.current?.error).toBeNull();
   });
 
+  it("shows a refused checkout update and places no order", async () => {
+    mockUpdateSession.mockResolvedValueOnce({
+      success: false,
+      error: {
+        code: "PAYMENT_ACTION_PENDING",
+        message: "Finish or cancel the card check before changing this checkout",
+      },
+    });
+    const handleRef = { current: null as FormHandle | null };
+    render(
+      <EPCheckoutFormProvider>
+        <FormHarness
+          seed={{ firstName: "Jane", lastName: "Doe", email: "jane@example.com" }}
+          handleRef={handleRef}
+        />
+      </EPCheckoutFormProvider>
+    );
+
+    await act(async () => {
+      await handleRef.current?.placeOrder();
+    });
+
+    expect(mockPlaceOrder).not.toHaveBeenCalled();
+    expect(handleRef.current?.status).toBe("error");
+    expect(handleRef.current?.error).toBe(
+      "Finish or cancel the card check before changing this checkout"
+    );
+  });
+
+  it("while a card check is open, shows the form locked and finishes the check without sending edits", async () => {
+    mockUseDataEnv.mockReturnValue({
+      checkoutSession: {
+        session: {
+          status: "open",
+          payment: { status: "requires_action", gateway: "stripe" },
+        },
+        updateSession: mockUpdateSession,
+        calculateShipping: mockCalculateShipping,
+        placeOrder: mockPlaceOrder,
+      },
+    });
+    const handleRef = { current: null as FormHandle | null };
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { EPFormField } = require("../EPFormField");
+      render(
+        <EPCheckoutFormProvider>
+          <EPFormField name="email" label="Email" fieldId="email-field" />
+          <FormHarness handleRef={handleRef} />
+        </EPCheckoutFormProvider>
+      );
+
+      expect(screen.getByRole("status").textContent).toMatch(/card check/i);
+      expect((document.getElementById("email-field") as HTMLInputElement).readOnly).toBe(true);
+      await act(async () => {
+        await handleRef.current?.placeOrder();
+      });
+
+      expect(mockUpdateSession).not.toHaveBeenCalled();
+      expect(mockPlaceOrder).toHaveBeenCalledTimes(1);
+      expect(handleRef.current?.status).toBe("placed");
+    } finally {
+      mockUseDataEnv.mockImplementation(sessionDataEnv);
+    }
+  });
+
   it("treats a failed payment as an error, not success", async () => {
     mockPlaceOrder.mockResolvedValueOnce({
       success: true,

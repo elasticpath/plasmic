@@ -53,7 +53,9 @@ export interface UseCheckoutSessionReturn {
   resumePayment: (resumeData?: Record<string, unknown>) => Promise<SessionApiResponse>;
   /**
    * Unlink the cart PaymentIntent after a failed/cancelled customer action
-   * (POST …/abandon-payment).
+   * (POST …/abandon-payment). Pass `{ publishableKey, stripeAccount }` when
+   * the server has no Stripe keys configured: the server releases a payment
+   * only after reading its state, and refuses (keeping the order) otherwise.
    */
   abandonPayment: (abandonData?: Record<string, unknown>) => Promise<SessionApiResponse>;
   /** Confirm a gateway action (e.g. Clover 3DS). */

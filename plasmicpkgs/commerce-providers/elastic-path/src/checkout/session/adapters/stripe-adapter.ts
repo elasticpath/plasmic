@@ -7,9 +7,12 @@
  * its side. The host calls one EP endpoint with `confirm: true` plus a
  * `confirmation_token` minted client-side via Stripe Elements.
  *
- * Maps Stripe PaymentIntent status to PaymentAdapterResult:
- *   succeeded / requires_capture / processing → succeeded
- *   requires_action (3DS) → requires_action with client_secret
+ * Maps Stripe PaymentIntent status (one table: `payment-intent-status.ts`)
+ * to PaymentAdapterResult:
+ *   succeeded / requires_capture → succeeded
+ *   requires_action (3DS) and processing → requires_action with the client
+ *     secret: /pay holds the order, and resume confirms it only once the
+ *     payment is taken
  *   anything else → failed
  */
 import { createCartPaymentIntent } from "@epcc-sdk/sdks-shopper";
@@ -21,6 +24,7 @@ import type {
   CheckoutSession,
 } from "../types";
 import { createLogger } from "../../../utils/logger";
+import { paymentIntentPhase } from "../payment-intent-status";
 
 const log = createLogger("StripeAdapter");
 
@@ -59,18 +63,6 @@ export interface StripeAdapterConfig {
   stripeAccount?: string;
 }
 
-const SETTLED_PI_STATUSES = new Set(["succeeded", "processing", "requires_capture"]);
-const AWAITING_PI_STATUSES = new Set([
-  "requires_action",
-  "requires_source_action",
-  "requires_confirmation",
-]);
-const FAILED_PI_STATUSES = new Set([
-  "requires_payment_method",
-  "requires_source",
-  "canceled",
-]);
-
 /**
  * Reads a PaymentIntent the way Stripe.js `retrievePaymentIntent` does: its
  * client secret plus a publishable key. The read changes nothing.
@@ -94,10 +86,16 @@ async function readStripePaymentIntent(
     if (pi?.id !== paymentIntentId || typeof pi.status !== "string") {
       return "unreadable";
     }
-    if (SETTLED_PI_STATUSES.has(pi.status)) return "settled";
-    if (AWAITING_PI_STATUSES.has(pi.status)) return "awaiting_action";
-    if (FAILED_PI_STATUSES.has(pi.status)) return "failed";
-    return "unreadable";
+    switch (paymentIntentPhase(pi.status)) {
+      case "settled":
+        return "settled";
+      case "pending":
+        return "awaiting_action";
+      case "failed":
+        return "failed";
+      default:
+        return "unreadable";
+    }
   } catch {
     return "unreadable";
   }
@@ -200,13 +198,14 @@ export function createStripeAdapter(
       const clientSecret: string | undefined =
         typeof pi?.client_secret === "string" ? pi.client_secret : undefined;
 
-      if (piStatus === "requires_action" && piId) {
+      const phase = paymentIntentPhase(piStatus);
+      if (phase === "pending" && piId) {
         return {
           status: "requires_action",
           clientToken: clientSecret,
           gatewayMetadata: { paymentIntentId: piId },
           actionData: {
-            type: "stripe_3ds",
+            type: piStatus === "processing" ? "stripe_processing" : "stripe_3ds",
             paymentIntentId: piId,
           },
         };
@@ -217,12 +216,7 @@ export function createStripeAdapter(
       // with no error (confirm:true ran). The order is then created + synced
       // via confirmOrder downstream.
       const succeeded =
-        !epError &&
-        !!piId &&
-        (piStatus === undefined ||
-          piStatus === "succeeded" ||
-          piStatus === "requires_capture" ||
-          piStatus === "processing");
+        !epError && !!piId && (piStatus === undefined || phase === "settled");
       if (succeeded) {
         return {
           status: "succeeded",

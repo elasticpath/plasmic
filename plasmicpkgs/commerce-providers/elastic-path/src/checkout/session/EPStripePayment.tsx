@@ -48,6 +48,7 @@ import type {
   GatewayPaySession,
 } from "./payment-registration-context";
 import { useCheckoutSession } from "./use-checkout-session";
+import { paymentIntentPhase } from "./payment-intent-status";
 
 // @stripe/stripe-js 2.x types predate confirmation tokens; Stripe.js v3 has them.
 type StripeWithConfirmationTokens = Stripe & {
@@ -57,14 +58,6 @@ type StripeWithConfirmationTokens = Stripe & {
   >;
 };
 
-const FAILED_PI_STATUSES = new Set([
-  "requires_payment_method",
-  "requires_source",
-  "canceled",
-  "cancelled",
-]);
-
-const SETTLED_PI_STATUSES = new Set(["succeeded", "processing", "requires_capture"]);
 
 /** The keys this form reads Stripe with; resume sends them to the server. */
 type PaymentReadKeys = {
@@ -188,11 +181,15 @@ export async function runStripeRequiresAction(options: {
   // Only a PaymentIntent that took the payment may settle the order, and only
   // one that can no longer take it may be abandoned: abandoning a paid one, or
   // settling one still waiting, would leave the charge without its order.
-  if (piStatus && !SETTLED_PI_STATUSES.has(piStatus) && !FAILED_PI_STATUSES.has(piStatus)) {
+  const phase = paymentIntentPhase(piStatus);
+  if (piStatus && phase !== "settled" && phase !== "failed") {
     return {
       success: false,
       error: {
-        message: "Your card check is not finished. Please complete it and try again.",
+        message:
+          piStatus === "processing"
+            ? "Your payment is still processing. Please try again in a moment."
+            : "Your card check is not finished. Please complete it and try again.",
         code: "PAYMENT_ACTION_PENDING",
       },
     };
@@ -208,7 +205,7 @@ export async function runStripeRequiresAction(options: {
   }
 
   let failMessage: string | undefined;
-  if (FAILED_PI_STATUSES.has(piStatus ?? "")) {
+  if (phase === "failed") {
     failMessage = stripeNextActionFailureMessage(stripeError, piStatus);
   }
 

@@ -560,8 +560,10 @@ so a cart change during the challenge does not change what is ordered. While
 the challenge is open, pay and session updates return `409` with code
 `PAYMENT_ACTION_PENDING` and the open session; finish the challenge (resume)
 or cancel it (abandon) first. EP Checkout Session Provider and EP Stripe
-Payment do this for you. When the order completes, the cart keeps any line
-the shopper added during the challenge; the lines the order took are removed.
+Payment do this for you, and EP Checkout Form Provider shows its fields
+locked until the check ends. When the order completes, the cart keeps any
+line the shopper added during the challenge; the lines the order took are
+removed (the whole cart is deleted when that cannot be done safely).
 
 Resume confirms the order only after Stripe reports that the payment was
 taken. Elastic Path cannot report this, and its confirm on a payment still
@@ -585,8 +587,15 @@ uses the keys EP Stripe Payment sends with the request. A resume the server
 cannot check this way returns `409` with code `PAYMENT_STATUS_UNVERIFIED` and
 places no order. A resume sent before the challenge is passed returns `409`
 with `PAYMENT_STILL_REQUIRES_ACTION`; a declined challenge frees the cart for
-a new payment. Abandon on a payment Stripe reports as taken returns `409` with
-`PAYMENT_ALREADY_TAKEN`; resume instead.
+a new payment. Abandon releases the payment only when Stripe reports it still
+waiting or failed: a payment Stripe reports as taken returns `409` with
+`PAYMENT_ALREADY_TAKEN` (resume instead), and one the server cannot check
+returns `409` `PAYMENT_STATUS_UNVERIFIED`. A payment in `processing` is
+waited for, not confirmed. When Stripe reports the payment taken but no
+matching order can record it, the checkout ends instead of looping: it
+completes with `reconciliationPending: true` (the order's `external_ref`
+records the payment), or returns `409` `PAYMENT_NEEDS_REVIEW` with no order
+when the cart changed and no order was held.
 
 Pass the session's `locale` and `currency` on `SessionHandlerContext` as well,
 from the same `getSession`:

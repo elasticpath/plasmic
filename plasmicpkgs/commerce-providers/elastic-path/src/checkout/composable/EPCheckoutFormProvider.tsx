@@ -124,6 +124,11 @@ export interface CheckoutFormContextValue {
   error: string | null;
   orderId: string | null;
   isFree: boolean;
+  /**
+   * True while the session's card check (3DS) is open: its order is already
+   * held, so field edits cannot change it. Fields show read-only.
+   */
+  locked: boolean;
   setField(name: string, value: string): void;
   setBoolean(name: string, checked: boolean): void;
   registerField(
@@ -144,6 +149,7 @@ const NOOP_CTX: CheckoutFormContextValue = {
   error: null,
   orderId: null,
   isFree: false,
+  locked: false,
   setField: () => {},
   setBoolean: () => {},
   registerField: () => {},
@@ -205,6 +211,10 @@ interface EPCheckoutFormProviderProps {
 }
 
 /** Shape of the `checkoutSession` value EPCheckoutSessionProvider publishes. */
+/** Shown while a card check (3DS) is open and the form cannot change. */
+const LOCKED_MESSAGE =
+  "Your card check is still open. Place the order to finish or cancel it; changes to these details are not saved until then.";
+
 interface SessionBridge {
   session?: {
     status?: string;
@@ -274,6 +284,9 @@ export const EPCheckoutFormProvider = React.forwardRef<
       ? SETUP_ERROR
       : null;
   const useSession = setupError === null;
+  // An open card check holds the order: edits cannot apply until it ends.
+  const locked =
+    useSession && sessionBridge?.session?.payment?.status === "requires_action";
 
   const mapping = useMemo<CheckoutFieldMapping>(
     () => ({ ...DEFAULT_MAPPING, ...(fieldMapping ?? {}) }),
@@ -428,6 +441,56 @@ export const EPCheckoutFormProvider = React.forwardRef<
     placingRef.current = false;
   }, []);
 
+  const failed = useCallback(
+    (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Order could not be placed.";
+      setError(msg);
+      setStatus("error");
+      onError?.({ message: msg });
+      log.error("session placeOrder failed", { error: msg });
+    },
+    [onError]
+  );
+
+  // Session provider.placeOrder awaits Stripe 3DS (handleNextAction +
+  // resumePayment) when /pay returns requires_action, so a successful return
+  // here is a completed session — not an intermediate open one.
+  const takePayment = useCallback(async () => {
+    const resp = await sessionBridge?.placeOrder?.();
+    const s = resp?.data?.session;
+    if (resp?.success && s?.status === "complete") {
+      const oid = s.order?.id ?? "";
+      const free = (s.totals?.total ?? 0) === 0;
+      setOrderId(oid);
+      setIsFree(free);
+      setStatus("placed");
+      onPlaced?.({ orderId: oid, isFree: free });
+      redirectToConfirmation(oid);
+      return;
+    }
+    throw new Error(
+      resp?.error?.message ??
+        resp?.paymentError ??
+        "Payment did not complete. Please check your details and try again."
+    );
+  }, [sessionBridge, onPlaced, redirectToConfirmation]);
+
+  // The order is already held for the open card check: finish (or cancel)
+  // that check. Nothing typed into the locked form is sent.
+  const finishOpenCardCheck = useCallback(async () => {
+    if (placingRef.current) return;
+    placingRef.current = true;
+    setStatus("placing");
+    setError(null);
+    try {
+      await takePayment();
+    } catch (err) {
+      failed(err);
+    } finally {
+      placingRef.current = false;
+    }
+  }, [takePayment, failed]);
+
   const placeOrder = useCallback(async () => {
     if (inEditor) {
       log.debug("placeOrder is a no-op in the Studio canvas");
@@ -439,6 +502,10 @@ export const EPCheckoutFormProvider = React.forwardRef<
       setError(message);
       onError?.({ message });
       log.error(message);
+      return;
+    }
+    if (locked) {
+      await finishOpenCardCheck();
       return;
     }
     if (!validateAll()) {
@@ -498,38 +565,27 @@ export const EPCheckoutFormProvider = React.forwardRef<
         mapShippingFormValuesToSessionAddress(v);
     }
     try {
-      await sessionBridge.updateSession?.(sessionUpdate);
-      // Session provider.placeOrder awaits Stripe 3DS (handleNextAction +
-      // resumePayment) when /pay returns requires_action, so a successful
-      // return here is a completed session — not an intermediate open one.
-      const resp = await sessionBridge.placeOrder?.();
-      const s = resp?.data?.session;
-      if (resp?.success && s?.status === "complete") {
-        const oid = s.order?.id ?? "";
-        const free = (s.totals?.total ?? 0) === 0;
-        setOrderId(oid);
-        setIsFree(free);
-        setStatus("placed");
-        onPlaced?.({ orderId: oid, isFree: free });
-        redirectToConfirmation(oid);
-      } else {
+      // A refused update (such as an open card check) must stop the order:
+      // the order would not carry what the shopper just entered.
+      const updated = (await sessionBridge.updateSession?.(sessionUpdate)) as
+        | { success?: boolean; error?: { message?: string } }
+        | undefined;
+      if (updated && updated.success === false) {
         throw new Error(
-          resp?.error?.message ??
-            resp?.paymentError ??
-            "Payment did not complete. Please check your details and try again."
+          updated.error?.message ?? "Your details could not be saved. Please try again."
         );
       }
+      await takePayment();
     } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "Order could not be placed.";
-      setError(msg);
-      setStatus("error");
-      onError?.({ message: msg });
-      log.error("session placeOrder failed", { error: msg });
+      failed(err);
     } finally {
       placingRef.current = false;
     }
   }, [
+    locked,
+    finishOpenCardCheck,
+    takePayment,
+    failed,
     inEditor,
     validateAll,
     values,
@@ -558,6 +614,7 @@ export const EPCheckoutFormProvider = React.forwardRef<
       error,
       orderId,
       isFree,
+      locked,
       setField,
       setBoolean,
       registerField,
@@ -574,6 +631,7 @@ export const EPCheckoutFormProvider = React.forwardRef<
       error,
       orderId,
       isFree,
+      locked,
       setField,
       setBoolean,
       registerField,
@@ -592,10 +650,12 @@ export const EPCheckoutFormProvider = React.forwardRef<
       isFree,
       isPlacing: status === "placing",
       isPlaced: status === "placed",
+      isLocked: locked,
+      lockedMessage: locked ? LOCKED_MESSAGE : null,
       values,
       booleans,
     }),
-    [status, error, orderId, isFree, values, booleans]
+    [status, error, orderId, isFree, locked, values, booleans]
   );
 
   return (
@@ -605,6 +665,11 @@ export const EPCheckoutFormProvider = React.forwardRef<
           {setupError ? (
             <div role="alert" data-ep-checkout-setup-error="">
               {setupError}
+            </div>
+          ) : null}
+          {locked ? (
+            <div role="status" data-ep-checkout-locked="">
+              {LOCKED_MESSAGE}
             </div>
           ) : null}
           {children}

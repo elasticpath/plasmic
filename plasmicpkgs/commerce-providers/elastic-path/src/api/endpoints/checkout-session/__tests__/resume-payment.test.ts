@@ -12,6 +12,7 @@
 
 jest.mock("@epcc-sdk/sdks-shopper", () => ({
   getACart: jest.fn(),
+  getAnOrder: jest.fn(),
   checkoutApi: jest.fn(),
   confirmOrder: jest.fn(),
   createCartPaymentIntent: jest.fn(),
@@ -32,6 +33,7 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const epSdk = require("@epcc-sdk/sdks-shopper") as {
   getACart: jest.Mock;
+  getAnOrder: jest.Mock;
   checkoutApi: jest.Mock;
   confirmOrder: jest.Mock;
   createCartPaymentIntent: jest.Mock;
@@ -199,6 +201,10 @@ beforeEach(() => {
   epSdk.updateCartPaymentIntent.mockResolvedValue({ data: { data: {} } });
   epSdk.updateACart.mockResolvedValue({ data: { data: {} } });
   epSdk.updateAnOrder.mockResolvedValue({ data: { data: { id: "order-1" } } });
+  // A held order that still holds its PaymentIntent, as checkout leaves it.
+  epSdk.getAnOrder.mockResolvedValue({
+    data: { data: { id: "order-1", payment: "unpaid", payment_intent_id: "pi_abc" } },
+  });
   epSdk.deleteACart.mockResolvedValue({ data: undefined });
   epSdk.manageCarts.mockResolvedValue({});
 });
@@ -213,7 +219,7 @@ describe("classifyConfirmOrderResult", () => {
   it("treats an unrecognised nested PI status as unknown", () => {
     expect(
       classifyConfirmOrderResult({
-        data: { payment_intent: { status: "requires_source" } },
+        data: { payment_intent: { status: "some_new_status" } },
       }).outcome
     ).toBe("unknown");
   });
@@ -398,42 +404,30 @@ describe("handleResumePayment — guards", () => {
     expect(epSdk.confirmOrder).not.toHaveBeenCalled();
   });
 
-  it("returns 409 CART_MISMATCH when the cart has changed", async () => {
-    epSdk.getACart.mockResolvedValue({
-      data: { included: { items: [{ id: "different", quantity: 99 }] } },
-    });
-    const res = await handleResumePayment(
-      createMockReq(),
-      createMockCtx(makeSession())
-    );
-    expect(res.status).toBe(409);
-    expect((res.body as any).error.code).toBe("CART_MISMATCH");
-    expect(epSdk.checkoutApi).not.toHaveBeenCalled();
-    expect(epSdk.confirmOrder).not.toHaveBeenCalled();
-  });
-
-  it("does not rewrite the stored cartHash on mismatch; a second resume still 409s", async () => {
-    const originalHash = hashCart(CART_ITEMS);
-    const mutatedItems = [{ id: "different", quantity: 99 }];
+  it("ends for review, with no order, when the payment was taken for a cart that changed and no order was held", async () => {
     const store = createStatefulStore(makeSession());
     const ctx = createMockCtx(makeSession(), { sessionStore: store });
     epSdk.getACart.mockResolvedValue({
-      data: { included: { items: mutatedItems } },
+      data: { included: { items: [{ id: "different", quantity: 99 }] } },
     });
 
     const first = await handleResumePayment(createMockReq(), ctx);
+
     expect(first.status).toBe(409);
-    expect((first.body as any).error.code).toBe("CART_MISMATCH");
-    expect((await store.get("current"))?.cartHash).toBe(originalHash);
+    expect((first.body as any).error.code).toBe("PAYMENT_NEEDS_REVIEW");
+    expect((first.body as any).reconciliationPending).toBe(true);
     expect(epSdk.checkoutApi).not.toHaveBeenCalled();
     expect(epSdk.confirmOrder).not.toHaveBeenCalled();
+    expect(epSdk.updateACart).toHaveBeenCalledWith(
+      expect.objectContaining({ body: { data: { payment_intent_id: "" } } })
+    );
+    const stored = await store.get("current");
+    expect(stored?.status).toBe("complete");
+    expect(stored?.order).toBeNull();
 
     const second = await handleResumePayment(createMockReq(), ctx);
-    expect(second.status).toBe(409);
-    expect((second.body as any).error.code).toBe("CART_MISMATCH");
-    expect((await store.get("current"))?.cartHash).toBe(originalHash);
-    expect(epSdk.checkoutApi).not.toHaveBeenCalled();
-    expect(epSdk.confirmOrder).not.toHaveBeenCalled();
+    expect(second.status).toBe(400);
+    expect((second.body as any).error.code).toBe("SESSION_NOT_OPEN");
   });
 });
 
@@ -462,7 +456,6 @@ describe("handleResumePayment — success", () => {
     expect(epSdk.confirmOrder).toHaveBeenCalledTimes(1);
     expect(epSdk.confirmOrder.mock.calls[0][0].path).toEqual({
       orderID: "order-1",
-      paymentID: "pi_abc",
     });
     expect(epSdk.updateACart).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -533,7 +526,6 @@ describe("handleResumePayment — success", () => {
     expect(epSdk.checkoutApi).not.toHaveBeenCalled();
     expect(epSdk.confirmOrder.mock.calls[0][0].path).toEqual({
       orderID: "order-existing",
-      paymentID: "pi_abc",
     });
   });
 });
@@ -641,15 +633,14 @@ describe("handleResumePayment — selected account", () => {
   });
 });
 
-describe("handleResumePayment — pending / still requires_action", () => {
-  it("keeps the session open, does not complete, and skips cleanup", async () => {
-    epSdk.confirmOrder.mockResolvedValue({
-      data: { data: { id: "order-1", payment: "unpaid" } },
-    });
+describe("handleResumePayment — challenge not passed yet", () => {
+  it("keeps the session open, confirms nothing, and skips cleanup", async () => {
+    const adapter = createMockAdapter();
+    (adapter as any).readPaymentIntentState.mockResolvedValue("awaiting_action");
 
     const res = await handleResumePayment(
       createMockReq(),
-      createMockCtx(makeSession())
+      createMockCtx(makeSession(), {}, adapter)
     );
 
     expect(res.status).toBe(409);
@@ -657,25 +648,9 @@ describe("handleResumePayment — pending / still requires_action", () => {
     const session = (res.body as any).data.session;
     expect(session.status).toBe("open");
     expect(session.payment.status).toBe("requires_action");
-    expect(session.order?.id).toBe("order-1");
+    expect(epSdk.confirmOrder).not.toHaveBeenCalled();
     expect(epSdk.deleteACart).not.toHaveBeenCalled();
     expect(epSdk.createCartPaymentIntent).not.toHaveBeenCalled();
-  });
-
-  it("returns 409 when confirmOrder throws a requires_action error", async () => {
-    epSdk.confirmOrder.mockRejectedValue(new Error("requires_action"));
-    const res = await handleResumePayment(
-      createMockReq(),
-      createMockCtx(makeSession())
-    );
-    expect(res.status).toBe(409);
-    expect((res.body as any).error.code).toBe("PAYMENT_STILL_REQUIRES_ACTION");
-    expect((res.body as any).data.session.status).toBe("open");
-    expect((res.body as any).data.session.payment.status).toBe(
-      "requires_action"
-    );
-    expect((res.body as any).data.session.order?.id).toBe("order-1");
-    expect(epSdk.deleteACart).not.toHaveBeenCalled();
   });
 });
 
@@ -747,13 +722,12 @@ describe("handleResumePayment — unknown confirmOrder error", () => {
 
 describe("handleResumePayment — failed / cancelled PaymentIntent", () => {
   it("marks payment failed, keeps session open, does not complete, and frees the cart for a new payment", async () => {
-    epSdk.confirmOrder.mockRejectedValue(
-      new Error("PaymentIntent canceled")
-    );
+    const adapter = createMockAdapter();
+    (adapter as any).readPaymentIntentState.mockResolvedValue("failed");
 
     const res = await handleResumePayment(
       createMockReq(),
-      createMockCtx(makeSession())
+      createMockCtx(makeSession(), {}, adapter)
     );
 
     expect(res.status).toBe(200);
@@ -761,25 +735,38 @@ describe("handleResumePayment — failed / cancelled PaymentIntent", () => {
     expect(session.status).toBe("open");
     expect(session.payment.status).toBe("failed");
     expect(session.order).toBeNull();
+    expect(epSdk.confirmOrder).not.toHaveBeenCalled();
     expect(epSdk.updateACart).toHaveBeenCalledWith(
       expect.objectContaining({ body: { data: { payment_intent_id: "" } } })
     );
     expect(epSdk.deleteACart).not.toHaveBeenCalled();
     expect(epSdk.createCartPaymentIntent).not.toHaveBeenCalled();
   });
+});
 
-  it("treats nested canceled payment_intent.status as failed", async () => {
+describe("handleResumePayment — a taken payment the order cannot record", () => {
+  it("completes the session and marks the order for reconciliation when the order lost the PaymentIntent", async () => {
     epSdk.confirmOrder.mockResolvedValue({
-      data: { payment_intent: { status: "canceled" } },
+      error: { errors: [{ status: 400, detail: "This order has no Stripe Payment Intent ID." }] },
     });
+    epSdk.getAnOrder.mockResolvedValue({
+      data: { data: { id: "order-1", payment: "unpaid" } },
+    });
+
     const res = await handleResumePayment(
       createMockReq(),
-      createMockCtx(makeSession())
+      createMockCtx(makeSession({ order: { id: "order-1" } }))
     );
+
     expect(res.status).toBe(200);
-    expect((res.body as any).data.session.status).toBe("open");
-    expect((res.body as any).data.session.payment.status).toBe("failed");
-    expect((res.body as any).data.session.order).toBeNull();
+    expect((res.body as any).data.session.status).toBe("complete");
+    expect((res.body as any).reconciliationPending).toBe(true);
+    expect(epSdk.updateAnOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { orderID: "order-1" },
+        body: { data: { type: "order", external_ref: expect.stringContaining("pi_abc") } },
+      })
+    );
   });
 });
 

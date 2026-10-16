@@ -29,6 +29,7 @@ export interface FakeOrder {
   lines: Array<{ sku?: string; quantity: number; amount: number }>;
   /** The cart line each order item came from, as `relationships.cart_item`. */
   cartItems: Array<{ cartItemId: string; sku?: string; quantity: number }>;
+  externalRef?: string;
 }
 
 export interface FakePaymentIntent {
@@ -58,6 +59,8 @@ export class FakeEpStore {
   /** Amounts taken by a cart PaymentIntent, one entry per charge. */
   charges: number[] = [];
   paymentIntents = new Map<string, FakePaymentIntent>();
+  /** Order items arrive without the cart line they came from. */
+  orderItemsWithoutCartLines = false;
   private seq = 0;
 
   private nextId(prefix: string): string {
@@ -262,9 +265,13 @@ export class FakeEpStore {
                 type: "order_item",
                 sku: item.sku,
                 quantity: item.quantity,
-                relationships: {
-                  cart_item: { data: { type: "cart_item", id: item.cartItemId } },
-                },
+                ...(store.orderItemsWithoutCartLines
+                  ? {}
+                  : {
+                      relationships: {
+                        cart_item: { data: { type: "cart_item", id: item.cartItemId } },
+                      },
+                    }),
               })),
             },
           };
@@ -276,7 +283,18 @@ export class FakeEpStore {
             ? { data: { data: read.lines.map((l) => ({ ...l })) } }
             : { data: { data: [] } };
         }),
-      updateAnOrder: () => after(() => ({ data: { data: {} } })),
+      updateAnOrder: ({ path, body }: any) =>
+        after(() => {
+          const order = store.orders.find((o) => o.id === path.orderID);
+          if (!order) return { error: { errors: [{ status: 404 }] } };
+          if (body?.data?.status === "cancelled" && order.payment === "unpaid") {
+            order.status = "cancelled";
+          }
+          if (typeof body?.data?.external_ref === "string") {
+            order.externalRef = body.data.external_ref;
+          }
+          return { data: { data: store.orderResource(order) } };
+        }),
       deleteAllCartItems: ({ path }: any) =>
         after(() => {
           store.cart(path.cartID).lines = [];
@@ -378,6 +396,7 @@ export class FakeEpStore {
       type: "order",
       status: order.status,
       payment: order.payment,
+      ...(order.paymentIntentId ? { payment_intent_id: order.paymentIntentId } : {}),
       meta: {
         display_price: { with_tax: { amount: order.total, currency: "USD" } },
       },

@@ -225,6 +225,35 @@ describe("createStripeAdapter — Cart Payment Intent (EP-native)", () => {
       expect(result.actionData).not.toHaveProperty("client_secret");
     });
 
+    it("does not report a processing payment as taken; it waits like a challenge", async () => {
+      epSdk.createCartPaymentIntent.mockResolvedValue({
+        data: {
+          data: { id: "cart_abc", payment_intent_id: "pi_slow" },
+          meta: {
+            payment_intent: {
+              payment_intent: {
+                id: "pi_slow",
+                status: "processing",
+                client_secret: "pi_slow_secret_abc",
+              },
+            },
+          },
+        },
+      });
+
+      const adapter = createStripeAdapter(ADAPTER_CONFIG);
+      const result = await adapter.initializePayment(makeSession(), {
+        confirmation_token: "ctoken_slow",
+      });
+
+      expect(result.status).toBe("requires_action");
+      expect(result.clientToken).toBe("pi_slow_secret_abc");
+      expect(result.actionData).toEqual({
+        type: "stripe_processing",
+        paymentIntentId: "pi_slow",
+      });
+    });
+
     it("maps requires_action even when EP wraps the PI under a flat payment_intent", async () => {
       epSdk.createCartPaymentIntent.mockResolvedValue({
         data: {
@@ -358,7 +387,7 @@ describe("createStripeAdapter — Cart Payment Intent (EP-native)", () => {
 
     it.each([
       ["succeeded", "settled"],
-      ["processing", "settled"],
+      ["processing", "awaiting_action"],
       ["requires_capture", "settled"],
       ["requires_action", "awaiting_action"],
       ["requires_confirmation", "awaiting_action"],
