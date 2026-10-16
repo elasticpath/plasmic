@@ -354,9 +354,14 @@ async function genLoaderCodeBundleForProjectVersions(
           source: opts.source,
         });
         if (!bundleCacheHit && opts.source === "live") {
-          logger().info(
-            `Loader bundle cache miss for live request: ${bundleKey}`
-          );
+          logger().info("Loader bundle cache miss for live request", {
+            bundleKey,
+            platform: exportOpts.platform,
+            loaderVersion: opts.loaderVersion,
+            browserOnly: !!opts.browserOnly,
+            projectCount: Object.keys(projectVersions).length,
+            projectIds: Object.keys(projectVersions),
+          });
         }
         bundle.bundleKey = bundleKey;
         return bundle;

@@ -35,10 +35,11 @@ export async function tryGetS3CacheEntry<T>(opts: {
       s3.getObject({ Bucket: bucket, Key: key }).promise()
     );
     const serialized = ensureInstance(obj.Body, Buffer).toString("utf8");
-    logger().info(`S3 early cache hit for ${bucket} ${key}`, {
+    logger().info("S3 early cache hit", {
       s3CacheResult: "hit",
       bucket,
       key,
+      keyPrefix: key.split("/")[0],
     });
     return deserialize(serialized);
   } catch (err) {
