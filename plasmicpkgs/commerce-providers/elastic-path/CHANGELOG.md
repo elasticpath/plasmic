@@ -431,6 +431,48 @@ changes: same props, same slots, same data.
 
 ### Fixed
 
+A checkout page with an empty cart no longer shows the last finished
+checkout. When EP Checkout Session Provider cannot start a checkout, it
+publishes no session, `$ctx.checkoutSession.error` carries the message (an
+empty cart reads "Your cart is empty") and the new `errorCode` carries the
+code, such as `EMPTY_CART`. Place Order and session updates answer with that
+refusal and send nothing. The provider tries again when the cart changes or
+the page gets focus. An order placed on the page stays shown: the provider no
+longer starts a new checkout after it.
+
+The checkout total follows the cart before the shopper pays. A promo code
+applied on the checkout page, or a cart change made in another tab, used to
+show only after a first Place Order failed with `CART_MISMATCH`, and a 100%
+code still asked for a card. Now `GET /checkout/sessions/current` re-reads the
+cart of an open session and stores the cart's new totals when its lines
+changed. It leaves a session alone while a card check holds its order or a
+payment for its cart runs. EP Checkout Session Provider reads the session again
+when the shared cart changes and when the page gets focus, so EP Stripe Payment
+hides the card field as soon as the total is zero. Place Order now sends the
+total the page showed as `shownTotal`, and `/pay` refuses with `409`
+`TOTAL_CHANGED` and the current session when that total is not the total it
+would charge. A request without `shownTotal` is checked as before.
+
+The checkout's shipping line no longer shows in the cart. After a declined
+card or a refused order, the cart page listed "Standard Shipping" as a line
+the shopper could change or remove, and counted it. The published `Cart`
+leaves that line out of `items` and `itemCount`, and its totals and promotion
+amounts leave out what the line adds and what a code took off it. Checkout
+still charges the shipping line. Session totals count the shipping line at
+its discounted price, so the subtotal no longer goes negative under a code
+that discounts shipping. A new checkout session leaves out a shipping line
+left in the cart until a rate is chosen.
+
+A form reloaded while a card check is open shows the details the order was
+placed with. EP Checkout Form Provider fills its locked fields from the
+checkout session.
+
+EP Checkout Form Provider shows why an order could not be placed, such as a
+declined card or a failed card check, below the form without a binding. It
+also shows why checkout could not start. The new **Show Errors** prop (on by
+default) turns this off for a page that shows `$ctx.checkoutFormData.error`
+itself.
+
 Abandoning a card check that can still complete no longer leaves a payment
 the shopper can complete later. `/abandon-payment` voids the PaymentIntent
 through the order held for the challenge (the order's pending transaction is

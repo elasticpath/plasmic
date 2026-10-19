@@ -1,4 +1,4 @@
-import { EP_SHIPPING_LINE_SKU } from "./set-shipping-line";
+import { isShippingLine } from "./shipping-line-sku";
 import type { SessionTotals } from "./types";
 
 type Amount = { amount?: unknown; currency?: unknown } | undefined;
@@ -18,15 +18,34 @@ export function cartLines(cartResponse: unknown): unknown[] {
   return Array.isArray(items) ? items : [];
 }
 
-/** Session totals for a cart total that includes `shipping`; null without a total. */
-export function totalsFromDisplayPrice(
-  displayPrice: DisplayPrice,
-  shipping: number
-): SessionTotals | null {
+/**
+ * What a shipping line adds to the cart total: its priced value after any
+ * cart discount, as Elastic Path reports it, else its unit price.
+ */
+function shippingLineAmount(line: unknown): number {
+  const l = line as {
+    quantity?: unknown;
+    unit_price?: { amount?: unknown };
+    meta?: { display_price?: { with_tax?: { value?: { amount?: unknown } } } };
+  };
+  return (
+    num(l.meta?.display_price?.with_tax?.value?.amount) ??
+    (num(l.unit_price?.amount) ?? 0) * (num(l.quantity) ?? 1)
+  );
+}
+
+/** Session totals for a cart read in Elastic Path's own shape; null without a total. */
+export function totalsFromCart(cartResponse: unknown): SessionTotals | null {
+  const displayPrice = (
+    cartResponse as { data?: { meta?: { display_price?: DisplayPrice } } }
+  )?.data?.meta?.display_price;
   const total = num(displayPrice?.with_tax?.amount);
   if (total === null) {
     return null;
   }
+  const shipping = cartLines(cartResponse)
+    .filter(isShippingLine)
+    .reduce<number>((sum, line) => sum + shippingLineAmount(line), 0);
   const tax = num(displayPrice?.tax?.amount) ?? 0;
   const currency = displayPrice?.with_tax?.currency;
   return {
@@ -38,21 +57,10 @@ export function totalsFromDisplayPrice(
   };
 }
 
-/** Session totals for a cart read in Elastic Path's own shape. */
-export function totalsFromCart(cartResponse: unknown): SessionTotals | null {
-  const shipping = cartLines(cartResponse)
-    .filter((it) => (it as { sku?: unknown })?.sku === EP_SHIPPING_LINE_SKU)
-    .reduce<number>((sum, it) => {
-      const line = it as {
-        quantity?: unknown;
-        unit_price?: { amount?: unknown };
-      };
-      return (
-        sum + (num(line.unit_price?.amount) ?? 0) * (num(line.quantity) ?? 1)
-      );
-    }, 0);
-  const meta = (
-    cartResponse as { data?: { meta?: { display_price?: DisplayPrice } } }
-  )?.data?.meta;
-  return totalsFromDisplayPrice(meta?.display_price, shipping);
+/** The same totals with the shipping left out, for a session with no rate chosen. */
+export function totalsWithoutShipping(
+  totals: SessionTotals | null
+): SessionTotals | null {
+  if (!totals) return totals;
+  return { ...totals, shipping: 0, total: totals.subtotal + totals.tax };
 }

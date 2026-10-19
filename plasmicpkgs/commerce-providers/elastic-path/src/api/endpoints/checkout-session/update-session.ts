@@ -11,15 +11,16 @@ import type {
   SessionResponse,
   SessionHandlerContext,
   CheckoutSession,
-  SessionTotals,
   SessionShippingRate,
   UpdateSessionRequest,
 } from "../../../checkout/session/types";
-import type { Cart } from "../../../types/cart";
 import { filterAllowedCustomAttributes } from "../../../checkout/session/custom-attributes-allowlist";
 import { applyShippingSelection } from "../../../checkout/session/apply-shipping-selection";
-import { resolveShippingRate } from "../../../checkout/session/cart-shipping";
 import { buildAdminEpClient } from "../../../checkout/session/admin-client";
+import {
+  totalsFromCart,
+  totalsWithoutShipping,
+} from "../../../checkout/session/session-totals";
 import { sessionAddressesEquivalent } from "../../../checkout/session/address-utils";
 import { createLogger } from "../../../utils/logger";
 import { toClientSession } from "../../../checkout/session/client-session";
@@ -30,21 +31,6 @@ import {
 } from "../../../checkout/session/payment-challenge";
 
 const log = createLogger("UpdateSession");
-
-/** Authoritative cart total from a normalized Cart (minor units), or null. */
-function cartWithTaxAmount(cart: Cart): number | null {
-  const amount = cart.meta?.display_price?.with_tax?.amount;
-  return typeof amount === "number" && Number.isFinite(amount) ? amount : null;
-}
-
-function totalsWithoutShipping(totals: SessionTotals | null): SessionTotals | null {
-  if (!totals) return totals;
-  return {
-    ...totals,
-    shipping: 0,
-    total: totals.subtotal + totals.tax,
-  };
-}
 
 /** Rates for a changed address; empty when the resolver is missing or fails. */
 async function requote(
@@ -202,20 +188,13 @@ export async function handleUpdateSession(
     try {
       const client = await buildAdminEpClient(ctx);
       const pricedCart = await applyShippingSelection(ctx, updated, { client });
-      const rate = resolveShippingRate(
-        updated.availableShippingRates,
-        updated.selectedShippingRateId ?? ""
-      );
-      const freshTotal = cartWithTaxAmount(pricedCart);
-      if (freshTotal != null) {
+      const fresh = totalsFromCart(pricedCart);
+      if (fresh) {
         updated = {
           ...updated,
           totals: {
-            subtotal: updated.totals?.subtotal ?? 0,
-            tax: updated.totals?.tax ?? 0,
-            shipping: rate.amount,
-            total: freshTotal,
-            currency: updated.totals?.currency || rate.currency,
+            ...fresh,
+            currency: fresh.currency || updated.totals?.currency || "",
           },
         };
       }

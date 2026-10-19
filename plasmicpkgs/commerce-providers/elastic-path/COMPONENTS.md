@@ -171,6 +171,13 @@ const { cart, isLoading, error, refresh } = useEpCart();
 `useCheckoutCart()` reads the same cart for checkout, as
 `{ data, isEmpty, isLoading, error, mutate }`.
 
+The cart holds what the shopper bought. Checkout writes its shipping charge
+into the Elastic Path cart as a line with SKU `__ep_shipping`; the published
+cart leaves that line out of `items` and `itemCount`, and its
+`meta.display_price` totals and promotion amounts leave out what the line adds
+and what a code took off it. Checkout totals, which include shipping, come
+from `$ctx.checkoutSession.session.totals`.
+
 To write to the cart, call `epAddCartItem`, `epUpdateCartItem` or
 `epRemoveCartItem`. They replace `useAddItem`, `useUpdateItem` and
 `useRemoveItem`, which this release removed. In the browser they call the
@@ -255,8 +262,24 @@ the request, or passed to `createSession`, is ignored.
 | `autoCreate` | `boolean?` | `true` | Create a session on first render when there is none, or the last one is complete or expired |
 | `previewState` | `"auto" \| "collecting" \| "paying" \| "complete"` | `"auto"` | Force a preview state in Studio |
 
-**DataProvider `checkoutSession`:** `session`, `isLoading`, `error`, and the
-actions below.
+**DataProvider `checkoutSession`:** `session`, `isLoading`, `error`,
+`errorCode`, and the actions below.
+
+When the provider cannot start a checkout, `session` is null, `error` is the
+message to show and `errorCode` is the server's code, such as `EMPTY_CART`
+("Your cart is empty"), `NO_CART` or `CART_CLEANUP_PENDING`, or
+`NETWORK_ERROR` when the request did not reach the server. A finished checkout from an earlier visit is not
+shown in its place, and `placeOrder` and `updateSession` answer with the same
+refusal without sending anything. The provider tries again when the cart
+changes or the page gets focus. `errorCode` is null otherwise.
+
+The session's totals follow the cart. The provider reads the session again
+when the shared cart cache changes (for example after EP Promo Code Input
+applies a code) and when the page gets focus or becomes visible (a change made
+in another tab). The server stores the cart's new totals when the cart's lines
+changed. `placeOrder` sends the total on the page as `shownTotal`, and `/pay`
+refuses with `TOTAL_CHANGED` and the current session when it would charge a
+different total.
 
 **refActions:** `createSession()`, `updateSession(data)`,
 `calculateShipping()`, `placeOrder()`, `confirmPayment(confirmData)`,
@@ -507,6 +530,15 @@ as `checkoutFormData.error`. **Payment Gateway** and **Payment Method** are
 hidden and ignored; the payment component inside the session provider selects
 the gateway.
 
+**Show Errors** (`showError`, default on) shows, below the form in a
+`role="alert"` element (`[data-ep-checkout-error]`), why Place Order failed:
+a declined card, a failed card check, a payment that needs review. It also
+shows why the session provider could not start a checkout, such as an empty
+cart. Turn it off when the page shows `$ctx.checkoutFormData.error` itself.
+
+While a card check is open, the form is locked: its fields are read-only and
+show the details saved in the checkout session, also after a reload.
+
 ### EPManualPayment
 
 Selects Elastic Path's `manual` gateway (no card) inside EP Checkout Session
@@ -671,7 +703,7 @@ Lookup table for Plasmic dynamic value bindings (`$ctx.xxx`).
 
 | DataProvider Name | Source Component | Key Fields |
 |-------------------|-----------------|------------|
-| `checkoutSession` | EPCheckoutSessionProvider | `session`, `isLoading`, `error` |
+| `checkoutSession` | EPCheckoutSessionProvider | `session`, `isLoading`, `error`, `errorCode` |
 | `checkoutData` | EPCheckoutProvider (deprecated) | Never published |
 | `currentStep` | EPCheckoutStepIndicator (deprecated) | Never published |
 | `currentStepIndex` | EPCheckoutStepIndicator (deprecated) | Never published |

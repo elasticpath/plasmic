@@ -67,6 +67,7 @@ import { sessionAddressesEquivalent } from "../session/address-utils";
 import type { SessionAddress } from "../session/types";
 import {
   SHIPPING_FORM_FIELD_NAMES,
+  SHIPPING_FORM_TO_SESSION,
   formHasShippingFields,
   isShippingAddressCompleteEnough,
   mapShippingFormValuesToSessionAddress,
@@ -208,9 +209,13 @@ interface EPCheckoutFormProviderProps {
    * without a router dependency.
    */
   confirmationUrl?: string;
+  /**
+   * Show why the order could not be placed (or checkout could not start)
+   * below the form. Default true.
+   */
+  showError?: boolean;
 }
 
-/** Shape of the `checkoutSession` value EPCheckoutSessionProvider publishes. */
 /** Shown while a card check (3DS) is open and the form cannot change. */
 const LOCKED_MESSAGE =
   "Your card check is still open. Place the order to finish or cancel it; changes to these details are not saved until then.";
@@ -221,7 +226,14 @@ interface SessionBridge {
     order?: { id?: string } | null;
     totals?: { total?: number } | null;
     payment?: { status?: string; gateway?: string | null } | null;
+    customerInfo?: { name?: string; email?: string } | null;
+    billingAddress?: Partial<SessionAddress> | null;
+    shippingAddress?: Partial<SessionAddress> | null;
+    customAttributes?: Record<string, string | number | boolean> | null;
   } | null;
+  /** Why checkout could not start (with `errorCode`), else a session read error. */
+  error?: string | null;
+  errorCode?: string | null;
   updateSession?: (data: Record<string, unknown>) => Promise<unknown>;
   calculateShipping?: () => Promise<unknown>;
   placeOrder?: () => Promise<
@@ -233,6 +245,32 @@ interface SessionBridge {
       }
     | undefined
   >;
+}
+
+/** The form values a session already holds: what the order it holds was placed with. */
+function savedFormValues(
+  session: NonNullable<SessionBridge["session"]>,
+  mapping: CheckoutFieldMapping
+): { values: Record<string, string>; booleans: Record<string, boolean> } {
+  const values: Record<string, string> = {};
+  const booleans: Record<string, boolean> = {};
+  const put = (name: string, value: unknown) => {
+    if (typeof value === "string" && value !== "") values[name] = value;
+  };
+  const billing = session.billingAddress ?? {};
+  (Object.keys(mapping) as Array<keyof CheckoutFieldMapping>).forEach((key) => {
+    if (key !== "email") put(mapping[key], (billing as Record<string, unknown>)[key]);
+  });
+  put(mapping.email, session.customerInfo?.email);
+  const shipping = session.shippingAddress ?? {};
+  SHIPPING_FORM_FIELD_NAMES.forEach((name) =>
+    put(name, (shipping as Record<string, unknown>)[SHIPPING_FORM_TO_SESSION[name]])
+  );
+  Object.entries(session.customAttributes ?? {}).forEach(([name, value]) => {
+    if (typeof value === "boolean") booleans[name] = value;
+    else put(name, String(value));
+  });
+  return { values, booleans };
 }
 
 interface DebouncedShippingSync {
@@ -256,6 +294,7 @@ export const EPCheckoutFormProvider = React.forwardRef<
     onPlaced,
     onError,
     confirmationUrl,
+    showError = true,
   } = props;
 
   // Standard post-purchase redirect. Full-page nav (no router dependency) so it
@@ -354,6 +393,21 @@ export const EPCheckoutFormProvider = React.forwardRef<
 
   const lastSyncedShippingRef = useRef<SessionAddress | null>(null);
   const shippingSyncRef = useRef<DebouncedShippingSync | null>(null);
+
+  // A locked form shows what its held order was placed with, also after a
+  // reload, when nothing typed is left in the page.
+  const savedSession = locked ? sessionBridge?.session : null;
+  useEffect(() => {
+    if (!savedSession) return;
+    const saved = savedFormValues(savedSession, mapping);
+    setValues((prev) => ({ ...prev, ...saved.values }));
+    setBooleans((prev) => ({ ...prev, ...saved.booleans }));
+    if (savedSession.shippingAddress) {
+      lastSyncedShippingRef.current = mapShippingFormValuesToSessionAddress(
+        saved.values
+      );
+    }
+  }, [savedSession, mapping]);
 
   useEffect(() => {
     if (inEditor || !useSession) {
@@ -658,6 +712,11 @@ export const EPCheckoutFormProvider = React.forwardRef<
     [status, error, orderId, isFree, locked, values, booleans]
   );
 
+  const shownError =
+    (status === "error" && error !== setupError ? error : null) ??
+    (useSession && sessionBridge?.errorCode ? sessionBridge.error : null) ??
+    null;
+
   return (
     <CheckoutFormContext.Provider value={ctx}>
       <DataProvider name="checkoutFormData" data={checkoutFormData}>
@@ -673,6 +732,11 @@ export const EPCheckoutFormProvider = React.forwardRef<
             </div>
           ) : null}
           {children}
+          {showError && shownError ? (
+            <div role="alert" data-ep-checkout-error="">
+              {shownError}
+            </div>
+          ) : null}
         </div>
       </DataProvider>
     </CheckoutFormContext.Provider>
@@ -740,6 +804,13 @@ export const epCheckoutFormProviderMeta: CodeComponentMeta<EPCheckoutFormProvide
         displayName: "Confirmation URL",
         description:
           "Redirect here after a successful order (post-purchase confirmation page). Supports an {orderId} placeholder, e.g. /checkout/confirmation?order={orderId}. Leave empty to stay on the page.",
+      },
+      showError: {
+        type: "boolean",
+        defaultValue: true,
+        displayName: "Show Errors",
+        description:
+          "Show below the form why the order could not be placed (for example a declined card or a failed card check) or why checkout could not start (for example an empty cart). Turn off when the page shows $ctx.checkoutFormData.error itself.",
       },
       onPlaced: {
         type: "eventHandler",

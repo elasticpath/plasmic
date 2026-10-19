@@ -407,7 +407,15 @@ describe("handleUpdateSession — shipping selection write", () => {
   });
 
   it("refreshes session.totals from the server rate + shipping-write cart (no extra GET)", async () => {
-    epSdk.getACart.mockResolvedValue(cartFetch([], 1999, "USD"));
+    epSdk.getACart
+      .mockResolvedValueOnce(cartFetch([], 1400, "USD"))
+      .mockResolvedValueOnce(
+        cartFetch(
+          [{ sku: "__ep_shipping", quantity: 1, unit_price: { amount: 599 } }],
+          1999,
+          "USD"
+        )
+      );
     const store = createMockStore(
       makeSession({
         availableShippingRates: [EXAMPLE_STANDARD],

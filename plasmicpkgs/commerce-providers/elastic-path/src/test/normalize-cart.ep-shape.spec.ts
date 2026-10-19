@@ -159,6 +159,121 @@ describe("normalizeCart", () => {
     });
   });
 
+  describe("a cart the checkout wrote its shipping line into", () => {
+    // Shape read from the integration store: one product, the checkout's
+    // $5.99 shipping line and TEST1 (10% off the cart, shipping included).
+    const usd = (amount: number) => ({
+      amount,
+      currency: "USD",
+      formatted: `${amount < 0 ? "-" : ""}$${(Math.abs(amount) / 100).toFixed(2)}`,
+    });
+    const pair = (amount: number) => ({ unit: usd(amount), value: usd(amount) });
+    const shipped = {
+      data: {
+        id: "cart-1",
+        type: "cart",
+        meta: {
+          display_price: {
+            with_tax: usd(2519),
+            without_tax: usd(2519),
+            tax: usd(0),
+            discount: usd(-280),
+            without_discount: usd(2799),
+          },
+        },
+      },
+      included: {
+        items: [
+          {
+            id: "line-1",
+            type: "cart_item",
+            sku: "p-plus-sub",
+            name: "PlayStation Plus",
+            quantity: 1,
+            meta: {
+              display_price: {
+                with_tax: pair(1980),
+                without_tax: pair(1980),
+                tax: pair(0),
+                discount: pair(-220),
+                without_discount: pair(2200),
+                discounts: { TEST1: usd(-220) },
+              },
+            },
+          },
+          {
+            id: "ship-1",
+            type: "custom_item",
+            sku: "__ep_shipping",
+            name: "Standard Shipping",
+            quantity: 1,
+            unit_price: { amount: 599, currency: "USD", includes_tax: true },
+            meta: {
+              display_price: {
+                with_tax: pair(539),
+                without_tax: pair(539),
+                tax: pair(0),
+                discount: pair(-60),
+                without_discount: pair(599),
+                discounts: { TEST1: usd(-60) },
+              },
+            },
+          },
+          {
+            id: "promo-1",
+            type: "promotion_item",
+            sku: "TEST1",
+            quantity: 1,
+            meta: {
+              display_price: {
+                with_tax: pair(-280),
+                without_tax: pair(-280),
+              },
+            },
+          },
+        ],
+      },
+    } as any;
+
+    it("lists and counts only what the shopper bought", () => {
+      const cart = normalizeCart(shipped);
+
+      expect(cart.items.map((i) => i.name)).toEqual(["PlayStation Plus"]);
+      expect(cart.itemCount).toBe(1);
+    });
+
+    it("totals the cart without the shipping or what the code took off it", () => {
+      const price = normalizeCart(shipped).meta?.display_price as any;
+
+      expect(price.with_tax).toMatchObject({ amount: 1980, formatted: "$19.80" });
+      expect(price.without_tax.amount).toBe(1980);
+      expect(price.discount).toMatchObject({ amount: -220, formatted: "-$2.20" });
+      expect(price.without_discount.amount).toBe(2200);
+      expect(price.tax.amount).toBe(0);
+    });
+
+    it("shows the code's discount on the cart's own lines", () => {
+      const [promo] = normalizeCart(shipped).promotions as any[];
+
+      expect(promo.meta.display_price.without_tax.value).toMatchObject({
+        amount: -220,
+        formatted: "-$2.20",
+      });
+    });
+
+    it("leaves a cart with no shipping line as Elastic Path priced it", () => {
+      const cart = normalizeCart({
+        ...shipped,
+        included: {
+          items: shipped.included.items.filter((i: any) => i.id !== "ship-1"),
+        },
+      });
+
+      expect((cart.meta?.display_price as any).with_tax.formatted).toBe("$25.19");
+      expect((cart.promotions[0] as any).meta.display_price.without_tax.value.amount).toBe(-280);
+    });
+  });
+
   it("publishes nothing that carries the cart id", () => {
     const cartId = "5a1d2c3e-0f4b-4c8e-9d7a-1b2c3d4e5f60";
     const cart = normalizeCart({

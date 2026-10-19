@@ -44,6 +44,8 @@ const { handleCreateSession } =
   require("../create-session") as typeof import("../create-session");
 const { handleUpdateSession } =
   require("../update-session") as typeof import("../update-session");
+const { handleGetSession } =
+  require("../get-session") as typeof import("../get-session");
 const { handlePay } = require("../pay") as typeof import("../pay");
 const { handleResumePayment } =
   require("../resume-payment") as typeof import("../resume-payment");
@@ -124,6 +126,10 @@ class Browser {
 
   create(): Promise<SessionResponse> {
     return handleCreateSession(this.req({}), this.ctx());
+  }
+
+  get(): Promise<SessionResponse> {
+    return handleGetSession(this.req({}), this.ctx());
   }
 
   update(body: Record<string, unknown>): Promise<SessionResponse> {
@@ -1260,5 +1266,115 @@ describe("abandoning a card check that can still complete", () => {
     expect(early.status).toBe(409);
     expect((early.body as any).error.code).toBe("PAYMENT_STILL_REQUIRES_ACTION");
     expect(heldOrder().transactions).toEqual([]);
+  });
+});
+
+describe("the session follows the cart before the shopper pays", () => {
+  it("shows a code applied on the checkout page on the next read, and the first pay charges it", async () => {
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+    expect(browser.shownTotal()).toBe(2799);
+    ep.applyPromotion(browser.cartId, "TEST1", 10);
+
+    const read = await browser.get();
+
+    expect(read.status).toBe(200);
+    expect(read.headers?.["Set-Cookie"]).toBeDefined();
+    expect(sessionIn(read).totals).toEqual({
+      subtotal: 1980,
+      tax: 0,
+      shipping: 539,
+      total: 2519,
+      currency: "USD",
+    });
+    expect(browser.shownTotal()).toBe(2519);
+
+    const paid = await browser.pay({ gateway: "stripe", shownTotal: 2519 });
+
+    expect(paid.status).toBe(200);
+    expect(sessionIn(paid).status).toBe("complete");
+    expect(ep.charges).toEqual([2519]);
+  });
+
+  it("shows a free order before pay when a 100% code is applied, with no negative subtotal, and settles it with no charge", async () => {
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+    ep.applyPromotion(browser.cartId, "FREE", 100);
+
+    const read = await browser.get();
+
+    expect(sessionIn(read).totals).toEqual({
+      subtotal: 0,
+      tax: 0,
+      shipping: 0,
+      total: 0,
+      currency: "USD",
+    });
+
+    const paid = await browser.pay({ gateway: "manual", shownTotal: 0 });
+
+    expect(paid.status).toBe(200);
+    expect(sessionIn(paid).status).toBe("complete");
+    expect(ep.charges).toEqual([]);
+  });
+
+  it("refuses to charge a total another tab's read moved, shows the new total, and charges it next", async () => {
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+    const shownInThisTab = browser.shownTotal();
+    ep.setQuantity(browser.cartId, "p-plus-sub", 2);
+    expect(sessionIn(await browser.get()).totals.total).toBe(4999);
+
+    const stale = await browser.pay({ gateway: "stripe", shownTotal: shownInThisTab });
+
+    expect(stale.status).toBe(409);
+    expect((stale.body as any).error.code).toBe("TOTAL_CHANGED");
+    expect(sessionIn(stale).totals.total).toBe(4999);
+    expect(ep.charges).toEqual([]);
+    expect(ep.orders).toEqual([]);
+
+    const paid = await browser.pay({ gateway: "stripe", shownTotal: 4999 });
+
+    expect(paid.status).toBe(200);
+    expect(ep.charges).toEqual([4999]);
+  });
+
+  it("leaves a session alone while its card check is open", async () => {
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+    expect((await browser.pay({ gateway: "stripe3ds" })).status).toBe(200);
+    const held = clone(browser.cookie);
+    ep.applyPromotion(browser.cartId, "TEST1", 10);
+
+    const read = await browser.get();
+
+    expect(read.status).toBe(200);
+    expect(read.headers).toBeUndefined();
+    expect(sessionIn(read).totals.total).toBe(2799);
+    expect(browser.cookie).toEqual(held);
+  });
+});
+
+describe("a checkout started on an empty cart", () => {
+  it("is refused with a message the page can show", async () => {
+    const browser = new Browser(
+      newCart([
+        {
+          type: "custom_item",
+          sku: EP_SHIPPING_LINE_SKU,
+          quantity: 1,
+          unit_price: { amount: 599 },
+        } as any,
+      ])
+    );
+
+    const res = await browser.create();
+
+    expect(res.status).toBe(409);
+    expect((res.body as any).error).toEqual({
+      code: "EMPTY_CART",
+      message: "Your cart is empty",
+    });
+    expect(browser.cookie).toBeNull();
   });
 });
