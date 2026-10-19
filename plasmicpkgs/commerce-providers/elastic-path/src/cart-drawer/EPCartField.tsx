@@ -6,6 +6,7 @@ import React from "react";
 import { Registerable } from "../registerable";
 import type { Cart } from "../types/cart";
 import { MOCK_CART_DATA } from "../utils/design-time-data";
+import { useCanvasPreviewState } from "../utils/canvas-preview-state";
 
 type CartFieldName =
   | "itemCount"
@@ -81,7 +82,8 @@ function cartFieldValue(cart: Cart, field: CartFieldName): unknown {
 }
 
 export function EPCartField(props: EPCartFieldProps) {
-  const { field, className, previewState = "auto" } = props;
+  const { field, className, previewState: savedPreviewState } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const cart = useSelector("cart") as Cart | undefined;
   const inEditor = !!usePlasmicCanvasContext();

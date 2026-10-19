@@ -137,7 +137,8 @@ describe("EPCheckoutCartField", () => {
   });
 
   describe("design-time preview", () => {
-    it("uses the mock cart when withData is forced", () => {
+    it("uses the mock cart when withData is forced on the canvas", () => {
+      mockUsePlasmicCanvasContext.mockReturnValue({});
       selectors({});
       const { container } = render(
         <EPCheckoutCartField field="formattedTotal" previewState="withData" />
@@ -154,7 +155,9 @@ describe("EPCheckoutCartField", () => {
       expect(container.textContent).toBe("$62.00");
     });
 
-    it("uses the mock line for item fields when withData is forced", () => {
+    it("uses the mock line for item fields when withData is forced on the canvas", () => {
+
+      mockUsePlasmicCanvasContext.mockReturnValue({});
       selectors({});
       const { container } = render(
         <EPCheckoutCartField field="formattedPrice" previewState="withData" />

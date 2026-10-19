@@ -10,6 +10,7 @@ import React from "react";
 import { Registerable } from "../registerable";
 import { MOCK_CART_LINE_ITEMS } from "../utils/design-time-data";
 import { CartItemOption, formatOptionValues } from "../utils/option-values";
+import { useCanvasPreviewState } from "../utils/canvas-preview-state";
 
 type CartItemFieldName =
   | "name"
@@ -138,7 +139,8 @@ function resolveCartItemField(
 }
 
 export function EPCartItemField(props: EPCartItemFieldProps) {
-  const { field, children, className, previewState = "auto" } = props;
+  const { field, children, className, previewState: savedPreviewState } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const currentItem = useSelector("currentCartItem") as
     | Record<string, any>

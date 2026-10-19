@@ -6,6 +6,7 @@ import React from "react";
 import { Registerable } from "../registerable";
 import type { CartItem } from "../types/cart";
 import { MOCK_CART_LINE_ITEMS } from "../utils/design-time-data";
+import { useCanvasPreviewState } from "../utils/canvas-preview-state";
 
 type PreviewState = "auto" | "withData";
 
@@ -60,8 +61,9 @@ export function EPCartItemImage(props: EPCartItemImageProps) {
     width = 64,
     height = 64,
     loading = "lazy",
-    previewState = "auto",
+    previewState: savedPreviewState,
   } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const currentItem = useSelector("currentCartItem") as CartItem | undefined;
   const inEditor = !!usePlasmicCanvasContext();

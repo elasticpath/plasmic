@@ -431,6 +431,39 @@ changes: same props, same slots, same data.
 
 ### Fixed
 
+A published page no longer shows sample data. EP Order Totals Breakdown
+showed sample totals ($62.00, $5.95, $4.96, $72.91) on a checkout page that
+had no checkout session, such as an empty cart or a new visitor with no cart.
+Now it shows nothing there and publishes no `orderTotalsData`. The Studio
+canvas still shows the samples. Preview State on the cart and checkout
+components now acts on the Studio canvas only, as it already did on the
+product lists. Before, a saved Preview State also forced its sample data or
+state on the published page. This applies to EP Order Totals Breakdown, EP
+Checkout Cart Summary, EP Checkout Cart Item List, EP Checkout Cart Field, EP
+Customer Info Fields, EP Shipping Address Fields, EP Billing Address Fields,
+EP Shipping Method Selector, EP Checkout Shipping Rates, EP Cart Drawer, EP
+Cart (Inline), EP Cart Drawer Trigger, EP Cart Field, EP Cart Item Field, EP
+Cart Item Image, EP Cart Item List, EP Cart Item Quantity Control, EP Cart
+Item Quantity Select, EP Cart Item Quantity Button, EP Cart Item Remove
+Button, EP Cart Popover, EP Cart Provider and EP Add To Cart Button.
+
+A refused Place Order no longer stays under the checkout form after the
+checkout starts. When a shopper with no cart pressed Place Order, EP Checkout
+Form Provider showed the refusal, and the message stayed after the shopper
+added an item and the checkout session opened. Now the form removes a
+message that came from the missing session when a session opens. Other
+messages, such as missing required fields, stay. The form also sends a
+shipping address that the shopper typed before the session opened, so the
+shipping rates show without another Place Order.
+
+A new visitor with no cart now sees "Your cart is empty" on the checkout page,
+the same words as an empty cart, instead of "The shopper has no cart to check
+out". The code stays `NO_CART`.
+
+The Studio console warning that asks you to mount the design route now shows
+for every 404 or 405 that does not come from that route, also when the
+response carries its own error code. What the canvas shows is unchanged.
+
 A checkout page with an empty cart no longer shows the last finished
 checkout. When EP Checkout Session Provider cannot start a checkout, it
 publishes no session, `$ctx.checkoutSession.error` carries the message (an

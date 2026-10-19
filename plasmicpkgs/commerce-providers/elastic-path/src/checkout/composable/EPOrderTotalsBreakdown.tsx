@@ -4,7 +4,8 @@
  * Reads `checkoutSession.totals` (inside EPCheckoutSessionProvider) or falls
  * back to `cart` (inside EPCheckoutCartSummary). Designer binds any
  * elements to individual fields like subtotalFormatted, taxFormatted,
- * shippingFormatted, totalFormatted.
+ * shippingFormatted, totalFormatted. With neither (no checkout yet, an
+ * empty cart) a published page shows nothing; only the canvas shows samples.
  */
 import {
   DataProvider,
@@ -20,6 +21,7 @@ import { MOCK_ORDER_TOTALS_DATA } from "../../utils/design-time-data";
 import { createLogger } from "../../utils/logger";
 import type { Cart } from "../../types/cart";
 import { useMoneyFormat } from "../../shopper-context/use-money-format";
+import { useCanvasPreviewState } from "../../utils/canvas-preview-state";
 
 const log = createLogger("EPOrderTotalsBreakdown");
 
@@ -55,9 +57,10 @@ interface OrderTotalsData {
 // ---------------------------------------------------------------------------
 export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
   const money = useMoneyFormat();
-  const { children, className, previewState = "auto" } = props;
+  const { children, className, previewState: savedPreviewState } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
-  // Priority: checkoutSession.totals > cart > mock
+  // Priority: checkoutSession.totals > cart > sample (canvas only)
   const checkoutSessionCtx = useSelector("checkoutSession") as
     | { session?: { totals?: { subtotal?: number; tax?: number; shipping?: number; total?: number; currency?: string } } }
     | undefined;
@@ -71,7 +74,7 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
     previewState === "withData" ||
     (previewState === "auto" && !sessionTotals && !checkoutCart && inEditor);
 
-  const totalsData = useMemo<OrderTotalsData>(() => {
+  const totalsData = useMemo<OrderTotalsData | null>(() => {
     if (useMock) {
       log.debug("Using mock order totals for design-time preview");
       return MOCK_ORDER_TOTALS_DATA;
@@ -123,17 +126,13 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
       };
     }
 
-    // Fallback — outside providers, non-production warning
-    if (typeof process !== "undefined" && process.env?.NODE_ENV !== "production") {
-      log.warn("EPOrderTotalsBreakdown used outside both EPCheckoutSessionProvider and EPCheckoutCartSummary — using mock data");
-    }
-    return MOCK_ORDER_TOTALS_DATA;
+    return null;
   }, [useMock, sessionTotals, checkoutCart, money]);
 
   return (
-    <DataProvider name="orderTotalsData" data={totalsData}>
+    <DataProvider name="orderTotalsData" data={totalsData ?? undefined}>
       <div className={className} data-ep-order-totals-breakdown="">
-        {children ?? (
+        {totalsData === null ? null : children ?? (
           // The default used to be four rows of the literal text "$0.00" — a
           // page that looks priced and isn't. These read the real figures.
           <div data-ep-totals-rows="">

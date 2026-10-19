@@ -78,6 +78,10 @@ const { EPPlaceOrderButton } =
   require("../../composable/EPPlaceOrderButton") as typeof import("../../composable/EPPlaceOrderButton");
 const { EPPromoCodeInput } =
   require("../../composable/EPPromoCodeInput") as typeof import("../../composable/EPPromoCodeInput");
+const { EPCheckoutShippingRates } =
+  require("../EPCheckoutShippingRates") as typeof import("../EPCheckoutShippingRates");
+const { EPOrderTotalsBreakdown } =
+  require("../../composable/EPOrderTotalsBreakdown") as typeof import("../../composable/EPOrderTotalsBreakdown");
 const { EPCartProvider } = require("../../../cart-provider/EPCartProvider") as typeof import("../../../cart-provider/EPCartProvider");
 const { EPCartItemList } = require("../../../cart-drawer/EPCartItemList") as typeof import("../../../cart-drawer/EPCartItemList");
 const { EPCartItemField } = require("../../../cart-drawer/EPCartItemField") as typeof import("../../../cart-drawer/EPCartItemField");
@@ -446,6 +450,118 @@ describe("checkout page on an empty cart", () => {
     await waitFor(() =>
       expect(probe()).toEqual({ status: "open", total: 2200, error: null, errorCode: null })
     );
+  });
+});
+
+describe("checkout page for a new visitor with no cart", () => {
+  const SHIPPING_FIELDS: Array<[string, string, string]> = [
+    ["shippingFirstName", "First name", ADDRESS.firstName],
+    ["shippingLastName", "Last name", ADDRESS.lastName],
+    ["shippingAddress", "Street", ADDRESS.line1],
+    ["shippingCity", "City", ADDRESS.city],
+    ["shippingPostal", "Postal code", ADDRESS.postcode],
+    ["shippingCountry", "Country", ADDRESS.country],
+  ];
+
+  function renderPage() {
+    renderCheckout(
+      <EPCheckoutFormProvider requiresShipping>
+        <EPFormField name="email" label="Email" />
+        {SHIPPING_FIELDS.map(([name, label]) => (
+          <EPFormField key={name} name={name} label={label} />
+        ))}
+        <EPCheckoutShippingRates />
+        <div data-testid="totals">
+          <EPOrderTotalsBreakdown />
+        </div>
+        <EPPlaceOrderButton />
+      </EPCheckoutFormProvider>
+    );
+  }
+
+  function fill() {
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "walk@example.com" },
+    });
+    for (const [, label, value] of SHIPPING_FIELDS) {
+      fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    }
+  }
+
+  const settle = () =>
+    act(async () => {
+      await new Promise((r) => setTimeout(r, 700));
+    });
+
+  it("says the cart is empty in shopper words, and shows no totals", async () => {
+    cartId = undefined as unknown as string;
+    renderPage();
+
+    await waitFor(() => expect(probe().errorCode).toBe("NO_CART"));
+    expect(probe().error).toBe("Your cart is empty");
+    expect(screen.getByRole("alert").textContent).toBe("Your cart is empty");
+    expect(screen.getByTestId("totals").textContent).toBe("");
+    expect(screen.getByTestId("totals").textContent).not.toMatch(/\$/);
+  });
+
+  it("drops the refusal and quotes shipping for the typed address once the cart has something in it", async () => {
+    cartId = undefined as unknown as string;
+    renderPage();
+    await waitFor(() => expect(probe().errorCode).toBe("NO_CART"));
+
+    fill();
+    await settle();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Place your order" }));
+    });
+    expect(screen.getByRole("alert").textContent).toBe("Your cart is empty");
+    expect(exchanges.filter((e) => e.method !== "GET" && e.url !== "/api/checkout/sessions")).toEqual([]);
+
+    cartId = newCart([PRODUCT]);
+    const before = exchanges.length;
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await waitFor(() => expect(probe()).toMatchObject({ status: "open", errorCode: null }));
+    await settle();
+
+    expect(screen.queryByRole("alert")).toBeNull();
+    const patches = exchanges
+      .slice(before)
+      .filter((e) => e.method === "PATCH" && e.url === GET_CURRENT);
+    expect(patches.map((e) => [e.body.shippingAddress?.postcode, e.status])).toEqual([
+      ["02110", 200],
+    ]);
+    await waitFor(() =>
+      expect(document.querySelector("[data-ep-checkout-shipping-rates]")?.textContent).toMatch(
+        /Standard Shipping/
+      )
+    );
+    expect(screen.queryByText("No shipping rates available")).toBeNull();
+    expect(sent("POST", PAY)).toEqual([]);
+  });
+
+  it("keeps a missing-field message when the cart arrives", async () => {
+    cartId = undefined as unknown as string;
+    renderCheckout(
+      <EPCheckoutFormProvider requiresShipping>
+        <EPFormField name="email" label="Email" required />
+        <EPPlaceOrderButton />
+      </EPCheckoutFormProvider>
+    );
+    await waitFor(() => expect(probe().errorCode).toBe("NO_CART"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Place your order" }));
+    });
+    expect(screen.getByRole("alert").textContent).toBe("Please complete the required fields.");
+
+    cartId = newCart([PRODUCT]);
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await waitFor(() => expect(probe()).toMatchObject({ status: "open", errorCode: null }));
+
+    expect(screen.getByRole("alert").textContent).toBe("Please complete the required fields.");
   });
 });
 

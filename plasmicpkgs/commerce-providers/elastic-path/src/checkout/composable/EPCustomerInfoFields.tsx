@@ -27,6 +27,7 @@ import {
   MOCK_CUSTOMER_INFO_WITH_ERRORS,
 } from "../../utils/design-time-data";
 import { createLogger } from "../../utils/logger";
+import { useCanvasPreviewState } from "../../utils/canvas-preview-state";
 
 const log = createLogger("EPCustomerInfoFields");
 
@@ -116,7 +117,8 @@ export const EPCustomerInfoFields = React.forwardRef<
   EPCustomerInfoFieldsActions,
   EPCustomerInfoFieldsProps
 >(function EPCustomerInfoFields(props, ref) {
-  const { children, className, previewState = "auto" } = props;
+  const { children, className, previewState: savedPreviewState } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const inEditor = !!usePlasmicCanvasContext();
 

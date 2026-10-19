@@ -18,6 +18,7 @@ import {
   OverlayEditorOpenProps,
   useOverlayEditorOpen,
 } from "./use-overlay-editor-open";
+import { useCanvasPreviewState } from "../utils/canvas-preview-state";
 
 type PreviewState = "auto" | "withItems" | "empty" | "loading" | "error";
 
@@ -167,8 +168,9 @@ export function EPCartPopover(props: EPCartPopoverProps) {
     offset = 8,
     closeOnOutsideClick = true,
     closeOnEscape = true,
-    previewState = "auto",
+    previewState: savedPreviewState,
   } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const { cart, error: cartError, isLoading: cartLoading } = useEpCart();
   const commerce = useEpCommerce();

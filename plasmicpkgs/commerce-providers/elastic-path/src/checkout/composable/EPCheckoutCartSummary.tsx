@@ -14,6 +14,7 @@ import {
   MOCK_CHECKOUT_CART_DATA,
   MOCK_EMPTY_CHECKOUT_CART_DATA,
 } from "../../utils/design-time-data";
+import { useCanvasPreviewState } from "../../utils/canvas-preview-state";
 
 const log = createLogger("EPCheckoutCartSummary");
 
@@ -130,8 +131,9 @@ function EPCheckoutCartSummaryInternal(
     collapsible = false,
     isExpanded: isExpandedProp = true,
     onExpandedChange,
-    previewState = "auto",
+    previewState: savedPreviewState,
   } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const { data: cart } = useCheckoutCart();
   const inEditor = !!usePlasmicCanvasContext();

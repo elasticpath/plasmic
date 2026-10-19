@@ -163,6 +163,53 @@ describe("an unmounted design route", () => {
     expect(message).toContain("app/api/ep/design/[fn]/route.ts");
   });
 
+  const NOT_MOUNTED: Array<[string, number, () => Promise<unknown>]> = [
+    ["a static host's empty 405", 405, async () => {
+      throw new SyntaxError("Unexpected end of JSON input");
+    }],
+    ["a framework's 405 with its own code", 405, async () => ({
+      code: "METHOD_NOT_ALLOWED",
+      message: "Method Not Allowed",
+    })],
+    ["a framework's 404 with its own code", 404, async () => ({
+      error: { code: "NOT_FOUND", message: "The page could not be found" },
+      code: "NOT_FOUND",
+    })],
+  ];
+
+  it.each(NOT_MOUNTED)("warns once for %s, and fails as before", async (_label, status, json) => {
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    inArtboard();
+    mockFetch.mockResolvedValue({ ok: false, status, json });
+
+    const first = await callEpProxy("getProduct", { id: "p1" }, null).catch((e: unknown) => e);
+    await expect(callEpProxy("getProductList", {}, [])).rejects.toThrow();
+
+    expect(first).toBeInstanceOf(Error);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toContain("createEpDesignRoutes");
+  });
+
+  it("does not ask to mount a route that is mounted but does not serve the function", async () => {
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    inArtboard();
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({
+        error: "not_served",
+        code: "design_fn_not_served",
+        fn: "getProduct",
+        message: "not served",
+      }),
+    });
+
+    await expect(callEpProxy("getProduct", { id: "p1" }, null)).rejects.toMatchObject({
+      code: "design_fn_not_served",
+    });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
   it("carries route_not_found into the Configure panel's error", async () => {
     inAppHostDocument();
     jest.spyOn(console, "warn").mockImplementation(() => {});
