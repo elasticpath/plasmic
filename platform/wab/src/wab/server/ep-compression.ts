@@ -38,26 +38,20 @@ function countBytesSent(
   res: express.Response,
   next: express.NextFunction
 ) {
-  const write = res.write;
-  const end = res.end;
   res.locals.contentLengthSent = 0;
-  res.write = function (
-    this: express.Response,
-    chunk: unknown,
-    encoding?: unknown
-  ) {
-    res.locals.contentLengthSent += byteLength(chunk, encoding);
-    return write.apply(this, arguments as any);
-  } as typeof res.write;
-  res.end = function (
-    this: express.Response,
-    chunk?: unknown,
-    encoding?: unknown
-  ) {
-    res.locals.contentLengthSent += byteLength(chunk, encoding);
-    return end.apply(this, arguments as any);
-  } as typeof res.end;
+  res.write = countingSentBytes(res, res.write);
+  res.end = countingSentBytes(res, res.end);
   next();
+}
+
+function countingSentBytes<F extends (...args: any[]) => any>(
+  res: express.Response,
+  send: F
+) {
+  return function (this: express.Response, ...args: Parameters<F>) {
+    res.locals.contentLengthSent += byteLength(args[0], args[1]);
+    return send.apply(this, args);
+  } as F;
 }
 
 function byteLength(chunk: unknown, encoding: unknown) {
