@@ -624,7 +624,7 @@ describe("component registration", () => {
     expect(initialSort.type).toBe("choice");
     expect(initialSort.hidden()).toBe(true);
     expect(initialSort.displayName).toBeUndefined();
-    expect(initialSort.description).toMatch(/deprecated and ignored/i);
+    expect(initialSort.description).toMatch(/^Deprecated — ignored\./);
   });
 
   it("keeps setSort registered as a deprecated no-op", () => {

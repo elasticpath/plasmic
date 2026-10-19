@@ -35,6 +35,7 @@ export const epCheckoutStepIndicatorMeta: CodeComponentMeta<EPCheckoutStepIndica
         type: "slot",
         description: `${DEPRECATED} Nothing renders this slot.`,
         hidePlaceholder: true,
+        hidden: () => true,
       },
       previewState: {
         type: "choice",

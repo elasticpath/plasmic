@@ -74,7 +74,6 @@ export const EPCheckoutProvider = React.forwardRef<
 });
 
 const DEPRECATED = "Deprecated — ignored.";
-const INERT_ACTION = "Deprecated — does nothing.";
 
 export const epCheckoutProviderMeta: CodeComponentMeta<EPCheckoutProviderProps> = {
   name: "plasmic-commerce-ep-checkout-provider",
@@ -137,47 +136,47 @@ export const epCheckoutProviderMeta: CodeComponentMeta<EPCheckoutProviderProps> 
   refActions: {
     nextStep: {
       displayName: "Next Step",
-      description: INERT_ACTION,
+      description: DEPRECATED,
       argTypes: [],
     },
     previousStep: {
       displayName: "Previous Step",
-      description: INERT_ACTION,
+      description: DEPRECATED,
       argTypes: [],
     },
     goToStep: {
       displayName: "Go To Step",
-      description: INERT_ACTION,
+      description: DEPRECATED,
       argTypes: [{ name: "step", type: "string", displayName: "Step key" }],
     },
     submitCustomerInfo: {
       displayName: "Submit Customer Info",
-      description: INERT_ACTION,
+      description: DEPRECATED,
       argTypes: [{ name: "data", type: "object", displayName: "Customer data" }],
     },
     submitShippingAddress: {
       displayName: "Submit Shipping Address",
-      description: INERT_ACTION,
+      description: DEPRECATED,
       argTypes: [{ name: "data", type: "object", displayName: "Address data" }],
     },
     submitBillingAddress: {
       displayName: "Submit Billing Address",
-      description: INERT_ACTION,
+      description: DEPRECATED,
       argTypes: [{ name: "data", type: "object", displayName: "Address data" }],
     },
     selectShippingRate: {
       displayName: "Select Shipping Rate",
-      description: INERT_ACTION,
+      description: DEPRECATED,
       argTypes: [{ name: "rateId", type: "string", displayName: "Rate ID" }],
     },
     submitPayment: {
       displayName: "Submit Payment",
-      description: INERT_ACTION,
+      description: DEPRECATED,
       argTypes: [],
     },
     reset: {
       displayName: "Reset Checkout",
-      description: INERT_ACTION,
+      description: DEPRECATED,
       argTypes: [],
     },
   },

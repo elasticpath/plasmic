@@ -144,7 +144,7 @@ export const epProductListProviderMeta: CodeComponentMeta<EPProductListProviderP
       options: ["", "price-asc", "price-desc", "latest-desc", "trending-desc"],
       hidden: () => true,
       description:
-        "Deprecated and ignored. Elastic Path's catalog product endpoints take no sort parameter. Use EP Catalog Search Provider with EP Search Sort By.",
+        "Deprecated — ignored. Elastic Path's catalog product endpoints take no sort parameter. Use EP Catalog Search Provider with EP Search Sort By.",
     },
     pageSize: {
       type: "number",
@@ -175,7 +175,7 @@ export const epProductListProviderMeta: CodeComponentMeta<EPProductListProviderP
   refActions: {
     setSort: {
       description:
-        "Deprecated — does nothing. Elastic Path's catalog product endpoints take no sort parameter. Use EP Catalog Search Provider with EP Search Sort By.",
+        "Deprecated — ignored. Elastic Path's catalog product endpoints take no sort parameter. Use EP Catalog Search Provider with EP Search Sort By.",
       argTypes: [{ name: "value", type: "string" }],
     },
     goToPage: {

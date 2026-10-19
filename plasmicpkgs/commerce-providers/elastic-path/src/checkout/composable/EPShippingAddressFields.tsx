@@ -200,12 +200,6 @@ export const EPShippingAddressFields = React.forwardRef<
 
   const inEditor = !!usePlasmicCanvasContext();
 
-  // Pre-population priority:
-  // 1. checkoutData.shippingAddress (from EPCheckoutProvider — composable flow)
-  // 2. checkoutSession.shippingAddress (from EPCheckoutSessionProvider — session flow)
-  const checkoutData = useSelector("checkoutData") as
-    | { shippingAddress?: Record<string, string> | null }
-    | undefined;
   const checkoutSessionCtx = useSelector("checkoutSession") as
     | { session?: { shippingAddress?: Record<string, string> | null } }
     | undefined;
@@ -214,15 +208,10 @@ export const EPShippingAddressFields = React.forwardRef<
     | { addresses?: Array<Record<string, string | undefined>> | null }
     | undefined;
 
-  const effectiveAddress = useMemo(() => {
-    // Source 1: EPCheckoutProvider (composable flow)
-    const cd = checkoutData?.shippingAddress;
-    if (cd && (cd.firstName || cd.first_name || cd.line1 || cd.line_1)) {
-      return cd;
-    }
-    // Source 2: EPCheckoutSessionProvider (session flow)
-    return checkoutSessionCtx?.session?.shippingAddress ?? undefined;
-  }, [checkoutData?.shippingAddress, checkoutSessionCtx?.session?.shippingAddress]);
+  const effectiveAddress = useMemo(
+    () => checkoutSessionCtx?.session?.shippingAddress ?? undefined,
+    [checkoutSessionCtx?.session?.shippingAddress]
+  );
 
   const useMock =
     previewState !== "auto" ||

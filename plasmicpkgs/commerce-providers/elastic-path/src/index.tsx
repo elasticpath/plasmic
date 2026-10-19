@@ -249,8 +249,10 @@ export function registerAll(loader?: Registerable) {
   // Legacy monolithic bundle configurator
   registerEPBundleConfigurator(loader);
 
-  // Deprecated — kept for backwards compatibility
+  // Legacy monolithic variant picker (live, not deprecated)
   registerEPProductVariantPicker(loader);
+
+  // Deprecated — kept registered because hostless publishing rejects a removed component
   registerEPMultiLocationStock(loader);
 
   // Account identity — register field/gate first so they're available as default slot content
