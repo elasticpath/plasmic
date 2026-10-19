@@ -271,7 +271,7 @@ Does nothing. It called `/api/checkout/create-order`, `/setup-payment` and
 stays registered because hostless publishing rejects a removed component
 ([ADR-0004](docs/adr/0004-registered-surfaces-are-append-only.md)). It renders
 its children and nothing else, publishes no `checkoutData`, and every ref
-action does nothing. Every prop except its children slot, `cartId` included,
+action is ignored. Every prop except its children slot, `cartId` included,
 is hidden and ignored. EPPaymentElements and EPCheckoutStepIndicator depended
 on it and are deprecated too. Use EP Checkout Session Provider.
 
@@ -282,7 +282,7 @@ on it and are deprecated too. Use EP Checkout Session Provider.
 Renders nothing. It read the current step from EPCheckoutProvider, which is
 inert, so it always showed the first step. It stays registered
 ([ADR-0004](docs/adr/0004-registered-surfaces-are-append-only.md)); its
-children slot is ignored and `previewState` is hidden and ignored. It publishes
+children slot and `previewState` are hidden and ignored. It publishes
 no `currentStep` or `currentStepIndex`. Show checkout progress from
 `$ctx.checkoutSession` under EP Checkout Session Provider.
 
@@ -291,10 +291,8 @@ no `currentStep` or `currentStepIndex`. Show checkout progress from
 ### EPCheckoutButton
 
 A "Checkout" control that goes to `checkoutUrl` (default `/checkout`), for a
-cart page. Its step-aware mode needed EPCheckoutProvider's `checkoutData`,
-which is never published, so on a page it is always the "Checkout" link.
-`previewState` shows a step's label on the canvas only. `onComplete` never
-fires.
+cart page. On a page it is always the "Checkout" link. `previewState` shows a
+step's label on the canvas only. `onComplete` is hidden and never fires.
 
 **DataProvider `checkoutButtonData`:**
 

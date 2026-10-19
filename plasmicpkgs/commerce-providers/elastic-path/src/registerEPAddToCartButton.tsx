@@ -88,22 +88,22 @@ export const epAddToCartButtonMeta: CodeComponentMeta<EPAddToCartButtonProps> = 
       type: "boolean",
       hidden: () => true,
       description:
-        "Deprecated and ignored. Use EP Stock Provider / EP Stock Field.",
+        "Deprecated — ignored. Use EP Stock Provider / EP Stock Field.",
     },
     locationId: {
       type: "string",
       hidden: () => true,
-      description: "Deprecated and ignored. Use EP Location Picker.",
+      description: "Deprecated — ignored. Use EP Location Picker.",
     },
     locationSlug: {
       type: "string",
       hidden: () => true,
-      description: "Deprecated and ignored. Use EP Location Picker.",
+      description: "Deprecated — ignored. Use EP Location Picker.",
     },
     showStockStatus: {
       type: "boolean",
       hidden: () => true,
-      description: "Deprecated and ignored. Use EP Stock Field.",
+      description: "Deprecated — ignored. Use EP Stock Field.",
     },
   },
   importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",

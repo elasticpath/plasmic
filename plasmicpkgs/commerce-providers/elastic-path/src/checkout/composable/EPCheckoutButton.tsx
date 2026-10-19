@@ -1,15 +1,8 @@
 /**
  * EPCheckoutButton — a "Checkout" control that goes to the checkout page.
- *
- * The step-aware mode below needs `checkoutData` from EPCheckoutProvider,
- * which is inert and publishes none, so it never runs. Exposes
- * `checkoutButtonData` via DataProvider for label binding.
+ * Exposes `checkoutButtonData` via DataProvider for label binding.
  */
-import {
-  DataProvider,
-  useSelector,
-  usePlasmicCanvasContext,
-} from "@plasmicapp/host";
+import { DataProvider, usePlasmicCanvasContext } from "@plasmicapp/host";
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
@@ -31,11 +24,6 @@ interface EPCheckoutButtonProps {
   onComplete?: (data: { orderId: string }) => void;
   className?: string;
   previewState?: PreviewState;
-  /**
-   * Where to send the shopper when this button sits outside an
-   * EP Checkout Provider — on a cart page, for instance. Inside a provider the
-   * button advances the flow instead and this is ignored.
-   */
   checkoutUrl?: string;
 }
 
@@ -47,7 +35,7 @@ interface CheckoutButtonData {
 }
 
 // ---------------------------------------------------------------------------
-// Step → label mapping
+// Step → label mapping (editor preview only)
 // ---------------------------------------------------------------------------
 const STEP_LABELS: Record<string, string> = {
   customer_info: "Continue to Shipping",
@@ -56,9 +44,13 @@ const STEP_LABELS: Record<string, string> = {
   confirmation: "Done",
 };
 
-// ---------------------------------------------------------------------------
-// Mock map for design-time
-// ---------------------------------------------------------------------------
+const CHECKOUT_DATA: CheckoutButtonData = {
+  label: "Checkout",
+  isDisabled: false,
+  isProcessing: false,
+  step: "cart",
+};
+
 function mockForStep(step: string): CheckoutButtonData {
   return {
     label: STEP_LABELS[step] ?? "Continue",
@@ -74,96 +66,39 @@ function mockForStep(step: string): CheckoutButtonData {
 export function EPCheckoutButton(props: EPCheckoutButtonProps) {
   const {
     children,
-    onComplete,
     className,
     previewState = "auto",
     checkoutUrl = "/checkout",
   } = props;
 
   const inEditor = !!usePlasmicCanvasContext();
-
-  // Read from parent EPCheckoutProvider
-  const checkoutData = useSelector("checkoutData") as
-    | {
-        step?: string;
-        canProceed?: boolean;
-        isProcessing?: boolean;
-        order?: { id: string } | null;
-      }
-    | undefined;
-
-  // Outside a provider there is no flow to advance, so the button is a plain
-  // "go to checkout" control. It used to render permanently disabled with a
-  // dead click handler, which is what a cart page got.
-  const isStandalone = !checkoutData;
-
-  const step = checkoutData?.step ?? "customer_info";
-  const canProceed = checkoutData?.canProceed ?? false;
-  const isProcessing = checkoutData?.isProcessing ?? false;
-
   const useMock = inEditor && previewState !== "auto";
 
-  const buttonData = useMemo<CheckoutButtonData>(() => {
-    if (useMock) {
-      return mockForStep(
-        previewState === "customerInfo" ? "customer_info" : previewState
-      );
-    }
-
-    if (isStandalone) {
-      return {
-        label: "Checkout",
-        isDisabled: false,
-        isProcessing: false,
-        step: "cart",
-      };
-    }
-
-    return {
-      label: STEP_LABELS[step] ?? "Continue",
-      isDisabled: isProcessing || !canProceed,
-      isProcessing,
-      step,
-    };
-  }, [useMock, previewState, step, canProceed, isProcessing, isStandalone]);
+  const buttonData = useMemo<CheckoutButtonData>(
+    () =>
+      useMock
+        ? mockForStep(
+            previewState === "customerInfo" ? "customer_info" : previewState
+          )
+        : CHECKOUT_DATA,
+    [useMock, previewState]
+  );
 
   const handleClick = useCallback(() => {
-    if (inEditor) return; // No action in editor
-    if (buttonData.isDisabled) return;
-
-    if (isStandalone) {
-      if (typeof window !== "undefined" && checkoutUrl) {
-        window.location.assign(checkoutUrl);
-      }
-      return;
+    if (inEditor) return;
+    if (typeof window !== "undefined" && checkoutUrl) {
+      window.location.assign(checkoutUrl);
     }
-
-    // The actual action is triggered via Plasmic interactions on the parent
-    // EPCheckoutProvider's refActions. This component just provides data.
-    // However, on the confirmation step, fire onComplete.
-    if (step === "confirmation" && checkoutData?.order) {
-      onComplete?.({ orderId: checkoutData.order.id });
-    }
-  }, [
-    inEditor,
-    buttonData.isDisabled,
-    step,
-    checkoutData?.order,
-    onComplete,
-    isStandalone,
-    checkoutUrl,
-  ]);
+  }, [inEditor, checkoutUrl]);
 
   return (
     <DataProvider name="checkoutButtonData" data={buttonData}>
       <div
         className={className}
         data-ep-checkout-button=""
-        data-processing={isProcessing || undefined}
         onClick={handleClick}
         role="button"
         tabIndex={0}
-        aria-disabled={buttonData.isDisabled || undefined}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
@@ -212,6 +147,7 @@ export const epCheckoutButtonMeta: CodeComponentMeta<EPCheckoutButtonProps> = {
           type: "object",
         },
       ],
+      hidden: () => true,
       advanced: true,
     } as any,
     previewState: {

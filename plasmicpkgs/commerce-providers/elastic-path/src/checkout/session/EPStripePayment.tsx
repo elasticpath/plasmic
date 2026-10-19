@@ -735,7 +735,7 @@ export const epStripePaymentMeta: CodeComponentMeta<EPStripePaymentProps> = {
   refActions: {
     submitPayment: {
       description:
-        "Deprecated — call $refs.session.placeOrder() instead. Kept for backwards compatibility.",
+        "Deprecated — ignored. Call $refs.session.placeOrder() on EP Checkout Session Provider instead.",
       argTypes: [],
     },
   },

@@ -182,7 +182,7 @@ describe("EPCustomerInfoFields", () => {
       expect(data.lastName).toBe("Jane Watson");
     });
 
-    it("checkoutData takes priority over shopperContextData", () => {
+    it("ignores a leftover checkoutData", () => {
       mockSelectorValues = {
         checkoutData: {
           customerInfo: { firstName: "Bob", lastName: "Builder", email: "bob@example.com" },
@@ -199,10 +199,9 @@ describe("EPCustomerInfoFields", () => {
       );
       const dp = screen.getByTestId("data-provider-customerInfoFieldsData");
       const data = JSON.parse(dp.getAttribute("data-value")!);
-      // checkoutData wins — not shopperContextData
-      expect(data.firstName).toBe("Bob");
-      expect(data.lastName).toBe("Builder");
-      expect(data.email).toBe("bob@example.com");
+      expect(data.firstName).toBe("Alice");
+      expect(data.lastName).toBe("Wonderland");
+      expect(data.email).toBe("alice@example.com");
     });
 
     it("handles shopperContextData with email only (no name)", () => {

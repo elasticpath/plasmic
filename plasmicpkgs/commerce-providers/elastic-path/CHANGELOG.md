@@ -108,6 +108,17 @@ choose a field on every filter that shows the prompt, and publish. If the
 filter used the old default and your store has that field, choose it from the
 list. A filter with a field set is unchanged.
 
+**Four checkout data names are gone.** EP Checkout Provider, EP Checkout Step
+Indicator and EP Payment Elements stay registered but publish no data (see
+Deprecated). On an existing page, a binding to one of these names now reads
+`undefined`. Rebind it:
+
+| Was | Now |
+| --- | --- |
+| `$ctx.checkoutData` (EP Checkout Provider) | `$ctx.checkoutSession` under EP Checkout Session Provider. `session` holds `customerInfo`, `shippingAddress`, `billingAddress`, `selectedShippingRateId`, `totals`, `payment` and `order`; `isLoading` and `error` hold the request state. |
+| `$ctx.currentStep`, `$ctx.currentStepIndex` (EP Checkout Step Indicator) | No component publishes a step. Show progress from `$ctx.checkoutSession.session`, for example whether `shippingAddress` or `selectedShippingRateId` is set. |
+| `$ctx.paymentData` (EP Payment Elements) | `$ctx.stripePaymentData` under EP Stripe Payment: `isReady`, `isProcessing`, `error`. |
+
 ### Removed
 
 | Removed | Replacement |
@@ -151,7 +162,7 @@ removed component or a removed published prop. All are empty instead.
   called `/api/checkout/create-order`, `/setup-payment` and `/confirm-payment`,
   which nothing serves, so it could not place an order. It renders its
   children and nothing else, publishes no `checkoutData`, and its ref actions
-  do nothing. Every prop but its children slot, `Cart ID` included, is hidden
+  are ignored. Every prop but its children slot, `Cart ID` included, is hidden
   and ignored. Build checkout with EP Checkout Session Provider.
 - **EP Payment Elements** is now "EP Payment Elements (deprecated)". It took
   its client secret only from EP Checkout Provider, so it could not show a card
@@ -161,7 +172,7 @@ removed component or a removed published prop. All are empty instead.
 - **EP Checkout Step Indicator** is now "EP Checkout Step Indicator
   (deprecated)". It read the step from EP Checkout Provider, so it always
   showed the first step. It renders nothing and publishes no `currentStep`;
-  `Preview State` is hidden and ignored. Show progress from
+  its children slot and `Preview State` are hidden and ignored. Show progress from
   `$ctx.checkoutSession`.
 - **Elastic Path Checkout Form** is now "Elastic Path Checkout Form
   (deprecated)". It posted to `/checkout/create-order`, which nothing serves,
@@ -172,11 +183,15 @@ removed component or a removed published prop. All are empty instead.
   wired; they are still in its add menu, and they never fire.
 - **EP Checkout Button**'s descriptions no longer call it step-aware: on a
   page it is always the "Checkout" link to `Checkout URL`. `On Complete` never
-  fires, and is advanced like the Checkout Form's handlers. `Preview State` acts only in Studio: a published page shows
+  fires, and is hidden and advanced like the Checkout Form's handlers. `Preview State` acts only in Studio: a published page shows
   "Checkout" whatever value is saved, and on the canvas `auto` shows
   "Checkout" too, not a step label.
 - **EP Checkout Session Provider**'s `createSession` ignores its `cartId`
   argument. The session checks out the shopper's session cart.
+- Older inert props and ref actions now say so: the descriptions of EP Add To
+  Cart Button's four stock props, EP Product List Provider's `initialSort` and
+  `setSort`, EP Search Box's `placeholder`, `autoFocus` and `showClear`, and EP
+  Stripe Payment's `submitPayment` lead with "Deprecated — ignored.".
 
 ### Added
 
