@@ -395,6 +395,7 @@ describe("checkout page on an empty cart", () => {
     renderCheckout(
       <EPCheckoutFormProvider requiresShipping>
         <EPFormField name="email" label="Email" />
+        <EPStripePayment publishableKey="pk_test_walk" />
         <EPPlaceOrderButton />
       </EPCheckoutFormProvider>
     );
@@ -409,6 +410,10 @@ describe("checkout page on an empty cart", () => {
     );
     expect(sent("POST", "/api/checkout/sessions").map((e) => e.status)).toEqual([409]);
     expect(screen.getByRole("alert").textContent).toBe("Your cart is empty");
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(screen.queryByTestId("stripe-payment-element")).toBeNull();
 
     const before = exchanges.length;
     await act(async () => {

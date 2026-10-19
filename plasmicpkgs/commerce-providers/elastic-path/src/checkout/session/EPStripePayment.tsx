@@ -606,6 +606,10 @@ const EPStripePaymentRuntime = React.forwardRef<
   const total = session?.totals?.total ?? 0;
   const currency = (session?.totals?.currency || "").toLowerCase();
   const free = !(total > 0) || !currency;
+  // A finished checkout (an order placed, or an earlier visit's checkout
+  // still in the cookie while a new one cannot start) takes no card either.
+  const ended = session?.status === "complete" || session?.status === "expired";
+  const noCard = free || ended;
 
   // Deferred PaymentIntent: amount + currency declared upfront. On submit,
   // EP creates the PaymentIntent server-side via createCartPaymentIntent.
@@ -616,7 +620,7 @@ const EPStripePaymentRuntime = React.forwardRef<
     elements,
     stripe: elementsStripe,
   } = usePaymentElement(
-    free ? null : stripeInstance,
+    noCard ? null : stripeInstance,
     {
       elements: {
         mode: "payment",
@@ -635,16 +639,16 @@ const EPStripePaymentRuntime = React.forwardRef<
       ? { stripe: elementsStripe as StripeWithConfirmationTokens, elements }
       : null;
 
-  if (free) {
+  if (noCard) {
     return (
       <div
         className={className}
         data-ep-stripe-payment=""
-        data-ep-payment-free="true"
+        data-ep-payment-free={free ? "true" : undefined}
       >
         <DataProvider
           name="stripePaymentData"
-          data={{ isReady: false, isProcessing: false, error: null, free: true }}
+          data={{ isReady: false, isProcessing: false, error: null, free }}
         >
           {children}
         </DataProvider>

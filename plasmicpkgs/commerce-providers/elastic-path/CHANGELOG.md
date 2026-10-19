@@ -438,7 +438,8 @@ empty cart reads "Your cart is empty") and the new `errorCode` carries the
 code, such as `EMPTY_CART`. Place Order and session updates answer with that
 refusal and send nothing. The provider tries again when the cart changes or
 the page gets focus. An order placed on the page stays shown: the provider no
-longer starts a new checkout after it.
+longer starts a new checkout after it. EP Stripe Payment shows no card field
+for a finished checkout.
 
 The checkout total follows the cart before the shopper pays. A promo code
 applied on the checkout page, or a cart change made in another tab, used to
