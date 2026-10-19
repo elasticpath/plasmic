@@ -2,17 +2,14 @@
  * Checkout Body Builder — pure function that constructs the EP `checkoutApi`
  * request body from a CheckoutSession.
  *
- * Slice 1 (this PR): guest path only. Shape is `CustomerCheckout` with
- * customer (name, email), billing_address, shipping_address.
+ * A guest session gives `customer` (name, email); an account session gives
+ * `account` (id, member_id) and `contact`.
  *
  * EP requires snake_case + several fields (company_name, line_2, county) as
  * present strings even when empty. The builder fills these defaults so the
  * SessionAddress shape doesn't have to model them.
- *
- * Slices 2+ add: account checkout (subscription items present + accountToken),
- * order_number / external_ref, etc.
  */
-import { buildGuestCheckoutBody } from "../checkout-body-builder";
+import { buildCheckoutBody } from "../checkout-body-builder";
 import type { CheckoutSession } from "../types";
 
 function makeSession(overrides?: Partial<CheckoutSession>): CheckoutSession {
@@ -54,9 +51,9 @@ function makeSession(overrides?: Partial<CheckoutSession>): CheckoutSession {
   };
 }
 
-describe("buildGuestCheckoutBody", () => {
+describe("buildCheckoutBody", () => {
   it("returns the EP CustomerCheckout shape for a guest session with minimum fields", () => {
-    const body = buildGuestCheckoutBody(makeSession());
+    const body = buildCheckoutBody(makeSession());
 
     expect(body).toEqual({
       data: {
@@ -88,7 +85,7 @@ describe("buildGuestCheckoutBody", () => {
   });
 
   it("preserves optional fields (line2, county) when present", () => {
-    const body = buildGuestCheckoutBody(
+    const body = buildCheckoutBody(
       makeSession({
         billingAddress: {
           firstName: "Jane",
@@ -120,19 +117,19 @@ describe("buildGuestCheckoutBody", () => {
   });
 
   it("throws when required session fields are missing", () => {
-    expect(() => buildGuestCheckoutBody(makeSession({ customerInfo: null }))).toThrow(
+    expect(() => buildCheckoutBody(makeSession({ customerInfo: null }))).toThrow(
       /customerInfo/
     );
     expect(() =>
-      buildGuestCheckoutBody(makeSession({ shippingAddress: null }))
+      buildCheckoutBody(makeSession({ shippingAddress: null }))
     ).toThrow(/shippingAddress/);
     expect(() =>
-      buildGuestCheckoutBody(makeSession({ billingAddress: null }))
+      buildCheckoutBody(makeSession({ billingAddress: null }))
     ).toThrow(/billingAddress/);
   });
 
   it("carries the company name onto company_name", () => {
-    const body = buildGuestCheckoutBody(
+    const body = buildCheckoutBody(
       makeSession({
         billingAddress: {
           firstName: "Jane",
@@ -149,7 +146,7 @@ describe("buildGuestCheckoutBody", () => {
   });
 
   it("defaults shipping to billing when requiresShipping is false and no shipping address is set", () => {
-    const body = buildGuestCheckoutBody(
+    const body = buildCheckoutBody(
       makeSession({
         requiresShipping: false,
         shippingAddress: null,
@@ -170,9 +167,31 @@ describe("buildGuestCheckoutBody", () => {
 
   it("still throws on missing shipping when requiresShipping is not false", () => {
     expect(() =>
-      buildGuestCheckoutBody(
+      buildCheckoutBody(
         makeSession({ requiresShipping: true, shippingAddress: null })
       )
     ).toThrow(/shippingAddress/);
+  });
+
+  it("gives an account session the account, the member and a contact instead of a customer", () => {
+    const guest = buildCheckoutBody(makeSession());
+    const body = buildCheckoutBody(
+      makeSession({ account: { id: "account-a", memberId: "member-1" } })
+    );
+
+    expect(body).toEqual({
+      data: {
+        account: { id: "account-a", member_id: "member-1" },
+        contact: { name: "Jane Doe", email: "jane@example.com" },
+        billing_address: guest.data.billing_address,
+        shipping_address: guest.data.shipping_address,
+      },
+    });
+  });
+
+  it("sends an account without a member id when the session has none", () => {
+    const body = buildCheckoutBody(makeSession({ account: { id: "account-a" } }));
+
+    expect((body.data as { account?: unknown }).account).toEqual({ id: "account-a" });
   });
 });

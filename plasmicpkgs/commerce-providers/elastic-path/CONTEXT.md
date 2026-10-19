@@ -79,14 +79,16 @@ The server-authoritative checkout state managed by
 checkout path. Holds orchestration and selection state only — never an
 authoritative amount. It checks out the **session cart**, which the server
 takes from the shopper envelope when the session is created; the browser never
-names a cart. The managed form submits through it, and shows a setup error
+names a cart. It also fixes, when created, who the order is for: the
+**selected account** and its member (an account order), or a guest when none
+is selected. The managed form submits through it, and shows a setup error
 without one. The checkout-session routes are the only place orders are placed;
 the proxy route never places one.
 
 **Manual payment rule**:
 The host's rule, `createManualAdapter({ allow })` or `epPlaceOrder`'s
 `allowManual`, that lets an order with a total use the `manual` gateway. It
-sees the cart and the account and must return `true`. A zero-total order uses
+sees the cart and the account the order is placed for, and must return `true`. A zero-total order uses
 `manual` without one. The server applies it before it creates the order.
 _Avoid_: payment whitelist, invoice mode
 

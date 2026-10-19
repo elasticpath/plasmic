@@ -3,7 +3,9 @@
  *
  * Resolves:
  *   - shopperAccessToken from the better-auth session (shopper-scoped).
- *   - accountToken: the selected account's credential, from the same session.
+ *   - accountToken, accountId, accountMemberId: the selected account and the
+ *     signed-in member, from the same session. With them, checkout places
+ *     the order for that account.
  *   - getClientCredentialsToken: a closure-memoized admin token minter,
  *     scoped to this request only (no process-level cache).
  *   - sessionCartId: the shopper's session cart, the only cart checkout uses.
@@ -59,7 +61,7 @@ export async function buildCheckoutContext(
     .catch(() => null);
 
   const shopperAccessToken = session?.session?.accessToken ?? "";
-  const accountToken = session?.session?.account?.token;
+  const account = session?.session?.account ?? undefined;
   const sessionCartId = session?.cart?.id ?? undefined;
 
   // Per-request admin-token resolver. Built only when EP_CLIENT_SECRET is
@@ -99,7 +101,9 @@ export async function buildCheckoutContext(
     adapterRegistry,
     sessionStore,
     shopperAccessToken,
-    accountToken,
+    accountToken: account?.token,
+    accountId: account?.id,
+    accountMemberId: account ? session?.session?.memberId : undefined,
     sessionCartId,
     getClientCredentialsToken,
     // Example/demo pricing only. Production hosts must replace this with real

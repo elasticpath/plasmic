@@ -533,6 +533,30 @@ selected account's token as `accountToken` on `SessionHandlerContext`, resolved
 from `session.session.account?.token` next to `shopperAccessToken`. Calls made
 with `getClientCredentialsToken` never carry it.
 
+An account member's checkout places the order for the selected account. Pass
+the selected account's id as `accountId` and the member's id as
+`accountMemberId`, both from the same session:
+
+```ts
+const account = session?.session?.account ?? undefined;
+const ctx: SessionHandlerContext = {
+  // ...
+  accountToken: account?.token,
+  accountId: account?.id,
+  accountMemberId: account ? session?.session?.memberId : undefined,
+};
+```
+
+The checkout session takes the account when it is created. Every order it
+places is linked to that account and member, with the checkout form's name
+and email as the order's contact. With no account selected, the order is a
+guest order with that name and email. That includes a signed-in member who has
+not chosen an account: Elastic Path links an order to an account, not to a
+member alone. When the selected account changes after the checkout session is
+created (switched, deselected or lapsed), pay takes no payment, drops the
+checkout session and returns `409` with code `ACCOUNT_CHANGED`. The account
+and the member come only from the server-side session, never from the request.
+
 Pass the session cart as `sessionCartId`, from `session.cart?.id` on the same
 `getSession`. `handleCreateSession` checks out that cart and ignores any cart
 id in the request; without it, creating a checkout session returns `409` with
@@ -742,8 +766,9 @@ order:
   rule that returns `true` for that cart and account. A rule that throws
   refuses.
 
-To offer offline or invoice payment, register the Manual adapter with a rule
-and give the context the selected account's id:
+To offer offline or invoice payment, register the Manual adapter with a rule.
+The rule sees the account the order is placed for (see
+[Account identity](#account-identity)), or `null` for a guest order:
 
 ```ts
 adapterRegistry.register(
@@ -754,11 +779,6 @@ adapterRegistry.register(
       account !== null && (await isApprovedForInvoice(account.id)),
   })
 );
-
-const ctx: SessionHandlerContext = {
-  // ...
-  accountId: session?.session?.account?.id,
-};
 ```
 
 `cart` is the cart as Elastic Path returns it, with its items under

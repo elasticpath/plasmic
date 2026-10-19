@@ -4,6 +4,47 @@
  * interleave the way they do against the real API. Adding a custom item whose
  * SKU is already in the cart raises that line's quantity, as Elastic Path does.
  */
+import type { FakeShopperClient } from "./fake-shopper-client";
+
+const ACCOUNT_TOKEN_HEADER = "ep-account-management-authentication-token";
+
+/** The account token a client's request interceptors put on a request. */
+async function accountTokenSentBy(client: FakeShopperClient | undefined): Promise<string | undefined> {
+  if (!client?.intercepts) return undefined;
+  const headers = new Map<string, string>();
+  let request: any = {
+    headers: { set: (name: string, value: string) => headers.set(name.toLowerCase(), value) },
+  };
+  for (const intercept of client.intercepts) request = await intercept(request);
+  return headers.get(ACCOUNT_TOKEN_HEADER);
+}
+
+interface CheckoutBody {
+  customer?: { name?: string; email?: string };
+  contact?: { name?: string; email?: string };
+  account?: { id?: string; member_id?: string };
+}
+
+/**
+ * Elastic Path's checks on a checkout body, as measured on the integration
+ * store: an order is for a guest `customer`, or for an `account` with a
+ * `contact`, never both.
+ */
+function checkoutBodyErrors(body: CheckoutBody): string[] {
+  if (body.customer && body.contact) {
+    return ["only one of data.customer or data.contact can be provided"];
+  }
+  if (body.account) {
+    if (!body.contact) {
+      return [
+        "contact is required to checkout when account id or account member id is provided in the header or body",
+      ];
+    }
+    return body.account.id ? [] : ["id is required"];
+  }
+  if (body.contact) return ["account id is required to checkout when contact is provided"];
+  return body.customer ? [] : ["data.customer or data.contact must be provided"];
+}
 
 export interface FakeLine {
   id: string;
@@ -36,6 +77,16 @@ export interface FakeOrder {
   cartItems: Array<{ cartItemId: string; sku?: string; quantity: number; productId?: string }>;
   externalRef?: string;
   transactions: Array<{ id: string; status: "pending" | "complete" | "cancelled"; piId: string }>;
+  /** A guest order's `customer`, or an account order's `contact`. */
+  customer?: { name?: string; email?: string };
+  contact?: { name?: string; email?: string };
+  /** `relationships.account` and `relationships.account_member`. */
+  account?: string;
+  accountMember?: string;
+  /** The account token the checkout request carried, if any. */
+  accountTokenSent?: string;
+  /** Order flow fields written after checkout. */
+  fields: Record<string, unknown>;
 }
 
 export interface FakePaymentIntent {
@@ -128,6 +179,11 @@ export class FakeEpStore {
   beforeCancel: (() => void) | null = null;
   /** The next checkouts answer this Elastic Path error instead of an order. */
   checkoutRejection: { status: number; detail: string } | null = null;
+  /**
+   * Account tokens Elastic Path can read. A checkout that sends any other
+   * account token is refused with 403, as Elastic Path refuses one it cannot read.
+   */
+  accountTokens = new Set<string>();
   private seq = 0;
 
   private nextId(prefix: string): string {
@@ -313,13 +369,36 @@ export class FakeEpStore {
           }
           return { data: undefined };
         }),
-      checkoutApi: ({ path }: any) =>
-        after(() => {
+      checkoutApi: async ({ client, path, body }: any) => {
+        const sent = await accountTokenSentBy(client);
+        return after(() => {
           if (store.checkoutRejection) {
             const { status, detail } = store.checkoutRejection;
             return {
               error: { errors: [{ status, title: "Checkout failed", detail }] },
               response: { status },
+            };
+          }
+          if (sent !== undefined && !store.accountTokens.has(sent)) {
+            return {
+              error: {
+                errors: [
+                  {
+                    status: 403,
+                    code: "gateway.token.malformed",
+                    detail: "The Account Management Authentication Token is not valid",
+                  },
+                ],
+              },
+              response: { status: 403 },
+            };
+          }
+          const data: CheckoutBody = body?.data ?? {};
+          const bodyErrors = checkoutBodyErrors(data);
+          if (bodyErrors.length) {
+            return {
+              error: { errors: bodyErrors.map((detail) => ({ status: 400, detail })) },
+              response: { status: 400 },
             };
           }
           const cart = store.cart(path.cartID);
@@ -344,10 +423,17 @@ export class FakeEpStore {
               quantity: l.quantity,
               ...(l.product_id ? { productId: l.product_id } : {}),
             })),
+            ...(data.customer ? { customer: data.customer } : {}),
+            ...(data.contact ? { contact: data.contact } : {}),
+            ...(data.account?.id ? { account: data.account.id } : {}),
+            ...(data.account?.member_id ? { accountMember: data.account.member_id } : {}),
+            ...(sent !== undefined ? { accountTokenSent: sent } : {}),
+            fields: {},
           };
           store.orders.push(order);
           return { data: { data: store.orderResource(order) } };
-        }),
+        });
+      },
       getAnOrder: ({ path }: any) =>
         after(() => {
           const order = store.orders.find((o) => o.id === path.orderID);
@@ -457,6 +543,9 @@ export class FakeEpStore {
           if (typeof body?.data?.external_ref === "string") {
             order.externalRef = body.data.external_ref;
           }
+          const { type: _type, id: _id, status: _status, external_ref: _ref, ...fields } =
+            body?.data ?? {};
+          Object.assign(order.fields, fields);
           return { data: { data: store.orderResource(order) } };
         }),
       deleteAllCartItems: ({ path }: any) =>
@@ -600,6 +689,14 @@ export class FakeEpStore {
       status: order.status,
       payment: order.payment,
       ...(order.paymentIntentId ? { payment_intent_id: order.paymentIntentId } : {}),
+      ...(order.customer ? { customer: order.customer } : {}),
+      ...(order.contact ? { contact: order.contact } : {}),
+      relationships: {
+        ...(order.account ? { account: { data: { type: "account", id: order.account } } } : {}),
+        ...(order.accountMember
+          ? { account_member: { data: { type: "account_member", id: order.accountMember } } }
+          : {}),
+      },
       meta: {
         display_price: { with_tax: { amount: order.total, currency: "USD" } },
       },

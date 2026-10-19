@@ -19,6 +19,7 @@ import {
   MANUAL_GATEWAY,
   MANUAL_PURCHASE_METHOD,
 } from "../checkout/session/adapters/manual-adapter";
+import { selectedAccount } from "../checkout/session/checkout-account";
 const NOT_AVAILABLE =
   "epPlaceOrder: this payment method is not available for this order";
 
@@ -52,7 +53,11 @@ export interface EpPlaceOrderAddress {
 }
 
 export interface EpPlaceOrderInput {
-  /** Order contact. `name` is the full display name; `email` the receipt address. */
+  /**
+   * Order contact. `name` is the full display name; `email` the receipt
+   * address. With an account selected in the session, the order is placed
+   * for that account and member, and this is its `contact`.
+   */
   customer: { name: string; email: string };
   billingAddress: EpPlaceOrderAddress;
   /**
@@ -174,6 +179,7 @@ export async function epPlaceOrder(
   }
 
   const client = buildEpClient(auth);
+  const account = selectedAccount(auth);
 
   const gateway = input.paymentGateway ?? MANUAL_GATEWAY;
   const isManual = gateway.trim().toLowerCase() === MANUAL_GATEWAY;
@@ -186,7 +192,7 @@ export async function epPlaceOrder(
       !manualForFreeOrder &&
       !(await manualPaymentAllowed(
         options.allowManual,
-        orderRuleInput(cart, auth.accountId)
+        orderRuleInput(cart, account?.id)
       ))
     ) {
       throw new Error(NOT_AVAILABLE);
@@ -210,12 +216,22 @@ export async function epPlaceOrder(
   const shippingAddress =
     input.shippingAddress ??
     (input.shippingSameAsBilling === false ? undefined : input.billingAddress);
+  const contact = { name: input.customer.name, email: input.customer.email };
+  const buyer = account
+    ? {
+        account: {
+          id: account.id,
+          ...(account.memberId ? { member_id: account.memberId } : {}),
+        },
+        contact,
+      }
+    : { customer: contact };
   const checkoutRes = await checkoutApi({
     client,
     path: { cartID: cartId },
     body: {
       data: {
-        customer: { name: input.customer.name, email: input.customer.email },
+        ...buyer,
         billing_address: normalizeAddress(input.billingAddress) as never,
         ...(shippingAddress
           ? { shipping_address: normalizeAddress(shippingAddress) as never }
