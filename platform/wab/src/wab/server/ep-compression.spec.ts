@@ -11,6 +11,7 @@ import {
 import { closeDbConnections, ensureDbConnections } from "@/wab/server/db/DbCon";
 import { seedTestUserAndProjects } from "@/wab/server/db/DbInit";
 import { DbMgr, normalActor } from "@/wab/server/db/DbMgr";
+import { PinoLogger } from "@/wab/server/observability/PinoLogger";
 import { addInternalIntegrationsRoutes } from "@/wab/server/routes/custom-routes";
 import {
   createBackend,
@@ -182,6 +183,53 @@ describe("Studio server response compression", () => {
     expect(res.headers["content-encoding"]).toBeUndefined();
     expect(res.headers.vary).toMatch(/accept-encoding/i);
     expect(JSON.parse(res.body.toString()).pkg.pkgId).toBe(pkgId);
+  });
+
+  describe("request log", () => {
+    let info: jest.SpyInstance;
+
+    beforeEach(() => {
+      info = jest.spyOn(PinoLogger.prototype, "info");
+    });
+
+    afterEach(() => {
+      info.mockRestore();
+    });
+
+    /** The request log entry is written on finish, so it may trail the response. */
+    async function loggedRequest(requestId: string) {
+      for (let attempt = 0; attempt < 50; attempt++) {
+        const call = info.mock.calls.find(
+          ([, payload]) => payload?.x_request_id === requestId
+        );
+        if (call) {
+          return call[1];
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      throw new Error(`No request log entry for ${requestId}`);
+    }
+
+    it("records the uncompressed size and the size sent for a compressed bundle", async () => {
+      const plain = await get(pkgPath);
+      const res = await get(pkgPath, {
+        ...OFFERS_BR,
+        "x-request-id": "compressed-bundle",
+      });
+
+      const entry = await loggedRequest("compressed-bundle");
+      expect(res.body.length).toBeLessThan(plain.body.length);
+      expect(entry.contentLength).toBe(String(plain.body.length));
+      expect(entry.contentLengthSent).toBe(res.body.length);
+    });
+
+    it("records the same size twice for an unencoded bundle", async () => {
+      const res = await get(pkgPath, { "x-request-id": "unencoded-bundle" });
+
+      const entry = await loggedRequest("unencoded-bundle");
+      expect(entry.contentLength).toBe(String(res.body.length));
+      expect(entry.contentLengthSent).toBe(res.body.length);
+    });
   });
 
   describe("leaves these responses unencoded", () => {
