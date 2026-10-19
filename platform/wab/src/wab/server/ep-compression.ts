@@ -9,7 +9,7 @@ export function addStudioCompression(app: express.Application) {
       threshold: 0,
       level: 6,
       brotli: { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } },
-      filter: keepUncompressedLength,
+      filter: recordLengthAndFilter,
     })
   );
 }
@@ -22,10 +22,15 @@ export function loggedResponseSizes(res: express.Response) {
   };
 }
 
-// Runs before compression removes Content-Length.
-function keepUncompressedLength(req: express.Request, res: express.Response) {
+// Runs before compression removes Content-Length. compression has no check
+// of its own for bodiless statuses.
+function recordLengthAndFilter(req: express.Request, res: express.Response) {
   res.locals.uncompressedContentLength = res.getHeader("content-length");
-  return compression.filter(req, res);
+  return (
+    res.statusCode !== 204 &&
+    res.statusCode !== 304 &&
+    compression.filter(req, res)
+  );
 }
 
 function countBytesSent(

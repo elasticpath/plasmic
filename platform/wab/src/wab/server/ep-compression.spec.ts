@@ -11,6 +11,7 @@ import {
 import { closeDbConnections, ensureDbConnections } from "@/wab/server/db/DbCon";
 import { seedTestUserAndProjects } from "@/wab/server/db/DbInit";
 import { DbMgr, normalActor } from "@/wab/server/db/DbMgr";
+import { addStudioCompression } from "@/wab/server/ep-compression";
 import { PinoLogger } from "@/wab/server/observability/PinoLogger";
 import { addInternalIntegrationsRoutes } from "@/wab/server/routes/custom-routes";
 import {
@@ -74,6 +75,11 @@ function listen(app: express.Application): Promise<http.Server> {
   });
 }
 
+async function close(server: http.Server) {
+  server.closeAllConnections();
+  await new Promise((resolve) => server.close(resolve));
+}
+
 function urlOf(server: http.Server) {
   return `http://localhost:${(server.address() as AddressInfo).port}`;
 }
@@ -131,8 +137,7 @@ describe("Studio server response compression", () => {
     baseURL = host;
     cleanup = async () => {
       await cleanupBackend();
-      socketServer.closeAllConnections();
-      await new Promise((resolve) => socketServer.close(resolve));
+      await close(socketServer);
     };
   });
 
@@ -254,20 +259,6 @@ describe("Studio server response compression", () => {
       expect(res.body).toHaveLength(0);
     });
 
-    it("a 204", async () => {
-      const res = await send("/api/v1/cms/databases/db/tables", {
-        method: "OPTIONS",
-        headers: {
-          ...OFFERS_BR,
-          origin: "https://example.com",
-          "access-control-request-method": "GET",
-        },
-      });
-
-      expect(res.status).toBe(204);
-      expect(res.headers["content-encoding"]).toBeUndefined();
-    });
-
     it("a HEAD response", async () => {
       const res = await send(pkgPath, { method: "HEAD", headers: OFFERS_BR });
 
@@ -330,8 +321,31 @@ describe("backends that share the Express setup with Studio", () => {
         expect(res.headers["content-type"]).toMatch(/json/);
         expect(res.headers["content-encoding"]).toBeUndefined();
       } finally {
-        server.closeAllConnections();
-        await new Promise((resolve) => server.close(resolve));
+        await close(server);
+      }
+    }
+  );
+});
+
+describe("addStudioCompression", () => {
+  it.each([204, 304])(
+    "leaves a %d unencoded even when it has a compressible type",
+    async (status) => {
+      const app = express();
+      addStudioCompression(app);
+      app.get("/no-body", (_req, res) => {
+        res.status(status).type("json").end();
+      });
+      const server = await listen(app);
+      try {
+        const res = await rawRequest(`${urlOf(server)}/no-body`, {
+          headers: OFFERS_BR,
+        });
+
+        expect(res.status).toBe(status);
+        expect(res.headers["content-encoding"]).toBeUndefined();
+      } finally {
+        await close(server);
       }
     }
   );
