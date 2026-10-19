@@ -78,6 +78,12 @@ const log = createLogger("EPCheckoutFormProvider");
 const SETUP_ERROR =
   'EP Checkout Form Provider places orders through an EP Checkout Session Provider. Put this form inside an EP Checkout Session Provider and set Payment Mode to "auto" or "session".';
 
+class CheckoutRefusal extends Error {
+  constructor(message: string, readonly code: string | undefined) {
+    super(message);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Field-name → order mapping
 // ---------------------------------------------------------------------------
@@ -520,12 +526,15 @@ export const EPCheckoutFormProvider = React.forwardRef<
     (err: unknown) => {
       const msg = err instanceof Error ? err.message : "Order could not be placed.";
       noSessionErrorRef.current = hasSession ? null : msg;
+      if (err instanceof CheckoutRefusal && err.code === "INVALID_EMAIL") {
+        setErrors((prev) => ({ ...prev, [mapping.email]: msg }));
+      }
       setError(msg);
       setStatus("error");
       onError?.({ message: msg });
       log.error("session placeOrder failed", { error: msg });
     },
-    [onError, hasSession]
+    [onError, hasSession, mapping.email]
   );
 
   useEffect(() => {
@@ -552,10 +561,11 @@ export const EPCheckoutFormProvider = React.forwardRef<
       redirectToConfirmation(oid);
       return;
     }
-    throw new Error(
+    throw new CheckoutRefusal(
       resp?.error?.message ??
         resp?.paymentError ??
-        "Payment did not complete. Please check your details and try again."
+        "Payment did not complete. Please check your details and try again.",
+      resp?.error?.code
     );
   }, [sessionBridge, onPlaced, redirectToConfirmation]);
 
@@ -652,11 +662,12 @@ export const EPCheckoutFormProvider = React.forwardRef<
       // A refused update (such as an open card check) must stop the order:
       // the order would not carry what the shopper just entered.
       const updated = (await sessionBridge.updateSession?.(sessionUpdate)) as
-        | { success?: boolean; error?: { message?: string } }
+        | { success?: boolean; error?: { message?: string; code?: string } }
         | undefined;
       if (updated && updated.success === false) {
-        throw new Error(
-          updated.error?.message ?? "Your details could not be saved. Please try again."
+        throw new CheckoutRefusal(
+          updated.error?.message ?? "Your details could not be saved. Please try again.",
+          updated.error?.code
         );
       }
       await takePayment();

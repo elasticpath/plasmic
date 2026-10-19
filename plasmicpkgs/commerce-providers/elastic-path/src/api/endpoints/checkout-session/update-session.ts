@@ -4,7 +4,8 @@
  * Merges partial updates (customerInfo, shippingAddress, billingAddress,
  * selectedShippingRateId) onto the existing session. A changed shipping address
  * requotes through the shipping rate resolver in the same write. Only permitted
- * when the session is in "open" status. Returns 410 if no session exists.
+ * when the session is in "open" status. Returns 410 if no session exists, and
+ * 400 INVALID_EMAIL for a customer email Elastic Path would refuse at checkout.
  */
 import type {
   SessionRequest,
@@ -25,6 +26,7 @@ import { sessionAddressesEquivalent } from "../../../checkout/session/address-ut
 import { createLogger } from "../../../utils/logger";
 import { toClientSession } from "../../../checkout/session/client-session";
 import { isSettling } from "../../../checkout/session/settle-once";
+import { invalidEmail, isCheckoutEmail } from "../../../checkout/session/checkout-email";
 import {
   awaitsCartPaymentChallenge,
   paymentActionPending,
@@ -114,6 +116,10 @@ export async function handleUpdateSession(
   }
 
   const update = req.body as UpdateSessionRequest;
+
+  if (update.customerInfo != null && !isCheckoutEmail(update.customerInfo.email)) {
+    return invalidEmail();
+  }
 
   // customAttributes are client-supplied. Gate them against the server-side
   // allow-list at this boundary so forged keys never enter session state.

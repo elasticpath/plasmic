@@ -536,6 +536,10 @@ a declined card, a failed card check, a payment that needs review. It also
 shows why the session provider could not start a checkout, such as an empty
 cart. Turn it off when the page shows `$ctx.checkoutFormData.error` itself.
 
+When the server refuses the email (`INVALID_EMAIL`), the form also puts that
+message on the email field (`email`, or the name Field Mapping gives it). EP
+Form Field shows it, with `aria-invalid`, until the shopper edits the field.
+
 While a card check is open, the form is locked: its fields are read-only and
 show the details saved in the checkout session, also after a reload.
 
