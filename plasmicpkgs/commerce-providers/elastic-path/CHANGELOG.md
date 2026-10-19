@@ -431,6 +431,23 @@ changes: same props, same slots, same data.
 
 ### Fixed
 
+Account checkout links the order to the selected account. Before, every
+checkout placed a guest order with the shopper's name and email, also when a
+signed-in account member had an account selected, so the order was missing
+from the account's order history. Now, when the checkout session is created
+with an account selected, every order it places (card, 3DS, manual, free) is
+for that account and the signed-in member, with the name and email from the
+checkout form as the order's contact. `epPlaceOrder` does the same for the
+account selected in its `withEpSession` scope. Pass the selected account on
+`SessionHandlerContext` as `accountToken`, `accountId` and the new
+`accountMemberId` (`session.session.memberId`); `buildEpCtx` now fills
+`accountMemberId`. With no account selected, including a signed-in member
+who has not chosen one, the order is a guest order as before. When the
+shopper's selected account is no longer the one the checkout started with,
+pay takes no payment and returns `409` with code `ACCOUNT_CHANGED`, and the
+checkout session is dropped. The Manual payment rule sees the account the
+order is placed for.
+
 A published page no longer shows sample data. EP Order Totals Breakdown
 showed sample totals ($62.00, $5.95, $4.96, $72.91) on a checkout page that
 had no checkout session, such as an empty cart or a new visitor with no cart.

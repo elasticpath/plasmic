@@ -25,6 +25,8 @@ export interface EpCtx {
   cartId?: string;
   accountId?: string;
   accountToken?: string;
+  /** The signed-in member, when an account is selected. */
+  accountMemberId?: string;
   locale?: string;
   currency?: string;
 }
@@ -40,6 +42,7 @@ export function buildEpCtx(
     cartId: session.cart?.id,
     accountId: envelope?.account?.id,
     accountToken: envelope?.account?.token,
+    accountMemberId: envelope?.account ? envelope.memberId : undefined,
     locale: session.locale,
     currency: session.currency,
   };

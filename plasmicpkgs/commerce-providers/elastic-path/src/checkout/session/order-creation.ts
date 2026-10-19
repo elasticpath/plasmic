@@ -5,8 +5,8 @@
  * reconciliation when it holds a payment it cannot record).
  */
 import { checkoutApi, confirmOrder, updateAnOrder } from "@epcc-sdk/sdks-shopper";
-import type { Client, CustomerCheckout } from "@epcc-sdk/sdks-shopper";
-import { buildGuestCheckoutBody } from "./checkout-body-builder";
+import type { AccountCheckout, Client, CustomerCheckout } from "@epcc-sdk/sdks-shopper";
+import { buildCheckoutBody } from "./checkout-body-builder";
 import { persistOrderCustomFields } from "./order-custom-fields";
 import type { OrderTotal } from "./order-total";
 import type {
@@ -78,7 +78,7 @@ export async function createOrderFromCart(
       path: { cartID: session.cartId },
       // Elastic Path accepts a shipping address without phone_number and
       // instructions; the SDK type marks them required.
-      body: buildGuestCheckoutBody(session) as unknown as CustomerCheckout,
+      body: buildCheckoutBody(session) as unknown as CustomerCheckout | AccountCheckout,
     })) as CheckoutResult;
   } catch (err) {
     res = {};

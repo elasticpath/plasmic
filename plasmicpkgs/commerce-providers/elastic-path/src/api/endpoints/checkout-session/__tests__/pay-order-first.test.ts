@@ -179,7 +179,7 @@ function createManualCtx(
     registry.register("manual", createManualAdapter({ allow: () => true }));
   }
   return {
-    ...(accountId ? { accountId } : {}),
+    ...(accountId ? { accountId, accountToken: "account-token" } : {}),
     epCredentials: {
       clientId: "test-id",
       apiBaseUrl: "https://api.test.com",
@@ -609,7 +609,7 @@ describe("handlePay — Manual gateway rule", () => {
 
     const refused = await handlePay(
       createMockReq({ gateway: "manual" }),
-      createManualCtx(makeSession(), registry, "acct-other")
+      createManualCtx(makeSession({ account: { id: "acct-other" } }), registry, "acct-other")
     );
     expect(refused.status).toBe(400);
     expect((refused.body as any).error.code).toBe("GATEWAY_NOT_ALLOWED");
@@ -617,9 +617,10 @@ describe("handlePay — Manual gateway rule", () => {
 
     const allowed = await handlePay(
       createMockReq({ gateway: "manual" }),
-      createManualCtx(makeSession(), registry, "acct-approved")
+      createManualCtx(makeSession({ account: { id: "acct-approved" } }), registry, "acct-approved")
     );
     expect(allowed.status).toBe(200);
+    expect(epSdk.checkoutApi.mock.calls[0][0].body.data.account).toEqual({ id: "acct-approved" });
     expect((allowed.body as any).data.session.status).toBe("complete");
     expect(epSdk.paymentSetup.mock.calls[0][0].body.data).toEqual({
       gateway: "manual",
@@ -648,7 +649,7 @@ describe("handlePay — Manual gateway rule", () => {
 
     const res = await handlePay(
       createMockReq({ gateway: "manual" }),
-      createManualCtx(makeSession(), registry, "acct-approved")
+      createManualCtx(makeSession({ account: { id: "acct-approved" } }), registry, "acct-approved")
     );
 
     expect(res.status).toBe(400);

@@ -139,7 +139,19 @@ export interface CheckoutSession {
    * (customer/billing/shipping) are NOT carried here.
    */
   customAttributes?: Record<string, string | number | boolean>;
+  /**
+   * The account the order is placed for: the shopper's selected account when
+   * the session was created, or null for a guest checkout. Pay refuses with
+   * 409 `ACCOUNT_CHANGED` when the shopper's selection is no longer this one.
+   */
+  account?: CheckoutAccount | null;
   expiresAt: number; // epoch ms
+}
+
+/** An account checkout's buyer: the account and the signed-in member. */
+export interface CheckoutAccount {
+  id: string;
+  memberId?: string;
 }
 
 /**
@@ -358,10 +370,17 @@ export interface SessionHandlerContext extends EpLocaleAndCurrency {
    */
   accountToken?: string;
   /**
-   * The selected account's id, from the same session as `accountToken`. A
-   * payment rule sees it. Omit it when no account is selected.
+   * The selected account's id, from the same session as `accountToken`. With
+   * `accountToken`, it makes the checkout an account checkout: the order is
+   * placed for this account, and a payment rule sees it. Omit it when no
+   * account is selected.
    */
   accountId?: string;
+  /**
+   * The signed-in account member's id (`session.session.memberId`). An
+   * account order names this member. Omit it when no account is selected.
+   */
+  accountMemberId?: string;
   /**
    * Request-scoped admin token resolver for EP operations that require
    * `client_credentials` grant (createCartPaymentIntent, checkoutApi,
@@ -448,5 +467,5 @@ export interface ConfirmRequest {
 
 export type ClientCheckoutSession = Omit<
   CheckoutSession,
-  "cartHash" | "cartId"
+  "cartHash" | "cartId" | "account"
 >;

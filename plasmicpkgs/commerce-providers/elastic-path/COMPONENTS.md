@@ -559,7 +559,10 @@ README's Payment methods section shows the rule.
 Checkout runs on the checkout-session routes, whose handlers this package
 ships; the README lists them. The create route takes the cart from the
 shopper's session (`sessionCartId` on `SessionHandlerContext`), never from the
-request.
+request. It also takes the selected account (`accountToken`, `accountId`,
+`accountMemberId`): with one, every order the session places is linked to that
+account and member; with none, the order is a guest order. Pay returns `409`
+`ACCOUNT_CHANGED` when the selection changed after the session was created.
 
 ---
 
@@ -608,7 +611,7 @@ Every count `ep.getStock` returns is a `number`, not the SDK's `BigInt` — the 
 
 Neither function takes a `sort`; see [Choosing a listing path](#3-choosing-a-listing-path).
 
-The session (`accessToken`, `host`, `clientId`, `cartId?`, `accountId?`, `accountToken?`, `locale?`, `currency?`) is **not** an argument. `withEpSession(epCtx, callback)` establishes a per-request `AsyncLocalStorage` scope; each `ep.*` function reads the active session via `getCurrentEpSession()` internally. On the server, outside any `withEpSession` scope, they fail-soft to `null` / `[]` without calling Elastic Path. On a published page in the browser, they post to the proxy route. `locale` and `currency` come from `createEpAuth`'s `resolveLocaleAndCurrency`, which runs on every `getSession` with the request's cookies and headers (a server render that passes no headers gets the page request's), so the server render and the proxy route send Elastic Path the same `Accept-Language` and `X-Moltin-Currency`. Checkout reads the cart with the same pair when the host passes the session's `locale` and `currency` on `SessionHandlerContext`. In Studio they post to the design-time route, which serves the catalog reads only: any other function returns its empty shape on the canvas and throws in the data-query Configure panel.
+The session (`accessToken`, `host`, `clientId`, `cartId?`, `accountId?`, `accountToken?`, `accountMemberId?`, `locale?`, `currency?`) is **not** an argument. `withEpSession(epCtx, callback)` establishes a per-request `AsyncLocalStorage` scope; each `ep.*` function reads the active session via `getCurrentEpSession()` internally. On the server, outside any `withEpSession` scope, they fail-soft to `null` / `[]` without calling Elastic Path. On a published page in the browser, they post to the proxy route. `locale` and `currency` come from `createEpAuth`'s `resolveLocaleAndCurrency`, which runs on every `getSession` with the request's cookies and headers (a server render that passes no headers gets the page request's), so the server render and the proxy route send Elastic Path the same `Accept-Language` and `X-Moltin-Currency`. Checkout reads the cart with the same pair when the host passes the session's `locale` and `currency` on `SessionHandlerContext`. In Studio they post to the design-time route, which serves the catalog reads only: any other function returns its empty shape on the canvas and throws in the data-query Configure panel.
 
 ### Studio binding
 

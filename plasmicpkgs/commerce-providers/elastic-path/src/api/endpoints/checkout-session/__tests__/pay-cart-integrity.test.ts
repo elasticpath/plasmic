@@ -95,11 +95,14 @@ function clone<T>(value: T): T {
 
 class Browser {
   cookie: CheckoutSession | null = null;
+  /** The shopper's identity on the next request (selected account, member). */
+  identity: Partial<SessionHandlerContext> = {};
   constructor(readonly cartId: string) {}
 
   private ctx(): SessionHandlerContext {
     const sent = clone(this.cookie);
     return {
+      ...this.identity,
       epCredentials: { clientId: "client", apiBaseUrl: "https://api.test.com" },
       adapterRegistry: registry,
       sessionStore: {
@@ -1376,5 +1379,213 @@ describe("a checkout started on an empty cart", () => {
       message: "Your cart is empty",
     });
     expect(browser.cookie).toBeNull();
+  });
+});
+
+describe("an account member's order belongs to the selected account", () => {
+  const ACCOUNT_A = { accountToken: "account-token-a", accountId: "account-a", accountMemberId: "member-1" };
+  const ACCOUNT_B = { accountToken: "account-token-b", accountId: "account-b", accountMemberId: "member-1" };
+  const MEMBER_ONLY = { accountMemberId: "member-1" };
+  const WALK = { name: "Walk Tester", email: "walk@example.com" };
+  const LINKED_TO_A = { account: "account-a", member: "member-1", contact: WALK, customer: null };
+  const GUEST = { account: null, member: null, contact: null, customer: WALK };
+
+  function linkOf(order: { account?: string; accountMember?: string; contact?: unknown; customer?: unknown }) {
+    return {
+      account: order.account ?? null,
+      member: order.accountMember ?? null,
+      contact: order.contact ?? null,
+      customer: order.customer ?? null,
+    };
+  }
+
+  function remainingLines(cartId: string): string[] | "deleted" {
+    const cart = ep.carts.get(cartId);
+    return !cart || cart.deleted ? "deleted" : cart.lines.map((l) => `${l.sku}x${l.quantity}`);
+  }
+
+  async function freeCheckout(browser: Browser): Promise<SessionResponse> {
+    expect((await browser.create()).status).toBe(201);
+    await browser.update({ customerInfo: WALK, billingAddress: ADDRESS, requiresShipping: false });
+    return browser.pay({ gateway: "manual" });
+  }
+
+  const PATHS: Array<[string, (b: Browser) => Promise<SessionResponse>, boolean]> = [
+    ["manual (order first)", async (b) => (await readyToPay(b), b.pay({ gateway: "manual" })), false],
+    ["card", async (b) => (await readyToPay(b), b.pay({ gateway: "stripe" })), false],
+    [
+      "3DS with a held order",
+      async (b) => {
+        await readyToPay(b);
+        await b.pay({ gateway: "stripe3ds" });
+        expect(b.cookie?.order?.id).toBeTruthy();
+        ep.passChallenge(b.pendingPaymentIntent());
+        return b.resume();
+      },
+      false,
+    ],
+    [
+      "3DS resumed without a held order",
+      async (b) => {
+        await readyToPay(b);
+        await b.pay({ gateway: "stripe3ds" });
+        const held = ep.orders.pop()!;
+        expect(held.payment).toBe("unpaid");
+        b.cookie = { ...b.cookie!, order: null };
+        ep.passChallenge(b.pendingPaymentIntent());
+        return b.resume();
+      },
+      false,
+    ],
+    ["free order", freeCheckout, true],
+  ];
+
+  function cartFor(free: boolean): string {
+    return free
+      ? newCart([{ product_id: "p-free", sku: "p-free", quantity: 1, unit_price: { amount: 0 } }])
+      : newCart();
+  }
+
+  it.each(PATHS)("links the order to the account and the member: %s", async (_label, checkout, free) => {
+    const browser = new Browser(cartFor(free));
+    browser.identity = ACCOUNT_A;
+
+    const res = await checkout(browser);
+
+    expect(sessionIn(res).status).toBe("complete");
+    expect(ep.orders.map(linkOf)).toEqual([LINKED_TO_A]);
+    expect(ep.orders[0].payment).toBe("paid");
+    expect(ep.orders[0].accountTokenSent).toBeUndefined();
+  });
+
+  it.each(PATHS)("keeps a guest order a guest order: %s", async (_label, checkout, free) => {
+    const browser = new Browser(cartFor(free));
+
+    const res = await checkout(browser);
+
+    expect(sessionIn(res).status).toBe("complete");
+    expect(ep.orders.map(linkOf)).toEqual([GUEST]);
+  });
+
+  it("checks out a signed-in member with no selected account as a guest", async () => {
+    const browser = new Browser(newCart());
+    browser.identity = MEMBER_ONLY;
+    await readyToPay(browser);
+
+    const res = await browser.pay({ gateway: "manual" });
+
+    expect(sessionIn(res).status).toBe("complete");
+    expect(ep.orders.map(linkOf)).toEqual([GUEST]);
+  });
+
+  it("gives the manual payment rule the account the order is then placed for", async () => {
+    const seen: Array<string | null> = [];
+    registry.register(
+      "manualRule",
+      createManualAdapter({
+        allow: (input) => {
+          seen.push(input.account?.id ?? null);
+          return true;
+        },
+      })
+    );
+    const browser = new Browser(newCart());
+    browser.identity = ACCOUNT_B;
+    await readyToPay(browser);
+
+    const res = await browser.pay({ gateway: "manualRule" });
+
+    expect(sessionIn(res).status).toBe("complete");
+    expect(seen).toEqual(["account-b"]);
+    expect(ep.paidOrders().map((o) => o.account)).toEqual(["account-b"]);
+  });
+
+  it.each([
+    ["switches to another account", ACCOUNT_B],
+    ["loses the selected account", MEMBER_ONLY],
+    ["has no identity left", {}],
+  ])("refuses to pay when the shopper %s after checkout started, and takes no payment", async (_label, next) => {
+    const browser = new Browser(newCart());
+    browser.identity = ACCOUNT_A;
+    await readyToPay(browser);
+    browser.identity = next;
+
+    const res = await browser.pay({ gateway: "stripe" });
+
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("ACCOUNT_CHANGED");
+    expect(ep.orders).toEqual([]);
+    expect(ep.charges).toEqual([]);
+    expect(browser.cookie).toBeNull();
+  });
+
+  it("refuses to pay a guest checkout as an account selected after it started, and the next checkout is the account's", async () => {
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+    browser.identity = ACCOUNT_A;
+
+    const refused = await browser.pay({ gateway: "manual" });
+
+    expect(refused.status).toBe(409);
+    expect((refused.body as any).error.code).toBe("ACCOUNT_CHANGED");
+    expect(ep.orders).toEqual([]);
+
+    await readyToPay(browser);
+    const paid = await browser.pay({ gateway: "manual" });
+
+    expect(sessionIn(paid).status).toBe("complete");
+    expect(ep.orders.map(linkOf)).toEqual([LINKED_TO_A]);
+  });
+
+  it("keeps the account out of the session the browser reads", async () => {
+    const browser = new Browser(newCart());
+    browser.identity = ACCOUNT_A;
+    await readyToPay(browser);
+
+    const res = await browser.get();
+
+    expect(sessionIn(res).status).toBe("open");
+    expect(JSON.stringify(res.body)).not.toContain("account-a");
+    expect(JSON.stringify(res.body)).not.toContain("member-1");
+  });
+
+  it.each(["stripe", "manual"])(
+    "empties the account's last cart and deletes an account cart that is not its last (%s)",
+    async (gateway) => {
+      const last = new Browser(newCart());
+      last.identity = ACCOUNT_A;
+      ep.lastAccountCarts.add(last.cartId);
+      const other = new Browser(newCart());
+      other.identity = ACCOUNT_A;
+      await readyToPay(last);
+      await readyToPay(other);
+
+      const a = await last.pay({ gateway });
+      const b = await other.pay({ gateway });
+
+      expect([sessionIn(a).status, sessionIn(b).status]).toEqual(["complete", "complete"]);
+      expect(ep.paidOrders().map((o) => o.account)).toEqual(["account-a", "account-a"]);
+      expect(remainingLines(last.cartId)).toEqual([]);
+      expect(ep.cart(last.cartId).paymentIntentId).toBeUndefined();
+      expect(remainingLines(other.cartId)).toBe("deleted");
+    }
+  );
+
+  it("puts the shipping line and the checkout's extra fields on an account order", async () => {
+    const browser = new Browser(newCart());
+    browser.identity = { ...ACCOUNT_A, allowedCustomAttributeKeys: ["po_number"] };
+    await readyToPay(browser);
+    await browser.update({ customAttributes: { po_number: "PO-322" } });
+
+    const res = await browser.pay({ gateway: "stripe" });
+
+    expect(sessionIn(res).status).toBe("complete");
+    const [order] = ep.orders;
+    expect(linkOf(order)).toEqual(LINKED_TO_A);
+    expect(order.lines.filter((l) => l.sku === EP_SHIPPING_LINE_SKU)).toEqual([
+      { sku: EP_SHIPPING_LINE_SKU, quantity: 1, amount: 599 },
+    ]);
+    expect(order.total).toBe(2799);
+    expect(order.fields).toEqual({ po_number: "PO-322" });
   });
 });

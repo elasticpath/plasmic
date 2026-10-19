@@ -313,6 +313,7 @@ export interface EpCtx {
     accessToken: string;
     // (undocumented)
     accountId?: string;
+    accountMemberId?: string;
     // (undocumented)
     accountToken?: string;
     // (undocumented)
@@ -639,6 +640,7 @@ export interface EpServerAuth {
     accessToken: string;
     // (undocumented)
     accountId?: string;
+    accountMemberId?: string;
     // (undocumented)
     accountToken?: string;
     cartId?: string;
@@ -890,6 +892,7 @@ export function seedCartFallback(): Promise<Record<string, Cart | null>>;
 // @public
 export interface SessionHandlerContext extends EpLocaleAndCurrency {
     accountId?: string;
+    accountMemberId?: string;
     accountToken?: string;
     // (undocumented)
     adapterRegistry: AdapterRegistry;
