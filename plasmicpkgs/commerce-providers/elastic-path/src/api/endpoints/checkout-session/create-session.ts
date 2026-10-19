@@ -2,7 +2,8 @@
  * A-4.1: Create Checkout Session
  *
  * Initialises a new checkout session for the shopper's session cart
- * (`ctx.sessionCartId`); a cart id in the request body is ignored. Fetches the cart
+ * (`ctx.sessionCartId`) and selected account (`checkout-account.ts`; none
+ * for a guest); a cart id in the request body is ignored. Fetches the cart
  * from EP to compute the initial cart hash (used later in /pay to detect
  * cart mutations), stores the session via the SessionStore, and returns a 201
  * with the client-visible session shape plus Set-Cookie headers.
@@ -28,6 +29,7 @@ import {
 import { CART_CLEANUP_PENDING, runCartCleanup } from "../../../checkout/session/cart-cleanup";
 import { createLogger } from "../../../utils/logger";
 import { toClientSession } from "../../../checkout/session/client-session";
+import { selectedAccount } from "../../../checkout/session/checkout-account";
 
 const log = createLogger("CreateSession");
 
@@ -170,6 +172,7 @@ export async function handleCreateSession(
       actionData: null,
     },
     order: null,
+    account: selectedAccount(ctx),
     expiresAt: now + ttl * 1000,
   };
 

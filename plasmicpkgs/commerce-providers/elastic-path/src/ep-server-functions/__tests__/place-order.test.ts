@@ -148,7 +148,7 @@ describe("epPlaceOrder payment method rule", () => {
     expect(mockPaymentSetup).not.toHaveBeenCalled();
   });
 
-  it("gives the host's rule the cart and the account", async () => {
+  it("gives the host's rule the cart and the account, and places the order it allows for that account", async () => {
     mockGetACart.mockResolvedValue(CART_RESPONSE(91900));
     mockCheckoutApi.mockResolvedValue(ORDER_RESPONSE(91900));
     mockPaymentSetup.mockResolvedValue({
@@ -160,7 +160,7 @@ describe("epPlaceOrder payment method rule", () => {
     );
     const place = (accountId: string) =>
       withEpSession(
-        { ...SESSION_BASE, cartId: "cart-1", accountId },
+        { ...SESSION_BASE, cartId: "cart-1", accountId, accountToken: "account-token" },
         () =>
           epPlaceOrder(
             {
@@ -182,6 +182,9 @@ describe("epPlaceOrder payment method rule", () => {
     expect(allowManual).toHaveBeenLastCalledWith({
       cart: CART_RESPONSE(91900).data,
       account: { id: "acct-approved" },
+    });
+    expect(mockCheckoutApi.mock.calls[0][0].body.data.account).toEqual({
+      id: "acct-approved",
     });
   });
 

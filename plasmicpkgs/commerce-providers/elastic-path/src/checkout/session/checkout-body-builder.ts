@@ -2,8 +2,10 @@
  * Checkout Body Builder — converts a CheckoutSession into the EP `checkoutApi`
  * request body.
  *
- * Slice 1 (this PR): guest path only — `CustomerCheckout` shape with name +
- * email. Slices 2+ add the account path and subscription gating.
+ * A guest checkout sends `customer` (name, email). An account checkout
+ * (`session.account`) sends `account` (id, member_id) and the same name and
+ * email as `contact`: Elastic Path refuses `contact` without an account,
+ * `account` without `contact`, and both `customer` and `contact`.
  *
  * EP requires snake_case + several fields (company_name, line_2, county) as
  * present strings even when empty. The session model doesn't carry those, so
@@ -17,13 +19,19 @@
  */
 import type { CheckoutSession, SessionAddress, SessionCustomerInfo } from "./types";
 
-export interface GuestCheckoutBody {
-  data: {
-    customer: { name: string; email: string };
-    billing_address: EpAddressFull;
-    shipping_address: EpAddressFull;
-  };
+interface CheckoutAddresses {
+  billing_address: EpAddressFull;
+  shipping_address: EpAddressFull;
 }
+
+export type CheckoutBody =
+  | { data: CheckoutAddresses & { customer: { name: string; email: string } } }
+  | {
+      data: CheckoutAddresses & {
+        account: { id: string; member_id?: string };
+        contact: { name: string; email: string };
+      };
+    };
 
 interface EpAddressFull {
   first_name: string;
@@ -51,31 +59,40 @@ function toEpAddressFull(addr: SessionAddress): EpAddressFull {
   };
 }
 
-function toEpCustomer(info: SessionCustomerInfo) {
+function nameAndEmail(info: SessionCustomerInfo) {
   return { name: info.name, email: info.email };
 }
 
-export function buildGuestCheckoutBody(
-  session: CheckoutSession
-): GuestCheckoutBody {
+export function buildCheckoutBody(session: CheckoutSession): CheckoutBody {
   if (!session.customerInfo) {
-    throw new Error("buildGuestCheckoutBody: customerInfo is required");
+    throw new Error("buildCheckoutBody: customerInfo is required");
   }
   if (!session.billingAddress) {
-    throw new Error("buildGuestCheckoutBody: billingAddress is required");
+    throw new Error("buildCheckoutBody: billingAddress is required");
   }
   // EP always wants a shipping address on the body. When the checkout doesn't
   // collect one (digital / shipping-less), default it to billing.
   const shipping = session.shippingAddress ?? session.billingAddress;
   if (!session.shippingAddress && session.requiresShipping !== false) {
-    throw new Error("buildGuestCheckoutBody: shippingAddress is required");
+    throw new Error("buildCheckoutBody: shippingAddress is required");
   }
 
-  return {
-    data: {
-      customer: toEpCustomer(session.customerInfo),
-      billing_address: toEpAddressFull(session.billingAddress),
-      shipping_address: toEpAddressFull(shipping),
-    },
+  const addresses = {
+    billing_address: toEpAddressFull(session.billingAddress),
+    shipping_address: toEpAddressFull(shipping),
   };
+  const account = session.account;
+  if (account) {
+    return {
+      data: {
+        account: {
+          id: account.id,
+          ...(account.memberId ? { member_id: account.memberId } : {}),
+        },
+        contact: nameAndEmail(session.customerInfo),
+        ...addresses,
+      },
+    };
+  }
+  return { data: { customer: nameAndEmail(session.customerInfo), ...addresses } };
 }

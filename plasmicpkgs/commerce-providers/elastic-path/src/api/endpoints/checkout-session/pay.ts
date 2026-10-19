@@ -4,7 +4,8 @@
  *   1. Load the session (410 when missing). A session that is not open gets
  *      400; one whose cart PaymentIntent waits for a 3DS challenge gets 409
  *      PAYMENT_ACTION_PENDING with the session. The rest runs under the
- *      per-cart settle-once guard.
+ *      per-cart settle-once guard. 409 ACCOUNT_CHANGED (session dropped)
+ *      when the shopper's selected account is not the session's.
  *   2. Re-read the cart: 409 EMPTY_CART with nothing to buy, 409 CART_MISMATCH
  *      (session refreshed) when its lines changed, 400 MISSING_FIELDS.
  *   3. Re-assert (or clear) the shipping line, then charge only the total the
@@ -89,6 +90,7 @@ import {
   totalsFromCart,
 } from "../../../checkout/session/session-totals";
 import { settleOnceOrBusy } from "../../../checkout/session/settle-once";
+import { refuseChangedAccount } from "../../../checkout/session/checkout-account";
 import {
   awaitsCartPaymentChallenge,
   paymentActionPending,
@@ -742,6 +744,9 @@ async function payOpenSession(
   session: CheckoutSession,
   ttl: number
 ): Promise<SessionResponse> {
+  const accountChanged = await refuseChangedAccount(req, ctx, session);
+  if (accountChanged) return accountChanged;
+
   // 2b. Required-field validation is deferred to step 3a (after the cart
   //     fetch), because whether shipping is required is server-authoritative —
   //     inferred from the cart's physical items, not just the client flag — so
@@ -1070,7 +1075,7 @@ async function payOpenSession(
 
   if (
     adapter.allowsOrder &&
-    !(await adapter.allowsOrder(orderRuleInput(cartResponse, ctx.accountId)))
+    !(await adapter.allowsOrder(orderRuleInput(cartResponse, session.account?.id)))
   ) {
     log.warn("Gateway refused for this order", {
       sessionId: session.id,
