@@ -18,6 +18,7 @@ import {
   createBackend,
   createDatabase,
   testConfig,
+  withEnvOverrides,
 } from "@/wab/server/test/backend-util";
 import express from "express";
 import http from "http";
@@ -130,10 +131,10 @@ describe("Studio server response compression", () => {
 
   beforeAll(async () => {
     const socketServer = await startFakeSocketServer();
-    process.env.SOCKET_HOST = urlOf(socketServer);
-    const { host, cleanup: cleanupBackend } = await createBackend(
-      dburi
-    ).finally(() => delete process.env.SOCKET_HOST);
+    const { host, cleanup: cleanupBackend } = await withEnvOverrides(
+      { SOCKET_HOST: urlOf(socketServer) },
+      () => createBackend(dburi)
+    );
     baseURL = host;
     cleanup = async () => {
       await cleanupBackend();
