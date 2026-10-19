@@ -1,9 +1,26 @@
 /** @jest-environment node */
+import {
+  addAppAuthRoutes,
+  addCmsPublicRoutes,
+  addCodegenOnlyRoutes,
+  addIntegrationsRoutes,
+  addLoaderHtmlRoutes,
+  addLoaderRoutes,
+  createApp,
+} from "@/wab/server/AppServer";
+import { closeDbConnections, ensureDbConnections } from "@/wab/server/db/DbCon";
 import { seedTestUserAndProjects } from "@/wab/server/db/DbInit";
 import { DbMgr, normalActor } from "@/wab/server/db/DbMgr";
-import { createBackend, createDatabase } from "@/wab/server/test/backend-util";
+import { addInternalIntegrationsRoutes } from "@/wab/server/routes/custom-routes";
+import {
+  createBackend,
+  createDatabase,
+  testConfig,
+} from "@/wab/server/test/backend-util";
+import express from "express";
 import http from "http";
 import { AddressInfo } from "net";
+import { register } from "prom-client";
 import zlib from "zlib";
 
 type RawResponse = {
@@ -52,46 +69,63 @@ function startFakeSocketServer(): Promise<http.Server> {
   });
 }
 
+function listen(app: express.Application): Promise<http.Server> {
+  return new Promise((resolve) => {
+    const server = app.listen(0, () => resolve(server));
+  });
+}
+
+function urlOf(server: http.Server) {
+  return `http://localhost:${(server.address() as AddressInfo).port}`;
+}
+
+const OFFERS_BR = { "accept-encoding": "gzip, deflate, br" };
+
+let dburi: string;
+let cleanupDatabase: () => Promise<void>;
+let authHeaders: Record<string, string>;
+let pkgId: string;
+let pkgPath: string;
+
+beforeAll(async () => {
+  const db = await createDatabase("ep_compression_test");
+  dburi = db.dburi;
+  cleanupDatabase = db.cleanup;
+
+  await db.con.transaction(async (em) => {
+    const { user, projects } = await seedTestUserAndProjects(
+      em,
+      { email: "user@example.com" },
+      1
+    );
+    const userDb = new DbMgr(em, normalActor(user.id));
+    const { token } = await userDb.createPersonalApiToken(user.id);
+    authHeaders = {
+      "x-plasmic-api-user": user.email,
+      "x-plasmic-api-token": token,
+    };
+    const { pkgVersion } = await userDb.publishProject(
+      projects[0].id,
+      undefined,
+      [],
+      "description"
+    );
+    pkgId = pkgVersion.pkgId;
+    pkgPath = `/api/v1/pkgs/${pkgId}`;
+  });
+});
+
+afterAll(async () => {
+  await cleanupDatabase?.();
+});
+
 describe("Studio server response compression", () => {
   let baseURL: string;
-  let authHeaders: Record<string, string>;
-  let pkgId: string;
-  let pkgPath: string;
   let cleanup: () => Promise<void>;
 
   beforeAll(async () => {
-    const {
-      dburi,
-      con,
-      cleanup: cleanupDatabase,
-    } = await createDatabase("ep_compression_test");
-
-    await con.transaction(async (em) => {
-      const { user, projects } = await seedTestUserAndProjects(
-        em,
-        { email: "user@example.com" },
-        1
-      );
-      const db = new DbMgr(em, normalActor(user.id));
-      const { token } = await db.createPersonalApiToken(user.id);
-      authHeaders = {
-        "x-plasmic-api-user": user.email,
-        "x-plasmic-api-token": token,
-      };
-      const { pkgVersion } = await db.publishProject(
-        projects[0].id,
-        undefined,
-        [],
-        "description"
-      );
-      pkgId = pkgVersion.pkgId;
-      pkgPath = `/api/v1/pkgs/${pkgId}`;
-    });
-
     const socketServer = await startFakeSocketServer();
-    process.env.SOCKET_HOST = `http://localhost:${
-      (socketServer.address() as AddressInfo).port
-    }`;
+    process.env.SOCKET_HOST = urlOf(socketServer);
     const { host, cleanup: cleanupBackend } = await createBackend(
       dburi
     ).finally(() => delete process.env.SOCKET_HOST);
@@ -100,7 +134,6 @@ describe("Studio server response compression", () => {
       await cleanupBackend();
       socketServer.closeAllConnections();
       await new Promise((resolve) => socketServer.close(resolve));
-      await cleanupDatabase();
     };
   });
 
@@ -124,7 +157,7 @@ describe("Studio server response compression", () => {
 
   it("brotli-encodes a bundle when the client offers br", async () => {
     const plain = await get(pkgPath);
-    const res = await get(pkgPath, { "accept-encoding": "gzip, deflate, br" });
+    const res = await get(pkgPath, OFFERS_BR);
 
     expect(res.status).toBe(200);
     expect(res.headers["content-encoding"]).toBe("br");
@@ -152,12 +185,10 @@ describe("Studio server response compression", () => {
   });
 
   describe("leaves these responses unencoded", () => {
-    const offersBr = { "accept-encoding": "gzip, deflate, br" };
-
     it.each(["/api/v1/init-token", "/api/v1/socket"])(
       "socket.io traffic on %s, proxied to the socket server",
       async (path) => {
-        const res = await get(`${path}/?EIO=4&transport=polling`, offersBr);
+        const res = await get(`${path}/?EIO=4&transport=polling`, OFFERS_BR);
 
         expect(res.status).toBe(200);
         expect(res.headers["content-encoding"]).toBeUndefined();
@@ -168,7 +199,7 @@ describe("Studio server response compression", () => {
     it("a 304 for a getPkgVersion conditional request", async () => {
       const { headers } = await get(pkgPath);
       const res = await get(pkgPath, {
-        ...offersBr,
+        ...OFFERS_BR,
         "if-none-match": headers.etag ?? "",
       });
 
@@ -182,7 +213,7 @@ describe("Studio server response compression", () => {
       const res = await send("/api/v1/cms/databases/db/tables", {
         method: "OPTIONS",
         headers: {
-          ...offersBr,
+          ...OFFERS_BR,
           origin: "https://example.com",
           "access-control-request-method": "GET",
         },
@@ -193,11 +224,71 @@ describe("Studio server response compression", () => {
     });
 
     it("a HEAD response", async () => {
-      const res = await send(pkgPath, { method: "HEAD", headers: offersBr });
+      const res = await send(pkgPath, { method: "HEAD", headers: OFFERS_BR });
 
       expect(res.status).toBe(200);
       expect(res.headers["content-encoding"]).toBeUndefined();
       expect(res.body).toHaveLength(0);
     });
   });
+});
+
+describe("backends that share the Express setup with Studio", () => {
+  // Mirrors the createApp calls in each backend's entrypoint.
+  const backends: [
+    string,
+    (app: express.Application) => void,
+    { skipSession: boolean } | undefined
+  ][] = [
+    ["codegen", addCodegenOnlyRoutes, undefined],
+    [
+      "integrations",
+      (app) => {
+        addCmsPublicRoutes(app);
+        addIntegrationsRoutes(app);
+        addAppAuthRoutes(app);
+        addInternalIntegrationsRoutes(app);
+      },
+      { skipSession: true },
+    ],
+    ["loader", addLoaderRoutes, { skipSession: true }],
+    ["loader-html", addLoaderHtmlRoutes, { skipSession: true }],
+  ];
+
+  beforeAll(async () => {
+    await ensureDbConnections(dburi);
+  });
+
+  afterAll(async () => {
+    await closeDbConnections();
+    register.clear();
+  });
+
+  it.each(backends)(
+    "%s sends responses unencoded",
+    async (name, addRoutes, opts) => {
+      // Each app registers the same metrics.
+      register.clear();
+      const { app } = await createApp(
+        name,
+        testConfig(dburi, "http://localhost"),
+        addRoutes,
+        undefined,
+        opts
+      );
+      const server = await listen(app);
+      try {
+        const res = await rawRequest(`${urlOf(server)}/api/v1/no-such-route`, {
+          headers: OFFERS_BR,
+        });
+
+        expect(res.status).toBe(404);
+        expect(res.headers["content-type"]).toMatch(/json/);
+        expect(res.headers["content-encoding"]).toBeUndefined();
+      } finally {
+        server.closeAllConnections();
+        await new Promise((resolve) => server.close(resolve));
+      }
+    }
+  );
 });
