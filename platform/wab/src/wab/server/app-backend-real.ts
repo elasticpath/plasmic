@@ -50,8 +50,7 @@ export async function runAppServer(config: Config) {
     "studio",
     config,
     (application) => {
-      // createApp mounts the socket routes (the next callback) before these,
-      // so compression never wraps socket.io traffic.
+      // After the socket routes, which createApp mounts first.
       addStudioCompression(application);
       addMainAppServerRoutes(application, config);
 

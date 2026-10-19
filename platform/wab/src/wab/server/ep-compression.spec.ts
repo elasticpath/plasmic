@@ -30,7 +30,6 @@ type RawResponse = {
   body: Buffer;
 };
 
-/** Sends a request and returns the body exactly as it came off the wire. */
 function rawRequest(
   url: string,
   opts: { method?: string; headers?: Record<string, string> } = {}
@@ -59,7 +58,6 @@ function rawRequest(
 
 const SOCKET_BODY = JSON.stringify({ sid: "x".repeat(4096) });
 
-/** Stands in for the socket server that Studio proxies to in production. */
 function startFakeSocketServer(): Promise<http.Server> {
   return new Promise((resolve) => {
     const server = http.createServer((_req, res) => {
@@ -196,7 +194,6 @@ describe("Studio server response compression", () => {
       info.mockRestore();
     });
 
-    /** The request log entry is written on finish, so it may trail the response. */
     async function loggedRequest(requestId: string) {
       for (let attempt = 0; attempt < 50; attempt++) {
         const call = info.mock.calls.find(
@@ -282,7 +279,6 @@ describe("Studio server response compression", () => {
 });
 
 describe("backends that share the Express setup with Studio", () => {
-  // Mirrors the createApp calls in each backend's entrypoint.
   const backends: [
     string,
     (app: express.Application) => void,

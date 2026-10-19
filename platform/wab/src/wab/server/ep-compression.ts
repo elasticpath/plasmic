@@ -2,14 +2,6 @@ import compression from "compression";
 import type express from "express";
 import zlib from "zlib";
 
-/**
- * Compresses every Studio server response that has a body: brotli 4 when the
- * client offers br, gzip 6 when it offers only gzip, with no minimum size.
- *
- * Studio only. Mount it on the Studio routes, after the socket proxy routes,
- * so socket.io traffic is never wrapped. The other backends that share
- * createApp stay uncompressed.
- */
 export function addStudioCompression(app: express.Application) {
   app.use(
     countBytesSent,
@@ -22,11 +14,6 @@ export function addStudioCompression(app: express.Application) {
   );
 }
 
-/**
- * The response sizes for the request log. `contentLength` is the uncompressed
- * size, as it always was. `contentLengthSent` is the size that went out after
- * compression, and is only known for Studio responses.
- */
 export function loggedResponseSizes(res: express.Response) {
   return {
     contentLength:
@@ -35,14 +22,12 @@ export function loggedResponseSizes(res: express.Response) {
   };
 }
 
-// compression drops Content-Length when it encodes a response, so keep it
-// first. compression calls the filter before it changes any header.
+// Runs before compression removes Content-Length.
 function keepUncompressedLength(req: express.Request, res: express.Response) {
   res.locals.uncompressedContentLength = res.getHeader("content-length");
   return compression.filter(req, res);
 }
 
-// Mounted ahead of compression, so it sees the bytes compression writes out.
 function countBytesSent(
   _req: express.Request,
   res: express.Response,
