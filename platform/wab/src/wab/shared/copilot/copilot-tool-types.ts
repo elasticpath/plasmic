@@ -1,16 +1,32 @@
 import type { StudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
+import {
+  stripImpliedTypeTags,
+  stripImpliedTypeTagsFromJsonSchema,
+} from "@/wab/shared/copilot/type-tags";
 import { jsonToXml } from "@/wab/shared/web-exporter/json-to-xml";
 import { zodSchema, type JSONSchema7 } from "ai";
 import { z } from "zod";
 
 /** Serialization format an AI agent prefers for copilot tool output. */
-export type AiOutputFormat = "json" | "xml";
+export const aiOutputFormatSchema = z.enum(["json", "xml"]);
+
+export type AiOutputFormat = z.infer<typeof aiOutputFormatSchema>;
+
+export const aiIdentitySchema = z.object({
+  /** The AI client, e.g. "plasmic-ai", "claude-code" or "cursor". */
+  client: z.string().trim().min(1),
+  /** The model name as the client knows it, or "unknown". */
+  model: z.string().trim().min(1),
+  /** Tool calls output format. */
+  outputFormat: aiOutputFormatSchema,
+});
+
+export type AiIdentity = z.infer<typeof aiIdentitySchema>;
 
 export type CopilotToolMeta<
-  TInput extends
-    | JSONSchema7
-    | z.ZodObject<z.ZodRawShape> = z.ZodObject<z.ZodRawShape>,
-  TOutput extends JSONSchema7 | z.ZodTypeAny = z.ZodTypeAny
+  TInput extends JSONSchema7 | z.ZodObject<z.ZodRawShape> =
+    z.ZodObject<z.ZodRawShape>,
+  TOutput extends JSONSchema7 | z.ZodTypeAny = z.ZodTypeAny,
 > = {
   /** Unique name, used as both tool ID and AI tool name */
   toolName: string;
@@ -26,17 +42,18 @@ export type CopilotToolMeta<
 
 export type CopilotTool<
   TInput extends z.ZodObject<z.ZodRawShape> = z.ZodObject<z.ZodRawShape>,
-  TOutput extends z.ZodTypeAny = z.ZodTypeAny
+  TOutput extends z.ZodTypeAny = z.ZodTypeAny,
 > = CopilotToolMeta<TInput, TOutput> & {
   /**
-   * Execute the tool, returning the serialized output in the agent's preferred format.
-   * The wrapper validates raw input against `inputSchema`, running any transforms.
-   * Throws on error. `opts.prettify` indents the output for testing (default false).
+   * Execute the tool, returning the output serialized as `opts.outputFormat`
+   * (default "json"). The wrapper validates raw input against `inputSchema`,
+   * running any transforms. Throws on error. `opts.prettify` indents the output
+   * for testing (default false).
    */
   execute: (
     studioCtx: StudioCtx,
     input: z.input<TInput>,
-    opts?: { prettify?: boolean }
+    opts?: { outputFormat?: AiOutputFormat; prettify?: boolean },
   ) => Promise<string>;
 };
 
@@ -45,17 +62,18 @@ export type CopilotTool<
  * typed. The wrapper parses the wire input against `inputSchema` (schema transforms
  * run in the host frame, since Expr outputs can't cross the frame boundary). The authored
  * execute receives the parsed input and returns the typed output model, which the wrapper
- * validates against `outputSchema` and serializes to the agent's preferred format.
+ * validates against `outputSchema` and serializes to the agent's preferred format. JSON
+ * output drops `__type` tags the schema already implies (see `stripImpliedTypeTags`).
  */
 export function defineCopilotTool<
   TInput extends z.ZodObject<z.ZodRawShape>,
-  TOutput extends z.ZodTypeAny
+  TOutput extends z.ZodTypeAny,
 >(
   meta: CopilotToolMeta<TInput, TOutput>,
   execute: (
     studioCtx: StudioCtx,
-    input: z.infer<TInput>
-  ) => Promise<z.infer<TOutput>>
+    input: z.infer<TInput>,
+  ) => Promise<z.infer<TOutput>>,
 ): CopilotTool<TInput, TOutput> {
   return {
     ...meta,
@@ -63,11 +81,15 @@ export function defineCopilotTool<
       const prettify = opts?.prettify ?? false;
       const parsedInput = meta.inputSchema.parse(input);
       const output = meta.outputSchema.parse(
-        await execute(studioCtx, parsedInput)
+        await execute(studioCtx, parsedInput),
       );
-      return studioCtx.preferredAiOutputFormat() === "xml"
+      return opts?.outputFormat === "xml"
         ? jsonToXml(output, prettify)
-        : JSON.stringify(output, null, prettify ? 2 : undefined);
+        : JSON.stringify(
+            stripImpliedTypeTags(meta.outputSchema, output),
+            null,
+            prettify ? 2 : undefined,
+          );
     },
   };
 }
@@ -77,7 +99,7 @@ export function defineCopilotTool<
  * input (AI tool params) and output (introspectable result shape).
  */
 export function mapCopilotToolsToJsonSchema(
-  tools: Record<string, CopilotToolMeta>
+  tools: Record<string, CopilotToolMeta>,
 ): Record<string, CopilotToolMeta<JSONSchema7, JSONSchema7>> {
   return Object.fromEntries(
     Object.entries(tools).map(([name, tool]) => [
@@ -93,8 +115,15 @@ export function mapCopilotToolsToJsonSchema(
         // async/raw JSON-schema sources, but zodSchema() always builds it
         // synchronously, so it is a JSONSchema7 here.
         inputSchema: zodSchema(tool.inputSchema).jsonSchema as JSONSchema7,
-        outputSchema: zodSchema(tool.outputSchema).jsonSchema as JSONSchema7,
+        // useReferences lets recursive schemas such as Expr.fallback come out
+        // as `$ref` instead of degrading to `any` with a console warning.
+        // Output schemas never reach the model provider, so `$ref` is not a concern here.
+        // Describes the JSON output, which only tags union members.
+        outputSchema: stripImpliedTypeTagsFromJsonSchema(
+          zodSchema(tool.outputSchema, { useReferences: true })
+            .jsonSchema as JSONSchema7,
+        ),
       },
-    ])
+    ]),
   );
 }

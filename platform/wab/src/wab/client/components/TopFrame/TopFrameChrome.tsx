@@ -1,5 +1,5 @@
 import { AppCtx } from "@/wab/client/app-ctx";
-import { isPlasmicPath, parseRoute } from "@/wab/client/cli-routes";
+import { isPlasmicPath } from "@/wab/client/cli-routes";
 import { HostConfig } from "@/wab/client/components/HostConfig";
 import { DataSourcePicker } from "@/wab/client/components/TopFrame/DataSourcePicker";
 import CloneProjectModal from "@/wab/client/components/TopFrame/TopBar/CloneProjectModal";
@@ -11,15 +11,18 @@ import ShareModal from "@/wab/client/components/TopFrame/TopBar/ShareModal";
 import UpsellModal from "@/wab/client/components/TopFrame/TopBar/UpsellModal";
 import { AppAuthSettingsModal } from "@/wab/client/components/app-auth/AppAuthSettings";
 import { CopilotChatDialog } from "@/wab/client/components/copilot/CopilotChatDialog";
+import { isAnonymousQuotaReached } from "@/wab/client/components/copilot/anonymous-chat";
 import { MergeModalWrapper } from "@/wab/client/components/merge/MergeFlow";
 import { ContentEditorConfigModal } from "@/wab/client/components/modals/ContentEditorConfigModal";
 import { EnableLocalizationModal } from "@/wab/client/components/modals/EnableLocalizationModal";
 import {
   TopBarPromptBillingArgs,
-  getTiersAndPromptBilling,
+  promptTeamUpgrade,
 } from "@/wab/client/components/modals/PricingModal";
 import { FloatingWindowLayer } from "@/wab/client/components/widgets/FloatingWindow";
 import { IconButton } from "@/wab/client/components/widgets/IconButton";
+import { isAnyModalOpen } from "@/wab/client/components/widgets/open-modals";
+import { fileDragMonitor } from "@/wab/client/file-drag/file-drag-monitor";
 import {
   TopFrameApi,
   TopFrameApiArgs,
@@ -28,6 +31,7 @@ import {
 } from "@/wab/client/frame-ctx/top-frame-api";
 import { useTopFrameCtx } from "@/wab/client/frame-ctx/top-frame-ctx";
 import CloseIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Close";
+import { useHistory, useLocation } from "@/wab/client/route/HistoryProvider";
 import { Shortcut } from "@/wab/client/shortcuts/shortcut";
 import { useBindShortcutHandlers } from "@/wab/client/shortcuts/shortcut-handler";
 import {
@@ -42,8 +46,11 @@ import {
   ApiBranch,
   ApiPermission,
   ApiProject,
+  CopilotChatOpenOpts,
   MergeSrcDst,
+  ProjectId,
 } from "@/wab/shared/ApiSchema";
+import { canUseChatCopilot } from "@/wab/shared/billing/billing-util";
 import { assert, asyncWrapper, mkUuid, spawn } from "@/wab/shared/common";
 import { isAdminTeamEmail } from "@/wab/shared/devflag-utils";
 import { LocalizationConfig } from "@/wab/shared/localization";
@@ -52,13 +59,12 @@ import {
   APP_ROUTES,
   SEARCH_PARAM_COPILOT_CHAT,
 } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
 import { canEditUiConfig } from "@/wab/shared/ui-config-utils";
 import { message, notification } from "antd";
 import { Action, Location } from "history";
+import { observer } from "mobx-react";
 import { ExtendedKeyboardEvent } from "mousetrap";
 import React from "react";
-import { useHistory, useLocation } from "react-router";
 import * as Signals from "signals";
 
 export interface MergeModalContext {
@@ -95,7 +101,9 @@ export interface TopFrameChromeProps {
   showUpsellForm: TopBarPromptBillingArgs | undefined;
   setShowUpsellForm: (_: undefined) => void;
   showAppAuthModal: boolean;
+  studioModalOpen: boolean;
   showCopilotChatModal: boolean;
+  copilotChatOpenOpts: CopilotChatOpenOpts | undefined;
   subjectComponentInfo:
     | {
         pathOrComponent: string;
@@ -136,10 +144,17 @@ export function TopFrameChrome({
 }: TopFrameChromeProps) {
   const { hostFrameApiReady } = useTopFrameCtx();
   const location = useLocation();
-  const fullPreview = !!parseRoute(
-    APP_ROUTES.projectFullPreview,
+  const fullPreview = !!APP_ROUTES.projectFullPreview.parse(
     location.pathname,
-    false
+    false,
+  );
+  const projectTeam = appCtx
+    .getAllTeams()
+    .find((team) => team.id === project.teamId);
+  const canStartNewChat = canUseChatCopilot(
+    appCtx.selfInfo?.email,
+    projectTeam,
+    appCtx.appConfig,
   );
 
   React.useEffect(() => {
@@ -152,7 +167,7 @@ export function TopFrameChrome({
         showRegenerateSecretTokenModal({
           appCtx,
           project,
-        })
+        }),
       );
       didShowRegenerateSecretTokenModal();
     }
@@ -169,7 +184,7 @@ export function TopFrameChrome({
       const accessLevel = getAccessLevelToResource(
         { type: "project", resource: project },
         appCtx.selfInfo,
-        perms
+        perms,
       );
 
       const key = mkUuid();
@@ -180,7 +195,7 @@ export function TopFrameChrome({
         perms.every(
           (perm) =>
             perm.accessLevel !== "owner" ||
-            !isAdminTeamEmail(perm.email, appCtx.appConfig)
+            !isAdminTeamEmail(perm.email, appCtx.appConfig),
         )
       ) {
         spawn(
@@ -201,7 +216,7 @@ export function TopFrameChrome({
                 <p style={{ textAlign: "left" }}>
                   Click{" "}
                   <a
-                    href={fillRoute(APP_ROUTES.project, {
+                    href={APP_ROUTES.project.fill({
                       projectId: project.id,
                     })}
                     target="_blank"
@@ -219,9 +234,9 @@ export function TopFrameChrome({
             duration: 0,
             icon: [],
             type: "info",
-          })
+          }),
         );
-        return () => notification.close(key);
+        return () => notification.destroy(key);
       }
     }
     return () => {};
@@ -230,7 +245,7 @@ export function TopFrameChrome({
   return (
     <>
       {!fullPreview &&
-        (parseRoute(APP_ROUTES.projectDocs, pathname, false) ? null : (
+        (APP_ROUTES.projectDocs.parse(pathname, false) ? null : (
           <>
             <ProjectNameModal
               project={project}
@@ -311,7 +326,7 @@ export function TopFrameChrome({
                   if (result?.sourceId) {
                     await appCtx.api.allowProjectToDataSource(
                       result.sourceId,
-                      project.id
+                      project.id,
                     );
                   }
                   rest.dataSourcePicker?.resolve(result);
@@ -361,10 +376,14 @@ export function TopFrameChrome({
               />
             )}
             <FloatingWindowLayer>
-              {hostFrameApiReady && rest.showCopilotChatModal && (
-                <CopilotChatDialog
-                  projectId={project.id}
+              {hostFrameApiReady && rest.showCopilotChatModal && editorPerm && (
+                <CopilotChat
+                  project={project}
+                  chatOpenOpts={rest.copilotChatOpenOpts}
+                  studioModalOpen={rest.studioModalOpen}
+                  canStartNewChat={canStartNewChat}
                   onClose={() => topFrameApi.toggleCopilotChat()}
+                  onPlanReady={refreshProjectAndPerms}
                 />
               )}
             </FloatingWindowLayer>
@@ -380,8 +399,64 @@ export function TopFrameChrome({
           </>
         ))}
       <ForwardShortcuts />
+      <ShareFileDrag />
+      <AnonymousChatUserStudioLock appCtx={appCtx} projectId={project.id} />
     </>
   );
+}
+
+function AnonymousChatUserStudioLock({
+  appCtx,
+  projectId,
+}: {
+  appCtx: AppCtx;
+  projectId: ProjectId;
+}) {
+  const { hostFrameApi, hostFrameApiReady } = useTopFrameCtx();
+
+  React.useEffect(() => {
+    if (hostFrameApiReady && !appCtx.selfInfo) {
+      spawn(
+        (async () => {
+          if (await isAnonymousQuotaReached(projectId)) {
+            await hostFrameApi.blockChanges();
+          }
+        })(),
+      );
+    }
+  }, [hostFrameApi, hostFrameApiReady, appCtx.selfInfo, projectId]);
+
+  return null;
+}
+
+/** Observes top frame modals, Studio's are relayed as `studioModalOpen`. */
+const CopilotChat = observer(function CopilotChat({
+  studioModalOpen,
+  ...props
+}: Omit<React.ComponentProps<typeof CopilotChatDialog>, "hiddenByModal"> & {
+  studioModalOpen: boolean;
+}) {
+  return (
+    <CopilotChatDialog
+      {...props}
+      hiddenByModal={studioModalOpen || isAnyModalOpen()}
+    />
+  );
+});
+
+function ShareFileDrag() {
+  const { hostFrameApi, hostFrameApiReady } = useTopFrameCtx();
+
+  React.useEffect(() => {
+    if (hostFrameApiReady) {
+      return fileDragMonitor.subscribeRemote((event) =>
+        spawn(hostFrameApi.onFileDragEventInTop(event)),
+      );
+    }
+    return undefined;
+  }, [hostFrameApi, hostFrameApiReady]);
+
+  return null;
 }
 
 function ForwardShortcuts() {
@@ -425,13 +500,13 @@ function ForwardShortcuts() {
                 metaKey: e.metaKey,
                 code: e.code,
                 keyCode: e.keyCode,
-              })
+              }),
             );
           }
           return true;
         },
-      ])
-    )
+      ]),
+    ),
   );
   return null;
 }
@@ -448,6 +523,7 @@ export function useTopFrameState({
   toggleAdminMode: (val: boolean) => Promise<void>;
 }) {
   const history = useHistory();
+  const currentLocation = useLocation();
 
   const [latestPublishedVersionData, setLatestPublishedVersionData] =
     React.useState<{ revisionId: string; version: string }>();
@@ -472,17 +548,31 @@ export function useTopFrameState({
   ] = React.useState(false);
   const didShowRegenerateSecretTokenModal = React.useCallback(
     () => setShouldShowRegenerateSecretTokenModal(false),
-    [setShouldShowRegenerateSecretTokenModal]
+    [setShouldShowRegenerateSecretTokenModal],
   );
   const [showUpsellForm, setShowUpsellForm] = React.useState<
     TopBarPromptBillingArgs | undefined
   >(undefined);
   const [showAppAuthModal, setShowAppAuthModal] = React.useState(false);
+  const [studioModalOpen, setStudioModalOpen] = React.useState(false);
+  // A new object per request, so a repeat request with identical text is still
+  // a state change that re-triggers the effect in an already open dialog.
+  const [copilotChatOpenOpts, setCopilotChatOpenOpts] = React.useState<
+    CopilotChatOpenOpts | undefined
+  >(undefined);
 
   const showCopilotChatModal = React.useMemo(() => {
-    const searchParams = new URLSearchParams(history.location.search);
+    const searchParams = new URLSearchParams(currentLocation.search);
     return searchParams.get(SEARCH_PARAM_COPILOT_CHAT) === "true";
-  }, [history.location.search]);
+  }, [currentLocation.search]);
+
+  // The open options are scoped to one dialog session, clear when the dialog
+  // closes so the prompt can't come back prefilled on a later history navigation.
+  React.useEffect(() => {
+    if (!showCopilotChatModal) {
+      setCopilotChatOpenOpts(undefined);
+    }
+  }, [showCopilotChatModal]);
 
   const [noComponents, setNoComponents] = React.useState(true);
   const [subjectComponentInfo, setSubjectComponentInfo] = React.useState<{
@@ -500,7 +590,7 @@ export function useTopFrameState({
   const [dataSourcePicker, setDataSourcePicker] = React.useState<{
     args: Parameters<TopFrameApi["pickDataSource"]>[0];
     resolve: (
-      result: Awaited<ReturnType<TopFrameApi["pickDataSource"]>>
+      result: Awaited<ReturnType<TopFrameApi["pickDataSource"]>>,
     ) => void;
   }>();
   const [defaultPageRoleId, setDefaultPageRoleId] = React.useState<
@@ -512,39 +602,36 @@ export function useTopFrameState({
       run: false,
       tour: "",
       stepIndex: 0,
-    }
+    },
   );
 
   const topFrameApi = React.useMemo<TopFrameApi>(
     () => ({
       pushLocation(path, query, hash) {
         validateNewLocation(path, history.location);
+        // history@5 doesn't resolve missing parts like history@4 did:
+        // a missing pathname means "stay here", missing search/hash clear.
         history.push({
-          pathname: path,
-          search: query,
-          hash,
+          pathname: path ?? history.location.pathname,
+          search: query ?? "",
+          hash: hash ?? "",
         });
         forceUpdate();
       },
       replaceLocation(path, query, hash) {
         validateNewLocation(path, history.location);
         history.replace({
-          pathname: path,
-          search: query,
-          hash,
+          pathname: path ?? history.location.pathname,
+          search: query ?? "",
+          hash: hash ?? "",
         });
         forceUpdate();
       },
       registerLocationListener: (listener) => {
-        const historyListener = (location: Location, action: Action) => {
-          // copy into a plain object so that Comlink can transfer it
-          const locationCopy = { ...location };
-          listener(locationCopy, action);
-        };
-        const unregister = history.listen(historyListener);
+        const unregister = history.listen(listener);
 
         // replace host's initial location
-        historyListener(history.location, "REPLACE");
+        listener({ location: history.location, action: Action.Replace });
 
         return unregister;
       },
@@ -560,7 +647,7 @@ export function useTopFrameState({
         setDefaultPageRoleId(vals.defaultPageRoleId);
       },
       setLatestPublishedVersionData: asyncWrapper(
-        setLatestPublishedVersionData
+        setLatestPublishedVersionData,
       ),
       setSubjectComponentInfo: asyncWrapper(setSubjectComponentInfo),
       setActivatedBranch: asyncWrapper((x) => {
@@ -580,6 +667,7 @@ export function useTopFrameState({
         setShouldShowRegenerateSecretTokenModal(true),
       setShowUpsellForm: asyncWrapper(setShowUpsellForm),
       setShowAppAuthModal: asyncWrapper(setShowAppAuthModal),
+      setStudioModalOpen: asyncWrapper(setStudioModalOpen),
       toggleCopilotChat: async () => {
         const queryParams = new URLSearchParams(history.location.search);
         if (queryParams.get(SEARCH_PARAM_COPILOT_CHAT) === "true") {
@@ -590,12 +678,24 @@ export function useTopFrameState({
         history.push({ search: queryParams.toString() });
         forceUpdate();
       },
+      openCopilotChat: async (opts) => {
+        setCopilotChatOpenOpts(opts);
+        const queryParams = new URLSearchParams(history.location.search);
+        if (queryParams.get(SEARCH_PARAM_COPILOT_CHAT) !== "true") {
+          queryParams.set(SEARCH_PARAM_COPILOT_CHAT, "true");
+          history.push({ search: queryParams.toString() });
+        }
+        forceUpdate();
+      },
+      onFileDragEventInHost: asyncWrapper((event) =>
+        fileDragMonitor.onRemoteEvent(event),
+      ),
       setOnboardingTour: asyncWrapper(setOnboardingTour),
       pickDataSource: async (opts) => {
         return new Promise((resolve) => {
           setDataSourcePicker({ args: opts, resolve });
         }).finally(() =>
-          setDataSourcePicker(undefined)
+          setDataSourcePicker(undefined),
         ) as TopFrameApiReturnType<"pickDataSource">;
       },
       toggleAdminMode,
@@ -614,7 +714,7 @@ export function useTopFrameState({
           team,
           { type: "project", resource: project },
           appCtx.selfInfo,
-          appCtx.perms
+          appCtx.perms,
         );
       },
       promptBilling: async () => {
@@ -622,10 +722,10 @@ export function useTopFrameState({
         if (!team || !project) {
           return;
         }
-        await getTiersAndPromptBilling(appCtx, team);
+        await promptTeamUpgrade(appCtx, team);
       },
     }),
-    [appCtx, project]
+    [appCtx, project],
   );
 
   return {
@@ -651,7 +751,9 @@ export function useTopFrameState({
     showUpsellForm,
     setShowUpsellForm,
     showAppAuthModal,
+    studioModalOpen,
     showCopilotChatModal,
+    copilotChatOpenOpts,
     defaultPageRoleId,
     setDefaultPageRoleId,
     onboardingTour,
@@ -662,7 +764,7 @@ export function useTopFrameState({
 
 function validateNewLocation(
   path: string | undefined,
-  previousLocation: Location
+  previousLocation: Location,
 ) {
   if (!path) {
     return; // query / hash changes only are okay
@@ -671,17 +773,15 @@ function validateNewLocation(
   assert(isPlasmicPath(path), `${path} is not Plasmic`);
 
   // https://app.shortcut.com/plasmic/story/20746/improve-isolation-to-support-arbitrary-code
-  if (
-    parseRoute(APP_ROUTES.projectFullPreview, previousLocation.pathname, false)
-  ) {
+  if (APP_ROUTES.projectFullPreview.parse(previousLocation.pathname, false)) {
     assert(
-      parseRoute(APP_ROUTES.projectFullPreview, path, false),
-      `Cannot navigate from full preview mode to outside of it, from ${previousLocation.pathname} to ${path}`
+      APP_ROUTES.projectFullPreview.parse(path, false),
+      `Cannot navigate from full preview mode to outside of it, from ${previousLocation.pathname} to ${path}`,
     );
   } else {
     assert(
-      !parseRoute(APP_ROUTES.projectFullPreview, path, false),
-      `Cannot navigate from studio to full preview mode, from ${previousLocation.pathname} to ${path}`
+      !APP_ROUTES.projectFullPreview.parse(path, false),
+      `Cannot navigate from studio to full preview mode, from ${previousLocation.pathname} to ${path}`,
     );
   }
 }

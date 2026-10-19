@@ -1,9 +1,10 @@
+import { freeTrialKey } from "@/wab/client/LocalStorageKey";
+import DefaultTeamLayout from "@/wab/client/components/dashboard/DefaultTeamLayout";
 import FreeTrialModal from "@/wab/client/components/dashboard/FreeTrialModal";
-import { documentTitle } from "@/wab/client/components/dashboard/page-utils";
 import WorkspaceSection from "@/wab/client/components/dashboard/WorkspaceSection";
+import { documentTitle } from "@/wab/client/components/dashboard/page-utils";
 import { Spinner } from "@/wab/client/components/widgets";
 import { useAppCtx } from "@/wab/client/contexts/AppContexts";
-import { freeTrialKey } from "@/wab/client/LocalStorageKey";
 import {
   useAsyncFnStrict,
   useAsyncStrict,
@@ -13,12 +14,16 @@ import {
   DefaultTeamPageProps,
   PlasmicTeamPage,
 } from "@/wab/client/plasmic/plasmic_kit_dashboard/PlasmicTeamPage";
-import { TeamId } from "@/wab/shared/ApiSchema";
+import { Redirect } from "@/wab/client/route/Redirect";
+import {
+  ApiCmsDatabase,
+  ListTeamProjectsResponse,
+  TeamId,
+} from "@/wab/shared/ApiSchema";
+import { ORGANIZATION_LOWER } from "@/wab/shared/Labels";
 import { isNonNil } from "@/wab/shared/common";
 import { isAdminTeamEmail } from "@/wab/shared/devflag-utils";
-import { ORGANIZATION_LOWER } from "@/wab/shared/Labels";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
 import { HTMLElementRefOf } from "@plasmicapp/react-web";
 import { notification } from "antd";
 import * as React from "react";
@@ -27,13 +32,18 @@ interface TeamPageProps extends DefaultTeamPageProps {
   teamId: TeamId;
 }
 
+type TeamPageData = ListTeamProjectsResponse & {
+  databases: ApiCmsDatabase[];
+};
+
 function TeamPage_(props: TeamPageProps, ref: HTMLElementRefOf<"div">) {
   const appCtx = useAppCtx();
   const { teamId, ...rest } = props;
   const inviteId = new URL(location.href).searchParams.get("inviteId") ?? "";
-  const [showFreeTrialModal, setShowFreeTrialModal] = React.useState(false);
 
-  const [asyncData, fetchAsyncData] = useAsyncFnStrict(async () => {
+  const [asyncData, fetchAsyncData] = useAsyncFnStrict(async (): Promise<
+    TeamPageData | undefined
+  > => {
     if (inviteId) {
       const response = await appCtx.api.joinTeam({ teamId, inviteId });
       if (!response.status) {
@@ -42,10 +52,12 @@ function TeamPage_(props: TeamPageProps, ref: HTMLElementRefOf<"div">) {
           description: response.reason,
           duration: 0,
         });
-        appCtx.router.routeTo(fillRoute(APP_ROUTES.dashboard, {}));
-      } else {
-        appCtx.router.routeTo(fillRoute(APP_ROUTES.org, { teamId: teamId }));
+        appCtx.router.routeTo(APP_ROUTES.dashboard.fill({}));
+        return undefined;
       }
+      // Make sure the sidebar knows about the newly joined org.
+      await appCtx.reloadAppCtx();
+      appCtx.router.routeTo(APP_ROUTES.org.fill({ teamId }));
     }
     const res = await appCtx.api.listTeamProjects(teamId);
     const databases = await appCtx.api.listCmsDatabasesForTeam(teamId);
@@ -53,21 +65,53 @@ function TeamPage_(props: TeamPageProps, ref: HTMLElementRefOf<"div">) {
   }, [teamId, inviteId]);
   useAsyncStrict(fetchAsyncData, [teamId]);
 
-  const team = asyncData?.value?.team;
-  const numProjects = asyncData?.value?.projects.length || 0;
-  const numMembers =
-    asyncData?.value?.members.filter(
-      (member) => !isAdminTeamEmail(member.email, appCtx.appConfig)
-    ).length || 0;
-  const workspaces = asyncData?.value?.workspaces || [];
-  const perms = asyncData?.value?.perms || [];
-  const unsortedProjects = asyncData?.value?.projects || [];
-  const unsortedDatabases = asyncData?.value?.databases || [];
+  if (asyncData.error) {
+    // Deleted org, or one the user can't access.
+    return <Redirect to={APP_ROUTES.dashboard.fill({})} />;
+  }
+
+  const data = asyncData.value;
+  if (!data) {
+    return (
+      <>
+        {documentTitle(`Loading ${ORGANIZATION_LOWER}...`)}
+        <Spinner />
+      </>
+    );
+  }
+
+  return (
+    <TeamPageContent
+      {...rest}
+      ref={ref}
+      data={data}
+      onUpdate={async () => {
+        await fetchAsyncData();
+      }}
+    />
+  );
+}
+
+interface TeamPageContentProps extends DefaultTeamPageProps {
+  data: TeamPageData;
+  onUpdate: () => Promise<void>;
+}
+
+function TeamPageContent_(
+  props: TeamPageContentProps,
+  ref: HTMLElementRefOf<"div">,
+) {
+  const appCtx = useAppCtx();
+  const { data, onUpdate, ...rest } = props;
+  const { team, perms, members, workspaces } = data;
+  const [showFreeTrialModal, setShowFreeTrialModal] = React.useState(false);
+
+  const numProjects = data.projects.length;
+  const numMembers = members.filter(
+    (member) => !isAdminTeamEmail(member.email, appCtx.appConfig),
+  ).length;
 
   React.useEffect(() => {
-    if (!team) {
-      return;
-    }
     const storageKey = freeTrialKey(team.id);
     const hasFreeTrialStorage = async () => {
       const firstTimeRender = !(await appCtx.api.getStorageItem(storageKey));
@@ -89,14 +133,14 @@ function TeamPage_(props: TeamPageProps, ref: HTMLElementRefOf<"div">) {
     databases,
     matcher,
     props: filterProps,
-  } = useProjectsFilter(unsortedProjects, unsortedDatabases);
+  } = useProjectsFilter(data.projects, data.databases);
 
   return (
     <>
-      {documentTitle(team ? team.name : `Loading ${ORGANIZATION_LOWER}...`)}
+      {documentTitle(team.name)}
       {showFreeTrialModal && (
         <FreeTrialModal
-          trialDays={isNonNil(team?.trialDays) ? team!.trialDays : undefined}
+          trialDays={isNonNil(team.trialDays) ? team.trialDays : undefined}
           onConfirm={() => {
             setShowFreeTrialModal(false);
           }}
@@ -105,13 +149,8 @@ function TeamPage_(props: TeamPageProps, ref: HTMLElementRefOf<"div">) {
       <PlasmicTeamPage
         root={{ ref }}
         defaultLayout={{
-          wrapChildren: (children) =>
-            !asyncData?.value ? <Spinner /> : children,
-          helpButton: {
-            props: {
-              href: fillRoute(APP_ROUTES.orgSupport, { teamId }),
-            },
-          },
+          as: DefaultTeamLayout,
+          props: { team },
         }}
         header={{
           team,
@@ -119,9 +158,7 @@ function TeamPage_(props: TeamPageProps, ref: HTMLElementRefOf<"div">) {
           numMembers,
           numProjects,
           filterProps,
-          onUpdate: async () => {
-            await fetchAsyncData();
-          },
+          onUpdate,
         }}
         {...rest}
       >
@@ -131,9 +168,7 @@ function TeamPage_(props: TeamPageProps, ref: HTMLElementRefOf<"div">) {
             workspace={workspace}
             databases={databases.filter((d) => d.workspaceId === workspace.id)}
             projects={projects.filter((p) => p.workspaceId === workspace.id)}
-            onUpdate={async () => {
-              await fetchAsyncData();
-            }}
+            onUpdate={onUpdate}
             perms={perms}
             matcher={matcher}
             inTeamPage={true}
@@ -143,6 +178,8 @@ function TeamPage_(props: TeamPageProps, ref: HTMLElementRefOf<"div">) {
     </>
   );
 }
+
+const TeamPageContent = React.forwardRef(TeamPageContent_);
 
 const TeamPage = React.forwardRef(TeamPage_);
 export default TeamPage;

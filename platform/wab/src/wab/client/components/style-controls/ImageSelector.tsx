@@ -4,7 +4,6 @@ import { FileUploader, PlainLinkButton } from "@/wab/client/components/widgets";
 import { Icon } from "@/wab/client/components/widgets/Icon";
 import { IconButton } from "@/wab/client/components/widgets/IconButton";
 import { Textbox, TextboxRef } from "@/wab/client/components/widgets/Textbox";
-import { useAppCtx } from "@/wab/client/contexts/AppContexts";
 import {
   ResizableImage,
   maybeUploadImage,
@@ -50,12 +49,12 @@ export const ImageAssetPreviewAndPicker = observer(
       asset && asset.dataUri
         ? asset.dataUri
         : L.isString(value)
-        ? value
-        : undefined;
+          ? value
+          : undefined;
     const isIcon = type === ImageAssetType.Icon;
 
     const [pickingImage, setPickingImage] = React.useState(
-      !forFallback && (uri === placeholderImgUrl(isIcon) || !uri)
+      !forFallback && (uri === placeholderImgUrl(isIcon) || !uri),
     );
     const [showAssetPopup, setShowAssetPopup] = React.useState(false);
 
@@ -141,7 +140,7 @@ export const ImageAssetPreviewAndPicker = observer(
         )}
       </div>
     );
-  }
+  },
 );
 
 type ImgInfoProps = {
@@ -150,10 +149,6 @@ type ImgInfoProps = {
   imagePreview?: React.ReactNode;
   extended?: boolean;
 };
-interface ImgInfoState {
-  img: HTMLImageElement | undefined;
-}
-
 function useImageSize(url: string) {
   const promiseRef = React.useRef<Cancelable<any> | null>(null);
   const [size, setSize] = React.useState<
@@ -162,7 +157,7 @@ function useImageSize(url: string) {
   React.useEffect(() => {
     const img = new Image();
     promiseRef.current = makeCancelable(
-      new Promise((resolve) => (img.onload = resolve))
+      new Promise((resolve) => (img.onload = resolve)),
     );
     img.src = url;
     promiseRef.current.promise
@@ -275,7 +270,7 @@ export const ImageAssetOrUrlPicker = observer(
       const { imageResult, opts } = await studioCtx.app.withSpinner(
         (async () => {
           return await maybeUploadImage(studioCtx.appCtx, image, type, file);
-        })()
+        })(),
       );
       if (!imageResult || !opts) {
         return;
@@ -299,7 +294,7 @@ export const ImageAssetOrUrlPicker = observer(
 
       const urlInputHandle = ensure(
         urlInputRef.current,
-        "Unexpected undefined urlInputRef"
+        "Unexpected undefined urlInputRef",
       );
       const urlInputValue = urlInputHandle.value();
       if (!isValidUrl(urlInputValue)) {
@@ -390,8 +385,8 @@ export const ImageAssetOrUrlPicker = observer(
                   props.onPicked(
                     ensure(
                       selectableAssets.find((x) => x.uuid === val),
-                      "Unexpected undefined asset selected"
-                    )
+                      "Unexpected undefined asset selected",
+                    ),
                   )
                 }
                 showSearch
@@ -414,7 +409,7 @@ export const ImageAssetOrUrlPicker = observer(
                         className="mr-ch"
                         uri={ensure(
                           asset.dataUri,
-                          "Unexpected undefinde dataUri in asset"
+                          "Unexpected undefinde dataUri in asset",
                         )}
                         style={{ width: 28, height: 28 }}
                       />
@@ -433,11 +428,7 @@ export const ImageAssetOrUrlPicker = observer(
           )}
           <ImageUploader
             onUploaded={handleImageUploaded}
-            accept={
-              type === ImageAssetType.Picture
-                ? ".gif,.jpg,.jpeg,.png,.avif,.tif,.svg"
-                : ".svg"
-            }
+            accept={type === ImageAssetType.Picture ? "image" : "svg"}
           />
           <div className="mv-sm">{"or paste a new image from clipboard"}</div>
           <ImagePaster onPasted={handleImageUploaded} />
@@ -471,23 +462,22 @@ export const ImageAssetOrUrlPicker = observer(
         </div>
       </div>
     );
-  }
+  },
 );
 
 export function ImageUploader(props: {
   onUploaded: (image: ResizableImage, file: File) => void;
-  accept?: string;
+  accept: "image" | "svg";
   children?: React.ReactNode;
   isDisabled?: boolean;
 }) {
-  const appCtx = useAppCtx();
   const { onUploaded, accept, children, isDisabled } = props;
   const handleUploadChange = async (fileList: FileList | null) => {
     if (fileList === null || fileList.length === 0) {
       return;
     }
     const file = fileList[0];
-    const image = await readAndSanitizeFileAsImage(appCtx, file);
+    const image = await readAndSanitizeFileAsImage(file);
     if (!image) {
       notification.error({
         message: "Invalid image",
@@ -499,7 +489,7 @@ export function ImageUploader(props: {
   return (
     <FileUploader
       onChange={handleUploadChange}
-      accept={accept ?? ".gif,.jpg,.jpeg,.png,.avif,.tif,.svg,.webp"}
+      accept={accept}
       children={children}
       disabled={isDisabled}
     />
@@ -509,7 +499,6 @@ export function ImageUploader(props: {
 export function ImagePaster(props: {
   onPasted: (image: ResizableImage) => void;
 }) {
-  const appCtx = useAppCtx();
   const [isProcessing, setProcessing] = React.useState(false);
   const ref = React.useRef<HTMLTextAreaElement>(null);
 
@@ -523,8 +512,8 @@ export function ImagePaster(props: {
       event.stopPropagation();
       setProcessing(true);
       const image = await ReadableClipboard.fromDataTransfer(
-        event.clipboardData
-      ).getImage(appCtx);
+        event.clipboardData,
+      ).getImage();
       if (image) {
         props.onPasted(image);
       } else {

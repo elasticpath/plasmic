@@ -28,7 +28,7 @@ import {
   toTs,
 } from "@/wab/shared/model/model-meta";
 import { conformsToType } from "@/wab/shared/model/model-util";
-import { flatten, isArray, isEmpty, isNil, isObject, uniq } from "lodash";
+import { isArray, isEmpty, isNil, isObject, uniq } from "lodash";
 import { Result, err, ok } from "neverthrow";
 
 export type { Bundle, BundledInst };
@@ -54,7 +54,6 @@ const key2Addr = (key: string): Addr => {
   const vals = key.split(" ");
   return { uuid: vals[0], iid: vals[1] };
 };
-export const addrSlug = (xref: Addr) => `${xref.uuid}-${xref.iid}`;
 
 type Ref = { __ref: string } | { __xref: Addr };
 
@@ -79,16 +78,16 @@ export function visitRefsInFields(
   bundledInst: any,
   visitRef: (fieldRef: Ref, field: Field) => void,
   fields?: string[],
-  rt = meta
+  rt = meta,
 ) {
   const cls = ensure(
     meta.clsByName[bundledInst.__type],
-    () => `Couldn't get class for type ${bundledInst.__type}`
+    () => `Couldn't get class for type ${bundledInst.__type}`,
   );
   rt.allFields(cls)
     .filter((f) => !fields || fields.includes(f.name))
     .forEach((field) =>
-      visitFieldRefs(bundledInst[field.name], (ref) => visitRef(ref, field))
+      visitFieldRefs(bundledInst[field.name], (ref) => visitRef(ref, field)),
     );
 }
 
@@ -103,7 +102,7 @@ export function checkExistingReferences(bundle: Bundle) {
         () =>
           `Missing xref (${x.__xref.uuid}, ${
             x.__xref.iid
-          }) (only know about: ${bundle.deps.sort().join(", ")})`
+          }) (only know about: ${bundle.deps.sort().join(", ")})`,
       );
     }
   };
@@ -165,7 +164,7 @@ export function checkRefsInBundle(
       weakRefParents: Map<string, { iid: string; field: string }[]>;
       strongRefParents: Map<string, { iid: string; field: string }[]>;
     }) => void;
-  }
+  },
 ) {
   const onWeakRefToUnreachableInst =
     opts?.onWeakRefToUnreachableInst ??
@@ -221,7 +220,7 @@ export function checkRefsInBundle(
   while (queue.length > 0) {
     const iid = queue.pop()!;
     visitRefsInFields(bundle.map[iid], (ref, field) =>
-      visitRef(iid, ref, field)
+      visitRef(iid, ref, field),
     );
   }
   const displayInst = (iid: string) => `${bundle.map[iid]?.__type}[${iid}]`;
@@ -232,12 +231,12 @@ export function checkRefsInBundle(
     ) {
       console.log(
         `Invalid weak ref to unreachable instance ${displayInst(
-          iid
+          iid,
         )}: ${getParents(weakRefParents, iid)
           .map(
-            ({ iid: parentIid, field }) => `${displayInst(parentIid)}.${field}`
+            ({ iid: parentIid, field }) => `${displayInst(parentIid)}.${field}`,
           )
-          .join(", ")}`
+          .join(", ")}`,
       );
     }
   });
@@ -284,7 +283,7 @@ export function checkBundleFields(bundle: Bundle, iidsToCheck?: string[]) {
         return value === tp.params[0]
           ? ok(true)
           : err(
-              `${value} is not a string literal ${JSON.stringify(tp.params[0])}`
+              `${value} is not a string literal ${JSON.stringify(tp.params[0])}`,
             );
       case "Number":
         return typeof value === "number"
@@ -301,8 +300,8 @@ export function checkBundleFields(bundle: Bundle, iidsToCheck?: string[]) {
         }
         return Result.combine(
           value.map((item) =>
-            checkType(item, ensureInstance(tp.params[0], Type))
-          )
+            checkType(item, ensureInstance(tp.params[0], Type)),
+          ),
         ).map(() => true);
       case "Lit":
         return ["number", "string"].includes(typeof value) ||
@@ -325,12 +324,12 @@ export function checkBundleFields(bundle: Bundle, iidsToCheck?: string[]) {
             Result.combine([
               checkType(pair[0], ensureInstance(tp.params[0], Type)),
               checkType(pair[1], ensureInstance(tp.params[1], Type)),
-            ]).map(() => true)
-          )
+            ]).map(() => true),
+          ),
         ).map(() => true);
       case "Or": {
         const orResults = tp.params.map((p) =>
-          checkType(value, ensureInstance(p, Type))
+          checkType(value, ensureInstance(p, Type)),
         );
         return (
           orResults.find((r) => r.isOk()) ??
@@ -343,8 +342,8 @@ export function checkBundleFields(bundle: Bundle, iidsToCheck?: string[]) {
                 ? `(${map[value.__ref].__type}) `
                 : ""
             }does not match any of the types ${tp.params.map((p) =>
-              toTs(ensureInstance(p, Type))
-            )}`
+              toTs(ensureInstance(p, Type)),
+            )}`,
           )
         );
       }
@@ -363,12 +362,12 @@ export function checkBundleFields(bundle: Bundle, iidsToCheck?: string[]) {
           return err(
             `${JSON.stringify(map[value.__ref])} (referenced by (${
               tp.type
-            }): ${JSON.stringify(value)}) has unknown type "${refType}"`
+            }): ${JSON.stringify(value)}) has unknown type "${refType}"`,
           );
         }
         const tpCls = ensure(
           meta.clsByName[tp.type],
-          () => `Couldn't find class by name ${tp.type}`
+          () => `Couldn't find class by name ${tp.type}`,
         );
         return meta.isSubclass(refCls, tpCls)
           ? ok(true)
@@ -392,14 +391,14 @@ export function checkBundleFields(bundle: Bundle, iidsToCheck?: string[]) {
 
     const cls = ensure(
       meta.clsByName[obj.__type],
-      `Unknown type: ${obj.__type}`
+      `Unknown type: ${obj.__type}`,
     );
 
     checkEqKeys(
       obj,
       meta.allFieldKeys(cls),
       meta.allTransientFieldKeys(cls),
-      obj.__type
+      obj.__type,
     );
 
     const fields = meta.allFields(cls);
@@ -421,9 +420,9 @@ export function checkBundleFields(bundle: Bundle, iidsToCheck?: string[]) {
         errors
           .map(
             (e) =>
-              `- iid: ${e.iid}, field: ${e.field}, error: ${e.error.message}`
+              `- iid: ${e.iid}, field: ${e.field}, error: ${e.error.message}`,
           )
-          .join("\n")
+          .join("\n"),
     );
   }
 }
@@ -442,7 +441,11 @@ export class Bundler {
   /**
    * looseMode means skip checking of fields and ignore missing xrefs (leaving the references in place)
    */
-  constructor(rt = meta, classes = classesModule, private looseMode = false) {
+  constructor(
+    rt = meta,
+    classes = classesModule,
+    private looseMode = false,
+  ) {
     this._rt = rt;
     this._instUtil = new InstUtil(rt, classes.justClasses);
     this._realClasses = classes;
@@ -475,7 +478,7 @@ export class Bundler {
     inst: classesModule.ObjInst,
     visitInst: (inst: classesModule.ObjInst, field: Field) => any,
     fields?: string[],
-    opts?: { noTypeCheck?: boolean }
+    opts?: { noTypeCheck?: boolean },
   ) {
     const cls = this._instUtil.getInstClass(inst);
     const maybeVisit = (x: {} | null | undefined, field: Field) => {
@@ -490,7 +493,7 @@ export class Bundler {
       .filter(
         (f) =>
           (!fields || fields.includes(f.name)) &&
-          !f.annotations.includes("Transient")
+          !f.annotations.includes("Transient"),
       )
       .map((f) => {
         const val = this._rt.readField(inst, f.name);
@@ -502,7 +505,7 @@ export class Bundler {
               this._instUtil.isObjInst(val)
                 ? `(${this._instUtil.getInstClassName(val)})`
                 : ""
-            }`.trim()
+            }`.trim(),
           );
         }
         if (f.type.type === "Optional" && (val === null || val === undefined)) {
@@ -510,7 +513,7 @@ export class Bundler {
         } else if (isArray(val)) {
           return tuple(
             f,
-            [...val].map((x) => maybeVisit(x, f))
+            [...val].map((x) => maybeVisit(x, f)),
           );
         } else if (isLiteralObject(val)) {
           return tuple(
@@ -520,8 +523,8 @@ export class Bundler {
                 const v = val[k];
 
                 return tuple(k, maybeVisit(v, f));
-              })
-            )
+              }),
+            ),
           );
         } else {
           return tuple(f, maybeVisit(val, f));
@@ -552,26 +555,6 @@ export class Bundler {
     return [...this._uuid2root.keys()].sort();
   }
 
-  // Extract the required bundle UUIDs.
-  extractDependencies(bundle: Bundle) {
-    return flatten(
-      Object.keys(bundle.map || {}).map((iid) => {
-        const json = bundle.map[iid];
-
-        return [
-          ...(function* () {
-            for (const field in json) {
-              const val = json[field];
-              if (isXref(val)) {
-                yield val.__xref.uuid;
-              }
-            }
-          })(),
-        ];
-      })
-    );
-  }
-
   /**
    * Gathers all "internal" instances under the root tree.  Internal means that
    * an instance does not belong to another uuid that we know about.  For
@@ -581,7 +564,7 @@ export class Bundler {
    */
   private _gatherInternalInstsAndAssignAddrs(
     root: classesModule.ObjInst,
-    uuid: string
+    uuid: string,
   ): Record<number, classesModule.ObjInst> {
     const map = {};
     const visitInst = (inst: classesModule.ObjInst) => {
@@ -659,15 +642,15 @@ export class Bundler {
                 return undefined;
               }
               return tuple(field.name, isNil(val) ? null : val);
-            })
-          )
+            }),
+          ),
         );
 
         return tuple(iid, {
           ...json,
           __type: this._instUtil.getInstClass(inst).name,
         });
-      })
+      }),
     );
     return {
       root: getIid(root),
@@ -692,7 +675,7 @@ export class Bundler {
   private unbundleInternal(
     bundle: UnsafeBundle,
     uuid: string,
-    partial: boolean
+    partial: boolean,
   ): classesModule.ObjInst | undefined {
     const localAddr2inst = new Map<string, classesModule.ObjInst>();
     const addr2inst = (addr: string) =>
@@ -705,7 +688,7 @@ export class Bundler {
       throw new Error(
         `Missing xref (${xref.uuid}, ${
           xref.iid
-        }) (only know about: ${this.allUuids().join(", ")})`
+        }) (only know about: ${this.allUuids().join(", ")})`,
       );
     };
 
@@ -717,9 +700,9 @@ export class Bundler {
     const delayedIids = new Set(
       partial
         ? Object.keys(bundle.map || {}).filter(
-            (iid) => !!this._addr2inst.get(addrKey({ uuid, iid: iid }))
+            (iid) => !!this._addr2inst.get(addrKey({ uuid, iid: iid })),
           )
-        : []
+        : [],
     );
 
     // First we build a map from iid to instances from the bundle.  All instances here
@@ -740,7 +723,7 @@ export class Bundler {
               ? Object.assign(
                   Object.create(realClass.prototype),
                   { uid: Math.random() },
-                  json
+                  json,
                 )
               : new realClass(json)
           ) as classesModule.ObjInst;
@@ -749,13 +732,13 @@ export class Bundler {
           assert(
             inst instanceof realClass,
             `Cached instance has unexpected type ${this._instUtil.getInstClassName(
-              inst
-            )}, expected ${json.__type}`
+              inst,
+            )}, expected ${json.__type}`,
           );
         }
         localUid2addr.set(inst.uid, addr);
         return tuple(iid, inst);
-      })
+      }),
     );
 
     // Now we deal with fixing up the field values, basically replacing
@@ -771,7 +754,7 @@ export class Bundler {
         | { __ref: string }
         | { __xref: Addr }
         | {}[]
-        | {}
+        | {},
     ) => {
       if (
         typeof x === "number" ||
@@ -788,13 +771,13 @@ export class Bundler {
         // `addr2inst` to get them; otherwise, all instances should exist in
         // `iid2internalInst`.
         const inst = partial
-          ? iid2internalInst.get(x.__ref) ??
-            addr2inst(addrKey({ uuid, iid: x.__ref }))
+          ? (iid2internalInst.get(x.__ref) ??
+            addr2inst(addrKey({ uuid, iid: x.__ref })))
           : iid2internalInst.get(x.__ref);
         return ensure(inst, `Missing reference (IID ${x.__ref})`);
       } else if ("__xref" in x) {
         return coalesce(addr2inst(addrKey(x.__xref)), () =>
-          missingXrefError(x.__xref)
+          missingXrefError(x.__xref),
         );
       } else {
         return x;
@@ -807,7 +790,7 @@ export class Bundler {
       const json: any = bundle.map[iid];
       const inst = ensure(
         iid2internalInst.get(iid),
-        `iid2internalInst missing ${iid}`
+        `iid2internalInst missing ${iid}`,
       );
       const cls = this._rt.clsByName[json.__type];
       for (const field of this._rt.allFields(cls)) {
@@ -830,15 +813,15 @@ export class Bundler {
             isArray(valueOrRef)
               ? [...valueOrRef].map((x) => readValueOrRef(x))
               : // Map type
-              isLiteralObject(valueOrRef) && !isAnyRef(valueOrRef)
-              ? Object.fromEntries(
-                  Object.keys(valueOrRef || {}).map((k) => {
-                    const v = valueOrRef[k];
+                isLiteralObject(valueOrRef) && !isAnyRef(valueOrRef)
+                ? Object.fromEntries(
+                    Object.keys(valueOrRef || {}).map((k) => {
+                      const v = valueOrRef[k];
 
-                    return tuple(k, readValueOrRef(v));
-                  })
-                )
-              : readValueOrRef(valueOrRef);
+                      return tuple(k, readValueOrRef(v));
+                    }),
+                  )
+                : readValueOrRef(valueOrRef);
         }
         // If we are loading partial changes, we might avoid unnecessary
         // assignments as they could be seen as model changes
@@ -921,11 +904,11 @@ export class FastBundler extends Bundler {
     changedInsts: {
       readonly inst: classesModule.ObjInst;
       readonly field: string;
-    }[]
+    }[],
   ): DeepReadonly<Bundle> {
     assert(
       uuid === this._uuid,
-      () => `uuids didn't match: ${uuid} and ${this._uuid}`
+      () => `uuids didn't match: ${uuid} and ${this._uuid}`,
     );
     assert(this._bundle, () => `_bundle is not set`);
     const bundle = this._bundle;
@@ -955,7 +938,7 @@ export class FastBundler extends Bundler {
     const mkRefAndMaybeVisit = (
       child: classesModule.ObjInst,
       parentIid: string,
-      field: Field
+      field: Field,
     ) => {
       let addr = this._uid2addr.get(child.uid);
       if (!addr) {
@@ -992,14 +975,14 @@ export class FastBundler extends Bundler {
       toDeleteNodes.push(bundle.root);
       bundle.root = ensure(
         getIid(root),
-        () => `Couldn't find iid for root instance`
+        () => `Couldn't find iid for root instance`,
       );
     }
 
     while (queueOfChangedNodes.length > 0) {
       const [inst, field] = ensure(
         queueOfChangedNodes.shift(),
-        () => `queueOfChangedNodes shouldn't be empty`
+        () => `queueOfChangedNodes shouldn't be empty`,
       );
       if (
         seenNodesToField.has(inst) &&
@@ -1022,7 +1005,7 @@ export class FastBundler extends Bundler {
           oldJson,
           (fieldRef, f) => this.removeRefs(iid, fieldRef, toDeleteNodes, f),
           listOfFields,
-          this._rt
+          this._rt,
         );
       }
       const json = Object.fromEntries(
@@ -1035,10 +1018,10 @@ export class FastBundler extends Bundler {
             // instances might have uninitialized values. We make sure to type
             // check the fields for reachable instances below.
             noTypeCheck: true,
-          }
+          },
         ).map(([f, val]) => {
           return tuple(f.name, isNil(val) ? null : val);
-        })
+        }),
       );
 
       bundle.map[iid] = {
@@ -1058,17 +1041,17 @@ export class FastBundler extends Bundler {
     // Type check bundle fields for reachable nodes
     Array.from(seenNodesToField.keys())
       .filter((inst) =>
-        maybe(getIid(inst), (iid) => (iid in bundle.map ? true : false))
+        maybe(getIid(inst), (iid) => (iid in bundle.map ? true : false)),
       )
       .forEach((inst) =>
-        this._fieldVals(inst, () => null, undefined, { noTypeCheck: false })
+        this._fieldVals(inst, () => null, undefined, { noTypeCheck: false }),
       );
 
     bundle.deps = uniq(
       Array.from(this._xref2Parents.entries())
         .concat(Array.from(this._xref2WeakRefs.entries()))
         .filter(([_, refs]) => refs.size > 0)
-        .map(([key, _]) => key2Addr(key).uuid)
+        .map(([key, _]) => key2Addr(key).uuid),
     );
 
     if (!DEVFLAGS.skipInvariants) {
@@ -1082,11 +1065,11 @@ export class FastBundler extends Bundler {
     while (toDeleteNodes.length > 0) {
       const iid = ensure(
         toDeleteNodes.shift(),
-        () => `toDeleteNodes shouldn't be empty`
+        () => `toDeleteNodes shouldn't be empty`,
       );
       assert(
         !this._iid2Parents.has(iid),
-        () => `Instance still has list of parents: ${iid}`
+        () => `Instance still has list of parents: ${iid}`,
       );
       if (bundle.root !== iid) {
         visitRefsInFields(
@@ -1094,7 +1077,7 @@ export class FastBundler extends Bundler {
           (fieldInst, field) =>
             this.removeRefs(iid, fieldInst, toDeleteNodes, field),
           undefined,
-          this._rt
+          this._rt,
         );
         delete bundle.map[iid];
       }
@@ -1105,21 +1088,21 @@ export class FastBundler extends Bundler {
     parentIid: string,
     refVal: Ref,
     toDeleteNodes: string[],
-    field: Field
+    field: Field,
   ) {
     const parentKey = iidFieldKey(parentIid, field);
     const rmParentFromSet = (
       childKey: string,
-      container: Map<string, Set<string>>
+      container: Map<string, Set<string>>,
     ) => {
       const parents = ensure(
         container.get(childKey),
-        () => `Couldn't get parent list for key ${childKey}`
+        () => `Couldn't get parent list for key ${childKey}`,
       );
       assert(
         parents.has(parentKey),
         () =>
-          `Parent list for child ${childKey} doesn't include parent ${parentKey}`
+          `Parent list for child ${childKey} doesn't include parent ${parentKey}`,
       );
       parents.delete(parentKey);
       if (parents.size === 0) {
@@ -1136,18 +1119,18 @@ export class FastBundler extends Bundler {
     const parentKey = iidFieldKey(parentIid, field);
     const addParentToSet = (
       childKey: string,
-      container: Map<string, Set<string>>
+      container: Map<string, Set<string>>,
     ) => {
       if (container === this._iid2Parents) {
         assert(
           childKey !== this._bundle?.root,
-          "Added strong reference to root instance"
+          "Added strong reference to root instance",
         );
       }
       const parents = xSetDefault(container, childKey, () => new Set<string>());
       assert(
         !parents.has(parentKey),
-        () => `parentKey already used: ${parentKey}`
+        () => `parentKey already used: ${parentKey}`,
       );
       parents.add(parentKey);
     };
@@ -1157,7 +1140,7 @@ export class FastBundler extends Bundler {
   private _updateParentsForRef(
     refVal: Ref,
     field: Field,
-    updateFunc: (key: string, container: Map<string, Set<string>>) => void
+    updateFunc: (key: string, container: Map<string, Set<string>>) => void,
   ) {
     if ("__ref" in refVal) {
       const iid = refVal.__ref;
@@ -1166,14 +1149,14 @@ export class FastBundler extends Bundler {
       } else {
         assert(
           isWeakRefField(field),
-          () => `Expected weakRef, but got: ${JSON.stringify(field)}`
+          () => `Expected weakRef, but got: ${JSON.stringify(field)}`,
         );
         updateFunc(iid, this._iid2WeakRefs);
       }
     } else {
       assert(
         "__xref" in refVal,
-        () => `Expected xref, but got: ${JSON.stringify(refVal)}`
+        () => `Expected xref, but got: ${JSON.stringify(refVal)}`,
       );
       const addr = addrKey(refVal.__xref);
       if (isStrongRefField(field)) {
@@ -1181,7 +1164,7 @@ export class FastBundler extends Bundler {
       } else {
         assert(
           isWeakRefField(field),
-          () => `Expected weakRef, but got: ${JSON.stringify(field)}`
+          () => `Expected weakRef, but got: ${JSON.stringify(field)}`,
         );
         updateFunc(addr, this._xref2WeakRefs);
       }
@@ -1208,8 +1191,8 @@ export class FastBundler extends Bundler {
         json,
         (fieldInst, field) => this.addRefs(iid, fieldInst, field),
         undefined,
-        this._rt
-      )
+        this._rt,
+      ),
     );
 
     this.assertFastBundleInvariants();
@@ -1224,7 +1207,7 @@ export class FastBundler extends Bundler {
           uuid: ensure(this._uuid, () => `uuid is not set`),
           iid,
         }),
-        `objByAddr missing iid ${iid}`
+        `objByAddr missing iid ${iid}`,
       );
       const cls = this._instUtil.tryGetInstClass(inst);
       return cls?.name;
@@ -1236,7 +1219,7 @@ export class FastBundler extends Bundler {
           const parentIid = iidFieldKey2Iid(addrFieldKey);
           const parentField = iidFieldKey2Field(addrFieldKey);
           return `(${iid2ClassName(
-            parentIid
+            parentIid,
           )}.${parentField} IID:${parentIid})`;
         })
         .join(", ");
@@ -1251,7 +1234,7 @@ export class FastBundler extends Bundler {
           }
           const parents = ensure(
             this._iid2Parents.get(iid),
-            () => `Couldn't get strong references to ${iid}`
+            () => `Couldn't get strong references to ${iid}`,
           );
 
           // Assert that every node has exactly one strong parent (i.e. the
@@ -1281,14 +1264,14 @@ export class FastBundler extends Bundler {
               getParents(
                 ensure(
                   this._iid2Parents.get(iid),
-                  () => `Couldn't get strong references to ${iid}`
-                )
+                  () => `Couldn't get strong references to ${iid}`,
+                ),
               )
             );
           }
         }
         return null;
-      })
+      }),
     );
 
     // Assert that every reachable internal node is in the bundle
@@ -1306,19 +1289,19 @@ export class FastBundler extends Bundler {
                   ? getParents(
                       ensure(
                         this._iid2Parents.get(iid),
-                        () => `Couldn't get strong refs to ${iid}`
-                      )
+                        () => `Couldn't get strong refs to ${iid}`,
+                      ),
                     )
                   : `(WeakRefs)` +
                     getParents(
                       ensure(
                         this._iid2WeakRefs.get(iid),
-                        () => `Couldn't get weak refs to ${iid}`
-                      )
+                        () => `Couldn't get weak refs to ${iid}`,
+                      ),
                     )
               }`;
             })
-            .join("\n")
+            .join("\n"),
       );
     }
 
@@ -1332,7 +1315,7 @@ export class FastBundler extends Bundler {
         if (this._xref2Parents.has(key)) {
           const inst = this._addr2inst.get(key);
           const cls = maybe(inst, (nonNilInst) =>
-            this._instUtil.tryGetInstClass(nonNilInst)
+            this._instUtil.tryGetInstClass(nonNilInst),
           );
           errors.push(
             `xref ${key} of type ${cls?.name} has` +
@@ -1340,9 +1323,9 @@ export class FastBundler extends Bundler {
               getParents(
                 ensure(
                   this._xref2Parents.get(key),
-                  () => `Already checked by the if condition above`
-                )
-              )
+                  () => `Already checked by the if condition above`,
+                ),
+              ),
           );
         }
 
@@ -1353,12 +1336,12 @@ export class FastBundler extends Bundler {
         ]);
         if (
           !parents.every(
-            (parentKey) => iidFieldKey2Iid(parentKey) in bundle.map
+            (parentKey) => iidFieldKey2Iid(parentKey) in bundle.map,
           )
         ) {
           errors.push(`Parent map of xref is out of date`);
         }
-      }
+      },
     );
 
     if (errors.length > 0) {
@@ -1367,7 +1350,7 @@ export class FastBundler extends Bundler {
 
     assert(
       errors.length === 0,
-      `Bundle invariant failed\n${errors.join("\n")}`
+      `Bundle invariant failed\n${errors.join("\n")}`,
     );
   }
 }

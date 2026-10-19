@@ -15,7 +15,6 @@ import {
   paramToVarName,
   toVarName,
 } from "@/wab/shared/codegen/util";
-import { assert } from "@/wab/shared/common";
 import { Param, TplComponent } from "@/wab/shared/model/classes";
 import { PlumePlugin } from "@/wab/shared/plume/plume-registry";
 import {
@@ -24,7 +23,6 @@ import {
 } from "@/wab/shared/plume/plume-utils";
 import type { SelectOptionRef } from "@plasmicapp/react-web";
 import { omit, pick } from "lodash";
-import React from "react";
 
 const RESERVED_PROPS = [
   "isSelected",
@@ -54,14 +52,14 @@ export const SelectOptionPlugin: PlumePlugin = {
           Object.assign(comp, getCompMeta()),
           omit(allProps, internalCanvasElementProps),
           selectOptionConfig as any,
-          ref
+          ref,
         );
 
         return sub.React.createElement(comp, {
           ...plasmicProps,
           ...internalProps,
         });
-      })
+      }),
     );
   },
 
@@ -84,7 +82,7 @@ export const SelectOptionPlugin: PlumePlugin = {
   genDefaultExternalProps(ctx: SerializerBaseContext, opts) {
     const { component } = ctx;
     const params = getExternalParams(ctx).filter(
-      (p) => !RESERVED_PROPS.includes(toVarName(p.variable.name))
+      (p) => !RESERVED_PROPS.includes(toVarName(p.variable.name)),
     );
     return `
       export interface ${
@@ -96,8 +94,8 @@ export const SelectOptionPlugin: PlumePlugin = {
               `"${paramToVarName(ctx.component, param)}"?: ${serializeParamType(
                 component,
                 param,
-                ctx.projectFlags
-              )}`
+                ctx.projectFlags,
+              )}`,
           )
           .join(";\n")}
       }
@@ -119,12 +117,12 @@ export const SelectOptionPlugin: PlumePlugin = {
     return `
       import * as React from "react";
       import {${plasmicComponentName}, ${defaultPropsName}} from "${
-      ctx.exportOpts.relPathFromImplToManagedDir
-    }/${makeComponentImportPath(
-      component,
-      ctx,
-      "render"
-    )}";  // plasmic-import: ${component.uuid}/render
+        ctx.exportOpts.relPathFromImplToManagedDir
+      }/${makeComponentImportPath(
+        component,
+        ctx,
+        "render",
+      )}";  // plasmic-import: ${component.uuid}/render
     ${this.genSkeletonImports(ctx).imports}
 
       ${componentSubstitutionApi}
@@ -157,7 +155,7 @@ export const SelectOptionPlugin: PlumePlugin = {
       imports: `
       import {SelectOptionRef} from "${getPlumePackageName(
         ctx.exportOpts,
-        "select-option"
+        "select-option",
       )}";`,
       refName: "SelectOptionRef",
     };
@@ -166,7 +164,7 @@ export const SelectOptionPlugin: PlumePlugin = {
   // Plume editor plugin
   shouldShowInstanceProp(tpl: TplComponent | null, prop: Param) {
     return !["isSelected", "isHighlighted"].includes(
-      toVarName(prop.variable.name)
+      toVarName(prop.variable.name),
     );
   },
 
@@ -233,13 +231,3 @@ export const SelectOptionPlugin: PlumePlugin = {
   },
   tagToAttachEventHandlers: "option",
 };
-
-export function getSelectOptionValue(elt: React.ReactElement) {
-  assert(
-    (elt.type as any).__plumeType === "select-option",
-    `Expected plume type to be 'select-option', but found: ${
-      (elt.type as any).__plumeType
-    }`
-  );
-  return elt.props.value as string;
-}

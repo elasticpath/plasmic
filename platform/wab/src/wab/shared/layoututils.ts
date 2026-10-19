@@ -1,5 +1,14 @@
 import type { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
 import { DeepReadonly } from "@/wab/commons/types";
+import { createGridSpec, showGridCss } from "@/wab/shared/Grids";
+import { HORIZ_CONTAINER_CAP, VERT_CONTAINER_CAP } from "@/wab/shared/Labels";
+import {
+  IRuleSetHelpers,
+  IRuleSetHelpersX,
+  ReadonlyIRuleSetHelpers,
+  ReadonlyIRuleSetHelpersX,
+} from "@/wab/shared/RuleSetHelpers";
+import { ensureBaseVariantSetting } from "@/wab/shared/Variants";
 import { unexpected } from "@/wab/shared/common";
 import {
   CONTENT_LAYOUT,
@@ -14,29 +23,11 @@ import {
   isTplVariantable,
 } from "@/wab/shared/core/tpls";
 import { CONTENT_LAYOUT_INITIALS } from "@/wab/shared/default-styles";
-import { createGridSpec, showGridCss } from "@/wab/shared/Grids";
-import { HORIZ_CONTAINER_CAP, VERT_CONTAINER_CAP } from "@/wab/shared/Labels";
-import {
-  RuleSet,
-  TplNode,
-  TplTag,
-  VariantSetting,
-} from "@/wab/shared/model/classes";
-import {
-  IRuleSetHelpers,
-  IRuleSetHelpersX,
-  RSH,
-  ReadonlyIRuleSetHelpers,
-  ReadonlyIRuleSetHelpersX,
-} from "@/wab/shared/RuleSetHelpers";
-import { ensureBaseVariantSetting } from "@/wab/shared/Variants";
+import { RuleSet, TplNode } from "@/wab/shared/model/classes";
+import { instFieldValues } from "@/wab/shared/model/model-meta";
 
 export type ContainerType =
-  | "free"
-  | "flex-row"
-  | "flex-column"
-  | "grid"
-  | "content-layout";
+  "free" | "flex-row" | "flex-column" | "grid" | "content-layout";
 
 export function ensureContainerType(x: string): ContainerType {
   return x === "free" ||
@@ -51,7 +42,7 @@ export function ensureContainerType(x: string): ContainerType {
 export function convertSelfContainerType(
   targetExp: IRuleSetHelpersX,
   type: ContainerType,
-  baseRsh?: IRuleSetHelpersX
+  baseRsh?: IRuleSetHelpersX,
 ) {
   const prevType = getRshContainerType(targetExp);
   if (prevType === type && targetExp.has("display")) {
@@ -95,14 +86,6 @@ export function convertSelfContainerType(
   return true;
 }
 
-export function getTplContainerType(
-  tpl: TplTag,
-  vs: VariantSetting
-): ContainerType {
-  const rsh = RSH(vs.rs, tpl);
-  return getRshContainerType(rsh);
-}
-
 export enum ContainerLayoutType {
   flexColumn = "flex-column",
   flexRow = "flex-row",
@@ -120,7 +103,7 @@ export enum PositionLayoutType {
 }
 
 export function getRshContainerType(
-  rsh: ReadonlyIRuleSetHelpersX
+  rsh: ReadonlyIRuleSetHelpersX,
 ): ContainerLayoutType {
   const display = rsh.get("display");
   const axis = flexDirToArrangement(rsh.get("flex-direction"));
@@ -135,14 +118,6 @@ export function getRshContainerType(
   } else {
     return ContainerLayoutType.free;
   }
-}
-
-export function isFlexContainerRsh(rsh: ReadonlyIRuleSetHelpersX): boolean {
-  const containerType = getRshContainerType(rsh);
-  return (
-    containerType === ContainerLayoutType.flexColumn ||
-    containerType === ContainerLayoutType.flexRow
-  );
 }
 
 export function getContainerTypeName(type: ContainerType) {
@@ -179,7 +154,7 @@ export function getRshPositionType(rsh: ReadonlyIRuleSetHelpers) {
 }
 
 export function isContainerTypeVariantable(
-  type: ContainerLayoutType | ContainerType
+  type: ContainerLayoutType | ContainerType,
 ) {
   if (
     type === ContainerLayoutType.contentLayout ||
@@ -192,7 +167,7 @@ export function isContainerTypeVariantable(
 
 export function convertToRelativePosition(
   effectiveExp: ReadonlyIRuleSetHelpersX,
-  target: IRuleSetHelpers
+  target: IRuleSetHelpers,
 ) {
   // The default CSS value of position is "static", but we override it to
   // "relative" at read time.
@@ -208,7 +183,7 @@ export function convertToRelativePosition(
 
 export function convertToSlotContent(
   effectiveExp: ReadonlyIRuleSetHelpersX,
-  target: IRuleSetHelpers
+  target: IRuleSetHelpers,
 ) {
   convertToRelativePosition(effectiveExp, target);
 }
@@ -225,7 +200,7 @@ export function convertToAbsolutePosition(exp: IRuleSetHelpers) {
 
 export function makeLayoutAwareRuleSet(
   rs: RuleSet,
-  forBase: boolean
+  forBase: boolean,
 ): DeepReadonly<RuleSet> {
   // Setting gap is tricky. For base, you may have flex-direction:row and
   // column-gap:10px.  Then for a non-base variant, you may have
@@ -247,7 +222,7 @@ export function makeLayoutAwareRuleSet(
     return rs;
   }
   return {
-    ...rs,
+    ...instFieldValues(rs),
     typeTag: rs.typeTag,
     get values() {
       const values = rs.values;
@@ -266,8 +241,8 @@ export function makeLayoutAwareRuleSet(
           dir === "column" || rowGap
             ? "column-gap"
             : dir === "row" || colGap
-            ? "row-gap"
-            : undefined;
+              ? "row-gap"
+              : undefined;
         if (crossRule) {
           if (!extraValues) {
             extraValues = {};

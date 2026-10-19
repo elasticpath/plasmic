@@ -15,7 +15,6 @@ import { SidebarSection } from "@/wab/client/components/sidebar/SidebarSection";
 import StyleCheckbox from "@/wab/client/components/style-controls/StyleCheckbox";
 import {
   ExpsProvider,
-  FlexControlHelper,
   StyleComponent,
   StyleComponentProps,
   StylePanelSection,
@@ -57,7 +56,7 @@ import {
   LENGTH_UNITS,
   NUMBER_UNITS,
 } from "@/wab/shared/css/types";
-import { parseDataUrl, SVG_MEDIA_TYPE } from "@/wab/shared/data-urls";
+import { isSvgDataUrl } from "@/wab/shared/data-urls";
 import { isContentLayoutTpl } from "@/wab/shared/layoututils";
 import { isKnownImageAssetRef } from "@/wab/shared/model/classes";
 import {
@@ -107,26 +106,6 @@ class SizeSection_ extends StyleComponent<
       this.props.vsh ??
       makeVariantedStylesHelperFromCurrentCtx(this.studioCtx());
 
-    const isMinMaxWidthSet = isSetOrInherited(
-      getValueSetState(...this.definedIndicators("min-width", "max-width"))
-    );
-
-    const isMinMaxHeightSet = isSetOrInherited(
-      getValueSetState(...this.definedIndicators("min-width", "max-width"))
-    );
-
-    const tpl =
-      this.props.expsProvider instanceof TplExpsProvider
-        ? this.props.expsProvider.tpl
-        : undefined;
-    const deepLayoutParent = tpl
-      ? $$$(tpl).layoutParent({ throughSlot: true }).maybeOneTpl()
-      : undefined;
-    const isDeepContentLayoutChild =
-      !!deepLayoutParent && isContentLayoutTpl(deepLayoutParent);
-    const isDeepContentLayout =
-      !!tpl && isContentLayoutTpl(tpl, { deep: true });
-
     return (
       <StylePanelSection
         expsProvider={this.props.expsProvider}
@@ -175,7 +154,7 @@ class SizeSection_ extends StyleComponent<
               },
               {
                 collapsible: !isSetOrInherited(
-                  getValueSetState(...this.definedIndicators("min-width"))
+                  getValueSetState(...this.definedIndicators("min-width")),
                 ),
                 content: (
                   <FullRow>
@@ -195,7 +174,7 @@ class SizeSection_ extends StyleComponent<
               },
               {
                 collapsible: !isSetOrInherited(
-                  getValueSetState(...this.definedIndicators("max-width"))
+                  getValueSetState(...this.definedIndicators("max-width")),
                 ),
                 content: (
                   <FullRow>
@@ -230,7 +209,7 @@ class SizeSection_ extends StyleComponent<
               },
               {
                 collapsible: !isSetOrInherited(
-                  getValueSetState(...this.definedIndicators("min-height"))
+                  getValueSetState(...this.definedIndicators("min-height")),
                 ),
                 content: (
                   <FullRow>
@@ -250,7 +229,7 @@ class SizeSection_ extends StyleComponent<
               },
               {
                 collapsible: !isSetOrInherited(
-                  getValueSetState(...this.definedIndicators("max-height"))
+                  getValueSetState(...this.definedIndicators("max-height")),
                 ),
                 content: (
                   <FullRow>
@@ -270,7 +249,7 @@ class SizeSection_ extends StyleComponent<
               },
               {
                 collapsible: !isSetOrInherited(
-                  getValueSetState(...this.definedIndicators("aspect-ratio"))
+                  getValueSetState(...this.definedIndicators("aspect-ratio")),
                 ),
                 content: (
                   <FullRow>
@@ -311,19 +290,19 @@ class SizeSection_ extends StyleComponent<
                 collapsible:
                   !isSetOrInherited(
                     getValueSetState(
-                      ...this.definedIndicators("flex-grow", "flex-shrink")
-                    )
+                      ...this.definedIndicators("flex-grow", "flex-shrink"),
+                    ),
                   ) &&
                   !isSetOrInherited(
-                    getValueSetState(...this.definedIndicators("flex-basis"))
+                    getValueSetState(...this.definedIndicators("flex-basis")),
                   ),
                 content: <SectionSeparator className="mv-m" />,
               },
               {
                 collapsible: !isSetOrInherited(
                   getValueSetState(
-                    ...this.definedIndicators("flex-grow", "flex-shrink")
-                  )
+                    ...this.definedIndicators("flex-grow", "flex-shrink"),
+                  ),
                 ),
                 content: (
                   <FlexGrowControls expsProvider={this.props.expsProvider} />
@@ -331,7 +310,7 @@ class SizeSection_ extends StyleComponent<
               },
               {
                 collapsible: !isSetOrInherited(
-                  getValueSetState(...this.definedIndicators("flex-basis"))
+                  getValueSetState(...this.definedIndicators("flex-basis")),
                 ),
                 content: (
                   <LabeledStyleDimItemRow
@@ -358,7 +337,7 @@ class SizeSection_ extends StyleComponent<
 export const SizeSection = observer(SizeSection_);
 
 export const SizeWidthOnlySection = observer(function SizeWidthOnlySection(
-  props: StyleComponentProps
+  props: StyleComponentProps,
 ) {
   const { expsProvider } = props;
   const studioCtx = expsProvider.studioCtx;
@@ -512,7 +491,7 @@ const SizeControl = observer(function SizeRow(props: {
             exp.set("justify-self", "flex-start");
           }
         }
-      })
+      }),
     );
   };
 
@@ -526,7 +505,7 @@ const SizeControl = observer(function SizeRow(props: {
           expsProvider.studioCtx,
           expsProvider.forDom(),
           expsProvider.mergedExp,
-          prop
+          prop,
         ).renderConvertMenuItems()
       }
       disabledTooltip={disabledTooltip}
@@ -628,7 +607,6 @@ const FlexGrowControls = observer(function FlexGrowControls(props: {
   });
 
   const { expsProvider } = props;
-  const h = new FlexControlHelper(expsProvider);
 
   // We always show the flex shrink/grow controls for root or mixin.
   // Else, only auto-positioned flex children
@@ -639,8 +617,6 @@ const FlexGrowControls = observer(function FlexGrowControls(props: {
   // if (!h.isComponentRoot && !h.isMixin && !h.isAutoInFlexParent()) {
   //   return null;
   // }
-
-  const parentContainerType = h.getParentContainerType();
 
   const exp = () => expsProvider.mergedExp();
 
@@ -661,7 +637,7 @@ const FlexGrowControls = observer(function FlexGrowControls(props: {
   const renderSizing = (
     prop: "flex-grow" | "flex-shrink",
     title: string,
-    tooltip: string
+    tooltip: string,
   ) => {
     const val = prop == "flex-grow" ? exp().get(prop) : getFlexShrinkVal(prop);
     const isNonzero = +val > 0;
@@ -681,7 +657,7 @@ const FlexGrowControls = observer(function FlexGrowControls(props: {
           spawn(
             expsProvider.studioCtx.changeUnsafe(() => {
               exp().set(prop, checked ? "1" : "0");
-            })
+            }),
           );
         }}
         valueSlot={
@@ -693,7 +669,7 @@ const FlexGrowControls = observer(function FlexGrowControls(props: {
                   { dimfg: +val === 0 || +val === 1 },
                   "code",
                   "pointer",
-                  className
+                  className,
                 )}
                 {...restProps}
               />
@@ -708,7 +684,7 @@ const FlexGrowControls = observer(function FlexGrowControls(props: {
                 spawn(
                   expsProvider.studioCtx.changeUnsafe(() => {
                     exp().set(prop, String(num));
-                  })
+                  }),
                 );
                 return true;
               }
@@ -751,31 +727,18 @@ function toDisplay(val: string, stretchLabel: string, isRoot: boolean) {
   return val;
 }
 
-function fromDisplay(val: string, stretchLabel: string) {
-  if (val === "Hug content") {
-    val = "wrap";
-  } else if (val === "Full bleed") {
-    val = CONTENT_LAYOUT_FULL_BLEED;
-  } else if (val === "Wide width") {
-    val = CONTENT_LAYOUT_WIDE;
-  } else if (val === stretchLabel) {
-    val = "stretch";
-  }
-  return val;
-}
-
 export const PageSizePanelSection = observer(
   function PageSizePanelSection(props: { expsProvider: ExpsProvider }) {
     const { expsProvider } = props;
     assert(
       expsProvider instanceof TplExpsProvider,
-      "ExpsProvider should be TplExpsProvider"
+      "ExpsProvider should be TplExpsProvider",
     );
     const component = expsProvider.viewCtx.currentComponent();
     const arenaFrame = expsProvider.viewCtx.arenaFrame();
     assert(
       isPageComponent(component),
-      "Section should only be shown to Page Components"
+      "Section should only be shown to Page Components",
     );
     const sizeType = getPageFrameSizeType(arenaFrame);
     return (
@@ -844,36 +807,7 @@ export const PageSizePanelSection = observer(
         )}
       </SidebarSection>
     );
-  }
-);
-
-export const StretchyComponentSizePanelSection = observer(
-  function StretchyComponentSizePanelSection(props: {
-    expsProvider: ExpsProvider;
-  }) {
-    const { expsProvider } = props;
-    assert(
-      expsProvider instanceof TplExpsProvider,
-      "ExpsProvider should be TplExpsProvider"
-    );
-
-    return (
-      <SidebarSection title="Size">
-        <div>Stretchy components take up the entire artboard.</div>
-        <FullRow>
-          <SizeControl
-            prop="width"
-            expsProvider={props.expsProvider}
-            isDisabled={true}
-            disabledTooltip={"Cannot modify width in stretch view mode"}
-          />
-        </FullRow>
-        <FullRow>
-          <SizeControl prop="height" expsProvider={props.expsProvider} />
-        </FullRow>
-      </SidebarSection>
-    );
-  }
+  },
 );
 
 function isSvg(expsProvider: ExpsProvider) {
@@ -886,10 +820,9 @@ function isSvg(expsProvider: ExpsProvider) {
 
     const expr = effectiveVs.attrs["src"];
     if (isKnownImageAssetRef(expr) && expr.asset.dataUri) {
-      const parsed = parseDataUrl(expr.asset.dataUri);
       isSvgSrc =
         expr.asset.dataUri.search(/\.svg/) !== -1 ||
-        (parsed && parsed.mediaType === SVG_MEDIA_TYPE);
+        isSvgDataUrl(expr.asset.dataUri);
     }
   }
   return isSvgSrc;

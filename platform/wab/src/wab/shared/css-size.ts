@@ -1,4 +1,4 @@
-import { check, ensure, precisionRound, unexpected } from "@/wab/shared/common";
+import { check, ensure } from "@/wab/shared/common";
 import { VALID_UNITS } from "@/wab/shared/css";
 import { validateDimCssFunction } from "@/wab/shared/css/css-tree-utils";
 import { CSS_UNITS, isDimCssFunction } from "@/wab/shared/css/types";
@@ -95,7 +95,10 @@ export function tryParseMinMaxSize(text: string): MinMaxSize | undefined {
 }
 
 export class ScreenSizeSpec {
-  constructor(readonly minWidth?: number, readonly maxWidth?: number) {}
+  constructor(
+    readonly minWidth?: number,
+    readonly maxWidth?: number,
+  ) {}
 
   match(width: number) {
     if (this.minWidth !== undefined && this.maxWidth === undefined) {
@@ -157,16 +160,16 @@ export function parseScreenSpec(q: string) {
         0,
         +ensure(
           /^\(\s*min-width\s*:\s*(-?\d+\.?\d*)px\s*\)$/.exec(cond.trim()),
-          "Couldn't parse: " + cond
-        )[1]
+          "Couldn't parse: " + cond,
+        )[1],
       );
     } else if (cond.includes("max-width")) {
       maxWidth = Math.max(
         0,
         +ensure(
           /^\(\s*max-width\s*:\s*(-?\d+\.?\d*)px\s*\)$/.exec(cond.trim()),
-          "Couldn't parse: " + cond
-        )[1]
+          "Couldn't parse: " + cond,
+        )[1],
       );
     }
   }
@@ -218,18 +221,6 @@ export function tryParseSize(text: string): Size | undefined {
   } else {
     return tryParseAtomicSize(text);
   }
-}
-
-export function ensureNumericSize(size: Size): NumericSize {
-  return size.type === "NumericSize" ? size : unexpected();
-}
-
-/**
- * Takes a percent (e.g. 87 for 87%, not 0.87) and rounds it to a reasonable
- * number of decimal places.
- */
-export function roundCssPct(pct: number) {
-  return precisionRound(pct, 4);
 }
 
 /**

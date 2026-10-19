@@ -2,7 +2,7 @@ import { isWithinKeyboardInteractiveElement } from "@/wab/client/dom-utils";
 import { analytics } from "@/wab/client/observability";
 import { Shortcuts } from "@/wab/client/shortcuts/shortcut";
 import Mousetrap, { ExtendedKeyboardEvent } from "mousetrap";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 /** Always allow these combos, no matter where the focus is. */
 const ALWAYS_ALLOWED_COMBOS = new Set(["esc"]);
@@ -33,8 +33,6 @@ export type ShortcutHandlers<Action extends string> = {
   [action in Action]?: ShortcutHandler;
 };
 
-type ElementCallback = (el: Element | null) => void;
-
 /**
  * Binds shortcut handlers to an element.
  *
@@ -46,11 +44,11 @@ export function bindShortcutHandlers<Action extends string>(
   handlers: ShortcutHandlers<Action>,
   shouldHandle?: (
     event: Mousetrap.ExtendedKeyboardEvent,
-    element: Element
-  ) => boolean
+    element: Element,
+  ) => boolean,
 ): () => void {
   const mousetrap = new Mousetrap(
-    target instanceof Document ? undefined : target
+    target instanceof Document ? undefined : target,
   );
 
   // Some of our code uses checks like `element instanceof HTMLElement`.
@@ -75,7 +73,7 @@ export function bindShortcutHandlers<Action extends string>(
       // In some cases classes are dynamic, so we can use only a part of the class name as well.
       if (
         [...DISALLOWED_ELEMENT_CLASSES].some((disallowedClass) =>
-          element.className.includes(disallowedClass)
+          element.className.includes(disallowedClass),
         )
       ) {
         return true;
@@ -106,12 +104,12 @@ export function bindShortcutHandlers<Action extends string>(
 
   for (const [action, handler] of Object.entries(handlers) as [
     Action,
-    ShortcutHandler
+    ShortcutHandler,
   ][]) {
     const shortcut = shortcuts[action];
     if (!shortcut) {
       console.error(
-        `failed to find shortcut for handler with action ${action}`
+        `failed to find shortcut for handler with action ${action}`,
       );
       continue;
     }
@@ -142,38 +140,9 @@ export function bindShortcutHandlers<Action extends string>(
 export function useBindShortcutHandlers<Action extends string>(
   target: Element | Document,
   shortcuts: Shortcuts<Action>,
-  handlers: ShortcutHandlers<Action>
+  handlers: ShortcutHandlers<Action>,
 ): void {
   useEffect(() => {
     return bindShortcutHandlers(target, shortcuts, handlers);
   }, [target, shortcuts, handlers]);
-}
-
-/**
- * Binds shortcut handlers to an element via ref.
- *
- * This hook returns a callback that binds shortcut handlers when an element is mounted.
- * To use, pass the callback into an element's `ref` prop.
- *
- * ```tsx
- * function YourComponent() {
- *   const bind = useBindShortcutHandlersToRef(yourShortcuts, yourHandlers);
- *   return <FocusableElement ref={bind} />;
- * }
- * ```
- *
- * Keep in mind that the element must be focusable (i.e. tabIndex >= 0) to receive key events.
- */
-export function useBindShortcutHandlersToRef<Action extends string>(
-  shortcuts: Shortcuts<Action>,
-  handlers: ShortcutHandlers<Action>
-): ElementCallback {
-  const [element, setElement] = useState<Element | null>(null);
-  useEffect(() => {
-    if (!element) {
-      return;
-    }
-    return bindShortcutHandlers(element, shortcuts, handlers);
-  }, [element, shortcuts, handlers]);
-  return (el) => setElement(el);
 }

@@ -75,7 +75,7 @@ export function bindStudioShortcutHandlers(studioCtx: StudioCtx) {
         }
         assert(
           getArenaFrames(incomingArena).length !== 0,
-          "incomingArena should have at least one frame."
+          "incomingArena should have at least one frame.",
         );
       }
       sc.switchToArena(incomingArena);
@@ -162,9 +162,7 @@ export function bindStudioShortcutHandlers(studioCtx: StudioCtx) {
         });
       },
       ZOOM_TO_SELECTION: async () => {
-        return studioCtx.changeUnsafe(async () => {
-          await studioCtx.tryZoomToFitSelection();
-        });
+        return studioCtx.tryZoomToFitSelection();
       },
       FOCUS_FRAME: async () => {
         return studioCtx.changeUnsafe(() => {
@@ -195,11 +193,9 @@ export function bindStudioShortcutHandlers(studioCtx: StudioCtx) {
           }
         });
       },
-      TOGGLE_UI_COPILOT: async () => {
+      TOGGLE_COPILOT_CHAT: async () => {
         if (studioCtx.chatCopilotEnabled()) {
           await studioCtx.appCtx.topFrameApi?.toggleCopilotChat();
-        } else if (studioCtx.uiCopilotEnabled()) {
-          studioCtx.openUiCopilotDialog(!studioCtx.showUiCopilot);
         }
       },
       SWITCH_TO_TREE_TAB: async () => {
@@ -229,17 +225,17 @@ export function bindStudioShortcutHandlers(studioCtx: StudioCtx) {
       },
       SWITCH_TO_SETTINGS_TAB: async () => {
         return studioCtx.changeUnsafe(() =>
-          studioCtx.switchRightTab(RightTabKey.settings)
+          studioCtx.switchRightTab(RightTabKey.settings),
         );
       },
       SWITCH_TO_DESIGN_TAB: async () => {
         return studioCtx.changeUnsafe(() =>
-          studioCtx.switchRightTab(RightTabKey.style)
+          studioCtx.switchRightTab(RightTabKey.style),
         );
       },
       SWITCH_TO_COMPONENT_TAB: async () => {
         return studioCtx.changeUnsafe(() =>
-          studioCtx.switchRightTab(RightTabKey.component)
+          studioCtx.switchRightTab(RightTabKey.component),
         );
       },
       SHOW_SHORTCUTS: () => {
@@ -332,6 +328,6 @@ export function bindStudioShortcutHandlers(studioCtx: StudioCtx) {
         return studioCtx.changeUnsafe(() => studioCtx.toggleDevControls());
       },
     },
-    shouldHandleStudioShortcut(studioCtx)
+    shouldHandleStudioShortcut(studioCtx),
   );
 }

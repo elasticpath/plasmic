@@ -51,7 +51,6 @@ import {
   opacityProps,
   spacingProps,
 } from "@/wab/shared/core/style-props";
-import { ThemableTag } from "@/wab/shared/core/styles";
 import {
   isComponentRoot,
   isTplComponent,
@@ -64,6 +63,7 @@ import {
   isIndicatorExplicitlySet,
 } from "@/wab/shared/defined-indicator";
 import { makeExpProxy, makeMergedExpProxy } from "@/wab/shared/exprs";
+import { ThemableTag } from "@/wab/shared/html";
 import {
   MIXIN_CAP,
   MIXIN_LOWER,
@@ -123,7 +123,7 @@ export interface StyleComponentProps {
 
 export class StyleComponent<
   P extends StyleComponentProps = StyleComponentProps,
-  S = {}
+  S = {},
 > extends React.Component<P, S> {
   studioCtx = () => this.props.expsProvider.studioCtx;
   change(f: () => void, opts?: StudioChangeOpts) {
@@ -192,7 +192,7 @@ export class StyleComponent<
             {lazyDerefTokenRefsWithDeps(
               exp.get(prop),
               this.studioCtx().site,
-              "Spacing"
+              "Spacing",
             )}
           </div>
         </XDraggable>
@@ -203,13 +203,13 @@ export class StyleComponent<
   showStyleContextMenu = (
     event: React.MouseEvent<unknown>,
     styleName: string,
-    initialMenuContent?: ReactNode
+    initialMenuContent?: ReactNode,
   ) => {
     maybeShowContextMenu(
       event.nativeEvent,
       createStyleContextMenu(this, [styleName], {
         initialMenuContent,
-      })
+      }),
     );
   };
 }
@@ -223,10 +223,10 @@ export const StyleComponentContext = React.createContext<
 >(undefined);
 export const withStyleComponent = withConsumer(
   StyleComponentContext.Consumer,
-  "sc"
+  "sc",
 );
 export const providesStyleComponent = withProvider(
-  StyleComponentContext.Provider
+  StyleComponentContext.Provider,
 );
 export const useStyleComponent = () =>
   ensure(useContext(StyleComponentContext), "StyleComponentContext must exist");
@@ -240,11 +240,7 @@ export const SidebarPopupSettingContext = React.createContext<
   SidebarPopupSetting | undefined
 >(undefined);
 export const providesSidebarPopupSetting = withProvider(
-  SidebarPopupSettingContext.Provider
-);
-export const withSidebarPopupSetting = withConsumer(
-  SidebarPopupSettingContext.Consumer,
-  "sidebarPopupSetting"
+  SidebarPopupSettingContext.Provider,
 );
 export function useSidebarPopupSetting() {
   const context = React.useContext(SidebarPopupSettingContext);
@@ -308,7 +304,7 @@ export function createStyleContextMenu(
     displayStyleName?: string;
     initialMenuContent?: ReactNode | (() => ReactNode);
     noExtract?: boolean;
-  } = {}
+  } = {},
 ) {
   const expsProvider = sc.props.expsProvider;
   const exp = expsProvider.targetExp();
@@ -362,7 +358,7 @@ export function createStyleContextMenu(
       for (const vg of [null, ...component.variantGroups]) {
         const variants = vg ? vg.variants : [getBaseVariant(component)];
         const validVariants = variants.filter(
-          (v) => !arrayEq(currentVariantCombo, [v])
+          (v) => !arrayEq(currentVariantCombo, [v]),
         );
         if (validVariants.length > 0) {
           yield tuple(vg, validVariants);
@@ -417,7 +413,7 @@ export function createStyleContextMenu(
       push(
         typeof opts.initialMenuContent === "function"
           ? opts.initialMenuContent()
-          : opts.initialMenuContent
+          : opts.initialMenuContent,
       );
     }
   });
@@ -431,7 +427,7 @@ export function createStyleContextMenu(
           onClick={() => resetStyle(opts.displayStyleName!)}
         >
           {RESET_CAP} <strong>{label}</strong> style
-        </Menu.Item>
+        </Menu.Item>,
       );
     } else {
       for (const styleName of shownStyleNames) {
@@ -439,7 +435,7 @@ export function createStyleContextMenu(
         push(
           <Menu.Item key={styleName} onClick={() => resetStyle(styleName)}>
             {RESET_CAP} <strong>{label}</strong> style
-          </Menu.Item>
+          </Menu.Item>,
         );
       }
     }
@@ -447,7 +443,7 @@ export function createStyleContextMenu(
     push(
       <Menu.Item key={"reset-all"} onClick={() => resetAllStyles()}>
         {RESET_CAP} all styles
-      </Menu.Item>
+      </Menu.Item>,
     );
   });
 
@@ -456,18 +452,18 @@ export function createStyleContextMenu(
       sc.studioCtx(),
       builder,
       shownStyleNames,
-      expsProvider
+      expsProvider,
     );
     buildExtractToMixins(
       sc.studioCtx(),
       builder,
       shownStyleNames,
       expsProvider,
-      opts.displayStyleName
+      opts.displayStyleName,
     );
 
     builder.genSection(`Extract to ${VARIANTS_CAP}`, (push) =>
-      push(...extractToVariantsMenuItems)
+      push(...extractToVariantsMenuItems),
     );
   }
 
@@ -481,12 +477,12 @@ function buildExtractToMixins(
   builder: MenuBuilder,
   styleNames: string[],
   expsProvider: ExpsProvider,
-  displayStyleName?: string
+  displayStyleName?: string,
 ) {
   const rs = expsProvider.targetRs();
   const extractToMixinHelper = async (
     mixinOrName: Mixin | string,
-    names: string[]
+    names: string[],
   ) => {
     return sc.changeUnsafe(() => {
       const mixin =
@@ -501,18 +497,18 @@ function buildExtractToMixins(
   };
   const extractToMixin = async (
     styleName: string,
-    mixinOrName: Mixin | string
+    mixinOrName: Mixin | string,
   ) => {
     return extractToMixinHelper(
       mixinOrName,
-      styleName === displayStyleName ? styleNames : [styleName]
+      styleName === displayStyleName ? styleNames : [styleName],
     );
   };
 
   const extractAllToMixin = async (mixinOrName: Mixin | string) => {
     return extractToMixinHelper(
       mixinOrName,
-      filterExtractableStyles(getAllDefinedStyles(rs))
+      filterExtractableStyles(getAllDefinedStyles(rs)),
     );
   };
 
@@ -533,7 +529,7 @@ function buildExtractToMixins(
             await extractAllToMixin(mixinOrName);
           }
         });
-      }
+      },
     );
   };
 
@@ -552,10 +548,10 @@ function buildExtractToMixins(
 function buildMixinPicker(
   builder: MenuBuilder,
   sc: StudioCtx,
-  onPick: (mixinOrName: string | Mixin) => Promise<void>
+  onPick: (mixinOrName: string | Mixin) => Promise<void>,
 ) {
   const mkMixinFromPrompt = async (
-    f: (mixinOrName: Mixin | string) => Promise<void>
+    f: (mixinOrName: Mixin | string) => Promise<void>,
   ) => {
     const name = await reactPrompt({
       message: `Enter ${MIXIN_LOWER} name`,
@@ -576,7 +572,7 @@ function buildMixinPicker(
         }}
       >
         New {MIXIN_LOWER}...
-      </Menu.Item>
+      </Menu.Item>,
     );
   });
   builder.genSection(undefined, (push) => {
@@ -584,7 +580,7 @@ function buildMixinPicker(
       push(
         <Menu.Item key={mixin.uuid} onClick={() => onPick(mixin)}>
           {mixin.name}
-        </Menu.Item>
+        </Menu.Item>,
       );
     }
   });
@@ -594,7 +590,7 @@ function buildExtractToTokens(
   sc: StudioCtx,
   builder: MenuBuilder,
   styleNames: string[],
-  expsProvider: ExpsProvider
+  expsProvider: ExpsProvider,
 ) {
   const extractToToken = (token: StyleToken, styleName: string) => {
     const val = expsProvider.targetExp().get(styleName);
@@ -604,7 +600,7 @@ function buildExtractToTokens(
 
   const buildExtractForStyle = (
     styleName: string,
-    tokenType: StyleTokenType
+    tokenType: StyleTokenType,
   ) => {
     const curValue = expsProvider.targetExp().get(styleName);
     if (isTokenRef(curValue)) {
@@ -624,7 +620,7 @@ function buildExtractToTokens(
               onClick={async () => {
                 const name = await reactPrompt({
                   message: `Enter ${tokenTypeLabel(
-                    tokenType
+                    tokenType,
                   ).toLowerCase()} token name`,
                   placeholder: `${TOKEN_CAP} name`,
                   actionText: "Add",
@@ -642,12 +638,12 @@ function buildExtractToTokens(
               }}
             >
               New token...
-            </Menu.Item>
+            </Menu.Item>,
           );
         });
         builder.genSection(undefined, (_push) => {
           for (const token of sc.site.styleTokens.filter(
-            (t) => t.type === tokenType
+            (t) => t.type === tokenType,
           )) {
             _push(
               <Menu.Item
@@ -661,7 +657,7 @@ function buildExtractToTokens(
                     <ColorSwatch
                       color={derefTokenRefs(
                         siteFinalStyleTokensAllDeps(sc.site),
-                        token.value
+                        token.value,
                       )}
                     />
                     <span className="ml-sm">{token.name}</span>
@@ -669,11 +665,11 @@ function buildExtractToTokens(
                 ) : (
                   token.name
                 )}
-              </Menu.Item>
+              </Menu.Item>,
             );
           }
         });
-      }
+      },
     );
   };
 
@@ -730,7 +726,7 @@ export const StylePanelSection = observer(forwardRef(StylePanelSection_));
 
 function StylePanelSection_(
   props: StylePanelSectionProps,
-  ref: React.Ref<SidebarSectionHandle>
+  ref: React.Ref<SidebarSectionHandle>,
 ) {
   const {
     title,
@@ -798,15 +794,17 @@ function StylePanelSection_(
                   targetRs.animations = null;
                 }
               }
-              // apply the default styles props on unset
+              // Cleared props inherit, only unremovable ones need a default.
               for (const [key, value] of defaultStyleProps) {
-                exp.set(key, value);
+                if (unremovableProps.includes(key)) {
+                  exp.set(key, value);
+                }
               }
             });
           }}
         >
           {RESET_CAP} all <strong>{title}</strong> styles
-        </Menu.Item>
+        </Menu.Item>,
       );
       builder.genSub(
         <>
@@ -826,7 +824,7 @@ function StylePanelSection_(
                   mixin,
                   styleProps,
                   expsProvider.targetExp(),
-                  unremovableProps
+                  unremovableProps,
                 );
               if (!isMixin) {
                 const targetRs = expsProvider.targetRs();
@@ -836,7 +834,7 @@ function StylePanelSection_(
               }
             });
           });
-        }
+        },
       );
     });
     return builder.build({
@@ -957,7 +955,7 @@ export const TabbedStylePanelSection = observer(
         </StylePanelSection>
       );
     }
-  }
+  },
 );
 
 /**
@@ -1019,12 +1017,8 @@ export class FlexControlHelper {
     this.parentContainerType = this.parentRsh
       ? getRshContainerType(this.parentRsh)
       : (isMixin || this.parentIsCodeComponent) && this.isAuto
-      ? "flex-row"
-      : undefined;
-  }
-
-  getParentIsCodeComponent() {
-    return this.parentIsCodeComponent;
+        ? "flex-row"
+        : undefined;
   }
 
   getEffectivePosition() {
@@ -1041,19 +1035,6 @@ export class FlexControlHelper {
 
   isAutoInFlexParent() {
     return this.parentContainerType?.includes("flex") && this.isAuto;
-  }
-
-  getParentFlexProps() {
-    if (this.parentContainerType?.includes("flex")) {
-      return {
-        flexDir: this.parentContainerType.split("-")[1],
-      };
-    }
-    return undefined;
-  }
-
-  getParentGridProps() {
-    return this.parentContainerType === "grid" ? {} : undefined;
   }
 
   get isComponentRoot() {
@@ -1074,7 +1055,7 @@ export class SingleRsExpsProvider implements ExpsProvider {
     private readonly rsh: IRuleSetHelpersX,
     public readonly studioCtx: StudioCtx,
     private readonly unremovableProps: string[],
-    private readonly themeTag?: ThemableTag
+    private readonly themeTag?: ThemableTag,
   ) {}
   maybeTargetExp = () => this.rsh;
   targetExp = () => this.rsh;
@@ -1084,7 +1065,7 @@ export class SingleRsExpsProvider implements ExpsProvider {
   forDom = () => undefined;
   onContainerTypeChange = async (val: ContainerType) => {
     return this.studioCtx.changeUnsafe(() =>
-      convertSelfContainerType(this.targetExp(), val)
+      convertSelfContainerType(this.targetExp(), val),
     );
   };
 
@@ -1095,7 +1076,7 @@ export class SingleRsExpsProvider implements ExpsProvider {
         // are set to auto, so we can make sure applying this mixin means the element
         // will be auto-layout-ed.
         ["top", "bottom", "left", "right"].forEach((prop) =>
-          this.rsh.set(prop, "auto")
+          this.rsh.set(prop, "auto"),
         );
       }
       this.rsh.set("position", val);
@@ -1131,7 +1112,7 @@ export class TplExpsProvider implements ExpsProvider {
 
   constructor(
     readonly viewCtx: ViewCtx,
-    readonly tpl: TplTag | TplComponent | TplSlot
+    readonly tpl: TplTag | TplComponent | TplSlot,
   ) {
     this.studioCtx = viewCtx.studioCtx;
     // We request a fixed componentStackFrame so that we don't use stale
@@ -1140,20 +1121,20 @@ export class TplExpsProvider implements ExpsProvider {
 
     this.targetVariantCombo = this.vtm.getTargetVariantComboForNode(this.tpl);
     this.activeVariantCombo = this.vtm.getEffectiveVariantComboForNode(
-      this.tpl
+      this.tpl,
     );
     this.targetIndicatorCombo = this.vtm.getTargetIndicatorComboForNode(
-      this.tpl
+      this.tpl,
     );
   }
   effectiveVs = computedFn(
     () => {
       return this.vtm.effectiveVariantSetting(
         this.tpl,
-        this.activeVariantCombo
+        this.activeVariantCombo,
       );
     },
-    { name: "effectiveVs" }
+    { name: "effectiveVs" },
   );
   maybeTargetVs = () => {
     return tryGetVariantSetting(this.tpl, this.targetVariantCombo);
@@ -1172,7 +1153,7 @@ export class TplExpsProvider implements ExpsProvider {
       const mergedExp = makeMergedExpProxy(effectiveExp, getTargetExp);
       return makeMobxExpProxy(mergedExp);
     },
-    { name: "mergedExp" }
+    { name: "mergedExp" },
   );
 
   onContainerTypeChange = (val: ContainerType) => {
@@ -1205,7 +1186,7 @@ export class TplExpsProvider implements ExpsProvider {
           case PositionLayoutType.auto: {
             viewOps.adoptRelativePositionType(
               this.tpl,
-              this.targetVariantCombo
+              this.targetVariantCombo,
             );
             return;
           }
@@ -1240,7 +1221,7 @@ export class TplExpsProvider implements ExpsProvider {
     }
     const vs = this.vtm.effectiveVariantSetting(
       parentTpl,
-      this.targetIndicatorCombo
+      this.targetIndicatorCombo,
     );
     return vs.rsh();
   };
@@ -1254,7 +1235,7 @@ export class TplExpsProvider implements ExpsProvider {
       this.viewCtx.site,
       this.viewCtx.currentComponent(),
       sourceStack,
-      this.targetIndicatorCombo
+      this.targetIndicatorCombo,
     );
   };
 }

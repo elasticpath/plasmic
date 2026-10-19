@@ -1,10 +1,12 @@
+import DefaultTeamLayout from "@/wab/client/components/dashboard/DefaultTeamLayout";
+import { useUpsellQueryParam } from "@/wab/client/components/dashboard/useUpsellQueryParam";
+import { useAppCtx } from "@/wab/client/contexts/AppContexts";
 import {
   DefaultTeamSettingsPageProps,
   PlasmicTeamSettingsPage,
 } from "@/wab/client/plasmic/plasmic_kit_dashboard/PlasmicTeamSettingsPage";
 import { TeamId } from "@/wab/shared/ApiSchema";
-import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
+import { ensure } from "@/wab/shared/common";
 import { HTMLElementRefOf } from "@plasmicapp/react-web";
 import * as React from "react";
 
@@ -14,18 +16,21 @@ interface TeamSettingsPageProps extends DefaultTeamSettingsPageProps {
 
 function TeamSettingsPage_(
   props: TeamSettingsPageProps,
-  ref: HTMLElementRefOf<"div">
+  ref: HTMLElementRefOf<"div">,
 ) {
   const { teamId, ...rest } = props;
+  const appCtx = useAppCtx();
+  const team = ensure(
+    appCtx.teams.find((t) => t.id === teamId),
+    `Org ${teamId} must be affiliated with the current user`,
+  );
+  useUpsellQueryParam(team);
   return (
     <PlasmicTeamSettingsPage
       root={{ ref }}
       defaultLayout={{
-        helpButton: {
-          props: {
-            href: fillRoute(APP_ROUTES.orgSupport, { teamId }),
-          },
-        },
+        as: DefaultTeamLayout,
+        props: { team },
       }}
       settings={{ teamId }}
       {...rest}

@@ -13,7 +13,6 @@ import { ApiProject } from "@/wab/shared/ApiSchema";
 import { ORGANIZATION_LOWER } from "@/wab/shared/Labels";
 import { LocalizationConfig } from "@/wab/shared/localization";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
 import { Form, notification } from "antd";
 import { observer } from "mobx-react";
 import React from "react";
@@ -67,7 +66,7 @@ export const EnableLocalizationModal = observer(
                 await hostFrameApi.updateLocalizationProjectFlags(
                   !isLocalizationEnabled,
                   e.keyScheme,
-                  e.tagPrefix
+                  e.tagPrefix,
                 );
               }
               onDone();
@@ -110,7 +109,7 @@ export const EnableLocalizationModal = observer(
         </FocusScope>
       </Modal>
     );
-  }
+  },
 );
 
 async function canEnableLocalization(appCtx: AppCtx, project: ApiProject) {
@@ -141,7 +140,7 @@ async function canEnableLocalization(appCtx: AppCtx, project: ApiProject) {
     return false;
   } else if (promptResult.type === "fail") {
     // Show errors
-    notification.warn({
+    notification.warning({
       message: `Issue with payment, please try again.`,
       description: promptResult.errorMsg,
     });
@@ -149,7 +148,7 @@ async function canEnableLocalization(appCtx: AppCtx, project: ApiProject) {
   }
 
   await showUpsellConfirm(
-    fillRoute(APP_ROUTES.orgSettings, { teamId: projectTeam.id })
+    APP_ROUTES.orgSettings.fill({ teamId: projectTeam.id }),
   );
   return true;
 }

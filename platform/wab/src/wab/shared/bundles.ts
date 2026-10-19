@@ -1,5 +1,5 @@
 import { spawn, unexpected } from "@/wab/shared/common";
-import { isArray, isPlainObject } from "lodash";
+import { mapValues, pick } from "lodash";
 
 export type BundledInst = {
   [field: string]: any;
@@ -79,7 +79,7 @@ export function setBundle(obj: HasBundle, bundle: Bundle) {
 
 export function isExpectedBundleVersion(
   bundle: UnsafeBundle,
-  expectedVersion: string
+  expectedVersion: string,
 ): bundle is Bundle {
   return bundle.version === expectedVersion;
 }
@@ -95,31 +95,24 @@ export function getBundle(obj: HasBundle, expectedVersion: string): Bundle {
   spawn(
     (async function fn() {
       throw new OutdatedBundleError(
-        `Bundle with version ${bundle.version} is not up to date. Expected version: ${expectedVersion}`
+        `Bundle with version ${bundle.version} is not up to date. Expected version: ${expectedVersion}`,
       );
-    })()
+    })(),
   );
 
   return bundle as Bundle;
 }
 
-export function swapXrefs(bundle: Bundle, mapping: Record<string, string>) {
-  const getXrefId = (id: string) => {
-    return mapping[id] ?? id;
-  };
-
-  const fixXref = (obj: any) => {
-    if (isArray(obj)) {
-      obj.forEach(fixXref);
-    } else if (isPlainObject(obj)) {
-      if (obj.__xref) {
-        obj.__xref.uuid = getXrefId(obj.__xref.uuid);
-      } else {
-        Object.values(obj).forEach(fixXref);
-      }
-    }
-  };
-
-  Object.values(bundle.map).forEach(fixXref);
-  bundle.deps = bundle.deps.map((x) => getXrefId(x));
+/**
+ * Returns a copy of `full` whose map keeps only the instances and fields
+ * present in `partial`, with values taken from `full`. Doesn't modify either
+ * bundle.
+ */
+export function pickPartialBundle(full: Bundle, partial: Bundle): Bundle {
+  const map = mapValues(
+    pick(full.map, Object.keys(partial.map)),
+    (inst, iid) => pick(inst, Object.keys(partial.map[iid])) as BundledInst,
+  );
+  return { ...full, map };
 }
+

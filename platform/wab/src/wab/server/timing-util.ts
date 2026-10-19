@@ -19,7 +19,7 @@ export const ASYNC_TIMING = new AsyncLocalStorage<TimingStore>();
  */
 export function asyncTimed<T extends (...args: any[]) => any>(
   name: string,
-  func: T
+  func: T,
 ) {
   return ((...args: any[]) => {
     const start = new Date().getTime();
@@ -63,11 +63,6 @@ export function asyncTimed<T extends (...args: any[]) => any>(
       return result;
     }
   }) as T;
-}
-
-export function asyncTimedExec<R>(name: string, func: () => R) {
-  const timedFunc = asyncTimed(name, func);
-  return timedFunc();
 }
 
 function isPromiseLike(x: any) {
@@ -124,7 +119,7 @@ export function callsToServerTiming(calls: CallDuration[]) {
       .slice(0, MAX_CALLS);
     const restDuration = flatCalls.reduce(
       (x, y) => x + (topCalls.includes(y) ? 0 : y.duration),
-      0
+      0,
     );
     flatCalls = [...topCalls, { name: "rest", duration: restDuration }];
   }

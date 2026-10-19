@@ -2,7 +2,6 @@ import TextWithInfo from "@/wab/client/components/TextWithInfo";
 import PublishSpinner from "@/wab/client/components/widgets/PublishSpinner";
 import Select from "@/wab/client/components/widgets/Select";
 import PP__PermissionItem from "@/wab/client/components/widgets/plasmic/PlasmicPermissionItem";
-import { useAppCtx } from "@/wab/client/contexts/AppContexts";
 import { ApiFeatureTier } from "@/wab/shared/ApiSchema";
 import { AccessLevel, GrantableAccessLevel } from "@/wab/shared/EntUtil";
 import { Tooltip } from "antd";
@@ -15,6 +14,7 @@ interface PermissionItemProps {
   onGrant: (value: GrantableAccessLevel) => Promise<void>;
   onRevoke: () => Promise<void>;
   accessLevel: AccessLevel;
+  showOwnerOption?: boolean;
 }
 
 export const designerRoleHelp = `Only organizations with at least the Scale plan can invite collaborators as designers.`;
@@ -56,7 +56,6 @@ function PermissionItem(props: PermissionItemProps) {
   const { accessLevel, onGrant, onRevoke, canEdit, tier } = props;
   const [loading, setLoading] = React.useState(false);
   const [temporary, setTemporary] = React.useState("");
-  const appCtx = useAppCtx();
   return (
     <PP__PermissionItem
       email={props.email}
@@ -80,13 +79,7 @@ function PermissionItem(props: PermissionItemProps) {
         children: [
           <Select.Option value="viewer">{viewerTooltip}</Select.Option>,
           <Select.Option value="commenter">{commenterTooltip}</Select.Option>,
-          <Select.Option
-            value="content"
-            style={{
-              display: appCtx.appConfig.contentOnly ? undefined : "none",
-            }}
-            isDisabled={!tier.contentRole}
-          >
+          <Select.Option value="content" isDisabled={!tier.contentRole}>
             {tier.contentRole ? (
               contentCreatorTooltip
             ) : (
@@ -95,13 +88,7 @@ function PermissionItem(props: PermissionItemProps) {
               </TextWithInfo>
             )}
           </Select.Option>,
-          <Select.Option
-            value="designer"
-            style={{
-              display: appCtx.appConfig.contentOnly ? undefined : "none",
-            }}
-            isDisabled={!tier.designerRole}
-          >
+          <Select.Option value="designer" isDisabled={!tier.designerRole}>
             {tier.designerRole ? (
               designerTooltip
             ) : (
@@ -111,6 +98,12 @@ function PermissionItem(props: PermissionItemProps) {
             )}
           </Select.Option>,
           <Select.Option value="editor">{developerTooltip}</Select.Option>,
+          <Select.Option
+            value="owner"
+            style={props.showOwnerOption ? {} : { display: "none" }}
+          >
+            Owner
+          </Select.Option>,
         ],
         isDisabled: !canEdit || loading,
       }}

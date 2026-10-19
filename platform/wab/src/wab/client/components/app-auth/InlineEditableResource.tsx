@@ -15,7 +15,7 @@ interface InlineEditableResourceProps {
 }
 
 export default function InlineEditableResource(
-  props: InlineEditableResourceProps
+  props: InlineEditableResourceProps,
 ) {
   const { visibleValue, value, isFake, onChange } = props;
   return (
@@ -62,7 +62,7 @@ export default function InlineEditableResource(
           <EditableResourceName
             onEdit={() => {
               if (isFake) {
-                notification.warn({
+                notification.warning({
                   message:
                     "This operation can't be executed right now. Try again in a few seconds.",
                 });

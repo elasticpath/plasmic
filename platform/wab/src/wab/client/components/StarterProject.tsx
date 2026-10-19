@@ -8,18 +8,17 @@ import {
   PlasmicStarterProject,
   PlasmicStarterProject__VariantsArgs,
 } from "@/wab/client/plasmic/plasmic_kit/PlasmicStarterProject";
+import { useHistory } from "@/wab/client/route/HistoryProvider";
 import { WorkspaceId } from "@/wab/shared/ApiSchema";
 import { getExtraData, updateExtraDataJson } from "@/wab/shared/ApiSchemaUtil";
-import { ensure, interleave, unexpected } from "@/wab/shared/common";
+import { ensure, unexpected } from "@/wab/shared/common";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
 import { Tooltip } from "antd";
 import L from "lodash";
 import React, { ReactNode } from "react";
-import { useHistory } from "react-router-dom";
 
 interface StarterProjectProps {
-  name: string;
+  name: ReactNode;
   type?: PlasmicStarterProject__VariantsArgs["type"];
   // className prop is required for positioning instances of
   // this Component
@@ -34,9 +33,13 @@ interface StarterProjectProps {
    */
   baseProjectId?: string;
   tag: string;
-  descrip: string;
-  icon?: ReactNode;
+  instruction: ReactNode;
+  /** Icon to display. */
+  children?: ReactNode;
+  /** Image URL to display. Implies `withImage`. */
   imageUrl?: string;
+  /** Show the image area; the default image when `imageUrl` is unset. */
+  withImage?: boolean;
   href?: string;
   author?: string;
   authorLink?: string;
@@ -50,27 +53,10 @@ interface StarterProjectProps {
 function StarterProject(props: StarterProjectProps) {
   const appCtx = useAppCtx();
   const history = useHistory();
-  const name = props.name;
-  const decoratedName = name.includes("Plasmic Levels") ? (
-    <div className={"flex-row"}>
-      {interleave(
-        name
-          .split("Plasmic Levels")
-          .map((text, i) => <span key={i}>{text}</span>),
-        [
-          <span key={"game"} className={"game-name"}>
-            Plasmic Levels
-          </span>,
-        ]
-      )}
-    </div>
-  ) : (
-    name
-  );
   const isChecked =
     props.type &&
     getExtraData(
-      ensure(appCtx.selfInfo, "Must be logged in")
+      ensure(appCtx.selfInfo, "Must be logged in"),
     ).starterProgress.includes(props.tag);
 
   function renderAuthor() {
@@ -96,20 +82,20 @@ function StarterProject(props: StarterProjectProps) {
     <PlasmicStarterProject
       variants={{
         type: props.type,
-        icon: !!props.icon || isChecked ? "withIcon" : undefined,
-        image: !!props.imageUrl || !hasProject ? "withImage" : undefined,
+        icon: !!props.children || isChecked ? "withIcon" : undefined,
+        image: props.withImage || props.imageUrl ? "withImage" : undefined,
       }}
       args={{
-        instruction: props.descrip,
+        instruction: props.instruction,
         name: (
           <span>
-            {decoratedName}
+            {props.name}
             {renderAuthor()}
           </span>
         ),
         children: isChecked
           ? undefined // default icon is a check mark
-          : props.icon,
+          : props.children,
       }}
       withDescrip={!!props.type}
       withDropShadow={props.withDropShadow}
@@ -121,7 +107,7 @@ function StarterProject(props: StarterProjectProps) {
             onClick={(e) => {
               window.open(
                 "https://plasmic.app/templates/" + props.tag,
-                "_blank"
+                "_blank",
               );
               e.stopPropagation();
             }}
@@ -158,9 +144,9 @@ function StarterProject(props: StarterProjectProps) {
                 .createProject({ workspaceId: props.workspaceId })
                 .then(({ project }) => {
                   history.push(
-                    fillRoute(APP_ROUTES.project, {
+                    APP_ROUTES.project.fill({
                       projectId: project.id,
-                    })
+                    }),
                   );
                 });
             }
@@ -171,36 +157,42 @@ function StarterProject(props: StarterProjectProps) {
                   ensure(appCtx.selfInfo, "Must be logged in"),
                   {
                     starterProgress: (orig) => L.union(orig, [props.tag]),
-                  }
-                )
+                  },
+                ),
               );
             }
+
+            const cloneName = props.cloneWithoutName
+              ? undefined
+              : typeof props.name === "string"
+                ? props.name
+                : undefined;
 
             if (props.href) {
               window.open(props.href);
             } else if (props.projectId) {
               const { projectId: newProjectId } = await appCtx.app.withSpinner(
                 appCtx.api.cloneProject(props.projectId, {
-                  name: props.cloneWithoutName ? undefined : name,
+                  name: cloneName,
                   workspaceId: props.workspaceId,
-                })
+                }),
               );
 
               // Perform a full page load so that we aren't using stale JS.
-              location.href = fillRoute(APP_ROUTES.project, {
+              location.href = APP_ROUTES.project.fill({
                 projectId: newProjectId,
               });
             } else if (props.baseProjectId) {
               const { projectId: newProjectId } = await appCtx.app.withSpinner(
                 appCtx.api.clonePublishedTemplate(
                   props.baseProjectId,
-                  name,
-                  props.workspaceId
-                )
+                  cloneName,
+                  props.workspaceId,
+                ),
               );
 
               // Perform a full page load so that we aren't using stale JS.
-              location.href = fillRoute(APP_ROUTES.project, {
+              location.href = APP_ROUTES.project.fill({
                 projectId: newProjectId,
               });
             } else {

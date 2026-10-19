@@ -37,7 +37,7 @@ export class ReactHookSpec {
     public readonly sv: Variant,
     public readonly vsOwner: TplNode,
     public readonly component: Component,
-    nodeNamer: NodeNamer
+    nodeNamer: NodeNamer,
   ) {
     this.triggerNode = isPrivateStyleVariant(sv) ? vsOwner : component.tplTree;
     const name = nodeNamer(this.triggerNode);
@@ -45,16 +45,9 @@ export class ReactHookSpec {
     this.hookName = ReactHookSpec.getReactHookName(
       sv,
       nodeNamer,
-      this.triggerNode
+      this.triggerNode,
     );
   }
-
-  isComponentHook = () => {
-    return (
-      this.triggerNode === this.component.tplTree &&
-      !isPrivateStyleVariant(this.sv)
-    );
-  };
 
   /**
    * Returns a list of js statements installing React hooks for all the
@@ -66,15 +59,9 @@ export class ReactHookSpec {
       const varName = this.getTriggerOptVarName(opt);
       const propsName = this.getTriggerOptPropsName(opt);
       return `const [${varName}, ${propsName}] = ${this.serializeHookCall(
-        ensure(opt.trigger, "Trigger condition is expected to be not null")
+        ensure(opt.trigger, "Trigger condition is expected to be not null"),
       )};`;
     });
-  };
-
-  getTriggerHooksVarNames = () => {
-    return getTriggerableSelectors(this.sv).flatMap((opt) =>
-      this.getTriggerOptVarName(opt)
-    );
   };
 
   private serializeHookCall = (trigger: TriggerCondition) => {
@@ -116,8 +103,8 @@ export class ReactHookSpec {
       .map(
         (opt) =>
           `${opt.trigger?.isOpposite ? "!" : ""}${this.getTriggerOptVarName(
-            opt
-          )}`
+            opt,
+          )}`,
       )
       .join(" && ");
   };
@@ -127,32 +114,23 @@ export class ReactHookSpec {
    */
   getTriggerPropNames = () => {
     return getTriggerableSelectors(this.sv).map((opt) =>
-      this.getTriggerOptPropsName(opt)
+      this.getTriggerOptPropsName(opt),
     );
   };
 
   private static getReactHookName = (
     sv: Variant,
     nodeNamer: NodeNamer,
-    triggerNode: TplNode
+    triggerNode: TplNode,
   ) => {
     // active not(hover) focused => activeNotHoverFocused
     const stateName = L.lowerFirst(
       getTriggerableSelectors(sv)
         .map((opt) => opt.capitalName)
-        .join("")
+        .join(""),
     );
     const nodeName = nodeNamer(triggerNode);
     return [stateName, nodeName ? nodeName : `${triggerNode.uid}`].join("_");
-  };
-
-  getReactHookDefaultValue = () => {
-    return getTriggerableSelectors(this.sv).every((opt) =>
-      ensure(opt.trigger, "Trigger condition is expected to be not null")
-        .isOpposite
-        ? true
-        : false
-    );
   };
 
   serializeIsTriggeredCheck = (triggersRef: string) => {

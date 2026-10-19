@@ -90,11 +90,11 @@ function StandaloneVariant_(props: StandaloneVariantProps) {
             studioCtx.change(() => {
               const newVariantGroup = tplMgr.cloneVariantGroup(
                 component,
-                props.group
+                props.group,
               );
               props.onClone?.(newVariantGroup);
               return ok();
-            })
+            }),
           ),
         onCopyTo: (toVariant) =>
           spawn(
@@ -102,17 +102,17 @@ function StandaloneVariant_(props: StandaloneVariantProps) {
               tplMgr.copyToVariant(
                 component,
                 props.group.variants[0],
-                toVariant
+                toVariant,
               );
               return ok();
-            })
+            }),
           ),
         onMove: (toGroup) =>
           spawn(
             studioCtx.change(() => {
               tplMgr.moveVariant(component, props.group.variants[0], toGroup);
               return ok();
-            })
+            }),
           ),
         onRename: () =>
           spawn(
@@ -121,12 +121,12 @@ function StandaloneVariant_(props: StandaloneVariantProps) {
                 ref.current.setEditing(true);
               }
               return ok();
-            })
+            }),
           ),
         onChangeAccessType: (accessType) => {
           const state = ensure(
             props.group.linkedState,
-            "Variant group is expected to have linked state"
+            "Variant group is expected to have linked state",
           );
           spawn(
             studioCtx.change(() => {
@@ -134,30 +134,34 @@ function StandaloneVariant_(props: StandaloneVariantProps) {
                 accessType,
               });
               return ok();
-            })
+            }),
           );
         },
         onEditDynamicValue: () => {
           spawn(
             studioCtx.change(() => {
               if (!props.group.param.defaultExpr) {
-                props.group.param.defaultExpr = new ObjectPath({
-                  path: ["undefined"],
-                  fallback: null,
+                studioCtx.siteOps().updateState(props.group.linkedState, {
+                  initialValue: new ObjectPath({
+                    path: ["undefined"],
+                    fallback: null,
+                  }),
                 });
               }
               setVisibleDataPicker(true);
               return ok();
-            })
+            }),
           );
         },
 
         onRemoveDynamicValue: () => {
           spawn(
             studioCtx.change(() => {
-              props.group.param.defaultExpr = null;
+              studioCtx.siteOps().updateState(props.group.linkedState, {
+                initialValue: null,
+              });
               return ok();
-            })
+            }),
           );
         },
       })}
