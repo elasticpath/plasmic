@@ -477,6 +477,19 @@ A new visitor with no cart now sees "Your cart is empty" on the checkout page,
 the same words as an empty cart, instead of "The shopper has no cart to check
 out". The code stays `NO_CART`.
 
+The checkout session routes refuse a customer email that Elastic Path would
+refuse, before any payment. Before, `PATCH /api/checkout/sessions/current`
+saved an email such as `jane doe@example.com` or `jane@example.com.`, and
+Elastic Path refused it at checkout after the card was charged: the shopper
+got `409 PAYMENT_NEEDS_REVIEW` and no order. Now that update returns `400`
+with code `INVALID_EMAIL` and saves nothing, and `/pay` checks the session's
+email again before any payment or order and returns the same `400`. The rule
+is Elastic Path's own, measured on its checkout: plus addressing, long
+top-level domains, non-ASCII addresses and a `Name <email>` form all pass.
+EP Checkout Form Provider shows the message ("Enter a valid email address,
+such as name@example.com.") and marks the email field until the shopper edits
+it.
+
 The Studio console warning that asks you to mount the design route now shows
 for every 404 or 405 that does not come from that route, also when the
 response carries its own error code. What the canvas shows is unchanged.

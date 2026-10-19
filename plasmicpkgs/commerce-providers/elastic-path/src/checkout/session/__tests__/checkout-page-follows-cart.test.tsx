@@ -573,12 +573,16 @@ describe("after a declined card", () => {
 
     renderCheckout(
       <EPCheckoutFormProvider requiresShipping>
+        <EPFormField name="email" label="Email" fieldId="email" />
         <EPStripePayment publishableKey="pk_test_walk" />
         <EPPlaceOrderButton />
       </EPCheckoutFormProvider>
     );
     await waitFor(() => expect(probe().total).toBe(2799));
     await waitFor(() => expect(screen.getByTestId("stripe-payment-element")).toBeTruthy());
+    fireEvent.change(document.getElementById("email")!, {
+      target: { value: "walk@example.com" },
+    });
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Place your order" }));

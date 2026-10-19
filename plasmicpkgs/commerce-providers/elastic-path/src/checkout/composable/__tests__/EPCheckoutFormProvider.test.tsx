@@ -403,6 +403,80 @@ describe("EPCheckoutFormProvider shipping sync", () => {
     );
   });
 
+  describe("an email the server refuses", () => {
+    const INVALID_EMAIL = {
+      success: false,
+      error: {
+        code: "INVALID_EMAIL",
+        message: "Enter a valid email address, such as name@example.com.",
+      },
+    };
+
+    async function submitWith(email: string) {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { EPFormField } = require("../EPFormField");
+      const handleRef = { current: null as FormHandle | null };
+      render(
+        <EPCheckoutFormProvider>
+          <EPFormField name="email" label="Email" fieldId="email-field" />
+          <FormHarness
+            seed={{ firstName: "Jane", lastName: "Doe", email }}
+            handleRef={handleRef}
+          />
+        </EPCheckoutFormProvider>
+      );
+      await act(async () => {
+        await handleRef.current?.placeOrder();
+      });
+      return handleRef;
+    }
+
+    function emailInput() {
+      return document.getElementById("email-field") as HTMLInputElement;
+    }
+
+    it("is shown on the form and on the email field when the update refuses it", async () => {
+      mockUpdateSession.mockResolvedValueOnce(INVALID_EMAIL);
+
+      const handleRef = await submitWith("jane doe@example.com");
+
+      expect(mockPlaceOrder).not.toHaveBeenCalled();
+      expect(handleRef.current?.status).toBe("error");
+      expect(screen.getByRole("alert").textContent).toBe(INVALID_EMAIL.error.message);
+      expect(emailInput().getAttribute("aria-invalid")).toBe("true");
+      expect(emailInput().parentElement!.textContent).toContain(INVALID_EMAIL.error.message);
+    });
+
+    it("is shown on the email field when pay refuses it", async () => {
+      mockPlaceOrder.mockResolvedValueOnce(INVALID_EMAIL);
+
+      const handleRef = await submitWith("jane@example.com.");
+
+      expect(handleRef.current?.error).toBe(INVALID_EMAIL.error.message);
+      expect(emailInput().getAttribute("aria-invalid")).toBe("true");
+    });
+
+    it("clears from the email field once the shopper edits it", async () => {
+      mockUpdateSession.mockResolvedValueOnce(INVALID_EMAIL);
+      const handleRef = await submitWith("jane doe@example.com");
+
+      act(() => handleRef.current?.setField("email", "jane@example.com"));
+
+      expect(emailInput().getAttribute("aria-invalid")).toBeNull();
+    });
+
+    it("does not mark the email field for other refusals", async () => {
+      mockUpdateSession.mockResolvedValueOnce({
+        success: false,
+        error: { code: "SESSION_NOT_OPEN", message: "Session is not open" },
+      });
+
+      await submitWith("jane@example.com");
+
+      expect(emailInput().getAttribute("aria-invalid")).toBeNull();
+    });
+  });
+
   it("while a card check is open, shows the form locked and finishes the check without sending edits", async () => {
     mockUseDataEnv.mockReturnValue({
       checkoutSession: {

@@ -613,6 +613,14 @@ checkout ends with `409` `PAYMENT_NEEDS_REVIEW`, the shopper is told, and the
 server logs the payment for reconciliation; no order is created for it. The
 planned follow-up, "every charge belongs to an order", removes this limit.
 
+**An email Elastic Path refuses.** Elastic Path checks the customer email at
+checkout, also after a card payment. So a session update whose `customerInfo`
+email Elastic Path would refuse returns `400` with code `INVALID_EMAIL` and
+saves nothing, and pay checks the session's email again before any payment
+or order. The rule is the one Elastic Path applies: one RFC 5322 address, so
+`jane doe@example.com` and `jane@example.com.` are refused, and plus
+addressing, non-ASCII addresses and `Jane <jane@example.com>` pass.
+
 Abandoning a card check that can still complete voids its payment: the order
 held for the challenge is confirmed and its pending transaction cancelled,
 which cancels the PaymentIntent in Stripe, so the challenge can no longer

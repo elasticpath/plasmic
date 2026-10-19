@@ -7,7 +7,8 @@
  *      per-cart settle-once guard. 409 ACCOUNT_CHANGED (session dropped)
  *      when the shopper's selected account is not the session's.
  *   2. Re-read the cart: 409 EMPTY_CART with nothing to buy, 409 CART_MISMATCH
- *      (session refreshed) when its lines changed, 400 MISSING_FIELDS.
+ *      (session refreshed) when its lines changed, 400 MISSING_FIELDS or
+ *      INVALID_EMAIL.
  *   3. Re-assert (or clear) the shipping line, then charge only the total the
  *      session last showed (409 TOTAL_CHANGED otherwise). A zero total settles
  *      for free with the manual gateway (`free-order.ts`).
@@ -85,6 +86,7 @@ import { createLogger } from "../../../utils/logger";
 import { toClientSession } from "../../../checkout/session/client-session";
 import type { EpCartResponse, SessionTotals } from "../../../checkout/session/types";
 import { hasPurchasableItem } from "../../../checkout/session/purchasable-items";
+import { invalidEmail, isCheckoutEmail } from "../../../checkout/session/checkout-email";
 import {
   cartLines,
   totalsFromCart,
@@ -899,6 +901,7 @@ async function payOpenSession(
       },
     };
   }
+  if (!isCheckoutEmail(session.customerInfo?.email)) return invalidEmail();
 
   // 3b. Admin client + persist the session's extra fields/consents as cart
   //     custom attributes (best-effort) before any checkout.
