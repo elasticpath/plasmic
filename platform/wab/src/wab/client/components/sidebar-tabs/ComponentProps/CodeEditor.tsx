@@ -13,7 +13,10 @@ import { readUploadedFileAsText } from "@/wab/client/dom-utils";
 import { MaybeWrap } from "@/wab/commons/components/ReactUtil";
 import { ensure, swallow } from "@/wab/shared/common";
 import { tryEvalExpr } from "@/wab/shared/eval";
-import { codeUsesGlobalObjects } from "@/wab/shared/eval/expression-parser";
+import {
+  codeUsesGlobalObjects,
+  tryCodeWritesToGlobalVariable,
+} from "@/wab/shared/eval/expression-parser";
 import { isValidJavaScriptCode } from "@/wab/shared/parser-utils";
 import { hasUnexpected$$Usage } from "@/wab/shared/utils/regex-dollardollar";
 import { Tooltip, notification } from "antd";
@@ -28,14 +31,14 @@ const hardStrSizeLimit = 5000 * 1024; // 5MB
 
 export function checkStrSizeLimit(val: string) {
   if (val.length > hardStrSizeLimit) {
-    notification.warn({
+    notification.warning({
       message: "Value is longer than 5MB",
       description: "Please provide a shorter value.",
     });
     return false;
   }
   if (val.length > softStrSizeLimit) {
-    notification.warn({
+    notification.warning({
       message: "Value is longer than 500KB",
       description:
         "This long content will be embedded into your page, which will increase load time.",
@@ -52,7 +55,7 @@ export function checkSyntaxError(val: string) {
     );
   } catch (err) {
     if (err instanceof SyntaxError) {
-      notification.warn({
+      notification.warning({
         message: "Syntax error",
         description: `The expression has a syntax error, it's required to fix it before saving. ${err.message}`,
       });
@@ -65,7 +68,7 @@ export function checkSyntaxError(val: string) {
 
 export function checkDisallowedUseOfLibs(val: string) {
   if (hasUnexpected$$Usage(val)) {
-    notification.warn({
+    notification.warning({
       message: (
         <>
           Unexpected usage of <code>$$</code>
@@ -87,9 +90,29 @@ export function checkDisallowedUseOfLibs(val: string) {
   return true;
 }
 
+export function checkDisallowedStateBindingAssignment(val: string) {
+  const writesToState = tryCodeWritesToGlobalVariable(val, "$state");
+  if (writesToState === undefined) {
+    notification.warning({
+      message: "Unsupported JavaScript syntax",
+      description: "This code cannot be analyzed safely.",
+    });
+    return false;
+  }
+  if (writesToState) {
+    notification.warning({
+      message: "Cannot reassign $state",
+      description:
+        "Update one of its properties instead, for example: $state.count = value.",
+    });
+    return false;
+  }
+  return true;
+}
+
 export function checkWindowGlobalUsage(val: string) {
   if (codeUsesGlobalObjects(val)) {
-    notification.warn({
+    notification.warning({
       message: "Global object usage detected",
       description: (
         <>
@@ -180,7 +203,7 @@ export const CodeEditor = observer(function CodeEditor(props: {
     }
     if (lang === "json" && requireObject) {
       if (val[0] !== "{") {
-        notification.warn({
+        notification.warning({
           message: "Invalid JSON object",
           description: "Only JSON objects (wrapped in {}) are supported.",
         });
@@ -194,7 +217,7 @@ export const CodeEditor = observer(function CodeEditor(props: {
         setDraft(undefined);
         return true;
       } catch (err) {
-        notification.warn({
+        notification.warning({
           message: "Invalid JSON",
           description: `${err}`,
         });
@@ -236,7 +259,7 @@ export const CodeEditor = observer(function CodeEditor(props: {
               "text-unset": !(isCustomCode ? evaluatedValue : stringValue),
             })}
           >
-            {isCustomCode ? evaluatedValue : stringValue ?? "unset"}
+            {isCustomCode ? evaluatedValue : (stringValue ?? "unset")}
           </span>
         </Tooltip>
       </div>
@@ -265,7 +288,7 @@ export const CodeEditor = observer(function CodeEditor(props: {
                       if (
                         file.type.startsWith("text/") ||
                         ["css", "html", "javascript", "json"].some((str) =>
-                          file.type.includes(str)
+                          file.type.includes(str),
                         )
                       ) {
                         const contents = await readUploadedFileAsText(file);
@@ -287,7 +310,7 @@ export const CodeEditor = observer(function CodeEditor(props: {
             <ObserverLoadable
               loader={() =>
                 import("@/wab/client/components/coding/FullCodeEditor").then(
-                  ({ FullCodeEditor }) => FullCodeEditor
+                  ({ FullCodeEditor }) => FullCodeEditor,
                 )
               }
               contents={(FullCodeEditor) => (
@@ -312,8 +335,8 @@ export const CodeEditor = observer(function CodeEditor(props: {
                     trySave(
                       ensure(
                         editor.current,
-                        "Editor must exist to save"
-                      ).getValue()
+                        "Editor must exist to save",
+                      ).getValue(),
                     )
                   ) {
                     setShow(false);

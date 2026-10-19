@@ -188,13 +188,14 @@ async function processResult(res: AxiosResponse<string>) {
       isString(processedResponse) || !isEmpty(processedResponse)
         ? processedResponse
         : undefined,
-      statusCode
+      statusCode,
     );
   }
   return {
     data: {
       response: processedResponse,
       statusCode,
+      // eslint-disable-next-line @typescript-eslint/no-misused-spread -- AxiosHeaders keeps headers as own properties
       headers: { ...res.headers },
     },
   };

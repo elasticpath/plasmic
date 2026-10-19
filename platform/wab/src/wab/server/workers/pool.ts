@@ -1,11 +1,15 @@
 import { Config } from "@/wab/server/config";
+<<<<<<< HEAD
 import { logger } from "@/wab/server/observability";
+=======
+import { withSpan } from "@/wab/server/observability";
+>>>>>>> upstream/master
 import { trackWorkerPool } from "@/wab/server/promstats";
-import { TraceCarrier, withSpan } from "@/wab/server/util/apm-util";
 import type { workerBuildAssets } from "@/wab/server/workers/build-loader-assets";
 import type { workerGenCode } from "@/wab/server/workers/codegen";
 import type { workerLocalizationStrings } from "@/wab/server/workers/localization-worker";
 import { context, propagation } from "@opentelemetry/api";
+import type { TraceCarrier } from "@plasmic-shared/observability";
 import path from "path";
 import { WorkerPool, pool as createPool } from "workerpool";
 
@@ -17,22 +21,22 @@ export interface PlasmicWorkerPool {
   // since we are calling exec with a string and not a typed function
   exec(
     method: "codegen",
-    params: Parameters<typeof workerGenCode>
+    params: Parameters<typeof workerGenCode>,
   ): ReturnType<typeof workerGenCode>;
   exec(
     method: "loader-assets",
-    params: Parameters<typeof workerBuildAssets>
+    params: Parameters<typeof workerBuildAssets>,
   ): ReturnType<typeof workerBuildAssets>;
   exec(
     method: "localization-strings",
-    params: Parameters<typeof workerLocalizationStrings>
+    params: Parameters<typeof workerLocalizationStrings>,
   ): ReturnType<typeof workerLocalizationStrings>;
 }
 
 class WorkerPoolWrapper {
   constructor(
     private loaderPool: WorkerPool,
-    private genericPool: WorkerPool
+    private genericPool: WorkerPool,
   ) {}
 
   exec(method: string, params: any) {
@@ -64,12 +68,28 @@ class WorkerPoolWrapper {
 
 export function createWorkerPool(config: Config) {
   const loaderPool = createPool(path.join(__dirname, "worker.js"), {
-    workerType: "thread",
+    workerType: "process",
     maxWorkers: config.loaderWorkerPoolSize,
+    forkOpts: {
+      env: {
+        ...process.env,
+        ...(process.env.GCLOUD_PROFILER_SERVICE && {
+          GCLOUD_PROFILER_SERVICE: `${process.env.GCLOUD_PROFILER_SERVICE}-loader-worker`,
+        }),
+      },
+    },
   });
   const genericPool = createPool(path.join(__dirname, "worker.js"), {
-    workerType: "thread",
+    workerType: "process",
     maxWorkers: config.genericWorkerPoolSize,
+    forkOpts: {
+      env: {
+        ...process.env,
+        ...(process.env.GCLOUD_PROFILER_SERVICE && {
+          GCLOUD_PROFILER_SERVICE: `${process.env.GCLOUD_PROFILER_SERVICE}-generic-worker`,
+        }),
+      },
+    },
   });
   trackWorkerPool("loader", loaderPool);
   trackWorkerPool("generic", genericPool);

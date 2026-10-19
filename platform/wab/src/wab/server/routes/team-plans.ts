@@ -3,15 +3,19 @@
  * - This is the only place where we query Stripe on whether the subscription is still valid (e.g. expired, cancelled, etc)
  * - If it's invalid, let's just treat the subscription as cancelled and upsell them again.
  */
-import { DevFlagsType } from "@/wab/shared/devflags";
 import { DbMgr } from "@/wab/server/db/DbMgr";
 import { Team } from "@/wab/server/entities/Entities";
+import {
+  deriveSubscriptionStatus,
+  getEntitledTeam,
+} from "@/wab/server/freeTrial";
 import {
   ApiFeatureTier,
   MayTriggerPaywall,
   PaywallDescription,
   TeamId,
 } from "@/wab/shared/ApiSchema";
+import { DevFlagsType } from "@/wab/shared/devflags";
 import { SiteFeature, TaggedResourceId } from "@/wab/shared/perms";
 import { Request } from "express-serve-static-core";
 import moment from "moment/moment";
@@ -36,14 +40,14 @@ export async function maybeTriggerPaywall<T>(
   },
   opts?: {
     verifyMonthlyViews: boolean;
-  }
+  },
 ): Promise<MayTriggerPaywall<T>> {
   return passPaywall(passResponse);
 }
 
 export async function getTeamCurrentPeriodRange(
   team?: Team,
-  freeTrialDays = 15
+  freeTrialDays = 15,
 ) {
   const now = moment();
   return {
@@ -55,23 +59,31 @@ export async function getTeamCurrentPeriodRange(
 export async function checkAndResetTeamTrial(
   teamId: TeamId,
   mgr: DbMgr,
-  devflags: DevFlagsType
+  devflags: DevFlagsType,
 ) {}
 
 export const stripe = new Stripe("BAD_KEY", {
-  apiVersion: "2020-08-27",
+  apiVersion: "2026-08-26.dahlia",
 });
 
 export function mkStripeCustomerData(
   team: Team,
   teamUrl?: string,
-  syncName?: boolean
+  syncName?: boolean,
 ) {}
 
-export async function resetStripeCustomer(
-  userMgr: DbMgr,
-  superMgr: DbMgr,
-  team: Team
-) {}
+export async function resetStripeCustomer(superMgr: DbMgr, team: Team) {}
 
 export async function syncDataWithStripe(team: Team, host: string) {}
+
+export async function syncTeamSubscription(
+  ctx: { superMgr: DbMgr; devflags: DevFlagsType },
+  teamId: TeamId,
+  known: Stripe.Subscription | null,
+) {}
+
+export async function loadSubscriptionStatuses(mgr: DbMgr, teams: Team[]) {
+  return teams.map((team) =>
+    deriveSubscriptionStatus(getEntitledTeam(team), null),
+  );
+}

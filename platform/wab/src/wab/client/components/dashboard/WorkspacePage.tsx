@@ -1,3 +1,4 @@
+import DefaultTeamLayout from "@/wab/client/components/dashboard/DefaultTeamLayout";
 import { documentTitle } from "@/wab/client/components/dashboard/page-utils";
 import { Spinner } from "@/wab/client/components/widgets";
 import { useAppCtx } from "@/wab/client/contexts/AppContexts";
@@ -10,93 +11,90 @@ import {
   DefaultWorkspacePageProps,
   PlasmicWorkspacePage,
 } from "@/wab/client/plasmic/plasmic_kit_dashboard/PlasmicWorkspacePage";
+import { Redirect } from "@/wab/client/route/Redirect";
 import { WorkspaceId } from "@/wab/shared/ApiSchema";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
 import { HTMLElementRefOf } from "@plasmicapp/react-web";
 import { uniqBy } from "lodash";
 import * as React from "react";
 
-interface WorkspacePageProps
-  extends Omit<DefaultWorkspacePageProps, "children" | "title"> {
+interface WorkspacePageProps extends Omit<
+  DefaultWorkspacePageProps,
+  "children" | "title"
+> {
   workspaceId: WorkspaceId;
 }
 
 function WorkspacePage_(
   props: WorkspacePageProps,
-  ref: HTMLElementRefOf<"div">
+  ref: HTMLElementRefOf<"div">,
 ) {
   const appCtx = useAppCtx();
   const { workspaceId, ...rest } = props;
 
   const [asyncData, fetchAsyncData] = useAsyncFnStrict(async () => {
-    const { workspace, perms: workspacePerms } = await appCtx.api.getWorkspace(
-      workspaceId
-    );
+    const { workspace, perms: workspacePerms } =
+      await appCtx.api.getWorkspace(workspaceId);
     const { projects, perms: projectsPerms } = await appCtx.api.getProjects({
       query: "byWorkspace",
       workspaceId,
     });
-    const databases = await appCtx.api.listCmsDatabasesForWorkspace(
-      workspaceId
-    );
+    const databases =
+      await appCtx.api.listCmsDatabasesForWorkspace(workspaceId);
     const perms = uniqBy([...workspacePerms, ...projectsPerms], (p) => p.id);
     return { workspace, projects, databases, perms };
   }, [workspaceId]);
   useAsyncStrict(fetchAsyncData, [workspaceId]);
 
   const {
-    workspace,
-    projects: unsortedProjects,
-    databases: unsortedDatabases,
-    perms,
-  } = asyncData.value ?? {
-    projects: [],
-    perms: [],
-  };
-
-  const {
     projects,
     databases,
     matcher,
     props: filterProps,
-  } = useProjectsFilter(unsortedProjects, unsortedDatabases ?? [], false);
+  } = useProjectsFilter(
+    asyncData.value?.projects,
+    asyncData.value?.databases,
+    false,
+  );
 
+  if (asyncData.error) {
+    // Deleted workspace, or one the user can't access.
+    return <Redirect to={APP_ROUTES.dashboard.fill({})} />;
+  }
+
+  const data = asyncData.value;
+  if (!data) {
+    return (
+      <>
+        {documentTitle("Loading workspace...")}
+        <Spinner />
+      </>
+    );
+  }
+
+  const { workspace, perms } = data;
   return (
     <>
-      {documentTitle(workspace?.name || "Loading workspace...")}
+      {documentTitle(workspace.name)}
       <PlasmicWorkspacePage
         root={{ ref }}
         defaultLayout={{
-          wrapChildren: (children) =>
-            !asyncData?.value ? <Spinner /> : children,
-          helpButton: workspace
-            ? {
-                props: {
-                  href: fillRoute(APP_ROUTES.orgSupport, {
-                    teamId: workspace.team.id,
-                  }),
-                },
-              }
-            : undefined,
+          as: DefaultTeamLayout,
+          props: { team: workspace.team, workspace },
         }}
-        workspaceSection={
-          !asyncData?.value
-            ? {
-                render: () => null,
-              }
-            : {
-                workspace,
-                projects,
-                databases,
-                onUpdate: async () => {
-                  await fetchAsyncData();
-                },
-                perms,
-                matcher,
-                filterProps,
-              }
-        }
+        workspaceSection={{
+          props: {
+            workspace,
+            projects,
+            databases,
+            onUpdate: async () => {
+              await fetchAsyncData();
+            },
+            perms,
+            matcher,
+            filterProps,
+          },
+        }}
         {...rest}
       />
     </>

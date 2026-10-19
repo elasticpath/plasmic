@@ -79,6 +79,7 @@ import {
 import {
   siteFinalStyleTokens,
   siteFinalStyleTokensAllDeps,
+  siteFinalStyleTokensAllDepsDict,
   styleTokenOverridesForDep,
 } from "@/wab/shared/core/site-style-tokens";
 import {
@@ -96,7 +97,11 @@ import {
   removeComponentState,
 } from "@/wab/shared/core/states";
 import { cloneAnimationSequence, cloneMixin } from "@/wab/shared/core/styles";
-import { MutableToken, toFinalToken } from "@/wab/shared/core/tokens";
+import {
+  FinalToken,
+  MutableToken,
+  toFinalToken,
+} from "@/wab/shared/core/tokens";
 import {
   clone,
   findExprsInComponent,
@@ -135,7 +140,6 @@ import {
   TplSlot,
   Variant,
   VariantGroup,
-  VariantSetting,
   VariantedRuleSet,
   VariantedValue,
   isKnownArenaFrame,
@@ -168,7 +172,7 @@ export type DependencyWalkScope = "all" | "direct";
  */
 export function walkDependencyTree(
   site: Site,
-  scope: DependencyWalkScope
+  scope: DependencyWalkScope,
 ): ProjectDependency[] {
   const queue: ProjectDependency[] = [...site.projectDependencies];
   const result: ProjectDependency[] = [];
@@ -206,12 +210,19 @@ export function buildObjToDepMap(site: Site) {
 export function extractTransitiveDepsFromComponents(
   site: Site,
   components: Component[],
-  _depMap?: ObjDepMap
+  _depMap?: ObjDepMap,
 ) {
   const refs = new Set<ImportableObject>();
+  const allTokensDict = siteFinalStyleTokensAllDepsDict(site);
   for (const component of components) {
     for (const tpl of flattenTpls(component.tplTree)) {
-      collectUsedImportableObjectsForTpl(refs, component, tpl, site);
+      collectUsedImportableObjectsForTpl(
+        refs,
+        component,
+        tpl,
+        site,
+        allTokensDict,
+      );
     }
   }
 
@@ -222,7 +233,8 @@ function collectUsedImportableObjectsForTpl(
   refs: Set<ImportableObject>,
   component: Component,
   tpl: TplNode,
-  site: Site
+  site: Site,
+  allTokensDict: Readonly<{ [uuid: string]: FinalToken<StyleToken> }>,
 ) {
   if (isTplComponent(tpl)) {
     refs.add(tpl.component);
@@ -231,6 +243,7 @@ function collectUsedImportableObjectsForTpl(
   collectUsedTokensForTpl(refs as Set<StyleToken>, tpl, site, {
     derefTokens: false,
     expandMixins: false,
+    allTokensDict,
   });
   collectUsedIconAssetsForTpl(refs as Set<ImageAsset>, component, tpl);
   collectUsedPictureAssetsForTpl(
@@ -241,20 +254,20 @@ function collectUsedImportableObjectsForTpl(
     {
       includeRuleSets: true,
       expandMixins: false,
-    }
+    },
   );
   collectUsedMixinsForTpl(refs as Set<Mixin>, tpl);
 }
 
 export function getLeafProjectIdForHostLessPackageMeta(
-  pkg: HostLessPackageInfo
+  pkg: HostLessPackageInfo,
 ) {
   return last(ensureArray(pkg.projectId));
 }
 
 export function isHostlessPackageInstalled(
   meta: HostLessPackageInfo,
-  deps: ProjectDependency[]
+  deps: ProjectDependency[],
 ) {
   const leafId = getLeafProjectIdForHostLessPackageMeta(meta);
   return deps.some((dep) => leafId === dep.projectId);
@@ -277,14 +290,21 @@ export function extractTransitiveHostLessPackages(site: Site) {
 export function extractTransitiveDepsFromComponentDefaultSlots(
   site: Site,
   components: Component[],
-  _depMap?: ObjDepMap
+  _depMap?: ObjDepMap,
 ) {
   const refs = new Set<ImportableObject>();
+  const allTokensDict = siteFinalStyleTokensAllDepsDict(site);
   for (const component of components) {
     for (const slot of getTplSlots(component)) {
       for (const defaultContent of slot.defaultContents) {
         for (const tpl of flattenTpls(defaultContent)) {
-          collectUsedImportableObjectsForTpl(refs, component, tpl, site);
+          collectUsedImportableObjectsForTpl(
+            refs,
+            component,
+            tpl,
+            site,
+            allTokensDict,
+          );
         }
       }
     }
@@ -296,7 +316,7 @@ export function extractTransitiveDepsFromComponentDefaultSlots(
 export function extractTransitiveDepsFromTokens(
   site: Site,
   tokens: StyleToken[],
-  _depMap?: ObjDepMap
+  _depMap?: ObjDepMap,
 ) {
   const refTokens = extractUsedTokensForTokens(tokens, site, {
     derefTokens: false,
@@ -306,7 +326,7 @@ export function extractTransitiveDepsFromTokens(
 
 export function syncGlobalContexts(
   projectDependency: ProjectDependency,
-  site: Site
+  site: Site,
 ) {
   projectDependency.site.globalContexts.forEach((gc) => {
     if (
@@ -320,7 +340,7 @@ export function syncGlobalContexts(
 export function extractTransitiveDepsFromMixins(
   site: Site,
   mixins: Mixin[],
-  _depMap?: ObjDepMap
+  _depMap?: ObjDepMap,
 ) {
   const refTokens = extractUsedTokensForMixins(mixins, site, {
     derefTokens: false,
@@ -331,20 +351,20 @@ export function extractTransitiveDepsFromMixins(
 export function getTransitiveDepsFromObjs(
   site: Site,
   objs: ImportableObject[],
-  _depMap?: ObjDepMap
+  _depMap?: ObjDepMap,
 ) {
   // Build a one-level deep set of transitive deps -- deps of our direct deps
   const transitiveDeps = new Set(
-    site.projectDependencies.flatMap((dep) => dep.site.projectDependencies)
+    site.projectDependencies.flatMap((dep) => dep.site.projectDependencies),
   );
   const depMap = _depMap ?? buildObjToDepMap(site);
   const allDeps = withoutNils(objs.map((obj) => depMap.get(obj)));
   return uniqBy(
     allDeps.filter(
       (dep) =>
-        transitiveDeps.has(dep) && !site.projectDependencies.includes(dep)
+        transitiveDeps.has(dep) && !site.projectDependencies.includes(dep),
     ),
-    "projectId"
+    "projectId",
   );
 }
 
@@ -356,7 +376,7 @@ export function getTransitiveDepsFromObjs(
  */
 export function getDependenciesWithReferencedCss(
   site: Site,
-  components: Component[]
+  components: Component[],
 ): ProjectDependency[] {
   const deps = walkDependencyTree(site, "all");
 
@@ -388,13 +408,15 @@ export function getDependenciesWithReferencedCss(
   };
 
   // Start from references from the site's global CSS and the rendered components.
-  const usedTokens = extractUsedTokensForProjectCss(site, site);
+  const allTokensDict = siteFinalStyleTokensAllDepsDict(site);
+  const usedTokens = extractUsedTokensForProjectCss(site, site, allTokensDict);
   xAddAll(
     usedTokens,
     extractUsedTokensForComponents(site, components, {
       expandMixins: true,
       derefTokens: true,
-    })
+      allTokensDict,
+    }),
   );
   enqueueReferencedDepSite({
     tokens: usedTokens,
@@ -415,7 +437,7 @@ export function getDependenciesWithReferencedCss(
   while (queue.length > 0) {
     const ds = ensure(queue.pop(), "queue is non-empty");
     enqueueReferencedDepSite({
-      tokens: extractUsedTokensForProjectCss(ds, site),
+      tokens: extractUsedTokensForProjectCss(ds, site, allTokensDict),
     });
   }
 
@@ -458,7 +480,7 @@ export function* genImportableObjs(site: Site) {
 function getOrCloneNewAsset(
   tplMgr: TplMgr,
   oldAsset: ImageAsset,
-  oldToNewAsset: Map<ImageAsset, ImageAsset | undefined>
+  oldToNewAsset: Map<ImageAsset, ImageAsset | undefined>,
 ) {
   let newAsset = oldToNewAsset.get(oldAsset);
   if (!newAsset) {
@@ -484,7 +506,7 @@ function getNewMaybeImageAssetRefValue(
   tplMgr: TplMgr,
   value: string,
   oldAssets: ImageAsset[],
-  oldToNewAsset: Map<ImageAsset, ImageAsset | undefined>
+  oldToNewAsset: Map<ImageAsset, ImageAsset | undefined>,
 ) {
   if (!hasAssetRefs(value)) {
     return value;
@@ -505,7 +527,7 @@ function fixImageAssetRefsForRuleset(
   tplMgr: TplMgr,
   rs: RuleSet,
   oldAssets: ImageAsset[],
-  oldToNewAsset: Map<ImageAsset, ImageAsset | undefined>
+  oldToNewAsset: Map<ImageAsset, ImageAsset | undefined>,
 ) {
   const val = rs.values["background"];
   if (val) {
@@ -513,7 +535,7 @@ function fixImageAssetRefsForRuleset(
       tplMgr,
       val,
       oldAssets,
-      oldToNewAsset
+      oldToNewAsset,
     );
   }
 }
@@ -524,7 +546,7 @@ function fixImageAssetRefsForRuleset(
 function fixAssetRefForExpr(
   tplMgr: TplMgr,
   expr: Expr,
-  oldToNewAsset: Map<ImageAsset, ImageAsset | undefined>
+  oldToNewAsset: Map<ImageAsset, ImageAsset | undefined>,
 ) {
   if (isKnownImageAssetRef(expr) && oldToNewAsset.has(expr.asset)) {
     expr.asset = getOrCloneNewAsset(tplMgr, expr.asset, oldToNewAsset);
@@ -537,13 +559,13 @@ function fixImageAssetRefsForTpl(
   tplMgr: TplMgr,
   tpl: TplNode,
   oldAssets: ImageAsset[],
-  oldToNewAsset: Map<ImageAsset, ImageAsset | undefined>
+  oldToNewAsset: Map<ImageAsset, ImageAsset | undefined>,
 ) {
   if (isTplImage(tpl)) {
     // For images, replace ImageAsset references to new ones
     for (const vs of tpl.vsettings) {
       Object.entries(vs.attrs).forEach(([_key, value]) =>
-        fixAssetRefForExpr(tplMgr, value, oldToNewAsset)
+        fixAssetRefForExpr(tplMgr, value, oldToNewAsset),
       );
     }
   }
@@ -558,10 +580,10 @@ function fixImageAssetRefsForTpl(
 export function fixImageAssetRefsForClonedTemplateComponent(
   tplMgr: TplMgr,
   component: Component,
-  oldAssets: ImageAsset[]
+  oldAssets: ImageAsset[],
 ) {
   const oldToNewAsset = new Map<ImageAsset, ImageAsset | undefined>(
-    oldAssets.map((asset) => tuple(asset, undefined))
+    oldAssets.map((asset) => tuple(asset, undefined)),
   );
 
   const fix = (comp: Component) => {
@@ -579,7 +601,7 @@ export function fixImageAssetRefsForClonedTemplateComponent(
 function ensureDirectDep(
   site: Site,
   dep: ProjectDependency,
-  oldDep?: ProjectDependency
+  oldDep?: ProjectDependency,
 ) {
   if (site.projectDependencies.includes(dep)) {
     return;
@@ -587,7 +609,7 @@ function ensureDirectDep(
   // Make sure we don't end up with multiple direct deps with different
   // versions for the same pkgId
   const existingDep = site.projectDependencies.find(
-    (d) => d.pkgId === dep.pkgId
+    (d) => d.pkgId === dep.pkgId,
   );
   if (existingDep) {
     throw new Error(
@@ -595,7 +617,7 @@ function ensureDirectDep(
         dep.name
       }" v${dep.version}, but you currently depend on "${dep.name}" v${
         existingDep.version
-      }.  They must match up.`
+      }.  They must match up.`,
     );
   }
   site.projectDependencies.push(dep);
@@ -606,7 +628,7 @@ export function upgradeProjectDeps(
   deps: {
     oldDep: ProjectDependency;
     newDep?: ProjectDependency;
-  }[]
+  }[],
 ) {
   const newDeps: ProjectDependency[] = [];
   deps.forEach(({ oldDep, newDep }) => {
@@ -622,7 +644,7 @@ export function upgradeProjectDeps(
   newDeps.forEach((newDep) => {
     for (const dep of extractTransitiveDepsFromComponentDefaultSlots(
       site,
-      newDep.site.components.filter((c) => isReusableComponent(c))
+      newDep.site.components.filter((c) => isReusableComponent(c)),
     )) {
       ensureDirectDep(site, dep);
     }
@@ -642,7 +664,7 @@ export function upgradeProjectDeps(
 function upgradeProjectDep(
   site: Site,
   oldDep: ProjectDependency,
-  newDep?: ProjectDependency
+  newDep?: ProjectDependency,
 ) {
   // We need to look for and replace these references:
   // 1. TplComponent referencing imported Component.  We need to fix up
@@ -675,7 +697,7 @@ function upgradeProjectDep(
         (p) =>
           (p.variable.uuid === oldParam.variable.uuid ||
             p.variable.name === oldParam.variable.name) &&
-          isSlot(p) === isSlot(oldParam)
+          isSlot(p) === isSlot(oldParam),
       );
       if (newParam) {
         oldToNewParam.set(oldParam, newParam);
@@ -689,7 +711,7 @@ function upgradeProjectDep(
             site,
             oldComp,
             oldParam,
-            newParam.variable.name
+            newParam.variable.name,
           );
         }
       }
@@ -716,7 +738,7 @@ function upgradeProjectDep(
     // the Form component, we need to update the exprs to use
     // $state.form.newTextInput.value instead.
     const uuidToNewTpls = Object.fromEntries(
-      flattenTpls(newComp.tplTree).map((tpl) => [tpl.uuid, tpl])
+      flattenTpls(newComp.tplTree).map((tpl) => [tpl.uuid, tpl]),
     );
     for (const tpl of flattenTpls(oldComp.tplTree)) {
       if (!isTplNamable(tpl)) {
@@ -732,7 +754,7 @@ function upgradeProjectDep(
     }
   };
   const oldDepComponents = oldDep.site.components.filter((c) =>
-    isReusableComponent(c)
+    isReusableComponent(c),
   );
   const newDepComponents = newDep
     ? newDep.site.components.filter((c) => isReusableComponent(c))
@@ -767,19 +789,19 @@ function upgradeProjectDep(
         ? newDep.site.styleTokens.find(
             (m) =>
               m.uuid === oldToken.uuid ||
-              (m.regKey && m.regKey === oldToken.regKey)
+              (m.regKey && m.regKey === oldToken.regKey),
           )
         : undefined;
       return tuple(oldToken, newToken);
-    })
+    }),
   );
   const getOrCloneNewToken = (
     oldToken: StyleToken,
-    opts: { trySimilar?: boolean } = { trySimilar: true }
+    opts: { trySimilar?: boolean } = { trySimilar: true },
   ) => {
     assert(
       oldToNewToken.has(oldToken),
-      `Failed to find old token ${oldToken.name}`
+      `Failed to find old token ${oldToken.name}`,
     );
     const newToken = oldToNewToken.get(oldToken);
     if (newToken) {
@@ -799,7 +821,7 @@ function upgradeProjectDep(
           m.name === oldToken.name &&
           m.type === oldToken.type &&
           derefToken(siteTokens, m) === derefToken(oldTokens, oldFinalToken) &&
-          m.variantedValues.length === oldToken.variantedValues.length
+          m.variantedValues.length === oldToken.variantedValues.length,
       );
       if (similarToken) {
         oldToNewToken.set(oldToken, newToken);
@@ -813,13 +835,13 @@ function upgradeProjectDep(
         name: tokenName,
         tokenType: oldToken.type,
         value: derefToken(oldTokens, oldFinalToken),
-      })
+      }),
     );
     oldToken.variantedValues.forEach((v) => {
       const newVariants = withoutNils(
         v.variants.map((gv) =>
-          oldToNewGlobalVariant.has(gv) ? getOrCloneOldGlobalVariant(gv) : gv
-        )
+          oldToNewGlobalVariant.has(gv) ? getOrCloneOldGlobalVariant(gv) : gv,
+        ),
       );
       if (newVariants.length === 0) {
         return;
@@ -830,8 +852,8 @@ function upgradeProjectDep(
         derefToken(
           oldTokens,
           oldFinalToken,
-          new VariantedStylesHelper(oldDep.site, v.variants)
-        )
+          new VariantedStylesHelper(oldDep.site, v.variants),
+        ),
       );
     });
 
@@ -844,7 +866,7 @@ function upgradeProjectDep(
       if (isHostLessCodeComponent(oldComp)) {
         return ensure(
           oldToNewComp.get(oldComp),
-          "Cannot clone host-less code component. Should delete all instances before removing the dependency"
+          "Cannot clone host-less code component. Should delete all instances before removing the dependency",
         );
       }
       const newComp = site.components
@@ -856,7 +878,7 @@ function upgradeProjectDep(
       assert(
         newComp,
         `Failed to clone code component ${getComponentDisplayName(oldComp)}.
-        The imported project is using a code component that isn't registered.`
+        The imported project is using a code component that isn't registered.`,
       );
       mapParams(oldComp, newComp);
       mapStates(oldComp, newComp);
@@ -864,7 +886,7 @@ function upgradeProjectDep(
     }
     assert(
       oldToNewComp.has(oldComp),
-      `Failed to find old component ${getComponentDisplayName(oldComp)}`
+      `Failed to find old component ${getComponentDisplayName(oldComp)}`,
     );
     let newComp = oldToNewComp.get(oldComp);
     if (!newComp) {
@@ -897,12 +919,12 @@ function upgradeProjectDep(
         ? newDep.site.mixins.find((m) => m.uuid === oldMixin.uuid)
         : undefined;
       return tuple(oldMixin, newMixin);
-    })
+    }),
   );
   const getOrCloneNewMixin = (oldMixin: Mixin) => {
     assert(
       oldToNewMixin.has(oldMixin),
-      `Failed to find old mixin ${oldMixin.name}`
+      `Failed to find old mixin ${oldMixin.name}`,
     );
     let newMixin = oldToNewMixin.get(oldMixin);
     if (!newMixin) {
@@ -923,21 +945,21 @@ function upgradeProjectDep(
         ? newDep.site.animationSequences.find((as) => as.uuid === oldAS.uuid)
         : undefined;
       return tuple(oldAS, newAS);
-    })
+    }),
   );
   const getOrCloneNewAnimationSequence = (oldAnimSeq: AnimationSequence) => {
     assert(
       oldToNewAnimationSequences.has(oldAnimSeq),
-      `Failed to find old animation sequence ${oldAnimSeq.name}`
+      `Failed to find old animation sequence ${oldAnimSeq.name}`,
     );
     let newAnimSeq = oldToNewAnimationSequences.get(oldAnimSeq);
     if (!newAnimSeq) {
       const animSeqName = tplMgr.getUniqueAnimationSequenceName(
-        oldAnimSeq.name
+        oldAnimSeq.name,
       );
       newAnimSeq = tplMgr.addAnimationSequence(
         animSeqName,
-        cloneAnimationSequence(oldAnimSeq)
+        cloneAnimationSequence(oldAnimSeq),
       );
       oldToNewAnimationSequences.set(oldAnimSeq, newAnimSeq);
     }
@@ -951,7 +973,7 @@ function upgradeProjectDep(
         ? newDep.site.imageAssets.find((m) => m.uuid === oldAsset.uuid)
         : undefined;
       return tuple(oldAsset, newAsset);
-    })
+    }),
   );
 
   // Mapping old to new GlobalVariant
@@ -959,21 +981,21 @@ function upgradeProjectDep(
     oldDep.site.globalVariantGroups.map((group) =>
       tuple(
         group,
-        newDep?.site.globalVariantGroups.find((g) => g.uuid === group.uuid)
-      )
-    )
+        newDep?.site.globalVariantGroups.find((g) => g.uuid === group.uuid),
+      ),
+    ),
   );
   const getOrCloneGlobalVariantGroup = (oldGroup: GlobalVariantGroup) => {
     assert(
       oldToNewGlobalVariantGroup.has(oldGroup),
-      `Failed to find old global variant group ${oldGroup.uuid}`
+      `Failed to find old global variant group ${oldGroup.uuid}`,
     );
     let newGroup = oldToNewGlobalVariantGroup.get(oldGroup);
     if (!newGroup && oldGroup.type === VariantGroupType.GlobalScreen) {
       // We do something special for screen group
       // though, merging it with the existing screen group instead.
       let localScreenGroup = site.globalVariantGroups.find(
-        (g) => g.type === VariantGroupType.GlobalScreen
+        (g) => g.type === VariantGroupType.GlobalScreen,
       );
       if (!localScreenGroup) {
         localScreenGroup = tplMgr.createScreenVariantGroup();
@@ -984,7 +1006,7 @@ function upgradeProjectDep(
     if (!newGroup) {
       // If we still don't have one, then we clone the group locally
       const groupName = tplMgr.getUniqueGlobalVariantGroupName(
-        oldGroup.param.variable.name
+        oldGroup.param.variable.name,
       );
       newGroup = tplMgr.createGlobalVariantGroup(groupName);
       oldToNewGlobalVariantGroup.set(oldGroup, newGroup);
@@ -1000,25 +1022,25 @@ function upgradeProjectDep(
           includeDeps: undefined,
         })
       : []
-    ).map((variant) => tuple(variant.uuid, variant))
+    ).map((variant) => tuple(variant.uuid, variant)),
   );
   const oldToNewGlobalVariant = new Map(
-    oldGlobalVariants.map((v) => tuple(v, newGlobalVariants.get(v.uuid)))
+    oldGlobalVariants.map((v) => tuple(v, newGlobalVariants.get(v.uuid))),
   );
 
   const getOrCloneOldGlobalVariant = (oldVariant: Variant) => {
     assert(
       oldToNewGlobalVariant.has(oldVariant),
-      `Failed to find old global variant ${oldVariant.name}`
+      `Failed to find old global variant ${oldVariant.name}`,
     );
     let newVariant = oldToNewGlobalVariant.get(oldVariant);
     if (!newVariant) {
       const oldGroup = ensure(
         oldVariant.parent,
-        "GlobalVariant should have parent"
+        "GlobalVariant should have parent",
       );
       let newGroup = oldToNewGlobalVariantGroup.get(
-        oldGroup as GlobalVariantGroup
+        oldGroup as GlobalVariantGroup,
       );
       if (
         newGroup &&
@@ -1033,7 +1055,7 @@ function upgradeProjectDep(
         if (!newGroup) {
           // The group has been deleted, so we re-create it ourselves locally
           newGroup = getOrCloneGlobalVariantGroup(
-            oldGroup as GlobalVariantGroup
+            oldGroup as GlobalVariantGroup,
           );
         }
 
@@ -1041,7 +1063,7 @@ function upgradeProjectDep(
         // from local if possible
         if (isScreenVariantGroup(newGroup)) {
           newVariant = newGroup.variants.find((v) =>
-            areEquivalentScreenVariants(v, oldVariant)
+            areEquivalentScreenVariants(v, oldVariant),
           );
         }
 
@@ -1069,7 +1091,7 @@ function upgradeProjectDep(
         // Token removed case.
         // Clone the removed token, and override it. Don't try to find a similar token since we will be overriding it.
         const clonedToken = new MutableToken(
-          getOrCloneNewToken(override.token, { trySimilar: false })
+          getOrCloneNewToken(override.token, { trySimilar: false }),
         );
         if (override.value) {
           clonedToken.setValue(override.value);
@@ -1077,7 +1099,7 @@ function upgradeProjectDep(
         for (const variantedValue of override.variantedValues) {
           clonedToken.setVariantedValue(
             variantedValue.variants,
-            variantedValue.value
+            variantedValue.value,
           );
         }
 
@@ -1087,7 +1109,7 @@ function upgradeProjectDep(
       // We cannot handle the "token NOT removed" case on the first pass here,
       // since it could call `getOrCloneNewToken`, messing up the cloning and
       // overridding process.
-    }
+    },
   );
 
   const oldTokens = [...oldToNewToken.keys()];
@@ -1169,7 +1191,7 @@ function upgradeProjectDep(
 
     if (rs.mixins.some((m) => oldToNewMixin.has(m))) {
       rs.mixins = rs.mixins.map((mixin) =>
-        oldToNewMixin.has(mixin) ? getOrCloneNewMixin(mixin) : mixin
+        oldToNewMixin.has(mixin) ? getOrCloneNewMixin(mixin) : mixin,
       );
     }
 
@@ -1179,7 +1201,7 @@ function upgradeProjectDep(
       rs.animations = rs.animations.map((animation) => {
         if (oldToNewAnimationSequences.has(animation.sequence)) {
           animation.sequence = getOrCloneNewAnimationSequence(
-            animation.sequence
+            animation.sequence,
           );
         }
         return animation;
@@ -1188,13 +1210,13 @@ function upgradeProjectDep(
   };
 
   const fixRefsForVariantedStyle = (
-    variantedStyle: VariantedValue | VariantedRuleSet
+    variantedStyle: VariantedValue | VariantedRuleSet,
   ) => {
     assignReadonly(variantedStyle, {
       variants: withoutNils(
         variantedStyle.variants.map((v) =>
-          oldToNewGlobalVariant.has(v) ? getOrCloneOldGlobalVariant(v) : v
-        )
+          oldToNewGlobalVariant.has(v) ? getOrCloneOldGlobalVariant(v) : v,
+        ),
       ),
     });
 
@@ -1215,7 +1237,7 @@ function upgradeProjectDep(
     token.value = getNewMaybeTokenRefValue(token.value);
     token.variantedValues.forEach((v) => fixRefsForVariantedStyle(v));
     token.variantedValues = token.variantedValues.filter(
-      (v) => v.variants.length > 0
+      (v) => v.variants.length > 0,
     );
   };
 
@@ -1228,32 +1250,29 @@ function upgradeProjectDep(
     }
     override.variantedValues.forEach((v) => fixRefsForVariantedStyle(v));
     override.variantedValues = override.variantedValues.filter(
-      (v) => v.variants.length > 0
+      (v) => v.variants.length > 0,
     );
   };
 
   /**
-   * Returns true if VariantSetting references an imported global variant
-   * from a still-existing global variant group; in that case, we can only
-   * remove this VariantSetting, as there's no place to re-create that variant.
+   * Returns true if `v` is a now-deleted imported global variant whose group
+   * still exists
    */
-  const referencesHopelesslyDeletedGlobalVariant = (vs: VariantSetting) => {
-    return vs.variants.some((v) => {
-      if (
-        !v.parent ||
-        oldToNewGlobalVariant.get(v) ||
-        newGlobalVariants.has(v.uuid)
-      ) {
-        // Variant has not been deleted
-        return false;
-      }
+  const isHopelesslyDeletedGlobalVariant = (v: Variant) => {
+    if (!v.parent || oldToNewGlobalVariant.get(v)) {
+      // Variant has not been deleted
+      return false;
+    }
 
-      // Variant has been deleted, but parent group not deleted
-      return (
-        !!newDep &&
-        newDep.site.globalVariantGroups.includes(v.parent as GlobalVariantGroup)
-      );
-    });
+    // Variant has been deleted, but parent group not deleted
+    const newGroup = oldToNewGlobalVariantGroup.get(
+      v.parent as GlobalVariantGroup,
+    );
+    return (
+      !!newDep &&
+      !!newGroup &&
+      newDep.site.globalVariantGroups.includes(newGroup)
+    );
   };
 
   /**
@@ -1275,12 +1294,11 @@ function upgradeProjectDep(
 
     // If we see a VariantSetting referencing a now-deleted global variant,
     // then we'll have to just delete the VariantSetting as well :-/
-    if (
-      tpl.vsettings.some((vs) => referencesHopelesslyDeletedGlobalVariant(vs))
-    ) {
-      tpl.vsettings = tpl.vsettings.filter(
-        (vs) => !referencesHopelesslyDeletedGlobalVariant(vs)
-      );
+    const filteredVsettings = tpl.vsettings.filter(
+      (vs) => !vs.variants.some(isHopelesslyDeletedGlobalVariant),
+    );
+    if (filteredVsettings.length !== tpl.vsettings.length) {
+      tpl.vsettings = filteredVsettings;
     }
 
     for (const vs of tpl.vsettings) {
@@ -1291,9 +1309,9 @@ function upgradeProjectDep(
             ? ensure(
                 getOrCloneOldGlobalVariant(v),
                 "Unexpected undefined GlobalVariant. If oldToNewGlobalVariant has this variant, " +
-                  "it should not return undefined"
+                  "it should not return undefined",
               )
-            : v
+            : v,
         );
       }
       fixRefsForRuleset(vs.rs);
@@ -1318,11 +1336,15 @@ function upgradeProjectDep(
 
     if (isTplColumns(tpl) && tpl.columnsSetting?.screenBreakpoint) {
       const variant = tpl.columnsSetting?.screenBreakpoint;
-      if (oldToNewGlobalVariant.has(variant)) {
+      if (isHopelesslyDeletedGlobalVariant(variant)) {
+        // There's no place to re-create the variant, so all we can do is drop
+        // the breakpoint reference
+        tpl.columnsSetting.screenBreakpoint = null;
+      } else if (oldToNewGlobalVariant.has(variant)) {
         tpl.columnsSetting.screenBreakpoint = ensure(
           getOrCloneOldGlobalVariant(variant),
           "Unexpected undefined GlobalVariant. If oldToNewGlobalVariant has this variant, " +
-            "it should not return undefined"
+            "it should not return undefined",
         );
       }
     }
@@ -1344,7 +1366,7 @@ function upgradeProjectDep(
           if (oldToNewToken.has(expr.token)) {
             expr.token = ensure(
               getOrCloneNewToken(expr.token),
-              "Checked before"
+              "Checked before",
             );
           }
         } else {
@@ -1403,13 +1425,13 @@ function upgradeProjectDep(
                 // Search for slots and remove them from the parent component
                 if (isKnownComponent(owner)) {
                   const slots = flattenTpls(tplNode).filter((t) =>
-                    isKnownTplSlot(t)
+                    isKnownTplSlot(t),
                   );
                   slots.forEach((tplSlot) => {
                     removeComponentParam(
                       site,
                       owner,
-                      (tplSlot as TplSlot).param
+                      (tplSlot as TplSlot).param,
                     );
                   });
                 }
@@ -1424,16 +1446,16 @@ function upgradeProjectDep(
             if (isKnownVariantsRef(expr)) {
               const newGroup = ensure(
                 newComp.variantGroups.find((vg) => vg.param === newParam),
-                "Expected to find arg pointing to the new variants"
+                "Expected to find arg pointing to the new variants",
               );
               // Match up the newVariants by uuid, filtering out any
               // variant that has since been deleted.
               let newVariants = withoutNils(
                 expr.variants.map((v) =>
                   newGroup.variants.find(
-                    (newv) => newv.uuid === v.uuid || newv.name === v.name
-                  )
-                )
+                    (newv) => newv.uuid === v.uuid || newv.name === v.name,
+                  ),
+                ),
               );
               if (!newGroup.multi && newVariants.length > 1) {
                 // It's possible the new group has switched from multi to
@@ -1493,7 +1515,7 @@ function upgradeProjectDep(
         component.pageMeta.openGraphImage.asset = getOrCloneNewAsset(
           tplMgr,
           component.pageMeta.openGraphImage.asset,
-          oldToNewAsset
+          oldToNewAsset,
         );
       }
     }
@@ -1505,11 +1527,11 @@ function upgradeProjectDep(
       // so we need to flatten the states
       const flattenedStates = flattenImplicitStates(state);
       const oldImplicitState = flattenedStates.find(
-        (s) => s.implicitState && oldToNewState.has(s.implicitState)
+        (s) => s.implicitState && oldToNewState.has(s.implicitState),
       );
       if (oldImplicitState && oldImplicitState.implicitState) {
         const newImplicitState = oldToNewState.get(
-          oldImplicitState.implicitState
+          oldImplicitState.implicitState,
         );
         if (newImplicitState && !isPrivateState(newImplicitState)) {
           oldImplicitState.implicitState = newImplicitState;
@@ -1531,15 +1553,15 @@ function upgradeProjectDep(
     // Check if the remainin tree has references to removed states
     for (const state of removedStates) {
       const usages = findExprsInComponent(component).filter(({ expr }) =>
-        isStateUsedInExpr(state, expr)
+        isStateUsedInExpr(state, expr),
       );
       assert(
         usages.length === 0,
         `Can't ${
           newDep ? "upgrade" : "remove"
         } dependency: Variable "${getStateDisplayName(
-          state
-        )}" is being used in ${getComponentDisplayName(component)}.`
+          state,
+        )}" is being used in ${getComponentDisplayName(component)}.`,
       );
     }
     component.params.forEach((param) => {
@@ -1577,7 +1599,8 @@ function upgradeProjectDep(
   }
 
   site.globalContexts = site.globalContexts.filter(
-    (tpl) => !oldToNewComp.has(tpl.component) || oldToNewComp.get(tpl.component)
+    (tpl) =>
+      !oldToNewComp.has(tpl.component) || oldToNewComp.get(tpl.component),
   );
   for (const tpl of site.globalContexts) {
     fixTpl(tpl, tpl.component);
@@ -1589,8 +1612,8 @@ function upgradeProjectDep(
   // Fix up all the ArenaFrames, which can reference imported global variants
   const oldToNewGlobalVariantUuid = new Map(
     Array.from(oldToNewGlobalVariant.entries()).map(([oldv, newv]) =>
-      tuple(oldv.uuid, newv?.uuid)
-    )
+      tuple(oldv.uuid, newv?.uuid),
+    ),
   );
   const fixGlobalPinMap = (pinMap: Record<string, boolean>) => {
     for (const key of keys(pinMap)) {
@@ -1626,8 +1649,10 @@ function upgradeProjectDep(
           if (cellKey.some((v) => oldToNewGlobalVariant.has(v))) {
             const newCellKey = withoutNils(
               cellKey.map((v) =>
-                oldToNewGlobalVariant.has(v) ? getOrCloneOldGlobalVariant(v) : v
-              )
+                oldToNewGlobalVariant.has(v)
+                  ? getOrCloneOldGlobalVariant(v)
+                  : v,
+              ),
             );
             if (newCellKey.length !== cellKey.length) {
               // Some referenced global variant no longer exists; delete it
@@ -1643,7 +1668,7 @@ function upgradeProjectDep(
       if (isKnownVariantGroup(rowKey)) {
         if (oldToNewGlobalVariantGroup.has(rowKey as GlobalVariantGroup)) {
           const newGroup = oldToNewGlobalVariantGroup.get(
-            rowKey as GlobalVariantGroup
+            rowKey as GlobalVariantGroup,
           );
           if (newGroup) {
             row.rowKey = newGroup;
@@ -1687,7 +1712,7 @@ function upgradeProjectDep(
     }
 
     // Fix frames in the arena
-    for (const frame of getArenaFrames(arena)) {
+    for (const frame of getArenaFrames(arena, true)) {
       if (!isKnownArenaFrame(frame)) {
         continue;
       }
@@ -1701,8 +1726,8 @@ function upgradeProjectDep(
       fixGlobalPinMap(frame.pinnedGlobalVariants);
       frame.targetGlobalVariants = withoutNils(
         frame.targetGlobalVariants.map((v) =>
-          oldToNewGlobalVariant.has(v) ? getOrCloneOldGlobalVariant(v) : v
-        )
+          oldToNewGlobalVariant.has(v) ? getOrCloneOldGlobalVariant(v) : v,
+        ),
       );
     }
   }
@@ -1718,7 +1743,7 @@ function upgradeProjectDep(
       // Token is NOT from oldDep (local registered token) - just fix variant refs
       override.variantedValues.forEach((v) => fixRefsForVariantedStyle(v));
       override.variantedValues = override.variantedValues.filter(
-        (v) => v.variants.length > 0
+        (v) => v.variants.length > 0,
       );
     }
   });
@@ -1764,7 +1789,7 @@ function upgradeProjectDep(
   if (screenGroup && oldDep.site.globalVariantGroups.includes(screenGroup)) {
     if (newDep) {
       const newGroup = newDep.site.globalVariantGroups.find(
-        (g) => g.uuid === screenGroup.uuid
+        (g) => g.uuid === screenGroup.uuid,
       );
       site.activeScreenVariantGroup = newGroup;
     } else {
@@ -1777,7 +1802,7 @@ function upgradeProjectDep(
   // Fix site pageWrapper
   site.pageWrapper = maybe(
     site.pageWrapper,
-    (pw) => oldToNewComp.get(pw) ?? pw
+    (pw) => oldToNewComp.get(pw) ?? pw,
   );
 
   // Finally, swap out oldDep with newDep

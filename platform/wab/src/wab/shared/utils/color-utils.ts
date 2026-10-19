@@ -14,8 +14,8 @@ function adjustChromaFunction(maybeFunction: any) {
           ...args.map((arg: any) =>
             typeof arg === "string" && Chroma.isLiteralTransparent(arg)
               ? "#00000000"
-              : arg
-          )
+              : arg,
+          ),
         )
     : maybeFunction;
 }
@@ -36,10 +36,4 @@ Object.assign(Chroma, mapValues(chromajs, adjustChromaFunction), {
       : Chroma(colorValue).hex();
   },
 });
-
-export function getShortenedRgb(color: string) {
-  return `rgba(${Chroma(color).rgb().join(", ")})`;
-}
-
-export const chroma = Chroma;
 export default Chroma;

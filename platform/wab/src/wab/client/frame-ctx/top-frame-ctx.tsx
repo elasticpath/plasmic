@@ -16,7 +16,6 @@ import { PromisifyMethods } from "@/wab/commons/promisify-methods";
 import { bindMethods } from "@/wab/commons/proxies";
 import { assert } from "@/wab/shared/common";
 import * as Comlink from "comlink";
-import { UnregisterCallback } from "history";
 import * as React from "react";
 
 export interface TopFrameCtx {
@@ -83,12 +82,12 @@ export function TopFrameCtxProvider({
       const hostFrameEndpoint = Comlink.windowEndpoint(hostFrame as Window);
 
       console.log(
-        "[TopFrame] Received PLASMIC_HOST_REGISTER message, exposing API to HostFrame"
+        "[TopFrame] Received PLASMIC_HOST_REGISTER message, exposing API to HostFrame",
       );
       const api = filteredApi(
         projectId,
         bindMethods(appCtx.api),
-        appCtx.appConfig
+        appCtx.appConfig,
       );
       const topFrameCtxApi: TopFrameFullApi = {
         exposeHostFrameApi: (hostFrameApi: Comlink.Remote<HostFrameApi>) => {
@@ -98,13 +97,14 @@ export function TopFrameCtxProvider({
             hostFrameApiReady: true,
           }));
         },
+        // eslint-disable-next-line @typescript-eslint/no-misused-spread -- filteredApi returns a plain object
         ...api,
         ...topFrameApi,
 
         // Override some methods to hide Comlink implementation details.
-        registerLocationListener(locationListener): UnregisterCallback {
+        registerLocationListener(locationListener): () => void {
           return Comlink.proxy(
-            topFrameApi.registerLocationListener(locationListener)
+            topFrameApi.registerLocationListener(locationListener),
           );
         },
       } as TopFrameFullApi;
@@ -113,12 +113,12 @@ export function TopFrameCtxProvider({
         addEventListener(
           type: string,
           _listener: EventListenerOrEventListenerObject,
-          options?: {}
+          options?: {},
         ) {
           if (type === "message") {
             assert(
               comlinkState === undefined,
-              () => "Unexpected registering multiple message event listeners"
+              () => "Unexpected registering multiple message event listeners",
             );
             comlinkState = {
               hostFrameEndpoint: hostFrameEndpoint,
@@ -140,7 +140,7 @@ export function TopFrameCtxProvider({
       if (comlinkState) {
         comlinkState.hostFrameEndpoint.removeEventListener(
           "message",
-          comlinkState.listener
+          comlinkState.listener,
         );
       }
     };

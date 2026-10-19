@@ -2,6 +2,7 @@ import { AppCtx } from "@/wab/client/app-ctx";
 import { FrameClip } from "@/wab/client/clipboard/local";
 import { RenameArenaProps } from "@/wab/client/commands/arena/renameArena";
 import { toast } from "@/wab/client/components/Messages";
+import { notifyReferencingNode } from "@/wab/client/components/canvas/notify-referencing-node";
 import { promptRemapCodeComponent } from "@/wab/client/components/modals/codeComponentModals";
 import { confirm, reactConfirm } from "@/wab/client/components/quick-modals";
 import { notifyLinkedPropDrift } from "@/wab/client/components/sidebar-tabs/linked-prop-utils";
@@ -11,10 +12,14 @@ import {
   ImageAssetOpts,
   ResizableImage,
   maybeUploadImage,
+  processSvg,
 } from "@/wab/client/dom-utils";
 import { deleteComponent } from "@/wab/client/operations/delete-component";
 import { deleteComponentState } from "@/wab/client/operations/delete-component-state";
-import { deleteResourcesWithUsages } from "@/wab/client/operations/delete-resources";
+import {
+  deleteResourcesWithUsages,
+  type DeleteResourcesOpts,
+} from "@/wab/client/operations/delete-resources";
 import { deleteStyleToken } from "@/wab/client/operations/delete-style-token";
 import { deleteVariant } from "@/wab/client/operations/delete-variant";
 import { deleteVariantGroup } from "@/wab/client/operations/delete-variant-group";
@@ -70,6 +75,7 @@ import {
   flattenComponent,
   getComponentsUsingImageAsset,
 } from "@/wab/shared/cached-selectors";
+import { ServerQueryOp } from "@/wab/shared/codegen/react-p/server-queries/utils";
 import { toVarName } from "@/wab/shared/codegen/util";
 import { arrayRemove } from "@/wab/shared/collections";
 import {
@@ -134,7 +140,6 @@ import {
   findExprsInComponent,
   findExprsInNode,
   flattenTpls,
-  isTplSlot,
   isTplVariantable,
   replaceTplTreeByEmptyBox,
 } from "@/wab/shared/core/tpls";
@@ -158,7 +163,6 @@ import {
   PageArena,
   ProjectDependency,
   Site,
-  Split,
   State,
   StyleToken,
   Variant,
@@ -175,6 +179,8 @@ import { getPlumeEditorPlugin } from "@/wab/shared/plume/plume-registry";
 import {
   flattenDataTokenUsage,
   isQueryUsedInExpr,
+  isServerQueryUsedInExpr,
+  renameServerQueryAndFixExprs,
 } from "@/wab/shared/refactoring";
 import {
   FrameSize,
@@ -182,15 +188,9 @@ import {
   frameSizeGroups,
 } from "@/wab/shared/responsiveness";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
-import {
-  TplVisibility,
-  getVariantSettingVisibility,
-  setTplVisibility,
-} from "@/wab/shared/visibility-utils";
 import { notification } from "antd";
 import L from "lodash";
-import { ok } from "neverthrow";
+import { err, ok } from "neverthrow";
 import React from "react";
 
 /**
@@ -204,7 +204,7 @@ export class SiteOps {
   async updateActiveScreenVariantGroup(group: GlobalVariantGroup) {
     assert(
       isScreenVariantGroup(group),
-      "Expected given variant group to be a screen variant group"
+      "Expected given variant group to be a screen variant group",
     );
     const prevGroup = this.site.activeScreenVariantGroup;
 
@@ -217,9 +217,9 @@ export class SiteOps {
             prevGroup.variants.map((prevV) => [
               prevV,
               group.variants.find((newV) =>
-                areEquivalentScreenVariants(newV, prevV)
+                areEquivalentScreenVariants(newV, prevV),
               ),
-            ])
+            ]),
           );
           for (const component of this.site.components) {
             for (const tpl of flattenComponent(component)) {
@@ -227,7 +227,7 @@ export class SiteOps {
                 for (const vs of tpl.vsettings) {
                   if (vs.variants.some((v) => oldToNewVariant.get(v))) {
                     vs.variants = vs.variants.map(
-                      (v) => oldToNewVariant.get(v) ?? v
+                      (v) => oldToNewVariant.get(v) ?? v,
                     );
                   }
                 }
@@ -251,11 +251,11 @@ export class SiteOps {
             if (prevGroup) {
               removeFramesFromComponentArenaForVariants(
                 arena,
-                prevGroup.variants
+                prevGroup.variants,
               );
               removeManagedFramesFromComponentArenaForVariantGroup(
                 arena,
-                prevGroup
+                prevGroup,
               );
             }
           } else {
@@ -264,7 +264,7 @@ export class SiteOps {
         }
         ensureScreenVariantsOrderOnMatrices(this.site);
         return ok();
-      }
+      },
     );
   }
 
@@ -291,15 +291,15 @@ export class SiteOps {
               .filter((v) =>
                 isMobileFirst
                   ? v.screenSpec.minWidth! > spec!.minWidth!
-                  : v.screenSpec.maxWidth! < spec!.maxWidth!
+                  : v.screenSpec.maxWidth! < spec!.maxWidth!,
               )
               .every((v) => !v.screenSpec.match(size.width))
           : isMobileFirst
-          ? // If creating frame for the base screen variant,
-            // we check the strategy and find the most suitable
-            // screen size
-            /iphone/i.test(size.name)
-          : /desktop/i.test(size.name)
+            ? // If creating frame for the base screen variant,
+              // we check the strategy and find the most suitable
+              // screen size
+              /iphone/i.test(size.name)
+            : /desktop/i.test(size.name),
       ) ?? {
       name: "Custom size",
       width: fallbackWidth,
@@ -312,14 +312,14 @@ export class SiteOps {
   pasteFrameClip(clip: FrameClip, originalFrame?: ArenaFrame): boolean {
     const arena = ensure(
       this.studioCtx.currentArena,
-      "studioCtx should have a currentArena to allow pasting a frame clip"
+      "studioCtx should have a currentArena to allow pasting a frame clip",
     );
     const newFrame = this.tplMgr.cloneFrame(clip.frame, true);
     if (isMixedArena(arena)) {
       this.tplMgr.addExistingArenaFrame(
         arena,
         newFrame,
-        this.studioCtx.currentViewportMidpt()
+        this.studioCtx.currentViewportMidpt(),
       );
       this.studioCtx.setStudioFocusOnFrame({ frame: newFrame, autoZoom: true });
       this.studioCtx.centerFocusedFrame();
@@ -328,7 +328,7 @@ export class SiteOps {
       if (arena.component === newFrame.container.component) {
         const originalFramePosition =
           arena.customMatrix.rows[0]?.cols.findIndex(
-            (it) => it.frame === originalFrame
+            (it) => it.frame === originalFrame,
           );
         const newFramePosition =
           originalFramePosition !== undefined && originalFramePosition > -1
@@ -338,7 +338,7 @@ export class SiteOps {
           this.studioCtx.site,
           arena,
           newFrame,
-          newFramePosition
+          newFramePosition,
         );
         this.studioCtx.setStudioFocusOnFrame({
           frame: newFrame,
@@ -379,11 +379,11 @@ export class SiteOps {
 
   async removeArenaFrame(
     frame: ArenaFrame,
-    opts: { pruneUnnamedComponent: boolean } = { pruneUnnamedComponent: true }
+    opts: { pruneUnnamedComponent: boolean } = { pruneUnnamedComponent: true },
   ) {
     const arena = ensure(
       this.getArenaByFrame(frame),
-      "Frame is expected to have an arena"
+      "Frame is expected to have an arena",
     );
     if (isMixedArena(arena)) {
       return this.change(() => this.removeMixedArenaFrame(arena, frame, opts));
@@ -397,7 +397,7 @@ export class SiteOps {
   removeMixedArenaFrame(
     arena: Arena,
     frame: ArenaFrame,
-    opts: { pruneUnnamedComponent: boolean } = { pruneUnnamedComponent: true }
+    opts: { pruneUnnamedComponent: boolean } = { pruneUnnamedComponent: true },
   ) {
     const wasFocused = this.studioCtx.focusedContentFrame() === frame;
     const frameIndex = arena.children.indexOf(frame);
@@ -437,21 +437,21 @@ export class SiteOps {
 
   private findVariantGroupReferences(
     component: Component,
-    group: VariantGroup
+    group: VariantGroup,
   ): ExprReference[] {
     const state = ensure(
       findStateForParam(component, group.param),
-      "Variant group param must correspond to state"
+      "Variant group param must correspond to state",
     );
     return findExprsInComponent(component).filter(({ expr }) =>
-      isStateUsedInExpr(state, expr)
+      isStateUsedInExpr(state, expr),
     );
   }
 
   private notifyVariantGroupReferenced(
     component: Component,
     refs: ExprReference[],
-    message = "Cannot delete variant group"
+    message = "Cannot delete variant group",
   ) {
     const viewCtx = this.studioCtx.focusedViewCtx();
     const maybeNode = refs.find((r) => r.node)?.node;
@@ -466,7 +466,7 @@ export class SiteOps {
             <a
               onClick={() => {
                 viewCtx.setStudioFocusByTpl(maybeNode);
-                notification.close(key);
+                notification.destroy(key);
               }}
             >
               [Go to reference]
@@ -510,7 +510,7 @@ export class SiteOps {
     const variants = [...getActivatedVariantsForFrame(this.site, frame)];
     assert(
       variants.length === 1,
-      "Only one variant should be active in a frame to be removed"
+      "Only one variant should be active in a frame to be removed",
     );
     const variant = variants[0];
     const parent = variant.parent;
@@ -526,7 +526,7 @@ export class SiteOps {
         : [];
       if (implicitUsages.length > 0) {
         const components = L.uniq(
-          implicitUsages.map((usage) => usage.component)
+          implicitUsages.map((usage) => usage.component),
         );
         notification.error({
           message: "Cannot delete variant group",
@@ -540,7 +540,7 @@ export class SiteOps {
     const reallyDelete = await this.confirmDeleteVariant(
       variant,
       arena.component,
-      { confirm: "always" }
+      { confirm: "always" },
     );
     if (!reallyDelete) {
       return;
@@ -552,8 +552,8 @@ export class SiteOps {
           findComponentsUsingComponentVariant(
             this.site,
             arena.component,
-            variant
-          )
+            variant,
+          ),
         );
       },
       () => {
@@ -574,7 +574,7 @@ export class SiteOps {
           } else {
             const group = ensure(
               variant.parent,
-              "Variant is expected to have a group"
+              "Variant is expected to have a group",
             );
             const nextVariant =
               group.variants[Math.min(index, group.variants.length - 1)];
@@ -588,7 +588,7 @@ export class SiteOps {
         }
         this.fixChromeAfterRemoveFrame();
         return ok();
-      }
+      },
     );
   }
 
@@ -597,7 +597,7 @@ export class SiteOps {
     component: Component | undefined,
     opts: {
       confirm: "always" | "if-referenced";
-    }
+    },
   ) {
     const usingComps = !component
       ? findComponentsUsingGlobalVariant(this.site, variant)
@@ -617,9 +617,9 @@ export class SiteOps {
                 It is being used by{" "}
                 {joinReactNodes(
                   [...usingComps].map((comp) =>
-                    makeComponentName(this.site, comp)
+                    makeComponentName(this.site, comp),
                   ),
-                  ", "
+                  ", ",
                 )}
                 .
               </p>
@@ -633,19 +633,19 @@ export class SiteOps {
 
   removePageArenaFrame(arena: PageArena, frame: ArenaFrame) {
     const combinationRow = arena.customMatrix.rows.find((r) =>
-      r.cols.some((c) => c.frame === frame)
+      r.cols.some((c) => c.frame === frame),
     );
     this.clearFrameComboSettings(frame);
     if (!combinationRow) {
       const frameIndex = getFrameColumnIndex(
         this.studioCtx.currentArena as PageArena,
-        frame
+        frame,
       );
 
       this.site.pageArenas.forEach((pageArena) =>
         pageArena.matrix.rows.forEach((pageArenaRow) =>
-          removeAtIndexes(pageArenaRow.cols, [frameIndex])
-        )
+          removeAtIndexes(pageArenaRow.cols, [frameIndex]),
+        ),
       );
     } else {
       removeWhere(combinationRow.cols, (c) => c.frame === frame);
@@ -670,7 +670,7 @@ export class SiteOps {
   moveFrameToArena(
     originArena: Arena,
     movingFrame: ArenaFrame,
-    destinationArena: Arena
+    destinationArena: Arena,
   ) {
     this.tplMgr.removeExistingArenaFrame(originArena, movingFrame, {
       pruneUnnamedComponent: false,
@@ -679,7 +679,7 @@ export class SiteOps {
     this.tplMgr.addExistingArenaFrame(
       destinationArena,
       movingFrame,
-      new Pt(0, 0)
+      new Pt(0, 0),
     );
 
     this.studioCtx.switchToArena(destinationArena);
@@ -704,13 +704,13 @@ export class SiteOps {
   async createFrameForNewComponent(folderPath?: string) {
     const componentInfo = await promptComponentTemplate(
       this.studioCtx,
-      folderPath
+      folderPath,
     );
     if (!componentInfo) {
       return;
     }
     await this.studioCtx.changeUnsafe(() =>
-      this.createFrameForNewComponentWithName(componentInfo)
+      this.createFrameForNewComponentWithName(componentInfo),
     );
   }
 
@@ -733,7 +733,7 @@ export class SiteOps {
     const name = await promptPageName();
     if (name) {
       await this.studioCtx.changeUnsafe(() =>
-        this.createFrameForNewPageWithName(name)
+        this.createFrameForNewPageWithName(name),
       );
     }
   }
@@ -763,7 +763,7 @@ export class SiteOps {
     opts: {
       width?: number;
       height?: number;
-    } = {}
+    } = {},
   ) {
     const arena = this.studioCtx.currentArena;
     assert(isMixedArena(arena), "Current arena should be a mixed arena");
@@ -771,7 +771,7 @@ export class SiteOps {
     const derivedViewOpts = deriveInitFrameSettings(
       this.site,
       arena,
-      component
+      component,
     );
     const frame = this.tplMgr.addNewMixedArenaFrame(arena, "", component, {
       ...derivedViewOpts,
@@ -784,7 +784,7 @@ export class SiteOps {
 
   async maybePromptForTransitiveImports(
     msg: React.ReactNode,
-    transitiveDeps: ProjectDependency[]
+    transitiveDeps: ProjectDependency[],
   ) {
     if (transitiveDeps.length === 0) {
       return true;
@@ -797,13 +797,13 @@ export class SiteOps {
           {transitiveDeps.map((dep) => {
             const projectId =
               this.studioCtx.projectDependencyManager.getDependencyData(
-                dep.pkgId
+                dep.pkgId,
               )?.latestPkgVersionMeta?.pkg?.projectId;
             return (
               <li key={dep.uid}>
                 {projectId ? (
                   <a
-                    href={fillRoute(APP_ROUTES.project, { projectId })}
+                    href={APP_ROUTES.project.fill({ projectId })}
                     target="_blank"
                   >
                     {dep.name}
@@ -824,7 +824,7 @@ export class SiteOps {
   promoteComponentToDefaultKind(
     studioCtx: StudioCtx,
     component: Component,
-    kind: DefaultComponentKind
+    kind: DefaultComponentKind,
   ) {
     studioCtx.site.defaultComponents[kind] = component;
   }
@@ -832,17 +832,17 @@ export class SiteOps {
   tryRemoveComponent(component: Component) {
     assert(
       !component.superComp || isCodeComponent(component),
-      "Cannot remove sub-components"
+      "Cannot remove sub-components",
     );
 
     const result = deleteComponent(
       component,
       this.studioCtx.site,
       this.studioCtx,
-      this.tplMgr
+      this.tplMgr,
     );
-    if (result.result === "error") {
-      notification.error({ message: result.message });
+    if (result.isErr()) {
+      notification.error({ message: result.error.message });
     }
   }
 
@@ -859,7 +859,7 @@ export class SiteOps {
       switchType(arena)
         .when(Arena, (it) => this.studioCtx.tplMgr().renameArena(it, newName))
         .when([PageArena, ComponentArena], (it) =>
-          this.studioCtx.siteOps().tryRenameComponent(it.component, newName)
+          this.studioCtx.siteOps().tryRenameComponent(it.component, newName),
         );
 
       // Switch to currentArena to force the URL to update with the new name
@@ -876,7 +876,7 @@ export class SiteOps {
 
   async tryDuplicatingComponent(
     component: Component,
-    opts: { focusNewComponent: boolean } = { focusNewComponent: true }
+    opts: { focusNewComponent: boolean } = { focusNewComponent: true },
   ) {
     const componentType = isPageComponent(component) ? "page" : "component";
 
@@ -887,15 +887,15 @@ export class SiteOps {
     const badTransitiveDepsNames = L.uniq(
       transitiveDeps
         .filter((dep) =>
-          this.studioCtx.projectDependencyManager.getDependencyData(dep.pkgId)
+          this.studioCtx.projectDependencyManager.getDependencyData(dep.pkgId),
         )
-        .map((dep) => dep.name)
+        .map((dep) => dep.name),
     );
 
     if (badTransitiveDepsNames.length > 0) {
       notification.error({
         message: `Multiple versions of the projects: ${badTransitiveDepsNames.join(
-          ", "
+          ", ",
         )} detected.
         Before duplicating this ${componentType}, make sure all imported projects use the same version.`,
       });
@@ -909,7 +909,7 @@ export class SiteOps {
           projects. To clone this {componentType}, you will also need to import
           these projects. Are you sure you want to continue?
         </>,
-        transitiveDeps
+        transitiveDeps,
       ))
     ) {
       return;
@@ -917,13 +917,13 @@ export class SiteOps {
 
     const newName = uniqueName(
       this.site.components.map((it) => it.name),
-      component.name
+      component.name,
     );
 
     return this.studioCtx.change(() => {
       for (const dep of transitiveDeps) {
         this.studioCtx.projectDependencyManager.addTransitiveDepAsDirectDep(
-          dep
+          dep,
         );
       }
 
@@ -954,7 +954,7 @@ export class SiteOps {
       () => {
         this.studioCtx.tplMgr().swapComponents(fromComp, toComp);
         return ok();
-      }
+      },
     );
   }
 
@@ -964,7 +964,7 @@ export class SiteOps {
       () => {
         swapPageLinks(this.studioCtx.site, fromPage, toPage);
         return ok();
-      }
+      },
     );
   }
   /**
@@ -973,7 +973,7 @@ export class SiteOps {
    */
   async tryRemapCodeComponent(
     component: CodeComponent,
-    titleMessage: React.ReactNode
+    titleMessage: React.ReactNode,
   ) {
     if (!this.studioCtx.site.components.includes(component)) {
       // may be a sub component that was removed when parent was removed
@@ -1022,7 +1022,7 @@ export class SiteOps {
                     });
                   }
                 });
-              }
+              },
             );
           } else {
             // Swap with the component to remap to
@@ -1030,7 +1030,7 @@ export class SiteOps {
           }
           this.tryRemoveComponent(component);
           return ok();
-        }
+        },
       );
     } else {
       await this.studioCtx.change(() => {
@@ -1049,7 +1049,7 @@ export class SiteOps {
    */
   async upgradeProjectDeps(
     targetDeps: ProjectDependency[],
-    opts?: { noUndoRecord?: boolean }
+    opts?: { noUndoRecord?: boolean },
   ) {
     await this.studioCtx.changeObserved(
       () => {
@@ -1060,7 +1060,7 @@ export class SiteOps {
         this.studioCtx.ensureAllComponentStackFramesHasOnlyValidVariants();
         return ok();
       },
-      opts
+      opts,
     );
   }
 
@@ -1077,7 +1077,7 @@ export class SiteOps {
         this.tplMgr.removeProjectDep(projectDependency);
         this.studioCtx.ensureAllComponentStackFramesHasOnlyValidVariants();
         return ok();
-      }
+      },
     );
   }
 
@@ -1087,11 +1087,11 @@ export class SiteOps {
       accessType?: StateAccessType;
       variableType?: NormalStateVariableType;
       initialValue?: Expr | null;
-    }
+    },
   ) {
     const component = ensure(
       this.site.components.find((c) => c.states.includes(state)),
-      "Expected some component to contain the given state"
+      "Expected some component to contain the given state",
     );
 
     const result = updateComponentState(state, update, {
@@ -1099,14 +1099,14 @@ export class SiteOps {
       component,
       tplMgr: this.tplMgr,
     });
-    if (result.result === "error") {
+    if (result.isErr()) {
       notification.error({
         message: update.accessType
           ? `Cannot set access type to "${update.accessType}"`
           : update.initialValue !== undefined
-          ? "Cannot set initial value"
-          : "Cannot update variable",
-        description: result.message,
+            ? "Cannot set initial value"
+            : "Cannot update variable",
+        description: result.error.message,
       });
     }
   }
@@ -1116,29 +1116,13 @@ export class SiteOps {
       site: this.site,
       component,
     });
-    if (result.result === "error") {
-      const viewCtx = this.studioCtx.focusedViewCtx();
-      const refNode = result.referencingNode;
-      const key = mkUuid();
-      notification.error({
-        key,
-        message: "Cannot delete variable",
-        description: (
-          <>
-            {result.message}{" "}
-            {viewCtx?.component === component && refNode ? (
-              <a
-                onClick={() => {
-                  viewCtx.setStudioFocusByTpl(refNode);
-                  notification.close(key);
-                }}
-              >
-                [Go to reference]
-              </a>
-            ) : null}
-          </>
-        ),
-      });
+    if (result.isErr()) {
+      notifyReferencingNode(
+        "Cannot delete variable",
+        result.error.message,
+        result.error.referencingNode,
+        this.studioCtx,
+      );
       return false;
     }
     return true;
@@ -1146,7 +1130,7 @@ export class SiteOps {
 
   async removeComponentQuery(component: Component, query: ComponentDataQuery) {
     const refs = findExprsInComponent(component).filter(({ expr }) =>
-      isQueryUsedInExpr(query.name, expr)
+      isQueryUsedInExpr(query.name, expr),
     );
     if (refs.length > 0) {
       const viewCtx = this.studioCtx.focusedViewCtx();
@@ -1162,7 +1146,7 @@ export class SiteOps {
               <a
                 onClick={() => {
                   viewCtx.setStudioFocusByTpl(maybeNode);
-                  notification.close(key);
+                  notification.destroy(key);
                 }}
               >
                 [Go to reference]
@@ -1182,16 +1166,41 @@ export class SiteOps {
       () => {
         this.tplMgr.removeComponentQuery(component, query);
         return ok();
-      }
+      },
     );
   }
 
+  /**
+   * Replace a server query op and/or renames it, fixing `$q` references.
+   */
+  async updateComponentServerQuery(
+    component: Component,
+    query: ComponentServerQuery,
+    update: { op?: ServerQueryOp; name?: string },
+  ) {
+    return this.studioCtx.changeObserved(
+      () => [component],
+      () => {
+        if (update.op) {
+          query.op = update.op;
+        }
+        if (update.name && update.name !== query.name) {
+          renameServerQueryAndFixExprs(component, query, update.name);
+        }
+        return ok();
+      },
+    );
+  }
+
+  /**
+   * Removes a server query, or refuses with readable error if referenced as `$q.<name>`.
+   */
   async removeComponentServerQuery(
     component: Component,
-    query: ComponentServerQuery
+    query: ComponentServerQuery,
   ) {
     const refs = findExprsInComponent(component).filter(({ expr }) =>
-      isQueryUsedInExpr(query.name, expr)
+      isServerQueryUsedInExpr(query.name, expr),
     );
     if (refs.length > 0) {
       const viewCtx = this.studioCtx.focusedViewCtx();
@@ -1207,7 +1216,7 @@ export class SiteOps {
               <a
                 onClick={() => {
                   viewCtx.setStudioFocusByTpl(maybeNode);
-                  notification.close(key);
+                  notification.destroy(key);
                 }}
               >
                 [Go to reference]
@@ -1216,15 +1225,30 @@ export class SiteOps {
           </>
         ),
       });
-      return;
+      return err(
+        new Error(
+          `Cannot delete ${SERVER_QUERY_LOWER} "${query.name}" (uuid ${
+            query.uuid
+          }) while it is still referenced as $q.${toVarName(
+            query.name,
+          )} in this component. Re-point or remove those references first, ` +
+            `then delete.`,
+        ),
+      );
     }
 
-    await this.studioCtx.changeObserved(
-      () => [],
+    const invalidationRefs = findQueryInvalidationExprWithRefs(this.site, [
+      query.uuid,
+    ]);
+    return this.studioCtx.changeObserved(
+      () => [
+        component,
+        ...invalidationRefs.map(({ ownerComponent }) => ownerComponent),
+      ],
       () => {
         this.tplMgr.removeComponentServerQuery(component, query);
         return ok();
-      }
+      },
     );
   }
 
@@ -1234,22 +1258,22 @@ export class SiteOps {
       component,
       this.site,
       this.studioCtx,
-      this.tplMgr
+      this.tplMgr,
     );
 
-    if (result.result === "error" && !result.cancelled) {
+    if (result.isErr() && !result.error.cancelled) {
       const key = mkUuid();
-      if (result.variantGroupRefs) {
+      if (result.error.variantGroupRefs) {
         this.notifyVariantGroupReferenced(
           component,
-          result.variantGroupRefs,
-          "Cannot delete variant group"
+          result.error.variantGroupRefs,
+          "Cannot delete variant group",
         );
       } else {
         notification.error({
           key,
           message: "Cannot delete variant group",
-          description: result.message,
+          description: result.error.message,
         });
       }
     }
@@ -1261,15 +1285,15 @@ export class SiteOps {
       undefined,
       this.site,
       this.studioCtx,
-      this.tplMgr
+      this.tplMgr,
     );
 
-    if (result.result === "error" && !result.cancelled) {
+    if (result.isErr() && !result.error.cancelled) {
       const key = mkUuid();
       notification.error({
         key,
         message: "Cannot delete variant group",
-        description: result.message,
+        description: result.error.message,
       });
     }
   }
@@ -1282,22 +1306,21 @@ export class SiteOps {
       this.site,
       this.studioCtx,
       this.tplMgr,
-      { behaviour: "confirm-if-referenced" }
     );
 
-    if (result.result === "error" && !result.cancelled) {
+    if (result.isErr() && !result.error.cancelled) {
       const key = mkUuid();
-      if (result.variantGroupRefs) {
+      if (result.error.variantGroupRefs) {
         this.notifyVariantGroupReferenced(
           component,
-          result.variantGroupRefs,
-          "Cannot delete variant"
+          result.error.variantGroupRefs,
+          "Cannot delete variant",
         );
       } else {
         notification.error({
           key,
           message: "Cannot delete variant",
-          description: result.message,
+          description: result.error.message,
         });
       }
       return;
@@ -1325,13 +1348,13 @@ export class SiteOps {
     if (group.type === VariantGroupType.Component) {
       const component = ensure(
         getComponentForVariantGroup(this.site, group),
-        "Expected some component to contain the given variant group"
+        "Expected some component to contain the given variant group",
       );
       if (isPlumeComponent(component)) {
         const groupName = toVarName(group.param.variable.name);
         const plugin = getPlumeEditorPlugin(component);
         const isRequired = plugin?.componentMeta.variantDefs.some(
-          (def) => def.group === groupName && def.required
+          (def) => def.group === groupName && def.required,
         );
         if (isRequired) {
           const key = mkUuid();
@@ -1363,43 +1386,39 @@ export class SiteOps {
         this.studioCtx.ensureGlobalStackFramesHasOnlyValidVariants();
         this.studioCtx.pruneInvalidViewCtxs();
         return ok();
-      }
+      },
     );
   }
 
-  async removeSplitAndGlobalVariant(split: Split, group: VariantGroup) {
+  /**
+   * Deleting the global variant group also removes every split whose content
+   * uses it.
+   */
+  async removeSplitAndGlobalVariant(group: VariantGroup) {
     const result = await deleteVariantGroup(
       group,
       undefined,
       this.site,
       this.studioCtx,
-      this.tplMgr
+      this.tplMgr,
     );
 
-    if (result.result === "error") {
-      if (!result.cancelled) {
+    if (result.isErr()) {
+      if (!result.error.cancelled) {
         const key = mkUuid();
         notification.error({
           key,
           message: "Cannot delete variant group",
-          description: result.message,
+          description: result.error.message,
         });
       }
       return;
     }
-
-    await this.studioCtx.changeObserved(
-      () => [],
-      () => {
-        this.tplMgr.removeSplit(split);
-        return ok();
-      }
-    );
   }
 
   removeStyleOrCodeComponentVariantIfDuplicateOrEmpty(
     component: Component,
-    variant: Variant
+    variant: Variant,
   ) {
     const duplicateVariant = findDuplicateComponentVariant(component, variant);
 
@@ -1412,7 +1431,7 @@ export class SiteOps {
           const existingFrame = getManagedFrameForVariant(
             this.site,
             componentArena,
-            duplicateVariant
+            duplicateVariant,
           );
           this.studioCtx.setStudioFocusOnFrame({ frame: existingFrame });
         }
@@ -1433,7 +1452,7 @@ export class SiteOps {
     const failure = this.tplMgr.updateVariantGroupMulti(group, multi);
     if (failure) {
       const containingComponent = this.tplMgr.findComponentContainingTpl(
-        failure.tpl
+        failure.tpl,
       );
       const key = mkUuid();
       const containingComponentName = containingComponent
@@ -1461,7 +1480,7 @@ export class SiteOps {
                   this.studioCtx.switchRightTab(RightTabKey.settings);
                   await this.studioCtx.setStudioFocusOnTpl(
                     containingComponent,
-                    failure.tpl
+                    failure.tpl,
                   );
                   const focusedViewCtx = this.studioCtx.focusedViewCtx();
                   if (focusedViewCtx) {
@@ -1474,7 +1493,7 @@ export class SiteOps {
                       }
                     });
                   }
-                  notification.close(key);
+                  notification.destroy(key);
                 }}
               >
                 [Go to reference]
@@ -1511,9 +1530,9 @@ export class SiteOps {
       notification.error({
         message: `A page component cannot be instantiated.`,
         description: `${getComponentDisplayName(
-          component
+          component,
         )} is still being used by ${L.uniq(
-          refCompsAndPresets.map((c) => getComponentDisplayName(c))
+          refCompsAndPresets.map((c) => getComponentDisplayName(c)),
         ).join(", ")}.`,
       });
 
@@ -1523,7 +1542,7 @@ export class SiteOps {
       notification.error({
         message: `A page component cannot be instantiated.`,
         description: `${getComponentDisplayName(
-          component
+          component,
         )} is still being used as the default page wrapper.`,
       });
 
@@ -1557,26 +1576,8 @@ export class SiteOps {
           this.studioCtx.switchToComponentArena(component);
         }
         return ok();
-      }
+      },
     );
-  }
-
-  convertNonRenderedToInvisible() {
-    for (const comp of this.studioCtx.site.components) {
-      for (const tpl of flattenTpls(comp.tplTree)) {
-        for (const vs of tpl.vsettings) {
-          const visibility = getVariantSettingVisibility(vs);
-          if (isTplSlot(tpl) && visibility === TplVisibility.DisplayNone) {
-            // Slots should always be "Not Rendered" and not DisplayNone; this was a mistake
-            setTplVisibility(tpl, vs.variants, TplVisibility.NotRendered);
-          }
-          if (!isTplSlot(tpl) && visibility === TplVisibility.NotRendered) {
-            // everything else getting converted to DisplayNone from NotRendered
-            setTplVisibility(tpl, vs.variants, TplVisibility.DisplayNone);
-          }
-        }
-      }
-    }
   }
 
   rebuildDedicatedArenas() {
@@ -1592,7 +1593,7 @@ export class SiteOps {
   createStyleVariant(component: Component, selectors?: string[]) {
     const [variant, isNew] = this.tplMgr.createStyleVariant(
       component,
-      selectors
+      selectors,
     );
     if (isNew) {
       this.onVariantAdded(variant);
@@ -1602,12 +1603,12 @@ export class SiteOps {
   createCodeComponentVariant(
     component: Component,
     codeComponentName: string,
-    codeComponentVariantKeys: string[] = []
+    codeComponentVariantKeys: string[] = [],
   ) {
     const variant = this.tplMgr.createCodeComponentVariant(
       component,
       codeComponentName,
-      codeComponentVariantKeys
+      codeComponentVariantKeys,
     );
     this.onVariantAdded(variant);
   }
@@ -1626,7 +1627,7 @@ export class SiteOps {
     if (isPageArena(arena)) {
       const currentFrame = this.studioCtx.focusedViewCtx()?.arenaFrame();
       const currentRow = arena.matrix.rows.find((r) =>
-        r.cols.some((col) => col.frame === currentFrame)
+        r.cols.some((col) => col.frame === currentFrame),
       );
       if (currentRow) {
         this.studioCtx.setStudioFocusOnFrame({
@@ -1669,19 +1670,11 @@ export class SiteOps {
       (asset) => this.tplMgr.removeImageAsset(asset),
       {
         deleteLabel: "asset",
-      }
+      },
     );
   }
 
-  async tryDeleteTokens(
-    tokens: StyleToken[],
-    opts?: {
-      behaviour?:
-        | "confirm-if-referenced"
-        | "delete-if-referenced"
-        | "error-if-referenced";
-    }
-  ) {
+  async tryDeleteTokens(tokens: StyleToken[], opts?: DeleteResourcesOpts) {
     const resourcesWithUsage = tokens.map((token) => {
       const [usages, summary] = extractTokenUsages(this.site, token);
       return {
@@ -1696,18 +1689,18 @@ export class SiteOps {
       resourcesWithUsage,
       (token) => deleteStyleToken({ site: this.site, token }),
       {
-        behaviour: opts?.behaviour,
+        ...opts,
         deleteLabel: TOKEN_LOWER,
-      }
+      },
     );
   }
 
-  async tryDeleteDataTokens(tokens: DataToken[]) {
+  async tryDeleteDataTokens(tokens: DataToken[], opts?: DeleteResourcesOpts) {
     const resourcesWithUsage = tokens.map((token) => {
       const usageSummary = extractDataTokenUsages(
         this.studioCtx.siteInfo.id,
         this.site,
-        token
+        token,
       );
       const usageCount =
         usageSummary.components.length + usageSummary.frames.length;
@@ -1721,7 +1714,7 @@ export class SiteOps {
       (token) => {
         // Find all expressions that use this data token and flatten them
         for (const { ownerComponent, exprRefs } of cachedExprsInSite(
-          this.site
+          this.site,
         )) {
           for (const exprRef of exprRefs) {
             flattenDataTokenUsage(token, exprRef, projectId, ownerComponent);
@@ -1730,12 +1723,13 @@ export class SiteOps {
         arrayRemove(this.site.dataTokens, token);
       },
       {
+        ...opts,
         deleteLabel: DATA_TOKEN_LOWER,
-      }
+      },
     );
   }
 
-  async tryDeleteMixins(mixins: Mixin[]) {
+  async tryDeleteMixins(mixins: Mixin[], opts?: DeleteResourcesOpts) {
     const resourcesWithUsage = mixins.map((mixin) => {
       const [usages, summary] = extractMixinUsages(this.site, mixin);
       return {
@@ -1754,24 +1748,20 @@ export class SiteOps {
         arrayRemove(this.site.mixins, mixin);
       },
       {
+        ...opts,
         deleteLabel: MIXIN_LOWER,
-      }
+      },
     );
   }
 
   async tryDeleteAnimationSequences(
     animationSequences: AnimationSequence[],
-    opts?: {
-      behaviour?:
-        | "confirm-if-referenced"
-        | "delete-if-referenced"
-        | "error-if-referenced";
-    }
+    opts?: DeleteResourcesOpts,
   ) {
     const resourcesWithUsage = animationSequences.map((animSeq) => {
       const [usages, summary] = extractAnimationSequenceUsages(
         this.site,
-        animSeq
+        animSeq,
       );
       return {
         resource: animSeq,
@@ -1786,14 +1776,14 @@ export class SiteOps {
       (animSeq) => {
         const [usages] = extractAnimationSequenceUsages(this.site, animSeq);
         usages.forEach((usage) =>
-          removeWhere(usage.animations ?? [], (a) => a.sequence === animSeq)
+          removeWhere(usage.animations ?? [], (a) => a.sequence === animSeq),
         );
         arrayRemove(this.site.animationSequences, animSeq);
       },
       {
-        behaviour: opts?.behaviour,
+        ...opts,
         deleteLabel: ANIMATION_SEQUENCES_LOWER,
-      }
+      },
     );
   }
 
@@ -1809,13 +1799,13 @@ export class SiteOps {
       () => {
         this.tplMgr.swapTokens(fromToken, toToken);
         return ok();
-      }
+      },
     );
   }
 
   private getArenaByFrame(frame: ArenaFrame) {
     return getSiteArenas(this.site).find((arena) =>
-      getArenaFrames(arena).includes(frame)
+      getArenaFrames(arena).includes(frame),
     );
   }
 
@@ -1838,11 +1828,11 @@ export async function uploadSvgImage(
   width: number,
   height: number,
   appCtx: AppCtx,
-  name?: string
+  name?: string,
 ) {
   const svg = parseSvgXml(xml);
 
-  const processedSvg = await appCtx.api.processSvg({ svgXml: xml });
+  const processedSvg = await processSvg(xml);
   assert(processedSvg.status === "success", "Invalid processed SVG");
   const sanitized = processedSvg.result.xml;
 
@@ -1856,39 +1846,15 @@ export async function uploadSvgImage(
     asSvgDataUrl(sanitized),
     width,
     height,
-    processedSvg.result.aspectRatio
+    processedSvg.result.aspectRatio,
   );
   const { imageResult, opts } = await maybeUploadImage(
     appCtx,
     img,
     undefined,
-    name
+    name,
   );
   return { imageResult, opts };
-}
-
-export async function addSvgImageAsset(
-  xml: string,
-  useSvgSize: boolean,
-  width: number,
-  height: number,
-  siteOps: SiteOps,
-  appCtx: AppCtx,
-  name?: string
-) {
-  const { imageResult, opts } = await uploadSvgImage(
-    xml,
-    useSvgSize,
-    width,
-    height,
-    appCtx,
-    name
-  );
-  if (!imageResult || !opts) {
-    return {};
-  }
-  const asset = siteOps.createImageAsset(imageResult, opts);
-  return { img: imageResult, asset: asset };
 }
 
 function makeComponentName(site: Site, comp: Component) {

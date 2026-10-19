@@ -12,7 +12,7 @@ export class SlotInfo {
     readonly param: Param,
     // `undefined` for code components as they don't have ValSlots
     readonly valSlot: ValSlot | undefined,
-    readonly valComponent: ValComponent
+    readonly valComponent: ValComponent,
   ) {}
 }
 
@@ -25,14 +25,14 @@ export class ValState {
     private opts: {
       sysRoot: ValComponent | undefined;
       globalRoot: ValComponent | undefined;
-    }
+    },
   ) {}
 
   // Includes given val node.  Goes from top-most to given val.  Limited to user
   // vals.
   valAncestors(
     val: ValNode,
-    { includeVal = true }: { includeVal?: boolean } = {}
+    { includeVal = true }: { includeVal?: boolean } = {},
   ) {
     let vals: ValNode[] = [];
     // eslint-disable-next-line no-constant-condition
@@ -79,9 +79,6 @@ export class ValState {
   }
   isSysVal(val: ValNode) {
     return val === this.maybeValSysRoot();
-  }
-  isUserVal(val: ValNode) {
-    return this.valAncestors(val).includes(this.valUserRoot());
   }
   // valUserRoot is the root that the user is able to see/interact with.
   maybeValUserRoot() {
@@ -169,7 +166,7 @@ export class ValState {
    */
   getValSlotContainingSubstitutedArgVal(
     val: ValNode,
-    valComponent: ValComponent
+    valComponent: ValComponent,
   ) {
     for (const node of this.ancestorsFullStackIncludingSlots(val)) {
       if (node instanceof ValSlot && node.valOwner === valComponent) {

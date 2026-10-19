@@ -8,7 +8,6 @@ import { createNodeIcon } from "@/wab/client/components/sidebar-tabs/tpl-tree";
 import { frameToScalerRect } from "@/wab/client/coords";
 import { hasLayoutBox } from "@/wab/client/dom";
 import { COMPONENT_ICON, PAGE_ICON } from "@/wab/client/icons";
-import { computeNodeOutlineTagLayoutClass } from "@/wab/client/node-outline";
 import { StudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
 import { summarizeFocusObj } from "@/wab/client/utils/tpl-client-utils";
@@ -70,7 +69,6 @@ export interface HoverBoxViewDisplayProps {
   position: string;
   top: number;
   left: number;
-  tagPosClasses: Array<string>;
   tagName: string;
   tagUid?: number;
   tagIcon?: React.ReactNode;
@@ -94,7 +92,7 @@ export interface HoverBoxViewProps {
 
 export function getControlledSpacingObj(
   controlledObj: ArenaFrame | Selectable | undefined,
-  viewCtx: ViewCtx
+  viewCtx: ViewCtx,
 ) {
   if (controlledObj instanceof SlotSelection) {
     return undefined;
@@ -137,7 +135,7 @@ export function computeHoverBoxTargets(studioCtx: StudioCtx): HoverBoxTarget[] {
   const nodes = vc.focusedDomElts();
   assert(
     nodes.length === focusObjs.length,
-    "focusedDomElts and focusedSelectables should have same length."
+    "focusedDomElts and focusedSelectables should have same length.",
   );
 
   return nodes.map((node, i) => ({
@@ -169,14 +167,13 @@ export function computeHoverBoxViewState(vc: ViewCtx, target: HoverBoxTarget) {
         height: getFrameHeight(target),
         top: scalerRect.top,
         left: scalerRect.left,
-        tagPosClasses: [],
         tagUid: target.uid,
         tagName: studioCtx.tplMgr().describeArenaFrame(target),
         tagIcon: isFrameComponent(component)
           ? undefined
           : isPageComponent(component)
-          ? PAGE_ICON
-          : COMPONENT_ICON,
+            ? PAGE_ICON
+            : COMPONENT_ICON,
         ...computeSpacingViewState(target, vc),
       },
     };
@@ -209,10 +206,6 @@ export function computeHoverBoxViewState(vc: ViewCtx, target: HoverBoxTarget) {
     displayProps: {
       position: "absolute",
       ...boxInScaler.posRect(),
-      tagPosClasses: computeNodeOutlineTagLayoutClass(
-        vc.canvasCtx.$doc(),
-        boxInFrame.posRect()
-      ),
       isRepeated: !!effectiveVariantSetting?.dataRep,
       tagName: summarizeFocusObj(focusObj, vc, effectiveVariantSetting),
       tagIcon: createNodeIcon(tplOrSlot, effectiveVariantSetting),
@@ -225,7 +218,7 @@ export function computeHoverBoxViewState(vc: ViewCtx, target: HoverBoxTarget) {
 
 function computeSpacingViewState(
   controlledObj: ArenaFrame | Selectable,
-  viewCtx: ViewCtx
+  viewCtx: ViewCtx,
 ): Pick<
   HoverBoxViewDisplayProps,
   | "padding"
@@ -305,11 +298,11 @@ function computeSpacingViewState(
       viewCtx,
       spacingObj,
       effectiveVs,
-      parentExpr
+      parentExpr,
     ),
     containerChildAlignment: computeContainerChildAlignment(
       effectiveExpr,
-      parentExpr
+      parentExpr,
     ),
     isSlot: controlledObj instanceof ValSlot,
     ...computeSpacingInfo(viewCtx, spacingObj, effectiveExpr),
@@ -319,7 +312,7 @@ function computeSpacingViewState(
 function computeSpacingInfo(
   viewCtx: ViewCtx,
   valNode: ValNode,
-  effectiveExpr: ReadonlyIRuleSetHelpersX | undefined
+  effectiveExpr: ReadonlyIRuleSetHelpersX | undefined,
 ): Pick<
   HoverBoxViewDisplayProps,
   "padding" | "paddingPx" | "margin" | "marginPx"
@@ -397,7 +390,7 @@ function maybeEffectiveExpr(vtm: VariantTplMgr, tpl: TplNode | undefined) {
 
 function computeContainerChildAlignment(
   effectiveExpr: ReadonlyIRuleSetHelpersX | undefined,
-  parentExpr: ReadonlyIRuleSetHelpersX | undefined
+  parentExpr: ReadonlyIRuleSetHelpersX | undefined,
 ): Record<Orient, ContainerChildAlignment | undefined> {
   const unknown = () => ({
     vert: undefined,
@@ -416,8 +409,8 @@ function computeContainerChildAlignment(
     return val === "flex-start"
       ? "start"
       : val === "flex-end"
-      ? "end"
-      : undefined;
+        ? "end"
+        : undefined;
   };
 
   const parentContainerType = getRshContainerType(parentExpr);
@@ -454,7 +447,7 @@ function computeAllowedEdgeControls(
   viewCtx: ViewCtx,
   spacingObj: ValNode,
   effectiveVs: EffectiveVariantSetting | undefined,
-  parentExpr: ReadonlyIRuleSetHelpersX | undefined
+  parentExpr: ReadonlyIRuleSetHelpersX | undefined,
 ): Record<Side, SpaceEdgeType[]> {
   const tpl = spacingObj.tpl;
 
@@ -476,7 +469,7 @@ function computeAllowedEdgeControls(
         viewCtx.site,
         viewCtx.currentComponent(),
         effectiveVs?.getPropSource(prop),
-        viewCtx.variantTplMgr().getTargetIndicatorComboForNode(tpl)
+        viewCtx.variantTplMgr().getTargetIndicatorComboForNode(tpl),
       );
     } else {
       return { source: "none" };

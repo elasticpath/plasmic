@@ -468,7 +468,11 @@
         }
       },
       "deps": [],
+<<<<<<< HEAD
       "version": "259-repoint-ep-commerce-bindings"
+=======
+      "version": "258-add-page-href-encode"
+>>>>>>> upstream/master
     }
   ],
   [
@@ -2221,7 +2225,11 @@
         }
       },
       "deps": ["1f6fbbaf-82a8-43b5-abd3-ead1dee4ab4c"],
+<<<<<<< HEAD
       "version": "259-repoint-ep-commerce-bindings"
+=======
+      "version": "258-add-page-href-encode"
+>>>>>>> upstream/master
     }
   ]
 ]

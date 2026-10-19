@@ -1,5 +1,8 @@
 import { useChartData } from "@/wab/client/components/analytics/useChartData";
-import moment, { Moment } from "moment";
+import dayjs, { Dayjs } from "dayjs";
+import utc from "dayjs/plugin/utc";
+
+dayjs.extend(utc);
 
 export enum TeamAnalyticsFilterParams {
   WorkspaceId = "workspaceId",
@@ -38,7 +41,7 @@ export const ANALYTICS_EVENTS = [
   // },
 ];
 
-export type TimeRange = [Moment | null, Moment | null];
+export type TimeRange = [Dayjs | null, Dayjs | null];
 
 export function getAnalyticsQueryTypeFromEvent(event: string) {
   if (event === "conversion_rate") {
@@ -56,38 +59,10 @@ export function getEventLabel(event: string) {
   return ANALYTICS_EVENTS.find((e) => e.value === event)!.label;
 }
 
-export function getXAxisLabel(timeRange: TimeRange) {
-  return `From ${moment.utc(timeRange[0]).format("MM-DD")} to ${moment
-    .utc(timeRange[1])
-    .format("MM-DD")}`;
-}
-
-export function getYAxisLabel(event: string, period: string) {
-  const suffix = period === "day" ? "per day" : "per month";
-  switch (event) {
-    case "conversion_rate": {
-      return `Conversion rate ${suffix}`;
-    }
-    case "conversions": {
-      return `Conversions ${suffix}`;
-    }
-    case "conversion_amount": {
-      return `Conversion amount ${suffix}`;
-    }
-    case "impressions": {
-      return `Impressions ${suffix}`;
-    }
-    case "unique_impressions": {
-      return `Unique impressions ${suffix}`;
-    }
-  }
-  throw new Error("Unexpected event in getYAxisLabel");
-}
-
 export function getFormattedRange(
-  from: Moment,
-  to: Moment,
-  period: "day" | "month"
+  from: Dayjs,
+  to: Dayjs,
+  period: "day" | "month",
 ) {
   // format data to include all hours/days in the range
   const FORMAT = {
@@ -95,8 +70,8 @@ export function getFormattedRange(
     month: "YYYY-MM-DD",
   };
   return {
-    from: moment(from).startOf(period).format(FORMAT[period]),
-    to: moment(to).endOf(period).format(FORMAT[period]),
+    from: dayjs(from).startOf(period).format(FORMAT[period]),
+    to: dayjs(to).endOf(period).format(FORMAT[period]),
   };
 }
 

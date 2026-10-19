@@ -83,12 +83,12 @@ function AuthConfig_(props: AuthConfigProps, ref: HTMLElementRefOf<"div">) {
                 onClick={async () => {
                   const roleUsage = await hostFrameApi.getUsedRolesInProject();
                   const usedInComponents = uniq(
-                    roleUsage.map((r) => r.component)
+                    roleUsage.map((r) => r.component),
                   );
                   if (usedInComponents.length > 0) {
                     notification.error({
                       message: `Unable to disable. App auth roles are currently being used in the following components: ${usedInComponents.join(
-                        ", "
+                        ", ",
                       )}`,
                     });
                     return;
@@ -107,7 +107,7 @@ function AuthConfig_(props: AuthConfigProps, ref: HTMLElementRefOf<"div">) {
                     await mutateHostAppAuthData();
                     await hostFrameApi.refreshSiteInfo();
 
-                    notification.warn({
+                    notification.warning({
                       message: `App auth has been disabled. You can re-enable it at any time.`,
                     });
 
