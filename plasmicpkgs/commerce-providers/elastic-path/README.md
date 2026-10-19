@@ -386,6 +386,8 @@ never run one on a shared host or against a production store.
 | POST | `/api/ep/ep/account/roster` | Read the accounts the member belongs to |
 | POST | `/api/ep/ep/account/select` | Select or deselect the account being bought for |
 | POST | `/api/ep/ep/account/roll` | Re-mint the account credential before it runs out |
+| POST | `/api/ep/ep/account/member` | Read the signed-in account member |
+| POST | `/api/ep/ep/account/member/update` | Update the signed-in member's name and/or email |
 | POST | `/api/ep/ep/account/logout` | Sign the account member out |
 | GET | `/api/ep/get-session` | Read the session, minus EP credentials |
 
@@ -554,6 +556,21 @@ member of no organisation and a lapsed selection, returns `{ id }` and does
 not call Elastic Path. An Elastic Path rejection is
 `account_member_read_failed` with Elastic Path's status and
 `errors[0].detail` as the message. The shopper session is left as it was.
+
+`POST /ep/account/member/update` takes `{ name?, email? }`, with at least one
+of them. Each supplied value is trimmed and must be a non-empty string, and
+`email` must be an email address. The server writes
+`PUT /v2/authentication-realms/{realmId}/user-authentication-info/{session.epMemberId}`
+and returns `{ id }`. It does not read the account member again; the next
+account reload does. `realmId` comes from the store's account-authentication
+settings. The bearer token is the implicit shopper token. The
+account-management header is the selected account's credential, or the anchor
+when none is selected. A lapsed selection is `account_lapsed`. A member with
+no usable account-management credential, including a member of no
+organisation, is `no_account_credential`. Neither calls Elastic Path. An
+Elastic Path rejection is `account_member_update_failed` with Elastic Path's
+status and `errors[0].detail` as the message. Changing `email` does not
+change the login username.
 
 `POST /ep/account/roster` reads the same list later in the session. With no
 body it reads every page on the server and answers the whole list. With
@@ -864,6 +881,8 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 - **EPAccountFormField** — Username or password input for the Login Form Provider (`name`: `username` or `password`; `inputType`: `text`, `email`, or `password`). Registers with that form and renders its own required-field error. Does not publish the value
 - **EPAccountRegistrationFormProvider** — Registration form boundary inside the Account Provider. Owns name, email, username, password, and confirm-password internally and publishes only `$ctx.accountRegistrationFormData` (`status`, `error`, `isSubmitting`). A normal Studio button calls this Provider's `submit()` ref action. `submit()` no-ops in the Plasmic canvas; registration runs at runtime and in interactive preview, then the Account Provider reloads. Optional `redirectUrl` uses the same same-site rules as login (`/account`, `/account?welcome=1`, `/account#orders`). A valid `?redirect=` on the page overrides it; an invalid one falls back to `redirectUrl`. If the reload fails, the shopper stays on the page, including when a later retry succeeds. With neither value set, registration does not navigate
 - **EPAccountRegistrationField** — Name, email, username, password, or confirm-password input for the Registration Form Provider. Registers with that form and renders its own validation error. Does not publish the value. Name, email, and password are required. Username is required only when that field is present, and then it is sent separately from email. Confirm password is checked only when that field is present, and it is never sent
+- **EPAccountProfileFormProvider** — Profile form boundary inside the Account Provider. Edits the signed-in member's name and email and publishes only `$ctx.accountProfileFormData` (`status`, `error`, `isSubmitting`). A normal Studio button calls this Provider's `submit()` ref action. `submit()` no-ops in the Plasmic canvas. At runtime it sends only the fields the shopper changed, then the Account Provider reloads. Nothing is sent when no field changed. If the write succeeds and the reload fails, the shopper stays signed in and the form reports that the account could not be refreshed
+- **EPAccountProfileField** — Name or email input for the Profile Form Provider. Shows the value from `$ctx.account.accountMember` until the shopper edits it, and keeps that edit if the account reloads. Does not publish the value
 - **EPAccountGate** — Renders children when `$ctx.account` matches a condition (`authenticated`, `anonymous`, `selected`, `lapsed`). Consumes the Provider boundary; does not fetch
 - **EPAccountField** — Displays one `$ctx.account` value (member id, member name, member email, or a selected or lapsed organisation name or id). Name and email are empty when the shopper is anonymous, the account is loading, or the profile is absent. Consumes the Provider boundary
 

@@ -9,6 +9,8 @@
  * The response is the account roster and the token list at once. Callers keep
  * the tokens on the server and hand the browser only `{ id, name }`.
  */
+import { putV2AuthenticationRealmsRealmIdUserAuthenticationInfoUserAuthInfoId } from "@epcc-sdk/sdks-shopper";
+import { buildFixedTokenEpClient } from "../../ep-server-functions/fixed-token-ep-client";
 import {
   EP_ACCOUNT_TOKEN_HEADER,
   accountTokenHeaders,
@@ -87,15 +89,31 @@ export function resolveAccountPageOffset(offset: unknown): number {
 }
 
 /**
- * Finds the password profile the token call requires.
- *
- * A realm may carry several profiles and a member's password belongs to
- * exactly one of them; the wrong one answers `400 authentication failed`,
- * which says nothing about the profile. Nothing in the profile record marks a
- * default, so an ambiguous realm is reported rather than guessed at — a guess
- * would send the member's password to a profile they do not belong to.
+ * A failure while reading the authentication realm. `status` is Elastic Path's
+ * when the settings request returned one. A body that names no realm, or a
+ * transport failure, is reported by the caller as 502.
  */
-export async function discoverPasswordProfileId(input: {
+export class AccountAuthenticationSettingsError extends Error {
+  readonly status: number;
+  /** `rejected` is an Elastic Path HTTP response. `unreadable` is a local failure. */
+  readonly reason: "rejected" | "unreadable";
+
+  constructor(
+    status: number,
+    message: string,
+    reason: "rejected" | "unreadable"
+  ) {
+    super(message);
+    this.name = "AccountAuthenticationSettingsError";
+    this.status = status;
+    this.reason = reason;
+  }
+}
+
+const NO_AUTHENTICATION_REALM =
+  "Elastic Path's account-authentication settings name no authentication realm.";
+
+export async function readAuthenticationRealmId(input: {
   host: string;
   implicitToken: string;
 }): Promise<string> {
@@ -104,10 +122,10 @@ export async function discoverPasswordProfileId(input: {
     { headers: { Authorization: `Bearer ${input.implicitToken}` } }
   );
   if (!settings.ok) {
-    throw new EpAccountTokenError(
-      "password_profile_unresolved",
-      502,
-      `Elastic Path rejected the account-authentication settings read: ${await readError(settings)}`
+    throw new AccountAuthenticationSettingsError(
+      settings.status,
+      await readError(settings),
+      "rejected"
     );
   }
   const settingsBody = (await settings.json()) as {
@@ -117,11 +135,37 @@ export async function discoverPasswordProfileId(input: {
   };
   const realm = settingsBody.data?.relationships?.authentication_realm?.data?.id;
   if (!realm) {
-    throw new EpAccountTokenError(
-      "password_profile_unresolved",
+    throw new AccountAuthenticationSettingsError(
       502,
-      "Elastic Path's account-authentication settings name no authentication realm."
+      NO_AUTHENTICATION_REALM,
+      "unreadable"
     );
+  }
+  return realm;
+}
+
+function passwordProfileSettingsError(
+  err: AccountAuthenticationSettingsError
+): EpAccountTokenError {
+  const message =
+    err.reason === "rejected"
+      ? `Elastic Path rejected the account-authentication settings read: ${err.message}`
+      : err.message;
+  return new EpAccountTokenError("password_profile_unresolved", 502, message);
+}
+
+export async function discoverPasswordProfileId(input: {
+  host: string;
+  implicitToken: string;
+}): Promise<string> {
+  let realm: string;
+  try {
+    realm = await readAuthenticationRealmId(input);
+  } catch (err) {
+    if (err instanceof AccountAuthenticationSettingsError) {
+      throw passwordProfileSettingsError(err);
+    }
+    throw err;
   }
 
   const profiles = await fetch(
@@ -433,6 +477,76 @@ export async function readAccountMember(input: {
   if (typeof data?.name === "string") profile.name = data.name;
   if (typeof data?.email === "string") profile.email = data.email;
   return profile;
+}
+
+export class AccountMemberUpdateError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "AccountMemberUpdateError";
+    this.status = status;
+  }
+}
+
+function updateErrorDetail(error: unknown, status: number): string {
+  const body = error as {
+    errors?: { detail?: string; title?: string }[];
+  } | null;
+  const first = body?.errors?.[0];
+  return first?.detail ?? first?.title ?? `HTTP ${status}`;
+}
+
+export async function updateUserAuthenticationInfo(input: {
+  host: string;
+  clientId: string;
+  implicitToken: string;
+  accountToken: string;
+  realmId: string;
+  memberId: string;
+  profile: { name?: string; email?: string };
+}): Promise<void> {
+  const client = buildFixedTokenEpClient({
+    host: input.host,
+    clientId: input.clientId,
+    token: input.implicitToken,
+  });
+  const data: {
+    type: "user_authentication_info";
+    name?: string;
+    email?: string;
+  } = { type: "user_authentication_info" };
+  if (input.profile.name !== undefined) data.name = input.profile.name;
+  if (input.profile.email !== undefined) data.email = input.profile.email;
+
+  let result: Awaited<
+    ReturnType<
+      typeof putV2AuthenticationRealmsRealmIdUserAuthenticationInfoUserAuthInfoId
+    >
+  >;
+  try {
+    result =
+      await putV2AuthenticationRealmsRealmIdUserAuthenticationInfoUserAuthInfoId(
+        {
+          client,
+          path: { realmId: input.realmId, userAuthInfoId: input.memberId },
+          body: { data },
+          headers: { [EP_ACCOUNT_TOKEN_HEADER]: input.accountToken },
+        }
+      );
+  } catch {
+    throw new AccountMemberUpdateError(502, "Elastic Path was unreachable.");
+  }
+
+  if (!result.response) {
+    throw new AccountMemberUpdateError(502, "Elastic Path was unreachable.");
+  }
+  if (!result.response.ok) {
+    throw new AccountMemberUpdateError(
+      result.response.status,
+      updateErrorDetail(result.error, result.response.status)
+    );
+  }
 }
 
 /** The roster as the browser may see it — ids and names, never tokens. */

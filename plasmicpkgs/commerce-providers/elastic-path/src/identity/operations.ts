@@ -45,6 +45,11 @@ export interface EpAccountMemberResult {
   email?: string;
 }
 
+/** A profile edit. At least one field is required; omitted fields stay unchanged. */
+export type EpAccountMemberUpdateRequest =
+  | { name: string; email?: string }
+  | { email: string; name?: string };
+
 /**
  * The identity operations. `void` marks one that takes no input; a union with
  * `void` marks one whose input is optional.
@@ -70,6 +75,10 @@ export interface EpIdentityOperations {
   rollAccount: { request: void; response: EpSessionEnvelope };
   logout: { request: void; response: EpSessionEnvelope };
   member: { request: void; response: EpAccountMemberResult };
+  updateMember: {
+    request: EpAccountMemberUpdateRequest;
+    response: EpAccountMemberResult;
+  };
 }
 
 export type EpIdentityOperationName = keyof EpIdentityOperations;
@@ -97,6 +106,7 @@ export const EP_IDENTITY_ROUTES: {
   rollAccount: { path: "/ep/account/roll", method: "POST" },
   logout: { path: "/ep/account/logout", method: "POST" },
   member: { path: "/ep/account/member", method: "POST" },
+  updateMember: { path: "/ep/account/member/update", method: "POST" },
 };
 
 export const EP_IDENTITY_OPERATION_NAMES = Object.keys(

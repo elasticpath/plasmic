@@ -34,9 +34,20 @@ let store: {
   ttlSeconds: number;
 };
 let memberCalls: { url: string; authorization: string | null; accountToken: string | null }[];
+let updateCalls: {
+  url: string;
+  method: string;
+  authorization: string | null;
+  accountToken: string | null;
+  body: unknown;
+}[];
 let fetchUrls: string[];
 let memberResponse: { status: number; body: unknown } | null;
 let memberThrow: Error | null;
+let updateResponse: { status: number; body: unknown } | null;
+let updateThrow: Error | null;
+let settingsResponse: { status: number; body: unknown } | null;
+let settingsThrow: Error | null;
 const SESSION_IMPLICIT = "session-implicit-token-not-minted";
 let consoleError: ReturnType<typeof vi.spyOn>;
 let consoleLog: ReturnType<typeof vi.spyOn>;
@@ -61,11 +72,39 @@ function headerValue(headers: HeadersInit | undefined, name: string): string | n
   return record[name] ?? record[name.toLowerCase()] ?? null;
 }
 
+function jsonBody(text: string): unknown {
+  if (!text) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+async function requestParts(url: any, init: any = {}) {
+  if (typeof Request !== "undefined" && url instanceof Request) {
+    return {
+      u: url.url,
+      method: url.method,
+      headers: url.headers,
+      body: jsonBody(await url.clone().text()),
+    };
+  }
+  return {
+    u: String(url),
+    method: init.method ?? "GET",
+    headers: init.headers,
+    body: jsonBody(typeof init.body === "string" ? init.body : ""),
+  };
+}
+
 function installFetch() {
   memberCalls = [];
+  updateCalls = [];
   fetchUrls = [];
   globalThis.fetch = vi.fn(async (url: any, init: any = {}) => {
-    const u = String(url);
+    const request = await requestParts(url, init);
+    const u = request.u;
     fetchUrls.push(u);
     const json = (body: unknown, status = 200) =>
       new Response(JSON.stringify(body), {
@@ -82,9 +121,35 @@ function installFetch() {
       });
     }
     if (u === `${EP_HOST}/v2/settings/account-authentication`) {
+      if (settingsThrow) throw settingsThrow;
+      if (settingsResponse) {
+        return json(settingsResponse.body, settingsResponse.status);
+      }
       return json({
         data: {
           relationships: { authentication_realm: { data: { id: "realm-1" } } },
+        },
+      });
+    }
+    if (
+      u.startsWith(`${EP_HOST}/v2/authentication-realms/`) &&
+      u.includes("/user-authentication-info/")
+    ) {
+      updateCalls.push({
+        url: u,
+        method: request.method,
+        authorization: headerValue(request.headers, "Authorization"),
+        accountToken: headerValue(request.headers, EP_ACCOUNT_TOKEN_HEADER),
+        body: request.body,
+      });
+      if (updateThrow) throw updateThrow;
+      if (updateResponse) return json(updateResponse.body, updateResponse.status);
+      return json({
+        data: {
+          type: "user_authentication_info",
+          id: MEMBER_ID,
+          name: "from-elastic-path",
+          email: "from-elastic-path@example.com",
         },
       });
     }
@@ -116,8 +181,8 @@ function installFetch() {
     if (u.startsWith(`${EP_HOST}/v2/account-members/`)) {
       memberCalls.push({
         url: u,
-        authorization: headerValue(init.headers, "Authorization"),
-        accountToken: headerValue(init.headers, EP_ACCOUNT_TOKEN_HEADER),
+        authorization: headerValue(request.headers, "Authorization"),
+        accountToken: headerValue(request.headers, EP_ACCOUNT_TOKEN_HEADER),
       });
       if (memberThrow) throw memberThrow;
       if (memberResponse) return json(memberResponse.body, memberResponse.status);
@@ -142,6 +207,10 @@ beforeEach(() => {
   tokenGeneration = 0;
   memberResponse = null;
   memberThrow = null;
+  updateResponse = null;
+  updateThrow = null;
+  settingsResponse = null;
+  settingsThrow = null;
   store = { accounts: [...ACCOUNTS], ttlSeconds: 86400 };
   installFetch();
   consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -235,6 +304,21 @@ async function replaceCachedSession(
     { session: (cache as any).session, user: (cache as any).user }
   );
   return jar.join("; ");
+}
+
+async function updateMember(auth: any, cookies: string, body: unknown = {}) {
+  const res = await auth.api.epAccountMemberUpdate({
+    body,
+    headers: new Headers({ cookie: cookies }),
+    asResponse: true,
+  });
+  return { res, cookies: mergeCookies(cookies, res), body: await res.json() };
+}
+
+async function signedIn(auth: any) {
+  let cookies = await anonymous(auth);
+  ({ cookies } = await signIn(auth, cookies));
+  return cookies;
 }
 
 async function readMember(auth: any, cookies: string, body: unknown = {}) {
@@ -677,5 +761,346 @@ describe("reading the signed-in account member", () => {
       name: "Ada Lovelace",
       email: "ada@example.com",
     });
+  });
+});
+
+describe("updating the signed-in account member", () => {
+  const UPDATE_URL = `${EP_HOST}/v2/authentication-realms/realm-1/user-authentication-info/${MEMBER_ID}`;
+
+  function epData(body: unknown) {
+    return (body as { data?: Record<string, unknown> }).data;
+  }
+
+  it("writes only the supplied name and returns the session member id", async () => {
+    const auth = buildAuth();
+    store.accounts = [ACCOUNTS[0]];
+    const cookies = await signedIn(auth);
+    fetchUrls = [];
+    memberCalls = [];
+    updateCalls = [];
+
+    const { res, body } = await updateMember(auth, cookies, { name: "New Name" });
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ id: MEMBER_ID });
+    expect(updateCalls).toEqual([
+      {
+        url: UPDATE_URL,
+        method: "PUT",
+        authorization: "Bearer anon-token",
+        accountToken: accountTokenFor("acct-north"),
+        body: {
+          data: { type: "user_authentication_info", name: "New Name" },
+        },
+      },
+    ]);
+    expect(epData(updateCalls[0].body)).not.toHaveProperty("email");
+    expect(memberCalls).toEqual([]);
+    expect(fetchUrls.some((url) => url.includes("/v2/account-members/"))).toBe(false);
+    expect(fetchUrls).not.toContain(`${EP_HOST}/oauth/access_token`);
+    expect(loggedText()).not.toContain("anon-token");
+    expect(loggedText()).not.toContain(accountTokenFor("acct-north"));
+  });
+
+  it("writes only the supplied email", async () => {
+    const auth = buildAuth();
+    store.accounts = [ACCOUNTS[0]];
+    const cookies = await signedIn(auth);
+    updateCalls = [];
+
+    const { body } = await updateMember(auth, cookies, {
+      email: "  new@example.com  ",
+    });
+    expect(body).toEqual({ id: MEMBER_ID });
+    expect(epData(updateCalls[0].body)).toEqual({
+      type: "user_authentication_info",
+      email: "new@example.com",
+    });
+  });
+
+  it("writes name and email when both are supplied", async () => {
+    const auth = buildAuth();
+    store.accounts = [ACCOUNTS[0]];
+    const cookies = await signedIn(auth);
+    updateCalls = [];
+
+    await updateMember(auth, cookies, {
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+    });
+    expect(epData(updateCalls[0].body)).toEqual({
+      type: "user_authentication_info",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+    });
+  });
+
+  it("uses the anchor credential when no account is selected", async () => {
+    const auth = buildAuth();
+    const cookies = await signedIn(auth);
+    updateCalls = [];
+
+    await updateMember(auth, cookies, { name: "Ada Lovelace" });
+    expect(updateCalls[0].accountToken).toBe(accountTokenFor("acct-north"));
+    expect(updateCalls[0].accountToken).not.toBe(accountTokenFor("acct-south"));
+    expect(updateCalls[0].authorization).toBe("Bearer anon-token");
+  });
+
+  it("uses the selected account credential", async () => {
+    const auth = buildAuth();
+    let cookies = await signedIn(auth);
+    const selected = await auth.api.epAccountSelect({
+      body: { accountId: "acct-south" },
+      headers: new Headers({ cookie: cookies }),
+      asResponse: true,
+    });
+    cookies = mergeCookies(cookies, selected);
+    updateCalls = [];
+
+    await updateMember(auth, cookies, { name: "Ada Lovelace" });
+    expect(updateCalls[0].accountToken).toBe(accountTokenFor("acct-south"));
+    expect(updateCalls[0].authorization).toBe("Bearer anon-token");
+  });
+
+  it("keeps the session implicit token as the bearer and does not mint a client credential", async () => {
+    const auth = buildAuth();
+    store.accounts = [ACCOUNTS[0]];
+    let cookies = await signedIn(auth);
+    cookies = await replaceCachedSession(auth, cookies, (session) => {
+      session.epAccessToken = SESSION_IMPLICIT;
+    });
+    fetchUrls = [];
+    updateCalls = [];
+
+    await updateMember(auth, cookies, { name: "Ada Lovelace" });
+    expect(updateCalls[0].authorization).toBe(`Bearer ${SESSION_IMPLICIT}`);
+    expect(updateCalls[0].accountToken).toBe(accountTokenFor("acct-north"));
+    expect(fetchUrls.filter((url) => url.includes("/oauth/"))).toEqual([]);
+    expect(fetchUrls).toContain(`${EP_HOST}/v2/settings/account-authentication`);
+    expect(fetchUrls).toContain(UPDATE_URL);
+  });
+
+  it("does not call Elastic Path when the member has no organisation", async () => {
+    const auth = buildAuth();
+    store.accounts = [];
+    const cookies = await signedIn(auth);
+    fetchUrls = [];
+    updateCalls = [];
+
+    const { res, body } = await updateMember(auth, cookies, { name: "Ada" });
+    expect(res.status).toBe(401);
+    expect(body.code).toBe("no_account_credential");
+    expect(updateCalls).toEqual([]);
+    expect(fetchUrls).toEqual([]);
+    expect(JSON.stringify(body)).not.toContain(USERNAME);
+  });
+
+  it("does not call Elastic Path for a lapsed selected credential", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const auth = buildAuth();
+    store.accounts = [ACCOUNTS[0]];
+    store.ttlSeconds = 1;
+    const cookies = await signedIn(auth);
+    vi.setSystemTime(Date.now() + 5_000);
+    fetchUrls = [];
+    updateCalls = [];
+
+    const { res, body } = await updateMember(auth, cookies, { name: "Ada" });
+    expect(res.status).toBe(401);
+    expect(body.code).toBe("account_lapsed");
+    expect(updateCalls).toEqual([]);
+    expect(fetchUrls).toEqual([]);
+  });
+
+  it("does not call Elastic Path for an expired anchor", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const auth = buildAuth();
+    store.ttlSeconds = 1;
+    const cookies = await signedIn(auth);
+    vi.setSystemTime(Date.now() + 5_000);
+    fetchUrls = [];
+
+    const { res, body } = await updateMember(auth, cookies, { name: "Ada" });
+    expect(res.status).toBe(401);
+    expect(body.code).toBe("no_account_credential");
+    expect(updateCalls).toEqual([]);
+    expect(fetchUrls).toEqual([]);
+  });
+
+  it("refuses when there is no session, before the body is validated", async () => {
+    const auth = buildAuth();
+    const { res, body } = await updateMember(auth, "", { memberId: "someone" });
+    expect(res.status).toBe(401);
+    expect(body.code).toBe("no_session");
+    expect(updateCalls).toEqual([]);
+  });
+
+  it("refuses an anonymous session after a valid body", async () => {
+    const auth = buildAuth();
+    const cookies = await anonymous(auth);
+    const { res, body } = await updateMember(auth, cookies, { name: "Ada" });
+    expect(res.status).toBe(401);
+    expect(body.code).toBe("no_account_member");
+    expect(updateCalls).toEqual([]);
+  });
+
+  it.each([
+    [null],
+    [[]],
+    ["Ada"],
+    [{ memberId: "someone-else" }],
+    [{ userAuthInfoId: MEMBER_ID }],
+    [{ realmId: "realm-1" }],
+    [{ accountId: "acct-south" }],
+    [{ token: "browser-token" }],
+    [{ type: "user_authentication_info" }],
+    [{ given_name: "Ada" }],
+    [{ name: "Ada", email: "ada@example.com", family_name: "Lovelace" }],
+    [{}],
+    [{ name: "" }],
+    [{ name: "   " }],
+    [{ email: "" }],
+    [{ email: "not-an-email" }],
+    [{ name: 1 }],
+    [{ email: ["ada@example.com"] }],
+  ])("rejects %j and does not call Elastic Path", async (payload) => {
+    const auth = buildAuth();
+    store.accounts = [ACCOUNTS[0]];
+    const cookies = await signedIn(auth);
+    fetchUrls = [];
+    updateCalls = [];
+
+    const { res, body } = await updateMember(auth, cookies, payload);
+    expect(res.status).toBe(400);
+    expect(body.code).toBe("invalid_input");
+    expect(updateCalls).toEqual([]);
+    expect(fetchUrls).toEqual([]);
+  });
+
+  it("does not write when account-authentication settings cannot be read", async () => {
+    const auth = buildAuth();
+    store.accounts = [ACCOUNTS[0]];
+    const cookies = await signedIn(auth);
+    settingsResponse = {
+      status: 403,
+      body: { errors: [{ detail: "settings forbidden", title: "ignored" }] },
+    };
+    updateCalls = [];
+
+    const { res, body } = await updateMember(auth, cookies, { name: "Ada" });
+    expect(res.status).toBe(403);
+    expect(body).toMatchObject({
+      code: "account_member_update_failed",
+      message: "settings forbidden",
+    });
+    expect(body.code).not.toBe("password_profile_unresolved");
+    expect(updateCalls).toEqual([]);
+  });
+
+  it("reports a settings body with no authentication realm as 502 and does not write", async () => {
+    const auth = buildAuth();
+    store.accounts = [ACCOUNTS[0]];
+    const cookies = await signedIn(auth);
+    settingsResponse = { status: 200, body: { data: {} } };
+    updateCalls = [];
+
+    const { res, body } = await updateMember(auth, cookies, { name: "Ada" });
+    expect(res.status).toBe(502);
+    expect(body).toEqual({
+      error: "account_member_update_failed",
+      code: "account_member_update_failed",
+      message:
+        "Elastic Path's account-authentication settings name no authentication realm.",
+    });
+    expect(updateCalls).toEqual([]);
+  });
+
+  it("reports an unreachable settings read as 502 and does not write", async () => {
+    const auth = buildAuth();
+    store.accounts = [ACCOUNTS[0]];
+    const cookies = await signedIn(auth);
+    settingsThrow = new Error("socket down bearer anon-token");
+    updateCalls = [];
+    consoleError.mockClear();
+
+    const { res, body } = await updateMember(auth, cookies, { name: "Ada" });
+    expect(res.status).toBe(502);
+    expect(body).toEqual({
+      error: "account_member_update_failed",
+      code: "account_member_update_failed",
+      message: "Elastic Path was unreachable.",
+    });
+    expect(JSON.stringify(body)).not.toContain("anon-token");
+    expect(updateCalls).toEqual([]);
+  });
+
+  it("takes the realm from account-authentication settings", async () => {
+    const auth = buildAuth();
+    store.accounts = [ACCOUNTS[0]];
+    const cookies = await signedIn(auth);
+    settingsResponse = {
+      status: 200,
+      body: {
+        data: {
+          relationships: {
+            authentication_realm: { data: { id: "realm-from-settings" } },
+          },
+        },
+      },
+    };
+    updateCalls = [];
+
+    await updateMember(auth, cookies, { name: "Ada" });
+    expect(updateCalls[0].url).toBe(
+      `${EP_HOST}/v2/authentication-realms/realm-from-settings/user-authentication-info/${MEMBER_ID}`
+    );
+  });
+
+  it.each([
+    [400, "Bad profile request"],
+    [403, "Your current grant type does not have the required permissions to fulfill this request"],
+    [422, "Email is already in use"],
+    [500, "Member store failed"],
+    [503, "Member store unavailable"],
+  ])("preserves Elastic Path %s", async (status, detail) => {
+    const auth = buildAuth();
+    store.accounts = [ACCOUNTS[0]];
+    const cookies = await signedIn(auth);
+    updateResponse = {
+      status,
+      body: { errors: [{ detail, title: "ignored title" }] },
+    };
+
+    const update = await updateMember(auth, cookies, { name: "Ada" });
+    expect(update.res.status).toBe(status);
+    expect(update.body).toMatchObject({
+      code: "account_member_update_failed",
+      message: detail,
+    });
+    expect(memberCalls).toEqual([]);
+  });
+
+  it("reports a transport failure as 502 without the thrown error", async () => {
+    const auth = buildAuth();
+    store.accounts = [ACCOUNTS[0]];
+    const cookies = await signedIn(auth);
+    const thrown = new Error(
+      `socket down bearer anon-token account ${accountTokenFor("acct-north")}`
+    );
+    updateThrow = thrown;
+    consoleError.mockClear();
+    consoleLog.mockClear();
+    consoleWarn.mockClear();
+
+    const { res, body } = await updateMember(auth, cookies, { name: "Ada" });
+    expect(res.status).toBe(502);
+    expect(body).toEqual({
+      error: "account_member_update_failed",
+      code: "account_member_update_failed",
+      message: "Elastic Path was unreachable.",
+    });
+    expect(JSON.stringify(body)).not.toContain(thrown.message);
+    expect(loggedText()).not.toContain("anon-token");
+    expect(loggedText()).not.toContain(accountTokenFor("acct-north"));
+    expect(memberCalls).toEqual([]);
   });
 });
