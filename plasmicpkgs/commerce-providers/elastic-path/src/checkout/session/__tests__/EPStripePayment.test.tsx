@@ -340,6 +340,7 @@ describe("EPStripePayment in a checkout session", () => {
     expect(mockPlaceOrder).toHaveBeenCalledWith({
       gateway: "stripe",
       confirmation_token: "ctoken_fake",
+      shownTotal: 4200,
     });
     expect(result.success).toBe(true);
   });

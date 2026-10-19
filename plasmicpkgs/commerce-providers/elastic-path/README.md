@@ -544,7 +544,13 @@ promotions) returns `409` with code `EMPTY_CART`, both when a checkout session
 is created and at pay. Pay charges only the total the session last returned.
 When the cart's total differs, pay charges nothing and returns `409` with
 code `CART_MISMATCH` (the lines changed) or `TOTAL_CHANGED`, and the session
-it returns carries the new total. A cart settles at most one order: pay,
+it returns carries the new total. A pay request may say which total the page
+showed as `shownTotal` (EP Checkout Session Provider always does); pay then
+also refuses with `TOTAL_CHANGED` when that is not the total it would charge.
+Reading an open session (`GET …/current`) re-reads its cart, and when the
+lines changed it stores and returns the cart's new totals, so the page shows a
+cart change before the shopper pays. It does not move a session while a card
+check holds its order or a payment for its cart runs. A cart settles at most one order: pay,
 resume-payment and abandon-payment share one guard per cart. While one of
 them runs for a cart, another request from the same checkout session gets the
 same response, and one from a different checkout session gets `409` with code
@@ -708,7 +714,7 @@ The checkout-session handlers are mounted one route each, under the
 | Method | Path | Handler | Description |
 |--------|------|---------|-------------|
 | POST | `{apiBaseUrl}/checkout/sessions` | `handleCreateSession` | Open a session for the shopper's session cart |
-| GET | `{apiBaseUrl}/checkout/sessions/current` | `handleGetSession` | Read the session |
+| GET | `{apiBaseUrl}/checkout/sessions/current` | `handleGetSession` | Read the session; an open session takes the cart's new totals |
 | PATCH | `{apiBaseUrl}/checkout/sessions/current` | `handleUpdateSession` | Merge fields; a changed shipping address requotes |
 | POST | `{apiBaseUrl}/checkout/sessions/current/shipping` | `handleCalculateShipping` | Requote on demand, for example after the cart changes |
 | POST | `{apiBaseUrl}/checkout/sessions/current/pay` | `handlePay` | Place the order and start payment |

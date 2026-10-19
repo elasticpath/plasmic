@@ -21,7 +21,10 @@ import { buildAdminEpClient } from "../../../checkout/session/admin-client";
 import { buildShopperEpClient } from "../../../checkout/session/shopper-client";
 import { EP_SHIPPING_LINE_SKU } from "../../../checkout/session/set-shipping-line";
 import { hasPurchasableItem } from "../../../checkout/session/purchasable-items";
-import { totalsFromCart } from "../../../checkout/session/session-totals";
+import {
+  totalsFromCart,
+  totalsWithoutShipping,
+} from "../../../checkout/session/session-totals";
 import { CART_CLEANUP_PENDING, runCartCleanup } from "../../../checkout/session/cart-cleanup";
 import { createLogger } from "../../../utils/logger";
 import { toClientSession } from "../../../checkout/session/client-session";
@@ -114,7 +117,7 @@ export async function handleCreateSession(
       (it: { sku?: string }) => it?.sku !== EP_SHIPPING_LINE_SKU
     );
     purchasable = hasPurchasableItem(items);
-    totals = totalsFromCart(cartResponse);
+    totals = totalsWithoutShipping(totalsFromCart(cartResponse));
   } catch (err) {
     log.error("Failed to fetch cart from EP", {
       cartId,
@@ -134,7 +137,7 @@ export async function handleCreateSession(
       status: 409,
       body: {
         success: false,
-        error: { message: "The cart has nothing to check out", code: "EMPTY_CART" },
+        error: { message: "Your cart is empty", code: "EMPTY_CART" },
       },
     };
   }

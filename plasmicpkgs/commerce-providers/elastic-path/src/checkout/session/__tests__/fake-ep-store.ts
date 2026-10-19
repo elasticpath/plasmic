@@ -64,6 +64,39 @@ function repricePromotions(cart: FakeCart): void {
   }
 }
 
+/**
+ * A line's priced value after the cart's percent promotions, the way Elastic
+ * Path reports it in `meta.display_price`. Promotion lines carry none.
+ */
+function linePricing(cart: FakeCart, line: FakeLine): Record<string, unknown> {
+  if (line.percentOff !== undefined) return {};
+  const promotions = cart.lines.filter((l) => l.percentOff !== undefined);
+  const before = line.unit_price.amount * line.quantity;
+  const discounts: Record<string, { amount: number; currency: string }> = {};
+  let discount = 0;
+  for (const p of promotions) {
+    const off = -Math.round((before * p.percentOff!) / 100);
+    discount += off;
+    if (p.sku) discounts[p.sku] = { amount: off, currency: "USD" };
+  }
+  const money = (amount: number) => ({
+    unit: { amount: Math.round(amount / line.quantity), currency: "USD" },
+    value: { amount, currency: "USD" },
+  });
+  return {
+    meta: {
+      display_price: {
+        with_tax: money(before + discount),
+        without_tax: money(before + discount),
+        tax: money(0),
+        discount: money(discount),
+        without_discount: money(before),
+        discounts,
+      },
+    },
+  };
+}
+
 function cartTotal(cart: FakeCart): number {
   repricePromotions(cart);
   return cart.lines.reduce(
@@ -115,6 +148,7 @@ export class FakeEpStore {
         type: l.type ?? "cart_item",
         sku: l.sku,
         product_id: l.product_id,
+        ...(l.name !== undefined ? { name: l.name } : {}),
         quantity: l.quantity,
         unit_price: { amount: l.unit_price.amount },
         value: { amount: l.unit_price.amount * l.quantity },
@@ -133,6 +167,26 @@ export class FakeEpStore {
 
   total(cartId: string): number {
     return cartTotal(this.cart(cartId));
+  }
+
+  /** The shopper applies a percent-off code: Elastic Path adds a promotion line. */
+  applyPromotion(cartId: string, code: string, percentOff: number): void {
+    this.cart(cartId).lines.push({
+      id: this.nextId("line"),
+      type: "promotion_item",
+      sku: code,
+      quantity: 1,
+      unit_price: { amount: 0 },
+      value: { amount: 0 },
+      percentOff,
+    });
+  }
+
+  /** The shopper changes a line's quantity (on another page or tab). */
+  setQuantity(cartId: string, sku: string, quantity: number): void {
+    const line = this.cart(cartId).lines.find((l) => l.sku === sku);
+    if (!line) throw new Error(`no line ${sku} in ${cartId}`);
+    line.quantity = quantity;
   }
 
   linesWithSku(cartId: string, sku: string): FakeLine[] {
@@ -172,6 +226,7 @@ export class FakeEpStore {
             items: cart.lines.map((l) => ({
               ...l,
               value: { amount: l.unit_price.amount * l.quantity },
+              ...linePricing(cart, l),
             })),
           },
         },

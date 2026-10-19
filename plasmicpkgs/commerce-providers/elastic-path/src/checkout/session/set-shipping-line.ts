@@ -25,12 +25,11 @@ import {
   manageCarts,
   updateACartItem,
 } from "@epcc-sdk/sdks-shopper";
-import { readCart } from "../../ep-server-functions/read-cart";
-import type { Cart } from "../../types/cart";
-import type { SessionShippingRate } from "./types";
+import { readCartResponse } from "../../ep-server-functions/read-cart";
+import { EP_SHIPPING_LINE_SKU } from "./shipping-line-sku";
+import type { EpCartResponse, SessionShippingRate } from "./types";
 
-/** Sentinel SKU that marks a storefront-managed shipping line. */
-export const EP_SHIPPING_LINE_SKU = "__ep_shipping";
+export { EP_SHIPPING_LINE_SKU };
 
 type EpClient = Parameters<typeof manageCarts>[0]["client"];
 
@@ -152,14 +151,14 @@ export async function clearCartShippingLine(
 }
 
 /**
- * Replace the cart's shipping line with one for `rate`, returning the re-priced,
- * normalized cart. Throws (before any write) on a missing cart or a malformed
+ * Replace the cart's shipping line with one for `rate`, returning the re-priced
+ * cart in Elastic Path's own shape, shipping line included. Throws (before any write) on a missing cart or a malformed
  * rate, and propagates the underlying SDK error on a backend failure.
  */
 export async function setCartShippingLine(
   client: EpClient,
   input: SetCartShippingLineInput
-): Promise<Cart> {
+): Promise<EpCartResponse> {
   const { cartId, rate } = input;
 
   if (!cartId) {
@@ -214,8 +213,7 @@ export async function setCartShippingLine(
     await foldToOneLine(client, cartId, rate, added);
   }
 
-  // Re-read + normalize so the caller sees the re-priced total.
-  return readCart(client, cartId, {
+  return readCartResponse(client, cartId, {
     locale: input.locale,
     currency: input.currency,
   });

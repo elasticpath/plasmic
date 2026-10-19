@@ -22,11 +22,14 @@
  * (server-computed) rate. A `rateId` not in `availableShippingRates` cannot
  * resolve to a price, so a forged/un-offered selection fails closed.
  */
-import type { Cart } from "../../types/cart";
 import { resolveShippingRate } from "./cart-shipping";
 import { setCartShippingLine } from "./set-shipping-line";
 import { buildAdminEpClient } from "./admin-client";
-import type { CheckoutSession, SessionHandlerContext } from "./types";
+import type {
+  CheckoutSession,
+  EpCartResponse,
+  SessionHandlerContext,
+} from "./types";
 
 /**
  * Thrown when the session's `selectedShippingRateId` cannot be resolved against
@@ -63,7 +66,7 @@ export async function applyShippingSelection(
   ctx: SessionHandlerContext,
   session: CheckoutSession,
   opts: ApplyShippingSelectionOptions = {}
-): Promise<Cart> {
+): Promise<EpCartResponse> {
   let rate;
   try {
     rate = resolveShippingRate(

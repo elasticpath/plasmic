@@ -87,9 +87,7 @@ import { hasPurchasableItem } from "../../../checkout/session/purchasable-items"
 import {
   cartLines,
   totalsFromCart,
-  totalsFromDisplayPrice,
 } from "../../../checkout/session/session-totals";
-import { resolveShippingRate } from "../../../checkout/session/cart-shipping";
 import { settleOnceOrBusy } from "../../../checkout/session/settle-once";
 import {
   awaitsCartPaymentChallenge,
@@ -813,7 +811,7 @@ async function payOpenSession(
       status: 409,
       body: {
         success: false,
-        error: { message: "The cart has nothing to check out", code: "EMPTY_CART" },
+        error: { message: "Your cart is empty", code: "EMPTY_CART" },
       },
     };
   }
@@ -922,11 +920,7 @@ async function payOpenSession(
       const pricedCart = await applyShippingSelection(ctx, session, {
         client: adminClient,
       });
-      const rate = resolveShippingRate(
-        session.availableShippingRates,
-        session.selectedShippingRateId ?? ""
-      );
-      latest = totalsFromDisplayPrice(pricedCart.meta?.display_price, rate.amount);
+      latest = totalsFromCart(pricedCart);
     } catch (err) {
       if (err instanceof ShippingResolutionError) {
         log.warn("Selected shipping rate no longer resolvable at pay", {
@@ -1021,8 +1015,13 @@ async function payOpenSession(
 
   // 3b-ter. Charge only the total this session last showed the shopper. A
   //     different total (shipping re-asserted, line cleared, selection write
-  //     that failed) is shown first and paid on the next submit.
-  if (session.totals?.total !== latest.total) {
+  //     that failed) is shown first and paid on the next submit. When the
+  //     browser says which total it showed, that total must match too.
+  const shownTotal = req.body.shownTotal;
+  if (
+    session.totals?.total !== latest.total ||
+    (typeof shownTotal === "number" && shownTotal !== latest.total)
+  ) {
     return persistTotalChanged(req, ctx, { ...session, totals: latest }, ttl);
   }
   const expectedTotal = latest.total;
@@ -1089,7 +1088,11 @@ async function payOpenSession(
     };
   }
 
-  const { gateway: _gw, ...gatewayData } = req.body as Record<string, unknown>;
+  const {
+    gateway: _gw,
+    shownTotal: _shownTotal,
+    ...gatewayData
+  } = req.body as Record<string, unknown>;
   const payParams: PayContinuation = {
     req,
     ctx,

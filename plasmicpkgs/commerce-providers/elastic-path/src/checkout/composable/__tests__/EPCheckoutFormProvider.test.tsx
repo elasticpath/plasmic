@@ -473,6 +473,35 @@ describe("EPCheckoutFormProvider shipping sync", () => {
 
     expect(handleRef.current?.status).toBe("error");
     expect(handleRef.current?.error).toBe("Card declined");
+    expect(screen.getByRole("alert").textContent).toBe("Card declined");
+  });
+
+  it("leaves showing a declined card to the page when Show Errors is off", async () => {
+    mockPlaceOrder.mockResolvedValueOnce({
+      success: true,
+      data: { session: { status: "open", payment: { status: "failed" } } },
+      paymentError: "Card declined",
+    });
+    const handleRef = { current: null as FormHandle | null };
+    render(
+      <EPCheckoutFormProvider showError={false}>
+        <FormHarness handleRef={handleRef} />
+      </EPCheckoutFormProvider>
+    );
+
+    await act(async () => {
+      await handleRef.current?.placeOrder();
+    });
+
+    expect(handleRef.current?.error).toBe("Card declined");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("registers Show Errors as an optional prop that is on by default", () => {
+    expect(epCheckoutFormProviderMeta.props.showError).toMatchObject({
+      type: "boolean",
+      defaultValue: true,
+    });
   });
 
   it("does not treat a leaked requires_action session as placed", async () => {

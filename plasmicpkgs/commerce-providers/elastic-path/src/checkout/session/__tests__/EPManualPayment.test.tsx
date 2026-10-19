@@ -232,7 +232,7 @@ describe("EPCheckoutSessionProvider placeOrder with EPManualPayment", () => {
     });
 
     expect(mockPlaceOrder).toHaveBeenCalledTimes(1);
-    expect(mockPlaceOrder).toHaveBeenCalledWith({ gateway: "manual" });
+    expect(mockPlaceOrder).toHaveBeenCalledWith({ gateway: "manual", shownTotal: 1000 });
     expect(mockPlaceOrder.mock.calls[0][0]).not.toHaveProperty(
       "confirmation_token"
     );
@@ -271,7 +271,7 @@ describe("EPCheckoutSessionProvider placeOrder with EPManualPayment", () => {
       await ref.current.placeOrder();
     });
 
-    expect(mockPlaceOrder).toHaveBeenCalledWith({ gateway: "manual" });
+    expect(mockPlaceOrder).toHaveBeenCalledWith({ gateway: "manual", shownTotal: 1000 });
     expect(mockResumePayment).not.toHaveBeenCalled();
     expect(mockAbandonPayment).not.toHaveBeenCalled();
     expect(mockConfirmPayment).not.toHaveBeenCalled();
