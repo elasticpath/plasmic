@@ -197,7 +197,7 @@ export async function createBackend(
   );
 }
 
-async function withEnvOverrides<T>(
+export async function withEnvOverrides<T>(
   overrides: Record<string, any>,
   f: () => Promise<T>
 ) {
