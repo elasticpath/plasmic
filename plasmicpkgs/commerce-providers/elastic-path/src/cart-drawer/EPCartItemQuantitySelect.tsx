@@ -10,6 +10,7 @@ import {
   parseQuantityInput,
 } from "../utils/quantity-select";
 import { useCartItemQuantity } from "./CartDrawerContext";
+import { useCanvasPreviewState } from "../utils/canvas-preview-state";
 
 type Variant = "dropdown" | "input";
 type PreviewState = "auto" | "low" | "high";
@@ -88,8 +89,9 @@ export function EPCartItemQuantitySelect(
     className,
     variant = "dropdown",
     threshold = DEFAULT_THRESHOLD,
-    previewState = "auto",
+    previewState: savedPreviewState,
   } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const ctx = useCartItemQuantity();
   const inEditor = !!usePlasmicCanvasContext();

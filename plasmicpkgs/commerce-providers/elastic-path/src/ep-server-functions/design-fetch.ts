@@ -37,6 +37,13 @@ function warnMissingRouteOnce(): void {
   }
 }
 
+/** Codes the mounted route answers with; any other 404 or 405 is not it. */
+const ROUTE_CODES = new Set(["design_fn_not_served", "dispatch_failed"]);
+
+function routeNotMounted(status: number, code: string | undefined): boolean {
+  return (status === 404 || status === 405) && !ROUTE_CODES.has(code ?? "");
+}
+
 export async function callEpDesign<T>(
   fnName: string,
   args: Record<string, unknown>,
@@ -69,7 +76,7 @@ export async function callEpDesign<T>(
 
   if (!res.ok) {
     const info = await readEpCallError(res, `ep design ${fnName}`);
-    if (info.code === "route_not_found") warnMissingRouteOnce();
+    if (routeNotMounted(res.status, info.code)) warnMissingRouteOnce();
     throw makeEpCallError(info);
   }
 

@@ -41,7 +41,9 @@ describe("EPOrderTotalsBreakdown", () => {
     mockUsePlasmicCanvasContext.mockReturnValue(false);
   });
 
-  it("renders children inside a data-ep-order-totals-breakdown element", () => {
+  it("renders children inside a data-ep-order-totals-breakdown element on the canvas", () => {
+
+    mockUsePlasmicCanvasContext.mockReturnValue({});
     render(
       <EPOrderTotalsBreakdown previewState="withData">
         <span data-testid="child">Totals</span>
@@ -52,7 +54,9 @@ describe("EPOrderTotalsBreakdown", () => {
     expect(wrapper).toBeTruthy();
   });
 
-  it("renders with withData preview state", () => {
+  it("renders with withData preview state on the canvas", () => {
+
+    mockUsePlasmicCanvasContext.mockReturnValue({});
     render(
       <EPOrderTotalsBreakdown previewState="withData">
         <span data-testid="totals">$72.91</span>
@@ -70,13 +74,37 @@ describe("EPOrderTotalsBreakdown", () => {
     expect(document.querySelector(".my-totals")).toBeTruthy();
   });
 
-  it("renders without context using fallback mock data", () => {
-    render(
-      <EPOrderTotalsBreakdown previewState="auto">
-        <span data-testid="fallback">Fallback</span>
+  it("shows sample totals on the canvas when nothing is bound", () => {
+    mockUsePlasmicCanvasContext.mockReturnValue({});
+    const { container } = render(<EPOrderTotalsBreakdown />);
+    const values = [...container.querySelectorAll("[data-ep-totals-value]")].map(
+      (n) => n.textContent
+    );
+    expect(values).toEqual(["$62.00", "$5.95", "$4.96", "$72.91"]);
+  });
+
+  it.each([
+    ["no checkout session", { session: null }],
+    ["no provider", undefined],
+  ])("shows and publishes nothing on a published page with %s", (_label, sessionCtx) => {
+    mockUseSelector.mockImplementation((name: string) =>
+      name === "checkoutSession" ? sessionCtx : undefined
+    );
+
+    const { container } = render(
+      <EPOrderTotalsBreakdown className="my-totals">
+        <span data-testid="mine">Total: $0.00</span>
       </EPOrderTotalsBreakdown>
     );
-    expect(screen.getByTestId("fallback")).toBeTruthy();
+    const { container: defaults } = render(<EPOrderTotalsBreakdown />);
+
+    expect(container.querySelector(".my-totals")).toBeTruthy();
+    expect(screen.queryByTestId("mine")).toBeNull();
+    expect(defaults.querySelectorAll("[data-ep-totals-row]")).toHaveLength(0);
+    expect(container.textContent).toBe("");
+    expect(
+      screen.getAllByTestId("dp-orderTotalsData").map((n) => n.getAttribute("data-value"))
+    ).toEqual([null, null]);
   });
 
   describe("session mode (checkoutSession.totals)", () => {

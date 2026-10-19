@@ -28,6 +28,7 @@ import {
   MOCK_SHIPPING_ADDRESS_WITH_SUGGESTIONS,
 } from "../../utils/design-time-data";
 import { createLogger } from "../../utils/logger";
+import { useCanvasPreviewState } from "../../utils/canvas-preview-state";
 
 const log = createLogger("EPShippingAddressFields");
 
@@ -196,7 +197,8 @@ export const EPShippingAddressFields = React.forwardRef<
   EPShippingAddressFieldsActions,
   EPShippingAddressFieldsProps
 >(function EPShippingAddressFields(props, ref) {
-  const { children, className, showPhoneField = true, previewState = "auto" } = props;
+  const { children, className, showPhoneField = true, previewState: savedPreviewState } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const inEditor = !!usePlasmicCanvasContext();
 

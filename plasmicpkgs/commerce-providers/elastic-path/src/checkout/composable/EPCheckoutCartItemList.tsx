@@ -12,6 +12,7 @@ import { Registerable } from "../../registerable";
 import { MOCK_CHECKOUT_CART_ITEMS } from "../../utils/design-time-data";
 import { createLogger } from "../../utils/logger";
 import type { Cart } from "../../types/cart";
+import { useCanvasPreviewState } from "../../utils/canvas-preview-state";
 
 const log = createLogger("EPCheckoutCartItemList");
 
@@ -76,7 +77,8 @@ export const epCheckoutCartItemListMeta: CodeComponentMeta<EPCheckoutCartItemLis
   };
 
 export function EPCheckoutCartItemList(props: EPCheckoutCartItemListProps) {
-  const { children, className, previewState = "auto" } = props;
+  const { children, className, previewState: savedPreviewState } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const cart = useSelector("cart") as Cart | undefined;
   const inEditor = !!usePlasmicCanvasContext();

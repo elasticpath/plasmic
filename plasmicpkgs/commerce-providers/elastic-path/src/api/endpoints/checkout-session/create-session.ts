@@ -82,7 +82,7 @@ export async function handleCreateSession(
       status: 409,
       body: {
         success: false,
-        error: { message: "The shopper has no cart to check out", code: "NO_CART" },
+        error: { message: "Your cart is empty", code: "NO_CART" },
       },
     };
   }

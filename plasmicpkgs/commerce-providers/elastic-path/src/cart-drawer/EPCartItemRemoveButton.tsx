@@ -12,6 +12,7 @@ import { createLogger } from "../utils/logger";
 import { readEpErrorCode } from "../browser-call";
 import { epRemoveCartItem } from "../ep-server-functions/cart-mutations";
 import { cartWriteErrorText } from "../ep-server-functions/cart-mutation-error-copy";
+import { useCanvasPreviewState } from "../utils/canvas-preview-state";
 
 const log = createLogger("EPCartItemRemoveButton");
 
@@ -50,7 +51,8 @@ export const epCartItemRemoveButtonMeta: CodeComponentMeta<EPCartItemRemoveButto
   };
 
 export function EPCartItemRemoveButton(props: EPCartItemRemoveButtonProps) {
-  const { children, className, previewState = "auto" } = props;
+  const { children, className, previewState: savedPreviewState } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const currentItem = useSelector("currentCartItem") as
     | { id: string; name?: string }

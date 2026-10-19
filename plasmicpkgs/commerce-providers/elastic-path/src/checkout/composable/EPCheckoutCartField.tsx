@@ -9,6 +9,7 @@ import {
   MOCK_CHECKOUT_CART_DATA,
   MOCK_CHECKOUT_CART_ITEMS,
 } from "../../utils/design-time-data";
+import { useCanvasPreviewState } from "../../utils/canvas-preview-state";
 
 type CartFieldName =
   | "formattedSubtotal"
@@ -124,7 +125,8 @@ function checkoutItemFieldValue(
 }
 
 export function EPCheckoutCartField(props: EPCheckoutCartFieldProps) {
-  const { field, className, previewState = "auto" } = props;
+  const { field, className, previewState: savedPreviewState } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const inEditor = !!usePlasmicCanvasContext();
   const cart = useSelector("cart") as Cart | undefined;

@@ -18,6 +18,7 @@ import {
 import { readEpErrorCode } from "./browser-call";
 import { epAddCartItem } from "./ep-server-functions/cart-mutations";
 import { cartWriteErrorText } from "./ep-server-functions/cart-mutation-error-copy";
+import { useCanvasPreviewState } from "./utils/canvas-preview-state";
 
 const log = createLogger("EPAddToCartButton");
 
@@ -115,10 +116,11 @@ export function EPAddToCartButton(props: EPAddToCartButtonProps) {
   const {
     children,
     className,
-    previewState = "auto",
+    previewState: savedPreviewState,
     onAddedToCart,
     showError = true,
   } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const product = useSelector("currentProduct") as Product | undefined;
   // An invalid bundle configuration is rejected by Elastic Path, so the button

@@ -5,6 +5,7 @@ import registerComponent, {
 import React from "react";
 import { Registerable } from "../registerable";
 import { useCartItemQuantity } from "./CartDrawerContext";
+import { useCanvasPreviewState } from "../utils/canvas-preview-state";
 
 type PreviewState = "auto" | "enabled" | "disabled";
 
@@ -54,7 +55,8 @@ export const epCartItemQuantityButtonMeta: CodeComponentMeta<EPCartItemQuantityB
 export function EPCartItemQuantityButton(
   props: EPCartItemQuantityButtonProps
 ) {
-  const { children, className, action, previewState = "auto" } = props;
+  const { children, className, action, previewState: savedPreviewState } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const quantityCtx = useCartItemQuantity();
   const inEditor = !!usePlasmicCanvasContext();

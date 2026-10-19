@@ -222,6 +222,7 @@ const LOCKED_MESSAGE =
 
 interface SessionBridge {
   session?: {
+    id?: string;
     status?: string;
     order?: { id?: string } | null;
     totals?: { total?: number } | null;
@@ -274,8 +275,13 @@ function savedFormValues(
 }
 
 interface DebouncedShippingSync {
-  (address: SessionAddress): void;
+  (address: SessionAddress, sessionId: string): void;
   clear(): void;
+}
+
+interface SyncedShipping {
+  sessionId: string;
+  address: SessionAddress;
 }
 
 // ---------------------------------------------------------------------------
@@ -326,6 +332,10 @@ export const EPCheckoutFormProvider = React.forwardRef<
   // An open card check holds the order: edits cannot apply until it ends.
   const locked =
     useSession && sessionBridge?.session?.payment?.status === "requires_action";
+  const openSessionId =
+    useSession && sessionBridge?.session?.status === "open"
+      ? sessionBridge.session.id ?? "open"
+      : null;
 
   const mapping = useMemo<CheckoutFieldMapping>(
     () => ({ ...DEFAULT_MAPPING, ...(fieldMapping ?? {}) }),
@@ -342,6 +352,9 @@ export const EPCheckoutFormProvider = React.forwardRef<
   const [orderId, setOrderId] = useState<string | null>(null);
   const [isFree, setIsFree] = useState(false);
   const placingRef = useRef(false);
+  // A Place refused because no checkout session was open: the message goes
+  // once a session opens.
+  const noSessionErrorRef = useRef<string | null>(null);
 
   // Registry of mounted fields — drives generic required-validation. Held in
   // a ref so registration doesn't churn render; values/booleans live in state.
@@ -391,7 +404,7 @@ export const EPCheckoutFormProvider = React.forwardRef<
     setErrors((prev) => (prev[name] ? { ...prev, [name]: null } : prev));
   }, []);
 
-  const lastSyncedShippingRef = useRef<SessionAddress | null>(null);
+  const lastSyncedShippingRef = useRef<SyncedShipping | null>(null);
   const shippingSyncRef = useRef<DebouncedShippingSync | null>(null);
 
   // A locked form shows what its held order was placed with, also after a
@@ -403,9 +416,10 @@ export const EPCheckoutFormProvider = React.forwardRef<
     setValues((prev) => ({ ...prev, ...saved.values }));
     setBooleans((prev) => ({ ...prev, ...saved.booleans }));
     if (savedSession.shippingAddress) {
-      lastSyncedShippingRef.current = mapShippingFormValuesToSessionAddress(
-        saved.values
-      );
+      lastSyncedShippingRef.current = {
+        sessionId: savedSession.id ?? "open",
+        address: mapShippingFormValuesToSessionAddress(saved.values),
+      };
     }
   }, [savedSession, mapping]);
 
@@ -421,8 +435,12 @@ export const EPCheckoutFormProvider = React.forwardRef<
       return;
     }
 
-    shippingSyncRef.current = debounce(async (address: SessionAddress) => {
-      if (sessionAddressesEquivalent(address, lastSyncedShippingRef.current)) {
+    shippingSyncRef.current = debounce(async (address: SessionAddress, sessionId: string) => {
+      const last = lastSyncedShippingRef.current;
+      if (
+        last?.sessionId === sessionId &&
+        sessionAddressesEquivalent(address, last.address)
+      ) {
         return;
       }
       try {
@@ -439,7 +457,7 @@ export const EPCheckoutFormProvider = React.forwardRef<
         if (Array.isArray(rates) && rates.length === 0 && calculateShipping) {
           await calculateShipping();
         }
-        lastSyncedShippingRef.current = address;
+        lastSyncedShippingRef.current = { sessionId, address };
       } catch (err) {
         log.warn("Shipping address sync failed", {
           error: err instanceof Error ? err.message : String(err),
@@ -457,13 +475,15 @@ export const EPCheckoutFormProvider = React.forwardRef<
     sessionBridge?.calculateShipping,
   ]);
 
+  // Also when a session opens: an address typed before it (no cart yet) gets
+  // its shipping rates without waiting for Place.
   useEffect(() => {
-    if (inEditor || !useSession) return;
+    if (inEditor || !openSessionId) return;
     if (!formHasShippingFields(values, registry.current)) return;
     const address = mapShippingFormValuesToSessionAddress(values);
     if (!isShippingAddressCompleteEnough(address)) return;
-    shippingSyncRef.current?.(address);
-  }, [inEditor, useSession, values]);
+    shippingSyncRef.current?.(address, openSessionId);
+  }, [inEditor, openSessionId, values]);
 
   const validateAll = useCallback((): boolean => {
     const nextErrors: Record<string, string | null> = {};
@@ -495,16 +515,26 @@ export const EPCheckoutFormProvider = React.forwardRef<
     placingRef.current = false;
   }, []);
 
+  const hasSession = !!sessionBridge?.session;
   const failed = useCallback(
     (err: unknown) => {
       const msg = err instanceof Error ? err.message : "Order could not be placed.";
+      noSessionErrorRef.current = hasSession ? null : msg;
       setError(msg);
       setStatus("error");
       onError?.({ message: msg });
       log.error("session placeOrder failed", { error: msg });
     },
-    [onError]
+    [onError, hasSession]
   );
+
+  useEffect(() => {
+    if (!openSessionId || status !== "error") return;
+    if (error === null || error !== noSessionErrorRef.current) return;
+    noSessionErrorRef.current = null;
+    setError(null);
+    setStatus("idle");
+  }, [openSessionId, status, error]);
 
   // Session provider.placeOrder awaits Stripe 3DS (handleNextAction +
   // resumePayment) when /pay returns requires_action, so a successful return

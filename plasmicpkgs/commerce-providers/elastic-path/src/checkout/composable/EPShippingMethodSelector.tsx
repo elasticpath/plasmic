@@ -27,6 +27,7 @@ import { Registerable } from "../../registerable";
 import { MOCK_SHIPPING_RATES } from "../../utils/design-time-data";
 import { createLogger } from "../../utils/logger";
 import { useMoneyFormat } from "../../shopper-context/use-money-format";
+import { useCanvasPreviewState } from "../../utils/canvas-preview-state";
 
 const log = createLogger("EPShippingMethodSelector");
 
@@ -69,8 +70,9 @@ export const EPShippingMethodSelector = React.forwardRef<
     loadingContent,
     emptyContent,
     className,
-    previewState = "auto",
+    previewState: savedPreviewState,
   } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const inEditor = !!usePlasmicCanvasContext();
 

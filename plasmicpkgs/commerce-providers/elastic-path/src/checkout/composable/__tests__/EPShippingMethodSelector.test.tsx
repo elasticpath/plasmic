@@ -39,7 +39,9 @@ describe("EPShippingMethodSelector", () => {
     mockUsePlasmicCanvasContext.mockReturnValue(false);
   });
 
-  it("renders children with mock rates in withRates preview state", () => {
+  it("renders children with mock rates in withRates preview state on the canvas", () => {
+
+    mockUsePlasmicCanvasContext.mockReturnValue({});
     render(
       <EPShippingMethodSelector previewState="withRates">
         <span data-testid="rate">Rate</span>
@@ -49,7 +51,9 @@ describe("EPShippingMethodSelector", () => {
     expect(rates.length).toBe(3);
   });
 
-  it("renders loading content in loading preview state", () => {
+  it("renders loading content in loading preview state on the canvas", () => {
+
+    mockUsePlasmicCanvasContext.mockReturnValue({});
     render(
       <EPShippingMethodSelector
         previewState="loading"
@@ -61,7 +65,9 @@ describe("EPShippingMethodSelector", () => {
     expect(screen.getByTestId("loading")).toBeTruthy();
   });
 
-  it("renders empty content in empty preview state", () => {
+  it("renders empty content in empty preview state on the canvas", () => {
+
+    mockUsePlasmicCanvasContext.mockReturnValue({});
     render(
       <EPShippingMethodSelector
         previewState="empty"

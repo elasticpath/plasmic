@@ -267,7 +267,7 @@ the request, or passed to `createSession`, is ignored.
 
 When the provider cannot start a checkout, `session` is null, `error` is the
 message to show and `errorCode` is the server's code, such as `EMPTY_CART`
-("Your cart is empty"), `NO_CART` or `CART_CLEANUP_PENDING`, or
+or `NO_CART` (both "Your cart is empty"), `CART_CLEANUP_PENDING`, or
 `NETWORK_ERROR` when the request did not reach the server. A finished checkout from an earlier visit is not
 shown in its place, and `placeOrder` and `updateSession` answer with the same
 refusal without sending anything. The provider tries again when the cart
@@ -350,7 +350,7 @@ step's label on the canvas only. `onComplete` is hidden and never fires.
 
 ### EPOrderTotalsBreakdown
 
-Reads totals from the checkout session (`checkoutSession.session.totals`) or falls back to the cart published by `EPCheckoutCartSummary`.
+Reads totals from the checkout session (`checkoutSession.session.totals`) or falls back to the cart published by `EPCheckoutCartSummary`. With neither, for example before a checkout starts or on an empty cart, a published page shows nothing inside it and publishes no `orderTotalsData`. Sample totals show on the Studio canvas only.
 
 **DataProvider `orderTotalsData`:**
 
