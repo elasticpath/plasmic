@@ -21,8 +21,8 @@
         "default": "./dist/server.js"
       }
     },
-    "./esm/*.js": "./dist/esm/*.js",
-    "./exports-map.json": "./dist/esm/exports-map.json"
+    "./exports-map.json": "./dist/exports-map.json",
+    "./*": "./dist/exports/*.js"
   },
   "typesVersions": {
     "*": {

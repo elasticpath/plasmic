@@ -88,15 +88,17 @@ removed component or a removed published prop. Both are empty instead.
 
 ### Added
 
-The package also publishes each source module as its own ESM file, at
-`./esm/*.js`, and `./exports-map.json`, which maps every root export to the
-file that defines it. A loader that rewrites root imports into imports of those
-files gives each page only the components it uses, instead of every component
-the project uses. `package.json` declares `sideEffects`, so a bundler can drop
-a per-module file whose exports go unused. The root entry and `/server` build
-to the same files as before. The README's
-[Per-module files for loaders](README.md#per-module-files-for-loaders) says how
-a loader uses the map.
+Every root export is also its own entry point, named after the export, such
+as `@elasticpath/plasmic-ep-commerce-elastic-path/EPProductGrid`.
+`./exports-map.json` lists them all. A loader that rewrites root imports into
+these entry points gives each page only the components it uses, instead of
+every component the project uses. Each source module ships as its own ESM file
+under `dist/esm`, so entry points share the modules they both need.
+`package.json` declares `sideEffects`, so a bundler can drop a file whose
+exports go unused. The root entry and `/server` build to the same files as
+before. The README's
+[One entry point per export](README.md#one-entry-point-per-export) says how a
+loader uses them.
 
 `accountMember` may now include `name` and `email` in addition to `id`.
 `EPAccountProvider` reads them from `identity.member()` during the existing

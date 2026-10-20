@@ -1,8 +1,10 @@
 /**
- * Builds the per-module files a loader imports one component from: one ESM
- * file per source module the root entry reaches, under `dist/esm`, and
- * `dist/esm/exports-map.json`, from each root export to the file that defines
- * it. The root entry itself is `build:index`, unchanged. Run after it.
+ * Builds the files a loader imports one component from. Each source module the
+ * root entry reaches becomes its own ESM file under `dist/esm`. Each root
+ * export gets `dist/exports/<name>.js`, which re-exports it from the module
+ * that defines it, so `<package>/<name>` imports one export and what it needs.
+ * `dist/exports-map.json` lists every root export with its subpath. The root
+ * entry itself is `build:index`, unchanged. Run after it.
  *
  * Each source module stays its own file, never a pre-bundled subpath, so two
  * components on one page share one copy of each internal module and its state.
@@ -15,15 +17,17 @@ import ts from "typescript";
 
 const pkgDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const srcDir = path.join(pkgDir, "src");
-const outDir = path.join(pkgDir, "dist/esm");
+const distDir = path.join(pkgDir, "dist");
+const modulesDir = path.join(distDir, "esm");
+const namesDir = path.join(distDir, "exports");
+const mapFile = path.join(distDir, "exports-map.json");
 const entry = path.join(srcDir, "index.tsx");
-const mapFile = path.join(outDir, "exports-map.json");
 
 const SOURCE_EXTENSION = /\.(tsx?|jsx?)$/;
 
-/** The package subpath, under `exports["./esm/*.js"]`, of a source module's file. */
-function subpathOf(sourceFile) {
-  return `./esm/${path
+/** A source module's built file, relative to `dist`. */
+function builtPathOf(sourceFile) {
+  return `esm/${path
     .relative(srcDir, sourceFile)
     .split(path.sep)
     .join("/")
@@ -31,7 +35,7 @@ function subpathOf(sourceFile) {
 }
 
 function outFileOf(sourceFile) {
-  return path.join(pkgDir, "dist", subpathOf(sourceFile));
+  return path.join(distDir, builtPathOf(sourceFile));
 }
 
 function fail(lines) {
@@ -87,7 +91,7 @@ async function buildModules(modules) {
     target: "es6",
     platform: "neutral",
     outbase: srcDir,
-    outdir: outDir,
+    outdir: modulesDir,
     absWorkingDir: pkgDir,
     banner: { js: `"use client";` },
     sourcemap: true,
@@ -153,7 +157,7 @@ async function buildModules(modules) {
  * back to the root loads a second copy of the package next to the per-module
  * files, with its own module state.
  */
-function mapExports(rootExports, exportsByFile) {
+function findDefiningModules(rootExports, exportsByFile) {
   const config = ts.getParsedCommandLineOfConfigFile(
     path.join(pkgDir, "tsconfig.json"),
     {},
@@ -179,7 +183,7 @@ function mapExports(rootExports, exportsByFile) {
       : symbol;
 
   const rootSymbols = new Map(moduleExports(entry).map((s) => [s.name, s]));
-  const map = {};
+  const definedIn = {};
   const problems = [];
   for (const name of [...rootExports].sort()) {
     const symbol = rootSymbols.get(name);
@@ -200,10 +204,10 @@ function mapExports(rootExports, exportsByFile) {
       continue;
     }
     if (!exportsByFile.get(path.resolve(file)).has(name)) {
-      problems.push(`${name}: ${subpathOf(file)} does not export it`);
+      problems.push(`${name}: ${builtPathOf(file)} does not export it`);
       continue;
     }
-    map[name] = subpathOf(file);
+    definedIn[name] = file;
   }
   if (problems.length) {
     fail([
@@ -211,16 +215,61 @@ function mapExports(rootExports, exportsByFile) {
       ...problems,
     ]);
   }
+  return definedIn;
+}
+
+/**
+ * Writes `dist/exports/<name>.js` for each root export, and the map. Fails on
+ * a name that another entry point already takes, and on two names that a
+ * case-insensitive file system cannot tell apart.
+ */
+function writeNamedEntries(definedIn) {
+  const { exports } = JSON.parse(
+    fs.readFileSync(path.join(pkgDir, "package.json"), "utf8")
+  );
+  const taken = new Set(
+    Object.keys(exports)
+      .filter((subpath) => !subpath.includes("*"))
+      .map((subpath) => subpath.slice(2))
+  );
+  const byFileName = new Map();
+  const problems = [];
+  for (const name of Object.keys(definedIn)) {
+    if (taken.has(name)) {
+      problems.push(`${name}: "./${name}" is already an entry point`);
+    }
+    const fileName = name.toLowerCase();
+    if (byFileName.has(fileName)) {
+      problems.push(
+        `${name}: differs from ${byFileName.get(fileName)} only in case`
+      );
+    }
+    byFileName.set(fileName, name);
+  }
+  if (problems.length) {
+    fail(["cannot give every root export its own subpath:", ...problems]);
+  }
+  fs.mkdirSync(namesDir, { recursive: true });
+  const map = {};
+  for (const [name, file] of Object.entries(definedIn)) {
+    fs.writeFileSync(
+      path.join(namesDir, `${name}.js`),
+      `"use client";\nexport { ${name} } from "../${builtPathOf(file)}";\n`
+    );
+    map[name] = `./${name}`;
+  }
+  fs.writeFileSync(mapFile, `${JSON.stringify(map, null, 2)}\n`);
   return map;
 }
 
 const { modules, rootExports } = await rootGraph();
-fs.rmSync(outDir, { recursive: true, force: true });
+for (const output of [modulesDir, namesDir, mapFile]) {
+  fs.rmSync(output, { recursive: true, force: true });
+}
 const exportsByFile = await buildModules(modules);
-const map = mapExports(rootExports, exportsByFile);
-fs.writeFileSync(mapFile, `${JSON.stringify(map, null, 2)}\n`);
+const map = writeNamedEntries(findDefiningModules(rootExports, exportsByFile));
 console.info(
-  `built ${modules.length} ESM modules at "dist/esm" and mapped ${
+  `built ${modules.length} ESM modules at "dist/esm" and ${
     Object.keys(map).length
-  } root exports in "${path.relative(pkgDir, mapFile)}"`
+  } root exports at "dist/exports", listed in "dist/exports-map.json"`
 );

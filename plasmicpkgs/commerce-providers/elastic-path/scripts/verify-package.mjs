@@ -1,8 +1,8 @@
 /**
  * The packaging seam, run against the built output and the packed tarball:
  * publint, arethetypeswrong once per entry point, a smoke that loads each
- * bundle the way its consumer does, and the per-module files a loader imports
- * through `exports-map.json`. Run `pnpm build` first.
+ * bundle the way its consumer does, and the one-export entry points a loader
+ * imports instead of the root. Run `pnpm build` first.
  *
  * The recorded exceptions, for the root entry and the per-module files, are
  * ADR-0007 (docs/adr).
@@ -28,7 +28,7 @@ const require = createRequire(path.join(installRoot, "index.cjs"));
 const PUBLINT_EXCEPTIONS = [
   { code: "EXPORTS_TYPES_INVALID_FORMAT", path: ["exports", ".", "types"] },
   { code: "FILE_INVALID_FORMAT", path: ["exports", ".", "import"] },
-  { code: "FILE_INVALID_FORMAT", path: ["exports", "./esm/*.js"] },
+  { code: "FILE_INVALID_FORMAT", path: ["exports", "./*"] },
 ];
 const ROOT_ATTW_EXCEPTIONS = ["unexpected-module-syntax"];
 
@@ -40,11 +40,12 @@ const EXPECTED_DIST = [
   "dist/server.d.ts",
   "dist/server.js",
   "dist/server.mjs",
-  "dist/esm/exports-map.json",
+  "dist/exports-map.json",
+  "dist/exports/registerAll.js",
   "dist/esm/index.js",
 ];
 const EXPECTED_SOURCE_MAPS = EXPECTED_DIST.filter((p) => /\.m?js$/.test(p)).map((p) => `${p}.map`);
-const PER_MODULE_FILE = /^dist\/esm\/.+\.js(\.map)?$/;
+const PER_MODULE_FILE = /^dist\/(?:esm\/.+\.js(?:\.map)?|exports\/[^/]+\.js)$/;
 
 const failures = [];
 function check(label, ok, detail) {
@@ -294,7 +295,7 @@ function smokeRoot() {
 }
 
 // A loader rewrites each root import in generated code into imports of the
-// files exports-map.json names, then bundles the result.
+// subpaths exports-map.json names, then bundles the result.
 function perModuleImports(map, names) {
   const imports = names.map((name) => `import { ${name} } from "${pkg.name}/${map[name].slice(2)}";`);
   return `${imports.join("\n")}\nexport { ${names.join(", ")} };\n`;
@@ -340,13 +341,15 @@ async function smokeModules() {
   const mapPath = require.resolve(`${pkg.name}/exports-map.json`);
   check(
     "exports-map.json resolves through exports",
-    mapPath === path.join(installedDir, "dist/esm/exports-map.json"),
+    mapPath === path.join(installedDir, "dist/exports-map.json"),
     mapPath
   );
   const map = JSON.parse(fs.readFileSync(mapPath, "utf8"));
   const names = Object.keys(map);
   const cjs = require(pkg.name);
   sameNames("the exports map lists every root export", names, Object.keys(cjs));
+  const misnamed = names.filter((name) => map[name] !== `./${name}`);
+  check("every root export has the subpath of its own name", misnamed.length === 0, misnamed.join("\n"));
 
   let exported;
   try {
@@ -363,10 +366,10 @@ async function smokeModules() {
     });
     exported = Object.values(metafile.outputs)[0].exports;
   } catch (error) {
-    check("every file in the exports map exports its name", false, error.message);
+    check("every subpath in the exports map exports its name", false, error.message);
     return;
   }
-  sameNames("every file in the exports map exports its name", exported, names);
+  sameNames("every subpath in the exports map exports its name", exported, names);
 
   const fromCjs = captureRegistrations(cjs.registerAll);
   const modules = loadAsCanvasBundle(perModuleImports(map, ["registerAll"]));

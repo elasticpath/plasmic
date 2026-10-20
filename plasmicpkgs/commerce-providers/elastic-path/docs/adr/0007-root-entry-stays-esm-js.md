@@ -36,9 +36,10 @@ canvas. `verify:package` reproduces this.
 The root entry stays on the `.esm.js` shape: `index.js`, `index.esm.js`,
 `index.d.ts`. `build.mjs` refuses `--mjs` for an index entry.
 
-The per-module files under `dist/esm`, which a loader imports one component
-from (`./esm/*.js`), take the same shape for the same reason. They are `.js`
-ESM, because they make the same default imports of `@plasmicapp/host`.
+The one-export entry points a loader imports instead of the root (`./*`, in
+`dist/exports`), and the modules under `dist/esm` behind them, take the same
+shape for the same reason. They are `.js` ESM, because the modules make the
+same default imports of `@plasmicapp/host`.
 
 The findings below are recorded exceptions. `verify:package` ignores them by
 exact rule and path, so a new finding still fails CI:
@@ -48,7 +49,7 @@ exact rule and path, so a new finding still fails CI:
 | arethetypeswrong | node16 from ESM: "Unexpected module syntax" | `unexpected-module-syntax`, root entry only |
 | publint | `exports["."].import` is ESM but interpreted as CJS | `FILE_INVALID_FORMAT` at `exports > . > import` |
 | publint | `exports["."].types` is interpreted as CJS under `import` | `EXPORTS_TYPES_INVALID_FORMAT` at `exports > . > types` |
-| publint | each file `exports["./esm/*.js"]` matches is ESM but interpreted as CJS | `FILE_INVALID_FORMAT` at `exports > ./esm/*.js` |
+| publint | each file `exports["./*"]` matches is ESM but interpreted as CJS | `FILE_INVALID_FORMAT` at `exports > ./*` |
 
 The first two publint lines are the same cause as the arethetypeswrong line, seen
 from the JavaScript side and from the types side. arethetypeswrong runs twice
