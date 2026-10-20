@@ -46,7 +46,8 @@ without a registered gateway: the server settles it with Elastic Path's
 
 The server allows `manual` for an order with a total only through a rule the
 host supplies. To offer offline or invoice payment, register the Manual adapter
-with an `allow` rule, and pass the selected account's id so the rule sees it:
+with an `allow` rule. The rule sees the selected account that
+`checkoutContextFromSession` sets (`lib/checkout-context.ts` already uses it):
 
 ```ts
 import { createManualAdapter } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
@@ -63,7 +64,7 @@ adapterRegistry.register(
 
 const ctx: SessionHandlerContext = {
   // ...
-  accountId: session?.session?.account?.id,
+  ...checkoutContextFromSession(session),
 };
 ```
 

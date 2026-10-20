@@ -68,9 +68,8 @@ creates an order, it checks the requested gateway against that order:
   before it creates the order, and throws when payment does not succeed.
 
 A host that registers `createManualAdapter()` for paid orders, for example for
-offline or invoice payment, must add an `allow` rule. To give the rule the
-account, set `accountId` on the `SessionHandlerContext` from the session
-(`session.session.account?.id`). The example storefront no longer registers
+offline or invoice payment, must add an `allow` rule. The rule gets the
+account the order is placed for; set it with `checkoutContextFromSession`. The example storefront no longer registers
 `manual`; its README shows a rule.
 
 **Orders are placed only through the checkout-session routes.** The EP proxy
@@ -441,7 +440,14 @@ checkout form as the order's contact. `epPlaceOrder` does the same for the
 account selected in its `withEpSession` scope. Pass the selected account on
 `SessionHandlerContext` as `accountToken`, `accountId` and the new
 `accountMemberId` (`session.session.memberId`); `buildEpCtx` now fills
-`accountMemberId`. With no account selected, including a signed-in member
+`accountMemberId`. The new `checkoutContextFromSession(session)`, from
+`/server`, sets all three, with `shopperAccessToken`, `sessionCartId`,
+`locale` and `currency`, from one `getSession` result; spread it into the
+context. A context with `accountToken` but no `accountId` (the 0.8.0 setup)
+used to place a guest order for a signed-in member. It, and one with
+`accountId` but no `accountToken`, now places no order: creating a checkout
+session and pay return `500` with code `ACCOUNT_NOT_CONFIGURED`, and
+`epPlaceOrder` throws. With no account selected, including a signed-in member
 who has not chosen one, the order is a guest order as before. When the
 shopper's selected account is no longer the one the checkout started with,
 pay takes no payment and returns `409` with code `ACCOUNT_CHANGED`, and the

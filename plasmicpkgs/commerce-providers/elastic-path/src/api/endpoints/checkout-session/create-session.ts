@@ -29,7 +29,10 @@ import {
 import { CART_CLEANUP_PENDING, runCartCleanup } from "../../../checkout/session/cart-cleanup";
 import { createLogger } from "../../../utils/logger";
 import { toClientSession } from "../../../checkout/session/client-session";
-import { selectedAccount } from "../../../checkout/session/checkout-account";
+import {
+  refuseHalfAccount,
+  selectedAccount,
+} from "../../../checkout/session/checkout-account";
 
 const log = createLogger("CreateSession");
 
@@ -77,6 +80,9 @@ export async function handleCreateSession(
   ctx: SessionHandlerContext
 ): Promise<SessionResponse> {
   const { body } = req;
+
+  const halfAccount = refuseHalfAccount(ctx);
+  if (halfAccount) return halfAccount;
 
   const cartId = ctx.sessionCartId;
   if (!cartId) {

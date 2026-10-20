@@ -59,6 +59,8 @@ const { EP_SHIPPING_LINE_SKU } =
   require("../../../../checkout/session/set-shipping-line") as typeof import("../../../../checkout/session/set-shipping-line");
 const { FakeEpStore } =
   require("../../../../checkout/session/__tests__/fake-ep-store") as typeof import("../../../../checkout/session/__tests__/fake-ep-store");
+const { checkoutContextFromSession } =
+  require("../../../../checkout/session/checkout-account") as typeof import("../../../../checkout/session/checkout-account");
 /* eslint-enable @typescript-eslint/no-var-requires */
 
 import type {
@@ -1535,6 +1537,52 @@ describe("an account member's order belongs to the selected account", () => {
 
     expect(sessionIn(res).status).toBe("complete");
     expect(ep.orders.map(linkOf)).toEqual([GUEST]);
+  });
+
+  it("takes the account and the member from the shopper session", async () => {
+    const cartId = newCart();
+    const browser = new Browser(cartId);
+    browser.identity = checkoutContextFromSession({
+      session: {
+        accessToken: "shopper-token",
+        expires: Date.now() + 60_000,
+        clientId: "client",
+        host: "https://api.test.com",
+        memberId: "member-1",
+        account: { id: "account-a", token: "account-token-a", expires: Date.now() + 60_000 },
+        lapsedAccount: null,
+      },
+      cart: { id: cartId },
+    });
+
+    const res = await (await readyToPay(browser), browser.pay({ gateway: "stripe" }));
+
+    expect(sessionIn(res).status).toBe("complete");
+    expect(ep.orders.map(linkOf)).toEqual([LINKED_TO_A]);
+  });
+
+  it.each([
+    ["the account token without its id", { accountToken: "account-token-a", accountMemberId: "member-1" }],
+    ["the account id without its token", { accountId: "account-a", accountMemberId: "member-1" }],
+  ])("refuses a checkout, and places no guest order, when the host sets %s", async (_, half) => {
+    const browser = new Browser(newCart());
+    browser.identity = half;
+
+    const created = await browser.create();
+
+    expect(created.status).toBe(500);
+    expect((created.body as any).error.code).toBe("ACCOUNT_NOT_CONFIGURED");
+    expect(browser.cookie).toBeNull();
+
+    browser.identity = {};
+    await readyToPay(browser);
+    browser.identity = half;
+    const paid = await browser.pay({ gateway: "stripe" });
+
+    expect(paid.status).toBe(500);
+    expect((paid.body as any).error.code).toBe("ACCOUNT_NOT_CONFIGURED");
+    expect(ep.charges).toEqual([]);
+    expect(ep.orders).toEqual([]);
   });
 
   it("gives the manual payment rule the account the order is then placed for", async () => {

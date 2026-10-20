@@ -406,6 +406,7 @@ describe("handleCreateSession", () => {
         createMockCtx({
           shopperAccessToken: "shopper-token",
           accountToken: "account-token",
+          accountId: "account-1",
         })
       );
 
@@ -433,6 +434,7 @@ describe("handleCreateSession", () => {
         createMockReq(),
         createMockCtx({
           accountToken: "account-token",
+          accountId: "account-1",
           getClientCredentialsToken: jest.fn(async () => "admin-token"),
         })
       );

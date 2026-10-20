@@ -2,19 +2,19 @@
  * Checkout context factory — built per-request by every checkout-session route.
  *
  * Resolves:
- *   - shopperAccessToken from the better-auth session (shopper-scoped).
- *   - accountToken, accountId, accountMemberId: the selected account and the
- *     signed-in member, from the same session. With them, checkout places
- *     the order for that account.
+ *   - checkoutContextFromSession(session): the shopper token, the session
+ *     cart (the only cart checkout uses), the selected account and the
+ *     signed-in member, locale and currency, all from one getSession. With an
+ *     account selected, checkout places the order for that account.
  *   - getClientCredentialsToken: a closure-memoized admin token minter,
  *     scoped to this request only (no process-level cache).
- *   - sessionCartId: the shopper's session cart, the only cart checkout uses.
  *   - adapterRegistry with Stripe registered when EP_CLIENT_SECRET is set.
  *     Zero-total orders complete without a registered gateway.
  *   - sessionStore (cookie-based JWE).
  *   - shippingRateResolver: one static example rate (demo only).
  */
 import {
+  checkoutContextFromSession,
   CookieSessionStore,
   createAdapterRegistry,
   createClientCredentialsTokenResolver,
@@ -60,9 +60,6 @@ export async function buildCheckoutContext(
     })
     .catch(() => null);
 
-  const shopperAccessToken = session?.session?.accessToken ?? "";
-  const account = session?.session?.account ?? undefined;
-  const sessionCartId = session?.cart?.id ?? undefined;
 
   // Per-request admin-token resolver. Built only when EP_CLIENT_SECRET is
   // present; absence cleanly disables admin-side EP calls (Stripe gateway
@@ -100,11 +97,7 @@ export async function buildCheckoutContext(
     epCredentials: { clientId, apiBaseUrl },
     adapterRegistry,
     sessionStore,
-    shopperAccessToken,
-    accountToken: account?.token,
-    accountId: account?.id,
-    accountMemberId: account ? session?.session?.memberId : undefined,
-    sessionCartId,
+    ...checkoutContextFromSession(session),
     getClientCredentialsToken,
     // Example/demo pricing only. Production hosts must replace this with real
     // server-side rate logic (carrier API, EP rules, etc.).

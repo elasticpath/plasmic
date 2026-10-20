@@ -188,6 +188,23 @@ describe("epPlaceOrder payment method rule", () => {
     });
   });
 
+  it("places no guest order for a scope with the account token but no account id", async () => {
+    mockGetACart.mockResolvedValue(CART_RESPONSE(0));
+    mockCheckoutApi.mockResolvedValue(ORDER_RESPONSE(0));
+
+    await expect(
+      withEpSession(
+        { ...SESSION_BASE, cartId: "cart-1", accountToken: "account-token" },
+        () =>
+          epPlaceOrder({
+            customer: { name: "Ada Lovelace", email: "ada@ep.com" },
+            billingAddress: BILLING,
+          })
+      )
+    ).rejects.toThrow(/accountId/);
+    expect(mockCheckoutApi).not.toHaveBeenCalled();
+  });
+
   it("takes no manual payment when the order total is not zero, though the cart read was", async () => {
     mockGetACart.mockResolvedValue(CART_RESPONSE(0));
     mockCheckoutApi.mockResolvedValue(ORDER_RESPONSE(91900));
