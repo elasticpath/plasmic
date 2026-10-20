@@ -1,5 +1,6 @@
 import type { CartEntityResponse } from "@epcc-sdk/sdks-shopper";
 import { normalizeCart } from "../utils/normalize";
+import { SHIPPED_CART_RESPONSE } from "./shipped-cart-fixture";
 
 const cartResponse: CartEntityResponse = {
   data: {
@@ -160,80 +161,7 @@ describe("normalizeCart", () => {
   });
 
   describe("a cart the checkout wrote its shipping line into", () => {
-    // Shape read from the integration store: one product, the checkout's
-    // $5.99 shipping line and TEST1 (10% off the cart, shipping included).
-    const usd = (amount: number) => ({
-      amount,
-      currency: "USD",
-      formatted: `${amount < 0 ? "-" : ""}$${(Math.abs(amount) / 100).toFixed(2)}`,
-    });
-    const pair = (amount: number) => ({ unit: usd(amount), value: usd(amount) });
-    const shipped = {
-      data: {
-        id: "cart-1",
-        type: "cart",
-        meta: {
-          display_price: {
-            with_tax: usd(2519),
-            without_tax: usd(2519),
-            tax: usd(0),
-            discount: usd(-280),
-            without_discount: usd(2799),
-          },
-        },
-      },
-      included: {
-        items: [
-          {
-            id: "line-1",
-            type: "cart_item",
-            sku: "p-plus-sub",
-            name: "PlayStation Plus",
-            quantity: 1,
-            meta: {
-              display_price: {
-                with_tax: pair(1980),
-                without_tax: pair(1980),
-                tax: pair(0),
-                discount: pair(-220),
-                without_discount: pair(2200),
-                discounts: { TEST1: usd(-220) },
-              },
-            },
-          },
-          {
-            id: "ship-1",
-            type: "custom_item",
-            sku: "__ep_shipping",
-            name: "Standard Shipping",
-            quantity: 1,
-            unit_price: { amount: 599, currency: "USD", includes_tax: true },
-            meta: {
-              display_price: {
-                with_tax: pair(539),
-                without_tax: pair(539),
-                tax: pair(0),
-                discount: pair(-60),
-                without_discount: pair(599),
-                discounts: { TEST1: usd(-60) },
-              },
-            },
-          },
-          {
-            id: "promo-1",
-            type: "promotion_item",
-            sku: "TEST1",
-            quantity: 1,
-            meta: {
-              display_price: {
-                with_tax: pair(-280),
-                without_tax: pair(-280),
-              },
-            },
-          },
-        ],
-      },
-    } as any;
+    const shipped = SHIPPED_CART_RESPONSE;
 
     it("lists and counts only what the shopper bought", () => {
       const cart = normalizeCart(shipped);
@@ -242,8 +170,25 @@ describe("normalizeCart", () => {
       expect(cart.itemCount).toBe(1);
     });
 
+    it("keeps Elastic Path's own totals and promotion amounts untouched", () => {
+      const cart = normalizeCart(shipped);
+      const price = cart.meta?.display_price as any;
+
+      expect(price.with_tax).toEqual({
+        amount: 2519,
+        currency: "USD",
+        formatted: "$25.19",
+        float_price: 25.19,
+      });
+      expect(price.discount).toMatchObject({ amount: -280, formatted: "-$2.80" });
+      expect((cart.promotions[0] as any).meta.display_price.without_tax.value).toMatchObject({
+        amount: -280,
+        formatted: "-$2.80",
+      });
+    });
+
     it("totals the cart without the shipping or what the code took off it", () => {
-      const price = normalizeCart(shipped).meta?.display_price as any;
+      const price = normalizeCart(shipped).withoutShipping?.meta?.display_price as any;
 
       expect(price.with_tax).toMatchObject({ amount: 1980, formatted: "$19.80" });
       expect(price.without_tax.amount).toBe(1980);
@@ -253,7 +198,7 @@ describe("normalizeCart", () => {
     });
 
     it("shows the code's discount on the cart's own lines", () => {
-      const [promo] = normalizeCart(shipped).promotions as any[];
+      const [promo] = normalizeCart(shipped).withoutShipping?.promotions as any[];
 
       expect(promo.meta.display_price.without_tax.value).toMatchObject({
         amount: -220,
@@ -270,7 +215,8 @@ describe("normalizeCart", () => {
       });
 
       expect((cart.meta?.display_price as any).with_tax.formatted).toBe("$25.19");
-      expect((cart.promotions[0] as any).meta.display_price.without_tax.value.amount).toBe(-280);
+      expect((cart.withoutShipping?.meta?.display_price as any).with_tax.formatted).toBe("$25.19");
+      expect((cart.withoutShipping?.promotions[0] as any).meta.display_price.without_tax.value.amount).toBe(-280);
     });
   });
 

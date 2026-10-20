@@ -128,6 +128,7 @@ export type Cart = Omit<CartResponse, "meta" | "id" | "links"> & {
     items: CartItem[];
     promotions: CartItem[];
     itemCount: number;
+    withoutShipping?: CartWithoutShipping;
 };
 
 // @public (undocumented)
@@ -162,6 +163,12 @@ export type CartMeta = Omit<EpCartMeta, "display_price"> & {
 };
 
 export { CartResponse }
+
+// @public (undocumented)
+export type CartWithoutShipping = {
+    meta?: CartMeta;
+    promotions: CartItem[];
+};
 
 // @public (undocumented)
 export interface CatalogSearchData {

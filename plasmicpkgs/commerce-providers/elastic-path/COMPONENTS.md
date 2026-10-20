@@ -173,10 +173,14 @@ const { cart, isLoading, error, refresh } = useEpCart();
 
 The cart holds what the shopper bought. Checkout writes its shipping charge
 into the Elastic Path cart as a line with SKU `__ep_shipping`; the published
-cart leaves that line out of `items` and `itemCount`, and its
-`meta.display_price` totals and promotion amounts leave out what the line adds
-and what a code took off it. Checkout totals, which include shipping, come
-from `$ctx.checkoutSession.session.totals`.
+cart leaves that line out of `items` and `itemCount`. `meta` and `promotions`
+stay as Elastic Path priced them, so after a checkout that did not finish they
+include the line. `withoutShipping.meta` and `withoutShipping.promotions` are
+the same values less what the line adds and what a code took off it; they add
+up to `items`. EP Cart Field, EP Checkout Cart Field, EP Promo Code Input and
+EP Order Totals Breakdown read them. Bind a cart page's own totals to
+`$ctx.cart.withoutShipping.meta.display_price`. Checkout totals, which include
+shipping, come from `$ctx.checkoutSession.session.totals`.
 
 To write to the cart, call `epAddCartItem`, `epUpdateCartItem` or
 `epRemoveCartItem`. They replace `useAddItem`, `useUpdateItem` and

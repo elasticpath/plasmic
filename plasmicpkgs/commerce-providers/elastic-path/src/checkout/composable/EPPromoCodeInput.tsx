@@ -13,6 +13,7 @@ import {
   epRemovePromoCode,
 } from "../../ep-server-functions/cart-mutations";
 import type { Cart, CartItem } from "../../types/cart";
+import { shopperCartPromotions, shopperCartTotals } from "../../utils/cart-totals";
 import { createLogger } from "../../utils/logger";
 
 const log = createLogger("EPPromoCodeInput");
@@ -136,7 +137,7 @@ interface AppliedPromotion {
  * would let the component display a discount the cart does not actually hold.
  */
 function readAppliedPromotion(cart: Cart | null): AppliedPromotion | null {
-  const promotion = cart?.promotions?.[0] as
+  const promotion = (cart ? shopperCartPromotions(cart) : undefined)?.[0] as
     | (CartItem & { code?: string })
     | undefined;
   if (!promotion) return null;
@@ -146,7 +147,7 @@ function readAppliedPromotion(cart: Cart | null): AppliedPromotion | null {
     label: code ?? promotion.name ?? null,
     formattedDiscount:
       promotion.meta?.display_price?.without_tax?.value?.formatted ??
-      cart?.meta?.display_price?.discount?.formatted ??
+      (cart ? shopperCartTotals(cart) : undefined)?.discount?.formatted ??
       null,
   };
 }

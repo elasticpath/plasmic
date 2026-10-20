@@ -71,4 +71,16 @@ export type Cart = Omit<EpCart, "meta" | "id" | "links"> & {
   promotions: CartItem[];
   /** Quantity sum; Elastic Path exposes only a line count. */
   itemCount: number;
+  /**
+   * The cart's totals and promotions without the checkout's shipping line,
+   * so they add up to `items`. The same as `meta` and `promotions` when the
+   * cart has no shipping line; otherwise derived, with `formatted` from
+   * `Intl`.
+   */
+  withoutShipping?: CartWithoutShipping;
+};
+
+export type CartWithoutShipping = {
+  meta?: CartMeta;
+  promotions: CartItem[];
 };

@@ -526,9 +526,12 @@ would charge. A request without `shownTotal` is checked as before.
 The checkout's shipping line no longer shows in the cart. After a declined
 card or a refused order, the cart page listed "Standard Shipping" as a line
 the shopper could change or remove, and counted it. The published `Cart`
-leaves that line out of `items` and `itemCount`, and its totals and promotion
-amounts leave out what the line adds and what a code took off it. Checkout
-still charges the shipping line. Session totals count the shipping line at
+leaves that line out of `items` and `itemCount`. Its `meta` and `promotions`
+keep Elastic Path's money as it is. The new `withoutShipping.meta` and
+`withoutShipping.promotions` leave out what the line adds and what a code took
+off it, so they add up to `items`; EP Cart Field, EP Checkout Cart Field, EP
+Promo Code Input and EP Order Totals Breakdown read them. Checkout still
+charges the shipping line. Session totals count the shipping line at
 its discounted price, so the subtotal no longer goes negative under a code
 that discounts shipping. A new checkout session leaves out a shipping line
 left in the cart until a rate is chosen.

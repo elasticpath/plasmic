@@ -36,6 +36,11 @@ jest.mock("swr", () => ({
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { EPPromoCodeInput } =
   require("../EPPromoCodeInput") as typeof import("../EPPromoCodeInput");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { normalizeCart } = require("../../../utils/normalize") as typeof import("../../../utils/normalize");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { SHIPPED_CART_RESPONSE } =
+  require("../../../test/shipped-cart-fixture") as typeof import("../../../test/shipped-cart-fixture");
 
 const CART_WITHOUT_PROMOTION = {
   id: "cart-1",
@@ -104,6 +109,15 @@ describe("EPPromoCodeInput — the promotion the cart carries", () => {
     const { container } = render(<EPPromoCodeInput />);
 
     expect(container.textContent).toContain("-$5.00");
+  });
+
+  it("shows what the code took off the cart's own lines, not off the checkout's shipping line", () => {
+    mockCart = normalizeCart(SHIPPED_CART_RESPONSE);
+
+    const { container } = render(<EPPromoCodeInput />);
+
+    expect(container.textContent).toContain("TEST1");
+    expect(container.textContent).toContain("-$2.20");
   });
 
   it("falls back to the promotion name when EP returns no code", () => {
