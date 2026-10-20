@@ -18,6 +18,7 @@
  */
 import { getACart, getAnOrder } from "@epcc-sdk/sdks-shopper";
 import { settleOnceOrBusy } from "../../../checkout/session/settle-once";
+import { releasingShippingLine } from "../../../checkout/session/shipping-line-scope";
 import {
   readCartPaymentIntentState,
   unreadablePaymentResponse,
@@ -274,9 +275,11 @@ export async function handleResumePayment(
   const heldOrderId = open.order?.id;
   const readState = () => readCartPaymentIntentState(adapter, open, req.body);
   return settleOnceOrBusy(open, () =>
-    heldOrderId
-      ? settleHeldOrder(req, ctx, ttl, open, heldOrderId, paymentIntentId, readState)
-      : resumeWithoutHeldOrder(req, ctx, ttl, open, paymentIntentId, readState)
+    releasingShippingLine(ctx, open.cartId, () =>
+      heldOrderId
+        ? settleHeldOrder(req, ctx, ttl, open, heldOrderId, paymentIntentId, readState)
+        : resumeWithoutHeldOrder(req, ctx, ttl, open, paymentIntentId, readState)
+    )
   );
 }
 

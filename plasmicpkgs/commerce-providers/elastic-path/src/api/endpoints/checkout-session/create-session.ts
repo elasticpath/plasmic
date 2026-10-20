@@ -31,6 +31,9 @@ import {
   type ShopperLine,
 } from "../../../checkout/session/order-creation";
 import { CART_CLEANUP_PENDING, runCartCleanup } from "../../../checkout/session/cart-cleanup";
+import { isSettling } from "../../../checkout/session/settle-once";
+import { isShippingLine } from "../../../checkout/session/shipping-line-sku";
+import { releaseShippingLine } from "../../../checkout/session/shipping-line-scope";
 import { createLogger } from "../../../utils/logger";
 import { toClientSession } from "../../../checkout/session/client-session";
 import {
@@ -116,6 +119,7 @@ export async function handleCreateSession(
   let cartItems: ShopperLine[] = [];
   let totals: SessionTotals | null = null;
   let purchasable = false;
+  let leftShippingLine = false;
 
   try {
     const cartResponse = await readCartResponse(client, cartId, ctx);
@@ -124,6 +128,7 @@ export async function handleCreateSession(
     cartItems = shopperLines(cartResponse);
     purchasable = hasPurchasableItem(cartLines(cartResponse));
     totals = totalsWithoutShipping(totalsFromCart(cartResponse));
+    leftShippingLine = cartLines(cartResponse).some(isShippingLine);
   } catch (err) {
     log.error("Failed to fetch cart from EP", {
       cartId,
@@ -146,6 +151,19 @@ export async function handleCreateSession(
         error: { message: "Your cart is empty", code: "EMPTY_CART" },
       },
     };
+  }
+
+  // A shipping line an earlier checkout or an older storefront left behind
+  // comes out, so the cart shows what its lines cost.
+  if (leftShippingLine && !isSettling(cartId) && ctx.getClientCredentialsToken) {
+    try {
+      await releaseShippingLine(await buildAdminEpClient(ctx), cartId);
+    } catch (err) {
+      log.warn("Could not take a left shipping line out of the cart", {
+        cartId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   const cartHash = hashCart(cartItems);

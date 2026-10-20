@@ -11,7 +11,8 @@
  *      INVALID_EMAIL.
  *   3. Re-assert (or clear) the shipping line, then charge only the total the
  *      session last showed (409 TOTAL_CHANGED otherwise). A zero total settles
- *      for free with the manual gateway (`free-order.ts`).
+ *      for free with the manual gateway (`free-order.ts`). The line comes out
+ *      of the cart again when pay ends (`shipping-line-scope.ts`).
  *   4. Dispatch on the adapter's payment sequence:
  *      - cart_payment_intent: initializePayment. On success, checkout →
  *        confirmOrder → finalize. When 3DS is needed, the order is created
@@ -91,6 +92,10 @@ import {
   totalsFromCart,
 } from "../../../checkout/session/session-totals";
 import { settleOnceOrBusy } from "../../../checkout/session/settle-once";
+import {
+  quoteSessionTotals,
+  releasingShippingLine,
+} from "../../../checkout/session/shipping-line-scope";
 import { refuseChangedAccount } from "../../../checkout/session/checkout-account";
 import {
   awaitsCartPaymentChallenge,
@@ -736,7 +741,9 @@ export async function handlePay(
   }
 
   const open = session;
-  return settleOnceOrBusy(open, () => payOpenSession(req, ctx, open, ttl));
+  return settleOnceOrBusy(open, () =>
+    releasingShippingLine(ctx, open.cartId, () => payOpenSession(req, ctx, open, ttl))
+  );
 }
 
 async function payOpenSession(
@@ -824,10 +831,13 @@ async function payOpenSession(
 
   const freshHash = hashCart(freshCartItems);
   if (freshHash !== session.cartHash) {
+    const quoted = latest
+      ? await quoteSessionTotals(ctx, session, cartResponse)
+      : { totals: session.totals, selectedShippingRateId: session.selectedShippingRateId };
     const refreshed: CheckoutSession = {
       ...session,
       cartHash: freshHash,
-      totals: latest ?? session.totals,
+      ...quoted,
     };
     try {
       const setResult = await ctx.sessionStore.set("current", refreshed, ttl, req);

@@ -436,31 +436,42 @@ describe("a cart that changes on the way to payment", () => {
 });
 
 describe("checkout page on an empty cart", () => {
-  it("refuses Place when only the shipping line is left in the cart, and sends no payment", async () => {
-    cartId = newCart([PRODUCT]);
-    await readyToPay();
-    ep.cart(cartId).lines = ep.linesWithSku(cartId, EP_SHIPPING_LINE_SKU);
-    expect(ep.total(cartId)).toBe(599);
-
+  function renderPayPage() {
     renderCheckout(
       <EPCheckoutFormProvider requiresShipping>
         <EPFormField name="email" label="Email" />
+        <div data-testid="totals">
+          <EPOrderTotalsBreakdown />
+        </div>
         <EPStripePayment publishableKey="pk_test_walk" />
         <EPPlaceOrderButton />
       </EPCheckoutFormProvider>
     );
+  }
+
+  async function pressPlace() {
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Place your order" }));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+  }
+
+  it("refuses Place when the cart was emptied after checkout started, and sends no payment", async () => {
+    cartId = newCart([PRODUCT]);
+    await readyToPay();
+    renderPayPage();
     await waitFor(() => expect(probe().total).toBe(2799));
     await waitFor(() => expect(screen.getByTestId("stripe-payment-element")).toBeTruthy());
+    ep.cart(cartId).lines = [];
     fireEvent.change(screen.getByLabelText("Email"), {
       target: { value: "walk@example.com" },
     });
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Place your order" }));
-    });
+    await pressPlace();
 
     await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Your cart is empty"));
-    expect(sent("POST", "/api/ep/proxy/getCart").map((e) => e.status)).toEqual([200]);
     expect(sent("POST", PAY)).toEqual([]);
     expect(ep.charges).toEqual([]);
   });
@@ -641,6 +652,65 @@ describe("checkout page for a new visitor with no cart", () => {
   });
 });
 
+describe("the cart page in 0.8.0 components on this storefront", () => {
+  /**
+   * What EP Cart Field 0.8.0 shows for a saved field and what its EP Cart Item
+   * List lists: Elastic Path's `meta` and every line in `items`
+   * (src/cart-drawer/EPCartField.tsx at ba8b94466).
+   */
+  async function cartPage080() {
+    const cart = (await route("POST", "/api/ep/proxy/getCart", {})).body as any;
+    const price = cart.meta?.display_price;
+    return {
+      lines: cart.items.map((i: any) => i.name ?? i.sku),
+      itemCount: cart.itemCount,
+      formattedSubtotal: price?.without_tax?.formatted,
+      formattedTotal: price?.with_tax?.formatted ?? price?.without_tax?.formatted,
+    };
+  }
+
+  it("shows a total its listed lines add up to after an unfinished checkout", async () => {
+    cartId = newCart([PRODUCT]);
+    await readyToPay();
+
+    expect(await cartPage080()).toEqual({
+      lines: ["PlayStation Plus"],
+      itemCount: 1,
+      formattedSubtotal: "$22.00",
+      formattedTotal: "$22.00",
+    });
+  });
+
+  it("shows a total its listed lines add up to after an unfinished checkout with a code", async () => {
+    cartId = newCart([PRODUCT]);
+    await readyToPay();
+    ep.applyPromotion(cartId, "TEST1", 10);
+    await handleGetSession(req({}), ctx());
+    expect(cookie?.totals?.total).toBe(2519);
+
+    expect(await cartPage080()).toEqual({
+      lines: ["PlayStation Plus"],
+      itemCount: 1,
+      formattedSubtotal: "$19.80",
+      formattedTotal: "$19.80",
+    });
+  });
+
+  it("shows a total its listed lines add up to after a declined card", async () => {
+    cartId = newCart([PRODUCT]);
+    await readyToPay();
+    declineNext = true;
+    await handlePay(req({ gateway: "stripe", shownTotal: 2799 }), ctx());
+
+    expect(await cartPage080()).toEqual({
+      lines: ["PlayStation Plus"],
+      itemCount: 1,
+      formattedSubtotal: "$22.00",
+      formattedTotal: "$22.00",
+    });
+  });
+});
+
 describe("after a declined card", () => {
   it("shows the decline on the page without a binding", async () => {
     cartId = newCart([PRODUCT]);
@@ -669,7 +739,7 @@ describe("after a declined card", () => {
         "Payment did not complete (Your card was declined.)"
       )
     );
-    expect(ep.linesWithSku(cartId, EP_SHIPPING_LINE_SKU)).toHaveLength(1);
+    expect(ep.linesWithSku(cartId, EP_SHIPPING_LINE_SKU)).toEqual([]);
   });
 
   it("lists only what the shopper bought on the cart page, with a count and total that add up", async () => {
@@ -680,8 +750,8 @@ describe("after a declined card", () => {
     declineNext = true;
     const declined = await handlePay(req({ gateway: "stripe", shownTotal: 2519 }), ctx());
     expect((declined.body as any).paymentError).toMatch(/declined/);
-    expect(ep.linesWithSku(cartId, EP_SHIPPING_LINE_SKU)).toHaveLength(1);
-    expect(ep.total(cartId)).toBe(2519);
+    expect(ep.linesWithSku(cartId, EP_SHIPPING_LINE_SKU)).toEqual([]);
+    expect(ep.total(cartId)).toBe(1980);
 
     render(
       <SWRConfig value={{ dedupingInterval: 0 }}>

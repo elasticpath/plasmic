@@ -16,8 +16,8 @@ import type {
   UpdateSessionRequest,
 } from "../../../checkout/session/types";
 import { filterAllowedCustomAttributes } from "../../../checkout/session/custom-attributes-allowlist";
-import { applyShippingSelection } from "../../../checkout/session/apply-shipping-selection";
-import { buildAdminEpClient } from "../../../checkout/session/admin-client";
+import { ShippingResolutionError } from "../../../checkout/session/apply-shipping-selection";
+import { priceShippingSelection } from "../../../checkout/session/shipping-line-scope";
 import {
   totalsFromCart,
   totalsWithoutShipping,
@@ -179,21 +179,21 @@ export async function handleUpdateSession(
     updated = { ...updated, availableShippingRates: await requote(updated, ctx) };
   }
 
-  // When the shopper picks a shipping rate (an id only — never an amount), write
-  // the SERVER-resolved cost into the cart credentialed so the cart shows it
-  // before pay. Best-effort: this is a UX convenience, NOT the integrity
-  // boundary — /pay re-asserts the shipping line authoritatively (ADR-0013), so
-  // a write hiccup here is non-fatal and a forged/un-offered id simply fails to
-  // resolve (no line written). Skip when no rates have been computed yet
-  // (selection before calculate-shipping): nothing to resolve against.
+  // When the shopper picks a shipping rate (an id only — never an amount),
+  // Elastic Path prices the SERVER-resolved cost with the cart, and the line
+  // comes out of the cart again (shipping-line-scope.ts). /pay re-asserts the
+  // line (ADR-0013). A forged/un-offered id fails to resolve and writes no
+  // line. A rate Elastic Path could not price is not chosen, so the page never
+  // shows a total without the rate it shows chosen. Skip when no rates have
+  // been computed yet (selection before calculate-shipping).
+  let notApplied = false;
   if (
     !shippingAddressChanged &&
     update.selectedShippingRateId !== undefined &&
     updated.availableShippingRates.length > 0
   ) {
     try {
-      const client = await buildAdminEpClient(ctx);
-      const pricedCart = await applyShippingSelection(ctx, updated, { client });
+      const pricedCart = await priceShippingSelection(ctx, updated);
       const fresh = totalsFromCart(pricedCart);
       if (fresh) {
         updated = {
@@ -205,11 +205,19 @@ export async function handleUpdateSession(
         };
       }
     } catch (err) {
-      log.warn("Could not write shipping line on selection (deferred to /pay)", {
+      log.warn("Could not price the selected shipping rate", {
         sessionId: updated.id,
         rateId: updated.selectedShippingRateId,
         error: err instanceof Error ? err.message : String(err),
       });
+      if (!(err instanceof ShippingResolutionError)) {
+        notApplied = true;
+        updated = {
+          ...updated,
+          selectedShippingRateId: null,
+          totals: totalsWithoutShipping(session.totals),
+        };
+      }
     }
   }
 
@@ -234,6 +242,21 @@ export async function handleUpdateSession(
     sessionId: updated.id,
     fields: Object.keys(update).filter((k) => (update as Record<string, unknown>)[k] !== undefined),
   });
+
+  if (notApplied) {
+    return {
+      status: 502,
+      body: {
+        success: false,
+        error: {
+          message: "That delivery option could not be added. Please choose it again.",
+          code: "SHIPPING_NOT_APPLIED",
+        },
+        data: { session: toClientSession(updated) },
+      },
+      headers: setResult.headers,
+    };
+  }
 
   return {
     status: 200,
