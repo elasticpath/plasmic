@@ -769,6 +769,28 @@ describe("EP Fork Integrity", () => {
     });
   });
 
+  describe("loader imports EP commerce one export at a time (#731)", () => {
+    it("the loader bundler runs the ep-commerce-imports plugin", () => {
+      const bundler = readFile(
+        "platform/wab/src/wab/server/loader/module-bundler.ts"
+      );
+      expect(bundler).toContain(
+        'from "@/wab/server/loader/ep-commerce-imports";'
+      );
+      expect(bundler).toMatch(
+        /fixAntdPathPlugin,\s*splitEpCommerceImportsPlugin,\s*nextModulesPlugin\(opts\),/
+      );
+      expect(
+        fileExists("platform/wab/src/wab/server/loader/ep-commerce-imports.ts")
+      ).toBe(true);
+      expect(
+        fileExists(
+          "platform/wab/src/wab/server/loader/ep-commerce-imports.spec.ts"
+        )
+      ).toBe(true);
+    });
+  });
+
   describe("registrations that cannot be removed are inert", () => {
     it("EP Shopper Context says so in its display name", () => {
       expect(
