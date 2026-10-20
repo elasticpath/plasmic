@@ -2,6 +2,48 @@
 
 ## Unreleased
 
+### Upgrading
+
+Upgrade the storefront's npm package first, then publish the hostless package.
+The components in a Visual Builder project come from the hostless package, and
+the routes they call come from the storefront. A hostless publish reaches every
+project at once, but each storefront upgrades its npm package on its own
+schedule. So for a time some projects run components from one release against
+a storefront from the other:
+
+- **New storefront, older components** (the order above): global cart actions,
+  EP Checkout Cart Summary and promo codes do not work until the hostless
+  package is published. Card payment does not work with the hostless 0.8.0
+  components on any storefront (#680).
+- **Older storefront, new components** (hostless published first): promo codes,
+  account self-registration and the account member's name and email do not
+  work, listing pages are not rendered on the server, and Studio shows sample
+  data. Checkout works, as described below.
+
+In 0.8.0 and earlier, the Elastic Path Provider on every page reads the cart
+from `/api/ep/cart`, and the global cart actions (`addItem`, `updateItem`,
+`removeItem`) that older components bind write to `/api/ep/cart/items`. This
+release removes both routes, so on an upgraded storefront those calls return
+404 until the hostless package is published.
+
+Shopper cookies and open checkout sessions survive an upgrade and a rollback,
+as long as the checkout session secret (`CHECKOUT_SESSION_SECRET` in the
+example storefront) does not change.
+
+On a 0.8.0 storefront, the checkout components of this release:
+
+- read the cart before each payment request and refuse Place with "Your cart is
+  empty" when the cart holds only the shipping line and promotions. They do
+  the same on a current storefront.
+- send no payment request when the storefront would charge a total other than
+  the one on the page (the cart changed, or the chosen shipping rate is not in
+  the cart yet), or after it answers `CART_MISMATCH`. They start a new checkout
+  session, carry over the details and shipping rate already entered, and show
+  the new total. The shopper presses Place again to pay it.
+- show shopper copy in place of the storefront's messages: "Your cart is empty"
+  for a visitor with no cart, and "Promo codes can't be used on this store
+  until it is updated." for a promo code.
+
 ### Breaking
 
 This release reverses the design 0.3.0 documented. 0.3.0 moved the shopper's
@@ -18,12 +60,8 @@ storefront's own origin.
 [ADR-0003](docs/adr/0003-one-session-for-elastic-path-identity.md) records the
 decision. Upgrade in one step: no release supports both designs.
 
-Publish the hostless package in the same step as the storefront's npm
-upgrade. The components in a Visual Builder project come from the hostless
-package, and the routes they call come from the storefront. In 0.8.0 and
-earlier, the Elastic Path Provider on every page reads the cart from
-`/api/ep/cart` and writes it to `/api/ep/cart/items`. This release removes
-those routes, so on an upgraded storefront those reads and writes return 404.
+The storefront and the components can run different releases for a time; see
+[Upgrading](#upgrading).
 
 The package needs Node 22.12 or later, and says so in `engines`. The CommonJS
 build `require`s better-auth, which ships only as ES modules.
