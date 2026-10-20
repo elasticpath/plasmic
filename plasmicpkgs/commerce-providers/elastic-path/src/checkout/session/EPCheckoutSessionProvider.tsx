@@ -30,21 +30,8 @@ import { createLogger } from "../../utils/logger";
 import type { Cart } from "../../types/cart";
 import type {
   CheckoutSessionStatus,
-  ClientCheckoutSession,
-  SessionTotals,
   UpdateSessionRequest,
 } from "./types";
-import {
-  CART_CHANGED_COPY,
-  CART_UNREAD_COPY,
-  EMPTY_CART_COPY,
-  enteredDetails,
-  isOlderNoCartRefusal,
-  isOlderStorefrontSession,
-  olderCheckoutView,
-  olderSessionKey,
-  withShopperCopy,
-} from "./older-storefront";
 import { hasPurchasableItem } from "./purchasable-items";
 import { useCheckoutSession } from "./use-checkout-session";
 import type { PreviewState } from "./design-time-data";
@@ -61,9 +48,9 @@ const TERMINAL = new Set<CheckoutSessionStatus>(["complete", "expired"]);
 
 const CREATE_FAILED = "Checkout could not start. Please try again.";
 
-const FOCUS_SYNC_INTERVAL_MS = 2000;
+const EMPTY_CART_COPY = "Your cart is empty";
 
-const MAX_AUTO_RESTARTS = 2;
+const FOCUS_SYNC_INTERVAL_MS = 2000;
 
 /** Watches the shared cart cache without reading the cart on mount or focus. */
 const CART_WATCH = {
@@ -142,15 +129,12 @@ const EPCheckoutSessionRuntime = React.forwardRef<
   const [createError, setCreateError] = useState<SessionError | null>(null);
   const terminal = !session || TERMINAL.has(session.status);
   const blocked = createError !== null && terminal;
-  const olderStorefront = isOlderStorefrontSession(session);
 
-  // The cart an open checkout pays for, read again whenever the session
-  // changes (an older storefront) or the shopper may have changed the cart.
+  // The cart an open checkout pays for, read again whenever the shopper may
+  // have changed it.
   const watchKey =
     session?.status === "open" && session.payment?.status !== "requires_action"
-      ? olderStorefront
-        ? olderSessionKey(session)
-        : session.id
+      ? session.id
       : null;
   const watchKeyRef = useRef(watchKey);
   watchKeyRef.current = watchKey;
@@ -169,46 +153,14 @@ const EPCheckoutSessionRuntime = React.forwardRef<
     if (watchKey) void checkCart();
   }, [watchKey, checkCart]);
 
-  const olderView = useMemo(
-    () =>
-      olderStorefront && session && watchKey && checkedCart?.key === watchKey
-        ? olderCheckoutView(session, checkedCart.cart)
-        : null,
-    [olderStorefront, session, watchKey, checkedCart]
-  );
   const cartEmpty =
     !!watchKey &&
     checkedCart !== null &&
     checkedCart.key === watchKey &&
     !hasPurchasableItem(checkedCart.cart.items);
 
-  // An older storefront's session totals do not follow the cart: the page
-  // shows the cart's own figures (older-storefront.ts), never totals known
-  // to be stale.
-  const staleSessionIdsRef = useRef(new Set<string>());
-  const lastOlderTotalsRef = useRef<{ id: string; totals: SessionTotals } | null>(null);
-  if (session && olderView?.totals) {
-    lastOlderTotalsRef.current = { id: session.id, totals: olderView.totals };
-  }
-  const olderTotals = (() => {
-    if (!olderStorefront || !session) return null;
-    if (!watchKey) return session.totals;
-    if (staleSessionIdsRef.current.has(session.id)) return null;
-    if (olderView) return olderView.totals;
-    const last = lastOlderTotalsRef.current;
-    return last?.id === session.id ? last.totals : null;
-  })();
-
   const emptied = cartEmpty && !blocked;
-  const shownSession = useMemo(
-    () =>
-      blocked || emptied
-        ? null
-        : olderStorefront && session
-          ? { ...session, totals: olderTotals }
-          : session,
-    [blocked, emptied, olderStorefront, session, olderTotals]
-  );
+  const shownSession = blocked || emptied ? null : session;
 
   const runCreate = useCallback(async () => {
     let resp: Awaited<ReturnType<typeof createSession>> | undefined;
@@ -223,12 +175,10 @@ const EPCheckoutSessionRuntime = React.forwardRef<
     setCreateError(
       resp?.success
         ? null
-        : isOlderNoCartRefusal(resp)
-          ? { message: EMPTY_CART_COPY, code: "NO_CART" }
-          : {
-              message: resp?.error?.message || CREATE_FAILED,
-              code: resp?.error?.code ?? null,
-            }
+        : {
+            message: resp?.error?.message || CREATE_FAILED,
+            code: resp?.error?.code ?? null,
+          }
     );
     return resp;
   }, [createSession]);
@@ -274,10 +224,9 @@ const EPCheckoutSessionRuntime = React.forwardRef<
     if (blocked) {
       void runCreate();
     } else if (session?.status === "open") {
-      // An older storefront does not requote on read; its cart is read instead.
-      void (olderStorefront ? checkCart() : refresh());
+      void refresh();
     }
-  }, [blocked, runCreate, session?.status, olderStorefront, checkCart, refresh]);
+  }, [blocked, runCreate, session?.status, refresh]);
 
   const { data: cart } = useSWR(epCartCacheKey(), () => epGetCart(), CART_WATCH);
   const seenCartRef = useRef(cart);
@@ -286,11 +235,11 @@ const EPCheckoutSessionRuntime = React.forwardRef<
     seenCartRef.current = cart;
     if (seen === undefined || seen === cart) return;
     const key = watchKeyRef.current;
-    if (!olderStorefront && key && cart && typeof cart === "object") {
+    if (key && cart && typeof cart === "object") {
       setCheckedCart({ cart, key });
     }
     syncWithCart();
-  }, [cart, syncWithCart, olderStorefront]);
+  }, [cart, syncWithCart]);
 
   const lastFocusSyncRef = useRef(0);
   useEffect(() => {
@@ -303,7 +252,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
       if (now - lastFocusSyncRef.current < FOCUS_SYNC_INTERVAL_MS) return;
       lastFocusSyncRef.current = now;
       syncWithCart();
-      if (!olderStorefront) void swrMutate(epCartCacheKey());
+      void swrMutate(epCartCacheKey());
     };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
@@ -311,7 +260,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onFocus);
     };
-  }, [syncWithCart, olderStorefront]);
+  }, [syncWithCart]);
 
   // While a refused create stands, writes would reach the finished session it
   // replaced; answer them with the refusal instead. An emptied cart is
@@ -335,81 +284,15 @@ const EPCheckoutSessionRuntime = React.forwardRef<
     [blocked, createError, emptied]
   );
 
-  // The session is a cookie: a write sent while checkout starts again would
-  // carry the session from before it and undo the rate it carries over.
-  const restartRef = useRef<Promise<void> | null>(null);
-  const afterRestart = useCallback(async () => {
-    while (restartRef.current) await restartRef.current;
-  }, []);
-
   const updateSessionData = useCallback(
-    async (data: UpdateSessionRequest) => {
-      if (refusal) return refusal;
-      await afterRestart();
-      const resp = await updateSessionFn(data);
-      return olderStorefront ? withShopperCopy(resp) : resp;
-    },
-    [refusal, updateSessionFn, olderStorefront, afterRestart]
+    async (data: UpdateSessionRequest) => refusal ?? updateSessionFn(data),
+    [refusal, updateSessionFn]
   );
 
-  const calculateShippingData = useCallback(async () => {
-    if (refusal) return refusal;
-    await afterRestart();
-    const resp = await calcShippingFn();
-    return olderStorefront ? withShopperCopy(resp) : resp;
-  }, [refusal, calcShippingFn, olderStorefront, afterRestart]);
-
-  // An older storefront charges its live cart whatever the page shows, and
-  // keeps the old totals after CART_MISMATCH. A session whose total no longer
-  // matches the cart is never paid: checkout starts again (the storefront
-  // reads cart and total together) with what the shopper entered.
-  const restartCheckout = useCallback(
-    (stale: ClientCheckoutSession, { hideTotals = true } = {}): Promise<void> => {
-      if (hideTotals) staleSessionIdsRef.current.add(stale.id);
-      if (restartRef.current) return restartRef.current;
-      const run = (async () => {
-        const created = await createSession();
-        if (!created?.success) return;
-        const details = enteredDetails(stale);
-        let rates = created.data?.session?.availableShippingRates ?? [];
-        if (details) {
-          const updated = await updateSessionFn(details);
-          rates = updated?.data?.session?.availableShippingRates ?? rates;
-        }
-        const rateId = stale.selectedShippingRateId;
-        if (rateId && rates.some((rate) => rate.id === rateId)) {
-          await updateSessionFn({ selectedShippingRateId: rateId });
-        }
-      })()
-        .catch((err) => {
-          log.warn("Starting checkout again failed", {
-            error: err instanceof Error ? err.message : String(err),
-          });
-        })
-        .finally(() => {
-          restartRef.current = null;
-        });
-      restartRef.current = run;
-      return run;
-    },
-    [createSession, updateSessionFn]
+  const calculateShippingData = useCallback(
+    async () => refusal ?? calcShippingFn(),
+    [refusal, calcShippingFn]
   );
-
-  // An older storefront's session whose total is not its cart's starts again
-  // as soon as the page sees it, so the first Place pays what the page shows.
-  const autoRestartsRef = useRef(0);
-  useEffect(() => {
-    if (!olderView || !session || olderView.empty) return;
-    if (olderView.inSync) {
-      if (session.selectedShippingRateId) autoRestartsRef.current = 0;
-      return;
-    }
-    if (placeOrderInFlightRef.current || restartRef.current) return;
-    if (staleSessionIdsRef.current.has(session.id)) return;
-    if (autoRestartsRef.current >= MAX_AUTO_RESTARTS) return;
-    autoRestartsRef.current += 1;
-    void restartCheckout(session, { hideTotals: false });
-  }, [olderView, session, restartCheckout]);
 
   const handleUpdateSession = useCallback(
     async (data?: Record<string, unknown>) => {
@@ -449,20 +332,8 @@ const EPCheckoutSessionRuntime = React.forwardRef<
     placeOrderInFlightRef.current = true;
     // The total on the page when the shopper pressed Place: the server
     // charges it or refuses.
-    const older = !!session && isOlderStorefrontSession(session);
-    const shownTotal = older ? olderTotals?.total : session?.totals?.total;
-    const cartChanged = async () => {
-      if (session) await restartCheckout(session);
-      void checkCart();
-      return {
-        success: false,
-        error: { message: CART_CHANGED_COPY, code: "TOTAL_CHANGED" },
-      };
-    };
+    const shownTotal = session?.totals?.total;
     const refuseBeforePay = async () => {
-      if (older && staleSessionIdsRef.current.has(session!.id)) {
-        return cartChanged();
-      }
       let liveCart;
       try {
         liveCart = await epReadCart();
@@ -470,31 +341,15 @@ const EPCheckoutSessionRuntime = React.forwardRef<
         log.warn("Cart read before payment failed", {
           error: err instanceof Error ? err.message : String(err),
         });
-        if (!older) return null;
-        return {
-          success: false,
-          error: { message: CART_UNREAD_COPY, code: "CART_UNREAD" },
-        };
+        return null;
       }
-      if (liveCart ? !hasPurchasableItem(liveCart.items) : older) {
+      if (liveCart && !hasPurchasableItem(liveCart.items)) {
         return {
           success: false,
           error: { message: EMPTY_CART_COPY, code: "EMPTY_CART" },
         };
       }
-      if (older) {
-        const view = olderCheckoutView(session!, liveCart);
-        if (!view.inSync || view.totals?.total !== shownTotal) return cartChanged();
-      }
       return null;
-    };
-    const pay = async (
-      body: Record<string, unknown>
-    ): Promise<Awaited<ReturnType<typeof placeOrderFn>>> => {
-      const resp = await placeOrderFn(body);
-      if (!older) return resp;
-      if (resp?.error?.code === "CART_MISMATCH") return cartChanged();
-      return withShopperCopy(resp);
     };
     try {
       // Free orders (zero total) need no card / gateway — the server settles
@@ -503,7 +358,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
       if (shownTotal === 0) {
         const refused = await refuseBeforePay();
         if (refused) return refused;
-        return await pay({ gateway: "manual", shownTotal });
+        return await placeOrderFn({ gateway: "manual", shownTotal });
       }
 
       const gw = gatewayRef.current;
@@ -536,7 +391,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
 
       // Ask the gateway component for its data (e.g. tokenize the card)
       const gwData = await gw.confirm();
-      const payResp = await pay({
+      const payResp = await placeOrderFn({
         gateway: gw.name,
         ...gwData,
         ...(typeof shownTotal === "number" ? { shownTotal } : {}),
@@ -568,7 +423,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
     } finally {
       placeOrderInFlightRef.current = false;
     }
-  }, [refusal, placeOrderFn, session, olderTotals, restartCheckout, checkCart]);
+  }, [refusal, placeOrderFn, session]);
 
   const handleConfirmPayment = useCallback(
     async (confirmData?: Record<string, unknown>) => {

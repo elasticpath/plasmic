@@ -1,6 +1,4 @@
-import { useMemo } from "react";
 import useSWR, { mutate } from "swr";
-import { asCurrentCart } from "../ep-server-functions/older-storefront-cart";
 import type { Cart } from "../types/cart";
 import { registerEpCartCache } from "../ep-server-functions/cart-cache-registry";
 import { epGetCart } from "../ep-server-functions/getCart";
@@ -46,9 +44,8 @@ export function useEpCart(): UseEpCartReturn {
     () => epGetCart() as Promise<Cart | null>,
     { revalidateOnFocus: false }
   );
-  const cart = useMemo(() => asCurrentCart(data ?? null), [data]);
   return {
-    cart,
+    cart: data ?? null,
     isLoading: cartLoadState(data, error) === "loading",
     error: error ?? null,
     refresh: mutate as () => Promise<Cart | null | undefined>,

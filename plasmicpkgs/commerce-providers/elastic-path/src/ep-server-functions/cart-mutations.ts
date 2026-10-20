@@ -23,7 +23,6 @@ import { currentEpDesignRealm } from "./design-realm";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession, type EpSessionContext } from "./session-context";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
-import { asCurrentCart } from "./older-storefront-cart";
 import { readCart } from "./read-cart";
 import {
   addCustomCartItem,
@@ -187,7 +186,7 @@ async function sendCartWrite<I>(
   let cart: Cart | undefined;
   if (!isUsableAuth(auth) && shouldUseProxy()) {
     try {
-      cart = asCurrentCart(await viaProxy(input));
+      cart = await viaProxy(input);
     } catch (err) {
       throw rejectionFromProxy(err, failureCopy);
     }
@@ -445,12 +444,12 @@ export async function epApplyCartAdjustment(
   // the credentialed cart write server-only. Mirrors epGetCart's fallback.
   // This is what makes the mutation invokable from a designer's onClick action.
   if (!isUsableAuth(auth) && shouldUseProxy()) {
-    return asCurrentCart(await callEpProxy<Cart>("applyCartAdjustment", {
+    return callEpProxy<Cart>("applyCartAdjustment", {
       label: input.label,
       amountMinor: input.amountMinor,
       kind: input.kind,
       ...(input.quantity !== undefined ? { quantity: input.quantity } : {}),
-    }));
+    });
   }
 
   if (!isUsableAuth(auth)) {
@@ -518,7 +517,7 @@ export async function epApplyPromoCode(
   const auth = getCurrentEpSession();
 
   if (!isUsableAuth(auth) && shouldUseProxy()) {
-    return asCurrentCart(await callEpProxy<Cart>("applyPromoCode", { code }));
+    return callEpProxy<Cart>("applyPromoCode", { code });
   }
 
   if (!isUsableAuth(auth)) {
@@ -565,7 +564,7 @@ export async function epRemovePromoCode(
   const auth = getCurrentEpSession();
 
   if (!isUsableAuth(auth) && shouldUseProxy()) {
-    return asCurrentCart(await callEpProxy<Cart>("removePromoCode", { code }));
+    return callEpProxy<Cart>("removePromoCode", { code });
   }
 
   if (!isUsableAuth(auth)) {
