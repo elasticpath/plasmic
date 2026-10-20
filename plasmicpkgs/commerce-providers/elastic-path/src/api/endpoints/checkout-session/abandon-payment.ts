@@ -36,6 +36,7 @@ import { isCartPaymentIntentAdapter } from "../../../checkout/session/payment-se
 import { clearCartPaymentIntentId } from "../../../checkout/session/clear-cart-payment-intent";
 import { buildShopperEpClient } from "../../../checkout/session/shopper-client";
 import { settleOnceOrBusy } from "../../../checkout/session/settle-once";
+import { releasingShippingLine } from "../../../checkout/session/shipping-line-scope";
 import { buildAdminEpClient } from "../../../checkout/session/admin-client";
 import { finalizePaidSession } from "../../../checkout/session/finalize-paid-session";
 import {
@@ -132,7 +133,7 @@ export async function handleAbandonPayment(
   }
 
   const open = session;
-  return settleOnceOrBusy(open, async () => {
+  return settleOnceOrBusy(open, () => releasingShippingLine(ctx, open.cartId, async () => {
     // Release only a PaymentIntent that has not taken the payment: one still
     // waiting for the challenge, or one that can no longer pay. A taken
     // payment must settle its order; an unread one is left alone.
@@ -166,7 +167,7 @@ export async function handleAbandonPayment(
       state,
     });
     return unreadablePaymentResponse(state, open);
-  });
+  }));
 }
 
 /**

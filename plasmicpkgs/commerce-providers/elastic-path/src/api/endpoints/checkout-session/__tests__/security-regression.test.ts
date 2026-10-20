@@ -991,8 +991,9 @@ describe("clear stale managed shipping on non-shipping pay (#436)", () => {
     );
     expect(epSdk.manageCarts).not.toHaveBeenCalled();
     expect(callOrder).toEqual(["delete", "initializePayment"]);
-    // Hash + clear read + post-mutation total refresh (lines were deleted).
-    expect(epSdk.getACart).toHaveBeenCalledTimes(3);
+    // Hash + clear read + post-mutation total refresh (lines were deleted),
+    // then the read that takes any shipping line out after pay.
+    expect(epSdk.getACart).toHaveBeenCalledTimes(4);
     expect(adapter.initializePayment).toHaveBeenCalledTimes(1);
   });
 
@@ -1096,7 +1097,8 @@ describe("clear stale managed shipping on non-shipping pay (#436)", () => {
     expect(epSdk.deleteACartItem).not.toHaveBeenCalled();
     expect(epSdk.manageCarts).not.toHaveBeenCalled();
     expect(adapter.initializePayment).toHaveBeenCalledTimes(1);
-    expect(epSdk.getACart).toHaveBeenCalledTimes(2);
+    // Hash + clear read, then the read that takes any shipping line out after pay.
+    expect(epSdk.getACart).toHaveBeenCalledTimes(3);
   });
 
   it("physical pay reuses setCartShippingLine cart meta (no extra post-assert GET)", async () => {
@@ -1148,7 +1150,8 @@ describe("clear stale managed shipping on non-shipping pay (#436)", () => {
     expect(res.status).toBe(200);
     expect((res.body as any).data.session.status).toBe("complete");
     expect(epSdk.manageCarts.mock.calls[0][0].body.data.price.amount).toBe(1500);
-    expect(epSdk.getACart).toHaveBeenCalledTimes(3);
+    // Hash + line read + write re-read, then the read that takes the line out after pay.
+    expect(epSdk.getACart).toHaveBeenCalledTimes(4);
     expect(adapter.initializePayment).toHaveBeenCalledTimes(1);
   });
 

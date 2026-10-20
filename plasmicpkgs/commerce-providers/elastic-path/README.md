@@ -579,7 +579,18 @@ also refuses with `TOTAL_CHANGED` when that is not the total it would charge.
 Reading an open session (`GET …/current`) re-reads its cart, and when the
 lines changed it stores and returns the cart's new totals, so the page shows a
 cart change before the shopper pays. It does not move a session while a card
-check holds its order or a payment for its cart runs. A cart settles at most one order: pay,
+check holds its order or a payment for its cart runs.
+
+The checkout's shipping line (SKU `__ep_shipping`) is in the cart only while a
+payment runs. Choosing a rate writes the line, reads the cart Elastic Path
+priced with it (promotions and tax included) as the session's totals, and
+takes the line out again; reading a session whose cart changed prices the rate
+the same way. Pay writes the line again before it charges, and pay, resume,
+abandon and confirm take it out when they end, unless a card check waits with
+no order held. Creating a session takes out a line an earlier checkout left.
+So a cart page outside a payment shows totals its lines add up to. A rate
+Elastic Path cannot price is not chosen: the update returns `502` with code
+`SHIPPING_NOT_APPLIED` and the session without that rate. A cart settles at most one order: pay,
 resume-payment and abandon-payment share one guard per cart. While one of
 them runs for a cart, another request from the same checkout session gets the
 same response, and one from a different checkout session gets `409` with code

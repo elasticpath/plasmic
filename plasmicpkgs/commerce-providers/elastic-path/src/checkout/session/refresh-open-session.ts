@@ -4,8 +4,9 @@ import { buildAdminEpClient } from "./admin-client";
 import { hashCart } from "./cart-hash";
 import { shopperLines } from "./order-creation";
 import { hasPurchasableItem } from "./purchasable-items";
-import { cartLines, totalsFromCart, totalsWithoutShipping } from "./session-totals";
+import { cartLines, totalsFromCart } from "./session-totals";
 import { isSettling } from "./settle-once";
+import { quoteSessionTotals } from "./shipping-line-scope";
 import { buildShopperEpClient } from "./shopper-client";
 import type { CheckoutSession, SessionHandlerContext } from "./types";
 
@@ -50,11 +51,8 @@ export async function refreshOpenSession(
   const cartHash = hashCart(shopperLines(cartResponse));
   if (cartHash === session.cartHash) return null;
 
-  const fresh = totalsFromCart(cartResponse);
-  if (!fresh || !refreshable(session)) return null;
-  return {
-    ...session,
-    cartHash,
-    totals: session.selectedShippingRateId ? fresh : totalsWithoutShipping(fresh),
-  };
+  if (!totalsFromCart(cartResponse) || !refreshable(session)) return null;
+  const quoted = await quoteSessionTotals(ctx, session, cartResponse);
+  if (!quoted.totals || !refreshable(session)) return null;
+  return { ...session, cartHash, ...quoted };
 }

@@ -38,6 +38,16 @@ const { EPPromoCodeInput } =
   require("../../composable/EPPromoCodeInput") as typeof import("../../composable/EPPromoCodeInput");
 const { EPOrderTotalsBreakdown } =
   require("../../composable/EPOrderTotalsBreakdown") as typeof import("../../composable/EPOrderTotalsBreakdown");
+const { EPCheckoutCartSummary } =
+  require("../../composable/EPCheckoutCartSummary") as typeof import("../../composable/EPCheckoutCartSummary");
+const { EPCheckoutCartItemList } =
+  require("../../composable/EPCheckoutCartItemList") as typeof import("../../composable/EPCheckoutCartItemList");
+const { EPCheckoutCartField } =
+  require("../../composable/EPCheckoutCartField") as typeof import("../../composable/EPCheckoutCartField");
+const { EPCartProvider } = require("../../../cart-provider/EPCartProvider") as typeof import("../../../cart-provider/EPCartProvider");
+const { EPCartItemList } = require("../../../cart-drawer/EPCartItemList") as typeof import("../../../cart-drawer/EPCartItemList");
+const { EPCartItemField } = require("../../../cart-drawer/EPCartItemField") as typeof import("../../../cart-drawer/EPCartItemField");
+const { EPCartField } = require("../../../cart-drawer/EPCartField") as typeof import("../../../cart-drawer/EPCartField");
 /* eslint-enable @typescript-eslint/no-var-requires */
 
 const ADDRESS = {
@@ -132,6 +142,11 @@ function shownTotal(): string | null {
   return row?.querySelector("[data-ep-totals-value]")?.textContent ?? null;
 }
 
+/** Every row of EP Order Totals Breakdown, as the shopper reads them. */
+function rows(): string {
+  return document.querySelector("[data-ep-order-totals-breakdown]")?.textContent ?? "";
+}
+
 function alertText(): string | null {
   return document.querySelector("[data-ep-checkout-error]")?.textContent ?? null;
 }
@@ -220,8 +235,138 @@ describe("the 0.8.0 storefront the fake replays", () => {
   });
 });
 
+describe("the totals rows on a 0.8.0 storefront", () => {
+  it("add up once a rate is chosen", async () => {
+    await readyToPay();
+    renderCheckout();
+
+    await waitFor(() => expect(rows()).toBe("Subtotal$22.00Shipping$5.99Tax$0.00Total$27.99"));
+  });
+
+  it("leave out a shipping line an earlier checkout left in the cart until a rate is chosen", async () => {
+    store.shippingLine = 599;
+    await readyToPay({ rate: false });
+    expect(store.storedSession()?.totals.total).toBe(2799);
+
+    renderCheckout();
+
+    await waitFor(() => expect(rows()).toBe("Subtotal$22.00Shipping$0.00Tax$0.00Total$22.00"));
+  });
+
+  it("show the goods, the shipping and a total that adds up after checkout starts again", async () => {
+    await readyToPay();
+    renderCheckout();
+    await waitFor(() => expect(rows()).toBe("Subtotal$22.00Shipping$5.99Tax$0.00Total$27.99"));
+    await waitFor(() => expect(screen.getByTestId("stripe-payment-element")).toBeTruthy());
+    await fillEmail();
+    store.after("POST", "/api/ep/proxy/getCart", () => {
+      store.quantity = 2;
+    });
+
+    await place();
+
+    await waitFor(() => expect(rows()).toBe("Subtotal$44.00Shipping$5.99Tax$0.00Total$49.99"));
+    expect(store.charges).toEqual([]);
+  });
+
+  it("list only what the shopper bought in the cart and the checkout summary", async () => {
+    await readyToPay();
+
+    render(
+      <SWRConfig value={{ dedupingInterval: 0 }}>
+        <EPCartProvider>
+          <EPCartItemList>
+            <div data-testid="line">
+              <EPCartItemField field="name" />
+            </div>
+          </EPCartItemList>
+          <span data-testid="count">
+            <EPCartField field="itemCount" />
+          </span>
+          <span data-testid="total">
+            <EPCartField field="formattedTotal" />
+          </span>
+        </EPCartProvider>
+        <EPCheckoutCartSummary>
+          <EPCheckoutCartItemList>
+            <div data-testid="summary-line">
+              <EPCheckoutCartField field="name" />
+            </div>
+          </EPCheckoutCartItemList>
+          <span data-testid="summary-count">
+            <EPCheckoutCartField field="itemCount" />
+          </span>
+          <span data-testid="summary-total">
+            <EPCheckoutCartField field="formattedTotal" />
+          </span>
+          <div data-testid="summary-rows">
+            <EPOrderTotalsBreakdown />
+          </div>
+        </EPCheckoutCartSummary>
+      </SWRConfig>
+    );
+
+    await waitFor(() => expect(screen.getAllByTestId("line")).toHaveLength(1));
+    expect(screen.getByTestId("line").textContent).toBe("Playstation Plus Subscription");
+    expect(screen.queryByText("Standard Shipping")).toBeNull();
+    expect(screen.getByTestId("count").textContent).toBe("1");
+    expect(screen.getByTestId("total").textContent).toBe("$22.00");
+    await waitFor(() => expect(screen.getAllByTestId("summary-line")).toHaveLength(1));
+    expect(screen.getByTestId("summary-line").textContent).toBe("Playstation Plus Subscription");
+    expect(screen.getByTestId("summary-count").textContent).toBe("1");
+    expect(screen.getByTestId("summary-total").textContent).toBe("$22.00");
+    expect(screen.getByTestId("summary-rows").textContent).toBe(
+      "Subtotal$22.00Shipping$0.00Tax$0.00Total$22.00"
+    );
+  });
+});
+
+describe("checkout starting again while the form saves the address (0.8.0 storefront)", () => {
+  const SHIPPING: Array<[string, string, string]> = [
+    ["shippingFirstName", "Ship first name", ADDRESS.firstName],
+    ["shippingLastName", "Ship last name", ADDRESS.lastName],
+    ["shippingAddress", "Ship street", ADDRESS.line1],
+    ["shippingCity", "Ship city", ADDRESS.city],
+    ["shippingPostal", "Ship postal code", ADDRESS.postcode],
+    ["shippingCountry", "Ship country", ADDRESS.country],
+  ];
+
+  it("keeps the delivery option the shopper chose, and shows its shipping in the total", async () => {
+    store.cookieSession = true;
+    await readyToPay();
+    store.rateWriteMs = 1500;
+    render(
+      <SWRConfig value={{ dedupingInterval: 0 }}>
+        <EPCheckoutSessionProvider>
+          <EPCheckoutFormProvider requiresShipping>
+            {SHIPPING.map(([name, label]) => (
+              <EPFormField key={name} name={name} label={label} />
+            ))}
+            <EPOrderTotalsBreakdown />
+            <EPPlaceOrderButton />
+          </EPCheckoutFormProvider>
+        </EPCheckoutSessionProvider>
+      </SWRConfig>
+    );
+    for (const [, label, value] of SHIPPING) {
+      fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    }
+    await waitFor(() => expect(rows()).toBe("Subtotal$22.00Shipping$5.99Tax$0.00Total$27.99"));
+
+    store.quantity = 2;
+    await focusPage();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 2500));
+    });
+
+    await waitFor(() => expect(rows()).toBe("Subtotal$44.00Shipping$5.99Tax$0.00Total$49.99"));
+    expect(store.storedSession()?.selectedShippingRateId).toBe("example-standard");
+    expect(sent("POST", CREATE).map((e) => e.status)).toEqual([201]);
+  }, 15000);
+});
+
 describe("a cart changed in another tab after the total was shown (0.8.0 storefront)", () => {
-  it("shows the new total and takes no payment on that Place, then charges the total shown", async () => {
+  it("shows the new total when the page gets focus, and charges it on the first Place", async () => {
     await readyToPay();
     renderCheckout();
     await waitFor(() => expect(shownTotal()).toBe("$27.99"));
@@ -230,16 +375,9 @@ describe("a cart changed in another tab after the total was shown (0.8.0 storefr
 
     store.quantity = 2;
     await focusPage();
-    expect(shownTotal()).toBe("$27.99");
 
-    const before = exchanges.length;
-    await place();
-
-    await waitFor(() => expect(shownTotal()).toBe("$49.99"));
-    expect(alertText()).toBe(CART_CHANGED);
+    await waitFor(() => expect(rows()).toBe("Subtotal$44.00Shipping$5.99Tax$0.00Total$49.99"));
     expect(sent("POST", PAY)).toEqual([]);
-    expect(sent("POST", CREATE, before).map((e) => e.status)).toEqual([201]);
-    expect(store.charges).toEqual([]);
 
     await place();
 
@@ -293,7 +431,7 @@ describe("a cart changed in another tab after the total was shown (0.8.0 storefr
     await place();
 
     expect(sent("POST", PAY).map((e) => e.status)).toEqual([409]);
-    expect(shownTotal()).toBe("$27.99");
+    expect(shownTotal()).toBeNull();
     expect(alertText()).toBe(CART_CHANGED);
 
     await place();
@@ -312,22 +450,18 @@ describe("a cart changed in another tab after the total was shown (0.8.0 storefr
     expect(store.charges).toEqual([4999]);
   });
 
-  it("does not pay a session an earlier CART_MISMATCH left with the old total, after a reload", async () => {
+  it("shows the cart's new total, not the one an earlier CART_MISMATCH left, after a reload, and charges it", async () => {
     await readyToPay();
     store.quantity = 2;
     expect((await server("POST", PAY, { gateway: "stripe", shownTotal: 2799 })).status).toBe(409);
     expect(store.storedSession()?.totals.total).toBe(2799);
 
     renderCheckout();
-    await waitFor(() => expect(shownTotal()).toBe("$27.99"));
+    await waitFor(() => expect(rows()).toBe("Subtotal$44.00Shipping$5.99Tax$0.00Total$49.99"));
     await waitFor(() => expect(screen.getByTestId("stripe-payment-element")).toBeTruthy());
+    expect(document.body.textContent).not.toMatch(/\$27\.99/);
     await fillEmail();
-
-    await place();
-
-    expect(sent("POST", PAY)).toEqual([]);
-    await waitFor(() => expect(shownTotal()).toBe("$49.99"));
-    expect(alertText()).toBe(CART_CHANGED);
+    await waitFor(() => expect(sent("POST", CREATE).map((e) => e.status)).toEqual([201]));
 
     await place();
 
@@ -337,22 +471,18 @@ describe("a cart changed in another tab after the total was shown (0.8.0 storefr
 });
 
 describe("a shipping line that did not reach the cart (0.8.0 storefront)", () => {
-  it("takes no payment for a total without shipping, and charges once the page shows shipping", async () => {
+  it("never shows a total without the shipping it shows chosen, and charges once the page shows shipping", async () => {
     store.failShippingWrites = 1;
     await readyToPay();
     expect(store.storedSession()?.selectedShippingRateId).toBe("example-standard");
     expect(store.cartTotal()).toBe(2200);
 
     renderCheckout();
-    await waitFor(() => expect(shownTotal()).toBe("$22.00"));
+    await waitFor(() => expect(rows()).toBe("Subtotal$22.00Shipping$5.99Tax$0.00Total$27.99"));
     await waitFor(() => expect(screen.getByTestId("stripe-payment-element")).toBeTruthy());
-    await fillEmail();
-
-    await place();
-
+    expect(sent("POST", CREATE).map((e) => e.status)).toEqual([201]);
     expect(sent("POST", PAY)).toEqual([]);
-    await waitFor(() => expect(shownTotal()).toBe("$27.99"));
-    expect(alertText()).toBe(CART_CHANGED);
+    await fillEmail();
 
     await place();
 
@@ -362,14 +492,17 @@ describe("a shipping line that did not reach the cart (0.8.0 storefront)", () =>
 });
 
 describe("an empty cart (0.8.0 storefront)", () => {
-  it("refuses Place with the shipping line as the only line, and takes no payment", async () => {
+  it("shows the empty cart, no total and no card field, when only the shipping line is left", async () => {
     store.quantity = 0;
     await readyToPay();
     expect(store.cartTotal()).toBe(599);
 
     renderCheckout();
-    await waitFor(() => expect(shownTotal()).toBe("$5.99"));
-    await waitFor(() => expect(screen.getByTestId("stripe-payment-element")).toBeTruthy());
+
+    await waitFor(() => expect(probe().errorCode).toBe("EMPTY_CART"));
+    expect(probe()).toEqual({ status: null, total: null, error: "Your cart is empty", errorCode: "EMPTY_CART" });
+    expect(rows()).toBe("");
+    expect(screen.queryByTestId("stripe-payment-element")).toBeNull();
     await fillEmail();
 
     await place();
@@ -380,12 +513,15 @@ describe("an empty cart (0.8.0 storefront)", () => {
     expect(store.orders).toEqual([]);
   });
 
-  it("refuses Place on a $0 checkout with nothing in the cart", async () => {
+  it("shows the empty cart, not a $0.00 checkout, when nothing is in the cart", async () => {
     store.quantity = 0;
     await readyToPay({ rate: false });
 
     renderCheckout();
-    await waitFor(() => expect(shownTotal()).toBe("$0.00"));
+
+    await waitFor(() => expect(probe().errorCode).toBe("EMPTY_CART"));
+    expect(rows()).toBe("");
+    expect(screen.queryByTestId("stripe-payment-element")).toBeNull();
     await fillEmail();
 
     await place();
@@ -393,6 +529,59 @@ describe("an empty cart (0.8.0 storefront)", () => {
     expect(alertText()).toBe("Your cart is empty");
     expect(sent("POST", PAY)).toEqual([]);
     expect(store.orders).toEqual([]);
+  });
+
+  it("shows the empty cart as soon as another tab empties it after a rate is chosen", async () => {
+    await readyToPay();
+    renderCheckout();
+    await waitFor(() => expect(shownTotal()).toBe("$27.99"));
+    await waitFor(() => expect(screen.getByTestId("stripe-payment-element")).toBeTruthy());
+
+    store.quantity = 0;
+    await focusPage();
+
+    await waitFor(() => expect(probe().errorCode).toBe("EMPTY_CART"));
+    expect(alertText()).toBe("Your cart is empty");
+    expect(rows()).toBe("");
+    expect(screen.queryByTestId("stripe-payment-element")).toBeNull();
+    await fillEmail();
+    await place();
+    expect(sent("POST", PAY)).toEqual([]);
+  });
+
+  it("shows the empty cart as soon as the cart on this page is emptied", async () => {
+    await readyToPay();
+    renderCheckout();
+    await waitFor(() => expect(shownTotal()).toBe("$27.99"));
+
+    store.quantity = 0;
+    await act(async () => {
+      await mutate(epCartCacheKey());
+    });
+
+    await waitFor(() => expect(probe().errorCode).toBe("EMPTY_CART"));
+    expect(rows()).toBe("");
+    expect(screen.queryByTestId("stripe-payment-element")).toBeNull();
+  });
+
+  it("shows checkout again, with a total that adds up, once the cart has something in it again", async () => {
+    store.quantity = 0;
+    await readyToPay();
+    renderCheckout();
+    await waitFor(() => expect(probe().errorCode).toBe("EMPTY_CART"));
+
+    store.quantity = 1;
+    await focusPage();
+
+    await waitFor(() => expect(rows()).toBe("Subtotal$22.00Shipping$5.99Tax$0.00Total$27.99"));
+    expect(probe()).toMatchObject({ status: "open", total: 2799, errorCode: null });
+    await waitFor(() => expect(screen.getByTestId("stripe-payment-element")).toBeTruthy());
+    await fillEmail();
+
+    await place();
+
+    expect(sent("POST", PAY).map((e) => [e.body.shownTotal, e.status])).toEqual([[2799, 200]]);
+    expect(store.orders).toEqual([{ charged: 2799, skus: ["p-plus-sub", "__ep_shipping"] }]);
   });
 
   it("says the cart is empty, in shopper words, to a visitor with no cart", async () => {

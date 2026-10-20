@@ -1,5 +1,6 @@
 import type { Cart } from "../types/cart";
 import { buildEpClient, isUsableAuth } from "./ep-client";
+import { asCurrentCart } from "./older-storefront-cart";
 import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
 import { readCart } from "./read-cart";
 import { getCurrentEpSession } from "./session-context";
@@ -20,7 +21,7 @@ export async function epGetCart(): Promise<CartReadResult> {
   const auth = getCurrentEpSession();
 
   if (!isUsableAuth(auth) && shouldUseProxy()) {
-    return callEpProxy<CartReadResult>("getCart", {}, null);
+    return asCurrentCart(await callEpProxy<CartReadResult>("getCart", {}, null));
   }
 
   if (!isUsableAuth(auth)) return null;
@@ -42,7 +43,7 @@ export async function epGetCart(): Promise<CartReadResult> {
  */
 export async function epReadCart(): Promise<CartReadResult> {
   if (!isUsableAuth(getCurrentEpSession()) && shouldUseProxy()) {
-    return callEpProxy<CartReadResult>("getCart", {});
+    return asCurrentCart(await callEpProxy<CartReadResult>("getCart", {}));
   }
   return epGetCart();
 }

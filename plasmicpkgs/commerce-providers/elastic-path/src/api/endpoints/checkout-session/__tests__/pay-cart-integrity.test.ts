@@ -319,7 +319,7 @@ describe("the total the shopper sees is the total pay charges", () => {
     expect(ep.paidOrders().map((o) => o.total)).toEqual([4999]);
   });
 
-  it("refuses to charge a total the session never showed, and shows it instead", async () => {
+  it("charges nothing for a rate whose price did not reach the cart, and charges the total shown once it is chosen", async () => {
     const browser = new Browser(newCart());
     expect((await browser.create()).status).toBe(201);
     await browser.update({
@@ -334,16 +334,17 @@ describe("the total the shopper sees is the total pay charges", () => {
     };
     await browser.update({ selectedShippingRateId: RATE.id });
     expect(browser.shownTotal()).toBe(2200);
+    expect(browser.cookie?.selectedShippingRateId).toBeNull();
 
-    const first = await browser.pay({ gateway: "stripe" });
+    const first = await browser.pay({ gateway: "stripe", shownTotal: 2200 });
 
-    expect(first.status).toBe(409);
-    expect((first.body as any).error.code).toBe("TOTAL_CHANGED");
-    expect(sessionIn(first).totals.total).toBe(2799);
+    expect(first.status).toBe(400);
+    expect((first.body as any).error.code).toBe("MISSING_FIELDS");
     expect(ep.charges).toEqual([]);
     expect(ep.orders).toEqual([]);
 
-    const second = await browser.pay({ gateway: "stripe" });
+    await browser.update({ selectedShippingRateId: RATE.id });
+    const second = await browser.pay({ gateway: "stripe", shownTotal: browser.shownTotal() });
 
     expect(second.status).toBe(200);
     expect(ep.charges).toEqual([2799]);
@@ -425,7 +426,7 @@ describe("pay settles at most one order per checkout", () => {
 });
 
 describe("the shipping line", () => {
-  it("stays one line at quantity 1 when two rate selections race", async () => {
+  it("shows one shipping charge and leaves no line in the cart when two rate selections race", async () => {
     const browser = new Browser(newCart());
     expect((await browser.create()).status).toBe(201);
     await browser.update({
@@ -434,18 +435,25 @@ describe("the shipping line", () => {
       shippingAddress: ADDRESS,
     });
 
-    await Promise.all([
+    const results = await Promise.all([
       browser.update({ selectedShippingRateId: RATE.id }),
       browser.update({ selectedShippingRateId: RATE.id }),
     ]);
 
-    const lines = ep.linesWithSku(browser.cartId, EP_SHIPPING_LINE_SKU);
-    expect(lines.map((l) => l.quantity)).toEqual([1]);
-    expect(ep.total(browser.cartId)).toBe(2799);
+    expect(results.map((r) => sessionIn(r).totals.total)).toEqual([2799, 2799]);
+    expect(ep.linesWithSku(browser.cartId, EP_SHIPPING_LINE_SKU)).toEqual([]);
+    expect(ep.total(browser.cartId)).toBe(2200);
     expect(browser.shownTotal()).toBe(2799);
+
+    const paid = await browser.pay({ gateway: "manual", shownTotal: 2799 });
+
+    expect(sessionIn(paid).status).toBe("complete");
+    expect(ep.paidOrders()[0].lines.filter((l) => l.sku === EP_SHIPPING_LINE_SKU)).toEqual([
+      { sku: EP_SHIPPING_LINE_SKU, quantity: 1, amount: 599 },
+    ]);
   });
 
-  it("stays one line at quantity 1 when two server instances take the same pay", async () => {
+  it("charges only an order with one shipping line when two server instances take the same pay", async () => {
     let otherInstance: typeof handlePay = handlePay;
     jest.isolateModules(() => {
       otherInstance = (require("../pay") as typeof import("../pay")).handlePay;
@@ -453,18 +461,30 @@ describe("the shipping line", () => {
     const browser = new Browser(newCart());
     await readyToPay(browser);
 
-    const results = await Promise.all([
+    await Promise.all([
       browser.pay({ gateway: "manual" }),
       browser.pay({ gateway: "manual" }, otherInstance),
     ]);
 
-    expect(results.some((r) => r.status === 200)).toBe(true);
-    for (const order of ep.orders) {
+    for (const order of ep.orders.filter((o) => o.payment !== "unpaid")) {
       expect(order.total).toBe(2799);
       expect(order.lines.filter((l) => l.sku === EP_SHIPPING_LINE_SKU)).toEqual(
         [{ sku: EP_SHIPPING_LINE_SKU, quantity: 1, amount: 599 }]
       );
     }
+    for (const order of ep.orders.filter((o) => o.payment === "unpaid")) {
+      expect(order.status).toBe("cancelled");
+    }
+    if (ep.paidOrders().length === 0) {
+      await browser.get();
+      let again = await browser.pay({ gateway: "manual", shownTotal: browser.shownTotal() });
+      if ((again.body as any).error?.code === "TOTAL_CHANGED") {
+        expect(browser.shownTotal()).toBe(2799);
+        again = await browser.pay({ gateway: "manual", shownTotal: 2799 });
+      }
+      expect(sessionIn(again).status).toBe("complete");
+    }
+    expect(ep.paidOrders().map((o) => o.total)).toEqual([2799]);
   });
 });
 
@@ -1707,5 +1727,218 @@ describe("an account member's order belongs to the selected account", () => {
     ]);
     expect(order.total).toBe(2799);
     expect(order.fields).toEqual({ po_number: "PO-322" });
+  });
+});
+
+describe("outside a payment, the cart holds no shipping line", () => {
+  const shippingLines = (cartId: string) => ep.linesWithSku(cartId, EP_SHIPPING_LINE_SKU);
+  const PROMO_CART = [
+    { product_id: "p-plus", sku: "p-plus-sub", quantity: 1, unit_price: { amount: 2200 } },
+    {
+      id: "promo-1",
+      type: "promotion_item",
+      sku: "TEST1",
+      quantity: 1,
+      unit_price: { amount: 0 },
+      percentOff: 10,
+    },
+  ];
+
+  it("shows the chosen rate in the checkout total, and leaves the cart at what its lines cost", async () => {
+    const browser = new Browser(newCart());
+
+    await readyToPay(browser);
+
+    expect(browser.cookie?.totals).toEqual({
+      subtotal: 2200,
+      tax: 0,
+      shipping: 599,
+      total: 2799,
+      currency: "USD",
+    });
+    expect(shippingLines(browser.cartId)).toEqual([]);
+    expect(ep.total(browser.cartId)).toBe(2200);
+  });
+
+  it("prices a code that also takes off the shipping into the checkout total only", async () => {
+    const browser = new Browser(newCart(PROMO_CART as any));
+
+    await readyToPay(browser);
+
+    expect(browser.cookie?.totals).toEqual({
+      subtotal: 1980,
+      tax: 0,
+      shipping: 539,
+      total: 2519,
+      currency: "USD",
+    });
+    expect(shippingLines(browser.cartId)).toEqual([]);
+    expect(ep.total(browser.cartId)).toBe(1980);
+
+    const paid = await browser.pay({ gateway: "stripe", shownTotal: 2519 });
+
+    expect(sessionIn(paid).status).toBe("complete");
+    expect(ep.charges).toEqual([2519]);
+  });
+
+  it("prices the shipping again when the cart changes in another tab, and still leaves no line", async () => {
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+    ep.setQuantity(browser.cartId, "p-plus-sub", 2);
+
+    const read = await browser.get();
+
+    expect(sessionIn(read).totals).toEqual({
+      subtotal: 4400,
+      tax: 0,
+      shipping: 599,
+      total: 4999,
+      currency: "USD",
+    });
+    expect(sessionIn(read).selectedShippingRateId).toBe(RATE.id);
+    expect(shippingLines(browser.cartId)).toEqual([]);
+
+    const paid = await browser.pay({ gateway: "stripe", shownTotal: 4999 });
+
+    expect(sessionIn(paid).status).toBe("complete");
+    expect(ep.charges).toEqual([4999]);
+    expect(ep.paidOrders()[0].lines.filter((l) => l.sku === EP_SHIPPING_LINE_SKU)).toEqual([
+      { sku: EP_SHIPPING_LINE_SKU, quantity: 1, amount: 599 },
+    ]);
+  });
+
+  it("shows the new total with shipping when pay finds the cart changed, and leaves no line", async () => {
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+    ep.setQuantity(browser.cartId, "p-plus-sub", 2);
+
+    const changed = await browser.pay({ gateway: "stripe", shownTotal: 2799 });
+
+    expect((changed.body as any).error.code).toBe("CART_MISMATCH");
+    expect(sessionIn(changed).totals).toEqual({
+      subtotal: 4400,
+      tax: 0,
+      shipping: 599,
+      total: 4999,
+      currency: "USD",
+    });
+    expect(shippingLines(browser.cartId)).toEqual([]);
+    expect(ep.charges).toEqual([]);
+  });
+
+  it("leaves no line after a declined card, and the next pay charges the total shown", async () => {
+    registry.register("stripeDeclines", {
+      paymentSequence: "cart_payment_intent",
+      initializePayment: async () => ({
+        status: "failed",
+        errorMessage: "Your card was declined.",
+      }),
+    });
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+
+    const declined = await browser.pay({ gateway: "stripeDeclines", shownTotal: 2799 });
+
+    expect((declined.body as any).paymentError).toBe("Your card was declined.");
+    expect(shippingLines(browser.cartId)).toEqual([]);
+    expect(ep.total(browser.cartId)).toBe(2200);
+
+    const paid = await browser.pay({ gateway: "stripe", shownTotal: 2799 });
+
+    expect(sessionIn(paid).status).toBe("complete");
+    expect(ep.charges).toEqual([2799]);
+  });
+
+  it("leaves no line while a held card check is open, and the held order keeps the shipping", async () => {
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+
+    const held = await browser.pay({ gateway: "stripe3ds", shownTotal: 2799 });
+
+    expect(sessionIn(held).payment.status).toBe("requires_action");
+    expect(shippingLines(browser.cartId)).toEqual([]);
+    expect(heldOrder().total).toBe(2799);
+    expect(heldOrder().lines.filter((l) => l.sku === EP_SHIPPING_LINE_SKU)).toEqual([
+      { sku: EP_SHIPPING_LINE_SKU, quantity: 1, amount: 599 },
+    ]);
+
+    ep.passChallenge(browser.pendingPaymentIntent());
+    const resumed = await browser.resume();
+
+    expect(sessionIn(resumed).status).toBe("complete");
+    expect(ep.paidOrders().map((o) => o.total)).toEqual([2799]);
+  });
+
+  it("leaves no line after the shopper abandons a card check", async () => {
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+    await browser.pay({ gateway: "stripe3ds", shownTotal: 2799 });
+
+    const abandoned = await browser.abandon();
+
+    expect(abandoned.status).toBe(200);
+    expect(shippingLines(browser.cartId)).toEqual([]);
+    expect(ep.total(browser.cartId)).toBe(2200);
+  });
+
+  it("keeps a rate it could not price unchosen, and the total without it", async () => {
+    const browser = new Browser(newCart());
+    expect((await browser.create()).status).toBe(201);
+    await browser.update({
+      customerInfo: { name: "Walk Tester", email: "walk@example.com" },
+      billingAddress: ADDRESS,
+      shippingAddress: ADDRESS,
+    });
+    const writeLine = sdkImpl.manageCarts;
+    sdkImpl.manageCarts = async () => {
+      sdkImpl.manageCarts = writeLine;
+      throw new Error("Elastic Path unavailable");
+    };
+
+    const refused = await browser.update({ selectedShippingRateId: RATE.id });
+
+    expect(refused.status).toBe(502);
+    expect((refused.body as any).error.code).toBe("SHIPPING_NOT_APPLIED");
+    expect(sessionIn(refused).selectedShippingRateId).toBeNull();
+    expect(sessionIn(refused).totals).toEqual({
+      subtotal: 2200,
+      tax: 0,
+      shipping: 0,
+      total: 2200,
+      currency: "USD",
+    });
+    expect(browser.cookie?.selectedShippingRateId).toBeNull();
+    expect(shippingLines(browser.cartId)).toEqual([]);
+
+    const chosen = await browser.update({ selectedShippingRateId: RATE.id });
+
+    expect(sessionIn(chosen).totals.total).toBe(2799);
+  });
+
+  it("takes out a shipping line an earlier checkout left in the cart when checkout starts", async () => {
+    const browser = new Browser(
+      newCart([
+        { product_id: "p-plus", sku: "p-plus-sub", quantity: 1, unit_price: { amount: 2200 } },
+        {
+          type: "custom_item",
+          sku: EP_SHIPPING_LINE_SKU,
+          name: "Standard",
+          quantity: 1,
+          unit_price: { amount: 599 },
+        } as any,
+      ])
+    );
+
+    const created = await browser.create();
+
+    expect(sessionIn(created).totals).toEqual({
+      subtotal: 2200,
+      tax: 0,
+      shipping: 0,
+      total: 2200,
+      currency: "USD",
+    });
+    expect(shippingLines(browser.cartId)).toEqual([]);
+    expect(ep.total(browser.cartId)).toBe(2200);
   });
 });

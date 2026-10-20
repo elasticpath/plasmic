@@ -20,6 +20,7 @@ import type {
   PaymentAdapterResult,
 } from "../../../checkout/session/types";
 import { settleOnceOrBusy } from "../../../checkout/session/settle-once";
+import { releasingShippingLine } from "../../../checkout/session/shipping-line-scope";
 import { createLogger } from "../../../utils/logger";
 import { toClientSession } from "../../../checkout/session/client-session";
 
@@ -94,7 +95,9 @@ export async function handleConfirm(
   const order = session.order;
   const gateway = session.payment.gateway;
   return settleOnceOrBusy(open, () =>
-    confirmOpenSession(req, ctx, ttl, open, order, gateway)
+    releasingShippingLine(ctx, open.cartId, () =>
+      confirmOpenSession(req, ctx, ttl, open, order, gateway)
+    )
   );
 }
 

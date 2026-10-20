@@ -30,19 +30,35 @@ Shopper cookies and open checkout sessions survive an upgrade and a rollback,
 as long as the checkout session secret (`CHECKOUT_SESSION_SECRET` in the
 example storefront) does not change.
 
-On a 0.8.0 storefront, the checkout components of this release:
+On a 0.8.0 storefront, the components of this release:
 
-- read the cart before each payment request and refuse Place with "Your cart is
-  empty" when the cart holds only the shipping line and promotions. They do
-  the same on a current storefront.
+- show the cart as on a current storefront: the checkout's shipping line is
+  not listed or counted, and the cart page, the mini-cart and EP Checkout Cart
+  Summary show totals the lines add up to.
+- show checkout totals read from the cart, because a 0.8.0 checkout session
+  counts a shipping line already in the cart as goods and keeps the totals it
+  was created with: subtotal and tax from the goods, shipping from the line,
+  and the total Elastic Path gives the cart.
+- read the cart again when the session changes, the cart changes or the page
+  gets focus. When the session's total is not the cart's, they start a new
+  checkout session at once, carry over the details and delivery option already
+  entered, and show the new total, so the first Place pays it. A total known to
+  be stale is not shown.
+- show the empty state (no total, no card field, Place refused with "Your cart
+  is empty") as soon as the cart has nothing to buy.
 - send no payment request when the storefront would charge a total other than
-  the one on the page (the cart changed, or the chosen shipping rate is not in
-  the cart yet), or after it answers `CART_MISMATCH`. They start a new checkout
-  session, carry over the details and shipping rate already entered, and show
-  the new total. The shopper presses Place again to pay it.
+  the one on the page, or after it answers `CART_MISMATCH`. They start a new
+  checkout session and show the new total; the shopper presses Place again.
 - show shopper copy in place of the storefront's messages: "Your cart is empty"
   for a visitor with no cart, and "Promo codes can't be used on this store
   until it is updated." for a promo code.
+
+A current storefront takes the checkout's shipping line out of the cart
+outside a payment, so components older than it show cart totals that the
+listed lines add up to. On a current storefront, components older than it
+still show sample totals on a checkout page that has no checkout session (an
+empty cart, or no cart). Publish the hostless package soon after the
+storefronts upgrade.
 
 ### Breaking
 
@@ -593,6 +609,25 @@ charges the shipping line. Session totals count the shipping line at
 its discounted price, so the subtotal no longer goes negative under a code
 that discounts shipping. A new checkout session leaves out a shipping line
 left in the cart until a rate is chosen.
+
+The checkout's shipping line is in the cart only while a payment runs. After
+an unfinished checkout, components that read the cart's own totals, such as
+those of 0.8.0 on an upgraded storefront, showed a total that included
+shipping next to a list without it. Choosing a rate now prices the line with
+the cart and takes it out again; the checkout total keeps Elastic Path's
+figures. Reading a session whose cart changed, and pay's `CART_MISMATCH`
+answer, price the chosen rate the same way. Pay, resume, abandon and confirm
+take the line out when they end, unless a card check waits with no order held,
+and creating a session takes out a line an earlier checkout left. A rate
+Elastic Path cannot price is no longer kept chosen with a total that leaves it
+out: the update answers `502` with code `SHIPPING_NOT_APPLIED` and the session
+without the rate.
+
+EP Checkout Session Provider shows the empty state as soon as an open
+checkout's cart has nothing to buy: on load, when the cart changes, and when
+the page gets focus. It showed the old total and the card field until Place.
+EP Stripe Payment takes its amount and its free state from the session the
+provider shows.
 
 A form reloaded while a card check is open shows the details the order was
 placed with. EP Checkout Form Provider fills its locked fields from the
