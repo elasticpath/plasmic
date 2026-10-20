@@ -1,14 +1,3 @@
-/**
- * Builds the files a loader imports one component from. Each source module the
- * root entry reaches becomes its own ESM file under `dist/esm`. Each root
- * export gets `dist/exports/<name>.js`, which re-exports it from the module
- * that defines it, so `<package>/<name>` imports one export and what it needs.
- * `dist/exports-map.json` lists every root export with its subpath. The root
- * entry itself is `build:index`, unchanged. Run after it.
- *
- * Each source module stays its own file, never a pre-bundled subpath, so two
- * components on one page share one copy of each internal module and its state.
- */
 import esbuild from "esbuild";
 import fs from "node:fs";
 import path from "node:path";
@@ -25,7 +14,6 @@ const entry = path.join(srcDir, "index.tsx");
 
 const SOURCE_EXTENSION = /\.(tsx?|jsx?)$/;
 
-/** A source module's built file, relative to `dist`. */
 function builtPathOf(sourceFile) {
   return `esm/${path
     .relative(srcDir, sourceFile)
@@ -42,10 +30,6 @@ function fail(lines) {
   throw new Error(`build-modules: ${lines.join("\n  ")}`);
 }
 
-/**
- * The source modules the root entry reaches, and the names it exports at run
- * time, as esbuild bundles it for `build:index`.
- */
 async function rootGraph() {
   const { metafile, outputFiles } = await esbuild.build({
     entryPoints: [entry],
@@ -77,10 +61,6 @@ async function rootGraph() {
   return { modules, rootExports: output.exports };
 }
 
-/**
- * Bundles each module on its own: every relative import stays an import, of
- * that module's file, and packages stay external as in `build:index`.
- */
 async function buildModules(modules) {
   const graph = new Set(modules);
   const { metafile } = await esbuild.build({
@@ -98,6 +78,8 @@ async function buildModules(modules) {
     metafile: true,
     logLevel: "warning",
     plugins: [
+      // Each module stays its own file, never pre-bundled, or two components
+      // on one page get two copies of its state.
       {
         name: "keep-modules",
         setup(build) {
@@ -151,12 +133,6 @@ async function buildModules(modules) {
   return exportsByFile;
 }
 
-/**
- * Follows each root export, through re-exports, to the module that declares
- * it. The build fails on any name it cannot place, because a name that falls
- * back to the root loads a second copy of the package next to the per-module
- * files, with its own module state.
- */
 function findDefiningModules(rootExports, exportsByFile) {
   const config = ts.getParsedCommandLineOfConfigFile(
     path.join(pkgDir, "tsconfig.json"),
@@ -167,7 +143,6 @@ function findDefiningModules(rootExports, exportsByFile) {
         fail([ts.flattenDiagnosticMessageText(d.messageText, "\n")]),
     }
   );
-  // Only symbols are read, so global type packages are not needed.
   const program = ts.createProgram({
     rootNames: [entry],
     options: { ...config.options, noEmit: true, types: [] },
@@ -209,6 +184,7 @@ function findDefiningModules(rootExports, exportsByFile) {
     }
     definedIn[name] = file;
   }
+  // A name left on the root would load a second copy of the package.
   if (problems.length) {
     fail([
       "cannot map every root export to the file that defines it:",
@@ -218,11 +194,6 @@ function findDefiningModules(rootExports, exportsByFile) {
   return definedIn;
 }
 
-/**
- * Writes `dist/exports/<name>.js` for each root export, and the map. Fails on
- * a name that another entry point already takes, and on two names that a
- * case-insensitive file system cannot tell apart.
- */
 function writeNamedEntries(definedIn) {
   const { exports } = JSON.parse(
     fs.readFileSync(path.join(pkgDir, "package.json"), "utf8")

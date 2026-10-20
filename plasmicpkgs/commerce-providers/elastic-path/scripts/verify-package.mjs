@@ -1,11 +1,9 @@
 /**
  * The packaging seam, run against the built output and the packed tarball:
- * publint, arethetypeswrong once per entry point, a smoke that loads each
- * bundle the way its consumer does, and the one-export entry points a loader
- * imports instead of the root. Run `pnpm build` first.
+ * publint, arethetypeswrong once per entry point, and a smoke that loads each
+ * bundle the way its consumer does. Run `pnpm build` first.
  *
- * The recorded exceptions, for the root entry and the per-module files, are
- * ADR-0007 (docs/adr).
+ * The root entry's recorded exceptions are ADR-0007 (docs/adr).
  */
 import esbuild from "esbuild";
 import { execFileSync } from "node:child_process";
@@ -294,20 +292,16 @@ function smokeRoot() {
   check("every registered importName is exported from the root", unreachable.length === 0, unreachable.join("\n"));
 }
 
-// A loader rewrites each root import in generated code into imports of the
-// subpaths exports-map.json names, then bundles the result.
 function perModuleImports(map, names) {
   const imports = names.map((name) => `import { ${name} } from "${pkg.name}/${map[name].slice(2)}";`);
   return `${imports.join("\n")}\nexport { ${names.join(", ")} };\n`;
 }
 
-// Bundles the installed package and nothing it depends on.
 const DEPENDENCIES = [
   ...Object.keys(pkg.dependencies ?? {}),
   ...Object.keys(pkg.peerDependencies ?? {}),
 ].flatMap((name) => [name, `${name}/*`]);
 
-// As platform/wab's module-bundler.ts bundles a project for the browser.
 const LOADER_EXTERNALS = ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime", "@plasmicapp/*", "next", "next/*"];
 const INSTANTSEARCH = /(?:^|\/)node_modules\/(?:instantsearch\.js|react-instantsearch(?:-[a-z]+)*|algoliasearch-helper)\//;
 
