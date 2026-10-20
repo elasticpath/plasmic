@@ -1313,6 +1313,9 @@ export const EPSearchSortBy: React_2.ForwardRefExoticComponent<EPSearchSortByPro
 export function EPSearchStats(props: EPSearchStatsProps): React_2.JSX.Element;
 
 // @public (undocumented)
+export function EPSearchTypeahead(props: EPSearchTypeaheadProps): React_2.JSX.Element;
+
+// @public (undocumented)
 export interface EpSelectAccountRequest {
     accountId: string | null;
 }
@@ -1949,6 +1952,9 @@ export function registerEPSearchSortBy(loader?: Registerable, customMeta?: CodeC
 export function registerEPSearchStats(loader?: Registerable, customMeta?: CodeComponentMeta<EPSearchStatsProps>): void;
 
 // @public (undocumented)
+export function registerEPSearchTypeahead(loader?: Registerable, customMeta?: CodeComponentMeta<EPSearchTypeaheadProps>): void;
+
+// @public (undocumented)
 export function registerEPSelectField(loader?: Registerable, customMeta?: CodeComponentMeta<EPSelectFieldProps>): void;
 
 // @public (undocumented)
@@ -2104,6 +2110,18 @@ export interface SearchStatsData {
     // (undocumented)
     summary: string;
 }
+
+// @public
+export interface SearchTypeaheadData {
+    hitCount: number;
+    isOpen: boolean;
+    query: string;
+    searchPageUrl: string;
+    status: SearchTypeaheadStatus;
+}
+
+// @public
+export type SearchTypeaheadStatus = "idle" | "loading" | "success" | "error";
 
 // @public
 export function ServerCartActionsProvider(props: React_2.PropsWithChildren<{

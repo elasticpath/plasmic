@@ -71,6 +71,7 @@ import { registerEPSearchAutocomplete } from "./catalog-search/EPSearchAutocompl
 import { registerEPSearchAutocompleteInput } from "./catalog-search/EPSearchAutocompleteInput";
 import { registerEPSearchAutocompletePanel } from "./catalog-search/EPSearchAutocompletePanel";
 import { registerEPSearchAutocompleteList } from "./catalog-search/EPSearchAutocompleteList";
+import { registerEPSearchTypeahead } from "./catalog-search/EPSearchTypeahead";
 import { registerEPCatalogSearchProvider } from "./catalog-search/EPCatalogSearchProvider";
 import { registerEPAccountField } from "./account/EPAccountField";
 import { registerEPAccountGate } from "./account/EPAccountGate";
@@ -245,6 +246,8 @@ export function registerAll(loader?: Registerable) {
   registerEPSearchAutocompletePanel(loader);
   registerEPSearchAutocompleteList(loader);
   registerEPCatalogSearchProvider(loader);
+  // Header search with no InstantSearch — not a child of the provider above
+  registerEPSearchTypeahead(loader);
 
   // Legacy monolithic bundle configurator
   registerEPBundleConfigurator(loader);
