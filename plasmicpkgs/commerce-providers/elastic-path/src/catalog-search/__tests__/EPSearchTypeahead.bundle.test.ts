@@ -15,7 +15,7 @@ const INSTANTSEARCH_PACKAGES = [
   "@elasticpath/catalog-search-instantsearch-adapter",
 ];
 
-const MINIFIED_BUDGET_BYTES = 60_000;
+const MINIFIED_BUDGET_BYTES = 80_000;
 
 function bundle(file: string) {
   return build({

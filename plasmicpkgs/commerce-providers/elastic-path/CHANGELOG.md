@@ -93,7 +93,7 @@ that lists a few matching products as the shopper types, and goes to the search
 page on submit. It calls `ep.multiSearch` itself and loads no InstantSearch
 (#731). EP Search Autocomplete runs inside EP Catalog Search Provider, so a
 header typeahead built from it puts InstantSearch on every page. Bundled alone
-with the loader's settings, EP Search Typeahead is about 41 KB minified, most
+with the loader's settings, EP Search Typeahead is about 63 KB minified, most
 of it the shopper SDK client that other components share. A test fails if
 InstantSearch enters its module graph.
 
