@@ -570,7 +570,8 @@ reported as a clean order. When a cart change made outside the storefront
 lands between the charge and the order, `/pay` marks the order for
 reconciliation (`external_ref`), answers `409` `PAYMENT_NEEDS_REVIEW` with
 `reconciliationPending: true` and the completed session, and tells the shopper
-both amounts. The Stripe adapter now reports the PaymentIntent's `amount` in
+both amounts, formatted with the currency's own minor unit (`¥2,799`, not
+`27.99 JPY`). The Stripe adapter now reports the PaymentIntent's `amount` in
 `gatewayMetadata`.
 
 A cart with a promotion no longer answers `409` `CART_MISMATCH` on the first

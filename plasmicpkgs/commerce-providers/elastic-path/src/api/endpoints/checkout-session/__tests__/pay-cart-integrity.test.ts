@@ -1151,6 +1151,19 @@ describe("an order whose total is not the amount charged", () => {
     expect(order.externalRef).toContain("needs-reconciliation");
   });
 
+  it("tells the shopper both amounts in the currency's own minor unit", async () => {
+    ep.currency = "JPY";
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+
+    const res = await browser.pay({ gateway: "stripeLateWrite" });
+
+    expect((res.body as any).error.code).toBe("PAYMENT_NEEDS_REVIEW");
+    expect((res.body as any).error.message).toContain("¥2,899");
+    expect((res.body as any).error.message).toContain("¥2,799");
+    expect((res.body as any).error.message).not.toMatch(/28\.99|27\.99/);
+  });
+
   it("completes normally when the order total is the amount charged", async () => {
     const browser = new Browser(newCart());
     await readyToPay(browser);

@@ -84,6 +84,7 @@ import {
 } from "../../../checkout/session/order-payment";
 import { toCustomAttributes } from "../../../ep-server-functions/place-order";
 import { createLogger } from "../../../utils/logger";
+import { formatMinor } from "../../../utils/price";
 import { toClientSession } from "../../../checkout/session/client-session";
 import type { EpCartResponse, SessionTotals } from "../../../checkout/session/types";
 import { hasPurchasableItem } from "../../../checkout/session/purchasable-items";
@@ -475,7 +476,7 @@ async function handleInitializePaymentPay(
       ...(finalized.body as Record<string, unknown>),
       success: false,
       error: {
-        message: orderTotalDiffersMessage(charged, orderTotal?.amount, orderTotal?.currency),
+        message: orderTotalDiffersMessage(charged, orderTotal?.amount, orderTotal?.currency ?? session.totals?.currency),
         code: "PAYMENT_NEEDS_REVIEW",
       },
       reconciliationPending: true,
@@ -491,8 +492,7 @@ function chargedAmount(result: PaymentAdapterResult, shownTotal: number): number
 
 function money(amount: number | undefined, currency: string | undefined): string {
   if (typeof amount !== "number") return "a different amount";
-  const value = (amount / 100).toFixed(2);
-  return currency ? `${value} ${currency}` : value;
+  return currency ? formatMinor(amount, currency) : String(amount);
 }
 
 function orderTotalDiffersMessage(
