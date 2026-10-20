@@ -674,6 +674,26 @@ describe("Search Input slot", () => {
     renderTypeahead({ input: <input aria-label="Search the store" /> });
     expect(combobox().getAttribute("aria-label")).toBe("Search the store");
   });
+
+  it("wires an input that the slot wraps in a render-prop element", async () => {
+    function DataCtxReader(props: {
+      children: (ctx: unknown) => React.ReactNode;
+    }) {
+      return <>{props.children({})}</>;
+    }
+    renderTypeahead({
+      input: (
+        <DataCtxReader>
+          {() => <input type="search" placeholder="Search products" />}
+        </DataCtxReader>
+      ),
+    });
+
+    expect(combobox().placeholder).toBe("Search products");
+    type("desk");
+    await wait(300);
+    expect(searchedTerms()).toEqual(["desk"]);
+  });
 });
 
 describe("on the Studio canvas", () => {
