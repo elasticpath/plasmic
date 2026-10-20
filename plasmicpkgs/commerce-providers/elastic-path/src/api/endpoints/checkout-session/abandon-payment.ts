@@ -4,7 +4,9 @@
  *
  * EP Update Cart: PUT /v2/carts/{cartID} with `{ data: { payment_intent_id: "" } }`.
  * That removes the cart's PI association so a later /pay can
- * createCartPaymentIntent a new PI. It does not cancel the Stripe PI.
+ * createCartPaymentIntent a new PI. With an order held for the PI, abandon
+ * also cancels the PI in Stripe (see below); with none, the PI is only
+ * unlinked.
  *
  * Only valid while session.payment.status is requires_action (the 3DS
  * challenge is still open). Must not run after a successful handleNextAction
@@ -18,8 +20,8 @@
  *
  * When the PaymentIntent still waits for its challenge and an order is held
  * for it, abandon first voids it through that order (order-void.ts): order
- * confirm, then transaction cancel, then the order's stock is returned and the
- * order cancelled. Otherwise it does not create a PaymentIntent, call
+ * confirm, then transaction cancel (which cancels the PI in Stripe), then the
+ * order's stock is returned and the order cancelled. Otherwise it does not create a PaymentIntent, call
  * updateCartPaymentIntent, confirmOrder, checkoutApi, or /confirm.
  */
 import type {

@@ -393,8 +393,8 @@ export const MOCK_EMPTY_CHECKOUT_CART_DATA: Cart = {
 
 // ---------------------------------------------------------------------------
 // Composable checkout mock data — design-time preview for the checkout
-// components in Plasmic Studio. Values in minor units (cents) match the EP
-// API convention.
+// components in Plasmic Studio. Amounts are integers in the currency's lowest
+// denomination, as Elastic Path sends them.
 // ---------------------------------------------------------------------------
 
 /** Order totals breakdown mock. */
