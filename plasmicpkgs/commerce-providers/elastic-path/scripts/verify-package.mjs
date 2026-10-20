@@ -149,6 +149,14 @@ function checkNoRequireShim() {
   check("dist/esm has no require() shim", shimmed.length === 0, shimmed.join("\n"));
 }
 
+// A direct eval stops bundlers dropping any of the root's unused code.
+function checkRootHasNoDirectEval() {
+  for (const file of ["dist/index.esm.js", "dist/index.js"]) {
+    const evals = fs.readFileSync(path.join(installedDir, file), "utf8").match(/\beval\(/g) ?? [];
+    check(`${file} has no direct eval`, evals.length === 0, `${evals.length} found`);
+  }
+}
+
 function perModuleFiles() {
   return fs
     .readdirSync(path.join(installedDir, "dist/esm"), { recursive: true })
@@ -303,6 +311,7 @@ const DEPENDENCIES = [
 ].flatMap((name) => [name, `${name}/*`]);
 
 const LOADER_EXTERNALS = ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime", "@plasmicapp/*", "next", "next/*"];
+const ROOT_ONE_EXPORT_LIMIT = 500_000;
 const INSTANTSEARCH = /(?:^|\/)node_modules\/(?:instantsearch\.js|react-instantsearch(?:-[a-z]+)*|algoliasearch-helper)\//;
 
 async function bundleAsLoader(name, contents) {
@@ -379,6 +388,8 @@ async function smokeModules() {
     fromCjs.contexts.map((m) => m.name)
   );
 
+  const searchBox = await bundleAsLoader("search-box", perModuleImports(map, ["EPSearchBox"]));
+  check("EPSearchBox pulls in InstantSearch, so the next check can see it", searchBox.search.length > 0);
   const productList = ["EPProductListProvider", "EPProductGrid"];
   const throughMap = await bundleAsLoader("product-list-modules", perModuleImports(map, productList));
   const throughRoot = await bundleAsLoader(
@@ -386,13 +397,14 @@ async function smokeModules() {
     `export { ${productList.join(", ")} } from "${pkg.name}";\n`
   );
   check(
-    "the root import of the product list pulls in InstantSearch, so the next check can see it",
-    throughRoot.search.length > 0
-  );
-  check(
     `the product list through the map leaves out InstantSearch (${throughMap.bytes} bytes; ${throughRoot.bytes} through the root)`,
     throughMap.search.length === 0,
     throughMap.search.join("\n")
+  );
+  const cartTrigger = await bundleAsLoader("cart-trigger-root", `export { EPCartDrawerTrigger } from "${pkg.name}";\n`);
+  check(
+    `EPCartDrawerTrigger from the root bundles to under ${ROOT_ONE_EXPORT_LIMIT} bytes (${cartTrigger.bytes})`,
+    cartTrigger.bytes < ROOT_ONE_EXPORT_LIMIT
   );
 }
 
@@ -404,6 +416,7 @@ try {
   checkAttw(tarball, "./server", []);
   install(tarball);
   checkNoRequireShim();
+  checkRootHasNoDirectEval();
   checkRootPullsInNoServerModule();
   for (const [label, smoke] of [
     ["/server smoke", smokeServer],

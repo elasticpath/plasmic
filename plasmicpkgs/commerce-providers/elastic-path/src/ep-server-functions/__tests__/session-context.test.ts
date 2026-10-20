@@ -37,9 +37,9 @@ describe("browser-bundle safety", () => {
   });
 });
 
-// `async_hooks` is reached two ways, and each must be exercised on its own:
-// mocking the module does NOT affect `process.getBuiltinModule`, so a test
-// that only mocks it proves nothing about which route was taken.
+// `async_hooks` is reached only through `process.getBuiltinModule`, which
+// mocking the module does NOT affect, so a test that only mocks the module
+// proves nothing about the route.
 // jest runs with `testEnvironment: node`, so `window` is always undefined and
 // the browser branch is unreachable from an ordinary test. A bare VM context
 // is the only way to stand in for a runtime that has neither `window` nor
@@ -144,7 +144,7 @@ describe("reaching async_hooks", () => {
     );
   }
 
-  it("uses getBuiltinModule — the only route native ESM has", () => {
+  it("uses getBuiltinModule", () => {
     jest.isolateModules(() => {
       // No `require` route at all, so a pass can only come from the builtin.
       jest.doMock("async_hooks", () => {
@@ -154,28 +154,22 @@ describe("reaching async_hooks", () => {
     });
   });
 
-  it("falls back to require when getBuiltinModule is absent (older Node, CJS)", () => {
+  it("is inert, and says so, when getBuiltinModule is absent", () => {
     jest.isolateModules(() => {
       delete (process as any).getBuiltinModule;
-      expect(storageIsReal()).toBe(true);
+      const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+
+      expect(storageIsReal()).toBe(false);
+      expect(warn.mock.calls.join(" ")).toContain("EP session scope");
+      warn.mockRestore();
     });
   });
 
-  it("falls back to require when getBuiltinModule throws", () => {
+  it("is inert, and says so, when getBuiltinModule throws", () => {
     jest.isolateModules(() => {
       (process as any).getBuiltinModule = () => {
         throw new Error("blocked by policy");
       };
-      expect(storageIsReal()).toBe(true);
-    });
-  });
-
-  it("says so, loudly, when neither route works", () => {
-    jest.isolateModules(() => {
-      delete (process as any).getBuiltinModule;
-      jest.doMock("async_hooks", () => {
-        throw new Error("Cannot find module 'async_hooks'");
-      });
       const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
 
       expect(storageIsReal()).toBe(false);

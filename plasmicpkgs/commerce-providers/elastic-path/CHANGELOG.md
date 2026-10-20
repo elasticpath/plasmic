@@ -318,6 +318,13 @@ changes: same props, same slots, same data.
 
 ### Fixed
 
+A bundler can drop the root entry's unused code again. The EP session scope
+no longer falls back to `eval("require")` when `process.getBuiltinModule` is
+missing, because a direct `eval` stopped bundlers from removing any of the
+root's code, so one component imported from the root brought the whole
+package. Every Node version that `engines` allows has
+`process.getBuiltinModule`.
+
 A product card inside EP Product Grid now has a link to its product page.
 EP Product Grid publishes `$ctx.currentHit.path`, built exactly as EP Search
 Hits builds it, so a card moved from catalog search to EP Product List
