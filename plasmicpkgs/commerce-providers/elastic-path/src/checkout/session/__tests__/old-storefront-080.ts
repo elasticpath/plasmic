@@ -44,6 +44,21 @@ export interface OldStorefrontOrder {
   skus: string[];
 }
 
+/** A recorded line at `quantity` units of `unit`, priced the way Elastic Path prices it. */
+function priced(line: any, unit: number, quantity: number) {
+  const out = clone(line);
+  out.quantity = quantity;
+  out.unit_price = { ...out.unit_price, amount: unit };
+  out.value = { ...out.value, amount: unit * quantity };
+  for (const pair of Object.values(out.meta?.display_price ?? {}) as any[]) {
+    if (pair?.unit && pair?.value && pair.value.amount !== 0) {
+      Object.assign(pair.unit, money(unit));
+      Object.assign(pair.value, money(unit * quantity));
+    }
+  }
+  return out;
+}
+
 function money(amount: number) {
   return {
     amount,
@@ -92,14 +107,9 @@ export class OldStorefront {
   private cartBody() {
     if (!this.hasCart) return clone(recorded.noCart.body);
     const cart: any = clone(recorded.cartWithShippingLine);
-    const product = clone(PRODUCT_LINE);
-    product.quantity = this.quantity;
-    product.value.amount = UNIT * this.quantity;
     cart.items = [
-      ...(this.quantity > 0 ? [product] : []),
-      ...(this.shippingLine === null
-        ? []
-        : [{ ...clone(SHIPPING_LINE), unit_price: { ...SHIPPING_LINE.unit_price, amount: this.shippingLine }, value: { ...SHIPPING_LINE.value, amount: this.shippingLine } }]),
+      ...(this.quantity > 0 ? [priced(PRODUCT_LINE, UNIT, this.quantity)] : []),
+      ...(this.shippingLine === null ? [] : [priced(SHIPPING_LINE, this.shippingLine, 1)]),
     ];
     const total = money(this.cartTotal());
     const dp = cart.meta.display_price;

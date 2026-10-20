@@ -8,8 +8,13 @@
  * pay writes the line, and its refusals carry developer text.
  */
 import type { Cart } from "../../types/cart";
-import { isShippingLine } from "./shipping-line-sku";
-import type { ClientCheckoutSession, UpdateSessionRequest } from "./types";
+import { shopperCartTotals } from "../../utils/cart-totals";
+import { hasPurchasableItem } from "./purchasable-items";
+import type {
+  ClientCheckoutSession,
+  SessionTotals,
+  UpdateSessionRequest,
+} from "./types";
 
 export const EMPTY_CART_COPY = "Your cart is empty";
 
@@ -63,34 +68,82 @@ export function withShopperCopy<T extends SessionResponseLike>(resp: T): T {
   };
 }
 
-/** The total the older storefront charges: its cart, shipping line included. */
-export function olderStorefrontCartTotal(cart: Cart | null): number | undefined {
-  const amount = cart?.meta?.display_price?.with_tax?.amount;
-  return typeof amount === "number" ? amount : undefined;
+/** Changes whenever the older storefront may have written the cart for the session. */
+export function olderSessionKey(session: ClientCheckoutSession): string {
+  return JSON.stringify([
+    session.id,
+    session.selectedShippingRateId ?? null,
+    session.requiresShipping ?? null,
+    session.totals?.total ?? null,
+  ]);
+}
+
+export interface OlderCheckoutView {
+  /** The cart holds nothing to buy. */
+  empty: boolean;
+  /**
+   * What the older storefront's pay charges, as rows that add up: Elastic
+   * Path's own figures for the cart, read with `withoutShipping`. Null when
+   * that is not known yet: a rate is chosen and its line is not in the cart.
+   */
+  totals: SessionTotals | null;
+  /** The session's own total is the cart's: pay takes it without a restart. */
+  inSync: boolean;
+}
+
+function amountOf(price: { amount?: unknown } | undefined): number | null {
+  return typeof price?.amount === "number" ? price.amount : null;
 }
 
 /**
- * True when pay would write a shipping line the cart does not hold yet, so
- * would charge more than the total on the page.
+ * The older storefront's checkout session read against its live cart.
+ *
+ * Its session totals count a shipping line already in the cart as goods, keep
+ * one a new rate replaces, and never follow the cart. Its pay charges the live
+ * cart once the chosen rate's line is in it, or the cart without the line when
+ * nothing ships. So the rows come from the cart: goods from
+ * `withoutShipping`, shipping from the line.
  */
-export function olderShippingLineMissing(
+export function olderCheckoutView(
   session: ClientCheckoutSession,
   cart: Cart | null
-): boolean {
-  if (session.requiresShipping === false || !session.selectedShippingRateId) {
-    return false;
+): OlderCheckoutView {
+  if (!cart || !hasPurchasableItem(cart.items)) {
+    return { empty: true, totals: null, inSync: false };
+  }
+  const all = cart.meta?.display_price;
+  const goods = shopperCartTotals(cart);
+  const cartTotal = amountOf(all?.with_tax);
+  const goodsTotal = amountOf(goods?.with_tax);
+  if (cartTotal === null || goodsTotal === null) {
+    return { empty: false, totals: null, inSync: false };
+  }
+  const tax = amountOf(goods?.tax) ?? 0;
+  const currency = goods?.with_tax?.currency || session.totals?.currency || "";
+  const ships =
+    session.requiresShipping !== false && !!session.selectedShippingRateId;
+  if (!ships) {
+    return {
+      empty: false,
+      totals: { subtotal: goodsTotal - tax, tax, shipping: 0, total: goodsTotal, currency },
+      inSync: true,
+    };
   }
   const rate = session.availableShippingRates.find(
     (r) => r.id === session.selectedShippingRateId
   );
-  if (!rate) return false;
-  const inCart = (cart?.items ?? [])
-    .filter(isShippingLine)
-    .reduce(
-      (sum, line) => sum + ((line as { value?: { amount?: number } }).value?.amount ?? 0),
-      0
-    );
-  return inCart !== rate.amount;
+  const listed =
+    (amountOf(all?.without_discount) ?? cartTotal) -
+    (amountOf(goods?.without_discount) ?? goodsTotal);
+  if (!rate || listed !== rate.amount) {
+    return { empty: false, totals: null, inSync: false };
+  }
+  const shipping = cartTotal - goodsTotal;
+  return {
+    empty: false,
+    totals: { subtotal: goodsTotal - tax, tax, shipping, total: cartTotal, currency },
+    inSync: session.totals?.total === cartTotal,
+  };
 }
 
 /** What the shopper already entered, to carry into a new checkout session. */

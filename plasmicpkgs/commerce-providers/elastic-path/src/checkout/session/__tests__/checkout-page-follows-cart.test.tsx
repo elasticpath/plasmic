@@ -458,22 +458,65 @@ describe("checkout page on an empty cart", () => {
     });
   }
 
-  it("refuses Place when the cart was emptied after checkout started, and sends no payment", async () => {
+  it("shows the empty cart as soon as another tab empties it, with no total and no card field", async () => {
     cartId = newCart([PRODUCT]);
     await readyToPay();
     renderPayPage();
-    await waitFor(() => expect(probe().total).toBe(2799));
+    await waitFor(() => expect(screen.getByTestId("totals").textContent).toMatch(/\$27\.99/));
     await waitFor(() => expect(screen.getByTestId("stripe-payment-element")).toBeTruthy());
+
     ep.cart(cartId).lines = [];
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    await waitFor(() => expect(probe().errorCode).toBe("EMPTY_CART"));
+    expect(probe()).toEqual({ status: null, total: null, error: "Your cart is empty", errorCode: "EMPTY_CART" });
+    expect(screen.getByTestId("totals").textContent).toBe("");
+    expect(screen.queryByTestId("stripe-payment-element")).toBeNull();
+
     fireEvent.change(screen.getByLabelText("Email"), {
       target: { value: "walk@example.com" },
     });
-
     await pressPlace();
 
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Your cart is empty"));
+    expect(screen.getByRole("alert").textContent).toBe("Your cart is empty");
     expect(sent("POST", PAY)).toEqual([]);
     expect(ep.charges).toEqual([]);
+  });
+
+  it("shows the empty cart when the page opens on a checkout whose cart was emptied", async () => {
+    cartId = newCart([PRODUCT]);
+    await readyToPay();
+    ep.cart(cartId).lines = [];
+
+    renderPayPage();
+
+    await waitFor(() => expect(probe().errorCode).toBe("EMPTY_CART"));
+    expect(screen.getByTestId("totals").textContent).toBe("");
+    expect(screen.queryByTestId("stripe-payment-element")).toBeNull();
+    await pressPlace();
+    expect(sent("POST", PAY)).toEqual([]);
+  });
+
+  it("shows the checkout again, with the new total, when the cart has something in it again", async () => {
+    cartId = newCart([PRODUCT]);
+    await readyToPay();
+    const product = ep.cart(cartId).lines;
+    ep.cart(cartId).lines = [];
+    renderPayPage();
+    await waitFor(() => expect(probe().errorCode).toBe("EMPTY_CART"));
+
+    ep.cart(cartId).lines = product;
+    ep.setQuantity(cartId, "p-plus-sub", 2);
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    await waitFor(() => expect(probe()).toMatchObject({ status: "open", total: 4999, errorCode: null }));
+    expect(screen.getByTestId("totals").textContent).toBe(
+      "Subtotal$44.00Shipping$5.99Tax$0.00Total$49.99"
+    );
   });
 
   it("drops the finished checkout, says the cart is empty, and sends nothing when the shopper presses Place", async () => {
