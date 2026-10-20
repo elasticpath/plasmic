@@ -177,16 +177,13 @@ The cart holds what the shopper bought. Checkout writes its shipping charge
 into the Elastic Path cart as a line with SKU `__ep_shipping`, but only while
 a payment runs: picking a rate prices the line with the cart and takes it out
 again. So outside a payment `meta` and `promotions`, as Elastic Path priced
-them, add up to `items`, also for components older than the storefront. The
-published cart leaves the line out of `items` and `itemCount` when it is
-there. `withoutShipping.meta` and `withoutShipping.promotions` are the cart's
+them, add up to `items`. The published cart leaves the line out of `items`
+and `itemCount` when it is there. `withoutShipping.meta` and `withoutShipping.promotions` are the cart's
 values less what the line adds and what a code took off it; they add up to
 `items` in every case. EP Cart Field, EP Checkout Cart Field, EP Promo Code
 Input and EP Order Totals Breakdown read them. Bind a cart page's own totals to
 `$ctx.cart.withoutShipping.meta.display_price`. Checkout totals, which include
-shipping, come from `$ctx.checkoutSession.session.totals`. A cart from a 0.8.0
-storefront, which lists the line as an item, gets the same shape in the
-browser.
+shipping, come from `$ctx.checkoutSession.session.totals`.
 
 To write to the cart, call `epAddCartItem`, `epUpdateCartItem` or
 `epRemoveCartItem`. They replace `useAddItem`, `useUpdateItem` and
@@ -307,19 +304,6 @@ cart has something in it.
 Before each payment request, `placeOrder` reads the cart. When the cart holds
 only the shipping line and promotions, it answers `EMPTY_CART` ("Your cart is
 empty") and sends no payment request.
-
-On a storefront still on 0.8.0, the session's totals do not follow the cart,
-and they count a shipping line already in the cart as goods. The provider
-reads the cart again whenever the session changes, and `session.totals` comes
-from the cart: `subtotal` and `tax` from `withoutShipping`, `shipping` from the
-line, `total` from Elastic Path. When the session's own total is not the
-cart's, the provider starts a new checkout session at once, with the details
-and delivery option already entered. `placeOrder` sends no payment request
-when the storefront would charge a total other than the one on the page (the
-cart changed, or the chosen shipping rate is not in the cart yet), or after
-the storefront answers `CART_MISMATCH`: it starts a new checkout session, hides
-the old total, and answers `TOTAL_CHANGED`. If that cart read fails there, it
-answers `CART_UNREAD`.
 
 **refActions:** `createSession()`, `updateSession(data)`,
 `calculateShipping()`, `placeOrder()`, `confirmPayment(confirmData)`,

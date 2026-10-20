@@ -2,64 +2,6 @@
 
 ## Unreleased
 
-### Upgrading
-
-Upgrade the storefront's npm package first, then publish the hostless package.
-The components in a Visual Builder project come from the hostless package, and
-the routes they call come from the storefront. A hostless publish reaches every
-project at once, but each storefront upgrades its npm package on its own
-schedule. So for a time some projects run components from one release against
-a storefront from the other:
-
-- **New storefront, older components** (the order above): global cart actions,
-  EP Checkout Cart Summary and promo codes do not work until the hostless
-  package is published. Card payment does not work with the hostless 0.8.0
-  components on any storefront (#680).
-- **Older storefront, new components** (hostless published first): promo codes,
-  account self-registration and the account member's name and email do not
-  work, listing pages are not rendered on the server, and Studio shows sample
-  data. Checkout works, as described below.
-
-In 0.8.0 and earlier, the Elastic Path Provider on every page reads the cart
-from `/api/ep/cart`, and the global cart actions (`addItem`, `updateItem`,
-`removeItem`) that older components bind write to `/api/ep/cart/items`. This
-release removes both routes, so on an upgraded storefront those calls return
-404 until the hostless package is published.
-
-Shopper cookies and open checkout sessions survive an upgrade and a rollback,
-as long as the checkout session secret (`CHECKOUT_SESSION_SECRET` in the
-example storefront) does not change.
-
-On a 0.8.0 storefront, the components of this release:
-
-- show the cart as on a current storefront: the checkout's shipping line is
-  not listed or counted, and the cart page, the mini-cart and EP Checkout Cart
-  Summary show totals the lines add up to.
-- show checkout totals read from the cart, because a 0.8.0 checkout session
-  counts a shipping line already in the cart as goods and keeps the totals it
-  was created with: subtotal and tax from the goods, shipping from the line,
-  and the total Elastic Path gives the cart.
-- read the cart again when the session changes, the cart changes or the page
-  gets focus. When the session's total is not the cart's, they start a new
-  checkout session at once, carry over the details and delivery option already
-  entered, and show the new total, so the first Place pays it. A total known to
-  be stale is not shown.
-- show the empty state (no total, no card field, Place refused with "Your cart
-  is empty") as soon as the cart has nothing to buy.
-- send no payment request when the storefront would charge a total other than
-  the one on the page, or after it answers `CART_MISMATCH`. They start a new
-  checkout session and show the new total; the shopper presses Place again.
-- show shopper copy in place of the storefront's messages: "Your cart is empty"
-  for a visitor with no cart, and "Promo codes can't be used on this store
-  until it is updated." for a promo code.
-
-A current storefront takes the checkout's shipping line out of the cart
-outside a payment, so components older than it show cart totals that the
-listed lines add up to. On a current storefront, components older than it
-still show sample totals on a checkout page that has no checkout session (an
-empty cart, or no cart). Publish the hostless package soon after the
-storefronts upgrade.
-
 ### Breaking
 
 This release reverses the design 0.3.0 documented. 0.3.0 moved the shopper's
@@ -76,8 +18,10 @@ storefront's own origin.
 [ADR-0003](docs/adr/0003-one-session-for-elastic-path-identity.md) records the
 decision. Upgrade in one step: no release supports both designs.
 
-The storefront and the components can run different releases for a time; see
-[Upgrading](#upgrading).
+Upgrade the storefront's npm package and publish the hostless package
+together; mixed versions are not supported. Shopper cookies and open checkout
+sessions survive an upgrade and a rollback, as long as the checkout session
+secret (`CHECKOUT_SESSION_SECRET` in the example storefront) does not change.
 
 The package needs Node 22.12 or later, and says so in `engines`. The CommonJS
 build `require`s better-auth, which ships only as ES modules.
@@ -611,11 +555,10 @@ that discounts shipping. A new checkout session leaves out a shipping line
 left in the cart until a rate is chosen.
 
 The checkout's shipping line is in the cart only while a payment runs. After
-an unfinished checkout, components that read the cart's own totals, such as
-those of 0.8.0 on an upgraded storefront, showed a total that included
-shipping next to a list without it. Choosing a rate now prices the line with
-the cart and takes it out again; the checkout total keeps Elastic Path's
-figures. Reading a session whose cart changed, and pay's `CART_MISMATCH`
+an unfinished checkout, components that read the cart's own totals showed a
+total that included shipping next to a list without it. Choosing a rate now
+prices the line with the cart and takes it out again; the checkout total keeps
+Elastic Path's figures. Reading a session whose cart changed, and pay's `CART_MISMATCH`
 answer, price the chosen rate the same way. Pay, resume, abandon and confirm
 take the line out when they end, unless a card check waits with no order held,
 and creating a session takes out a line an earlier checkout left. A rate

@@ -429,8 +429,7 @@ const EPStripePaymentRuntime = React.forwardRef<
   const paymentReg = usePaymentRegistration();
   const { session: storedSession, resumePayment, abandonPayment } =
     useCheckoutSession(apiBaseUrl);
-  // The session EP Checkout Session Provider shows: none for an emptied cart,
-  // and an older storefront's totals read from its cart.
+  // The session EP Checkout Session Provider shows: none for an emptied cart.
   const shown = (useDataEnv?.() as { checkoutSession?: { session?: unknown } } | undefined)
     ?.checkoutSession;
   const session = (shown ? shown.session : storedSession) as typeof storedSession;
