@@ -67,7 +67,7 @@ export async function handleAbandonPayment(
   } catch (err) {
     log.error("Failed to read session from store", {
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 500,
       body: {
@@ -164,7 +164,7 @@ export async function handleAbandonPayment(
     log.error("Abandon refused: the payment's state cannot be read", {
       sessionId: open.id,
       state,
-    } as Record<string, unknown>);
+    });
     return unreadablePaymentResponse(state, open);
   });
 }
@@ -234,7 +234,7 @@ async function voidThenAbandon(
     sessionId: session.id,
     orderId,
     reason: voided.reason,
-  } as Record<string, unknown>);
+  });
   return unreadablePaymentResponse("unreadable", session);
 }
 
@@ -270,7 +270,7 @@ async function abandonOpenChallenge(
     log.error("updateACart failed while clearing payment_intent_id", {
       cartId: session.cartId,
       error: clearResult.errorMessage,
-    } as Record<string, unknown>);
+    });
     return {
       status: 502,
       body: {
@@ -291,7 +291,7 @@ async function abandonOpenChallenge(
   } catch (err) {
     log.error("Failed to persist abandoned-payment session", {
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 500,
       body: {

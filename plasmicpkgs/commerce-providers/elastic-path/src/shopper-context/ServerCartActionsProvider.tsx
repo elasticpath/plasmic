@@ -61,7 +61,7 @@ export function ServerCartActionsProvider(
           epUpdateCartItem({ itemId: lineItemId, quantity }).catch((err) => {
             log.error("Cart quantity update failed", {
               error: err instanceof Error ? err.message : String(err),
-            } as Record<string, unknown>);
+            });
           });
         }, DEFAULT_DEBOUNCE_MS);
       },
@@ -69,7 +69,7 @@ export function ServerCartActionsProvider(
         epRemoveCartItem({ itemId: lineItemId }).catch((err) => {
           log.error("Cart item removal failed", {
             error: err instanceof Error ? err.message : String(err),
-          } as Record<string, unknown>);
+          });
         });
       },
     }),

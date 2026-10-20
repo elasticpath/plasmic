@@ -1,8 +1,7 @@
 import registerComponent from "@plasmicapp/host/registerComponent";
 import { EPCheckoutForm } from "./checkout/components/EPCheckoutForm";
 import { Registerable } from "./registerable";
-
-const DEPRECATED = "Deprecated — ignored.";
+import { DEPRECATED_LEAD } from "./utils/deprecated-lead";
 
 export const epCheckoutFormMeta = {
   name: "EPCheckoutForm",
@@ -16,26 +15,26 @@ export const epCheckoutFormMeta = {
     cartId: {
       type: "string" as const,
       displayName: "Cart ID",
-      description: `${DEPRECATED} Checkout uses the cart in the shopper's session.`,
+      description: `${DEPRECATED_LEAD} Checkout uses the cart in the shopper's session.`,
       hidden: () => true,
     },
     apiBaseUrl: {
       type: "string" as const,
       displayName: "API Base URL",
-      description: `${DEPRECATED} Set API Base URL on EP Checkout Session Provider.`,
+      description: `${DEPRECATED_LEAD} Set API Base URL on EP Checkout Session Provider.`,
       defaultValue: "/api",
       hidden: () => true,
     },
     className: {
       type: "string" as const,
       displayName: "CSS Class",
-      description: DEPRECATED,
+      description: DEPRECATED_LEAD,
       hidden: () => true,
     },
     onComplete: {
       type: "eventHandler" as const,
       displayName: "On Complete",
-      description: `${DEPRECATED} It never fires.`,
+      description: `${DEPRECATED_LEAD} It never fires.`,
       argTypes: [
         {
           name: "order",
@@ -48,7 +47,7 @@ export const epCheckoutFormMeta = {
     onError: {
       type: "eventHandler" as const,
       displayName: "On Error",
-      description: `${DEPRECATED} It never fires.`,
+      description: `${DEPRECATED_LEAD} It never fires.`,
       argTypes: [
         {
           name: "error",

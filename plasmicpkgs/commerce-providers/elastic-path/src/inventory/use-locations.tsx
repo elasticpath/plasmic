@@ -28,7 +28,7 @@ export function useLocations({ enabled = true }: UseLocationsOptions = {}) {
       onError: (err: Error) => {
         log.error("Error fetching locations", {
           error: err.message,
-        } as Record<string, unknown>);
+        });
       },
     }
   );

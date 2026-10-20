@@ -133,7 +133,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
       resp = await createSession();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      log.warn("createSession failed", { error: message } as Record<string, unknown>);
+      log.warn("createSession failed", { error: message });
       setCreateError({ message: CREATE_FAILED, code: "NETWORK_ERROR" });
       return resp;
     }
@@ -257,7 +257,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
       } catch (err) {
         log.error("updateSession failed", {
           error: err instanceof Error ? err.message : String(err),
-        } as Record<string, unknown>);
+        });
       }
     },
     [updateSessionData]
@@ -269,7 +269,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
     } catch (err) {
       log.error("calculateShipping failed", {
         error: err instanceof Error ? err.message : String(err),
-      } as Record<string, unknown>);
+      });
     }
   }, [calculateShippingData]);
 
@@ -350,7 +350,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
       return payResp;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      log.error("placeOrder failed", { message } as Record<string, unknown>);
+      log.error("placeOrder failed", { message });
       return { success: false, error: { message } };
     } finally {
       placeOrderInFlightRef.current = false;
@@ -364,7 +364,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
       } catch (err) {
         log.error("confirmPayment failed", {
           error: err instanceof Error ? err.message : String(err),
-        } as Record<string, unknown>);
+        });
       }
     },
     [confirmPaymentFn]
@@ -376,7 +376,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
         return await resumePaymentFn(resumeData ?? {});
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        log.error("resumePayment failed", { message } as Record<string, unknown>);
+        log.error("resumePayment failed", { message });
         return { success: false, error: { message } };
       }
     },
@@ -389,7 +389,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
     } catch (err) {
       log.error("reset failed", {
         error: err instanceof Error ? err.message : String(err),
-      } as Record<string, unknown>);
+      });
     }
   }, [resetFn]);
 

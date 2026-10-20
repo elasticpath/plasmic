@@ -29,7 +29,7 @@ export async function handleGetSession(
   } catch (err) {
     log.error("Failed to read session from store", {
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 500,
       body: {
@@ -52,7 +52,7 @@ export async function handleGetSession(
   log.info("Session retrieved", {
     sessionId: session.id,
     status: session.status,
-  } as Record<string, unknown>);
+  });
 
   const refreshed = await refreshOpenSession(ctx, session);
   if (refreshed) {
@@ -71,7 +71,7 @@ export async function handleGetSession(
       log.error("Failed to store the refreshed session", {
         sessionId: session.id,
         error: err instanceof Error ? err.message : String(err),
-      } as Record<string, unknown>);
+      });
     }
   }
 

@@ -8,6 +8,7 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../../registerable";
+import { DEPRECATED_LEAD } from "../../utils/deprecated-lead";
 
 type PreviewState = "auto" | "withData";
 
@@ -21,8 +22,6 @@ export function EPCheckoutStepIndicator(_props: EPCheckoutStepIndicatorProps) {
   return null;
 }
 
-const DEPRECATED = "Deprecated — ignored.";
-
 export const epCheckoutStepIndicatorMeta: CodeComponentMeta<EPCheckoutStepIndicatorProps> =
   {
     name: "plasmic-commerce-ep-checkout-step-indicator",
@@ -33,7 +32,7 @@ export const epCheckoutStepIndicatorMeta: CodeComponentMeta<EPCheckoutStepIndica
     props: {
       children: {
         type: "slot",
-        description: `${DEPRECATED} Nothing renders this slot.`,
+        description: `${DEPRECATED_LEAD} Nothing renders this slot.`,
         hidePlaceholder: true,
         hidden: () => true,
       },
@@ -42,7 +41,7 @@ export const epCheckoutStepIndicatorMeta: CodeComponentMeta<EPCheckoutStepIndica
         options: ["auto", "withData"],
         defaultValue: "auto",
         displayName: "Preview State",
-        description: DEPRECATED,
+        description: DEPRECATED_LEAD,
         hidden: () => true,
         advanced: true,
       },

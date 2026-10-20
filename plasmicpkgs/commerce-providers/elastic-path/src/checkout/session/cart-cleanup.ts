@@ -21,7 +21,7 @@ import {
   updateACartItem,
 } from "@epcc-sdk/sdks-shopper";
 import { buildFixedTokenEpClient } from "../../ep-server-functions/fixed-token-ep-client";
-import { EP_SHIPPING_LINE_SKU } from "./set-shipping-line";
+import { isShippingLine } from "./shipping-line-sku";
 import { createLogger } from "../../utils/logger";
 
 const log = createLogger("CartCleanup");
@@ -103,7 +103,7 @@ export async function removeOrderedLines(
     const plan = cartItems.map((line) => {
       const id = String(line.id ?? "");
       const quantity = Number(line.quantity ?? 0);
-      const managed = line.sku === EP_SHIPPING_LINE_SKU || line.type === "promotion_item";
+      const managed = isShippingLine(line) || line.type === "promotion_item";
       const left = managed ? 0 : quantity - (ordered.get(id) ?? 0);
       return { id, quantity, left, managed };
     });
@@ -132,7 +132,7 @@ export async function removeOrderedLines(
       cartId,
       orderId,
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return runCartCleanup(config);
   }
 }
@@ -169,7 +169,7 @@ export async function runCartCleanup(config: CartCleanupConfig): Promise<boolean
     log.error("Cart cleanup failed: the cart may still hold ordered lines", {
       cartId,
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return false;
   }
 }

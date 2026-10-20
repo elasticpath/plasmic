@@ -9,6 +9,7 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../../registerable";
+import { DEPRECATED_LEAD } from "../../utils/deprecated-lead";
 
 type PreviewState = "auto" | "ready" | "processing" | "error";
 
@@ -24,8 +25,6 @@ export function EPPaymentElements({ children }: EPPaymentElementsProps) {
   return <>{children}</>;
 }
 
-const DEPRECATED = "Deprecated — ignored.";
-
 export const epPaymentElementsMeta: CodeComponentMeta<EPPaymentElementsProps> = {
   name: "plasmic-commerce-ep-payment-elements",
   displayName: "EP Payment Elements (deprecated)",
@@ -39,13 +38,13 @@ export const epPaymentElementsMeta: CodeComponentMeta<EPPaymentElementsProps> = 
     stripePublishableKey: {
       type: "string",
       displayName: "Stripe Publishable Key",
-      description: `${DEPRECATED} Set the key on EP Stripe Payment.`,
+      description: `${DEPRECATED_LEAD} Set the key on EP Stripe Payment.`,
       hidden: () => true,
     },
     appearance: {
       type: "object",
       displayName: "Stripe Appearance",
-      description: `${DEPRECATED} Set the appearance on EP Stripe Payment.`,
+      description: `${DEPRECATED_LEAD} Set the appearance on EP Stripe Payment.`,
       hidden: () => true,
       advanced: true,
     },
@@ -54,7 +53,7 @@ export const epPaymentElementsMeta: CodeComponentMeta<EPPaymentElementsProps> = 
       options: ["auto", "ready", "processing", "error"],
       defaultValue: "auto",
       displayName: "Preview State",
-      description: DEPRECATED,
+      description: DEPRECATED_LEAD,
       hidden: () => true,
       advanced: true,
     },

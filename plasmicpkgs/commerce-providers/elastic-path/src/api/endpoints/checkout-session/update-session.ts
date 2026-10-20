@@ -48,7 +48,7 @@ async function requote(
       sessionId: session.id,
       cartId: session.cartId,
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return [];
   }
 }
@@ -65,7 +65,7 @@ export async function handleUpdateSession(
   } catch (err) {
     log.error("Failed to read session from store", {
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 500,
       body: {
@@ -145,7 +145,7 @@ export async function handleUpdateSession(
         sessionId: session.id,
         dropped: dropped.join(","),
         allowListConfigured: ctx.allowedCustomAttributeKeys !== undefined,
-      } as Record<string, unknown>);
+      });
     }
   }
 
@@ -209,7 +209,7 @@ export async function handleUpdateSession(
         sessionId: updated.id,
         rateId: updated.selectedShippingRateId,
         error: err instanceof Error ? err.message : String(err),
-      } as Record<string, unknown>);
+      });
     }
   }
 
@@ -220,7 +220,7 @@ export async function handleUpdateSession(
     log.error("Failed to persist updated session", {
       sessionId: session.id,
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 500,
       body: {
@@ -233,7 +233,7 @@ export async function handleUpdateSession(
   log.info("Session updated", {
     sessionId: updated.id,
     fields: Object.keys(update).filter((k) => (update as Record<string, unknown>)[k] !== undefined),
-  } as Record<string, unknown>);
+  });
 
   return {
     status: 200,

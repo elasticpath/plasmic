@@ -41,7 +41,7 @@ export function useStock({
       onError: (err: Error) => {
         log.error("Error fetching stock", {
           error: err.message,
-        } as Record<string, unknown>);
+        });
       },
     }
   );

@@ -80,14 +80,14 @@ export function EPCartItemRemoveButton(props: EPCartItemRemoveButtonProps) {
       await epRemoveCartItem({ itemId: currentItem.id });
       log.info("Item removed from cart", {
         itemId: currentItem.id,
-      } as Record<string, unknown>);
+      });
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to remove item";
       log.error("Remove failed", {
         error: message,
         code: readEpErrorCode(err),
-      } as Record<string, unknown>);
+      });
       setError(cartWriteErrorText(err, "remove"));
     } finally {
       setIsLoading(false);

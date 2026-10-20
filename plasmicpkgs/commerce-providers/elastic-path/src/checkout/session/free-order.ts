@@ -48,7 +48,7 @@ export async function settleFreeOrder(
   if (!orderTotal) {
     log.error("Free-order checkout produced an order with no total", {
       orderId,
-    } as Record<string, unknown>);
+    });
     return {
       status: 502,
       body: {
@@ -62,7 +62,7 @@ export async function settleFreeOrder(
   if (orderTotal.amount !== 0) {
     log.warn("Free-order checkout produced an order with a total", {
       orderId,
-    } as Record<string, unknown>);
+    });
     return refuseOrderTotal({
       req,
       ctx,
@@ -84,7 +84,7 @@ export async function settleFreeOrder(
     log.error("Manual settlement of free order failed", {
       orderId,
       error: settled.errorMessage ?? settled.status,
-    } as Record<string, unknown>);
+    });
     return {
       status: 502,
       body: {
@@ -108,7 +108,7 @@ export async function settleFreeOrder(
     log.warn("Failed to clear cart payment_intent_id after free-order settlement (non-fatal)", {
       cartId: session.cartId,
       error: clearPi.errorMessage,
-    } as Record<string, unknown>);
+    });
   }
 
   const cartCleaned = ctx.getClientCredentialsToken
@@ -134,7 +134,7 @@ export async function settleFreeOrder(
   } catch (err) {
     log.error("Failed to persist complete free-order session", {
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 500,
       body: {
@@ -147,7 +147,7 @@ export async function settleFreeOrder(
   log.info("Free order settled", {
     sessionId: completeSession.id,
     orderId,
-  } as Record<string, unknown>);
+  });
 
   return {
     status: 200,

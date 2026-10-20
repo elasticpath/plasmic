@@ -181,7 +181,7 @@ export function EPAddToCartButton(props: EPAddToCartButtonProps) {
       log.error("Add to cart failed", {
         error: message,
         code: readEpErrorCode(err),
-      } as Record<string, unknown>);
+      });
       setError(cartWriteErrorText(err, "add"));
     } finally {
       setIsLoading(false);

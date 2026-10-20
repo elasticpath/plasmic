@@ -26,7 +26,8 @@ import {
   updateACartItem,
 } from "@epcc-sdk/sdks-shopper";
 import { readCartResponse } from "../../ep-server-functions/read-cart";
-import { EP_SHIPPING_LINE_SKU } from "./shipping-line-sku";
+import { EP_SHIPPING_LINE_SKU, isShippingLine } from "./shipping-line-sku";
+import { cartLines } from "./session-totals";
 import type { EpCartResponse, SessionShippingRate } from "./types";
 
 export { EP_SHIPPING_LINE_SKU };
@@ -62,11 +63,6 @@ interface ShippingLine {
   custom_inputs?: { rateId?: unknown };
 }
 
-/** True for a line previously written by this primitive (sentinel SKU). */
-function isManagedShippingLine(item: { sku?: unknown }): boolean {
-  return item?.sku === EP_SHIPPING_LINE_SKU;
-}
-
 async function readShippingLines(
   client: EpClient,
   cartId: string
@@ -76,12 +72,7 @@ async function readShippingLines(
     path: { cartID: cartId },
     query: { include: ["items"] },
   });
-  const items: ShippingLine[] =
-    ((current.data as { included?: { items?: unknown } })?.included
-      ?.items as never) ??
-    ((current.data as { data?: { items?: unknown } })?.data?.items as never) ??
-    [];
-  return (Array.isArray(items) ? items : []).filter(isManagedShippingLine);
+  return cartLines(current.data).filter(isShippingLine) as ShippingLine[];
 }
 
 function chargesRate(line: ShippingLine, rate: SessionShippingRate): boolean {
@@ -107,7 +98,7 @@ async function foldToOneLine(
   if (!Array.isArray(after)) {
     return;
   }
-  const lines: ShippingLine[] = after.filter(isManagedShippingLine);
+  const lines: ShippingLine[] = after.filter(isShippingLine);
   const keep = lines.find((l) => chargesRate(l, rate)) ?? lines[0];
   for (const line of lines) {
     if (line !== keep && line.id) {

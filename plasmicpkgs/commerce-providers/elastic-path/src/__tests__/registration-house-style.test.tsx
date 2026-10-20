@@ -6,8 +6,7 @@
 import { render } from "@testing-library/react";
 import React from "react";
 import { registerAll } from "../index";
-
-const LEAD = "Deprecated — ignored.";
+import { DEPRECATED_LEAD as LEAD } from "../utils/deprecated-lead";
 
 /** Props hidden on purpose that still work. Any other always-hidden prop is inert. */
 const LIVE_HIDDEN = new Set([

@@ -169,7 +169,7 @@ async function persistOpenSession(
   } catch (err) {
     log.error("Failed to persist session", {
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       storeError: {
         status: 500,
@@ -194,7 +194,7 @@ export async function handleResumePayment(
   } catch (err) {
     log.error("Failed to read session from store", {
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 500,
       body: {
@@ -323,7 +323,7 @@ async function refuseUnsettled(
         sessionId: session.id,
         gateway: session.payment.gateway,
         state,
-      } as Record<string, unknown>);
+      });
       return unreadablePaymentResponse(state, session);
   }
 }
@@ -345,7 +345,7 @@ async function declinePayment(
     log.error("Failed to unlink a declined PaymentIntent from the cart", {
       cartId: session.cartId,
       error: cleared.errorMessage,
-    } as Record<string, unknown>);
+    });
   }
   const failedSession = applyPaymentFailed(
     { ...session, order: null },
@@ -443,7 +443,7 @@ async function resumeWithoutHeldOrder(
     log.error("Failed to re-fetch cart for hash check", {
       cartId: session.cartId,
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 502,
       body: {
@@ -581,7 +581,7 @@ async function confirmAndSettle(
       sessionId: session.id,
       orderId,
       error: classified.errorMessage,
-    } as Record<string, unknown>);
+    });
     return {
       status: 502,
       body: {

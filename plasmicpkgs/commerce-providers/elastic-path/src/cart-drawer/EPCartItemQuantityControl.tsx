@@ -220,7 +220,7 @@ export function EPCartItemQuantityControl(
         log.error("Quantity update failed", {
           error: message,
           code: readEpErrorCode(err),
-        } as Record<string, unknown>);
+        });
         setError(cartWriteErrorText(err, "update"));
 
         const revertTo = Math.max(minQuantity, Number(previousQty) || minQuantity);

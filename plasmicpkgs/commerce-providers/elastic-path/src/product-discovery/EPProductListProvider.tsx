@@ -36,6 +36,7 @@ import React, {
   useState,
 } from "react";
 import { Registerable } from "../registerable";
+import { listContent } from "./list-content";
 import { ListingSourceContext } from "./listing-source";
 import { useProductList } from "./use-product-list";
 import { useEpCommerce } from "../shopper-context/EpCommerceContext";
@@ -508,18 +509,17 @@ const EPProductListProviderInner = React.forwardRef<
     loadMore: handleLoadMore,
   }));
 
-  const failed = !!error && displayProducts.length === 0;
-  const showSample = failed && !!sampleOnError;
-  const content =
-    isLoading && displayProducts.length === 0
-      ? loadingContent
-      : showSample
-        ? children
-        : failed
-          ? errorContent
-          : isEmpty
-            ? emptyContent
-            : children;
+  const { content, showSample } = listContent({
+    isLoading,
+    productCount: displayProducts.length,
+    error,
+    sampleOnError,
+    isEmpty,
+    children,
+    loadingContent,
+    errorContent,
+    emptyContent,
+  });
 
   return (
     <DataProvider
