@@ -25,12 +25,25 @@ import React, {
 import useSWR, { mutate as swrMutate } from "swr";
 import type { Registerable } from "../../registerable";
 import { epCartCacheKey } from "../../cart-provider/cache-keys";
-import { epGetCart } from "../../ep-server-functions/getCart";
+import { epGetCart, epReadCart } from "../../ep-server-functions/getCart";
 import { createLogger } from "../../utils/logger";
 import type {
   CheckoutSessionStatus,
+  ClientCheckoutSession,
   UpdateSessionRequest,
 } from "./types";
+import {
+  CART_CHANGED_COPY,
+  CART_UNREAD_COPY,
+  EMPTY_CART_COPY,
+  enteredDetails,
+  isOlderNoCartRefusal,
+  isOlderStorefrontSession,
+  olderShippingLineMissing,
+  olderStorefrontCartTotal,
+  withShopperCopy,
+} from "./older-storefront";
+import { hasPurchasableItem } from "./purchasable-items";
 import { useCheckoutSession } from "./use-checkout-session";
 import type { PreviewState } from "./design-time-data";
 import { getMockSession } from "./design-time-data";
@@ -140,10 +153,12 @@ const EPCheckoutSessionRuntime = React.forwardRef<
     setCreateError(
       resp?.success
         ? null
-        : {
-            message: resp?.error?.message || CREATE_FAILED,
-            code: resp?.error?.code ?? null,
-          }
+        : isOlderNoCartRefusal(resp)
+          ? { message: EMPTY_CART_COPY, code: "NO_CART" }
+          : {
+              message: resp?.error?.message || CREATE_FAILED,
+              code: resp?.error?.code ?? null,
+            }
     );
     return resp;
   }, [createSession]);
@@ -239,14 +254,59 @@ const EPCheckoutSessionRuntime = React.forwardRef<
     [blocked, createError]
   );
 
+  const olderStorefront = isOlderStorefrontSession(session);
+
   const updateSessionData = useCallback(
-    async (data: UpdateSessionRequest) => refusal ?? updateSessionFn(data),
-    [refusal, updateSessionFn]
+    async (data: UpdateSessionRequest) => {
+      if (refusal) return refusal;
+      const resp = await updateSessionFn(data);
+      return olderStorefront ? withShopperCopy(resp) : resp;
+    },
+    [refusal, updateSessionFn, olderStorefront]
   );
 
-  const calculateShippingData = useCallback(
-    async () => refusal ?? calcShippingFn(),
-    [refusal, calcShippingFn]
+  const calculateShippingData = useCallback(async () => {
+    if (refusal) return refusal;
+    const resp = await calcShippingFn();
+    return olderStorefront ? withShopperCopy(resp) : resp;
+  }, [refusal, calcShippingFn, olderStorefront]);
+
+  // An older storefront charges its live cart whatever the page shows, and
+  // keeps the old totals after CART_MISMATCH. A session whose total no longer
+  // matches the cart is never paid: checkout starts again (the storefront
+  // reads cart and total together) with what the shopper entered.
+  const staleSessionIdsRef = useRef(new Set<string>());
+  const restartRef = useRef<Promise<void> | null>(null);
+  const restartCheckout = useCallback(
+    (stale: ClientCheckoutSession): Promise<void> => {
+      staleSessionIdsRef.current.add(stale.id);
+      if (restartRef.current) return restartRef.current;
+      const run = (async () => {
+        const created = await createSession();
+        if (!created?.success) return;
+        const details = enteredDetails(stale);
+        let rates = created.data?.session?.availableShippingRates ?? [];
+        if (details) {
+          const updated = await updateSessionFn(details);
+          rates = updated?.data?.session?.availableShippingRates ?? rates;
+        }
+        const rateId = stale.selectedShippingRateId;
+        if (rateId && rates.some((rate) => rate.id === rateId)) {
+          await updateSessionFn({ selectedShippingRateId: rateId });
+        }
+      })()
+        .catch((err) => {
+          log.warn("Starting checkout again failed", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        })
+        .finally(() => {
+          restartRef.current = null;
+        });
+      restartRef.current = run;
+      return run;
+    },
+    [createSession, updateSessionFn]
   );
 
   const handleUpdateSession = useCallback(
@@ -288,12 +348,62 @@ const EPCheckoutSessionRuntime = React.forwardRef<
     // The total on the page when the shopper pressed Place: the server
     // charges it or refuses.
     const shownTotal = session?.totals?.total;
+    const older = !!session && isOlderStorefrontSession(session);
+    const cartChanged = async () => {
+      if (session) await restartCheckout(session);
+      return {
+        success: false,
+        error: { message: CART_CHANGED_COPY, code: "TOTAL_CHANGED" },
+      };
+    };
+    const refuseBeforePay = async () => {
+      if (older && staleSessionIdsRef.current.has(session!.id)) {
+        return cartChanged();
+      }
+      let liveCart;
+      try {
+        liveCart = await epReadCart();
+      } catch (err) {
+        log.warn("Cart read before payment failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        if (!older) return null;
+        return {
+          success: false,
+          error: { message: CART_UNREAD_COPY, code: "CART_UNREAD" },
+        };
+      }
+      if (liveCart ? !hasPurchasableItem(liveCart.items) : older) {
+        return {
+          success: false,
+          error: { message: EMPTY_CART_COPY, code: "EMPTY_CART" },
+        };
+      }
+      if (
+        older &&
+        (olderStorefrontCartTotal(liveCart) !== shownTotal ||
+          olderShippingLineMissing(session!, liveCart))
+      ) {
+        return cartChanged();
+      }
+      return null;
+    };
+    const pay = async (
+      body: Record<string, unknown>
+    ): Promise<Awaited<ReturnType<typeof placeOrderFn>>> => {
+      const resp = await placeOrderFn(body);
+      if (!older) return resp;
+      if (resp?.error?.code === "CART_MISMATCH") return cartChanged();
+      return withShopperCopy(resp);
+    };
     try {
       // Free orders (zero total) need no card / gateway — the server settles
       // them with the manual gateway. Don't ask a registered gateway to
       // tokenize (there's no card to read).
       if (shownTotal === 0) {
-        return await placeOrderFn({ gateway: "manual", shownTotal });
+        const refused = await refuseBeforePay();
+        if (refused) return refused;
+        return await pay({ gateway: "manual", shownTotal });
       }
 
       const gw = gatewayRef.current;
@@ -321,9 +431,12 @@ const EPCheckoutSessionRuntime = React.forwardRef<
         return await gw.completeRequiresAction(session);
       }
 
+      const refused = await refuseBeforePay();
+      if (refused) return refused;
+
       // Ask the gateway component for its data (e.g. tokenize the card)
       const gwData = await gw.confirm();
-      const payResp = await placeOrderFn({
+      const payResp = await pay({
         gateway: gw.name,
         ...gwData,
         ...(typeof shownTotal === "number" ? { shownTotal } : {}),
@@ -355,7 +468,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
     } finally {
       placeOrderInFlightRef.current = false;
     }
-  }, [refusal, placeOrderFn, session]);
+  }, [refusal, placeOrderFn, session, restartCheckout]);
 
   const handleConfirmPayment = useCallback(
     async (confirmData?: Record<string, unknown>) => {

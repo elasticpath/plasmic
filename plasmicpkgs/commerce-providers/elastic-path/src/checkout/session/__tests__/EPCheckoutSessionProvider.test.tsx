@@ -28,7 +28,6 @@ jest.mock("../use-checkout-session", () => ({
     session: {
       id: "sess-test",
       status: "open",
-      cartId: "cart-1",
       customerInfo: null,
       shippingAddress: null,
       billingAddress: null,
@@ -57,6 +56,16 @@ jest.mock("../use-checkout-session", () => ({
     reset: mockReset,
     refresh: mockRefresh,
   }),
+}));
+
+// A cart with a line to buy; the provider reads it before payment.
+jest.mock("../../../ep-server-functions/getCart", () => ({
+  epGetCart: jest.fn(async () => null),
+  epReadCart: jest.fn(async () => ({
+    items: [{ id: "line-1", type: "cart_item", sku: "sku-1", quantity: 1 }],
+    promotions: [],
+    itemCount: 1,
+  })),
 }));
 
 // Mock @plasmicapp/host with controllable usePlasmicCanvasContext
@@ -530,8 +539,7 @@ describe("EPCheckoutSessionProvider placeOrder 3DS continuation", () => {
       session: {
         id: "sess-test",
         status: "open",
-        cartId: "cart-1",
-        customerInfo: null,
+          customerInfo: null,
         shippingAddress: null,
         billingAddress: null,
         selectedShippingRateId: null,
@@ -749,8 +757,7 @@ describe("EPCheckoutSessionProvider placeOrder 3DS continuation", () => {
       session: {
         id: "sess-test",
         status: "open",
-        cartId: "cart-1",
-        customerInfo: null,
+          customerInfo: null,
         shippingAddress: null,
         billingAddress: null,
         selectedShippingRateId: null,
