@@ -20,6 +20,11 @@ import {
   MANUAL_PURCHASE_METHOD,
 } from "../checkout/session/adapters/manual-adapter";
 import { selectedAccount } from "../checkout/session/checkout-account";
+
+type CheckoutData = NonNullable<
+  Parameters<typeof checkoutApi>[0]["body"]
+>["data"];
+
 const NOT_AVAILABLE =
   "epPlaceOrder: this payment method is not available for this order";
 
@@ -236,7 +241,7 @@ export async function epPlaceOrder(
         ...(shippingAddress
           ? { shipping_address: normalizeAddress(shippingAddress) as never }
           : {}),
-      },
+      } as unknown as CheckoutData,
     },
   });
   const order = checkoutRes.data?.data;
