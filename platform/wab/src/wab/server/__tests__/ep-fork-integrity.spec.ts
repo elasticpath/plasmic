@@ -604,6 +604,15 @@ describe("EP Fork Integrity", () => {
     });
   });
 
+  describe("EP 400 for trusted host calls without a url", () => {
+    it("addTrustedHost rejects a missing url before calling DbMgr", () => {
+      const hosts = readFile("platform/wab/src/wab/server/routes/hosts.ts");
+      expect(hosts).toContain(
+        'throw new BadRequestError("Missing url for trusted host")'
+      );
+    });
+  });
+
 
   // -------------------------------------------------------------------------
   // Absence guards — elasticpath/plasmic#544. One token surface: the shopper
