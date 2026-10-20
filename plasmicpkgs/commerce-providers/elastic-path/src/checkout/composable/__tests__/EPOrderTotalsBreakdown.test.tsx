@@ -33,6 +33,10 @@ import { render, screen } from "@testing-library/react";
 const { EPOrderTotalsBreakdown } = require("../EPOrderTotalsBreakdown");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { EpCommerceProvider } = require("../../../shopper-context/EpCommerceContext");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { normalizeCart } = require("../../../utils/normalize");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { SHIPPED_CART_RESPONSE } = require("../../../test/shipped-cart-fixture");
 
 describe("EPOrderTotalsBreakdown", () => {
   beforeEach(() => {
@@ -175,6 +179,29 @@ describe("EPOrderTotalsBreakdown", () => {
   });
 
   describe("cart mode (the cart published by EPCheckoutCartSummary)", () => {
+    it("totals a cart the checkout wrote its shipping line into without that line", () => {
+      mockUseSelector.mockImplementation((name: string) =>
+        name === "cart" ? normalizeCart(SHIPPED_CART_RESPONSE) : undefined
+      );
+
+      render(
+        <EPOrderTotalsBreakdown>
+          <span>Totals</span>
+        </EPOrderTotalsBreakdown>
+      );
+
+      const data = JSON.parse(
+        screen.getByTestId("dp-orderTotalsData").getAttribute("data-value") || "{}"
+      );
+      expect(data).toMatchObject({
+        subtotal: 2200,
+        discount: -220,
+        total: 1980,
+        totalFormatted: "$19.80",
+        itemCount: 1,
+      });
+    });
+
     it("reads totals off the cart's display_price", () => {
       mockUseSelector.mockImplementation((name: string) =>
         name === "cart" ? cartWithTotals(6200) : undefined

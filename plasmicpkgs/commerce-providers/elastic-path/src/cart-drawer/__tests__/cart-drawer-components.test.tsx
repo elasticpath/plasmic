@@ -143,6 +143,8 @@ const {
   MOCK_CART_DATA,
   MOCK_CART_LINE_ITEMS,
 } = require("../../utils/design-time-data");
+const { normalizeCart } = require("../../utils/normalize");
+const { SHIPPED_CART_RESPONSE } = require("../../test/shipped-cart-fixture");
 
 // --- Test helpers ---
 
@@ -660,6 +662,20 @@ describe("EPCartDrawerTrigger", () => {
 // ---------------------------------------------------------------------------
 
 describe("EPCartField", () => {
+  it("totals a cart the checkout wrote its shipping line into without that line", () => {
+    mockUseSelector.mockReturnValue(normalizeCart(SHIPPED_CART_RESPONSE));
+    const { container } = render(
+      <>
+        <EPCartField field="formattedTotal" />
+        <EPCartField field="formattedSubtotal" />
+        <EPCartField field="itemCount" />
+      </>
+    );
+    expect(
+      Array.from(container.querySelectorAll("span")).map((s) => s.textContent)
+    ).toEqual(["$19.80", "$19.80", "1"]);
+  });
+
   it("renders formattedTotal from cartData", () => {
     mockUseSelector.mockReturnValue(MOCK_CART_DATA);
     render(<EPCartField field="formattedTotal" />);

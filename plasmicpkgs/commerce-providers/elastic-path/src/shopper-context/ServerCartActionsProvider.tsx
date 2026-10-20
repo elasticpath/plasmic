@@ -11,7 +11,12 @@ import { createLogger } from "../utils/logger";
 const log = createLogger("ServerCartActionsProvider");
 
 interface ServerCartActions extends GlobalActionDict {
-  addItem: (productId: string, variantId: string, quantity: number) => void;
+  addItem: (
+    productId: string,
+    variantId: string,
+    quantity: number,
+    location?: string
+  ) => void;
   updateItem: (lineItemId: string, quantity: number) => void;
   removeItem: (lineItemId: string) => void;
 }
@@ -36,15 +41,19 @@ export function ServerCartActionsProvider(
 
   const actions: ServerCartActions = React.useMemo(
     () => ({
-      addItem(productId, variantId, quantity) {
-        // A line references the child product when one was chosen.
-        epAddCartItem({ productId: variantId || productId, quantity }).catch(
-          (err) => {
-            log.error("Add to cart failed", {
-              error: err instanceof Error ? err.message : String(err),
-            } as Record<string, unknown>);
-          }
-        );
+      addItem(productId, variantId, quantity, location) {
+        // A line references the child product when one was chosen. A
+        // multi-location store needs the location for stock held only there.
+        const at = typeof location === "string" ? location.trim() : "";
+        epAddCartItem({
+          productId: variantId || productId,
+          quantity,
+          ...(at ? { location: at } : {}),
+        }).catch((err) => {
+          log.error("Add to cart failed", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
       },
       updateItem(lineItemId, quantity) {
         if (updateTimer.current) clearTimeout(updateTimer.current);
@@ -52,7 +61,7 @@ export function ServerCartActionsProvider(
           epUpdateCartItem({ itemId: lineItemId, quantity }).catch((err) => {
             log.error("Cart quantity update failed", {
               error: err instanceof Error ? err.message : String(err),
-            } as Record<string, unknown>);
+            });
           });
         }, DEFAULT_DEBOUNCE_MS);
       },
@@ -60,7 +69,7 @@ export function ServerCartActionsProvider(
         epRemoveCartItem({ itemId: lineItemId }).catch((err) => {
           log.error("Cart item removal failed", {
             error: err instanceof Error ? err.message : String(err),
-          } as Record<string, unknown>);
+          });
         });
       },
     }),

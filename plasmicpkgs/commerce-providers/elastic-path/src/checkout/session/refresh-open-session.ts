@@ -42,7 +42,7 @@ export async function refreshOpenSession(
     log.warn("Could not read the cart to refresh the session", {
       sessionId: session.id,
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return null;
   }
   if (!hasPurchasableItem(cartLines(cartResponse))) return null;

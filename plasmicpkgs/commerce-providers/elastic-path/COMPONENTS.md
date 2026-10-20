@@ -159,6 +159,8 @@ Provider too. `currentHit.path` is the only link field: `currentProduct` has no
 **In Studio,** use the cart components, or the Elastic Path Provider's global
 actions **Add item to cart**, **Update item in cart** and **Remove item from
 cart**. Each runs on the server through the proxy route and refreshes the cart.
+**Add item to cart** takes an optional **Location** after **Quantity**: on a
+multi-location store, a product stocked only at named locations needs it.
 
 **In React code,** `useEpCart()` reads the shopper's cart:
 
@@ -173,10 +175,14 @@ const { cart, isLoading, error, refresh } = useEpCart();
 
 The cart holds what the shopper bought. Checkout writes its shipping charge
 into the Elastic Path cart as a line with SKU `__ep_shipping`; the published
-cart leaves that line out of `items` and `itemCount`, and its
-`meta.display_price` totals and promotion amounts leave out what the line adds
-and what a code took off it. Checkout totals, which include shipping, come
-from `$ctx.checkoutSession.session.totals`.
+cart leaves that line out of `items` and `itemCount`. `meta` and `promotions`
+stay as Elastic Path priced them, so after a checkout that did not finish they
+include the line. `withoutShipping.meta` and `withoutShipping.promotions` are
+the same values less what the line adds and what a code took off it; they add
+up to `items`. EP Cart Field, EP Checkout Cart Field, EP Promo Code Input and
+EP Order Totals Breakdown read them. Bind a cart page's own totals to
+`$ctx.cart.withoutShipping.meta.display_price`. Checkout totals, which include
+shipping, come from `$ctx.checkoutSession.session.totals`.
 
 To write to the cart, call `epAddCartItem`, `epUpdateCartItem` or
 `epRemoveCartItem`. They replace `useAddItem`, `useUpdateItem` and
@@ -236,6 +242,11 @@ request's session and reject the same way: the same shopper `message`, the same
 `code`, and Elastic Path's own reason in `cause`. A server rejection always has
 a `code`; a failure with no known cause is `dispatch_failed`. Only a call in the
 browser refreshes the `useEpCart()` cache.
+
+The proxy route answers a refusal the shopper can act on with `409`: a code
+of `insufficient_stock`, `invalid_promo_code` or `checkout_in_progress`, or
+any other Elastic Path `4xx` except `401` and `403`. Any other failure is a
+`500`. The body is the same either way.
 
 ---
 

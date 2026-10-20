@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted (2026-08-18). Amended 2026-10-15: the cart id exception.
+Accepted (2026-08-18). Amended 2026-10-15: the cart id exception. Amended
+2026-10-20: `withoutShipping`.
 
 ## Context
 
@@ -39,6 +40,14 @@ with only what a Studio binding expression cannot compute:
   line count (`relationships.items.data.length`); the quantity sum is what a
   cart badge shows, and both cart field pickers already publish it as a saved
   binding choice.
+- `withoutShipping` on a cart — the checkout writes its shipping charge into
+  the cart as a line (SKU `__ep_shipping`). `items` and `itemCount` leave that
+  line out, so Elastic Path's `meta` and `promotions` include money no listed
+  line explains. `withoutShipping.meta` and `withoutShipping.promotions` are
+  those values less the line and what a code took off it. A binding cannot
+  compute them, because the line is not in `items`. With no shipping line
+  they are Elastic Path's own values; otherwise they are derived, and
+  `formatted` comes from `Intl`. `meta` and `promotions` are never changed.
 
 Money is never re-derived. Each price is a `Money` carrying Elastic Path's
 integer amount, currency, display-ready `formatted` string, and a decimal

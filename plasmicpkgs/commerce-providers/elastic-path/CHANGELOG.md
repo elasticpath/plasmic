@@ -68,9 +68,8 @@ creates an order, it checks the requested gateway against that order:
   before it creates the order, and throws when payment does not succeed.
 
 A host that registers `createManualAdapter()` for paid orders, for example for
-offline or invoice payment, must add an `allow` rule. To give the rule the
-account, set `accountId` on the `SessionHandlerContext` from the session
-(`session.session.account?.id`). The example storefront no longer registers
+offline or invoice payment, must add an `allow` rule. The rule gets the
+account the order is placed for; set it with `checkoutContextFromSession`. The example storefront no longer registers
 `manual`; its README shows a rule.
 
 **Orders are placed only through the checkout-session routes.** The EP proxy
@@ -194,6 +193,11 @@ removed component or a removed published prop. All are empty instead.
   Stripe Payment's `submitPayment` lead with "Deprecated — ignored.".
 
 ### Added
+
+The Elastic Path Provider's **Add item to cart** global action takes an
+optional **Location** after **Quantity**. On a multi-location store, a product
+stocked only at named locations was refused with `insufficient_stock`
+without it. Existing bindings are unchanged.
 
 `EPSearchInfiniteHits` ("EP Search Infinite Hits") gives catalog search the
 load more that `EPProductListProvider` already has: the next page of results is
@@ -431,6 +435,11 @@ changes: same props, same slots, same data.
 
 ### Fixed
 
+The proxy route answers a refusal the shopper can act on with `409` instead of
+`500`: `insufficient_stock`, `invalid_promo_code`, `checkout_in_progress`, and
+any other Elastic Path `4xx` except `401` and `403`. The body is unchanged.
+Server failures stay `500`.
+
 Account checkout links the order to the selected account. Before, every
 checkout placed a guest order with the shopper's name and email, also when a
 signed-in account member had an account selected, so the order was missing
@@ -441,7 +450,14 @@ checkout form as the order's contact. `epPlaceOrder` does the same for the
 account selected in its `withEpSession` scope. Pass the selected account on
 `SessionHandlerContext` as `accountToken`, `accountId` and the new
 `accountMemberId` (`session.session.memberId`); `buildEpCtx` now fills
-`accountMemberId`. With no account selected, including a signed-in member
+`accountMemberId`. The new `checkoutContextFromSession(session)`, from
+`/server`, sets all three, with `shopperAccessToken`, `sessionCartId`,
+`locale` and `currency`, from one `getSession` result; spread it into the
+context. A context with `accountToken` but no `accountId` (the 0.8.0 setup)
+used to place a guest order for a signed-in member. It, and one with
+`accountId` but no `accountToken`, now places no order: creating a checkout
+session and pay return `500` with code `ACCOUNT_NOT_CONFIGURED`, and
+`epPlaceOrder` throws. With no account selected, including a signed-in member
 who has not chosen one, the order is a guest order as before. When the
 shopper's selected account is no longer the one the checkout started with,
 pay takes no payment and returns `409` with code `ACCOUNT_CHANGED`, and the
@@ -520,9 +536,12 @@ would charge. A request without `shownTotal` is checked as before.
 The checkout's shipping line no longer shows in the cart. After a declined
 card or a refused order, the cart page listed "Standard Shipping" as a line
 the shopper could change or remove, and counted it. The published `Cart`
-leaves that line out of `items` and `itemCount`, and its totals and promotion
-amounts leave out what the line adds and what a code took off it. Checkout
-still charges the shipping line. Session totals count the shipping line at
+leaves that line out of `items` and `itemCount`. Its `meta` and `promotions`
+keep Elastic Path's money as it is. The new `withoutShipping.meta` and
+`withoutShipping.promotions` leave out what the line adds and what a code took
+off it, so they add up to `items`; EP Cart Field, EP Checkout Cart Field, EP
+Promo Code Input and EP Order Totals Breakdown read them. Checkout still
+charges the shipping line. Session totals count the shipping line at
 its discounted price, so the subtotal no longer goes negative under a code
 that discounts shipping. A new checkout session leaves out a shipping line
 left in the cart until a rate is chosen.
@@ -561,7 +580,8 @@ reported as a clean order. When a cart change made outside the storefront
 lands between the charge and the order, `/pay` marks the order for
 reconciliation (`external_ref`), answers `409` `PAYMENT_NEEDS_REVIEW` with
 `reconciliationPending: true` and the completed session, and tells the shopper
-both amounts. The Stripe adapter now reports the PaymentIntent's `amount` in
+both amounts, formatted with the currency's own minor unit (`¥2,799`, not
+`27.99 JPY`). The Stripe adapter now reports the PaymentIntent's `amount` in
 `gatewayMetadata`.
 
 A cart with a promotion no longer answers `409` `CART_MISMATCH` on the first
@@ -588,7 +608,13 @@ to be a `502` with a generic message. A server error or no answer is still a
 `502`. When a card payment was already taken before Elastic Path refused the
 checkout, the checkout ends with `409` `PAYMENT_NEEDS_REVIEW`, the shopper is
 told the reason, the cart is unlinked from the PaymentIntent, and the payment
-is logged for reconciliation.
+is logged for reconciliation. A server error or no answer from that checkout,
+after `/pay` or `/resume-payment` took the payment, ends the same way. It used
+to return `502` with the session still open and the cart still linked to the
+paid PaymentIntent, so the shopper saw a failed payment and could not retry.
+The checkout is not retried, because a failed or lost answer can still have
+created the order. A failure to mint the token that writes the order's custom
+fields no longer stops a paid order from being confirmed.
 
 A cart settles at most one order. `/pay`, `/resume-payment`,
 `/abandon-payment` and `handleConfirm` share one per-cart guard. While one of

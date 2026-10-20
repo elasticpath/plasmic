@@ -10,6 +10,7 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React, { useImperativeHandle } from "react";
 import { Registerable } from "../../registerable";
+import { DEPRECATED_LEAD } from "../../utils/deprecated-lead";
 import type { AddressData } from "../types";
 
 type PreviewState =
@@ -73,8 +74,6 @@ export const EPCheckoutProvider = React.forwardRef<
   return <>{children}</>;
 });
 
-const DEPRECATED = "Deprecated — ignored.";
-
 export const epCheckoutProviderMeta: CodeComponentMeta<EPCheckoutProviderProps> = {
   name: "plasmic-commerce-ep-checkout-provider",
   displayName: "EP Checkout Provider (deprecated)",
@@ -88,14 +87,14 @@ export const epCheckoutProviderMeta: CodeComponentMeta<EPCheckoutProviderProps> 
     loadingContent: {
       type: "slot",
       displayName: "Loading Content",
-      description: `${DEPRECATED} Nothing renders this slot.`,
+      description: `${DEPRECATED_LEAD} Nothing renders this slot.`,
       renderPropParams: [],
       hidden: () => true,
     },
     errorContent: {
       type: "slot",
       displayName: "Error Content",
-      description: `${DEPRECATED} Nothing renders this slot.`,
+      description: `${DEPRECATED_LEAD} Nothing renders this slot.`,
       renderPropParams: [],
       hidden: () => true,
     },
@@ -103,7 +102,7 @@ export const epCheckoutProviderMeta: CodeComponentMeta<EPCheckoutProviderProps> 
       type: "string",
       displayName: "Cart ID",
       description:
-        `${DEPRECATED} Checkout uses the cart in the shopper's session. ` +
+        `${DEPRECATED_LEAD} Checkout uses the cart in the shopper's session. ` +
         "A cart id a page can set is a cart a page can take over.",
       hidden: () => true,
       advanced: true,
@@ -111,21 +110,21 @@ export const epCheckoutProviderMeta: CodeComponentMeta<EPCheckoutProviderProps> 
     apiBaseUrl: {
       type: "string",
       displayName: "API Base URL",
-      description: `${DEPRECATED} Set API Base URL on EP Checkout Session Provider.`,
+      description: `${DEPRECATED_LEAD} Set API Base URL on EP Checkout Session Provider.`,
       hidden: () => true,
       advanced: true,
     },
     autoAdvanceSteps: {
       type: "boolean",
       displayName: "Auto-Advance Steps",
-      description: DEPRECATED,
+      description: DEPRECATED_LEAD,
       hidden: () => true,
     },
     previewState: {
       type: "choice",
       options: ["auto", "customerInfo", "shipping", "payment", "confirmation"],
       displayName: "Preview State",
-      description: `${DEPRECATED} Set Preview State on EP Checkout Session Provider.`,
+      description: `${DEPRECATED_LEAD} Set Preview State on EP Checkout Session Provider.`,
       hidden: () => true,
       advanced: true,
     },
@@ -136,47 +135,47 @@ export const epCheckoutProviderMeta: CodeComponentMeta<EPCheckoutProviderProps> 
   refActions: {
     nextStep: {
       displayName: "Next Step",
-      description: DEPRECATED,
+      description: DEPRECATED_LEAD,
       argTypes: [],
     },
     previousStep: {
       displayName: "Previous Step",
-      description: DEPRECATED,
+      description: DEPRECATED_LEAD,
       argTypes: [],
     },
     goToStep: {
       displayName: "Go To Step",
-      description: DEPRECATED,
+      description: DEPRECATED_LEAD,
       argTypes: [{ name: "step", type: "string", displayName: "Step key" }],
     },
     submitCustomerInfo: {
       displayName: "Submit Customer Info",
-      description: DEPRECATED,
+      description: DEPRECATED_LEAD,
       argTypes: [{ name: "data", type: "object", displayName: "Customer data" }],
     },
     submitShippingAddress: {
       displayName: "Submit Shipping Address",
-      description: DEPRECATED,
+      description: DEPRECATED_LEAD,
       argTypes: [{ name: "data", type: "object", displayName: "Address data" }],
     },
     submitBillingAddress: {
       displayName: "Submit Billing Address",
-      description: DEPRECATED,
+      description: DEPRECATED_LEAD,
       argTypes: [{ name: "data", type: "object", displayName: "Address data" }],
     },
     selectShippingRate: {
       displayName: "Select Shipping Rate",
-      description: DEPRECATED,
+      description: DEPRECATED_LEAD,
       argTypes: [{ name: "rateId", type: "string", displayName: "Rate ID" }],
     },
     submitPayment: {
       displayName: "Submit Payment",
-      description: DEPRECATED,
+      description: DEPRECATED_LEAD,
       argTypes: [],
     },
     reset: {
       displayName: "Reset Checkout",
-      description: DEPRECATED,
+      description: DEPRECATED_LEAD,
       argTypes: [],
     },
   },

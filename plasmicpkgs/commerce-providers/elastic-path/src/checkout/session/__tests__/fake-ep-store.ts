@@ -157,6 +157,8 @@ function cartTotal(cart: FakeCart): number {
 }
 
 export class FakeEpStore {
+  /** The store currency, on cart and order totals. */
+  currency = "USD";
   carts = new Map<string, FakeCart>();
   orders: FakeOrder[] = [];
   /** Amounts taken by a cart PaymentIntent, one entry per charge. */
@@ -272,9 +274,9 @@ export class FakeEpStore {
               : {}),
             meta: {
               display_price: {
-                with_tax: { amount, currency: "USD" },
-                without_tax: { amount, currency: "USD" },
-                tax: { amount: 0, currency: "USD" },
+                with_tax: { amount, currency: store.currency },
+                without_tax: { amount, currency: store.currency },
+                tax: { amount: 0, currency: store.currency },
               },
             },
           },
@@ -698,7 +700,7 @@ export class FakeEpStore {
           : {}),
       },
       meta: {
-        display_price: { with_tax: { amount: order.total, currency: "USD" } },
+        display_price: { with_tax: { amount: order.total, currency: this.currency } },
       },
     };
   }

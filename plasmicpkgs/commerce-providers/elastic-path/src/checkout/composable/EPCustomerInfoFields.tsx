@@ -259,7 +259,7 @@ const EPCustomerInfoFieldsRuntime = React.forwardRef<
     setErrors(errs);
     setTouched({ firstName: true, lastName: true, email: true });
     const valid = !errs.firstName && !errs.lastName && !errs.email;
-    log.debug("Validation result", { valid, errors: errs } as Record<string, unknown>);
+    log.debug("Validation result", { valid, errors: errs });
     return valid;
   }, [firstName, lastName, email]);
 

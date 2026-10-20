@@ -14,7 +14,7 @@ import { createHash } from "crypto";
 export interface CartItemForHash {
   id: string;
   quantity: number;
-  /** Unit price in minor units (cents). */
+  /** Unit price, an integer in the currency's lowest denomination. */
   unit_price?: { amount?: number };
   /** Some EP responses use value.amount instead. */
   value?: { amount?: number };

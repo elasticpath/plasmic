@@ -22,6 +22,7 @@ import registerComponent, {
 } from "@plasmicapp/host/registerComponent";
 import React from "react";
 import { Registerable } from "../registerable";
+import { listContent } from "./list-content";
 import { ListingSourceContext } from "./listing-source";
 import { useRelatedProducts } from "./use-related-products";
 import { useEpCommerce } from "../shopper-context/EpCommerceContext";
@@ -310,18 +311,17 @@ function EPRelatedProductsProviderInner(props: {
     isEmpty,
   };
 
-  const failed = !!error && products.length === 0;
-  const showSample = failed && !!sampleOnError;
-  const content =
-    isLoading && products.length === 0
-      ? loadingContent
-      : showSample
-        ? children
-        : failed
-          ? errorContent
-          : isEmpty
-            ? emptyContent
-            : children;
+  const { content, showSample } = listContent({
+    isLoading,
+    productCount: products.length,
+    error,
+    sampleOnError,
+    isEmpty,
+    children,
+    loadingContent,
+    errorContent,
+    emptyContent,
+  });
 
   return (
     <DataProvider

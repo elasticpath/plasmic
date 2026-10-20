@@ -53,14 +53,14 @@ async function detachCartPaymentIntentIfNeeded(
           cartId,
           gateway,
           error: err instanceof Error ? err.message : String(err),
-        } as Record<string, unknown>
+        }
       );
     }
   }
   if (!adminToken && !ctx.shopperAccessToken) {
     log.warn(
       "Cart PaymentIntent detach skipped — no shopper or admin token after successful payment",
-      { cartId, gateway } as Record<string, unknown>
+      { cartId, gateway }
     );
     return false;
   }
@@ -79,7 +79,7 @@ async function detachCartPaymentIntentIfNeeded(
         cartId,
         gateway,
         error: result.errorMessage,
-      } as Record<string, unknown>
+      }
     );
   }
   return result.ok;
@@ -170,7 +170,7 @@ export async function finalizePaidSession(
     log.error("Failed to persist complete session", {
       sessionId: completeSession.id,
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 500,
       body: {

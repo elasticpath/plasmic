@@ -38,7 +38,7 @@ export async function handleConfirm(
   } catch (err) {
     log.error("Failed to read session from store", {
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 500,
       body: { success: false, error: { message: "Failed to read session", code: "STORE_ERROR" } },
@@ -148,7 +148,7 @@ async function confirmOpenSession(
       gateway: session.payment.gateway,
       sessionId: session.id,
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 502,
       body: {
@@ -170,7 +170,7 @@ async function confirmOpenSession(
       log.error("Cannot capture EP transaction — transactionId missing from session.order", {
         sessionId: session.id,
         orderId,
-      } as Record<string, unknown>);
+      });
       return {
         status: 500,
         body: {
@@ -209,7 +209,7 @@ async function confirmOpenSession(
         orderId,
         transactionId,
         error: err instanceof Error ? err.message : String(err),
-      } as Record<string, unknown>);
+      });
       return {
         status: 502,
         body: {
@@ -262,7 +262,7 @@ async function confirmOpenSession(
     log.error("Failed to persist session after confirm", {
       sessionId: session.id,
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 500,
       body: { success: false, error: { message: "Failed to store session", code: "STORE_ERROR" } },
@@ -273,7 +273,7 @@ async function confirmOpenSession(
     sessionId: finalSession.id,
     adapterStatus: adapterResult.status,
     sessionStatus: finalSession.status,
-  } as Record<string, unknown>);
+  });
 
   return {
     status: 200,

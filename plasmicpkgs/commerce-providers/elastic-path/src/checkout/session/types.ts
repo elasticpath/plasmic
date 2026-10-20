@@ -373,7 +373,9 @@ export interface SessionHandlerContext extends EpLocaleAndCurrency {
    * The selected account's id, from the same session as `accountToken`. With
    * `accountToken`, it makes the checkout an account checkout: the order is
    * placed for this account, and a payment rule sees it. Omit it when no
-   * account is selected.
+   * account is selected. Set both or neither: with only one, checkout
+   * refuses with `ACCOUNT_NOT_CONFIGURED`. `checkoutContextFromSession` sets
+   * them together.
    */
   accountId?: string;
   /**

@@ -49,6 +49,7 @@ import type {
 } from "./payment-registration-context";
 import { useCheckoutSession } from "./use-checkout-session";
 import { paymentIntentPhase } from "./payment-intent-status";
+import type { PaymentIntentReadKeys } from "./types";
 
 // @stripe/stripe-js 2.x types predate confirmation tokens; Stripe.js v3 has them.
 type StripeWithConfirmationTokens = Stripe & {
@@ -56,13 +57,6 @@ type StripeWithConfirmationTokens = Stripe & {
     | { confirmationToken: { id: string }; error?: undefined }
     | { confirmationToken?: undefined; error: { message?: string } }
   >;
-};
-
-
-/** The keys this form reads Stripe with; resume sends them to the server. */
-type PaymentReadKeys = {
-  publishableKey: string;
-  stripeAccount?: string;
 };
 
 async function readPaymentIntentStatus(
@@ -148,9 +142,9 @@ export async function runStripeRequiresAction(options: {
     retrievePaymentIntent?: (clientSecret: string) => Promise<any>;
   };
   clientSecret: string;
-  resumePayment: (readKeys?: PaymentReadKeys) => Promise<GatewayContinuationResult>;
-  abandonPayment: (readKeys?: PaymentReadKeys) => Promise<GatewayContinuationResult>;
-  readKeys?: PaymentReadKeys;
+  resumePayment: (readKeys?: PaymentIntentReadKeys) => Promise<GatewayContinuationResult>;
+  abandonPayment: (readKeys?: PaymentIntentReadKeys) => Promise<GatewayContinuationResult>;
+  readKeys?: PaymentIntentReadKeys;
 }): Promise<GatewayContinuationResult> {
   const { stripe, clientSecret, abandonPayment, readKeys } = options;
   const resumePayment = () =>
@@ -448,7 +442,7 @@ const EPStripePaymentRuntime = React.forwardRef<
   const inFlightRef = useRef(false);
   const resumePaymentRef = useRef(resumePayment);
   resumePaymentRef.current = resumePayment;
-  const readKeysRef = useRef<PaymentReadKeys | undefined>(undefined);
+  const readKeysRef = useRef<PaymentIntentReadKeys | undefined>(undefined);
   readKeysRef.current = publishableKey
     ? { publishableKey, ...(stripeAccount ? { stripeAccount } : {}) }
     : undefined;
@@ -542,8 +536,8 @@ const EPStripePaymentRuntime = React.forwardRef<
         const resp = await runStripeRequiresAction({
           stripe,
           clientSecret,
-          resumePayment: (keys) => resumePaymentRef.current(keys),
-          abandonPayment: (keys) => abandonPaymentRef.current(keys),
+          resumePayment: (keys) => resumePaymentRef.current(keys && { ...keys }),
+          abandonPayment: (keys) => abandonPaymentRef.current(keys && { ...keys }),
           readKeys: readKeysRef.current,
         });
 

@@ -69,6 +69,12 @@ export interface CartPaymentIntentAdapter extends PaymentAdapterOrderRule {
 export type CartPaymentIntentState = "settled" | "awaiting_action" | "failed" | "unreadable" | "unverifiable";
 
 // @public
+export function checkoutContextFromSession(session: (Pick<EpSession, "session" | "cart"> & Partial<Pick<EpSession, "locale" | "currency">>) | null | undefined): CheckoutSessionContext;
+
+// @public
+export type CheckoutSessionContext = Pick<SessionHandlerContext, "shopperAccessToken" | "sessionCartId" | "accountToken" | "accountId" | "accountMemberId" | "locale" | "currency">;
+
+// @public
 export interface ClientCredentialsResolverConfig {
     // (undocumented)
     clientId: string;

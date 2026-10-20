@@ -258,7 +258,7 @@ describe("cart writes from the root entry", () => {
     proxy.seed([{ id: "li-1", quantity: 1 }]);
     await renderBadge("li-1x1");
     // A production proxy withholds Elastic Path's message and sends only a code.
-    proxy.failWith(500, {
+    proxy.failWith(409, {
       error: "dispatch_failed",
       code: "insufficient_stock",
       correlationId: "corr-1",
@@ -281,7 +281,7 @@ describe("cart writes from the root entry", () => {
 
   it("keeps Elastic Path's own reason when the proxy sends it", async () => {
     // A development proxy route's response; proxy-cart-write-errors.test.ts drives the real route.
-    proxy.failWith(500, {
+    proxy.failWith(409, {
       error: "dispatch_failed",
       code: "insufficient_stock",
       correlationId: "corr-1",
@@ -428,7 +428,7 @@ describe("overlapping cart writes", () => {
     await renderReaders("li-1x1");
     proxy.holdWrites();
     const first = start(setQuantity(2));
-    proxy.failNextWrite(500, { error: "dispatch_failed", code: "insufficient_stock" });
+    proxy.failNextWrite(409, { error: "dispatch_failed", code: "insufficient_stock" });
     const second = start(setQuantity(99));
     await waitFor(() => expect(proxy.heldWrites()).toBe(2));
 
@@ -495,7 +495,7 @@ describe("overlapping cart writes", () => {
 
     it("alone, put the control back and read the cart once", async () => {
       await renderReaders("li-1x1", quantityControlFor({ id: "li-1", quantity: 1 }));
-      proxy.failWith(500, { error: "dispatch_failed", code: "insufficient_stock" });
+      proxy.failWith(409, { error: "dispatch_failed", code: "insufficient_stock" });
 
       act(() => control!.increment());
 
@@ -519,7 +519,7 @@ describe("overlapping cart writes", () => {
       proxy.holdWrites();
       const other = start(() => epUpdateCartItem({ itemId: "li-2", quantity: 5 }));
       await waitFor(() => expect(proxy.heldWrites()).toBe(1));
-      proxy.failNextWrite(500, { error: "dispatch_failed", code: "insufficient_stock" });
+      proxy.failNextWrite(409, { error: "dispatch_failed", code: "insufficient_stock" });
       act(() => control!.increment());
       await waitFor(() => expect(proxy.heldWrites()).toBe(2));
 

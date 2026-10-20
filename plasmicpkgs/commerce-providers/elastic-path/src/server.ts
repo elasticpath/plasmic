@@ -23,6 +23,10 @@ export {
 // Session store
 export { CookieSessionStore } from "./checkout/session/cookie-store";
 
+// The shopper's checkout fields, from one getSession result.
+export { checkoutContextFromSession } from "./checkout/session/checkout-account";
+export type { CheckoutSessionContext } from "./checkout/session/checkout-account";
+
 // Adapter registry
 export { createAdapterRegistry } from "./checkout/session/adapter-registry";
 

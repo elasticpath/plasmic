@@ -87,7 +87,7 @@ export function EPVariationOptionTrigger(
   if (useMock) {
     log.debug("Using mock option for design-time preview", {
       previewState,
-    } as Record<string, unknown>);
+    });
   }
 
   const isSelected = previewState !== "auto"

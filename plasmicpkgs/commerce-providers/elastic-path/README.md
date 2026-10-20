@@ -533,19 +533,24 @@ selected account's token as `accountToken` on `SessionHandlerContext`, resolved
 from `session.session.account?.token` next to `shopperAccessToken`. Calls made
 with `getClientCredentialsToken` never carry it.
 
-An account member's checkout places the order for the selected account. Pass
-the selected account's id as `accountId` and the member's id as
-`accountMemberId`, both from the same session:
+An account member's checkout places the order for the selected account. Set
+the shopper's fields with `checkoutContextFromSession`, from `/server`. It
+reads one `getSession` result and sets `shopperAccessToken`, `sessionCartId`,
+`accountToken`, `accountId`, `accountMemberId`, `locale` and `currency`:
 
 ```ts
-const account = session?.session?.account ?? undefined;
+const session = await epAuth.api.getSession({ cookies, headers });
 const ctx: SessionHandlerContext = {
   // ...
-  accountToken: account?.token,
-  accountId: account?.id,
-  accountMemberId: account ? session?.session?.memberId : undefined,
+  ...checkoutContextFromSession(session),
 };
 ```
+
+`accountToken` and `accountId` go together. A context with only one of them
+(for example the 0.8.0 setup, which set only `accountToken`) cannot tell
+whether the order is for an account, so creating a checkout session and pay
+return `500` with code `ACCOUNT_NOT_CONFIGURED` and place no order, and
+`epPlaceOrder` throws. The server log names the fix.
 
 The checkout session takes the account when it is created. Every order it
 places is linked to that account and member, with the checkout form's name
@@ -557,8 +562,8 @@ created (switched, deselected or lapsed), pay takes no payment, drops the
 checkout session and returns `409` with code `ACCOUNT_CHANGED`. The account
 and the member come only from the server-side session, never from the request.
 
-Pass the session cart as `sessionCartId`, from `session.cart?.id` on the same
-`getSession`. `handleCreateSession` checks out that cart and ignores any cart
+The session cart is `sessionCartId` (`session.cart?.id` on the same
+`getSession`). `handleCreateSession` checks out that cart and ignores any cart
 id in the request; without it, creating a checkout session returns `409` with
 code `NO_CART`. Every later checkout-session route works on the cart the
 session was created with.

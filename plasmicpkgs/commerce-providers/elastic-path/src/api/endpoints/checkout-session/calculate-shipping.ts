@@ -38,7 +38,7 @@ export async function handleCalculateShipping(
   } catch (err) {
     log.error("Failed to read session from store", {
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 500,
       body: {
@@ -84,7 +84,7 @@ export async function handleCalculateShipping(
       log.error("Shipping rate resolver failed", {
         cartId: session.cartId,
         error: err instanceof Error ? err.message : String(err),
-      } as Record<string, unknown>);
+      });
       return {
         status: 502,
         body: {
@@ -107,7 +107,7 @@ export async function handleCalculateShipping(
     log.error("Failed to persist session after shipping calculation", {
       sessionId: session.id,
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 500,
       body: {
@@ -121,7 +121,7 @@ export async function handleCalculateShipping(
     sessionId: updated.id,
     cartId: updated.cartId,
     rateCount: shippingRates.length,
-  } as Record<string, unknown>);
+  });
 
   return {
     status: 200,

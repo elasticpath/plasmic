@@ -172,7 +172,10 @@ Association does not touch the expiry clock either.
 2026-10-15 the id alone was confirmed to read and change a cart linked to an
 account too. So nothing the storefront sends to the browser contains it: not
 `$ctx.cart`, not a session, account or checkout response, not development
-error text. The browser cannot set the session's cart either; only server code
+error text. The Stripe PaymentIntent that Stripe.js reads during a card check
+carries no cart id: on the integration store its `description` was null in
+two walks, and the package sets no description or metadata on it. The browser
+cannot set the session's cart either; only server code
 records a cart it created. This prevents page scripts, browser extensions and
 anything that records what a page receives from learning the id through the
 storefront. It does not prevent access by a party that gets the id some other

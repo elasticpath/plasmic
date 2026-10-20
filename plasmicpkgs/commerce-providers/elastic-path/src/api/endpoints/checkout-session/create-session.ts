@@ -20,16 +20,23 @@ import { hashCart } from "../../../checkout/session/cart-hash";
 import { readCartResponse } from "../../../ep-server-functions/read-cart";
 import { buildAdminEpClient } from "../../../checkout/session/admin-client";
 import { buildShopperEpClient } from "../../../checkout/session/shopper-client";
-import { EP_SHIPPING_LINE_SKU } from "../../../checkout/session/set-shipping-line";
 import { hasPurchasableItem } from "../../../checkout/session/purchasable-items";
 import {
+  cartLines,
   totalsFromCart,
   totalsWithoutShipping,
 } from "../../../checkout/session/session-totals";
+import {
+  shopperLines,
+  type ShopperLine,
+} from "../../../checkout/session/order-creation";
 import { CART_CLEANUP_PENDING, runCartCleanup } from "../../../checkout/session/cart-cleanup";
 import { createLogger } from "../../../utils/logger";
 import { toClientSession } from "../../../checkout/session/client-session";
-import { selectedAccount } from "../../../checkout/session/checkout-account";
+import {
+  refuseHalfAccount,
+  selectedAccount,
+} from "../../../checkout/session/checkout-account";
 
 const log = createLogger("CreateSession");
 
@@ -78,6 +85,9 @@ export async function handleCreateSession(
 ): Promise<SessionResponse> {
   const { body } = req;
 
+  const halfAccount = refuseHalfAccount(ctx);
+  if (halfAccount) return halfAccount;
+
   const cartId = ctx.sessionCartId;
   if (!cartId) {
     return {
@@ -103,28 +113,22 @@ export async function handleCreateSession(
     ? buildShopperEpClient(ctx)
     : await buildAdminEpClient(ctx);
 
-  let cartItems: Array<{ id: string; quantity: number; unit_price?: { amount?: number }; value?: { amount?: number } }> = [];
+  let cartItems: ShopperLine[] = [];
   let totals: SessionTotals | null = null;
   let purchasable = false;
 
   try {
     const cartResponse = await readCartResponse(client, cartId, ctx);
-    const items =
-      (cartResponse as any)?.included?.items ??
-      (cartResponse as any)?.data?.items ??
-      [];
     // Match /pay: drop the storefront-managed shipping line so selecting a
     // rate cannot 409 the cart-hash check.
-    cartItems = (Array.isArray(items) ? items : []).filter(
-      (it: { sku?: string }) => it?.sku !== EP_SHIPPING_LINE_SKU
-    );
-    purchasable = hasPurchasableItem(items);
+    cartItems = shopperLines(cartResponse);
+    purchasable = hasPurchasableItem(cartLines(cartResponse));
     totals = totalsWithoutShipping(totalsFromCart(cartResponse));
   } catch (err) {
     log.error("Failed to fetch cart from EP", {
       cartId,
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 502,
       body: {
@@ -183,7 +187,7 @@ export async function handleCreateSession(
     log.error("Failed to persist session", {
       sessionId,
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 500,
       body: {
@@ -196,7 +200,7 @@ export async function handleCreateSession(
   log.info("Checkout session created", {
     sessionId,
     cartId,
-  } as Record<string, unknown>);
+  });
 
   return {
     status: 201,

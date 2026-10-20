@@ -5,6 +5,7 @@ import registerComponent, {
 import React from "react";
 import { Registerable } from "../../registerable";
 import type { Cart, CartItem } from "../../types/cart";
+import { shopperCartTotals } from "../../utils/cart-totals";
 import {
   MOCK_CHECKOUT_CART_DATA,
   MOCK_CHECKOUT_CART_ITEMS,
@@ -94,7 +95,7 @@ function checkoutCartFieldValue(
   cart: Cart,
   field: CartFieldName
 ): string | number | undefined {
-  const price = cart.meta?.display_price;
+  const price = shopperCartTotals(cart);
   switch (field) {
     case "formattedSubtotal":
       return price?.without_tax?.formatted;

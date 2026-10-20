@@ -145,7 +145,7 @@ export async function releaseOrderStock(
           orderId,
           productId: item.product_id,
           status: answer.status,
-        } as Record<string, unknown>);
+        });
       }
     }
     return ok;
@@ -153,7 +153,7 @@ export async function releaseOrderStock(
     log.error("Could not return stock for a voided order", {
       orderId,
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return false;
   }
 }

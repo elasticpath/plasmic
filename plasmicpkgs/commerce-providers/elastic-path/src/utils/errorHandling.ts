@@ -190,7 +190,7 @@ export function logError(error: EPError, context?: string): void {
     error,
     context,
     timestamp: error.timestamp,
-  } as Record<string, unknown>);
+  });
 }
 
 /**

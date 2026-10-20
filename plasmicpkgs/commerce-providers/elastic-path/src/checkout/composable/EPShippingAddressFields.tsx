@@ -336,7 +336,7 @@ const EPShippingAddressFieldsRuntime = React.forwardRef<
       city: true, postcode: true, country: true, phone: true,
     });
     const valid = Object.values(errs).every((e) => e === null);
-    log.debug("Validation result", { valid, errors: errs } as Record<string, unknown>);
+    log.debug("Validation result", { valid, errors: errs });
     return valid;
   }, [values, country, showPhoneField]);
 
@@ -366,10 +366,10 @@ const EPShippingAddressFieldsRuntime = React.forwardRef<
     }
     const addr = accountAddresses.find((a) => a.id === addressId);
     if (!addr) {
-      log.debug("useAccountAddress: address not found", { addressId } as Record<string, unknown>);
+      log.debug("useAccountAddress: address not found", { addressId });
       return;
     }
-    log.debug("useAccountAddress: copying address", { addressId } as Record<string, unknown>);
+    log.debug("useAccountAddress: copying address", { addressId });
     // EP addresses have a single "name" field — split into firstName/lastName
     const nameParts = (addr.name ?? "").split(/\s+/);
     const fName = nameParts[0] ?? "";

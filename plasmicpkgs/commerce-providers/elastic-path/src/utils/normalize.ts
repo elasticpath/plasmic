@@ -350,25 +350,31 @@ export const normalizeCart = (
   // nor a unit to count — but it is what tells the promo input a code is still
   // applied, so it is published separately rather than dropped. custom_item is
   // kept as a line: that is a real adjustment. The checkout's shipping line is
-  // left out entirely, with what it adds to the totals and what promotions
-  // took off it: shipping belongs to the checkout, not the cart.
+  // not a line or a unit; `meta` and `promotions` keep Elastic Path's money
+  // as it is, and `withoutShipping` totals the cart without that line.
   const rawItems = cart.included?.items ?? [];
   const shippingLines = rawItems.filter(isShippingLine);
-  const allItems = rawItems
-    .filter((item) => !isShippingLine(item))
-    .map((item) =>
-      item.type === "promotion_item"
-        ? promotionWithoutShipping(item, shippingLines)
-        : item
-    )
+  const shopperItems = rawItems.filter((item) => !isShippingLine(item));
+  const items = shopperItems
+    .filter((item) => item.type !== "promotion_item")
     .map(normalizeCartItem);
-  const items = allItems.filter((item) => item.type !== "promotion_item");
-  const promotions = allItems.filter((item) => item.type === "promotion_item");
+  const rawPromotions = shopperItems.filter((item) => item.type === "promotion_item");
+  const meta = completeCartMeta(data.meta);
+  const promotions = rawPromotions.map(normalizeCartItem);
   return {
     ...data,
-    meta: completeCartMeta(cartMetaWithoutShipping(data.meta, shippingLines)),
+    meta,
     items,
     promotions,
+    withoutShipping:
+      shippingLines.length === 0
+        ? { meta, promotions }
+        : {
+            meta: completeCartMeta(cartMetaWithoutShipping(data.meta, shippingLines)),
+            promotions: rawPromotions
+              .map((p) => promotionWithoutShipping(p, shippingLines))
+              .map(normalizeCartItem),
+          },
     itemCount: items.reduce(
       (units, item) => units + ("quantity" in item ? item.quantity ?? 0 : 0),
       0

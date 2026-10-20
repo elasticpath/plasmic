@@ -689,6 +689,7 @@ describe("handlePay", () => {
   });
 
   describe("selected account", () => {
+    const ACCOUNT = { accountToken: "account-token", accountId: "account-1" };
     const PAID = createMockAdapter.bind(null, {
       status: "succeeded",
       gatewayOrderId: "pi_1",
@@ -698,7 +699,7 @@ describe("handlePay", () => {
     it("re-reads the cart with the selected account's credential", async () => {
       await handlePay(
         createMockReq({ gateway: "stripe", confirmation_token: "ct" }),
-        createMockCtx(makeSession(), PAID(), { accountToken: "account-token" })
+        createMockCtx(makeSession({ account: { id: "account-1" } }), PAID(), ACCOUNT)
       );
 
       const { client } = epSdk.getACart.mock.calls[0][0];
@@ -720,9 +721,13 @@ describe("handlePay", () => {
       await handlePay(
         createMockReq({ gateway: "stripe", confirmation_token: "ct" }),
         createMockCtx(
-          makeSession({ cartHash: hashCart(digitalItems), requiresShipping: false }),
+          makeSession({
+            cartHash: hashCart(digitalItems),
+            requiresShipping: false,
+            account: { id: "account-1" },
+          }),
           PAID(),
-          { accountToken: "account-token" }
+          ACCOUNT
         )
       );
 
@@ -747,7 +752,7 @@ describe("handlePay", () => {
     it("keeps the account credential off the client_credentials checkout", async () => {
       await handlePay(
         createMockReq({ gateway: "stripe", confirmation_token: "ct" }),
-        createMockCtx(makeSession(), PAID(), { accountToken: "account-token" })
+        createMockCtx(makeSession({ account: { id: "account-1" } }), PAID(), ACCOUNT)
       );
 
       const { client } = epSdk.checkoutApi.mock.calls[0][0];

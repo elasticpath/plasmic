@@ -20,6 +20,7 @@ import { Registerable } from "../../registerable";
 import { MOCK_ORDER_TOTALS_DATA } from "../../utils/design-time-data";
 import { createLogger } from "../../utils/logger";
 import type { Cart } from "../../types/cart";
+import { shopperCartTotals } from "../../utils/cart-totals";
 import { useMoneyFormat } from "../../shopper-context/use-money-format";
 import { useCanvasPreviewState } from "../../utils/canvas-preview-state";
 
@@ -103,7 +104,7 @@ export function EPOrderTotalsBreakdown(props: EPOrderTotalsBreakdownProps) {
 
     // Source 2: the cart published by EPCheckoutCartSummary
     if (checkoutCart) {
-      const price = checkoutCart.meta?.display_price;
+      const price = shopperCartTotals(checkoutCart);
       const discount = price?.discount?.amount ?? 0;
       // Pre-discount, so Subtotal + Tax + Shipping + Discount = Total.
       const subtotalPrice = price?.without_discount ?? price?.without_tax;

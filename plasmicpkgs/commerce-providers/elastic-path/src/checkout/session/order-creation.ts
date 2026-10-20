@@ -17,7 +17,7 @@ import type {
 } from "./types";
 import { hashCart, type CartItemForHash } from "./cart-hash";
 import { cartLines } from "./session-totals";
-import { EP_SHIPPING_LINE_SKU } from "./set-shipping-line";
+import { isShippingLine } from "./shipping-line-sku";
 import { buildShopperEpClient } from "./shopper-client";
 import { toClientSession } from "./client-session";
 import { readCartResponse } from "../../ep-server-functions/read-cart";
@@ -85,7 +85,7 @@ export async function createOrderFromCart(
     log.error(failure.logMessage, {
       cartId: session.cartId,
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
   }
 
   const created = res.data?.data;
@@ -100,7 +100,7 @@ export async function createOrderFromCart(
       cartId: session.cartId,
       status,
       reason,
-    } as Record<string, unknown>);
+    });
     return {
       rejection: reason,
       response: {
@@ -115,7 +115,7 @@ export async function createOrderFromCart(
       cartId: session.cartId,
       status,
       error: res.error ? epReason(res.error) : "checkoutApi response missing order id",
-    } as Record<string, unknown>);
+    });
   }
   return {
     response: {
@@ -128,10 +128,20 @@ export async function createOrderFromCart(
 export const CART_CHANGED_REVIEW_MESSAGE =
   "We received your payment, but your cart changed during the card check, so no order was placed. Please contact us and we will complete or refund it.";
 
-/** What the shopper reads when the payment was taken but Elastic Path refused the order. */
-export function checkoutRejectedReviewMessage(reason: string): string {
-  const said = reason.trim().replace(/[.\s]+$/, "");
-  return `We received your payment, but your order could not be placed: ${said}. Please contact us and we will complete or refund it.`;
+/**
+ * What the shopper reads when the payment was taken but checkout created no
+ * order: Elastic Path's reason when it refused, nothing more when it failed.
+ */
+export function checkoutRejectedReviewMessage(reason: string | undefined): string {
+  const said = reason?.trim().replace(/[.\s]+$/, "");
+  return said
+    ? `We received your payment, but your order could not be placed: ${said}. Please contact us and we will complete or refund it.`
+    : "We received your payment, but your order could not be placed. Please contact us and we will complete or refund it.";
+}
+
+/** Why a checkout after a taken payment created no order, for the server log. */
+export function checkoutFailureReason(rejection: string | undefined): string {
+  return rejection ?? "checkout failed after the payment";
 }
 
 /**
@@ -156,13 +166,13 @@ export async function endCheckoutForReview(opts: {
     cartId: session.cartId,
     paymentReference,
     reason,
-  } as Record<string, unknown>);
+  });
   const cleared = await clearCartPaymentIntentId({ client, cartId: session.cartId });
   if (!cleared.ok) {
     log.error("Failed to unlink a reviewed PaymentIntent from the cart", {
       cartId: session.cartId,
       error: cleared.errorMessage,
-    } as Record<string, unknown>);
+    });
   }
   const ended: CheckoutSession = {
     ...session,
@@ -184,7 +194,7 @@ export async function endCheckoutForReview(opts: {
   } catch (err) {
     log.error("Failed to persist a session ended for review", {
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
   }
   return {
     status: 409,
@@ -211,15 +221,25 @@ export function confirmCartPaymentOrder(client: Client, orderId: string): Promis
   } as unknown as Parameters<typeof confirmOrder>[0]);
 }
 
-/** Writes the session's checkout extras onto the order (best effort). */
+/** Writes the session's checkout extras onto the order (best effort; never throws). */
 export async function writeOrderCustomFields(
   ctx: SessionHandlerContext,
   orderId: string,
   session: CheckoutSession
 ): Promise<void> {
+  let token = "";
+  try {
+    token = ctx.getClientCredentialsToken ? await ctx.getClientCredentialsToken() : "";
+  } catch (err) {
+    log.warn("Could not mint a token to write order custom fields", {
+      orderId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return;
+  }
   await persistOrderCustomFields({
     host: ctx.epCredentials.apiBaseUrl,
-    token: ctx.getClientCredentialsToken ? await ctx.getClientCredentialsToken() : "",
+    token,
     orderId,
     input: session.customAttributes,
   });
@@ -238,7 +258,7 @@ export async function cancelUnpaidOrder(client: Client, orderId: string): Promis
     log.warn("Could not cancel an unused unpaid order", {
       orderId,
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
   }
 }
 
@@ -255,7 +275,7 @@ export async function markOrderForReconciliation(
   log.error("Order needs reconciliation with its payment", {
     orderId,
     paymentReference,
-  } as Record<string, unknown>);
+  });
   try {
     await updateAnOrder({
       client,
@@ -273,9 +293,7 @@ export type ShopperLine = CartItemForHash & { sku?: string; product_id?: string 
 
 /** The cart's shopper lines: every line but the storefront-managed shipping line. */
 export function shopperLines(cartResponse: unknown): ShopperLine[] {
-  return cartLines(cartResponse).filter(
-    (it) => (it as { sku?: unknown })?.sku !== EP_SHIPPING_LINE_SKU
-  ) as ShopperLine[];
+  return cartLines(cartResponse).filter((it) => !isShippingLine(it)) as ShopperLine[];
 }
 
 /**

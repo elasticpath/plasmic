@@ -59,6 +59,8 @@ const { EP_SHIPPING_LINE_SKU } =
   require("../../../../checkout/session/set-shipping-line") as typeof import("../../../../checkout/session/set-shipping-line");
 const { FakeEpStore } =
   require("../../../../checkout/session/__tests__/fake-ep-store") as typeof import("../../../../checkout/session/__tests__/fake-ep-store");
+const { checkoutContextFromSession } =
+  require("../../../../checkout/session/checkout-account") as typeof import("../../../../checkout/session/checkout-account");
 /* eslint-enable @typescript-eslint/no-var-requires */
 
 import type {
@@ -102,7 +104,6 @@ class Browser {
   private ctx(): SessionHandlerContext {
     const sent = clone(this.cookie);
     return {
-      ...this.identity,
       epCredentials: { clientId: "client", apiBaseUrl: "https://api.test.com" },
       adapterRegistry: registry,
       sessionStore: {
@@ -120,6 +121,7 @@ class Browser {
       sessionCartId: this.cartId,
       getClientCredentialsToken: async () => "admin-token",
       shippingRateResolver: () => [RATE],
+      ...this.identity,
     };
   }
 
@@ -1070,6 +1072,65 @@ describe("a checkout Elastic Path rejects", () => {
     ep.checkoutRejection = null;
     expect((await browser.create()).status).toBe(201);
   });
+
+  it.each([
+    ["answers with a server error", () => {
+      ep.checkoutRejection = { status: 503, detail: "unavailable" };
+    }],
+    ["throws", () => {
+      sdkImpl.checkoutApi = async () => {
+        throw new Error("socket hang up");
+      };
+    }],
+  ])("ends a card payment taken before the checkout %s, recording the payment", async (_, failCheckout) => {
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+    failCheckout();
+
+    const res = await browser.pay({ gateway: "stripe" });
+
+    const [pi] = [...ep.paymentIntents.keys()];
+    expect(ep.charges).toEqual([2799]);
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("PAYMENT_NEEDS_REVIEW");
+    expect((res.body as any).error.message).toMatch(/received your payment/);
+    expect((res.body as any).reconciliationPending).toBe(true);
+    expect(sessionIn(res).status).toBe("complete");
+    expect(sessionIn(res).payment.gatewayMetadata).toMatchObject({
+      paymentIntentId: pi,
+      needsReconciliation: true,
+    });
+    expect(ep.cart(browser.cartId).paymentIntentId).toBeUndefined();
+
+    const again = await browser.pay({ gateway: "stripe" });
+    expect((again.body as any).error.code).toBe("SESSION_NOT_OPEN");
+    expect(ep.charges).toEqual([2799]);
+
+    ep.checkoutRejection = null;
+    Object.assign(sdkImpl, ep.sdk());
+    expect((await browser.create()).status).toBe(201);
+  });
+});
+
+describe("a taken payment whose admin token cannot be minted afterwards", () => {
+  it("still records the payment on the order and completes", async () => {
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+    browser.identity = {
+      allowedCustomAttributeKeys: ["po_number"],
+      getClientCredentialsToken: async () => {
+        if (ep.charges.length > 0) throw new Error("token endpoint unavailable");
+        return "admin-token";
+      },
+    };
+    await browser.update({ customAttributes: { po_number: "PO-1" } });
+
+    const res = await browser.pay({ gateway: "stripe" });
+
+    expect(res.status).toBe(200);
+    expect(sessionIn(res).status).toBe("complete");
+    expect(ep.paidOrders().map((o) => o.paid)).toEqual([2799]);
+  });
 });
 
 describe("an order whose total is not the amount charged", () => {
@@ -1088,6 +1149,19 @@ describe("an order whose total is not the amount charged", () => {
     expect(order.total).toBe(2899);
     expect(order.paid).toBe(2799);
     expect(order.externalRef).toContain("needs-reconciliation");
+  });
+
+  it("tells the shopper both amounts in the currency's own minor unit", async () => {
+    ep.currency = "JPY";
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+
+    const res = await browser.pay({ gateway: "stripeLateWrite" });
+
+    expect((res.body as any).error.code).toBe("PAYMENT_NEEDS_REVIEW");
+    expect((res.body as any).error.message).toContain("¥2,899");
+    expect((res.body as any).error.message).toContain("¥2,799");
+    expect((res.body as any).error.message).not.toMatch(/28\.99|27\.99/);
   });
 
   it("completes normally when the order total is the amount charged", async () => {
@@ -1476,6 +1550,52 @@ describe("an account member's order belongs to the selected account", () => {
 
     expect(sessionIn(res).status).toBe("complete");
     expect(ep.orders.map(linkOf)).toEqual([GUEST]);
+  });
+
+  it("takes the account and the member from the shopper session", async () => {
+    const cartId = newCart();
+    const browser = new Browser(cartId);
+    browser.identity = checkoutContextFromSession({
+      session: {
+        accessToken: "shopper-token",
+        expires: Date.now() + 60_000,
+        clientId: "client",
+        host: "https://api.test.com",
+        memberId: "member-1",
+        account: { id: "account-a", token: "account-token-a", expires: Date.now() + 60_000 },
+        lapsedAccount: null,
+      },
+      cart: { id: cartId },
+    });
+
+    const res = await (await readyToPay(browser), browser.pay({ gateway: "stripe" }));
+
+    expect(sessionIn(res).status).toBe("complete");
+    expect(ep.orders.map(linkOf)).toEqual([LINKED_TO_A]);
+  });
+
+  it.each([
+    ["the account token without its id", { accountToken: "account-token-a", accountMemberId: "member-1" }],
+    ["the account id without its token", { accountId: "account-a", accountMemberId: "member-1" }],
+  ])("refuses a checkout, and places no guest order, when the host sets %s", async (_, half) => {
+    const browser = new Browser(newCart());
+    browser.identity = half;
+
+    const created = await browser.create();
+
+    expect(created.status).toBe(500);
+    expect((created.body as any).error.code).toBe("ACCOUNT_NOT_CONFIGURED");
+    expect(browser.cookie).toBeNull();
+
+    browser.identity = {};
+    await readyToPay(browser);
+    browser.identity = half;
+    const paid = await browser.pay({ gateway: "stripe" });
+
+    expect(paid.status).toBe(500);
+    expect((paid.body as any).error.code).toBe("ACCOUNT_NOT_CONFIGURED");
+    expect(ep.charges).toEqual([]);
+    expect(ep.orders).toEqual([]);
   });
 
   it("gives the manual payment rule the account the order is then placed for", async () => {

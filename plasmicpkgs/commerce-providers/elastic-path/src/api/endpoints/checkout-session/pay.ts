@@ -54,10 +54,7 @@ import {
   applyShippingSelection,
   ShippingResolutionError,
 } from "../../../checkout/session/apply-shipping-selection";
-import {
-  EP_SHIPPING_LINE_SKU,
-  clearCartShippingLine,
-} from "../../../checkout/session/set-shipping-line";
+import { clearCartShippingLine } from "../../../checkout/session/set-shipping-line";
 import {
   applyPaymentFailed,
   applyPaymentRequiresAction,
@@ -65,6 +62,7 @@ import {
 import { finalizePaidSession } from "../../../checkout/session/finalize-paid-session";
 import { readOrderTotal, type OrderTotal } from "../../../checkout/session/order-total";
 import {
+  checkoutFailureReason,
   checkoutRejectedReviewMessage,
   confirmCartPaymentOrder,
   createOrderFromCart,
@@ -83,6 +81,7 @@ import {
 } from "../../../checkout/session/order-payment";
 import { toCustomAttributes } from "../../../ep-server-functions/place-order";
 import { createLogger } from "../../../utils/logger";
+import { formatMinor } from "../../../utils/price";
 import { toClientSession } from "../../../checkout/session/client-session";
 import type { EpCartResponse, SessionTotals } from "../../../checkout/session/types";
 import { hasPurchasableItem } from "../../../checkout/session/purchasable-items";
@@ -152,7 +151,7 @@ async function persistCustomAttributes(
     log.warn("Failed to persist cart custom attributes", {
       cartId,
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
   }
 }
 
@@ -240,7 +239,7 @@ async function persistRequiresAction(
   } catch (err) {
     log.error("Failed to persist requires_action session", {
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 500,
       body: {
@@ -288,7 +287,7 @@ async function persistFailedPayment(
   } catch (err) {
     log.error("Failed to persist failed-payment session", {
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 500,
       body: {
@@ -320,7 +319,7 @@ async function holdOrderForChallenge(
       log.error("Failed to unlink a refused PaymentIntent from the cart", {
         cartId: session.cartId,
         error: cleared.errorMessage,
-      } as Record<string, unknown>);
+      });
     }
   };
 
@@ -339,7 +338,7 @@ async function holdOrderForChallenge(
     log.warn("Order total differs from the session total; not starting the challenge", {
       sessionId: session.id,
       orderId,
-    } as Record<string, unknown>);
+    });
     await release();
     return orderTotalChanged(params, orderId, total);
   }
@@ -366,7 +365,7 @@ async function handleInitializePaymentPay(
     log.error("Payment adapter threw", {
       gateway,
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 502,
       body: {
@@ -389,7 +388,7 @@ async function handleInitializePaymentPay(
   if (adapterResult.status !== "succeeded") {
     log.warn("Adapter returned non-terminal status; treating as failed", {
       status: adapterResult.status,
-    } as Record<string, unknown>);
+    });
     return persistFailedPayment(params, {
       status: "failed",
       errorMessage: `Unsupported adapter status: ${adapterResult.status}`,
@@ -400,8 +399,10 @@ async function handleInitializePaymentPay(
     message: "Payment succeeded but order creation failed",
     logMessage: "EP checkoutApi failed after payment success",
   });
-  if (created.rejection !== undefined) {
-    // The payment was taken; Elastic Path will not create its order.
+  if (created.response) {
+    // The payment was taken and no order was created. Checkout is not
+    // retried: a failed or lost response may still have created an order
+    // that carries the PaymentIntent.
     return endCheckoutForReview({
       req,
       ctx,
@@ -409,11 +410,10 @@ async function handleInitializePaymentPay(
       session: { ...session, payment: { ...session.payment, gateway } },
       client: adminClient,
       paymentReference: adapterResult.gatewayOrderId ?? "unknown",
-      reason: created.rejection,
+      reason: checkoutFailureReason(created.rejection),
       message: checkoutRejectedReviewMessage(created.rejection),
     });
   }
-  if (created.response) return created.response;
   const orderId = created.order.id;
   const orderTotal = await readOrderTotal(adminClient, orderId, created.order);
   const charged = chargedAmount(adapterResult, params.expectedTotal);
@@ -426,7 +426,7 @@ async function handleInitializePaymentPay(
     reconciliationError = "missing gateway payment id";
     log.error("Cannot reconcile order — no gateway payment id", {
       orderId,
-    } as Record<string, unknown>);
+    });
   } else {
     try {
       await confirmCartPaymentOrder(adminClient, orderId);
@@ -436,7 +436,7 @@ async function handleInitializePaymentPay(
         orderId,
         paymentID,
         error: reconciliationError,
-      } as Record<string, unknown>);
+      });
     }
   }
 
@@ -452,7 +452,7 @@ async function handleInitializePaymentPay(
     sessionId: session.id,
     orderId,
     reconciliationPending: reconciliationError !== null,
-  } as Record<string, unknown>);
+  });
 
   const finalized = await finalizePaidSession({
     ctx,
@@ -473,7 +473,7 @@ async function handleInitializePaymentPay(
       ...(finalized.body as Record<string, unknown>),
       success: false,
       error: {
-        message: orderTotalDiffersMessage(charged, orderTotal?.amount, orderTotal?.currency),
+        message: orderTotalDiffersMessage(charged, orderTotal?.amount, orderTotal?.currency ?? session.totals?.currency),
         code: "PAYMENT_NEEDS_REVIEW",
       },
       reconciliationPending: true,
@@ -489,8 +489,7 @@ function chargedAmount(result: PaymentAdapterResult, shownTotal: number): number
 
 function money(amount: number | undefined, currency: string | undefined): string {
   if (typeof amount !== "number") return "a different amount";
-  const value = (amount / 100).toFixed(2);
-  return currency ? `${value} ${currency}` : value;
+  return currency ? formatMinor(amount, currency) : String(amount);
 }
 
 function orderTotalDiffersMessage(
@@ -535,7 +534,7 @@ async function handleOrderFirstPay(
       log.error("getAnOrder failed before retry paymentSetup", {
         orderId,
         error: err instanceof Error ? err.message : String(err),
-      } as Record<string, unknown>);
+      });
       return {
         status: 502,
         body: {
@@ -554,7 +553,7 @@ async function handleOrderFirstPay(
     if (epError || !orderResource || typeof existing.payment !== "string") {
       log.error("getAnOrder returned no usable order payment status", {
         orderId,
-      } as Record<string, unknown>);
+      });
       return {
         status: 502,
         body: {
@@ -571,7 +570,7 @@ async function handleOrderFirstPay(
         sessionId: session.id,
         orderId,
         payment: existing.payment,
-      } as Record<string, unknown>);
+      });
       return finalizePaidSession({
         ctx,
         req,
@@ -594,7 +593,7 @@ async function handleOrderFirstPay(
       log.warn("Unpaid order total differs from the session total; dropping it", {
         sessionId: session.id,
         orderId,
-      } as Record<string, unknown>);
+      });
       return orderTotalChanged(params, orderId, reused);
     }
   } else {
@@ -609,7 +608,7 @@ async function handleOrderFirstPay(
       log.warn("Order total differs from the session total; not taking payment", {
         sessionId: session.id,
         orderId,
-      } as Record<string, unknown>);
+      });
       return orderTotalChanged(params, orderId, total);
     }
 
@@ -624,7 +623,7 @@ async function handleOrderFirstPay(
     } catch (err) {
       log.error("Failed to persist unpaid order session", {
         error: err instanceof Error ? err.message : String(err),
-      } as Record<string, unknown>);
+      });
       return {
         status: 500,
         body: {
@@ -647,7 +646,7 @@ async function handleOrderFirstPay(
     log.error("buildPaymentSetup threw", {
       gateway,
       error: message,
-    } as Record<string, unknown>);
+    });
     return persistFailedPayment(withOrder, {
       status: "failed",
       errorMessage: message,
@@ -671,7 +670,7 @@ async function handleOrderFirstPay(
   log.info("Order-first pay completed", {
     sessionId: session.id,
     orderId,
-  } as Record<string, unknown>);
+  });
 
   return finalizePaidSession({
     ctx,
@@ -698,7 +697,7 @@ export async function handlePay(
   } catch (err) {
     log.error("Failed to read session from store", {
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 500,
       body: {
@@ -771,7 +770,7 @@ async function payOpenSession(
         sessionId: session.id,
         dropped: dropped.join(","),
         allowListConfigured: ctx.allowedCustomAttributeKeys !== undefined,
-      } as Record<string, unknown>);
+      });
     }
     session = { ...session, customAttributes: allowed };
   }
@@ -803,7 +802,7 @@ async function payOpenSession(
     log.error("Failed to re-fetch cart for hash check", {
       cartId: session.cartId,
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 502,
       body: {
@@ -875,7 +874,7 @@ async function payOpenSession(
     if (cartHasPhysical) {
       log.warn("Physical cart overrode client requiresShipping:false", {
         sessionId: session.id,
-      } as Record<string, unknown>);
+      });
     }
   }
   const requiresShipping = resolveRequiresShipping(
@@ -934,7 +933,7 @@ async function payOpenSession(
         log.warn("Selected shipping rate no longer resolvable at pay", {
           sessionId: session.id,
           error: err.message,
-        } as Record<string, unknown>);
+        });
         return {
           status: 409,
           body: {
@@ -950,7 +949,7 @@ async function payOpenSession(
       log.error("Failed to re-assert shipping line before pay", {
         cartId: session.cartId,
         error: err instanceof Error ? err.message : String(err),
-      } as Record<string, unknown>);
+      });
       return {
         status: 502,
         body: {
@@ -970,7 +969,7 @@ async function payOpenSession(
       log.error("Failed to clear stale shipping line before pay", {
         cartId: session.cartId,
         error: err instanceof Error ? err.message : String(err),
-      } as Record<string, unknown>);
+      });
       return {
         status: 502,
         body: {
@@ -994,7 +993,7 @@ async function payOpenSession(
         log.error("Failed to re-read cart total after clearing shipping line", {
           cartId: session.cartId,
           error: err instanceof Error ? err.message : String(err),
-        } as Record<string, unknown>);
+        });
         return {
           status: 502,
           body: {
@@ -1011,7 +1010,7 @@ async function payOpenSession(
   if (latest === null) {
     log.error("Cart read returned no authoritative total before pay", {
       cartId: session.cartId,
-    } as Record<string, unknown>);
+    });
     return {
       status: 502,
       body: {
@@ -1083,7 +1082,7 @@ async function payOpenSession(
     log.warn("Gateway refused for this order", {
       sessionId: session.id,
       gateway,
-    } as Record<string, unknown>);
+    });
     return {
       status: 400,
       body: {
