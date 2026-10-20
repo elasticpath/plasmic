@@ -120,6 +120,7 @@ let cookie: CheckoutSession | null;
 let cartId: string;
 let exchanges: Exchange[];
 let declineNext: boolean;
+let beforePay: (() => void) | null;
 
 const clone = <T,>(v: T): T => (v == null ? v : JSON.parse(JSON.stringify(v)));
 
@@ -165,8 +166,12 @@ async function route(method: string, url: string, body: any): Promise<SessionRes
       return handleGetSession(req({}), ctx());
     case "PATCH /api/checkout/sessions/current":
       return handleUpdateSession(req(body), ctx());
-    case "POST /api/checkout/sessions/current/pay":
+    case "POST /api/checkout/sessions/current/pay": {
+      const hook = beforePay;
+      beforePay = null;
+      hook?.();
       return handlePay(req(body), ctx());
+    }
     case "POST /api/ep/proxy/getCart":
       return { status: 200, body: await shopperCart() };
     case "POST /api/ep/proxy/applyPromoCode":
@@ -266,6 +271,7 @@ beforeEach(async () => {
   cookie = null;
   exchanges = [];
   declineNext = false;
+  beforePay = null;
   mockStripeJs.reset();
   registry = createAdapterRegistry();
   registry.register("manual", createManualAdapter({ allow: () => true }));
@@ -388,7 +394,77 @@ describe("checkout page totals follow the cart", () => {
   });
 });
 
+describe("a cart that changes on the way to payment", () => {
+  it("shows the total the storefront refreshed after CART_MISMATCH, starts no new checkout, and charges it on the next Place", async () => {
+    cartId = newCart([PRODUCT]);
+    await readyToPay();
+    const ref = React.createRef<any>();
+
+    renderCheckout(
+      <>
+        <div data-testid="totals">
+          <EPOrderTotalsBreakdown />
+        </div>
+        <EPStripePayment publishableKey="pk_test_walk" />
+      </>,
+      ref
+    );
+    await waitFor(() => expect(probe().total).toBe(2799));
+    await waitFor(() => expect(screen.getByTestId("stripe-payment-element")).toBeTruthy());
+
+    beforePay = () => ep.setQuantity(cartId, "p-plus-sub", 2);
+    let first: any;
+    await act(async () => {
+      first = await ref.current.placeOrder();
+    });
+
+    expect(first.error.code).toBe("CART_MISMATCH");
+    await waitFor(() => expect(screen.getByTestId("totals").textContent).toMatch(/Total\$49\.99/));
+    expect(sent("POST", "/api/checkout/sessions")).toEqual([]);
+    expect(ep.charges).toEqual([]);
+
+    await act(async () => {
+      await ref.current.placeOrder();
+    });
+
+    expect(sent("POST", PAY).map((e) => [e.body.shownTotal, e.status])).toEqual([
+      [2799, 409],
+      [4999, 200],
+    ]);
+    expect(ep.charges).toEqual([4999]);
+  });
+});
+
 describe("checkout page on an empty cart", () => {
+  it("refuses Place when only the shipping line is left in the cart, and sends no payment", async () => {
+    cartId = newCart([PRODUCT]);
+    await readyToPay();
+    ep.cart(cartId).lines = ep.linesWithSku(cartId, EP_SHIPPING_LINE_SKU);
+    expect(ep.total(cartId)).toBe(599);
+
+    renderCheckout(
+      <EPCheckoutFormProvider requiresShipping>
+        <EPFormField name="email" label="Email" />
+        <EPStripePayment publishableKey="pk_test_walk" />
+        <EPPlaceOrderButton />
+      </EPCheckoutFormProvider>
+    );
+    await waitFor(() => expect(probe().total).toBe(2799));
+    await waitFor(() => expect(screen.getByTestId("stripe-payment-element")).toBeTruthy());
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "walk@example.com" },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Place your order" }));
+    });
+
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Your cart is empty"));
+    expect(sent("POST", "/api/ep/proxy/getCart").map((e) => e.status)).toEqual([200]);
+    expect(sent("POST", PAY)).toEqual([]);
+    expect(ep.charges).toEqual([]);
+  });
+
   it("drops the finished checkout, says the cart is empty, and sends nothing when the shopper presses Place", async () => {
     cartId = newCart([PRODUCT]);
     await readyToPay();

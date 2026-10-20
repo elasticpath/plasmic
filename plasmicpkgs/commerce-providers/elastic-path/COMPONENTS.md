@@ -292,6 +292,16 @@ changed. `placeOrder` sends the total on the page as `shownTotal`, and `/pay`
 refuses with `TOTAL_CHANGED` and the current session when it would charge a
 different total.
 
+Before each payment request, `placeOrder` reads the cart. When the cart holds
+only the shipping line and promotions, it answers `EMPTY_CART` ("Your cart is
+empty") and sends no payment request. On a storefront still on 0.8.0, it also
+sends no payment request when the storefront would charge a total other than
+the one on the page (the cart changed, or the chosen shipping rate is not in
+the cart yet), or after the storefront answers `CART_MISMATCH`: it starts a new
+checkout session with the details already entered, the new total shows, and
+it answers `TOTAL_CHANGED`. If that cart read fails there, it answers
+`CART_UNREAD`.
+
 **refActions:** `createSession()`, `updateSession(data)`,
 `calculateShipping()`, `placeOrder()`, `confirmPayment(confirmData)`,
 `resumePayment(resumeData)`, `reset()`.

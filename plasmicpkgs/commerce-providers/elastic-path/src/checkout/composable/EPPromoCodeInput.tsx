@@ -7,6 +7,7 @@ import { mutate as swrMutate } from "swr";
 import { Registerable } from "../../registerable";
 import { epCartCacheKey } from "../../cart-provider/cache-keys";
 import { useEpCart } from "../../cart-provider/use-ep-cart";
+import { readEpErrorCode } from "../../browser-call";
 import { cartMutationErrorCopy } from "../../ep-server-functions/cart-mutation-error-copy";
 import {
   epApplyPromoCode,
@@ -20,6 +21,15 @@ const log = createLogger("EPPromoCodeInput");
 
 const GENERIC_APPLY_ERROR = "That promo code could not be applied.";
 const GENERIC_REMOVE_ERROR = "That promo code could not be removed.";
+const NO_PROMO_ROUTE_ERROR =
+  "Promo codes can't be used on this store until it is updated.";
+
+/** A storefront older than these components has no promo code route. */
+function promoErrorCopy(err: unknown, fallback: string): string {
+  return readEpErrorCode(err) === "unknown_fn"
+    ? NO_PROMO_ROUTE_ERROR
+    : cartMutationErrorCopy(err, fallback);
+}
 
 type PromoState = "idle" | "loading" | "applied" | "error";
 
@@ -201,7 +211,7 @@ export function EPPromoCodeInput(props: EPPromoCodeInputProps) {
       >);
       onApply?.(trimmed);
     } catch (err) {
-      const msg = cartMutationErrorCopy(err, GENERIC_APPLY_ERROR);
+      const msg = promoErrorCopy(err, GENERIC_APPLY_ERROR);
       setErrorMessage(msg);
       log.warn("Promo code failed", { code: trimmed, error: msg } as Record<
         string,
@@ -231,7 +241,7 @@ export function EPPromoCodeInput(props: EPPromoCodeInputProps) {
       >);
       onRemove?.();
     } catch (err) {
-      const msg = cartMutationErrorCopy(err, GENERIC_REMOVE_ERROR);
+      const msg = promoErrorCopy(err, GENERIC_REMOVE_ERROR);
       setErrorMessage(msg);
       log.warn("Promo code remove failed", { error: msg } as Record<
         string,
