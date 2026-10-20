@@ -261,6 +261,36 @@ describe("EP Fork Integrity", () => {
     });
   });
 
+  describe("Studio response compression (not yet upstream)", () => {
+    it("ep-compression module and tests exist", () => {
+      expect(fileExists("platform/wab/src/wab/server/ep-compression.ts")).toBe(
+        true
+      );
+      expect(
+        fileExists("platform/wab/src/wab/server/ep-compression.spec.ts")
+      ).toBe(true);
+    });
+
+    it("wab depends on compression 1.8 or later, which has brotli", () => {
+      const pkgJson = readJson("platform/wab/package.json");
+      expect(pkgJson.dependencies["compression"]).toMatch(/^\^1\.(8|9)\./);
+    });
+
+    it("Studio mounts compression ahead of its own routes only", () => {
+      expect(
+        readFile("platform/wab/src/wab/server/app-backend-real.ts")
+      ).toMatch(
+        /addStudioCompression\(application\);\s*addMainAppServerRoutes\(application, config\);/
+      );
+    });
+
+    it("the request log records the uncompressed size and the size sent", () => {
+      expect(readFile("platform/wab/src/wab/server/AppServer.ts")).toContain(
+        "...loggedResponseSizes(res),"
+      );
+    });
+  });
+
   describe("EP admin-only resource creation gates", () => {
     it("AppServer applies adminOnly middleware", () => {
       const appServer = readFile("platform/wab/src/wab/server/AppServer.ts");
@@ -571,6 +601,15 @@ describe("EP Fork Integrity", () => {
         'throw new UnauthorizedError("Must be logged in")'
       );
       expect(dbMgr).not.toContain('ensure(userId, "User id should exist")');
+    });
+  });
+
+  describe("EP 400 for trusted host calls without a url", () => {
+    it("addTrustedHost rejects a missing url before calling DbMgr", () => {
+      const hosts = readFile("platform/wab/src/wab/server/routes/hosts.ts");
+      expect(hosts).toContain(
+        'throw new BadRequestError("Missing url for trusted host")'
+      );
     });
   });
 

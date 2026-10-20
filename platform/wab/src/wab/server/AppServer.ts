@@ -37,6 +37,7 @@ import {
   trackPostgresPool,
 } from "@/wab/server/promstats";
 import { createRateLimiter } from "@/wab/server/rate-limit";
+import { loggedResponseSizes } from "@/wab/server/ep-compression";
 import { createCmsScopeRateLimiter, createGeneralApiRateLimiter, createPreviewRateLimiter, createProjectScopeRateLimiter, createWriteRateLimiter } from "@/wab/server/ep-rate-limit";
 import { cmCors, cmCorsPreflight, isCmOriginAllowed } from "@/wab/server/cm-cors";
 import * as adminRoutes from "@/wab/server/routes/admin";
@@ -470,7 +471,7 @@ export function addLoggingMiddleware(app: express.Application) {
           userEmail: req.user?.email,
           referrer: req.get("referrer"),
           userAgent: req.get("user-agent"),
-          contentLength: res.get("content-length"),
+          ...loggedResponseSizes(res),
           duration: duration,
           ...(res.locals.rateLimit ? { rateLimit: res.locals.rateLimit } : {}),
         }

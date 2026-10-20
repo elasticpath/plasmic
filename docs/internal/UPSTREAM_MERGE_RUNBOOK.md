@@ -44,6 +44,14 @@ EP fix to preserve: with no user id, `checkUserIdIsSelf` throws
 token routes reach it (#717). It goes upstream as its own PR; once upstream has the
 same change, take upstream's version and delete its check from `ep-fork-integrity.spec.ts`.
 
+**`platform/wab/src/wab/server/routes/hosts.ts` — `addTrustedHost` (fork-first)**
+
+EP fix to preserve: a missing, non-string or blank `url` throws
+`BadRequestError("Missing url for trusted host")` (400) instead of crashing on
+`url.trim()` in `DbMgr.addTrustedHost` (500). It goes upstream as its own PR; once
+upstream has the same change, take upstream's version and delete its check from
+`ep-fork-integrity.spec.ts`.
+
 **`platform/loader-bundle-env/package.json`**
 
 EP dependency to preserve:
@@ -165,6 +173,27 @@ On conflict, keep the EP version. If upstream adds an app or another place that 
 setting, check that it gives the same client IP behind two proxies before you take it, then
 delete its checks from `ep-fork-integrity.spec.ts`.
 
+**Studio response compression (fork-first)**
+
+Studio compresses every response that has a body: brotli 4, or gzip 6 when the client
+does not offer brotli, with no minimum size (#727). Upstream compresses nothing.
+
+EP changes to preserve:
+- `platform/wab/src/wab/server/app-backend-real.ts`: the Studio routes callback calls
+  `addStudioCompression(application)` before `addMainAppServerRoutes`. Keep it there.
+  `createApp` mounts the socket proxy routes first, so socket.io traffic stays unencoded.
+  Do not move it into `createApp` or `addMiddlewares`: the codegen, integrations, loader
+  and loader-html backends share those and must stay uncompressed.
+- `platform/wab/src/wab/server/AppServer.ts`: `addLoggingMiddleware` logs
+  `...loggedResponseSizes(res)` in place of `contentLength: res.get("content-length")`.
+  `contentLength` stays the uncompressed size. `contentLengthSent` is the size sent.
+- `platform/wab/package.json`: `compression` ^1.8.2 as a direct dependency. The 1.7.4 that
+  Storybook pulls in has no brotli.
+
+On conflict, keep the EP version. If upstream adds its own compression, check that it
+leaves socket traffic and the other backends unencoded before you take it, then delete
+its checks from `ep-fork-integrity.spec.ts`.
+
 **Sentry → Datadog (fork-wide)**
 
 EP replaced `Sentry.captureException`/`captureMessage` with
@@ -230,6 +259,8 @@ If upstream somehow conflicts with these, always keep our version entirely:
 | `platform/wab/src/wab/server/auth/custom-api-auth.ts` | EPCC JWT auth |
 | `platform/wab/src/wab/server/cm-cors.ts` | Commerce Manager CORS |
 | `platform/wab/src/wab/server/cm-cors.spec.ts` | CORS tests |
+| `platform/wab/src/wab/server/ep-compression.ts` | Studio response compression (#727) |
+| `platform/wab/src/wab/server/ep-compression.spec.ts` | Compression tests against the running Studio server |
 | `platform/wab/src/wab/server/routes/provisioning.ts` | Provisioning routes |
 | `platform/wab/src/wab/server/routes/project-provisioning.ts` | Project provisioning |
 | `plasmicpkgs/commerce-providers/elastic-path/` | EP commerce package |

@@ -21,6 +21,7 @@ import * as path from "path";
 // environment we're running in.
 import { addSocketRoutes } from "@/wab/server/app-socket-backend-real";
 import { Config } from "@/wab/server/config";
+import { addStudioCompression } from "@/wab/server/ep-compression";
 import { logger } from "@/wab/server/observability";
 import { sendCommentsNotificationEmails } from "@/wab/server/scripts/send-comments-notifications";
 import { withSpan } from "@/wab/server/util/apm-util";
@@ -49,6 +50,8 @@ export async function runAppServer(config: Config) {
     "studio",
     config,
     (application) => {
+      // After the socket routes, which createApp mounts first.
+      addStudioCompression(application);
       addMainAppServerRoutes(application, config);
 
       if (!config.production) {
