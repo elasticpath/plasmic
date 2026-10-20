@@ -199,6 +199,16 @@ optional **Location** after **Quantity**. On a multi-location store, a product
 stocked only at named locations was refused with `insufficient_stock`
 without it. Existing bindings are unchanged.
 
+`accountMember` may now include `name` and `email` in addition to `id`.
+`EPAccountProvider` reads them from `identity.member()` during the existing
+account reload, and only when that result is for the same member id the
+session established. An id-only result (including a zero-organisation member
+or a lapsed selection with no usable account credential), a failed member
+read, or a mismatched member id leaves `name` and `email` off. That does not
+fail the reload, close Account Gates after the reload settles, or stop a
+login or registration redirect. `EP Account Field` can display Member name
+and Member email. The 0.8.0 release published `accountMember` as an id only.
+
 `EPSearchInfiniteHits` ("EP Search Infinite Hits") gives catalog search the
 load more that `EPProductListProvider` already has: the next page of results is
 added below the ones shown, not in their place. It wraps react-instantsearch's

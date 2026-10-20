@@ -27,7 +27,7 @@ export type AccountContext = {
 };
 
 // @public (undocumented)
-export type AccountFieldName = "accountMember.id" | "selectedAccount.name" | "selectedAccount.id" | "lapsedAccount.name" | "lapsedAccount.id";
+export type AccountFieldName = "accountMember.id" | "accountMember.name" | "accountMember.email" | "selectedAccount.name" | "selectedAccount.id" | "lapsedAccount.name" | "lapsedAccount.id";
 
 // @public (undocumented)
 export type AccountGateWhen = "authenticated" | "anonymous" | "selected" | "lapsed";
@@ -35,6 +35,8 @@ export type AccountGateWhen = "authenticated" | "anonymous" | "selected" | "laps
 // @public (undocumented)
 export type AccountMember = {
     id: string;
+    name?: string;
+    email?: string;
 };
 
 // @public (undocumented)
