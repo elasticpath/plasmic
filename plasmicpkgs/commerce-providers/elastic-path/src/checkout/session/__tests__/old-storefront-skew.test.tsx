@@ -321,6 +321,50 @@ describe("the totals rows on a 0.8.0 storefront", () => {
   });
 });
 
+describe("checkout starting again while the form saves the address (0.8.0 storefront)", () => {
+  const SHIPPING: Array<[string, string, string]> = [
+    ["shippingFirstName", "Ship first name", ADDRESS.firstName],
+    ["shippingLastName", "Ship last name", ADDRESS.lastName],
+    ["shippingAddress", "Ship street", ADDRESS.line1],
+    ["shippingCity", "Ship city", ADDRESS.city],
+    ["shippingPostal", "Ship postal code", ADDRESS.postcode],
+    ["shippingCountry", "Ship country", ADDRESS.country],
+  ];
+
+  it("keeps the delivery option the shopper chose, and shows its shipping in the total", async () => {
+    store.cookieSession = true;
+    await readyToPay();
+    store.rateWriteMs = 1500;
+    render(
+      <SWRConfig value={{ dedupingInterval: 0 }}>
+        <EPCheckoutSessionProvider>
+          <EPCheckoutFormProvider requiresShipping>
+            {SHIPPING.map(([name, label]) => (
+              <EPFormField key={name} name={name} label={label} />
+            ))}
+            <EPOrderTotalsBreakdown />
+            <EPPlaceOrderButton />
+          </EPCheckoutFormProvider>
+        </EPCheckoutSessionProvider>
+      </SWRConfig>
+    );
+    for (const [, label, value] of SHIPPING) {
+      fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    }
+    await waitFor(() => expect(rows()).toBe("Subtotal$22.00Shipping$5.99Tax$0.00Total$27.99"));
+
+    store.quantity = 2;
+    await focusPage();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 2500));
+    });
+
+    await waitFor(() => expect(rows()).toBe("Subtotal$44.00Shipping$5.99Tax$0.00Total$49.99"));
+    expect(store.storedSession()?.selectedShippingRateId).toBe("example-standard");
+    expect(sent("POST", CREATE).map((e) => e.status)).toEqual([201]);
+  }, 15000);
+});
+
 describe("a cart changed in another tab after the total was shown (0.8.0 storefront)", () => {
   it("shows the new total when the page gets focus, and charges it on the first Place", async () => {
     await readyToPay();

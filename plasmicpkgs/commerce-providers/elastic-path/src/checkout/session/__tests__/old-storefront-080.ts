@@ -16,6 +16,8 @@
  *   it charges the live cart total, empty or not.
  * The 409 body was not recorded; it is built as the 0.8.0 pay route builds it.
  */
+import { sessionAddressesEquivalent } from "../address-utils";
+
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const recorded: any = require("./fixtures/storefront-0.8.0.json");
 
@@ -133,10 +135,37 @@ export class OldStorefront {
     return { status, body: { success: false, error: { message, code }, ...extra } };
   }
 
+  /**
+   * The session lives in a cookie, as on the real storefront: a PATCH works on
+   * the session the browser sent and its answer replaces the cookie. A rate
+   * PATCH is answered after `rateWriteMs`, or as soon as another PATCH comes,
+   * which then lands after it with the session from before it.
+   */
+  cookieSession = false;
+  rateWriteMs = 0;
+  private heldRateWrite: (() => void) | null = null;
+
   async route(req: OldStorefrontRequest): Promise<OldStorefrontResponse> {
+    if (this.cookieSession && req.method === "PATCH") return this.cookiePatch(req);
     const res = this.answer(req);
     for (const hook of [...this.hooks]) hook(req);
     return res;
+  }
+
+  private async cookiePatch(req: OldStorefrontRequest): Promise<OldStorefrontResponse> {
+    const sent = clone(this.session);
+    if (req.body?.selectedShippingRateId !== undefined && this.rateWriteMs > 0) {
+      await new Promise<void>((resolve) => {
+        this.heldRateWrite = resolve;
+        setTimeout(resolve, this.rateWriteMs);
+      });
+      this.heldRateWrite = null;
+    } else if (this.heldRateWrite) {
+      this.heldRateWrite();
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    this.session = sent;
+    return this.answer(req);
   }
 
   private answer({ method, url, body }: OldStorefrontRequest): OldStorefrontResponse {
@@ -194,7 +223,7 @@ export class OldStorefront {
     }
     const addressChanged =
       update.shippingAddress !== undefined &&
-      JSON.stringify(update.shippingAddress) !== JSON.stringify(session.shippingAddress);
+      !sessionAddressesEquivalent(session.shippingAddress, update.shippingAddress);
     if (update.shippingAddress !== undefined) session.shippingAddress = clone(update.shippingAddress);
     if (addressChanged) {
       session.availableShippingRates = clone(RATES);

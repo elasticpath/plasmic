@@ -335,26 +335,34 @@ const EPCheckoutSessionRuntime = React.forwardRef<
     [blocked, createError, emptied]
   );
 
+  // The session is a cookie: a write sent while checkout starts again would
+  // carry the session from before it and undo the rate it carries over.
+  const restartRef = useRef<Promise<void> | null>(null);
+  const afterRestart = useCallback(async () => {
+    while (restartRef.current) await restartRef.current;
+  }, []);
+
   const updateSessionData = useCallback(
     async (data: UpdateSessionRequest) => {
       if (refusal) return refusal;
+      await afterRestart();
       const resp = await updateSessionFn(data);
       return olderStorefront ? withShopperCopy(resp) : resp;
     },
-    [refusal, updateSessionFn, olderStorefront]
+    [refusal, updateSessionFn, olderStorefront, afterRestart]
   );
 
   const calculateShippingData = useCallback(async () => {
     if (refusal) return refusal;
+    await afterRestart();
     const resp = await calcShippingFn();
     return olderStorefront ? withShopperCopy(resp) : resp;
-  }, [refusal, calcShippingFn, olderStorefront]);
+  }, [refusal, calcShippingFn, olderStorefront, afterRestart]);
 
   // An older storefront charges its live cart whatever the page shows, and
   // keeps the old totals after CART_MISMATCH. A session whose total no longer
   // matches the cart is never paid: checkout starts again (the storefront
   // reads cart and total together) with what the shopper entered.
-  const restartRef = useRef<Promise<void> | null>(null);
   const restartCheckout = useCallback(
     (stale: ClientCheckoutSession, { hideTotals = true } = {}): Promise<void> => {
       if (hideTotals) staleSessionIdsRef.current.add(stale.id);
