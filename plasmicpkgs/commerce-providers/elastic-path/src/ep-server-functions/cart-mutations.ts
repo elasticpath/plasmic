@@ -12,6 +12,7 @@ import {
   carriesForwardedMessage,
   classifyEpFailure,
   makeEpCallError,
+  withEpStatus,
 } from "./call-error";
 import { sequenceEpCartWrite } from "./cart-cache-registry";
 import {
@@ -71,12 +72,13 @@ function formatEpSdkError(error: unknown, fallback: string): string {
 }
 
 function assertEpSdkOk(
-  result: { error?: unknown },
+  result: { error?: unknown; response?: { status?: number } },
   label: string
 ): void {
   if (result.error) {
-    throw new Error(
-      `${label}: ${formatEpSdkError(result.error, "unknown error")}`
+    throw withEpStatus(
+      new Error(`${label}: ${formatEpSdkError(result.error, "unknown error")}`),
+      result.response?.status
     );
   }
 }

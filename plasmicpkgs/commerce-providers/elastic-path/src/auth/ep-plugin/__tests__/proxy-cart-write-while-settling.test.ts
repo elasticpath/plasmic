@@ -136,7 +136,7 @@ describe("a cart write while the cart's payment is settling", () => {
     finish({ status: 200, body: { success: true } });
     await settling;
 
-    expect(res.status).not.toBe(200);
+    expect(res.status).toBe(409);
     expect((await res.json()).code).toBe("checkout_in_progress");
     expect(writes).toEqual([]);
 

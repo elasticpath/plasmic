@@ -551,7 +551,7 @@ describe("createEpProxyRoutes promo codes", () => {
       { params: Promise.resolve({ fn: "applyPromoCode" }) }
     );
 
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(409);
     expect((await res.json()).code).toBe("invalid_promo_code");
   });
 });

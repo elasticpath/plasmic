@@ -243,6 +243,11 @@ request's session and reject the same way: the same shopper `message`, the same
 a `code`; a failure with no known cause is `dispatch_failed`. Only a call in the
 browser refreshes the `useEpCart()` cache.
 
+The proxy route answers a refusal the shopper can act on with `409`: a code
+of `insufficient_stock`, `invalid_promo_code` or `checkout_in_progress`, or
+any other Elastic Path `4xx` except `401` and `403`. Any other failure is a
+`500`. The body is the same either way.
+
 ---
 
 ## 5. Checkout Components

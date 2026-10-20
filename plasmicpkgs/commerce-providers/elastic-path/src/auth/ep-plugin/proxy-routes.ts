@@ -55,6 +55,7 @@ import type {
 } from "../../ep-server-functions";
 import {
   classifyEpFailure,
+  failureHttpStatus,
   epFailureReason,
 } from "../../ep-server-functions/call-error";
 import {
@@ -268,7 +269,7 @@ export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes {
               : { error: "dispatch_failed", code, correlationId }
           ),
           {
-            status: 500,
+            status: failureHttpStatus(err, code),
             headers: { "Content-Type": "application/json", ...cors },
           }
         );

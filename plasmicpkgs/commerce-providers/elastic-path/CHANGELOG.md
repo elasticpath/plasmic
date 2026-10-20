@@ -435,6 +435,11 @@ changes: same props, same slots, same data.
 
 ### Fixed
 
+The proxy route answers a refusal the shopper can act on with `409` instead of
+`500`: `insufficient_stock`, `invalid_promo_code`, `checkout_in_progress`, and
+any other Elastic Path `4xx` except `401` and `403`. The body is unchanged.
+Server failures stay `500`.
+
 Account checkout links the order to the selected account. Before, every
 checkout placed a guest order with the shopper's name and email, also when a
 signed-in account member had an account selected, so the order was missing
