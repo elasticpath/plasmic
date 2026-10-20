@@ -1,9 +1,11 @@
 /**
  * The packaging seam, run against the built output and the packed tarball:
- * publint, arethetypeswrong once per entry point, and a smoke that loads each
- * bundle the way its consumer does. Run `pnpm build` first.
+ * publint, arethetypeswrong once per entry point, a smoke that loads each
+ * bundle the way its consumer does, and the per-module files a loader imports
+ * through `exports-map.json`. Run `pnpm build` first.
  *
- * The root entry's recorded exceptions are ADR-0007 (docs/adr).
+ * The recorded exceptions, for the root entry and the per-module files, are
+ * ADR-0007 (docs/adr).
  */
 import esbuild from "esbuild";
 import { execFileSync } from "node:child_process";
@@ -23,9 +25,10 @@ const installRoot = path.join(pkgDir, "node_modules/.verify-package");
 const installedDir = path.join(installRoot, "node_modules", pkg.name);
 const require = createRequire(path.join(installRoot, "index.cjs"));
 
-const ROOT_PUBLINT_EXCEPTIONS = [
+const PUBLINT_EXCEPTIONS = [
   { code: "EXPORTS_TYPES_INVALID_FORMAT", path: ["exports", ".", "types"] },
   { code: "FILE_INVALID_FORMAT", path: ["exports", ".", "import"] },
+  { code: "FILE_INVALID_FORMAT", path: ["exports", "./esm/*.js"] },
 ];
 const ROOT_ATTW_EXCEPTIONS = ["unexpected-module-syntax"];
 
@@ -37,8 +40,11 @@ const EXPECTED_DIST = [
   "dist/server.d.ts",
   "dist/server.js",
   "dist/server.mjs",
+  "dist/esm/exports-map.json",
+  "dist/esm/index.js",
 ];
 const EXPECTED_SOURCE_MAPS = EXPECTED_DIST.filter((p) => /\.m?js$/.test(p)).map((p) => `${p}.map`);
+const PER_MODULE_FILE = /^dist\/esm\/.+\.js(\.map)?$/;
 
 const failures = [];
 function check(label, ok, detail) {
@@ -68,9 +74,15 @@ function checkFileSet(files) {
     (p) =>
       !EXPECTED_DIST.includes(p) &&
       !EXPECTED_SOURCE_MAPS.includes(p) &&
+      !PER_MODULE_FILE.test(p) &&
       !/^(package\.json|README|LICEN[CS]E|CHANGELOG)/i.test(p)
   );
   check("tarball carries only the built entry files", stray.length === 0, stray.join("\n"));
+  // A listed file that moves leaves its new path marked side-effect free.
+  const gone = pkg.sideEffects
+    .filter((p) => p.startsWith("./dist/"))
+    .filter((p) => !paths.includes(p.slice(2)));
+  check("every dist file in sideEffects is in the tarball", gone.length === 0, gone.join("\n"));
 }
 
 async function checkPublint(tarball) {
@@ -80,12 +92,12 @@ async function checkPublint(tarball) {
     level: "warning",
   });
   const isRecorded = (m) =>
-    ROOT_PUBLINT_EXCEPTIONS.some(
+    PUBLINT_EXCEPTIONS.some(
       (e) => e.code === m.code && e.path.join("/") === m.path.join("/")
     );
   const unexpected = messages.filter((m) => !isRecorded(m));
   check(
-    "publint reports only the recorded root exceptions",
+    "publint reports only the recorded exceptions",
     unexpected.length === 0,
     unexpected.map((m) => `${m.type}: ${formatMessage(m, packedPkg)}`).join("\n")
   );
@@ -114,20 +126,35 @@ function checkAttw(tarball, entrypoint, ignoreRules) {
 // esbuild turns a require() in an ESM build into a __require() shim that
 // throws wherever `require` is undefined: the canvas and hostless bundles in
 // the browser, and native Node ESM.
+function requireShims(file) {
+  return [
+    ...new Set(
+      fs
+        .readFileSync(path.join(installedDir, file), "utf8")
+        .match(/__require\("[^"]+"\)/g) ?? []
+    ),
+  ];
+}
+
 function checkNoRequireShim() {
   for (const file of ["dist/index.esm.js", "dist/server.mjs"]) {
     if (!fs.existsSync(path.join(installedDir, file))) {
       continue;
     }
-    const shimmed = [
-      ...new Set(
-        fs
-          .readFileSync(path.join(installedDir, file), "utf8")
-          .match(/__require\("[^"]+"\)/g) ?? []
-      ),
-    ];
+    const shimmed = requireShims(file);
     check(`${file} has no require() shim`, shimmed.length === 0, shimmed.join("\n"));
   }
+  const shimmed = perModuleFiles().flatMap((file) =>
+    requireShims(file).map((shim) => `${file}: ${shim}`)
+  );
+  check("dist/esm has no require() shim", shimmed.length === 0, shimmed.join("\n"));
+}
+
+function perModuleFiles() {
+  return fs
+    .readdirSync(path.join(installedDir, "dist/esm"), { recursive: true })
+    .map((p) => `dist/esm/${p.split(path.sep).join("/")}`)
+    .filter((p) => p.endsWith(".js"));
 }
 
 // Browser code imports the root, so the root must not reach what only /server
@@ -136,7 +163,7 @@ const SERVER_ONLY_MODULE =
   /^(?:@?better-auth(?:\/|$)|next\/(?:server|headers)(?:\.js)?$|(?:node:)?(?:async_hooks|crypto)$)/;
 
 function checkRootPullsInNoServerModule() {
-  for (const file of ["dist/index.esm.js", "dist/index.js"]) {
+  for (const file of ["dist/index.esm.js", "dist/index.js", "dist/esm/index.js"]) {
     const { metafile } = esbuild.buildSync({
       entryPoints: [path.join(installedDir, file)],
       bundle: true,
@@ -211,9 +238,9 @@ function captureRegistrations(registerAll) {
 // IIFE, and supplies only React and @plasmicapp/host at run time, as CommonJS.
 const CANVAS_EXTERNALS = ["@plasmicapp/host", "react", "react-dom"];
 
-function loadRootAsCanvasBundle() {
+function loadAsCanvasBundle(contents) {
   const { outputFiles } = esbuild.buildSync({
-    entryPoints: [path.join(installedDir, "dist/index.esm.js")],
+    stdin: { contents, resolveDir: installRoot, loader: "js" },
     bundle: true,
     format: "iife",
     globalName: "__epRoot",
@@ -234,7 +261,7 @@ function loadRootAsCanvasBundle() {
 
 function smokeRoot() {
   const cjs = require(pkg.name);
-  const canvas = loadRootAsCanvasBundle();
+  const canvas = loadAsCanvasBundle(`export * from "${pkg.name}";`);
   sameNames("require(root) exposes the same names as the root ESM build", Object.keys(cjs), Object.keys(canvas));
 
   const fromCjs = captureRegistrations(cjs.registerAll);
@@ -266,6 +293,112 @@ function smokeRoot() {
   check("every registered importName is exported from the root", unreachable.length === 0, unreachable.join("\n"));
 }
 
+// A loader rewrites each root import in generated code into imports of the
+// files exports-map.json names, then bundles the result.
+function perModuleImports(map, names) {
+  const imports = names.map((name) => `import { ${name} } from "${pkg.name}/${map[name].slice(2)}";`);
+  return `${imports.join("\n")}\nexport { ${names.join(", ")} };\n`;
+}
+
+// Bundles the installed package and nothing it depends on.
+const DEPENDENCIES = [
+  ...Object.keys(pkg.dependencies ?? {}),
+  ...Object.keys(pkg.peerDependencies ?? {}),
+].flatMap((name) => [name, `${name}/*`]);
+
+// As platform/wab's module-bundler.ts bundles a project for the browser.
+const LOADER_EXTERNALS = ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime", "@plasmicapp/*", "next", "next/*"];
+const INSTANTSEARCH = /(?:^|\/)node_modules\/(?:instantsearch\.js|react-instantsearch(?:-[a-z]+)*|algoliasearch-helper)\//;
+
+async function bundleAsLoader(name, contents) {
+  const entry = path.join(installRoot, `${name}.js`);
+  fs.writeFileSync(entry, contents);
+  const result = await esbuild.build({
+    entryPoints: [entry],
+    bundle: true,
+    splitting: true,
+    treeShaking: true,
+    minify: true,
+    format: "esm",
+    platform: "browser",
+    target: "es6",
+    external: LOADER_EXTERNALS,
+    define: { "process.env.NODE_ENV": JSON.stringify("production") },
+    outdir: path.join(installRoot, `${name}-out`),
+    write: false,
+    metafile: true,
+    logLevel: "silent",
+  });
+  const search = Object.keys(result.metafile.inputs).filter((p) => INSTANTSEARCH.test(p));
+  const bytes = result.outputFiles
+    .filter((f) => f.path.endsWith(".js"))
+    .reduce((sum, f) => sum + f.contents.length, 0);
+  return { search, bytes };
+}
+
+async function smokeModules() {
+  const mapPath = require.resolve(`${pkg.name}/exports-map.json`);
+  check(
+    "exports-map.json resolves through exports",
+    mapPath === path.join(installedDir, "dist/esm/exports-map.json"),
+    mapPath
+  );
+  const map = JSON.parse(fs.readFileSync(mapPath, "utf8"));
+  const names = Object.keys(map);
+  const cjs = require(pkg.name);
+  sameNames("the exports map lists every root export", names, Object.keys(cjs));
+
+  let exported;
+  try {
+    const { metafile } = esbuild.buildSync({
+      stdin: { contents: perModuleImports(map, names), resolveDir: installRoot, loader: "js" },
+      bundle: true,
+      format: "esm",
+      platform: "neutral",
+      external: DEPENDENCIES,
+      outfile: path.join(installRoot, "all-modules.js"),
+      write: false,
+      metafile: true,
+      logLevel: "silent",
+    });
+    exported = Object.values(metafile.outputs)[0].exports;
+  } catch (error) {
+    check("every file in the exports map exports its name", false, error.message);
+    return;
+  }
+  sameNames("every file in the exports map exports its name", exported, names);
+
+  const fromCjs = captureRegistrations(cjs.registerAll);
+  const modules = loadAsCanvasBundle(perModuleImports(map, ["registerAll"]));
+  const fromModules = captureRegistrations(modules.registerAll);
+  sameNames(
+    "the per-module files register the same components as the CJS root",
+    fromModules.components.map((m) => m.name),
+    fromCjs.components.map((m) => m.name)
+  );
+  sameNames(
+    "the per-module files register the same global contexts as the CJS root",
+    fromModules.contexts.map((m) => m.name),
+    fromCjs.contexts.map((m) => m.name)
+  );
+
+  const productList = ["EPProductListProvider", "EPProductGrid"];
+  const throughMap = await bundleAsLoader("product-list-modules", perModuleImports(map, productList));
+  const throughRoot = await bundleAsLoader(
+    "product-list-root",
+    `export { ${productList.join(", ")} } from "${pkg.name}";\n`
+  );
+  check(
+    "the root import of the product list pulls in InstantSearch, so the next check can see it",
+    throughRoot.search.length > 0
+  );
+  check(
+    `the product list through the map leaves out InstantSearch (${throughMap.bytes} bytes; ${throughRoot.bytes} through the root)`,
+    throughMap.search.length === 0,
+    throughMap.search.join("\n")
+  );
+}
+
 const { tarball, files } = pack();
 try {
   checkFileSet(files);
@@ -275,7 +408,11 @@ try {
   install(tarball);
   checkNoRequireShim();
   checkRootPullsInNoServerModule();
-  for (const [label, smoke] of [["/server smoke", smokeServer], ["root smoke", smokeRoot]]) {
+  for (const [label, smoke] of [
+    ["/server smoke", smokeServer],
+    ["root smoke", smokeRoot],
+    ["per-module smoke", smokeModules],
+  ]) {
     try {
       await smoke();
     } catch (error) {
