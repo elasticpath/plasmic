@@ -88,6 +88,16 @@ removed component or a removed published prop. Both are empty instead.
 
 ### Added
 
+The package also publishes each source module as its own ESM file, at
+`./esm/*.js`, and `./exports-map.json`, which maps every root export to the
+file that defines it. A loader that rewrites root imports into imports of those
+files gives each page only the components it uses, instead of every component
+the project uses. `package.json` declares `sideEffects`, so a bundler can drop
+a per-module file whose exports go unused. The root entry and `/server` build
+to the same files as before. The README's
+[Per-module files for loaders](README.md#per-module-files-for-loaders) says how
+a loader uses the map.
+
 `accountMember` may now include `name` and `email` in addition to `id`.
 `EPAccountProvider` reads them from `identity.member()` during the existing
 account reload, and only when that result is for the same member id the
