@@ -26,7 +26,6 @@ describe("splitEpCommerceImportsPlugin", () => {
   const searchImports = instantSearchPackages
     .map((name) => `import "${name}";`)
     .join("\n");
-  // The source module that defines each root export
   const modules = {
     EPCatalogSearchProvider: "catalog-search/EPCatalogSearchProvider",
     EPProductGrid: "product-discovery/EPProductGrid",
@@ -37,7 +36,6 @@ describe("splitEpCommerceImportsPlugin", () => {
   let dir: string;
 
   beforeEach(async () => {
-    // The real path, as esbuild reports output paths with symlinks resolved
     dir = await fs.realpath(
       await fs.mkdtemp(path.join(os.tmpdir(), "ep-commerce-split-test-"))
     );
@@ -54,15 +52,7 @@ describe("splitEpCommerceImportsPlugin", () => {
     }
   }
 
-  /**
-   * A stand-in for the package, laid out as its build lays it out: a root
-   * module that reaches every component and InstantSearch. When `map` is
-   * given, also one ESM file per source module, one entry point per export
-   * that re-exports it, and `exports-map.json`. Versions before these have
-   * only the root.
-   */
   async function writePackage(map: Record<string, string> | undefined) {
-    // Each InstantSearch package leaves its name in any bundle it lands in
     for (const name of instantSearchPackages) {
       await writeFiles({
         [`node_modules/${name}/package.json`]: JSON.stringify({
@@ -111,7 +101,6 @@ describe("splitEpCommerceImportsPlugin", () => {
     }
   }
 
-  /** Bundles and runs one generated module, and returns its `rendered`. */
   async function renderPage(source: string) {
     await writeFiles({ "page.tsx": source });
     const { outputFiles } = await esbuild.build({
@@ -133,10 +122,6 @@ describe("splitEpCommerceImportsPlugin", () => {
     return module.exports.rendered;
   }
 
-  /**
-   * Bundles a product list page and a search page with the loader's split
-   * settings, and returns all the code that each page loads.
-   */
   async function bundlePages() {
     await writeFiles({
       "page-products.tsx": `
@@ -200,8 +185,6 @@ export const rendered = [EPProductGrid(), List()];
     ]);
   });
 
-  // Through the loader's own bundler, so the plugin's place in its plugin list
-  // is covered too
   it("splits the imports in the loader's browser and server bundles", async () => {
     await writePackage(exportsMap);
     await writeFiles({
@@ -245,8 +228,6 @@ export const rendered = [EPProductGrid(), List()];
     ).toEqual(["EPProductGrid from the root", "EPProductListProvider from the root"]);
   });
 
-  // Importing the missing name from the root would load a second copy of the
-  // package beside the entry points.
   it("fails the bundle on a name that exports-map.json does not list", async () => {
     await writePackage(omit(exportsMap, "EPProductListProvider"));
     await expect(

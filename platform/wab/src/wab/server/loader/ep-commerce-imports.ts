@@ -6,7 +6,6 @@ import path from "path";
 
 const EP_COMMERCE_PACKAGE = "@elasticpath/plasmic-ep-commerce-elastic-path";
 
-/** From each root export of the package to its subpath, e.g. "./EPProductGrid". */
 type ExportsMap = Map<string, string>;
 
 const SPLIT_EP_COMMERCE_NOTE =
@@ -14,31 +13,6 @@ const SPLIT_EP_COMMERCE_NOTE =
   "Only named and default imports in generated code can be split. " +
   "An import from the package root would load a second copy of the package, with its own state.";
 
-/**
- * An esbuild plugin that turns, in generated code:
- *
- *   import { EPProductGrid, EPProductListProvider as List } from "@elasticpath/plasmic-ep-commerce-elastic-path";
- *
- * into...
- *
- *   import { EPProductGrid } from "@elasticpath/plasmic-ep-commerce-elastic-path/EPProductGrid";
- *   import { EPProductListProvider as List } from "@elasticpath/plasmic-ep-commerce-elastic-path/EPProductListProvider";
- *
- * The package root is one module, and esbuild splits only between modules, so
- * every page that imports any component from the root loads all of them. The
- * package also makes each root export its own entry point, named after it, and
- * lists them in `exports-map.json`. This plugin reads that map from the
- * installed package once per build. If the installed version has no map, the
- * plugin does nothing.
- *
- * A bundle must not import both the root and these entry points: it would
- * hold two copies of the package, each with its own module state. So when the
- * map is present, the bundle fails on a name that the map does not list, and
- * on any import of the root that is left, such as a namespace import. The
- * package's own build fails if a root export has no entry point, and the codegen
- * emits only named and default imports for its components, so neither is
- * expected.
- */
 export const splitEpCommerceImportsPlugin: EsbuildPlugin = {
   name: "split-ep-commerce-imports",
   setup(build) {
@@ -47,7 +21,6 @@ export const splitEpCommerceImportsPlugin: EsbuildPlugin = {
       (exportsMap ??= readEpCommerceExportsMap(build));
 
     build.onLoad({ filter: /\.tsx?$/ }, async (args) => {
-      // Generated code only; packages are left as they are
       if (args.path.includes(`${path.sep}node_modules${path.sep}`)) {
         return undefined;
       }
@@ -92,10 +65,6 @@ export const splitEpCommerceImportsPlugin: EsbuildPlugin = {
   },
 };
 
-/**
- * Reads `exports-map.json` from the copy of the package that this build
- * resolves. Returns undefined if that copy has no map.
- */
 async function readEpCommerceExportsMap(
   build: PluginBuild
 ): Promise<ExportsMap | undefined> {
@@ -114,12 +83,6 @@ async function readEpCommerceExportsMap(
   );
 }
 
-/**
- * Rewrites each named or default import of the package root into one import
- * per name, from the entry point that `map` gives for it. Type-only names are
- * dropped, as esbuild would drop them. Namespace and side-effect imports are
- * left as they are. Returns the names that `map` does not list.
- */
 function splitEpCommerceImports(
   code: string,
   loader: "tsx" | "ts" | "js",
@@ -154,7 +117,6 @@ function splitEpCommerceImports(
           spec.imported.type === "Identifier"
             ? spec.imported.name
             : spec.imported.value;
-        // Keeps `X as Y` as written
         binding = `{ ${code.slice(spec.start!, spec.end!)} }`;
       } else {
         continue;
