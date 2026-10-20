@@ -3,7 +3,6 @@ import registerGlobalContext from "@plasmicapp/host/registerGlobalContext";
 import { ShopperContext } from "./ShopperContext";
 import type { ShopperContextProps } from "./ShopperContext";
 import type { Registerable } from "../registerable";
-import { DEPRECATED_LEAD } from "../utils/deprecated-lead";
 
 export const shopperContextMeta: GlobalContextMeta<ShopperContextProps> = {
   name: "plasmic-commerce-ep-shopper-context",
@@ -15,7 +14,7 @@ export const shopperContextMeta: GlobalContextMeta<ShopperContextProps> = {
       type: "string",
       displayName: "Cart ID",
       description:
-        `${DEPRECATED_LEAD} There is no replacement: a cart is addressed by its id ` +
+        `Deprecated — ignored. There is no replacement: a cart is addressed by its id ` +
         "alone, so a cart id a page can set is a cart a page can take over.",
       hidden: () => true,
     },
@@ -23,7 +22,7 @@ export const shopperContextMeta: GlobalContextMeta<ShopperContextProps> = {
       type: "string",
       displayName: "Account ID",
       description:
-        `${DEPRECATED_LEAD} Sign an account member in with the account login ` +
+        `Deprecated — ignored. Sign an account member in with the account login ` +
         "operation; the server selects the account and scopes pricing to it.",
       hidden: () => true,
       advanced: true,
@@ -31,14 +30,14 @@ export const shopperContextMeta: GlobalContextMeta<ShopperContextProps> = {
     locale: {
       type: "string",
       displayName: "Locale",
-      description: `${DEPRECATED_LEAD} Set Locale on the Elastic Path Provider.`,
+      description: `Deprecated — ignored. Set Locale on the Elastic Path Provider.`,
       hidden: () => true,
       advanced: true,
     },
     currency: {
       type: "string",
       displayName: "Currency",
-      description: `${DEPRECATED_LEAD} The storefront server chooses the currency with createEpAuth's resolveLocaleAndCurrency.`,
+      description: `Deprecated — ignored. The storefront server chooses the currency with createEpAuth's resolveLocaleAndCurrency.`,
       hidden: () => true,
       advanced: true,
     },
