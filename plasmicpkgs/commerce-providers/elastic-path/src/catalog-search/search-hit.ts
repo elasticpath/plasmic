@@ -1,12 +1,3 @@
-/**
- * A catalog-search hit as the `currentProduct` and `currentHit` that the hit
- * repeaters publish.
- *
- * Kept free of InstantSearch so that EP Search Typeahead, which reads
- * `ep.multiSearch` directly, publishes the same shapes as EP Search Hits
- * without loading it.
- */
-
 import type { EpMultiSearchResponse } from "../ep-server-functions/multiSearch";
 import type { Product } from "../types/product";
 import { completePrice } from "../utils/price";
@@ -132,12 +123,6 @@ export function hitToSearchMeta(
   };
 }
 
-/**
- * The first search's hits in a multi-search response, in the shape the
- * catalog-search adapter gives EP Search Hits: the document's fields at the
- * root, `objectID`, the raw hit under `_rawTypesenseHit`, and `main_image`
- * resolved against the response's `included` block.
- */
 export function searchResponseHits(
   response: EpMultiSearchResponse | null | undefined
 ): Record<string, any>[] {

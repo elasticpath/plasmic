@@ -1,13 +1,3 @@
-/**
- * EP Search Typeahead exists so that a search box in a site header does not
- * put InstantSearch on every page. Bundle it alone the way the loader bundles
- * a project — ESM, code splitting, tree shaking, minified, with React, Next and
- * `@plasmicapp/*` external — and fail if an InstantSearch package, or a
- * catalog-search module that imports one, is anywhere in its module graph.
- *
- * Measured when this test was added: 41 KB minified, 15 KB gzipped, most of it
- * the shopper SDK client that `ep.multiSearch` shares with other components.
- */
 import { build, BuildResult } from "esbuild";
 import fs from "fs";
 import os from "os";
@@ -25,7 +15,6 @@ const INSTANTSEARCH_PACKAGES = [
   "@elasticpath/catalog-search-instantsearch-adapter",
 ];
 
-/** Well above the measured size, so only a new dependency trips it. */
 const MINIFIED_BUDGET_BYTES = 60_000;
 
 function bundle(file: string) {
@@ -65,7 +54,6 @@ function packagesIn(result: BuildResult): Set<string> {
   return found;
 }
 
-/** Catalog-search source files that import an InstantSearch package. */
 function instantSearchModules(): string[] {
   const importsOne = new RegExp(
     `from\\s+["'](?:${INSTANTSEARCH_PACKAGES.map((name) =>

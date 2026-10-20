@@ -2111,16 +2111,21 @@ export interface SearchStatsData {
     summary: string;
 }
 
-// @public
+// @public (undocumented)
 export interface SearchTypeaheadData {
+    // (undocumented)
     hitCount: number;
+    // (undocumented)
     isOpen: boolean;
+    // (undocumented)
     query: string;
+    // (undocumented)
     searchPageUrl: string;
+    // (undocumented)
     status: SearchTypeaheadStatus;
 }
 
-// @public
+// @public (undocumented)
 export type SearchTypeaheadStatus = "idle" | "loading" | "success" | "error";
 
 // @public

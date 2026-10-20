@@ -1,26 +1,3 @@
-/**
- * EPSearchTypeahead — a search box that lists a few matching products as the
- * shopper types, for a site header.
- *
- * It calls `epMultiSearch` (`ep.multiSearch`) itself, so it needs no EP Catalog
- * Search Provider and loads no InstantSearch. A typeahead in a header is on
- * every page; EP Search Autocomplete there would put InstantSearch on every
- * page too. EP Catalog Search Provider stays the full results page, and
- * submitting this box goes there.
- *
- * - The designer's input sits in the Search Input slot. The component sets its
- *   value, its keyboard handling and its ARIA combobox attributes.
- * - Each hit renders the Hit Card slot with the same `currentProduct`,
- *   `currentHit` and `currentProductIndex` as EP Search Hits, so one card
- *   layout serves both.
- * - Requests wait for a pause in typing, and only the latest query's response
- *   renders.
- *
- * This module must not import InstantSearch, directly or through another
- * catalog-search module. `__tests__/EPSearchTypeahead.bundle.test.ts` enforces
- * it.
- */
-
 import {
   DataProvider,
   repeatedElement,
@@ -59,14 +36,12 @@ import type { SearchHitMeta } from "./search-hit";
 
 type PreviewState = "auto" | "withData" | "loading" | "empty" | "error";
 
-/** What the panel under the input shows. `null` is closed. */
 type PanelView = "hits" | "loading" | "empty" | "error" | null;
 
 export const DEFAULT_TYPEAHEAD_DEBOUNCE_MS = 300;
 export const DEFAULT_TYPEAHEAD_MIN_QUERY_LENGTH = 2;
 export const DEFAULT_TYPEAHEAD_MAX_HITS = 5;
 export const DEFAULT_SEARCH_PAGE_PATH = "/search";
-/** The parameter EP Catalog Search Provider reads with its default Index Name. */
 export const DEFAULT_SEARCH_QUERY_PARAM = "search[query]";
 const DEFAULT_QUERY_BY = "name,description";
 
@@ -88,12 +63,10 @@ interface EPSearchTypeaheadProps {
   queryBy?: string;
   baseFilter?: string;
   previewState?: PreviewState;
-  /** Injected automatically by Plasmic Studio. Do not set manually. */
   __plasmic_selection_prop__?: {
     isSelected?: boolean;
     selectedSlotName?: string;
   };
-  /** Injected automatically by Plasmic Studio. Do not set manually. */
   plasmicNotifyAutoOpenedContent?: () => void;
 }
 
@@ -210,7 +183,6 @@ export const epSearchTypeaheadMeta: CodeComponentMeta<EPSearchTypeaheadProps> =
     providesData: true,
   };
 
-/** The search page URL for `query`. An empty query goes to the page alone. */
 export function searchPageUrl(
   path: string,
   queryParam: string,
@@ -230,12 +202,6 @@ interface TypeaheadSearch {
 
 const IDLE: TypeaheadSearch = { status: "idle", hits: [] };
 
-/**
- * Searches for `term` after `debounceMs` without a change. A response arrives
- * only while its term is still current: a change cancels the pending timer and
- * marks the request in flight as stale, so an older, slower response cannot
- * replace a newer one.
- */
 function useTypeaheadSearch(options: {
   term: string;
   enabled: boolean;
@@ -403,8 +369,6 @@ export function EPSearchTypeahead(props: EPSearchTypeaheadProps) {
     setActiveIndex(-1);
   };
 
-  // Goes where the hit card's own link goes, so the designer decides. A card
-  // with no link goes to `currentHit.path`.
   const chooseHit = (index: number) => {
     if (inEditor) return;
     const option = listboxRef.current?.children[index] as
@@ -464,8 +428,7 @@ export function EPSearchTypeahead(props: EPSearchTypeaheadProps) {
     "aria-autocomplete": "list",
     "aria-activedescendant": activeHit >= 0 ? hitId(activeHit) : undefined,
     autoComplete: "off",
-    // Keep password-manager extensions off a search field, as EP Search
-    // Autocomplete Input does.
+    // Keep password-manager extensions off a search field.
     "data-1p-ignore": "true",
     "data-lpignore": "true",
     "data-bwignore": "true",
@@ -522,8 +485,7 @@ export function EPSearchTypeahead(props: EPSearchTypeaheadProps) {
           <div
             className={panelClassName}
             data-ep-search-typeahead-panel=""
-            // Keeps focus in the input, so a click on a hit is not lost to
-            // the blur that would close the list first.
+            // Keep focus in the input, or its blur closes the list first.
             onMouseDown={(event) => event.preventDefault()}
           >
             {view === "hits" ? (

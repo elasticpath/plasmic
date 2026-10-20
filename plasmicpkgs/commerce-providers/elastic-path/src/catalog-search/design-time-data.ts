@@ -423,21 +423,12 @@ export interface CurrentSuggestion {
   query: string;
 }
 
-// --- Search typeahead ---
-
-/** Where EP Search Typeahead's search for the current query has got to. */
 export type SearchTypeaheadStatus = "idle" | "loading" | "success" | "error";
 
-/** Published by EPSearchTypeahead as `$ctx.searchTypeaheadData`. */
 export interface SearchTypeaheadData {
-  /** What the shopper has typed. */
   query: string;
-  /** `idle` until the query is long enough and the debounce has passed. */
   status: SearchTypeaheadStatus;
-  /** Whether the hit list, or its loading, empty or error content, shows. */
   isOpen: boolean;
-  /** How many hits the list shows. */
   hitCount: number;
-  /** The search page URL for the current query: where submitting goes. */
   searchPageUrl: string;
 }

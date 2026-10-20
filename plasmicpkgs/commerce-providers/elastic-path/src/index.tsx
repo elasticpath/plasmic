@@ -246,7 +246,6 @@ export function registerAll(loader?: Registerable) {
   registerEPSearchAutocompletePanel(loader);
   registerEPSearchAutocompleteList(loader);
   registerEPCatalogSearchProvider(loader);
-  // Header search with no InstantSearch — not a child of the provider above
   registerEPSearchTypeahead(loader);
 
   // Legacy monolithic bundle configurator

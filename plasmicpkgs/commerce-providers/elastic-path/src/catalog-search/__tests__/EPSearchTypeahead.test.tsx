@@ -1,9 +1,5 @@
 /**
  * @jest-environment jsdom
- *
- * EP Search Typeahead: a debounced header search over `ep.multiSearch` that
- * lists hits through the same data EP Search Hits publishes, with combobox
- * keyboard behaviour, and goes to the search page on submit.
  */
 
 import React from "react";
@@ -54,8 +50,6 @@ const {
 const { MOCK_SEARCH_PRODUCTS } =
   require("../design-time-data") as typeof import("../design-time-data");
 
-/* ---------- helpers ---------- */
-
 function setEditorMode(inEditor: boolean) {
   mockUsePlasmicCanvasContext.mockReturnValue(inEditor ? {} : null);
 }
@@ -72,8 +66,6 @@ function deferred<T>() {
 
 const slug = (name: string) => name.toLowerCase().replace(/\s+/g, "-");
 
-/** A multi-search response in Elastic Path's shape: Typesense hits plus the
- * `included` block that `main_image` resolves against. */
 function searchResponse(names: string[]) {
   return {
     results: [
@@ -131,7 +123,6 @@ function press(key: string) {
   fireEvent.keyDown(combobox(), { key });
 }
 
-/** Lets the debounce run out and the search's promise settle. */
 async function wait(ms: number) {
   await act(async () => {
     jest.advanceTimersByTime(ms);
@@ -165,8 +156,6 @@ afterEach(() => {
   jest.useRealTimers();
   (window as any).location = originalLocation;
 });
-
-/* ---------- registration ---------- */
 
 describe("registration", () => {
   it("registers a standalone component, outside any search provider", () => {
@@ -203,8 +192,6 @@ describe("registration", () => {
     }
   });
 });
-
-/* ---------- searching ---------- */
 
 describe("searching", () => {
   it("waits for a pause in typing, then sends one search", async () => {
@@ -302,7 +289,6 @@ describe("searching", () => {
     await wait(300);
     type("boots");
 
-    // The first answer arrives after the query changed: it must not render.
     await act(async () => first.resolve(searchResponse(["Old Boot"])));
     expect(screen.queryByText("Old Boot")).toBeNull();
     expect(options()).toHaveLength(0);
@@ -338,8 +324,6 @@ describe("searching", () => {
     expect(names).toEqual(["Rain Boot"]);
   });
 });
-
-/* ---------- hits ---------- */
 
 describe("hits", () => {
   it("publishes currentProduct, currentHit and currentProductIndex as EP Search Hits does", async () => {
@@ -437,8 +421,6 @@ describe("hits", () => {
     });
   });
 });
-
-/* ---------- combobox ---------- */
 
 describe("combobox behaviour", () => {
   async function openWith(names: string[]) {
@@ -585,8 +567,6 @@ describe("combobox behaviour", () => {
   });
 });
 
-/* ---------- choosing and submitting ---------- */
-
 describe("choosing a hit and submitting", () => {
   it("goes to currentHit.path when a hit with no link is clicked", async () => {
     mockEpMultiSearch.mockResolvedValue(searchResponse(["Rain Boot"]));
@@ -666,8 +646,6 @@ describe("searchPageUrl", () => {
   });
 });
 
-/* ---------- the designer's input ---------- */
-
 describe("Search Input slot", () => {
   it("wires the designer's input and keeps its own handlers", async () => {
     const designerChange = jest.fn();
@@ -697,8 +675,6 @@ describe("Search Input slot", () => {
     expect(combobox().getAttribute("aria-label")).toBe("Search the store");
   });
 });
-
-/* ---------- Studio canvas ---------- */
 
 describe("on the Studio canvas", () => {
   beforeEach(() => setEditorMode(true));

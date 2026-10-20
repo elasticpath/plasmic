@@ -110,9 +110,7 @@ ul[data-ep-autocomplete-list] {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
   padding: 4px 0;
 }
-/* The list is the component's own element, so a page-wide ul rule would
- * otherwise reach it; anchor the reset to the data attribute, as the
- * autocomplete list does. */
+/* Not :where(), so a page-wide ul rule cannot override the reset. */
 ul[data-ep-search-typeahead-hits] {
   list-style: none;
   margin: 0;
