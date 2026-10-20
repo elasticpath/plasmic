@@ -429,6 +429,34 @@ describe("handleResumePayment — guards", () => {
     expect(second.status).toBe(400);
     expect((second.body as any).error.code).toBe("SESSION_NOT_OPEN");
   });
+
+  it.each([
+    ["answers with a server error", () =>
+      epSdk.checkoutApi.mockResolvedValue({
+        error: { errors: [{ status: 503, detail: "unavailable" }] },
+        response: { status: 503 },
+      })],
+    ["throws", () => epSdk.checkoutApi.mockRejectedValue(new Error("socket hang up"))],
+  ])("ends for review when checkout after a taken payment %s", async (_, failCheckout) => {
+    const store = createStatefulStore(makeSession());
+    const ctx = createMockCtx(makeSession(), { sessionStore: store });
+    failCheckout();
+
+    const first = await handleResumePayment(createMockReq(), ctx);
+
+    expect(first.status).toBe(409);
+    expect((first.body as any).error.code).toBe("PAYMENT_NEEDS_REVIEW");
+    expect((first.body as any).error.message).toMatch(/received your payment/);
+    expect((first.body as any).reconciliationPending).toBe(true);
+    expect(epSdk.checkoutApi).toHaveBeenCalledTimes(1);
+    expect(epSdk.confirmOrder).not.toHaveBeenCalled();
+    expect(epSdk.updateACart).toHaveBeenCalledWith(
+      expect.objectContaining({ body: { data: { payment_intent_id: "" } } })
+    );
+    const stored = await store.get("current");
+    expect(stored?.status).toBe("complete");
+    expect(stored?.payment.gatewayMetadata).toMatchObject({ needsReconciliation: true });
+  });
 });
 
 describe("handleResumePayment — success", () => {

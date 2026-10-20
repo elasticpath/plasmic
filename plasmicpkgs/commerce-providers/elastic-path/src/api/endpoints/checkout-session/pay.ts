@@ -65,6 +65,7 @@ import {
 import { finalizePaidSession } from "../../../checkout/session/finalize-paid-session";
 import { readOrderTotal, type OrderTotal } from "../../../checkout/session/order-total";
 import {
+  checkoutFailureReason,
   checkoutRejectedReviewMessage,
   confirmCartPaymentOrder,
   createOrderFromCart,
@@ -400,8 +401,10 @@ async function handleInitializePaymentPay(
     message: "Payment succeeded but order creation failed",
     logMessage: "EP checkoutApi failed after payment success",
   });
-  if (created.rejection !== undefined) {
-    // The payment was taken; Elastic Path will not create its order.
+  if (created.response) {
+    // The payment was taken and no order was created. Checkout is not
+    // retried: a failed or lost response may still have created an order
+    // that carries the PaymentIntent.
     return endCheckoutForReview({
       req,
       ctx,
@@ -409,11 +412,10 @@ async function handleInitializePaymentPay(
       session: { ...session, payment: { ...session.payment, gateway } },
       client: adminClient,
       paymentReference: adapterResult.gatewayOrderId ?? "unknown",
-      reason: created.rejection,
+      reason: checkoutFailureReason(created.rejection),
       message: checkoutRejectedReviewMessage(created.rejection),
     });
   }
-  if (created.response) return created.response;
   const orderId = created.order.id;
   const orderTotal = await readOrderTotal(adminClient, orderId, created.order);
   const charged = chargedAmount(adapterResult, params.expectedTotal);

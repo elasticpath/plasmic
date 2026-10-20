@@ -102,7 +102,6 @@ class Browser {
   private ctx(): SessionHandlerContext {
     const sent = clone(this.cookie);
     return {
-      ...this.identity,
       epCredentials: { clientId: "client", apiBaseUrl: "https://api.test.com" },
       adapterRegistry: registry,
       sessionStore: {
@@ -120,6 +119,7 @@ class Browser {
       sessionCartId: this.cartId,
       getClientCredentialsToken: async () => "admin-token",
       shippingRateResolver: () => [RATE],
+      ...this.identity,
     };
   }
 
@@ -1069,6 +1069,65 @@ describe("a checkout Elastic Path rejects", () => {
 
     ep.checkoutRejection = null;
     expect((await browser.create()).status).toBe(201);
+  });
+
+  it.each([
+    ["answers with a server error", () => {
+      ep.checkoutRejection = { status: 503, detail: "unavailable" };
+    }],
+    ["throws", () => {
+      sdkImpl.checkoutApi = async () => {
+        throw new Error("socket hang up");
+      };
+    }],
+  ])("ends a card payment taken before the checkout %s, recording the payment", async (_, failCheckout) => {
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+    failCheckout();
+
+    const res = await browser.pay({ gateway: "stripe" });
+
+    const [pi] = [...ep.paymentIntents.keys()];
+    expect(ep.charges).toEqual([2799]);
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("PAYMENT_NEEDS_REVIEW");
+    expect((res.body as any).error.message).toMatch(/received your payment/);
+    expect((res.body as any).reconciliationPending).toBe(true);
+    expect(sessionIn(res).status).toBe("complete");
+    expect(sessionIn(res).payment.gatewayMetadata).toMatchObject({
+      paymentIntentId: pi,
+      needsReconciliation: true,
+    });
+    expect(ep.cart(browser.cartId).paymentIntentId).toBeUndefined();
+
+    const again = await browser.pay({ gateway: "stripe" });
+    expect((again.body as any).error.code).toBe("SESSION_NOT_OPEN");
+    expect(ep.charges).toEqual([2799]);
+
+    ep.checkoutRejection = null;
+    Object.assign(sdkImpl, ep.sdk());
+    expect((await browser.create()).status).toBe(201);
+  });
+});
+
+describe("a taken payment whose admin token cannot be minted afterwards", () => {
+  it("still records the payment on the order and completes", async () => {
+    const browser = new Browser(newCart());
+    await readyToPay(browser);
+    browser.identity = {
+      allowedCustomAttributeKeys: ["po_number"],
+      getClientCredentialsToken: async () => {
+        if (ep.charges.length > 0) throw new Error("token endpoint unavailable");
+        return "admin-token";
+      },
+    };
+    await browser.update({ customAttributes: { po_number: "PO-1" } });
+
+    const res = await browser.pay({ gateway: "stripe" });
+
+    expect(res.status).toBe(200);
+    expect(sessionIn(res).status).toBe("complete");
+    expect(ep.paidOrders().map((o) => o.paid)).toEqual([2799]);
   });
 });
 

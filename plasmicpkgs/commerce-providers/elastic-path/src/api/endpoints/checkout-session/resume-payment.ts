@@ -34,6 +34,7 @@ import { hashCart } from "../../../checkout/session/cart-hash";
 import { readCartResponse } from "../../../ep-server-functions/read-cart";
 import {
   CART_CHANGED_REVIEW_MESSAGE,
+  checkoutFailureReason,
   checkoutRejectedReviewMessage,
   confirmCartPaymentOrder,
   createOrderFromCart,
@@ -486,27 +487,10 @@ async function resumeWithoutHeldOrder(
     missingFields.push("shippingAddress");
   if (requiresShipping && !session.selectedShippingRateId)
     missingFields.push("selectedShippingRateId");
-  if (missingFields.length > 0) {
-    return {
-      status: 400,
-      body: {
-        success: false,
-        error: {
-          message: `Missing required fields: ${missingFields.join(", ")}`,
-          code: "MISSING_FIELDS",
-        },
-      },
-    };
-  }
-
   const adminClient = await buildAdminEpClient(ctx);
 
-  const created = await createOrderFromCart(adminClient, session, {
-    message: "Failed to create order for resumed payment",
-    logMessage: "EP checkoutApi failed on resume",
-  });
-  if (created.rejection !== undefined) {
-    // The payment was taken; Elastic Path will not create its order.
+  if (missingFields.length > 0) {
+    // The payment was taken; this session cannot place its order.
     return endCheckoutForReview({
       req,
       ctx,
@@ -514,11 +498,29 @@ async function resumeWithoutHeldOrder(
       session,
       client: adminClient,
       paymentReference: paymentIntentId,
-      reason: created.rejection,
+      reason: `missing ${missingFields.join(", ")}`,
+      message: checkoutRejectedReviewMessage(undefined),
+    });
+  }
+
+  const created = await createOrderFromCart(adminClient, session, {
+    message: "Failed to create order for resumed payment",
+    logMessage: "EP checkoutApi failed on resume",
+  });
+  if (created.response) {
+    // The payment was taken and no order was created. Checkout is not
+    // retried: a failed or lost response may still have created an order.
+    return endCheckoutForReview({
+      req,
+      ctx,
+      ttl,
+      session,
+      client: adminClient,
+      paymentReference: paymentIntentId,
+      reason: checkoutFailureReason(created.rejection),
       message: checkoutRejectedReviewMessage(created.rejection),
     });
   }
-  if (created.response) return created.response;
   const orderId = created.order.id;
 
   const withOrder: CheckoutSession = { ...session, order: { id: orderId } };

@@ -588,7 +588,13 @@ to be a `502` with a generic message. A server error or no answer is still a
 `502`. When a card payment was already taken before Elastic Path refused the
 checkout, the checkout ends with `409` `PAYMENT_NEEDS_REVIEW`, the shopper is
 told the reason, the cart is unlinked from the PaymentIntent, and the payment
-is logged for reconciliation.
+is logged for reconciliation. A server error or no answer from that checkout,
+after `/pay` or `/resume-payment` took the payment, ends the same way. It used
+to return `502` with the session still open and the cart still linked to the
+paid PaymentIntent, so the shopper saw a failed payment and could not retry.
+The checkout is not retried, because a failed or lost answer can still have
+created the order. A failure to mint the token that writes the order's custom
+fields no longer stops a paid order from being confirmed.
 
 A cart settles at most one order. `/pay`, `/resume-payment`,
 `/abandon-payment` and `handleConfirm` share one per-cart guard. While one of

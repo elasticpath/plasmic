@@ -128,10 +128,20 @@ export async function createOrderFromCart(
 export const CART_CHANGED_REVIEW_MESSAGE =
   "We received your payment, but your cart changed during the card check, so no order was placed. Please contact us and we will complete or refund it.";
 
-/** What the shopper reads when the payment was taken but Elastic Path refused the order. */
-export function checkoutRejectedReviewMessage(reason: string): string {
-  const said = reason.trim().replace(/[.\s]+$/, "");
-  return `We received your payment, but your order could not be placed: ${said}. Please contact us and we will complete or refund it.`;
+/**
+ * What the shopper reads when the payment was taken but checkout created no
+ * order: Elastic Path's reason when it refused, nothing more when it failed.
+ */
+export function checkoutRejectedReviewMessage(reason: string | undefined): string {
+  const said = reason?.trim().replace(/[.\s]+$/, "");
+  return said
+    ? `We received your payment, but your order could not be placed: ${said}. Please contact us and we will complete or refund it.`
+    : "We received your payment, but your order could not be placed. Please contact us and we will complete or refund it.";
+}
+
+/** Why a checkout after a taken payment created no order, for the server log. */
+export function checkoutFailureReason(rejection: string | undefined): string {
+  return rejection ?? "checkout failed after the payment";
 }
 
 /**
@@ -211,15 +221,25 @@ export function confirmCartPaymentOrder(client: Client, orderId: string): Promis
   } as unknown as Parameters<typeof confirmOrder>[0]);
 }
 
-/** Writes the session's checkout extras onto the order (best effort). */
+/** Writes the session's checkout extras onto the order (best effort; never throws). */
 export async function writeOrderCustomFields(
   ctx: SessionHandlerContext,
   orderId: string,
   session: CheckoutSession
 ): Promise<void> {
+  let token = "";
+  try {
+    token = ctx.getClientCredentialsToken ? await ctx.getClientCredentialsToken() : "";
+  } catch (err) {
+    log.warn("Could not mint a token to write order custom fields", {
+      orderId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return;
+  }
   await persistOrderCustomFields({
     host: ctx.epCredentials.apiBaseUrl,
-    token: ctx.getClientCredentialsToken ? await ctx.getClientCredentialsToken() : "",
+    token,
     orderId,
     input: session.customAttributes,
   });
