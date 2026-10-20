@@ -194,6 +194,11 @@ removed component or a removed published prop. All are empty instead.
 
 ### Added
 
+The Elastic Path Provider's **Add item to cart** global action takes an
+optional **Location** after **Quantity**. On a multi-location store, a product
+stocked only at named locations was refused with `insufficient_stock`
+without it. Existing bindings are unchanged.
+
 `EPSearchInfiniteHits` ("EP Search Infinite Hits") gives catalog search the
 load more that `EPProductListProvider` already has: the next page of results is
 added below the ones shown, not in their place. It wraps react-instantsearch's

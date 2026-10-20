@@ -159,6 +159,8 @@ Provider too. `currentHit.path` is the only link field: `currentProduct` has no
 **In Studio,** use the cart components, or the Elastic Path Provider's global
 actions **Add item to cart**, **Update item in cart** and **Remove item from
 cart**. Each runs on the server through the proxy route and refreshes the cart.
+**Add item to cart** takes an optional **Location** after **Quantity**: on a
+multi-location store, a product stocked only at named locations needs it.
 
 **In React code,** `useEpCart()` reads the shopper's cart:
 
