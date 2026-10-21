@@ -6,7 +6,6 @@
  *
  *   POST /api/ep/ep/anonymous        → mint anonymous session
  *   POST /api/ep/ep/refresh          → rotate EP token
- *   POST /api/ep/ep/cart             → set epCartId on session
  *   POST /api/ep/ep/account/login    → sign an account member in
  *   POST /api/ep/ep/account/register → sign an account member up
  *   POST /api/ep/ep/account/roster   → read the accounts they belong to

@@ -28,6 +28,7 @@ import {
   MOCK_BILLING_ADDRESS_DIFFERENT,
 } from "../../utils/design-time-data";
 import { createLogger } from "../../utils/logger";
+import { useCanvasPreviewState } from "../../utils/canvas-preview-state";
 
 const log = createLogger("EPBillingAddressFields");
 
@@ -215,7 +216,8 @@ export const EPBillingAddressFields = React.forwardRef<
   EPBillingAddressFieldsActions,
   EPBillingAddressFieldsProps
 >(function EPBillingAddressFields(props, ref) {
-  const { children, className, previewState = "auto" } = props;
+  const { children, className, previewState: savedPreviewState } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const inEditor = !!usePlasmicCanvasContext();
 
@@ -426,7 +428,7 @@ const EPBillingAddressFieldsRuntime = React.forwardRef<
     setErrors(errs);
     setTouched({ ...ALL_TOUCHED });
     const valid = Object.values(errs).every((e) => e === null);
-    log.debug("Validation result", { valid, errors: errs } as Record<string, unknown>);
+    log.debug("Validation result", { valid, errors: errs });
     return valid;
   }, [values, country]);
 

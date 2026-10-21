@@ -43,6 +43,46 @@ export function carriesForwardedMessage(err: unknown): err is Error {
   return brandOf(err)?.forwarded === true;
 }
 
+const EP_STATUS = Symbol.for(
+  "@elasticpath/plasmic-ep-commerce-elastic-path/ep-status"
+);
+
+/** Records on `err` the HTTP status Elastic Path answered the failed call with. */
+export function withEpStatus(err: Error, status: number | undefined): Error {
+  if (typeof status === "number") {
+    Object.defineProperty(err, EP_STATUS, { value: status });
+  }
+  return err;
+}
+
+function epStatusOf(err: unknown): number | undefined {
+  for (let e = err, depth = 0; e instanceof Error && depth < 5; depth += 1) {
+    const status = (e as { [EP_STATUS]?: unknown })[EP_STATUS];
+    if (typeof status === "number") return status;
+    e = (e as { cause?: unknown }).cause;
+  }
+  return undefined;
+}
+
+const SHOPPER_REFUSAL_CODES = new Set([
+  "insufficient_stock",
+  "invalid_promo_code",
+  "checkout_in_progress",
+]);
+
+/**
+ * The HTTP status for a server function that failed: 409 when Elastic Path
+ * refused the request (a 4xx other than a credential refusal) or the code is
+ * one the shopper can act on, 500 for anything else.
+ */
+export function failureHttpStatus(err: unknown, code: string): number {
+  if (SHOPPER_REFUSAL_CODES.has(code)) return 409;
+  const status = epStatusOf(err);
+  const refused =
+    status !== undefined && status >= 400 && status < 500 && status !== 401 && status !== 403;
+  return refused ? 409 : 500;
+}
+
 /**
  * The failure's own reason: for an error this package wrapped in shopper
  * copy, the message of the failure it wraps.

@@ -23,6 +23,10 @@ export {
 // Session store
 export { CookieSessionStore } from "./checkout/session/cookie-store";
 
+// The shopper's checkout fields, from one getSession result.
+export { checkoutContextFromSession } from "./checkout/session/checkout-account";
+export type { CheckoutSessionContext } from "./checkout/session/checkout-account";
+
 // Adapter registry
 export { createAdapterRegistry } from "./checkout/session/adapter-registry";
 
@@ -36,6 +40,11 @@ export type {
   ManualAdapterConfig,
   ManualPaymentMethod,
 } from "./checkout/session/adapters/manual-adapter";
+export type {
+  ManualPaymentRule,
+  ManualPaymentRuleInput,
+  EpCartResponse,
+} from "./checkout/session/manual-payment-rule";
 export {
   isCartPaymentIntentAdapter,
   isLegacyPaymentAdapter,
@@ -53,10 +62,14 @@ export type {
 export type {
   AdapterRegistry,
   CartPaymentIntentAdapter,
+  CartPaymentIntentState,
   EPCredentials,
   LegacyPaymentAdapter,
   OrderFirstAdapter,
   PaymentAdapter,
+  PaymentAdapterOrderRule,
+  PaymentAdapterOrderRuleInput,
+  PaymentIntentReadKeys,
   PaymentSequence,
   PaymentSetupRequest,
   SessionHandlerContext,
@@ -182,6 +195,7 @@ export type {
   EpMultiSearchResponse,
   EpPlaceOrderAddress,
   EpPlaceOrderInput,
+  EpPlaceOrderOptions,
   EpPlaceOrderResult,
   EpProductStock,
   EpRemoveCartItemInput,

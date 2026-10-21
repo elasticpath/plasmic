@@ -36,7 +36,7 @@ export function EPCheckoutConfirmation({
       try {
         await onPrintOrder();
       } catch (error) {
-        log.error("Print error", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
+        log.error("Print error", { error: error instanceof Error ? error.message : String(error) });
       } finally {
         setIsPrinting(false);
       }

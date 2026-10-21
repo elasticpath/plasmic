@@ -118,6 +118,11 @@ export type {
   ManualAdapterConfig,
   ManualPaymentMethod,
 } from "./adapters/manual-adapter";
+export type {
+  ManualPaymentRule,
+  ManualPaymentRuleInput,
+  EpCartResponse,
+} from "./manual-payment-rule";
 export {
   isCartPaymentIntentAdapter,
   isLegacyPaymentAdapter,
@@ -136,6 +141,7 @@ export type {
   SessionPayment,
   SessionOrder,
   PaymentAdapter,
+  PaymentAdapterOrderRule,
   PaymentAdapterResult,
   PaymentAdapterResultStatus,
   PaymentSequence,

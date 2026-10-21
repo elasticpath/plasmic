@@ -120,6 +120,14 @@ function mergeCookies(prior: string, res: Response): string {
   return [...map.entries()].map(([n, v]) => `${n}=${v}`).join("; ");
 }
 
+/** A cart write that created `cartId`: it points the request's session at it. */
+function createsCart(cartId: string, cart: unknown) {
+  return async () => {
+    getCurrentEpSession()!.cartId = cartId;
+    return cart;
+  };
+}
+
 describe("createEpProxyRoutes", () => {
   it("forwards Set-Cookie for the freshly-created cartId when addCartItem auto-creates a cart", async () => {
     const auth = buildAuth();
@@ -134,11 +142,12 @@ describe("createEpProxyRoutes", () => {
 
     // Configure the mocked mutation to "auto-create" a cart.
     const newCart = {
-      id: "fresh-cart-uuid",
       lineItems: [{ id: "item-1" }],
       totalPrice: 50,
     };
-    (cartMutations.epAddCartItem as any).mockResolvedValue(newCart);
+    (cartMutations.epAddCartItem as any).mockImplementation(
+      createsCart("fresh-cart-uuid", newCart)
+    );
 
     const proxy = createEpProxyRoutes(auth as any);
     const proxyReq = new Request(
@@ -187,7 +196,6 @@ describe("createEpProxyRoutes", () => {
     const cookies = mergeCookies(cookiesFromResponse(anonResp), cartResp);
 
     (cartMutations.epAddCartItem as any).mockResolvedValue({
-      id: "existing-cart",
       lineItems: [{ id: "item-1" }],
       totalPrice: 50,
     });
@@ -458,7 +466,7 @@ describe("createEpProxyRoutes promo codes", () => {
       asResponse: true,
     });
 
-    const discountedCart = { id: "fresh-cart-uuid", totalPrice: 45 };
+    const discountedCart = { totalPrice: 45 };
     (cartMutations.epApplyPromoCode as any).mockResolvedValue(discountedCart);
 
     const proxy = createEpProxyRoutes(auth as any);
@@ -492,7 +500,7 @@ describe("createEpProxyRoutes promo codes", () => {
     });
 
     (cartMutations.epRemovePromoCode as any).mockResolvedValue({
-      id: "fresh-cart-uuid",
+      totalPrice: 50,
     });
 
     const proxy = createEpProxyRoutes(auth as any);
@@ -543,7 +551,7 @@ describe("createEpProxyRoutes promo codes", () => {
       { params: Promise.resolve({ fn: "applyPromoCode" }) }
     );
 
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(409);
     expect((await res.json()).code).toBe("invalid_promo_code");
   });
 });
@@ -557,9 +565,9 @@ describe("createEpProxyRoutes cart adjustments", () => {
       asResponse: true,
     });
 
-    const adjustedCart = { id: "fresh-cart-uuid", totalPrice: 45 };
-    (cartMutations.epApplyCartAdjustment as any).mockResolvedValue(
-      adjustedCart
+    const adjustedCart = { totalPrice: 45 };
+    (cartMutations.epApplyCartAdjustment as any).mockImplementation(
+      createsCart("fresh-cart-uuid", adjustedCart)
     );
 
     const proxy = createEpProxyRoutes(auth as any);

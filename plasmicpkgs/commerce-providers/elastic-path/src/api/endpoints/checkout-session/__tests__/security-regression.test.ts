@@ -140,6 +140,11 @@ const DEFAULT_RATES = [
   { id: "rate-standard", name: "Standard", amount: 500, currency: "CHF", serviceLevel: "standard", carrier: "DHL" },
 ];
 
+/** The total the session last showed the shopper. */
+function shownTotal(total: number): CheckoutSession["totals"] {
+  return { subtotal: total, tax: 0, shipping: 0, total, currency: "CHF" };
+}
+
 function makeSession(overrides: Partial<CheckoutSession> = {}): CheckoutSession {
   return {
     id: "sess-sec",
@@ -165,7 +170,7 @@ function makeSession(overrides: Partial<CheckoutSession> = {}): CheckoutSession 
     },
     selectedShippingRateId: "rate-standard",
     availableShippingRates: DEFAULT_RATES,
-    totals: null,
+    totals: shownTotal(5400),
     payment: {
       gateway: null,
       status: "idle",
@@ -203,6 +208,7 @@ function createMockAdapter(
     paymentSequence: "cart_payment_intent",
     initializePayment: jest.fn().mockResolvedValue(initResult),
     confirmPayment: jest.fn().mockResolvedValue(confirmResult),
+    readPaymentIntentState: jest.fn().mockResolvedValue("settled"),
   } as PaymentAdapter;
 }
 
@@ -233,6 +239,20 @@ function createMockCtx(
 
 function createMockReq(body: Record<string, unknown> = {}): SessionRequest {
   return { body, headers: {}, cookies: {} };
+}
+
+function mockFreeOrder() {
+  epSdk.checkoutApi.mockResolvedValue({
+    data: {
+      data: {
+        id: "order-1",
+        meta: { display_price: { with_tax: { amount: 0, currency: "USD" } } },
+      },
+    },
+  });
+  epSdk.paymentSetup.mockResolvedValue({
+    data: { data: { id: "txn-1", status: "complete" } },
+  });
 }
 
 beforeEach(() => {
@@ -290,13 +310,18 @@ describe("free-vs-paid server authority (#369)", () => {
   });
 
   it("still settles a genuinely free cart (authoritative meta total 0) via the manual gateway", async () => {
+    mockFreeOrder();
     // Must-not-break: a real CHF 0 cart has `meta.display_price` present and
     // exactly 0 → it still settles for free with no card.
     const FREE_ITEMS = [{ id: "free-1", quantity: 1 }];
     epSdk.getACart.mockResolvedValue(cartResponseWithTotal(0, FREE_ITEMS));
     // A genuinely free order is digital here (no shipping to assert).
     const ctx = createMockCtx(
-      makeSession({ cartHash: hashCart(FREE_ITEMS), requiresShipping: false })
+      makeSession({
+        cartHash: hashCart(FREE_ITEMS),
+        requiresShipping: false,
+        totals: shownTotal(0),
+      })
     );
 
     const res = await handlePay(createMockReq({}), ctx);
@@ -521,7 +546,9 @@ describe("confirmOrder reconciliation (#369)", () => {
     const body = res.body as any;
     expect(res.status).toBe(200);
     expect(epSdk.confirmOrder).toHaveBeenCalledTimes(1);
-    expect(epSdk.confirmOrder.mock.calls[0][0].path.paymentID).toBe("pi_ok");
+    expect(epSdk.confirmOrder.mock.calls[0][0].path).toEqual({
+      orderID: expect.any(String),
+    });
     expect(body.reconciliationPending).toBeUndefined();
     expect(
       body.data.session.payment.gatewayMetadata.needsReconciliation
@@ -726,13 +753,22 @@ describe("authoritative shipping re-assertion (setShippingLine #4)", () => {
       ...PRICED_ITEMS,
       { id: "ship-old", sku: SHIP_SKU, quantity: 1, unit_price: { amount: 1 } },
     ];
-    epSdk.getACart.mockResolvedValue(cartFetch(tampered, 5401));
+    let call = 0;
+    epSdk.getACart.mockImplementation(async () => {
+      call += 1;
+      if (call <= 2) return cartFetch(tampered, 5401);
+      return cartFetch(
+        [...PRICED_ITEMS, { id: "ship-new", sku: SHIP_SKU, quantity: 1, unit_price: { amount: 500 } }],
+        5900
+      );
+    });
     const adapter = createMockAdapter();
     const ctx = createMockCtx(
       makeSession({
         cartHash: hashCart(PRICED_ITEMS), // managed line excluded → unchanged
         availableShippingRates: SHIPPING_RATES,
         selectedShippingRateId: "rate-standard",
+        totals: shownTotal(5900),
       }),
       adapter
     );
@@ -936,6 +972,7 @@ describe("clear stale managed shipping on non-shipping pay (#436)", () => {
         requiresShipping: false,
         selectedShippingRateId: null,
         availableShippingRates: [],
+        totals: shownTotal(PRODUCT_TOTAL),
       }),
       adapter
     );
@@ -954,8 +991,9 @@ describe("clear stale managed shipping on non-shipping pay (#436)", () => {
     );
     expect(epSdk.manageCarts).not.toHaveBeenCalled();
     expect(callOrder).toEqual(["delete", "initializePayment"]);
-    // Hash + clear read + post-mutation total refresh (lines were deleted).
-    expect(epSdk.getACart).toHaveBeenCalledTimes(3);
+    // Hash + clear read + post-mutation total refresh (lines were deleted),
+    // then the read that takes any shipping line out after pay.
+    expect(epSdk.getACart).toHaveBeenCalledTimes(4);
     expect(adapter.initializePayment).toHaveBeenCalledTimes(1);
   });
 
@@ -978,6 +1016,7 @@ describe("clear stale managed shipping on non-shipping pay (#436)", () => {
         // Rate still selected — must NOT cause a shipping re-write/charge.
         selectedShippingRateId: "rate-standard",
         availableShippingRates: SHIPPING_RATES,
+        totals: shownTotal(PRODUCT_TOTAL),
       }),
       adapter
     );
@@ -1016,6 +1055,7 @@ describe("clear stale managed shipping on non-shipping pay (#436)", () => {
         cartHash: hashCart(DIGITAL_ITEMS),
         requiresShipping: false,
         selectedShippingRateId: null,
+        totals: shownTotal(PRODUCT_TOTAL),
       }),
       adapter
     );
@@ -1042,6 +1082,7 @@ describe("clear stale managed shipping on non-shipping pay (#436)", () => {
         cartHash: hashCart(DIGITAL_ITEMS),
         requiresShipping: false,
         selectedShippingRateId: null,
+        totals: shownTotal(PRODUCT_TOTAL),
       }),
       adapter
     );
@@ -1056,7 +1097,8 @@ describe("clear stale managed shipping on non-shipping pay (#436)", () => {
     expect(epSdk.deleteACartItem).not.toHaveBeenCalled();
     expect(epSdk.manageCarts).not.toHaveBeenCalled();
     expect(adapter.initializePayment).toHaveBeenCalledTimes(1);
-    expect(epSdk.getACart).toHaveBeenCalledTimes(2);
+    // Hash + clear read, then the read that takes any shipping line out after pay.
+    expect(epSdk.getACart).toHaveBeenCalledTimes(3);
   });
 
   it("physical pay reuses setCartShippingLine cart meta (no extra post-assert GET)", async () => {
@@ -1095,6 +1137,7 @@ describe("clear stale managed shipping on non-shipping pay (#436)", () => {
         cartHash: hashCart(PRICED_ITEMS),
         availableShippingRates: SHIPPING_RATES,
         selectedShippingRateId: "rate-express",
+        totals: shownTotal(6900),
       }),
       adapter
     );
@@ -1107,11 +1150,13 @@ describe("clear stale managed shipping on non-shipping pay (#436)", () => {
     expect(res.status).toBe(200);
     expect((res.body as any).data.session.status).toBe("complete");
     expect(epSdk.manageCarts.mock.calls[0][0].body.data.price.amount).toBe(1500);
-    expect(epSdk.getACart).toHaveBeenCalledTimes(3);
+    // Hash + line read + write re-read, then the read that takes the line out after pay.
+    expect(epSdk.getACart).toHaveBeenCalledTimes(4);
     expect(adapter.initializePayment).toHaveBeenCalledTimes(1);
   });
 
   it("routes free product + stale shipping to free settlement after clearing", async () => {
+    mockFreeOrder();
     const FREE_ITEMS = [{ id: "free-1", quantity: 1 }];
     const withStaleShip = [
       ...FREE_ITEMS,
@@ -1129,6 +1174,7 @@ describe("clear stale managed shipping on non-shipping pay (#436)", () => {
         cartHash: hashCart(FREE_ITEMS),
         requiresShipping: false,
         selectedShippingRateId: null,
+        totals: shownTotal(0),
       }),
       adapter
     );
@@ -1167,6 +1213,7 @@ describe("clear stale managed shipping on non-shipping pay (#436)", () => {
         cartHash: hashCart(DIGITAL_ITEMS),
         requiresShipping: false,
         selectedShippingRateId: null,
+        totals: shownTotal(PRODUCT_TOTAL),
       }),
       adapter
     );
@@ -1210,7 +1257,7 @@ describe("applyCartAdjustment money integrity (#371)", () => {
     epSdk.getACart.mockResolvedValue(cartResponseWithTotal(5900, ITEMS_WITH_FEE));
     // Session was created against the same line set (fee included) — hashes match.
     const ctx = createMockCtx(
-      makeSession({ cartHash: hashCart(ITEMS_WITH_FEE) }),
+      makeSession({ cartHash: hashCart(ITEMS_WITH_FEE), totals: shownTotal(5900) }),
       adapter
     );
 
@@ -1234,7 +1281,7 @@ describe("applyCartAdjustment money integrity (#371)", () => {
     const adapter = createMockAdapter();
     epSdk.getACart.mockResolvedValue(cartResponseWithTotal(5900, ITEMS_WITH_FEE));
     const ctx = createMockCtx(
-      makeSession({ cartHash: hashCart(ITEMS_WITH_FEE) }),
+      makeSession({ cartHash: hashCart(ITEMS_WITH_FEE), totals: shownTotal(5900) }),
       adapter
     );
 
@@ -1363,6 +1410,7 @@ describe("token-leak boundary — no admin/shopper token in any response", () =>
   });
 
   it("free pay() — settleFreeOrder + order-fields write never reflect the admin token", async () => {
+    mockFreeOrder();
     const FREE_ITEMS = [{ id: "free-1", quantity: 1 }];
     epSdk.getACart.mockResolvedValue(cartResponseWithTotal(0, FREE_ITEMS));
     const ctx = createMockCtx(
@@ -1370,6 +1418,7 @@ describe("token-leak boundary — no admin/shopper token in any response", () =>
         cartHash: hashCart(FREE_ITEMS),
         customAttributes: { ...EXTRAS },
         requiresShipping: false,
+        totals: shownTotal(0),
       }),
       undefined,
       { allowedCustomAttributeKeys: "*" }
@@ -1406,8 +1455,8 @@ describe("token-leak boundary — no admin/shopper token in any response", () =>
 
   it("create-session() never reflects the cart-read token", async () => {
     epSdk.getACart.mockResolvedValue(cartResponseWithTotal(5400));
-    const ctx = createMockCtx(null);
-    const res = await handleCreateSession(createMockReq({ cartId: "cart-abc" }), ctx);
+    const ctx = { ...createMockCtx(null), sessionCartId: "cart-abc" };
+    const res = await handleCreateSession(createMockReq({}), ctx);
     expect(res.status).toBe(201);
     expectNoTokenLeak(res);
   });

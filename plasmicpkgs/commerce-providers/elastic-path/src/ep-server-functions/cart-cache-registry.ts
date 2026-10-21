@@ -55,7 +55,7 @@ async function eachCache(
   );
   for (const result of results) {
     if (result.status === "rejected") {
-      log.warn(failure, { error: result.reason } as Record<string, unknown>);
+      log.warn(failure, { error: result.reason });
     }
   }
 }

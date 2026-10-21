@@ -51,12 +51,20 @@ export const epProductGridMeta: CodeComponentMeta<EPProductGridProps> = {
           type: "vbox",
           children: [
             {
-              type: "text",
-              value: "Product Name",
+              type: "component",
+              name: "plasmic-commerce-ep-product-field",
+              props: { field: "firstImageUrl", show: "image" },
+              styles: { width: "100%" },
             },
             {
-              type: "text",
-              value: "$0.00",
+              type: "component",
+              name: "plasmic-commerce-ep-product-field",
+              props: { field: "name" },
+            },
+            {
+              type: "component",
+              name: "plasmic-commerce-ep-product-field",
+              props: { field: "price" },
             },
           ],
         },
@@ -69,7 +77,7 @@ export const epProductGridMeta: CodeComponentMeta<EPProductGridProps> = {
       defaultValue: "auto",
       displayName: "Preview State",
       description:
-        "Force a preview state with sample data for design-time editing",
+        "Studio only. `withData` shows sample products on the canvas. Published pages always show the provider's products.",
       advanced: true,
     },
   } as any,
@@ -95,7 +103,7 @@ export function EPProductGrid(props: EPProductGridProps) {
   useWarnInCatalogSearch(inCatalogSearch);
 
   const useMock =
-    previewState === "withData" || (!gridData?.products && inEditor);
+    inEditor && (previewState === "withData" || !gridData?.products);
 
   const products = useMemo(() => {
     if (useMock) return MOCK_PRODUCTS;

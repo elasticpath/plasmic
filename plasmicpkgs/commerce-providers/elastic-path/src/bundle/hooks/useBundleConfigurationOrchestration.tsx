@@ -82,7 +82,7 @@ export function useBundleConfigurationOrchestration({
           );
           log.error("Failed to process bundle configuration", {
             error: apiError.message,
-          } as Record<string, unknown>);
+          });
         } finally {
           setIsConfiguring(false);
         }

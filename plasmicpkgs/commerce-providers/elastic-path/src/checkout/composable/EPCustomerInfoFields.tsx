@@ -27,6 +27,7 @@ import {
   MOCK_CUSTOMER_INFO_WITH_ERRORS,
 } from "../../utils/design-time-data";
 import { createLogger } from "../../utils/logger";
+import { useCanvasPreviewState } from "../../utils/canvas-preview-state";
 
 const log = createLogger("EPCustomerInfoFields");
 
@@ -116,17 +117,14 @@ export const EPCustomerInfoFields = React.forwardRef<
   EPCustomerInfoFieldsActions,
   EPCustomerInfoFieldsProps
 >(function EPCustomerInfoFields(props, ref) {
-  const { children, className, previewState = "auto" } = props;
+  const { children, className, previewState: savedPreviewState } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const inEditor = !!usePlasmicCanvasContext();
 
   // Pre-population priority:
-  // 1. checkoutData.customerInfo (from EPCheckoutProvider — already split)
-  // 2. checkoutSession.customerInfo (from EPCheckoutSessionProvider — name needs split)
-  // 3. shopperContextData.account (from any ancestor DataProvider — name needs split)
-  const checkoutData = useSelector("checkoutData") as
-    | { customerInfo?: { firstName?: string; lastName?: string; email?: string } | null }
-    | undefined;
+  // 1. checkoutSession.customerInfo (from EPCheckoutSessionProvider — name needs split)
+  // 2. shopperContextData.account (from any ancestor DataProvider — name needs split)
   const checkoutSessionCtx = useSelector("checkoutSession") as
     | { session?: { customerInfo?: { name?: string; email?: string } } }
     | undefined;
@@ -135,12 +133,7 @@ export const EPCustomerInfoFields = React.forwardRef<
     | undefined;
 
   const effectiveCustomerInfo = useMemo(() => {
-    // Source 1: EPCheckoutProvider (composable flow)
-    const ci = checkoutData?.customerInfo;
-    if (ci?.firstName || ci?.email) {
-      return { firstName: ci.firstName ?? "", lastName: ci.lastName ?? "", email: ci.email ?? "" };
-    }
-    // Source 2: EPCheckoutSessionProvider (session flow)
+    // Source 1: EPCheckoutSessionProvider (session flow)
     const sci = checkoutSessionCtx?.session?.customerInfo;
     if (sci) {
       const parts = (sci.name ?? "").split(/\s+/);
@@ -150,7 +143,7 @@ export const EPCustomerInfoFields = React.forwardRef<
         email: sci.email ?? "",
       };
     }
-    // Source 3: shopperContextData account profile (any ancestor DataProvider)
+    // Source 2: shopperContextData account profile (any ancestor DataProvider)
     const acct = shopperCtx?.account;
     if (acct?.name || acct?.email) {
       const parts = (acct.name ?? "").split(/\s+/);
@@ -161,7 +154,7 @@ export const EPCustomerInfoFields = React.forwardRef<
       };
     }
     return undefined;
-  }, [checkoutData?.customerInfo, checkoutSessionCtx?.session?.customerInfo, shopperCtx?.account]);
+  }, [checkoutSessionCtx?.session?.customerInfo, shopperCtx?.account]);
 
   // Design-time preview
   const useMock =
@@ -266,7 +259,7 @@ const EPCustomerInfoFieldsRuntime = React.forwardRef<
     setErrors(errs);
     setTouched({ firstName: true, lastName: true, email: true });
     const valid = !errs.firstName && !errs.lastName && !errs.email;
-    log.debug("Validation result", { valid, errors: errs } as Record<string, unknown>);
+    log.debug("Validation result", { valid, errors: errs });
     return valid;
   }, [firstName, lastName, email]);
 

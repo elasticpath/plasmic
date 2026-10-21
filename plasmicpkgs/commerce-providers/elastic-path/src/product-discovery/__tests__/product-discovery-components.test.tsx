@@ -544,9 +544,9 @@ describe("EPProductGrid", () => {
     ).toMatch(/^\/product\/.+/);
   });
 
-  it("should use withData previewState to force mock products", () => {
-    mockUseSelector.mockReturnValue(undefined);
-    mockUsePlasmicCanvasContext.mockReturnValue(null);
+  it("should use withData previewState to force mock products in editor", () => {
+    mockUseSelector.mockReturnValue({ products: [] });
+    mockUsePlasmicCanvasContext.mockReturnValue({});
 
     const { container } = render(
       <EPProductGrid previewState="withData">
@@ -624,7 +624,7 @@ describe("component registration", () => {
     expect(initialSort.type).toBe("choice");
     expect(initialSort.hidden()).toBe(true);
     expect(initialSort.displayName).toBeUndefined();
-    expect(initialSort.description).toMatch(/deprecated and ignored/i);
+    expect(initialSort.description).toMatch(/^Deprecated — ignored\./);
   });
 
   it("keeps setSort registered as a deprecated no-op", () => {

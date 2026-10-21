@@ -1,75 +1,18 @@
 /**
- * EPCheckoutProvider — root orchestrator for the composable checkout flow.
- *
- * Wraps `useCheckout()` and exposes complete checkout state via
- * `checkoutData` DataProvider. Provides 9 refActions callable from
- * Plasmic interactions. Works with or without EPShopperContextProvider.
- *
- * Also sets a checkout-scoped React context so EPPaymentElements can
- * read the `clientSecret` and expose its `elements` instance back.
+ * Inert. It drove checkout through `/api/checkout/create-order`,
+ * `/setup-payment` and `/confirm-payment`, which nothing serves, so it could
+ * not place an order. It stays registered because hostless publishing rejects
+ * a removed component or prop (ADR-0004). EPCheckoutSessionProvider is the
+ * checkout path.
  */
-import {
-  DataProvider,
-  useSelector,
-  usePlasmicCanvasContext,
-} from "@plasmicapp/host";
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
-import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useImperativeHandle,
-  useMemo,
-  useState,
-} from "react";
+import React, { useImperativeHandle } from "react";
 import { Registerable } from "../../registerable";
-import { getCartIdFromSession } from "../../cart/cart-session";
-import {
-  MOCK_CHECKOUT_DATA_CUSTOMER_INFO,
-  MOCK_CHECKOUT_DATA_SHIPPING,
-  MOCK_CHECKOUT_DATA_PAYMENT,
-  MOCK_CHECKOUT_DATA_CONFIRMATION,
-} from "../../utils/design-time-data";
-import { createLogger } from "../../utils/logger";
-import { useCheckout } from "../hooks/use-checkout";
-import { CheckoutStep } from "../types";
-import type {
-  AddressData,
-  CheckoutFormData,
-  ElasticPathOrder,
-  ShippingRate,
-} from "../types";
-import { useMoneyFormat } from "../../shopper-context/use-money-format";
-import { useEpCart } from "../../cart-provider/use-ep-cart";
+import { DEPRECATED_LEAD } from "../../utils/deprecated-lead";
+import type { AddressData } from "../types";
 
-const log = createLogger("EPCheckoutProvider");
-
-// ---------------------------------------------------------------------------
-// Checkout-scoped context for EPPaymentElements ↔ EPCheckoutProvider
-// ---------------------------------------------------------------------------
-interface CheckoutInternalContextValue {
-  clientSecret: string | null;
-  setElements: (elements: any) => void;
-  elements: any;
-}
-
-export const CheckoutInternalContext =
-  createContext<CheckoutInternalContextValue>({
-    clientSecret: null,
-    setElements: () => {},
-    elements: null,
-  });
-
-export function useCheckoutInternal() {
-  return useContext(CheckoutInternalContext);
-}
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 type PreviewState =
   | "auto"
   | "customerInfo"
@@ -108,548 +51,81 @@ interface EPCheckoutProviderProps {
   onComplete?: (data: { orderId: string }) => void;
 }
 
-// ---------------------------------------------------------------------------
-// Step label / index helpers
-// ---------------------------------------------------------------------------
-const STEP_ORDER: CheckoutStep[] = [
-  CheckoutStep.CUSTOMER_INFO,
-  CheckoutStep.SHIPPING,
-  CheckoutStep.PAYMENT,
-  CheckoutStep.CONFIRMATION,
-];
+const noop = () => {};
+const asyncNoop = async () => {};
 
-function stepToIndex(step: CheckoutStep): number {
-  const i = STEP_ORDER.indexOf(step);
-  return i >= 0 ? i : 0;
-}
-
-// ---------------------------------------------------------------------------
-// Mock map for design-time
-// ---------------------------------------------------------------------------
-const MOCK_MAP: Record<string, any> = {
-  customerInfo: MOCK_CHECKOUT_DATA_CUSTOMER_INFO,
-  shipping: MOCK_CHECKOUT_DATA_SHIPPING,
-  payment: MOCK_CHECKOUT_DATA_PAYMENT,
-  confirmation: MOCK_CHECKOUT_DATA_CONFIRMATION,
+const INERT_ACTIONS: EPCheckoutProviderActions = {
+  nextStep: noop,
+  previousStep: noop,
+  goToStep: noop,
+  submitCustomerInfo: asyncNoop,
+  submitShippingAddress: noop,
+  submitBillingAddress: noop,
+  selectShippingRate: noop,
+  submitPayment: asyncNoop,
+  reset: noop,
 };
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
 export const EPCheckoutProvider = React.forwardRef<
   EPCheckoutProviderActions,
   EPCheckoutProviderProps
->(function EPCheckoutProvider(props, ref) {
-  const {
-    children,
-    loadingContent,
-    errorContent,
-    cartId: cartIdProp,
-    apiBaseUrl = "/api",
-    autoAdvanceSteps = false,
-    previewState = "auto",
-    className,
-    onComplete,
-  } = props;
-
-  const inEditor = !!usePlasmicCanvasContext();
-
-  // Design-time preview — return mock data without hooks
-  if (inEditor && previewState !== "auto") {
-    const mockData = MOCK_MAP[previewState] ?? MOCK_MAP.customerInfo;
-    return (
-      <DataProvider name="checkoutData" data={mockData}>
-        <div className={className} data-ep-checkout-provider="">
-          {children}
-        </div>
-      </DataProvider>
-    );
-  }
-
-  // Editor auto mode with no runtime — show customer info mock
-  if (inEditor) {
-    return (
-      <DataProvider name="checkoutData" data={MOCK_MAP.customerInfo}>
-        <div className={className} data-ep-checkout-provider="">
-          {children}
-        </div>
-      </DataProvider>
-    );
-  }
-
-  return (
-    <EPCheckoutProviderRuntime
-      ref={ref}
-      cartId={cartIdProp}
-      apiBaseUrl={apiBaseUrl}
-      autoAdvanceSteps={autoAdvanceSteps}
-      className={className}
-      loadingContent={loadingContent}
-      errorContent={errorContent}
-      onComplete={onComplete}
-    >
-      {children}
-    </EPCheckoutProviderRuntime>
-  );
+>(function EPCheckoutProvider({ children }, ref) {
+  useImperativeHandle(ref, () => INERT_ACTIONS, []);
+  return <>{children}</>;
 });
 
-// ---------------------------------------------------------------------------
-// Runtime (hooks-safe inner component)
-// ---------------------------------------------------------------------------
-interface RuntimeProps {
-  children?: React.ReactNode;
-  loadingContent?: React.ReactNode;
-  errorContent?: React.ReactNode;
-  cartId?: string;
-  apiBaseUrl: string;
-  autoAdvanceSteps: boolean;
-  className?: string;
-  onComplete?: (data: { orderId: string }) => void;
-}
-
-const EPCheckoutProviderRuntime = React.forwardRef<
-  EPCheckoutProviderActions,
-  RuntimeProps
->(function EPCheckoutProviderRuntime(props, ref) {
-  const {
-    children,
-    loadingContent,
-    errorContent,
-    cartId: cartIdProp,
-    apiBaseUrl,
-    autoAdvanceSteps,
-    className,
-    onComplete,
-  } = props;
-
-  // Resolve cart ID: prop wins; otherwise fetched from the better-auth
-  // session via /api/ep/get-session on mount. Async — there's a brief
-  // window where resolvedCartId is undefined while the fetch settles;
-  // useCheckout handles undefined cartId gracefully.
-  const [resolvedCartId, setResolvedCartId] = useState<string | undefined>(
-    cartIdProp || undefined
-  );
-  useEffect(() => {
-    if (cartIdProp) {
-      setResolvedCartId(cartIdProp);
-      return;
-    }
-    let cancelled = false;
-    getCartIdFromSession().then((id) => {
-      if (!cancelled) setResolvedCartId(id || undefined);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [cartIdProp]);
-
-  const checkout = useCheckout({
-    cartId: resolvedCartId,
-    apiBaseUrl,
-    autoAdvanceSteps,
-    onComplete: onComplete
-      ? (order: ElasticPathOrder) => onComplete({ orderId: order.id })
-      : undefined,
-  });
-
-  const { state } = checkout;
-
-  // Internal context for EPPaymentElements ↔ provider communication
-  const [clientSecret, setClientSecret] = useState<string | null>(null);
-  const [elements, setElements] = useState<any>(null);
-
-  // Local copies of submitted addresses (for checkoutData shape)
-  const [submittedShippingAddress, setSubmittedShippingAddress] =
-    useState<AddressData | null>(null);
-  const [submittedBillingAddress, setSubmittedBillingAddress] =
-    useState<AddressData | null>(null);
-  const [sameAsShipping, setSameAsShipping] = useState(true);
-  const [paymentStatus, setPaymentStatus] = useState<
-    "idle" | "pending" | "processing" | "succeeded" | "failed"
-  >("idle");
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  // Build the formatted summary from state
-  const money = useMoneyFormat();
-
-  // The order only exists once payment succeeds, so before that the cart is the
-  // only source of real money. Deriving the summary from `state.order` alone
-  // published zeros for the whole flow, and EPOrderTotalsBreakdown prefers this
-  // summary over the cart — so the shopper read "Total $0.00" on a cart worth
-  // $30 right up to the confirmation step.
-  const { cart } = useEpCart();
-
-  const summary = useMemo(() => {
-    const cartPrice = cart?.meta?.display_price;
-    const cur =
-      state.order?.total?.currency ??
-      cartPrice?.without_tax?.currency ??
-      "USD";
-    const fmt = (minor: number) => money.minor(minor, cur);
-
-    const hasOrder = state.order != null;
-
-    // without_tax is already post-discount, so a Discount row beside it read
-    // "13.50 - 1.50 = 13.50". without_discount is the pre-discount figure.
-    const cartSubtotal =
-      cartPrice?.without_discount ?? cartPrice?.without_tax;
-    const subtotal = hasOrder
-      ? state.order?.subtotal?.amount ?? 0
-      : cartSubtotal?.amount ?? 0;
-    const tax = hasOrder
-      ? state.order?.tax?.amount ?? 0
-      : cartPrice?.tax?.amount ?? 0;
-    // A rate the shopper picked here is local state — it never reaches the
-    // cart — so it adds to the cart total. The cart's own shipping is already
-    // inside `with_tax`, so it is shown but not added again.
-    const cartShipping = cartPrice?.shipping?.amount;
-    const selectedShipping = state.selectedShippingRate?.amount;
-    const shipping = selectedShipping ?? cartShipping ?? 0;
-    const hasShipping = selectedShipping != null || cartShipping != null;
-    const discount = hasOrder ? 0 : cartPrice?.discount?.amount ?? 0;
-    const total = hasOrder
-      ? state.order?.total?.amount ?? subtotal + tax + shipping
-      : (cartPrice?.with_tax?.amount ?? subtotal + tax) + (selectedShipping ?? 0);
-
-    return {
-      subtotal,
-      subtotalFormatted: fmt(subtotal),
-      tax,
-      // A placed order with no tax has no tax, rather than tax still to come.
-      taxFormatted: tax > 0 || hasOrder ? fmt(tax) : "Calculated at next step",
-      shipping,
-      shippingFormatted: hasShipping ? fmt(shipping) : "TBD",
-      discount,
-      discountFormatted: fmt(discount),
-      hasDiscount: discount !== 0,
-      total,
-      totalFormatted: fmt(total),
-      currency: cur,
-      itemCount: hasOrder
-        ? state.order?.relationships?.items?.data?.length ?? 0
-        : cart?.itemCount ?? 0,
-    };
-  }, [state.order, state.selectedShippingRate, money, cart]);
-
-  // Derive customerInfo from state
-  const customerInfo = useMemo(() => {
-    if (!state.customerData) return null;
-    const parts = (state.customerData.name ?? "").split(/\s+/);
-    return {
-      firstName: parts[0] ?? "",
-      lastName: parts.slice(1).join(" "),
-      email: state.customerData.email ?? "",
-    };
-  }, [state.customerData]);
-
-  // Actions
-  const nextStep = useCallback(() => {
-    checkout.nextStep();
-  }, [checkout.nextStep]);
-
-  const previousStep = useCallback(() => {
-    checkout.previousStep();
-  }, [checkout.previousStep]);
-
-  const goToStep = useCallback(
-    (step: "customer_info" | "shipping" | "payment" | "confirmation") => {
-      checkout.goToStep(step as CheckoutStep);
-    },
-    [checkout.goToStep]
-  );
-
-  const submitCustomerInfo = useCallback(
-    async (data: {
-      firstName: string;
-      lastName: string;
-      email: string;
-      shippingAddress: AddressData;
-      sameAsShipping: boolean;
-      billingAddress?: AddressData;
-    }) => {
-      setErrorMsg(null);
-      const billingAddr =
-        data.sameAsShipping || !data.billingAddress
-          ? data.shippingAddress
-          : data.billingAddress;
-      setSameAsShipping(data.sameAsShipping);
-      setSubmittedShippingAddress(data.shippingAddress);
-      setSubmittedBillingAddress(billingAddr);
-
-      const formData: CheckoutFormData = {
-        customer: {
-          name: `${data.firstName} ${data.lastName}`.trim(),
-          email: data.email,
-        },
-        billingAddress: billingAddr,
-        shippingAddress: data.shippingAddress,
-        sameAsBilling: data.sameAsShipping,
-      };
-
-      await checkout.submitCustomerInfo(formData);
-    },
-    [checkout.submitCustomerInfo]
-  );
-
-  const submitShippingAddress = useCallback(
-    (data: AddressData) => {
-      setSubmittedShippingAddress(data);
-    },
-    []
-  );
-
-  const submitBillingAddress = useCallback(
-    (data: AddressData) => {
-      setSubmittedBillingAddress(data);
-    },
-    []
-  );
-
-  const selectShippingRate = useCallback(
-    (rateId: string) => {
-      // Find rate by ID - create a minimal ShippingRate if needed
-      const rate: ShippingRate = {
-        id: rateId,
-        name: "",
-        amount: 0,
-        currency: "USD",
-        service_level: "",
-      };
-      checkout.selectShippingRate(rate);
-    },
-    [checkout.selectShippingRate]
-  );
-
-  const submitPayment = useCallback(async () => {
-    setErrorMsg(null);
-    setPaymentStatus("processing");
-    try {
-      // Step 1: Create order
-      log.debug("Creating order...");
-      const order = await checkout.createOrder();
-
-      // Step 2: Setup payment
-      log.debug("Setting up payment...", { orderId: order.id });
-      const { clientSecret: secret, transactionId } =
-        await checkout.setupPayment(
-          order.id,
-          checkout.totalAmount || order.total.amount,
-          order.total.currency
-        );
-
-      setClientSecret(secret);
-      setPaymentStatus("pending");
-
-      // Step 3: Wait for Stripe confirmation from EPPaymentElements
-      // EPPaymentElements calls stripe.confirmPayment(), then the user
-      // triggers confirm via a Plasmic interaction that calls this provider's
-      // confirmPayment if needed. For now, the clientSecret is set for
-      // EPPaymentElements to pick up.
-      log.debug("Payment setup complete, clientSecret set for EPPaymentElements");
-    } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "Payment failed";
-      setErrorMsg(msg);
-      setPaymentStatus("failed");
-      log.error("Payment failed", { error: msg });
-    }
-  }, [checkout.createOrder, checkout.setupPayment, checkout.totalAmount]);
-
-  const reset = useCallback(() => {
-    checkout.reset();
-    setClientSecret(null);
-    setElements(null);
-    setSubmittedShippingAddress(null);
-    setSubmittedBillingAddress(null);
-    setSameAsShipping(true);
-    setPaymentStatus("idle");
-    setErrorMsg(null);
-  }, [checkout.reset]);
-
-  useImperativeHandle(
-    ref,
-    () => ({
-      nextStep,
-      previousStep,
-      goToStep,
-      submitCustomerInfo,
-      submitShippingAddress,
-      submitBillingAddress,
-      selectShippingRate,
-      submitPayment,
-      reset,
-    }),
-    [
-      nextStep,
-      previousStep,
-      goToStep,
-      submitCustomerInfo,
-      submitShippingAddress,
-      submitBillingAddress,
-      selectShippingRate,
-      submitPayment,
-      reset,
-    ]
-  );
-
-  // Build checkoutData shape
-  const checkoutData = useMemo(
-    () => ({
-      step: state.currentStep,
-      stepIndex: stepToIndex(state.currentStep),
-      totalSteps: 4,
-      canProceed: checkout.canProceedToNext,
-      isProcessing: state.isLoading,
-      customerInfo,
-      shippingAddress: submittedShippingAddress ?? state.shippingAddress ?? null,
-      billingAddress: submittedBillingAddress ?? state.billingAddress ?? null,
-      sameAsShipping,
-      selectedShippingRate: state.selectedShippingRate
-        ? {
-            id: state.selectedShippingRate.id,
-            name: state.selectedShippingRate.name,
-            price: state.selectedShippingRate.amount,
-            priceFormatted: money.minor(
-              state.selectedShippingRate.amount,
-              state.selectedShippingRate.currency || "USD"
-            ),
-            currency: state.selectedShippingRate.currency || "USD",
-            estimatedDays: state.selectedShippingRate.delivery_time,
-            carrier: state.selectedShippingRate.carrier,
-          }
-        : null,
-      order: state.order ?? null,
-      paymentStatus,
-      error: errorMsg ?? (state.error?.message || null),
-      summary,
-    }),
-    [
-      state.currentStep,
-      state.isLoading,
-      state.shippingAddress,
-      state.billingAddress,
-      state.selectedShippingRate,
-      state.order,
-      state.error,
-      checkout.canProceedToNext,
-      customerInfo,
-      submittedShippingAddress,
-      submittedBillingAddress,
-      sameAsShipping,
-      paymentStatus,
-      errorMsg,
-      summary,
-      money,
-    ]
-  );
-
-  // Loading state on initial mount (cart hydration)
-  if (state.isLoading && !state.customerData && loadingContent) {
-    return (
-      <div className={className} data-ep-checkout-provider="">
-        {loadingContent}
-      </div>
-    );
-  }
-
-  // Error state
-  if (state.error && !state.customerData && errorContent) {
-    return (
-      <DataProvider name="checkoutData" data={checkoutData}>
-        <div className={className} data-ep-checkout-provider="">
-          {errorContent}
-        </div>
-      </DataProvider>
-    );
-  }
-
-  // No cart
-  if (!resolvedCartId && errorContent) {
-    return (
-      <DataProvider
-        name="checkoutData"
-        data={{ ...checkoutData, error: "No active cart found" }}
-      >
-        <div className={className} data-ep-checkout-provider="">
-          {errorContent}
-        </div>
-      </DataProvider>
-    );
-  }
-
-  const internalCtx: CheckoutInternalContextValue = {
-    clientSecret,
-    setElements,
-    elements,
-  };
-
-  return (
-    <CheckoutInternalContext.Provider value={internalCtx}>
-      <DataProvider name="checkoutData" data={checkoutData}>
-        <div className={className} data-ep-checkout-provider="">
-          {children}
-        </div>
-      </DataProvider>
-    </CheckoutInternalContext.Provider>
-  );
-});
-
-// ---------------------------------------------------------------------------
-// Registration metadata
-// ---------------------------------------------------------------------------
 export const epCheckoutProviderMeta: CodeComponentMeta<EPCheckoutProviderProps> = {
   name: "plasmic-commerce-ep-checkout-provider",
-  displayName: "EP Checkout Provider",
+  displayName: "EP Checkout Provider (deprecated)",
   description:
-    "Root orchestrator for the composable checkout flow. Wraps useCheckout() and exposes checkoutData for designer binding.",
+    "Does nothing. It called checkout routes that nothing serves, so it could not place an order. Build checkout with EP Checkout Session Provider, which takes the cart from the shopper's session. Remove this component from your project.",
+  hideFromContentCreators: true,
   props: {
     children: {
       type: "slot",
-      defaultValue: [
-        {
-          type: "component",
-          name: "plasmic-commerce-ep-checkout-step-indicator",
-        },
-        {
-          type: "component",
-          name: "plasmic-commerce-ep-checkout-button",
-        },
-      ],
     },
     loadingContent: {
       type: "slot",
       displayName: "Loading Content",
+      description: `${DEPRECATED_LEAD} Nothing renders this slot.`,
       renderPropParams: [],
+      hidden: () => true,
     },
     errorContent: {
       type: "slot",
       displayName: "Error Content",
+      description: `${DEPRECATED_LEAD} Nothing renders this slot.`,
       renderPropParams: [],
+      hidden: () => true,
     },
     cartId: {
       type: "string",
       displayName: "Cart ID",
-      description: "Explicit cart ID; falls back to cookie",
+      description:
+        `${DEPRECATED_LEAD} Checkout uses the cart in the shopper's session. ` +
+        "A cart id a page can set is a cart a page can take over.",
+      hidden: () => true,
       advanced: true,
     },
     apiBaseUrl: {
       type: "string",
       displayName: "API Base URL",
-      defaultValue: "/api",
+      description: `${DEPRECATED_LEAD} Set API Base URL on EP Checkout Session Provider.`,
+      hidden: () => true,
       advanced: true,
     },
     autoAdvanceSteps: {
       type: "boolean",
       displayName: "Auto-Advance Steps",
-      description: "Auto-advance to next step on submit completion",
-      defaultValue: false,
+      description: DEPRECATED_LEAD,
+      hidden: () => true,
     },
     previewState: {
       type: "choice",
       options: ["auto", "customerInfo", "shipping", "payment", "confirmation"],
-      defaultValue: "auto",
       displayName: "Preview State",
-      description: "Force a preview state for design-time editing",
+      description: `${DEPRECATED_LEAD} Set Preview State on EP Checkout Session Provider.`,
+      hidden: () => true,
       advanced: true,
     },
   },
@@ -659,68 +135,47 @@ export const epCheckoutProviderMeta: CodeComponentMeta<EPCheckoutProviderProps> 
   refActions: {
     nextStep: {
       displayName: "Next Step",
+      description: DEPRECATED_LEAD,
       argTypes: [],
     },
     previousStep: {
       displayName: "Previous Step",
+      description: DEPRECATED_LEAD,
       argTypes: [],
     },
     goToStep: {
       displayName: "Go To Step",
-      argTypes: [
-        {
-          name: "step",
-          type: "string",
-          displayName: "Step key",
-        },
-      ],
+      description: DEPRECATED_LEAD,
+      argTypes: [{ name: "step", type: "string", displayName: "Step key" }],
     },
     submitCustomerInfo: {
       displayName: "Submit Customer Info",
-      argTypes: [
-        {
-          name: "data",
-          type: "object",
-          displayName: "Customer data",
-        },
-      ],
+      description: DEPRECATED_LEAD,
+      argTypes: [{ name: "data", type: "object", displayName: "Customer data" }],
     },
     submitShippingAddress: {
       displayName: "Submit Shipping Address",
-      argTypes: [
-        {
-          name: "data",
-          type: "object",
-          displayName: "Address data",
-        },
-      ],
+      description: DEPRECATED_LEAD,
+      argTypes: [{ name: "data", type: "object", displayName: "Address data" }],
     },
     submitBillingAddress: {
       displayName: "Submit Billing Address",
-      argTypes: [
-        {
-          name: "data",
-          type: "object",
-          displayName: "Address data",
-        },
-      ],
+      description: DEPRECATED_LEAD,
+      argTypes: [{ name: "data", type: "object", displayName: "Address data" }],
     },
     selectShippingRate: {
       displayName: "Select Shipping Rate",
-      argTypes: [
-        {
-          name: "rateId",
-          type: "string",
-          displayName: "Rate ID",
-        },
-      ],
+      description: DEPRECATED_LEAD,
+      argTypes: [{ name: "rateId", type: "string", displayName: "Rate ID" }],
     },
     submitPayment: {
       displayName: "Submit Payment",
+      description: DEPRECATED_LEAD,
       argTypes: [],
     },
     reset: {
       displayName: "Reset Checkout",
+      description: DEPRECATED_LEAD,
       argTypes: [],
     },
   },

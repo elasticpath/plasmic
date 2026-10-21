@@ -281,6 +281,7 @@ describe("handleConfirm", () => {
         )
       );
       expect(res.status).toBe(200);
+      expect(JSON.stringify(res.body)).not.toContain("cart-abc");
     });
 
     it("session status becomes 'complete'", async () => {
