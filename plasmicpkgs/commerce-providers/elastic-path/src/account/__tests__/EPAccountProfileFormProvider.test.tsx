@@ -414,11 +414,128 @@ describe("EPAccountProfileFormProvider", () => {
     expect(updateBody(fetchImpl)).toEqual([{ name: "New Name" }]);
   });
 
-  it("rejects an empty or invalid edit before writing", async () => {
+  it("keeps a trailing space typed onto the seeded name", async () => {
+    await renderSeeded();
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Test 1 " },
+    });
+    expect(inputValue("Name")).toBe("Test 1 ");
+
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Test 1 Lovelace" },
+    });
+    expect(inputValue("Name")).toBe("Test 1 Lovelace");
+  });
+
+  it("does not send a value whose trim still matches the seeded value", async () => {
+    const { ref, fetchImpl } = await renderSeeded();
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Test 1 " },
+    });
+
+    await act(async () => {
+      await ref.current!.submit();
+    });
+
+    expect(updateCalls(fetchImpl)).toEqual([]);
+    expect(inputValue("Name")).toBe("Test 1 ");
+    expect(publishedForm().status).toBe("idle");
+  });
+
+  it("locks the fields while submitting and then shows the refreshed account", async () => {
+    const { ref, fetchImpl, releaseUpdate, setMember } = await renderSeeded(
+      installFetch({ hangUpdate: true })
+    );
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Test 1 " },
+    });
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "new@example.com" },
+    });
+    setMember({ ...SEEDED, email: "new@example.com" });
+
+    let pending = Promise.resolve();
+    await act(async () => {
+      pending = ref.current!.submit();
+    });
+
+    const name = screen.getByLabelText("Name") as HTMLInputElement;
+    const email = screen.getByLabelText("Email") as HTMLInputElement;
+    expect(publishedForm().isSubmitting).toBe(true);
+    expect(name.readOnly).toBe(true);
+    expect(email.readOnly).toBe(true);
+    expect(name.value).toBe("Test 1 ");
+
+    fireEvent.change(name, { target: { value: "Newer Name" } });
+    expect(name.value).toBe("Test 1 ");
+
+    await act(async () => {
+      releaseUpdate();
+      await pending;
+    });
+
+    expect(updateBody(fetchImpl)).toEqual([{ email: "new@example.com" }]);
+    expect(inputValue("Name")).toBe("Test 1");
+    expect(inputValue("Email")).toBe("new@example.com");
+    expect(name.readOnly).toBe(false);
+    expect(email.readOnly).toBe(false);
+    expect(publishedForm()).toEqual({
+      status: "submitted",
+      error: null,
+      isSubmitting: false,
+    });
+  });
+
+  it("keeps the fields locked while the account reload is in flight", async () => {
+    const { ref, releaseSession, setMember } = await renderSeeded(
+      installFetch({ hangSessionRead: 2 })
+    );
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "New Name" },
+    });
+    setMember({ ...SEEDED, name: "New Name" });
+
+    let pending = Promise.resolve();
+    await act(async () => {
+      pending = ref.current!.submit();
+    });
+    expect(publishedForm().isSubmitting).toBe(true);
+    expect(
+      (screen.getByLabelText("Name") as HTMLInputElement).readOnly
+    ).toBe(true);
+
+    await act(async () => {
+      releaseSession();
+      await pending;
+    });
+
+    expect(inputValue("Name")).toBe("New Name");
+    expect(
+      (screen.getByLabelText("Name") as HTMLInputElement).readOnly
+    ).toBe(false);
+  });
+
+  it("rejects an empty edit before writing", async () => {
     const { ref, fetchImpl } = await renderSeeded();
     fireEvent.change(screen.getByLabelText("Name"), {
       target: { value: "   " },
     });
+
+    await act(async () => {
+      await ref.current!.submit();
+    });
+
+    expect(updateCalls(fetchImpl)).toEqual([]);
+    expect(publishedForm()).toEqual({
+      status: "error",
+      error: "Please complete the required fields.",
+      isSubmitting: false,
+    });
+    expect(screen.getByText("This field is required")).toBeTruthy();
+  });
+
+  it("uses the invalid-email message when that is the only problem", async () => {
+    const { ref, fetchImpl } = await renderSeeded();
     fireEvent.change(screen.getByLabelText("Email"), {
       target: { value: "not-an-email" },
     });
@@ -428,9 +545,14 @@ describe("EPAccountProfileFormProvider", () => {
     });
 
     expect(updateCalls(fetchImpl)).toEqual([]);
-    expect(publishedForm().status).toBe("error");
-    expect(screen.getByText("This field is required")).toBeTruthy();
+    expect(publishedForm()).toEqual({
+      status: "error",
+      error: "Enter a valid email address.",
+      isSubmitting: false,
+    });
+    expect(publishedForm().error).not.toBe("This field is required");
     expect(screen.getByText("Enter a valid email address.")).toBeTruthy();
+    expect(screen.queryByText("This field is required")).toBeNull();
   });
 
   it("registers inside the account provider", () => {

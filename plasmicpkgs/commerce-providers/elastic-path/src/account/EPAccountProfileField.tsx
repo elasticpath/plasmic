@@ -39,6 +39,7 @@ export function EPAccountProfileField(props: EPAccountProfileFieldProps) {
 
   const value = form.values[name] ?? "";
   const error = form.errors[name] ?? null;
+  const locked = inEditor || form.status === "submitting";
 
   return (
     <div
@@ -54,8 +55,11 @@ export function EPAccountProfileField(props: EPAccountProfileFieldProps) {
         value={value}
         autoComplete={name === "email" ? "email" : "name"}
         aria-invalid={error ? true : undefined}
-        onChange={(e) => form.setField(name, e.target.value)}
-        readOnly={inEditor}
+        onChange={(e) => {
+          if (locked) return;
+          form.setField(name, e.target.value);
+        }}
+        readOnly={locked}
       />
       <label data-ep-field-label="" htmlFor={id}>
         {label}
@@ -70,7 +74,7 @@ export const epAccountProfileFieldMeta: CodeComponentMeta<EPAccountProfileFieldP
     name: "plasmic-commerce-ep-account-profile-field",
     displayName: "EP Account Profile Field",
     description:
-      "Name or email input for the EP Account Profile Form Provider. Shows the signed-in member's current value and renders its validation error. Does not publish the value.",
+      "Name or email input for the EP Account Profile Form Provider. Shows the signed-in member's current value and renders its validation error. Read-only in the Studio canvas and while the profile form is submitting. Does not publish the value.",
     props: {
       name: {
         type: "choice",

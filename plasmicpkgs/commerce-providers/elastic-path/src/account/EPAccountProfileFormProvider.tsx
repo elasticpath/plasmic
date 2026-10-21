@@ -70,6 +70,7 @@ interface EPAccountProfileFormProviderActions {
 }
 
 const REQUIRED = "This field is required";
+const REQUIRED_FORM = "Please complete the required fields.";
 const INVALID_EMAIL = "Enter a valid email address.";
 const REFRESH_FAILED = "Updated, but the account could not be refreshed.";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -115,15 +116,7 @@ export const EPAccountProfileFormProvider = React.forwardRef<
   };
 
   const setField = useCallback((name: ProfileField, value: string) => {
-    setDrafts((prev) => {
-      const next = { ...prev };
-      if (value.trim() === baselineRef.current[name].trim()) {
-        delete next[name];
-      } else {
-        next[name] = value;
-      }
-      return next;
-    });
+    setDrafts((prev) => ({ ...prev, [name]: value }));
     setErrors((prev) => (prev[name] ? { ...prev, [name]: null } : prev));
   }, []);
 
@@ -136,33 +129,48 @@ export const EPAccountProfileFormProvider = React.forwardRef<
       email: null,
     };
     const payload: { name?: string; email?: string } = {};
-    let invalid = false;
+    let missing = false;
     if (drafts.name !== undefined) {
       const name = drafts.name.trim();
       if (!name) {
-        invalid = true;
+        missing = true;
         nextErrors.name = REQUIRED;
-      } else {
-        payload.name = name;
       }
     }
     if (drafts.email !== undefined) {
       const email = drafts.email.trim();
       if (!email) {
-        invalid = true;
+        missing = true;
         nextErrors.email = REQUIRED;
-      } else if (!EMAIL_RE.test(email)) {
-        invalid = true;
-        nextErrors.email = INVALID_EMAIL;
-      } else {
-        payload.email = email;
       }
     }
-    if (invalid) {
+    if (missing) {
       setErrors(nextErrors);
       setStatus("error");
-      setError(REQUIRED);
+      setError(REQUIRED_FORM);
       return;
+    }
+    if (
+      drafts.email !== undefined &&
+      !EMAIL_RE.test(drafts.email.trim())
+    ) {
+      nextErrors.email = INVALID_EMAIL;
+      setErrors(nextErrors);
+      setStatus("error");
+      setError(INVALID_EMAIL);
+      return;
+    }
+    if (drafts.name !== undefined) {
+      const name = drafts.name.trim();
+      if (name !== baselineRef.current.name.trim()) {
+        payload.name = name;
+      }
+    }
+    if (drafts.email !== undefined) {
+      const email = drafts.email.trim();
+      if (email !== baselineRef.current.email.trim()) {
+        payload.email = email;
+      }
     }
     if (payload.name === undefined && payload.email === undefined) {
       setErrors(EMPTY_ERRORS);
