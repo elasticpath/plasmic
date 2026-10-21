@@ -44,7 +44,7 @@ beforeEach(() => {
         { status: 200, headers: { "Content-Type": "application/json" } }
       );
     }
-    if (url.startsWith(`${EP_HOST}/catalog/multi-search`)) {
+    if (url.startsWith(`${EP_HOST}/pcm/catalog/multi-search`)) {
       const searches = (JSON.parse(body).searches ?? []) as Search[];
       searchesSent.push(...searches);
       if (multiSearchStatus !== 200) {
