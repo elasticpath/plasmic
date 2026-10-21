@@ -130,7 +130,7 @@ export function createEpAuthRoutes(epAuth: EpAuth): {
 };
 
 // @public (undocumented)
-export function createEpDesignRoutes(epAuth: EpAuth): EpDesignRoutes;
+export function createEpDesignRoutes(source: EpAuth | EpDesignStore): EpDesignRoutes;
 
 // @public (undocumented)
 export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes;
@@ -340,6 +340,14 @@ export interface EpDesignRoutes {
     handle: (request: Request, context: DesignRouteContext) => Promise<Response>;
     // (undocumented)
     options: () => Response;
+}
+
+// @public (undocumented)
+export interface EpDesignStore {
+    // (undocumented)
+    hostAllowlist?: readonly string[];
+    // (undocumented)
+    resolveConfig: EpResolveConfig;
 }
 
 // @public

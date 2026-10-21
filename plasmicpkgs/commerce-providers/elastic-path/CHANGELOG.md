@@ -293,6 +293,14 @@ frame, where the browser never sends the shopper envelope. Mount it at
 `app/api/ep/design/[fn]/route.ts`. Without it, the canvas shows labelled
 `"Sample"` fixtures and the console says once which route is missing.
 
+`createEpDesignRoutes` also takes a store without an auth instance:
+`createEpDesignRoutes({ resolveConfig, hostAllowlist? })`. An app host that
+serves only design time can mount the route with no `createEpAuth`, so it needs
+no session secret. `resolveConfig` names the store, for example from
+`extractEpProviderConfig` on the Plasmic bundle. The store's host must be on the
+same allow-list as for `createEpAuth`: the defaults, `hostAllowlist` and
+`EP_HOST_ALLOWLIST`. `createEpDesignRoutes(epAuth)` is unchanged.
+
 Login is composable rather than a single form component.
 `EPAccountLoginFormProvider` owns the username and password internally and
 publishes only `$ctx.accountLoginFormData` (`status`, `error`,

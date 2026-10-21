@@ -30,7 +30,7 @@ import type {
   EpLocaleAndCurrency,
   EpLocaleAndCurrencyResolver,
 } from "../../types/locale-and-currency";
-import { DEFAULT_HOST_ALLOWLIST } from "../host-allowlist";
+import { resolveHostAllowlist } from "../host-allowlist";
 import type { EpAccountSlot, EpLapsedAccount } from "./envelope";
 import {
   ENVELOPE_LIFETIME_SECONDS,
@@ -156,21 +156,6 @@ function resolveTrustedOrigins(
     if (trimmed) out.add(trimmed);
   }
   return [...out];
-}
-
-/** The defaults, extended (never replaced) by the option and the env var. */
-function resolveHostAllowlist(
-  configured: readonly string[] | undefined
-): readonly string[] {
-  const out = new Set<string>(DEFAULT_HOST_ALLOWLIST);
-  for (const host of [
-    ...(configured ?? []),
-    ...(process.env.EP_HOST_ALLOWLIST ?? "").split(","),
-  ]) {
-    const trimmed = host.trim();
-    if (trimmed) out.add(trimmed);
-  }
-  return Object.freeze([...out]);
 }
 
 export interface EpSessionData {

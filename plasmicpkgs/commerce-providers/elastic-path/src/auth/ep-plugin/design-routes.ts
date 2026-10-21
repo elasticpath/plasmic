@@ -1,15 +1,18 @@
+import type { EpDesignFnName } from "../../ep-server-functions/design-fn-names";
+import {
+  epDesignFnNotServedMessage,
+  isEpDesignFnName,
+} from "../../ep-server-functions/design-fn-names";
 import { epGetProduct } from "../../ep-server-functions/getProduct";
 import { epGetProductList } from "../../ep-server-functions/getProductList";
 import { epGetProductPage } from "../../ep-server-functions/getProductPage";
 import { epGetRelatedProducts } from "../../ep-server-functions/getRelatedProducts";
 import { epGetSearchAttributes } from "../../ep-server-functions/getSearchAttributes";
-import {
-  epDesignFnNotServedMessage,
-  isEpDesignFnName,
-} from "../../ep-server-functions/design-fn-names";
-import type { EpDesignFnName } from "../../ep-server-functions/design-fn-names";
 import { withEpSession } from "../../ep-server-functions/session-context";
+import { resolveHostAllowlist } from "../host-allowlist";
 import type { EpAuth } from "./create-ep-auth-better";
+import type { EpResolveConfig } from "./ep-plugin";
+import type { EpStoreConfig } from "./implicit-token";
 import { mintImplicitEpToken, resolveEpStore } from "./implicit-token";
 import { isTrustedDevEnvironment } from "./production-guard";
 
@@ -35,6 +38,11 @@ const CORS_HEADERS: Record<string, string> = {
 
 interface DesignRouteContext {
   params: Promise<{ fn?: string }>;
+}
+
+export interface EpDesignStore {
+  resolveConfig: EpResolveConfig;
+  hostAllowlist?: readonly string[];
 }
 
 export interface EpDesignRoutes {
@@ -97,8 +105,20 @@ function jsonResponse(body: unknown, status: number): Response {
   });
 }
 
-export function createEpDesignRoutes(epAuth: EpAuth): EpDesignRoutes {
-  const store = epAuth.config;
+function toStoreConfig(source: EpAuth | EpDesignStore): EpStoreConfig {
+  if ("config" in source) return source.config;
+  return {
+    clientId: "",
+    host: "",
+    hostAllowlist: resolveHostAllowlist(source.hostAllowlist),
+    resolveConfig: source.resolveConfig,
+  };
+}
+
+export function createEpDesignRoutes(
+  source: EpAuth | EpDesignStore
+): EpDesignRoutes {
+  const store = toStoreConfig(source);
 
   return {
     options() {
