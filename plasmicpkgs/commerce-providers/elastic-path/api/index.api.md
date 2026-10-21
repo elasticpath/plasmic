@@ -519,6 +519,27 @@ export interface EpAccountMemberResult {
     name?: string;
 }
 
+// @public
+export type EpAccountMemberUpdateRequest = {
+    name: string;
+    email?: string;
+} | {
+    email: string;
+    name?: string;
+};
+
+// @public (undocumented)
+export function EPAccountProfileField(props: EPAccountProfileFieldProps): React_2.JSX.Element | null;
+
+// @public (undocumented)
+export const epAccountProfileFieldMeta: CodeComponentMeta<EPAccountProfileFieldProps>;
+
+// @public (undocumented)
+export const EPAccountProfileFormProvider: React_2.ForwardRefExoticComponent<EPAccountProfileFormProviderProps & React_2.RefAttributes<EPAccountProfileFormProviderActions>>;
+
+// @public (undocumented)
+export const epAccountProfileFormProviderMeta: CodeComponentMeta<EPAccountProfileFormProviderProps>;
+
 // @public (undocumented)
 export const EPAccountProvider: React_2.ForwardRefExoticComponent<EPAccountProviderProps & React_2.RefAttributes<EPAccountProviderActions>>;
 
@@ -1042,6 +1063,11 @@ export interface EpIdentityOperations {
     signInAnonymously: {
         request: void;
         response: EpSessionEnvelope;
+    };
+    // (undocumented)
+    updateMember: {
+        request: EpAccountMemberUpdateRequest;
+        response: EpAccountMemberResult;
     };
 }
 
@@ -1667,6 +1693,12 @@ export function registerEPAccountGate(loader?: Registerable, customMeta?: CodeCo
 
 // @public (undocumented)
 export function registerEPAccountLoginFormProvider(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountLoginFormProviderProps>): void;
+
+// @public (undocumented)
+export function registerEPAccountProfileField(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountProfileFieldProps>): void;
+
+// @public (undocumented)
+export function registerEPAccountProfileFormProvider(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountProfileFormProviderProps>): void;
 
 // @public (undocumented)
 export function registerEPAccountProvider(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountProviderProps>): void;

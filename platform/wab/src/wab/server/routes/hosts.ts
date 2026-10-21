@@ -1,5 +1,6 @@
 import { ensureType } from "@/wab/shared/common";
 import { userDbMgr } from "@/wab/server/routes/util";
+import { BadRequestError } from "@/wab/shared/ApiErrors/errors";
 import { TrustedHostsListResponse } from "@/wab/shared/ApiSchema";
 import { Request, Response } from "express-serve-static-core";
 import { pick } from "lodash";
@@ -17,6 +18,9 @@ export async function getTrustedHostsForSelf(req: Request, res: Response) {
 export async function addTrustedHost(req: Request, res: Response) {
   const mgr = userDbMgr(req);
   const { url } = req.body;
+  if (typeof url !== "string" || !url.trim()) {
+    throw new BadRequestError("Missing url for trusted host");
+  }
   await mgr.addTrustedHost(url);
   res.json({});
 }

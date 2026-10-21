@@ -34,6 +34,11 @@ identity.member();
 // @ts-expect-error the server chooses the member; the browser sends nothing
 identity.member({ memberId: "member-1" });
 
+identity.updateMember({ name: "Ada Lovelace" });
+identity.updateMember({ email: "ada@example.com" });
+// @ts-expect-error the server chooses the member; the browser sends no id
+identity.updateMember({ memberId: "member-1" });
+
 // Deselecting is passing null, not omitting the field.
 identity.selectAccount({ accountId: "acct-1" });
 identity.selectAccount({ accountId: null });
