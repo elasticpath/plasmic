@@ -1,5 +1,6 @@
 import type { CartEntityResponse } from "@epcc-sdk/sdks-shopper";
 import { normalizeCart } from "../utils/normalize";
+import { SHIPPED_CART_RESPONSE } from "./shipped-cart-fixture";
 
 const cartResponse: CartEntityResponse = {
   data: {
@@ -156,6 +157,93 @@ describe("normalizeCart", () => {
       custom_inputs: {
         _selectedOptions: [{ id: "var-size", name: "Size", value: "Small" }],
       },
+    });
+  });
+
+  describe("a cart the checkout wrote its shipping line into", () => {
+    const shipped = SHIPPED_CART_RESPONSE;
+
+    it("lists and counts only what the shopper bought", () => {
+      const cart = normalizeCart(shipped);
+
+      expect(cart.items.map((i) => i.name)).toEqual(["PlayStation Plus"]);
+      expect(cart.itemCount).toBe(1);
+    });
+
+    it("keeps Elastic Path's own totals and promotion amounts untouched", () => {
+      const cart = normalizeCart(shipped);
+      const price = cart.meta?.display_price as any;
+
+      expect(price.with_tax).toEqual({
+        amount: 2519,
+        currency: "USD",
+        formatted: "$25.19",
+        float_price: 25.19,
+      });
+      expect(price.discount).toMatchObject({ amount: -280, formatted: "-$2.80" });
+      expect((cart.promotions[0] as any).meta.display_price.without_tax.value).toMatchObject({
+        amount: -280,
+        formatted: "-$2.80",
+      });
+    });
+
+    it("totals the cart without the shipping or what the code took off it", () => {
+      const price = normalizeCart(shipped).withoutShipping?.meta?.display_price as any;
+
+      expect(price.with_tax).toMatchObject({ amount: 1980, formatted: "$19.80" });
+      expect(price.without_tax.amount).toBe(1980);
+      expect(price.discount).toMatchObject({ amount: -220, formatted: "-$2.20" });
+      expect(price.without_discount.amount).toBe(2200);
+      expect(price.tax.amount).toBe(0);
+    });
+
+    it("shows the code's discount on the cart's own lines", () => {
+      const [promo] = normalizeCart(shipped).withoutShipping?.promotions as any[];
+
+      expect(promo.meta.display_price.without_tax.value).toMatchObject({
+        amount: -220,
+        formatted: "-$2.20",
+      });
+    });
+
+    it("leaves a cart with no shipping line as Elastic Path priced it", () => {
+      const cart = normalizeCart({
+        ...shipped,
+        included: {
+          items: shipped.included.items.filter((i: any) => i.id !== "ship-1"),
+        },
+      });
+
+      expect((cart.meta?.display_price as any).with_tax.formatted).toBe("$25.19");
+      expect((cart.withoutShipping?.meta?.display_price as any).with_tax.formatted).toBe("$25.19");
+      expect((cart.withoutShipping?.promotions[0] as any).meta.display_price.without_tax.value.amount).toBe(-280);
+    });
+  });
+
+  it("publishes nothing that carries the cart id", () => {
+    const cartId = "5a1d2c3e-0f4b-4c8e-9d7a-1b2c3d4e5f60";
+    const cart = normalizeCart({
+      data: {
+        ...cartResponse.data,
+        id: cartId,
+        name: "Cart",
+        description: "Shopping cart",
+        payment_intent_id: "pi_3Q0abc",
+        links: { self: `https://api.test.com/v2/carts/${cartId}` },
+        relationships: {
+          items: { data: [{ type: "cart_item", id: "line-1" }] },
+          accounts: { data: [{ type: "account", id: "acct-1" }] },
+        },
+      },
+      included: cartResponse.included,
+    });
+
+    expect(JSON.stringify(cart)).not.toContain(cartId);
+    expect(cart).not.toHaveProperty("id");
+    expect(cart).not.toHaveProperty("links");
+    expect(cart.name).toBe("Cart");
+    expect(cart.relationships?.accounts).toEqual({
+      data: [{ type: "account", id: "acct-1" }],
     });
   });
 });

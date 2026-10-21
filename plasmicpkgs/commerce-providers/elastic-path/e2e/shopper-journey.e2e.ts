@@ -77,6 +77,12 @@ async function cart(page: Page): Promise<any> {
   return (await fromPage(page, "/api/ep/proxy/getCart")).body;
 }
 
+/** The cart's line ids, sorted. The published cart has no id of its own. */
+async function cartLines(page: Page): Promise<string[]> {
+  const items: Array<{ id: string }> = (await cart(page))?.items ?? [];
+  return items.map((item) => item.id).sort();
+}
+
 test.describe("one shopper journey", () => {
   test.skip(
     !USERNAME || !PASSWORD,
@@ -129,8 +135,8 @@ test.describe("one shopper journey", () => {
     await expect
       .poll(async () => (await cart(page))?.itemCount ?? 0, { timeout: 30_000 })
       .toBeGreaterThan(0);
-    const guestCart = (await cart(page)).id;
-    expect(guestCart).toBeTruthy();
+    const guestLines = await cartLines(page);
+    expect(guestLines.length).toBeGreaterThan(0);
 
     // 4 — signing in lists both accounts and selects neither.
     const login = await fromPage(page, "/api/ep/ep/account/login", {
@@ -148,7 +154,7 @@ test.describe("one shopper journey", () => {
     });
     expect(selected.status).toBe(200);
     expect(selected.body.session.epAccount.id).toBe(first.id);
-    expect((await cart(page)).id).toBe(guestCart);
+    expect(await cartLines(page)).toEqual(guestLines);
 
     // 6 — switching account changes the price. The milestone's reason for
     // existing: an anonymous credential minted in the page can never carry an
@@ -168,8 +174,8 @@ test.describe("one shopper journey", () => {
       quantity: 1,
       location: ADD_LOCATION,
     });
-    const accountCart = (await cart(page))?.id;
-    expect(accountCart).toBeTruthy();
+    const accountLines = await cartLines(page);
+    expect(accountLines.length).toBeGreaterThan(0);
 
     // 7 — checkout still reaches payment.
     await page.goto("/checkout");
@@ -190,7 +196,7 @@ test.describe("one shopper journey", () => {
     );
     if (REVISIT_WAIT_MS > 0) await page.waitForTimeout(REVISIT_WAIT_MS);
     await page.goto(LISTING_PATH);
-    expect((await cart(page))?.id).toBe(accountCart);
+    expect(await cartLines(page)).toEqual(accountLines);
 
     expect(toElasticPath).toEqual([]);
   });

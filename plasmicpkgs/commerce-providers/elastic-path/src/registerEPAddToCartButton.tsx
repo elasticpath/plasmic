@@ -18,6 +18,7 @@ import {
 import { readEpErrorCode } from "./browser-call";
 import { epAddCartItem } from "./ep-server-functions/cart-mutations";
 import { cartWriteErrorText } from "./ep-server-functions/cart-mutation-error-copy";
+import { useCanvasPreviewState } from "./utils/canvas-preview-state";
 
 const log = createLogger("EPAddToCartButton");
 
@@ -88,22 +89,22 @@ export const epAddToCartButtonMeta: CodeComponentMeta<EPAddToCartButtonProps> = 
       type: "boolean",
       hidden: () => true,
       description:
-        "Deprecated and ignored. Use EP Stock Provider / EP Stock Field.",
+        "Deprecated — ignored. Use EP Stock Provider / EP Stock Field.",
     },
     locationId: {
       type: "string",
       hidden: () => true,
-      description: "Deprecated and ignored. Use EP Location Picker.",
+      description: "Deprecated — ignored. Use EP Location Picker.",
     },
     locationSlug: {
       type: "string",
       hidden: () => true,
-      description: "Deprecated and ignored. Use EP Location Picker.",
+      description: "Deprecated — ignored. Use EP Location Picker.",
     },
     showStockStatus: {
       type: "boolean",
       hidden: () => true,
-      description: "Deprecated and ignored. Use EP Stock Field.",
+      description: "Deprecated — ignored. Use EP Stock Field.",
     },
   },
   importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
@@ -115,10 +116,11 @@ export function EPAddToCartButton(props: EPAddToCartButtonProps) {
   const {
     children,
     className,
-    previewState = "auto",
+    previewState: savedPreviewState,
     onAddedToCart,
     showError = true,
   } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const product = useSelector("currentProduct") as Product | undefined;
   // An invalid bundle configuration is rejected by Elastic Path, so the button
@@ -179,7 +181,7 @@ export function EPAddToCartButton(props: EPAddToCartButtonProps) {
       log.error("Add to cart failed", {
         error: message,
         code: readEpErrorCode(err),
-      } as Record<string, unknown>);
+      });
       setError(cartWriteErrorText(err, "add"));
     } finally {
       setIsLoading(false);

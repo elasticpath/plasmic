@@ -118,7 +118,7 @@ export async function cartHasPhysicalItem(
         {
           requested: ids.length,
           resolved: products.length,
-        } as Record<string, unknown>
+        }
       );
       return true;
     }
@@ -126,7 +126,7 @@ export async function cartHasPhysicalItem(
   } catch (err) {
     log.error("Shippability lookup failed — proceeding without it", {
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return false;
   }
 }

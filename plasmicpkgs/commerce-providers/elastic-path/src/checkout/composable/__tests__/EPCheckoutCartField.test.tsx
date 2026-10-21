@@ -28,6 +28,10 @@ import { render } from "@testing-library/react";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { EPCheckoutCartField } = require("../EPCheckoutCartField");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { normalizeCart } = require("../../../utils/normalize");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { SHIPPED_CART_RESPONSE } = require("../../../test/shipped-cart-fixture");
 
 const money = (amount: number) => ({
   amount,
@@ -90,6 +94,17 @@ describe("EPCheckoutCartField", () => {
       expect(container.textContent).toBe(expected);
     });
 
+    it("totals a cart the checkout wrote its shipping line into without that line", () => {
+      selectors({ cart: normalizeCart(SHIPPED_CART_RESPONSE) });
+      const { container } = render(
+        <>
+          <EPCheckoutCartField field="formattedTotal" />|
+          <EPCheckoutCartField field="itemCount" />
+        </>
+      );
+      expect(container.textContent).toBe("$19.80|1");
+    });
+
     it("falls back to the without-tax total when the cart carries no with_tax", () => {
       selectors({
         cart: { ...CART, meta: { display_price: { without_tax: money(6200) } } },
@@ -137,7 +152,8 @@ describe("EPCheckoutCartField", () => {
   });
 
   describe("design-time preview", () => {
-    it("uses the mock cart when withData is forced", () => {
+    it("uses the mock cart when withData is forced on the canvas", () => {
+      mockUsePlasmicCanvasContext.mockReturnValue({});
       selectors({});
       const { container } = render(
         <EPCheckoutCartField field="formattedTotal" previewState="withData" />
@@ -154,7 +170,9 @@ describe("EPCheckoutCartField", () => {
       expect(container.textContent).toBe("$62.00");
     });
 
-    it("uses the mock line for item fields when withData is forced", () => {
+    it("uses the mock line for item fields when withData is forced on the canvas", () => {
+
+      mockUsePlasmicCanvasContext.mockReturnValue({});
       selectors({});
       const { container } = render(
         <EPCheckoutCartField field="formattedPrice" previewState="withData" />

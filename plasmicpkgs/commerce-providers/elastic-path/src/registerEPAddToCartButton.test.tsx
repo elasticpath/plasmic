@@ -295,8 +295,8 @@ describe("EPAddToCartButton", () => {
     expect(readState().error).toBeNull();
   });
 
-  it("previewState='loading' forces isLoading=true regardless of runtime state", () => {
-    setUp();
+  it("previewState='loading' forces isLoading=true regardless of runtime state on the canvas", () => {
+    setUp({ inEditor: true });
 
     render(
       <EPAddToCartButton previewState="loading">Add</EPAddToCartButton>
@@ -305,8 +305,8 @@ describe("EPAddToCartButton", () => {
     expect(readState().isLoading).toBe(true);
   });
 
-  it("previewState='error' forces a sample error regardless of runtime state", () => {
-    setUp();
+  it("previewState='error' forces a sample error regardless of runtime state on the canvas", () => {
+    setUp({ inEditor: true });
 
     render(<EPAddToCartButton previewState="error">Add</EPAddToCartButton>);
 

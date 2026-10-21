@@ -60,9 +60,10 @@ export type CartItem = Omit<EpCartItem, "type"> & {
 
 /**
  * Elastic Path's cart, augmented with only what a Studio binding expression
- * cannot compute. See docs/adr/0002-augmented-ep-shapes-not-normalized.md.
+ * cannot compute, minus the cart id, which stays on the server. See
+ * docs/adr/0002-augmented-ep-shapes-not-normalized.md.
  */
-export type Cart = Omit<EpCart, "meta"> & {
+export type Cart = Omit<EpCart, "meta" | "id" | "links"> & {
   meta?: CartMeta;
   /** Elastic Path side-loads these under `included`. */
   items: CartItem[];
@@ -70,4 +71,16 @@ export type Cart = Omit<EpCart, "meta"> & {
   promotions: CartItem[];
   /** Quantity sum; Elastic Path exposes only a line count. */
   itemCount: number;
+  /**
+   * The cart's totals and promotions without the checkout's shipping line,
+   * so they add up to `items`. The same as `meta` and `promotions` when the
+   * cart has no shipping line; otherwise derived, with `formatted` from
+   * `Intl`.
+   */
+  withoutShipping?: CartWithoutShipping;
+};
+
+export type CartWithoutShipping = {
+  meta?: CartMeta;
+  promotions: CartItem[];
 };

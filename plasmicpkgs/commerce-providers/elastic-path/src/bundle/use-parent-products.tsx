@@ -139,7 +139,7 @@ export function useParentProducts({
       onError: (err: Error) => {
         log.error("Error fetching parent products", {
           error: err.message,
-        } as Record<string, unknown>);
+        });
       },
     }
   );

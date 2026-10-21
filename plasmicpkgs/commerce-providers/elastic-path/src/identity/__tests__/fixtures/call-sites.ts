@@ -47,7 +47,15 @@ identity.selectAccount({ accountId: 7 });
 
 export async function readsWhatIsReleased() {
   const { session } = await identity.signInAnonymously();
-  return { account: session.epAccount?.name, cart: session.epCartId };
+  return { account: session.epAccount?.name, expires: session.epExpires };
+}
+
+export async function cannotReadOrSetTheCart() {
+  const { session } = await identity.signInAnonymously();
+  // @ts-expect-error the cart id stays on the server
+  identity.setCart({ cartId: "cart-1" });
+  // @ts-expect-error the handler withholds the cart id
+  return session.epCartId;
 }
 
 export async function cannotReadACredential() {

@@ -92,22 +92,24 @@ export const epSearchBoxMeta: CodeComponentMeta<EPSearchBoxProps> = {
       displayName: "Preview State",
       advanced: true,
     },
-    // Deprecated — pre-PRD #308 props preserved so existing project bundles
-    // referencing these names stay valid against the new metadata. They have
-    // no runtime effect; set placeholder/autofocus/showclear on the Plasmic
-    // input or button you drop into the slot.
     placeholder: {
       type: "string",
+      description:
+        "Deprecated — ignored. Set the placeholder on the input you put in the slot.",
       advanced: true,
       hidden: () => true,
     },
     autoFocus: {
       type: "boolean",
+      description:
+        "Deprecated — ignored. Set auto focus on the input you put in the slot.",
       advanced: true,
       hidden: () => true,
     },
     showClear: {
       type: "boolean",
+      description:
+        "Deprecated — ignored. Show or hide the clear button in the slot instead, for example with $ctx.searchFieldData.isEmpty.",
       advanced: true,
       hidden: () => true,
     },

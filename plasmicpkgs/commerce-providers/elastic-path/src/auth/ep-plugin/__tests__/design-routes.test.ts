@@ -79,7 +79,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("the four declared names", () => {
+describe("the declared names", () => {
   it("serves each of them under a bare implicit token", async () => {
     const routes = createEpDesignRoutes(makeAuth());
     let seen: any;
@@ -132,6 +132,7 @@ describe("the four declared names", () => {
       "getProductList",
       "getProductPage",
       "getRelatedProducts",
+      "getSearchAttributes",
     ]);
   });
 });

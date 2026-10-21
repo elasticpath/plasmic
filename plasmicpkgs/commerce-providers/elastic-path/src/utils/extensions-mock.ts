@@ -1,5 +1,5 @@
 import type { Product } from "../types/product";
-import { mockProduct } from "./design-time-data";
+import { SAMPLE_PRODUCT_ID, mockProduct } from "./design-time-data";
 import type { ExtensionTemplate, ExtensionsData } from "../types/extensions";
 import { normalizeExtensions } from "./field-format";
 
@@ -30,7 +30,7 @@ export const MOCK_EXTENSIONS_DATA: ExtensionsData = {
 
 /** Mock product for the field components at design time; carries the extensions the dropdowns read. */
 export const MOCK_PRODUCT: Product = mockProduct({
-  id: "mock-product",
+  id: SAMPLE_PRODUCT_ID,
   name: "Sample Product",
   description:
     "This is a placeholder product shown only at design time. Bind a real product (or productId) to fetch live data.",

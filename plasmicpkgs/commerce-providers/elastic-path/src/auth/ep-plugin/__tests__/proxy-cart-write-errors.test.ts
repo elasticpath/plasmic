@@ -16,8 +16,14 @@ function json(status: number, body: unknown): Response {
 
 let originalFetch: typeof fetch;
 const originalNodeEnv = process.env.NODE_ENV;
+const OUT_OF_STOCK = () =>
+  json(400, {
+    errors: [{ status: 400, title: "Insufficient stock", detail: EP_REASON }],
+  });
+let itemsAnswer: () => Response = OUT_OF_STOCK;
 
 beforeEach(() => {
+  itemsAnswer = OUT_OF_STOCK;
   originalFetch = globalThis.fetch;
   globalThis.fetch = vi.fn(async (input: any, init?: RequestInit) => {
     const request = input instanceof Request ? input : new Request(input, init);
@@ -37,9 +43,7 @@ beforeEach(() => {
       request.method === "POST" &&
       url.pathname === `/v2/carts/${CART_ID}/items`
     ) {
-      return json(400, {
-        errors: [{ status: 400, title: "Insufficient stock", detail: EP_REASON }],
-      });
+      return itemsAnswer();
     }
     throw new Error(`Unexpected request: ${request.method} ${url}`);
   }) as any;
@@ -89,7 +93,7 @@ describe("a cart write that Elastic Path refuses, through the proxy route", () =
     const res = await addOutOfStockItem();
     const body = await res.json();
 
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(409);
     expect(body.code).toBe("insufficient_stock");
     expect(body.message).toBe(`epAddCartItem: ${EP_REASON}`);
   });
@@ -100,11 +104,39 @@ describe("a cart write that Elastic Path refuses, through the proxy route", () =
     const res = await addOutOfStockItem();
     const body = await res.json();
 
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(409);
     expect(body).toEqual({
       error: "dispatch_failed",
       code: "insufficient_stock",
       correlationId: expect.any(String),
     });
+  });
+
+  it("answers any other Elastic Path refusal with 409", async () => {
+    (process.env as any).NODE_ENV = "production";
+    itemsAnswer = () =>
+      json(404, { errors: [{ status: 404, title: "Not Found", detail: "Product not found" }] });
+
+    const res = await addOutOfStockItem();
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: "dispatch_failed",
+      code: "dispatch_failed",
+      correlationId: expect.any(String),
+    });
+  });
+
+  it.each([
+    ["an Elastic Path server error", () => json(503, { errors: [{ status: 503, title: "Unavailable" }] })],
+    ["an Elastic Path credential refusal", () => json(401, { errors: [{ status: 401, title: "Unauthorized" }] })],
+  ])("keeps %s a 500", async (_, answer) => {
+    (process.env as any).NODE_ENV = "production";
+    itemsAnswer = answer;
+
+    const res = await addOutOfStockItem();
+
+    expect(res.status).toBe(500);
+    expect((await res.json()).error).toBe("dispatch_failed");
   });
 });

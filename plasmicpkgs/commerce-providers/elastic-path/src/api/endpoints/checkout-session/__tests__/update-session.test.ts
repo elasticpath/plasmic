@@ -180,6 +180,7 @@ describe("handleUpdateSession", () => {
         createMockCtx(makeSession())
       );
       expect(res.status).toBe(200);
+      expect(JSON.stringify(res.body)).not.toContain("cart-abc");
     });
 
     it("merges customerInfo onto the session", async () => {
@@ -353,7 +354,12 @@ describe("handleUpdateSession — shipping selection write", () => {
     });
   }
 
-  it("writes the resolved shipping line when a rate is selected and rates exist", async () => {
+  it("prices the resolved shipping line when a rate is selected and rates exist, then takes it out", async () => {
+    const line = { id: "ship-1", sku: EP_SHIPPING_LINE_SKU, quantity: 1, unit_price: { amount: 1500 } };
+    epSdk.getACart
+      .mockResolvedValueOnce(cartFetch([]))
+      .mockResolvedValue(cartFetch([line], 9500));
+
     const res = await handleUpdateSession(
       createMockReq({ selectedShippingRateId: "rate-express" }),
       ctxWithAdmin(makeSession({ availableShippingRates: RATES }))
@@ -364,6 +370,8 @@ describe("handleUpdateSession — shipping selection write", () => {
     const body = epSdk.manageCarts.mock.calls[0][0].body.data;
     expect(body.sku).toBe(EP_SHIPPING_LINE_SKU);
     expect(body.price.amount).toBe(1500); // server amount for the selected id
+    expect((res.body as any).data.session.totals.total).toBe(9500);
+    expect(epSdk.deleteACartItem.mock.calls.map((c) => c[0].path.cartitemID)).toEqual(["ship-1"]);
   });
 
   it("does NOT write when no rates have been computed yet (selection before calculate-shipping)", async () => {
@@ -395,18 +403,27 @@ describe("handleUpdateSession — shipping selection write", () => {
     expect(epSdk.manageCarts).not.toHaveBeenCalled();
   });
 
-  it("still returns 200 (best-effort) when the EP cart write fails — deferred to /pay", async () => {
+  it("answers 502 SHIPPING_NOT_APPLIED and leaves the rate unchosen when the EP cart write fails", async () => {
     epSdk.manageCarts.mockRejectedValue(new Error("EP cart write rejected"));
     const res = await handleUpdateSession(
       createMockReq({ selectedShippingRateId: "rate-standard" }),
       ctxWithAdmin(makeSession({ availableShippingRates: RATES }))
     );
-    expect(res.status).toBe(200);
-    expect((res.body as any).data.session.selectedShippingRateId).toBe("rate-standard");
+    expect(res.status).toBe(502);
+    expect((res.body as any).error.code).toBe("SHIPPING_NOT_APPLIED");
+    expect((res.body as any).data.session.selectedShippingRateId).toBeNull();
   });
 
-  it("refreshes session.totals from the server rate + shipping-write cart (no extra GET)", async () => {
-    epSdk.getACart.mockResolvedValue(cartFetch([], 1999, "USD"));
+  it("refreshes session.totals from the server rate + shipping-write cart, then takes the line out", async () => {
+    epSdk.getACart
+      .mockResolvedValueOnce(cartFetch([], 1400, "USD"))
+      .mockResolvedValue(
+        cartFetch(
+          [{ id: "ship-1", sku: "__ep_shipping", quantity: 1, unit_price: { amount: 599 } }],
+          1999,
+          "USD"
+        )
+      );
     const store = createMockStore(
       makeSession({
         availableShippingRates: [EXAMPLE_STANDARD],
@@ -434,7 +451,8 @@ describe("handleUpdateSession — shipping selection write", () => {
     expect(session.totals.total).toBe(1999);
     expect(session.totals.subtotal).toBe(1400);
 
-    expect(epSdk.getACart).toHaveBeenCalledTimes(2);
+    expect(epSdk.getACart).toHaveBeenCalledTimes(3);
+    expect(epSdk.deleteACartItem.mock.calls.map((c) => c[0].path.cartitemID)).toEqual(["ship-1"]);
 
     expect(store.set).toHaveBeenCalledTimes(1);
     const persisted: CheckoutSession = store.set.mock.calls[0][1];
@@ -442,12 +460,13 @@ describe("handleUpdateSession — shipping selection write", () => {
     expect(persisted.totals?.total).toBe(1999);
   });
 
-  it("does not update totals when the shipping-line write fails", async () => {
+  it("drops the shipping from totals and the rate when the shipping-line write fails", async () => {
     epSdk.manageCarts.mockRejectedValue(new Error("EP cart write rejected"));
     const store = createMockStore(
       makeSession({
+        selectedShippingRateId: "example-standard",
         availableShippingRates: [EXAMPLE_STANDARD],
-        totals: BASE_TOTALS,
+        totals: SHIPPED_TOTALS,
       })
     );
     const res = await handleUpdateSession(
@@ -458,12 +477,11 @@ describe("handleUpdateSession — shipping selection write", () => {
       })
     );
 
-    expect(res.status).toBe(200);
-    expect((res.body as any).data.session.selectedShippingRateId).toBe(
-      "example-standard"
-    );
+    expect(res.status).toBe(502);
+    expect((res.body as any).data.session.selectedShippingRateId).toBeNull();
     expect((res.body as any).data.session.totals).toEqual(BASE_TOTALS);
     const persisted: CheckoutSession = store.set.mock.calls[0][1];
+    expect(persisted.selectedShippingRateId).toBeNull();
     expect(persisted.totals).toEqual(BASE_TOTALS);
   });
 });

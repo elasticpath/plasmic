@@ -171,23 +171,27 @@ describe("an HTTPS deployment reads its own session cookie", () => {
     expect((await refreshed.json()).user.id).toBe(mintedUserId);
   });
 
-  it("persists a cartId through /ep/cart", async () => {
+  it("records the session cart", async () => {
     const auth = buildAuth(baseURL);
     const minted = await mintAnonymous(auth, baseURL);
 
-    const res = await auth.handler(
-      new Request(`${baseURL}/api/auth/ep/cart`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Origin: baseURL,
-          cookie: cookieHeader(minted),
-        },
-        body: JSON.stringify({ cartId: CART_ID }),
-      })
-    );
-
+    const res = await (auth.api as any).epCart({
+      body: { cartId: CART_ID },
+      headers: new Headers({ cookie: cookieHeader(minted) }),
+      asResponse: true,
+    });
     expect(res.status).toBe(200);
-    expect((await res.json()).session.epCartId).toBe(CART_ID);
+
+    const jar = new Map<string, string>();
+    for (const pair of `${cookieHeader(minted)}; ${cookieHeader(res)}`.split("; ")) {
+      const eq = pair.indexOf("=");
+      if (eq > 0) jar.set(pair.slice(0, eq), pair.slice(eq + 1));
+    }
+    const session = await auth.api.getSession({
+      headers: new Headers({
+        cookie: [...jar].map(([n, v]) => `${n}=${v}`).join("; "),
+      }),
+    } as any);
+    expect((session as any).session.epCartId).toBe(CART_ID);
   });
 });

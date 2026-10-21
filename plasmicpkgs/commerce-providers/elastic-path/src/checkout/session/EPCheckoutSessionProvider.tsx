@@ -22,12 +22,17 @@ import React, {
   useRef,
   useState,
 } from "react";
+import useSWR, { mutate as swrMutate } from "swr";
 import type { Registerable } from "../../registerable";
+import { epCartCacheKey } from "../../cart-provider/cache-keys";
+import { epGetCart, epReadCart } from "../../ep-server-functions/getCart";
 import { createLogger } from "../../utils/logger";
+import type { Cart } from "../../types/cart";
 import type {
-  ClientCheckoutSession,
+  CheckoutSessionStatus,
   UpdateSessionRequest,
 } from "./types";
+import { hasPurchasableItem } from "./purchasable-items";
 import { useCheckoutSession } from "./use-checkout-session";
 import type { PreviewState } from "./design-time-data";
 import { getMockSession } from "./design-time-data";
@@ -38,6 +43,27 @@ import type {
 } from "./payment-registration-context";
 
 const log = createLogger("EPCheckoutSessionProvider");
+
+const TERMINAL = new Set<CheckoutSessionStatus>(["complete", "expired"]);
+
+const CREATE_FAILED = "Checkout could not start. Please try again.";
+
+const EMPTY_CART_COPY = "Your cart is empty";
+
+const FOCUS_SYNC_INTERVAL_MS = 2000;
+
+/** Watches the shared cart cache without reading the cart on mount or focus. */
+const CART_WATCH = {
+  revalidateOnMount: false,
+  revalidateOnFocus: false,
+  revalidateIfStale: false,
+  revalidateOnReconnect: false,
+};
+
+interface SessionError {
+  message: string;
+  code: string | null;
+}
 
 // ---------------------------------------------------------------------------
 // Props
@@ -50,9 +76,7 @@ export interface EPCheckoutSessionProviderProps {
   className?: string;
   /**
    * When true (default), the provider auto-creates a checkout session on
-   * first render if none exists. The server resolves `cartId` from the
-   * better-auth session, so designers don't have to thread it through
-   * Plasmic interactions.
+   * first render if none exists, for the shopper's session cart.
    */
   autoCreate?: boolean;
 }
@@ -100,69 +124,202 @@ const EPCheckoutSessionRuntime = React.forwardRef<
     []
   );
 
+  // A refused create (an empty cart, no cart): the page shows it instead of
+  // the finished session it would have replaced.
+  const [createError, setCreateError] = useState<SessionError | null>(null);
+  const terminal = !session || TERMINAL.has(session.status);
+  const blocked = createError !== null && terminal;
+
+  // The cart an open checkout pays for, read again whenever the shopper may
+  // have changed it.
+  const watchKey =
+    session?.status === "open" && session.payment?.status !== "requires_action"
+      ? session.id
+      : null;
+  const watchKeyRef = useRef(watchKey);
+  watchKeyRef.current = watchKey;
+  const [checkedCart, setCheckedCart] = useState<{ cart: Cart; key: string } | null>(
+    null
+  );
+  const checkCart = useCallback(async () => {
+    const key = watchKeyRef.current;
+    if (!key) return;
+    const fresh = (await swrMutate(epCartCacheKey())) as Cart | null | undefined;
+    if (fresh && typeof fresh === "object" && watchKeyRef.current === key) {
+      setCheckedCart({ cart: fresh, key });
+    }
+  }, []);
+  useEffect(() => {
+    if (watchKey) void checkCart();
+  }, [watchKey, checkCart]);
+
+  const cartEmpty =
+    !!watchKey &&
+    checkedCart !== null &&
+    checkedCart.key === watchKey &&
+    !hasPurchasableItem(checkedCart.cart.items);
+
+  const emptied = cartEmpty && !blocked;
+  const shownSession = blocked || emptied ? null : session;
+
+  const runCreate = useCallback(async () => {
+    let resp: Awaited<ReturnType<typeof createSession>> | undefined;
+    try {
+      resp = await createSession();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.warn("createSession failed", { error: message });
+      setCreateError({ message: CREATE_FAILED, code: "NETWORK_ERROR" });
+      return resp;
+    }
+    setCreateError(
+      resp?.success
+        ? null
+        : {
+            message: resp?.error?.message || CREATE_FAILED,
+            code: resp?.error?.code ?? null,
+          }
+    );
+    return resp;
+  }, [createSession]);
+
   // RefActions
   const handleCreateSession = useCallback(
-    async (cartId?: string) => {
-      // cartId is now optional — server resolves from the better-auth
-      // session when omitted.
-      try {
-        await createSession(cartId);
-      } catch (err) {
-        log.error("createSession failed", {
-          error: err instanceof Error ? err.message : String(err),
-        } as Record<string, unknown>);
-      }
+    async (_ignoredCartId?: string) => {
+      await runCreate();
     },
-    [createSession]
+    [runCreate]
   );
 
   // Auto-create on first render when no session exists.
   const autoCreatedRef = useRef(false);
+  const openSessionIdRef = useRef<string | null>(null);
+  if (session?.status === "open") openSessionIdRef.current = session.id;
   useEffect(() => {
     if (!autoCreate) return;
     if (isLoading) return;
     // Create a fresh session when none exists OR the existing one is terminal
     // (a finished/expired checkout must not block starting a new one — e.g.
     // returning to /checkout with a new cart after completing an order).
-    const needsSession =
-      !session || session.status === "complete" || session.status === "expired";
-    if (!needsSession) return;
+    // An order just placed on this page stays shown.
+    if (!terminal) return;
+    if (
+      session?.status === "complete" &&
+      session.id === openSessionIdRef.current
+    ) {
+      return;
+    }
     if (autoCreatedRef.current) return;
     autoCreatedRef.current = true;
-    createSession().catch((err) => {
-      log.warn("Auto-create session failed", {
-        error: err instanceof Error ? err.message : String(err),
-      } as Record<string, unknown>);
-    });
-  }, [autoCreate, isLoading, session, createSession]);
+    void runCreate();
+  }, [autoCreate, isLoading, terminal, session?.status, session?.id, runCreate]);
+
+  const placeOrderInFlightRef = useRef(false);
+
+  // The cart changed (on this page or, seen on focus, in another tab): bring
+  // the session's totals up to date before the shopper pays, or try again to
+  // start the checkout a refused create could not.
+  const syncWithCart = useCallback(() => {
+    if (placeOrderInFlightRef.current) return;
+    if (blocked) {
+      void runCreate();
+    } else if (session?.status === "open") {
+      void refresh();
+    }
+  }, [blocked, runCreate, session?.status, refresh]);
+
+  const { data: cart } = useSWR(epCartCacheKey(), () => epGetCart(), CART_WATCH);
+  const seenCartRef = useRef(cart);
+  useEffect(() => {
+    const seen = seenCartRef.current;
+    seenCartRef.current = cart;
+    if (seen === undefined || seen === cart) return;
+    const key = watchKeyRef.current;
+    if (key && cart && typeof cart === "object") {
+      setCheckedCart({ cart, key });
+    }
+    syncWithCart();
+  }, [cart, syncWithCart]);
+
+  const lastFocusSyncRef = useRef(0);
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      return;
+    }
+    const onFocus = () => {
+      if (document.visibilityState === "hidden") return;
+      const now = Date.now();
+      if (now - lastFocusSyncRef.current < FOCUS_SYNC_INTERVAL_MS) return;
+      lastFocusSyncRef.current = now;
+      syncWithCart();
+      void swrMutate(epCartCacheKey());
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [syncWithCart]);
+
+  // While a refused create stands, writes would reach the finished session it
+  // replaced; answer them with the refusal instead. An emptied cart is
+  // answered the same way.
+  const refusal = useMemo(
+    () =>
+      blocked && createError
+        ? {
+            success: false as const,
+            error: {
+              message: createError.message,
+              ...(createError.code ? { code: createError.code } : {}),
+            },
+          }
+        : emptied
+          ? {
+              success: false as const,
+              error: { message: EMPTY_CART_COPY, code: "EMPTY_CART" },
+            }
+          : null,
+    [blocked, createError, emptied]
+  );
+
+  const updateSessionData = useCallback(
+    async (data: UpdateSessionRequest) => refusal ?? updateSessionFn(data),
+    [refusal, updateSessionFn]
+  );
+
+  const calculateShippingData = useCallback(
+    async () => refusal ?? calcShippingFn(),
+    [refusal, calcShippingFn]
+  );
 
   const handleUpdateSession = useCallback(
     async (data?: Record<string, unknown>) => {
       if (!data) return;
       try {
-        await updateSessionFn(data as UpdateSessionRequest);
+        await updateSessionData(data as UpdateSessionRequest);
       } catch (err) {
         log.error("updateSession failed", {
           error: err instanceof Error ? err.message : String(err),
-        } as Record<string, unknown>);
+        });
       }
     },
-    [updateSessionFn]
+    [updateSessionData]
   );
 
   const handleCalculateShipping = useCallback(async () => {
     try {
-      await calcShippingFn();
+      await calculateShippingData();
     } catch (err) {
       log.error("calculateShipping failed", {
         error: err instanceof Error ? err.message : String(err),
-      } as Record<string, unknown>);
+      });
     }
-  }, [calcShippingFn]);
-
-  const placeOrderInFlightRef = useRef(false);
+  }, [calculateShippingData]);
 
   const handlePlaceOrder = useCallback(async () => {
+    if (refusal) return refusal;
     if (placeOrderInFlightRef.current) {
       return {
         success: false,
@@ -173,12 +330,35 @@ const EPCheckoutSessionRuntime = React.forwardRef<
       };
     }
     placeOrderInFlightRef.current = true;
+    // The total on the page when the shopper pressed Place: the server
+    // charges it or refuses.
+    const shownTotal = session?.totals?.total;
+    const refuseBeforePay = async () => {
+      let liveCart;
+      try {
+        liveCart = await epReadCart();
+      } catch (err) {
+        log.warn("Cart read before payment failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return null;
+      }
+      if (liveCart && !hasPurchasableItem(liveCart.items)) {
+        return {
+          success: false,
+          error: { message: EMPTY_CART_COPY, code: "EMPTY_CART" },
+        };
+      }
+      return null;
+    };
     try {
       // Free orders (zero total) need no card / gateway — the server settles
       // them with the manual gateway. Don't ask a registered gateway to
       // tokenize (there's no card to read).
-      if (session?.totals?.total === 0) {
-        return await placeOrderFn({ gateway: "manual" });
+      if (shownTotal === 0) {
+        const refused = await refuseBeforePay();
+        if (refused) return refused;
+        return await placeOrderFn({ gateway: "manual", shownTotal });
       }
 
       const gw = gatewayRef.current;
@@ -196,17 +376,39 @@ const EPCheckoutSessionRuntime = React.forwardRef<
         };
       }
 
+      // A card check (3DS) from an earlier attempt is still open: its order
+      // is held, so finish or cancel that check instead of taking a new card.
+      if (
+        session?.payment?.status === "requires_action" &&
+        session.payment.gateway === gw.name &&
+        typeof gw.completeRequiresAction === "function"
+      ) {
+        return await gw.completeRequiresAction(session);
+      }
+
+      const refused = await refuseBeforePay();
+      if (refused) return refused;
+
       // Ask the gateway component for its data (e.g. tokenize the card)
       const gwData = await gw.confirm();
-      const payResp = await placeOrderFn({ gateway: gw.name, ...gwData });
+      const payResp = await placeOrderFn({
+        gateway: gw.name,
+        ...gwData,
+        ...(typeof shownTotal === "number" ? { shownTotal } : {}),
+      });
       const paySession = payResp?.data?.session;
 
       // Gateway continuation: /pay left the session open with requires_action.
       // Run the widget's completeRequiresAction (if registered) so the form
       // stays in "placing" until checkout is actually complete or failed.
       // Gateways without completeRequiresAction (e.g. Clover) are unchanged.
+      // A 409 PAYMENT_ACTION_PENDING carries a challenge an earlier pay
+      // started; the same gateway finishes or cancels it.
+      const pendingChallenge =
+        payResp?.error?.code === "PAYMENT_ACTION_PENDING" &&
+        paySession?.payment?.gateway === gw.name;
       if (
-        payResp?.success &&
+        (payResp?.success || pendingChallenge) &&
         paySession?.payment?.status === "requires_action" &&
         typeof gw.completeRequiresAction === "function"
       ) {
@@ -216,12 +418,12 @@ const EPCheckoutSessionRuntime = React.forwardRef<
       return payResp;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      log.error("placeOrder failed", { message } as Record<string, unknown>);
+      log.error("placeOrder failed", { message });
       return { success: false, error: { message } };
     } finally {
       placeOrderInFlightRef.current = false;
     }
-  }, [placeOrderFn, session]);
+  }, [refusal, placeOrderFn, session]);
 
   const handleConfirmPayment = useCallback(
     async (confirmData?: Record<string, unknown>) => {
@@ -230,7 +432,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
       } catch (err) {
         log.error("confirmPayment failed", {
           error: err instanceof Error ? err.message : String(err),
-        } as Record<string, unknown>);
+        });
       }
     },
     [confirmPaymentFn]
@@ -242,7 +444,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
         return await resumePaymentFn(resumeData ?? {});
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        log.error("resumePayment failed", { message } as Record<string, unknown>);
+        log.error("resumePayment failed", { message });
         return { success: false, error: { message } };
       }
     },
@@ -255,7 +457,7 @@ const EPCheckoutSessionRuntime = React.forwardRef<
     } catch (err) {
       log.error("reset failed", {
         error: err instanceof Error ? err.message : String(err),
-      } as Record<string, unknown>);
+      });
     }
   }, [resetFn]);
 
@@ -272,11 +474,16 @@ const EPCheckoutSessionRuntime = React.forwardRef<
   // Data exposed via DataProvider
   const checkoutSessionData = useMemo(
     () => ({
-      session,
+      session: shownSession,
       isLoading,
-      error: error?.message ?? null,
-      updateSession: updateSessionFn,
-      calculateShipping: calcShippingFn,
+      error:
+        (blocked ? createError?.message : null) ??
+        (emptied ? EMPTY_CART_COPY : null) ??
+        error?.message ??
+        null,
+      errorCode: (blocked ? createError?.code : null) ?? (emptied ? "EMPTY_CART" : null),
+      updateSession: updateSessionData,
+      calculateShipping: calculateShippingData,
       createSession: handleCreateSession,
       placeOrder: handlePlaceOrder,
       confirmPayment: handleConfirmPayment,
@@ -284,11 +491,14 @@ const EPCheckoutSessionRuntime = React.forwardRef<
       reset: handleReset,
     }),
     [
-      session,
+      shownSession,
       isLoading,
+      blocked,
+      createError,
+      emptied,
       error,
-      updateSessionFn,
-      calcShippingFn,
+      updateSessionData,
+      calculateShippingData,
       handleCreateSession,
       handlePlaceOrder,
       handleConfirmPayment,
@@ -318,11 +528,8 @@ export const EPCheckoutSessionProvider = React.forwardRef<
   const inEditor = usePlasmicCanvasContext();
 
   if (inEditor && previewState !== "auto") {
-    const mockSession = getMockSession(previewState);
-    // Strip cartHash for client-visible shape
-    const { cartHash, ...clientSession } = mockSession;
     const mockData = {
-      session: clientSession,
+      session: getMockSession(previewState),
       isLoading: false,
       error: null,
     };
@@ -376,7 +583,7 @@ export const epCheckoutSessionProviderMeta: CodeComponentMeta<EPCheckoutSessionP
         defaultValue: true,
         displayName: "Auto-create Session",
         description:
-          "Create a session on first render if none exists. Server resolves cartId from the better-auth session.",
+          "Create a session on first render if none exists. The session checks out the shopper's own cart.",
         advanced: true,
       },
     },
@@ -386,7 +593,7 @@ export const epCheckoutSessionProviderMeta: CodeComponentMeta<EPCheckoutSessionP
     refActions: {
       createSession: {
         description:
-          "Create a new checkout session. cartId is optional — server resolves from the better-auth session when omitted.",
+          "Create a new checkout session for the shopper's own cart. The server takes the cart from the shopper's session; a Cart ID passed here is ignored.",
         argTypes: [{ name: "cartId", type: "string" }],
       },
       updateSession: {

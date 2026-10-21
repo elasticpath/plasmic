@@ -5,10 +5,12 @@ import registerComponent, {
 import React from "react";
 import { Registerable } from "../../registerable";
 import type { Cart, CartItem } from "../../types/cart";
+import { shopperCartTotals } from "../../utils/cart-totals";
 import {
   MOCK_CHECKOUT_CART_DATA,
   MOCK_CHECKOUT_CART_ITEMS,
 } from "../../utils/design-time-data";
+import { useCanvasPreviewState } from "../../utils/canvas-preview-state";
 
 type CartFieldName =
   | "formattedSubtotal"
@@ -93,7 +95,7 @@ function checkoutCartFieldValue(
   cart: Cart,
   field: CartFieldName
 ): string | number | undefined {
-  const price = cart.meta?.display_price;
+  const price = shopperCartTotals(cart);
   switch (field) {
     case "formattedSubtotal":
       return price?.without_tax?.formatted;
@@ -124,7 +126,8 @@ function checkoutItemFieldValue(
 }
 
 export function EPCheckoutCartField(props: EPCheckoutCartFieldProps) {
-  const { field, className, previewState = "auto" } = props;
+  const { field, className, previewState: savedPreviewState } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const inEditor = !!usePlasmicCanvasContext();
   const cart = useSelector("cart") as Cart | undefined;

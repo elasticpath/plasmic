@@ -18,6 +18,7 @@
 
 jest.mock("@epcc-sdk/sdks-shopper", () => ({
   getACart: jest.fn(),
+  getAnOrder: jest.fn(),
   checkoutApi: jest.fn(),
   confirmOrder: jest.fn(),
   paymentSetup: jest.fn(),
@@ -35,6 +36,7 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const epSdk = require("@epcc-sdk/sdks-shopper") as {
   getACart: jest.Mock;
+  getAnOrder: jest.Mock;
   checkoutApi: jest.Mock;
   confirmOrder: jest.Mock;
   paymentSetup: jest.Mock;
@@ -93,7 +95,7 @@ function makeSession(overrides: Partial<CheckoutSession> = {}): CheckoutSession 
     availableShippingRates: [
       { id: "rate-standard", name: "Standard", amount: 500, currency: "USD", serviceLevel: "standard" },
     ],
-    totals: null,
+    totals: { subtotal: 4900, tax: 0, shipping: 500, total: 5400, currency: "USD" },
     payment: {
       gateway: null,
       status: "idle",
@@ -183,6 +185,8 @@ beforeEach(() => {
   epSdk.deleteACartItem.mockResolvedValue({});
 });
 
+const FREE_TOTALS = { subtotal: 0, tax: 0, shipping: 0, total: 0, currency: "CHF" };
+
 const FREE_ITEMS = [
   { id: "free-1", quantity: 1, unit_price: { amount: 0 }, value: { amount: 0 } },
 ];
@@ -203,6 +207,7 @@ describe("handlePay — single-shot guest happy path", () => {
     const res = await handlePay(req, ctx);
 
     expect(res.status).toBe(200);
+    expect(JSON.stringify(res.body)).not.toContain("cart-abc");
     const body = res.body as any;
     expect(body.success).toBe(true);
     expect(body.data.session.status).toBe("complete");
@@ -217,7 +222,8 @@ describe("handlePay — single-shot guest happy path", () => {
     // EP order creation happened AFTER payment succeeded
     expect(epSdk.checkoutApi).toHaveBeenCalledTimes(1);
     expect(epSdk.confirmOrder).toHaveBeenCalledTimes(1);
-    expect(epSdk.confirmOrder.mock.calls[0][0].path.paymentID).toBe("pi_abc");
+    expect(epSdk.confirmOrder.mock.calls[0][0].path).toEqual({ orderID: "order-1" });
+    expect(epSdk.confirmOrder.mock.calls[0][0].body).toEqual({ data: {} });
 
     // Cart PI detached, then cart deleted
     expect(epSdk.updateACart).toHaveBeenCalledWith(
@@ -334,7 +340,15 @@ describe("handlePay — single-shot guest happy path", () => {
     expect(epSdk.confirmOrder).not.toHaveBeenCalled();
   });
 
-  it("requires_action persists 3DS data, leaves session open, and does not create an order", async () => {
+  it("requires_action persists 3DS data, leaves session open, and holds the order for the challenge", async () => {
+    epSdk.checkoutApi.mockResolvedValue({
+      data: {
+        data: {
+          id: "order-1",
+          meta: { display_price: { with_tax: { amount: 5400, currency: "USD" } } },
+        },
+      },
+    });
     const adapter = createMockAdapter({
       status: "requires_action",
       clientToken: "pi_3ds_secret",
@@ -363,10 +377,10 @@ describe("handlePay — single-shot guest happy path", () => {
     expect(body.data.session.payment.gatewayMetadata).toMatchObject({
       paymentIntentId: "pi_3ds",
     });
-    expect(body.data.session.order).toBeNull();
+    expect(body.data.session.order).toEqual({ id: "order-1" });
     expect(body.paymentError).toBeUndefined();
 
-    expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+    expect(epSdk.checkoutApi).toHaveBeenCalledTimes(1);
     expect(epSdk.confirmOrder).not.toHaveBeenCalled();
     expect(epSdk.deleteACart).not.toHaveBeenCalled();
     expect(epSdk.updateACart).not.toHaveBeenCalledWith(
@@ -421,12 +435,103 @@ describe("handlePay — zero-total (free) order", () => {
         data: { meta: { display_price: { with_tax: { amount: 0, currency: "CHF" } } } },
       },
     });
+    epSdk.checkoutApi.mockResolvedValue({
+      data: {
+        data: {
+          id: "order-1",
+          meta: { display_price: { with_tax: { amount: 0, currency: "CHF" } } },
+        },
+      },
+    });
+    epSdk.paymentSetup.mockResolvedValue({
+      data: { data: { id: "txn-1", status: "complete" } },
+    });
+  });
+
+  it("does not settle with manual when the order total is not zero", async () => {
+    epSdk.checkoutApi.mockResolvedValue({
+      data: {
+        data: {
+          id: "order-1",
+          meta: { display_price: { with_tax: { amount: 4400, currency: "CHF" } } },
+        },
+      },
+    });
+    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS), totals: FREE_TOTALS }));
+    const res = await handlePay(createMockReq({}), ctx);
+
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("ORDER_TOTAL_CHANGED");
+    expect(epSdk.paymentSetup).not.toHaveBeenCalled();
+    expect(epSdk.deleteACart).not.toHaveBeenCalled();
+  });
+
+  it("reads the order back when checkout reports no total, and settles a free one", async () => {
+    epSdk.checkoutApi.mockResolvedValue({ data: { data: { id: "order-1" } } });
+    epSdk.getAnOrder.mockResolvedValue({
+      data: {
+        data: {
+          id: "order-1",
+          meta: { display_price: { with_tax: { amount: 0, currency: "CHF" } } },
+        },
+      },
+    });
+    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS), totals: FREE_TOTALS }));
+    const res = await handlePay(createMockReq({}), ctx);
+
+    expect(res.status).toBe(200);
+    expect((res.body as any).data.session.status).toBe("complete");
+    expect(epSdk.paymentSetup.mock.calls[0][0].body.data).toEqual({
+      gateway: "manual",
+      method: "purchase",
+    });
+  });
+
+  it("does not settle when the read-back order has a total", async () => {
+    epSdk.checkoutApi.mockResolvedValue({ data: { data: { id: "order-1" } } });
+    epSdk.getAnOrder.mockResolvedValue({
+      data: {
+        data: {
+          id: "order-1",
+          meta: { display_price: { with_tax: { amount: 4400, currency: "CHF" } } },
+        },
+      },
+    });
+    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS), totals: FREE_TOTALS }));
+    const res = await handlePay(createMockReq({}), ctx);
+
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("ORDER_TOTAL_CHANGED");
+    expect(epSdk.paymentSetup).not.toHaveBeenCalled();
+  });
+
+  it("answers 502, not a changed total, when no order total can be read", async () => {
+    epSdk.checkoutApi.mockResolvedValue({ data: { data: { id: "order-1" } } });
+    epSdk.getAnOrder.mockResolvedValue({ data: { data: { id: "order-1" } } });
+    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS), totals: FREE_TOTALS }));
+    const res = await handlePay(createMockReq({}), ctx);
+
+    expect(res.status).toBe(502);
+    expect((res.body as any).error.code).toBe("EP_ERROR");
+    expect(epSdk.paymentSetup).not.toHaveBeenCalled();
+  });
+
+  it("returns 502 when manual settlement reports a failed transaction", async () => {
+    epSdk.paymentSetup.mockResolvedValue({
+      data: { data: { id: "txn-1", status: "failed" } },
+    });
+    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS), totals: FREE_TOTALS }));
+    const res = await handlePay(createMockReq({}), ctx);
+
+    expect(res.status).toBe(502);
+    expect((res.body as any).error.code).toBe("EP_ERROR");
+    expect(epSdk.deleteACart).not.toHaveBeenCalled();
   });
 
   it("settles a free order via the manual gateway with no card / adapter", async () => {
     const adapter = createMockAdapter();
     const ctx = createMockCtx(
-      makeSession({ cartHash: hashCart(FREE_ITEMS) }),
+      makeSession({ cartHash: hashCart(FREE_ITEMS), totals: FREE_TOTALS }),
       adapter
     );
     // No gateway/confirmation_token — a free order needs no payment UI.
@@ -476,7 +581,7 @@ describe("handlePay — zero-total (free) order", () => {
       }
       return { data: { data: {} } };
     });
-    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS) }));
+    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS), totals: FREE_TOTALS }));
     const res = await handlePay(createMockReq({}), ctx);
 
     expect(res.status).toBe(200);
@@ -488,6 +593,7 @@ describe("handlePay — zero-total (free) order", () => {
     const ctx = createMockCtx(
       makeSession({
         cartHash: hashCart(FREE_ITEMS),
+        totals: FREE_TOTALS,
         customAttributes: { language: "English", marketing: false },
       }),
       undefined,
@@ -505,7 +611,7 @@ describe("handlePay — zero-total (free) order", () => {
 
   it("returns 502 when manual settlement fails (gateway not enabled)", async () => {
     epSdk.paymentSetup.mockRejectedValue(new Error("gateway disabled"));
-    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS) }));
+    const ctx = createMockCtx(makeSession({ cartHash: hashCart(FREE_ITEMS), totals: FREE_TOTALS }));
     const res = await handlePay(createMockReq({}), ctx);
 
     expect(res.status).toBe(502);
@@ -513,12 +619,21 @@ describe("handlePay — zero-total (free) order", () => {
   });
 
   it("uses the cart META total (not parsed items) to decide free vs paid", async () => {
-    // Regression: a paid cart whose item array doesn't parse must NOT settle
-    // for free. getACart returns no parseable items but a non-zero meta total.
+    // Regression: a paid cart whose lines carry no price must NOT settle for
+    // free. The items sum to zero but the meta total is not zero.
+    const UNPRICED = [{ id: "unpriced-1", quantity: 1 }];
     epSdk.getACart.mockResolvedValue({
       data: {
-        included: { items: [] },
+        included: { items: UNPRICED },
         data: { meta: { display_price: { with_tax: { amount: 4400, currency: "CHF" } } } },
+      },
+    });
+    epSdk.checkoutApi.mockResolvedValue({
+      data: {
+        data: {
+          id: "order-1",
+          meta: { display_price: { with_tax: { amount: 4400, currency: "CHF" } } },
+        },
       },
     });
     const adapter = createMockAdapter({
@@ -526,7 +641,13 @@ describe("handlePay — zero-total (free) order", () => {
       gatewayOrderId: "pi_paid",
       gatewayMetadata: { paymentIntentId: "pi_paid" },
     });
-    const ctx = createMockCtx(makeSession({ cartHash: hashCart([]) }), adapter);
+    const ctx = createMockCtx(
+      makeSession({
+        cartHash: hashCart(UNPRICED),
+        totals: { subtotal: 3900, tax: 0, shipping: 500, total: 4400, currency: "CHF" },
+      }),
+      adapter
+    );
     const res = await handlePay(
       createMockReq({ gateway: "stripe", confirmation_token: "ctok" }),
       ctx

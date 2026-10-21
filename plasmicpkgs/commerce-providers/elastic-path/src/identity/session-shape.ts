@@ -9,7 +9,6 @@ export interface ReleasedEpSession {
   expiresAt: string;
   createdAt: string;
   updatedAt: string;
-  epCartId?: string;
   epExpires?: number;
   epMemberId?: string;
   epAccount?: EpAccountSummary;
@@ -38,7 +37,6 @@ export const RELEASED_SESSION_PATHS = [
   "expiresAt",
   "createdAt",
   "updatedAt",
-  "epCartId",
   "epExpires",
   "epMemberId",
   "epAccount.id",

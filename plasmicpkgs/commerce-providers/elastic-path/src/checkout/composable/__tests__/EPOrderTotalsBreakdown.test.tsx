@@ -33,6 +33,10 @@ import { render, screen } from "@testing-library/react";
 const { EPOrderTotalsBreakdown } = require("../EPOrderTotalsBreakdown");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { EpCommerceProvider } = require("../../../shopper-context/EpCommerceContext");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { normalizeCart } = require("../../../utils/normalize");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { SHIPPED_CART_RESPONSE } = require("../../../test/shipped-cart-fixture");
 
 describe("EPOrderTotalsBreakdown", () => {
   beforeEach(() => {
@@ -41,7 +45,9 @@ describe("EPOrderTotalsBreakdown", () => {
     mockUsePlasmicCanvasContext.mockReturnValue(false);
   });
 
-  it("renders children inside a data-ep-order-totals-breakdown element", () => {
+  it("renders children inside a data-ep-order-totals-breakdown element on the canvas", () => {
+
+    mockUsePlasmicCanvasContext.mockReturnValue({});
     render(
       <EPOrderTotalsBreakdown previewState="withData">
         <span data-testid="child">Totals</span>
@@ -52,7 +58,9 @@ describe("EPOrderTotalsBreakdown", () => {
     expect(wrapper).toBeTruthy();
   });
 
-  it("renders with withData preview state", () => {
+  it("renders with withData preview state on the canvas", () => {
+
+    mockUsePlasmicCanvasContext.mockReturnValue({});
     render(
       <EPOrderTotalsBreakdown previewState="withData">
         <span data-testid="totals">$72.91</span>
@@ -70,13 +78,37 @@ describe("EPOrderTotalsBreakdown", () => {
     expect(document.querySelector(".my-totals")).toBeTruthy();
   });
 
-  it("renders without context using fallback mock data", () => {
-    render(
-      <EPOrderTotalsBreakdown previewState="auto">
-        <span data-testid="fallback">Fallback</span>
+  it("shows sample totals on the canvas when nothing is bound", () => {
+    mockUsePlasmicCanvasContext.mockReturnValue({});
+    const { container } = render(<EPOrderTotalsBreakdown />);
+    const values = [...container.querySelectorAll("[data-ep-totals-value]")].map(
+      (n) => n.textContent
+    );
+    expect(values).toEqual(["$62.00", "$5.95", "$4.96", "$72.91"]);
+  });
+
+  it.each([
+    ["no checkout session", { session: null }],
+    ["no provider", undefined],
+  ])("shows and publishes nothing on a published page with %s", (_label, sessionCtx) => {
+    mockUseSelector.mockImplementation((name: string) =>
+      name === "checkoutSession" ? sessionCtx : undefined
+    );
+
+    const { container } = render(
+      <EPOrderTotalsBreakdown className="my-totals">
+        <span data-testid="mine">Total: $0.00</span>
       </EPOrderTotalsBreakdown>
     );
-    expect(screen.getByTestId("fallback")).toBeTruthy();
+    const { container: defaults } = render(<EPOrderTotalsBreakdown />);
+
+    expect(container.querySelector(".my-totals")).toBeTruthy();
+    expect(screen.queryByTestId("mine")).toBeNull();
+    expect(defaults.querySelectorAll("[data-ep-totals-row]")).toHaveLength(0);
+    expect(container.textContent).toBe("");
+    expect(
+      screen.getAllByTestId("dp-orderTotalsData").map((n) => n.getAttribute("data-value"))
+    ).toEqual([null, null]);
   });
 
   describe("session mode (checkoutSession.totals)", () => {
@@ -147,6 +179,29 @@ describe("EPOrderTotalsBreakdown", () => {
   });
 
   describe("cart mode (the cart published by EPCheckoutCartSummary)", () => {
+    it("totals a cart the checkout wrote its shipping line into without that line", () => {
+      mockUseSelector.mockImplementation((name: string) =>
+        name === "cart" ? normalizeCart(SHIPPED_CART_RESPONSE) : undefined
+      );
+
+      render(
+        <EPOrderTotalsBreakdown>
+          <span>Totals</span>
+        </EPOrderTotalsBreakdown>
+      );
+
+      const data = JSON.parse(
+        screen.getByTestId("dp-orderTotalsData").getAttribute("data-value") || "{}"
+      );
+      expect(data).toMatchObject({
+        subtotal: 2200,
+        discount: -220,
+        total: 1980,
+        totalFormatted: "$19.80",
+        itemCount: 1,
+      });
+    });
+
     it("reads totals off the cart's display_price", () => {
       mockUseSelector.mockImplementation((name: string) =>
         name === "cart" ? cartWithTotals(6200) : undefined
@@ -280,35 +335,20 @@ describe("EPOrderTotalsBreakdown", () => {
 });
 
 /** A cart in Elastic Path's own shape, with `subtotal` as the without-tax amount. */
-describe("EPOrderTotalsBreakdown — an empty composable summary", () => {
+describe("EPOrderTotalsBreakdown — a leftover checkoutData summary", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockUsePlasmicCanvasContext.mockReturnValue(false);
   });
 
-  it("falls through to the cart rather than showing a $0.00 order", () => {
-    // EPCheckoutProvider publishes a summary built from the order, which only
-    // exists after payment. Preferring it unconditionally put "Total $0.00" on
-    // the checkout page next to a cart summary showing real money.
+  // Nothing publishes checkoutData any more; a page that still has one must
+  // not override the cart's totals.
+  it.each([
+    ["an empty", { subtotal: 0, total: 0, totalFormatted: "$0.00" }],
+    ["a non-empty", { subtotal: 1000, total: 1200, totalFormatted: "$12.00" }],
+  ])("ignores %s summary and reads the cart", (_label, summary) => {
     mockUseSelector.mockImplementation((name: string) => {
-      if (name === "checkoutData") {
-        return {
-          summary: {
-            subtotal: 0,
-            subtotalFormatted: "$0.00",
-            tax: 0,
-            taxFormatted: "Calculated at next step",
-            shipping: 0,
-            shippingFormatted: "TBD",
-            discount: 0,
-            discountFormatted: "$0.00",
-            total: 0,
-            totalFormatted: "$0.00",
-            currency: "USD",
-            itemCount: 0,
-          },
-        };
-      }
+      if (name === "checkoutData") return { summary };
       if (name === "cart") return cartWithTotals(3000);
       return undefined;
     });
@@ -322,53 +362,7 @@ describe("EPOrderTotalsBreakdown — an empty composable summary", () => {
     const dp = screen.getByTestId("dp-orderTotalsData");
     const data = JSON.parse(dp.getAttribute("data-value")!);
     expect(data.subtotal).toBe(3000);
-    expect(data.total).toBeGreaterThan(0);
-  });
-
-  it("keeps a non-empty composable summary", () => {
-    mockUseSelector.mockImplementation((name: string) => {
-      if (name === "checkoutData") {
-        return {
-          summary: {
-            subtotal: 1000,
-            subtotalFormatted: "$10.00",
-            total: 1200,
-            totalFormatted: "$12.00",
-            currency: "USD",
-          },
-        };
-      }
-      if (name === "cart") return cartWithTotals(9999);
-      return undefined;
-    });
-
-    render(
-      <EPOrderTotalsBreakdown>
-        <span data-testid="child">Totals</span>
-      </EPOrderTotalsBreakdown>
-    );
-
-    const dp = screen.getByTestId("dp-orderTotalsData");
-    const data = JSON.parse(dp.getAttribute("data-value")!);
-    expect(data.total).toBe(1200);
-  });
-
-  it("keeps an empty summary when there is no cart to fall back to", () => {
-    mockUseSelector.mockImplementation((name: string) =>
-      name === "checkoutData"
-        ? { summary: { subtotal: 0, total: 0, totalFormatted: "$0.00" } }
-        : undefined
-    );
-
-    render(
-      <EPOrderTotalsBreakdown>
-        <span data-testid="child">Totals</span>
-      </EPOrderTotalsBreakdown>
-    );
-
-    const dp = screen.getByTestId("dp-orderTotalsData");
-    const data = JSON.parse(dp.getAttribute("data-value")!);
-    expect(data.total).toBe(0);
+    expect(data.total).not.toBe(summary.total);
   });
 });
 

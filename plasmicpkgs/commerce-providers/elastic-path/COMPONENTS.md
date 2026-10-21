@@ -95,10 +95,31 @@ storefront uses a nonce-based policy, send the nonce on the page request in an
 policy blocks the script, the browser discards the server render and searches
 again.
 
-**Design time.** Both providers show labelled `"Sample"` fixtures on the Studio
-canvas, not your catalog. Catalog search never mounts its inner component on
-the canvas. EP Product List Provider's Server Query reads the real catalog in
-the data-query Configure panel.
+**Design time.** On the Studio canvas, EP Product List Provider and EP Related
+Products Provider read your catalog through the design-time route
+(`/api/ep/design/<fn>`), as EP Product Provider does. The route needs an app
+host with `createEpDesignRoutes` mounted. While the read runs they show Loading
+Content, and when it finds nothing they show Empty Content. When the read
+fails, including when the route is not mounted, they show labelled `"Sample"`
+fixtures. EP Related Products Provider also shows the fixtures when no product
+is chosen. EP Catalog Search Provider always shows fixtures on the canvas: it
+never mounts its inner component there.
+
+| Component | On the Studio canvas |
+| --- | --- |
+| EP Product Provider | Your catalog |
+| EP Product List Provider | Your catalog |
+| EP Related Products Provider | Your catalog; fixtures when no product is chosen |
+| EP Catalog Search Provider | Fixtures |
+| EP Refinement List, EP Hierarchical Menu, EP Range Filter | Fixtures once a field is chosen; with no field, a "Choose a field" prompt that names the prop to set |
+
+Preview State (`loading`, `error`, `empty`, `withData`) forces a state on the
+canvas only. Published pages always fetch.
+
+A newly inserted EP Product Grid's card is three EP Product Field components:
+the first image, the name and the price. EP Product Field reads
+`currentProduct`, which the grid publishes for each card, so the card needs no
+bindings.
 
 **Switching paths.** Three things change, and card layouts survive, because
 both repeaters publish the same `currentProduct` and the same
@@ -138,6 +159,8 @@ Provider too. `currentHit.path` is the only link field: `currentProduct` has no
 **In Studio,** use the cart components, or the Elastic Path Provider's global
 actions **Add item to cart**, **Update item in cart** and **Remove item from
 cart**. Each runs on the server through the proxy route and refreshes the cart.
+**Add item to cart** takes an optional **Location** after **Quantity**: on a
+multi-location store, a product stocked only at named locations needs it.
 
 **In React code,** `useEpCart()` reads the shopper's cart:
 
@@ -149,6 +172,18 @@ const { cart, isLoading, error, refresh } = useEpCart();
 
 `useCheckoutCart()` reads the same cart for checkout, as
 `{ data, isEmpty, isLoading, error, mutate }`.
+
+The cart holds what the shopper bought. Checkout writes its shipping charge
+into the Elastic Path cart as a line with SKU `__ep_shipping`, but only while
+a payment runs: picking a rate prices the line with the cart and takes it out
+again. So outside a payment `meta` and `promotions`, as Elastic Path priced
+them, add up to `items`. The published cart leaves the line out of `items`
+and `itemCount` when it is there. `withoutShipping.meta` and `withoutShipping.promotions` are the cart's
+values less what the line adds and what a code took off it; they add up to
+`items` in every case. EP Cart Field, EP Checkout Cart Field, EP Promo Code
+Input and EP Order Totals Breakdown read them. Bind a cart page's own totals to
+`$ctx.cart.withoutShipping.meta.display_price`. Checkout totals, which include
+shipping, come from `$ctx.checkoutSession.session.totals`.
 
 To write to the cart, call `epAddCartItem`, `epUpdateCartItem` or
 `epRemoveCartItem`. They replace `useAddItem`, `useUpdateItem` and
@@ -209,121 +244,102 @@ request's session and reject the same way: the same shopper `message`, the same
 a `code`; a failure with no known cause is `dispatch_failed`. Only a call in the
 browser refreshes the `useEpCart()` cache.
 
+The proxy route answers a refusal the shopper can act on with `409`: a code
+of `insufficient_stock`, `invalid_promo_code` or `checkout_in_progress`, or
+any other Elastic Path `4xx` except `401` and `403`. Any other failure is a
+`500`. The body is the same either way.
+
 ---
 
 ## 5. Checkout Components
 
-### EPCheckoutProvider
+### EPCheckoutSessionProvider
 
-Root orchestrator. Manages multi-step checkout state and provides data + actions to all child components.
+The checkout path. **EP Checkout Session Provider** holds the checkout session
+on the server and runs it through the checkout-session routes; the README
+lists them. Put the field, shipping-rate and payment components
+(`EPStripePayment`, `EPCloverPayment`, `EPManualPayment`) inside it. For a
+single-page form, `EPCheckoutFormProvider` submits through it.
+
+The session checks out the cart in the shopper's session. The server takes
+that cart from the session when it creates the checkout session, and every
+later route works on it. The browser never names a cart: a cart id sent in
+the request, or passed to `createSession`, is ignored.
 
 **Props:**
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `cartId` | `string?` | — | Override cart ID |
-| `apiBaseUrl` | `string?` | `"/api"` | Base path for checkout API routes |
-| `autoAdvanceSteps` | `boolean?` | `false` | Auto-advance after step completion |
-| `previewState` | `"auto" \| "customerInfo" \| "shipping" \| "payment" \| "confirmation"` | `"auto"` | Force preview step |
-| `loadingContent` | `ReactNode?` | — | Slot shown while loading |
-| `errorContent` | `ReactNode?` | — | Slot shown on error |
-| `className` | `string?` | — | |
+| `apiBaseUrl` | `string?` | `"/api"` | Base path for the checkout-session routes |
+| `autoCreate` | `boolean?` | `true` | Create a session on first render when there is none, or the last one is complete or expired |
+| `previewState` | `"auto" \| "collecting" \| "paying" \| "complete"` | `"auto"` | Force a preview state in Studio |
 
-**DataProvider `checkoutData`** -> `CheckoutData`:
+**DataProvider `checkoutSession`:** `session`, `isLoading`, `error`,
+`errorCode`, and the actions below.
 
-```ts
-interface CheckoutData {
-  step: string;                // "customer_info" | "shipping" | "payment" | "confirmation"
-  stepIndex: number;           // 0-3
-  totalSteps: number;          // 4
-  canProceed: boolean;
-  isProcessing: boolean;
+When the provider cannot start a checkout, `session` is null, `error` is the
+message to show and `errorCode` is the server's code, such as `EMPTY_CART`
+or `NO_CART` (both "Your cart is empty"), `CART_CLEANUP_PENDING`, or
+`NETWORK_ERROR` when the request did not reach the server. A finished checkout from an earlier visit is not
+shown in its place, and `placeOrder` and `updateSession` answer with the same
+refusal without sending anything. The provider tries again when the cart
+changes or the page gets focus. `errorCode` is null otherwise.
 
-  customerInfo: { firstName: string; lastName: string; email: string } | null;
-  shippingAddress: AddressData | null;
-  billingAddress: AddressData | null;
-  sameAsShipping: boolean;
-  selectedShippingRate: {
-    id: string; name: string; price: number; priceFormatted: string;
-    currency: string; estimatedDays?: string; carrier?: string;
-  } | null;
-  order: any | null;
-  paymentStatus: "idle" | "pending" | "processing" | "succeeded" | "failed";
-  error: string | null;
+The session's totals follow the cart. The provider reads the session again
+when the shared cart cache changes (for example after EP Promo Code Input
+applies a code) and when the page gets focus or becomes visible (a change made
+in another tab). The server stores the cart's new totals when the cart's lines
+changed. `placeOrder` sends the total on the page as `shownTotal`, and `/pay`
+refuses with `TOTAL_CHANGED` and the current session when it would charge a
+different total.
 
-  summary: {
-    subtotal: number;          subtotalFormatted: string;
-    tax: number;               taxFormatted: string;
-    shipping: number;          shippingFormatted: string;
-    discount: number;          discountFormatted: string;
-    total: number;             totalFormatted: string;
-    currency: string;
-    itemCount: number;
-  };
-}
+The provider reads the cart when an open checkout session appears, when the
+shared cart cache changes and when the page gets focus. When the cart has
+nothing to buy (no lines, or only the shipping line and promotions), `session`
+is null, `error` is "Your cart is empty" and `errorCode` is `EMPTY_CART`, as
+for a refused create: no totals and no card field show, and `placeOrder` and
+`updateSession` answer with that refusal. The checkout shows again once the
+cart has something in it.
 
-interface AddressData {
-  first_name: string;  last_name: string;
-  line_1: string;      line_2?: string;
-  city: string;        county?: string;
-  country: string;     postcode: string;
-}
-```
+Before each payment request, `placeOrder` reads the cart. When the cart holds
+only the shipping line and promotions, it answers `EMPTY_CART` ("Your cart is
+empty") and sends no payment request.
 
-**refActions (9):**
-
-| Action | Signature | Description |
-|--------|-----------|-------------|
-| `nextStep` | `() => void` | Advance to next step |
-| `previousStep` | `() => void` | Go back one step |
-| `goToStep` | `(step: string) => void` | Jump to named step |
-| `submitCustomerInfo` | `(data) => void` | Submit customer + addresses (see below) |
-| `submitShippingAddress` | `(data: AddressData) => void` | Submit shipping address only |
-| `submitBillingAddress` | `(data: AddressData) => void` | Submit billing address only |
-| `selectShippingRate` | `(rateId: string) => void` | Select a shipping rate |
-| `submitPayment` | `() => Promise<void>` | Trigger Stripe payment confirmation |
-| `reset` | `() => void` | Reset to step 1 |
-
-`submitCustomerInfo` data shape:
-```ts
-{
-  firstName: string;
-  lastName: string;
-  email: string;
-  shippingAddress: AddressData;
-  sameAsShipping: boolean;
-  billingAddress?: AddressData;
-}
-```
+**refActions:** `createSession()`, `updateSession(data)`,
+`calculateShipping()`, `placeOrder()`, `confirmPayment(confirmData)`,
+`resumePayment(resumeData)`, `reset()`.
 
 ---
 
-### EPCheckoutStepIndicator
+### EPCheckoutProvider (deprecated)
 
-Repeater over the 4 checkout steps. Provides per-step data for building step nav/progress bars.
+Does nothing. It called `/api/checkout/create-order`, `/setup-payment` and
+`/confirm-payment`, which nothing serves, so it could not place an order. It
+stays registered because hostless publishing rejects a removed component
+([ADR-0004](docs/adr/0004-registered-surfaces-are-append-only.md)). It renders
+its children and nothing else, publishes no `checkoutData`, and every ref
+action is ignored. Every prop except its children slot, `cartId` included,
+is hidden and ignored. EPPaymentElements and EPCheckoutStepIndicator depended
+on it and are deprecated too. Use EP Checkout Session Provider.
 
-**DataProvider `currentStep`** (per iteration):
+---
 
-```ts
-{
-  name: string;        // "Customer Info", "Shipping", "Payment", "Confirmation"
-  stepKey: string;     // "customer_info", "shipping", "payment", "confirmation"
-  index: number;       // 0-3
-  isActive: boolean;
-  isCompleted: boolean;
-  isFuture: boolean;
-}
-```
+### EPCheckoutStepIndicator (deprecated)
 
-**DataProvider `currentStepIndex`** (per iteration): `number`
-
-**Props:** `previewState?: "auto" | "withData"`, `className?`
+Renders nothing. It read the current step from EPCheckoutProvider, which is
+inert, so it always showed the first step. It stays registered
+([ADR-0004](docs/adr/0004-registered-surfaces-are-append-only.md)); its
+children slot and `previewState` are hidden and ignored. It publishes
+no `currentStep` or `currentStepIndex`. Show checkout progress from
+`$ctx.checkoutSession` under EP Checkout Session Provider.
 
 ---
 
 ### EPCheckoutButton
 
-Step-aware button that derives its label and behavior from the current checkout step.
+A "Checkout" control that goes to `checkoutUrl` (default `/checkout`), for a
+cart page. On a page it is always the "Checkout" link. `previewState` shows a
+step's label on the canvas only. `onComplete` is hidden and never fires.
 
 **DataProvider `checkoutButtonData`:**
 
@@ -358,7 +374,7 @@ Step-aware button that derives its label and behavior from the current checkout 
 
 ### EPOrderTotalsBreakdown
 
-Reads totals from `checkoutData.summary` or falls back to the cart published by `EPCheckoutCartSummary`.
+Reads totals from the checkout session (`checkoutSession.session.totals`) or falls back to the cart published by `EPCheckoutCartSummary`. With neither, for example before a checkout starts or on an empty cart, a published page shows nothing inside it and publishes no `orderTotalsData`. Sample totals show on the Studio canvas only.
 
 **DataProvider `orderTotalsData`:**
 
@@ -476,7 +492,7 @@ Mirrors shipping address when `sameAsShipping` is true (refActions become no-ops
 
 **refActions:** `setField(name, value)`, `validate()`, `clear()` — all no-op when `isMirroringShipping`.
 
-Reads toggle state from `billingToggleData.isSameAsShipping` (EPBillingAddressToggle) or `checkoutData.sameAsShipping`.
+Reads toggle state from `billingToggleData.isSameAsShipping` (EPBillingAddressToggle).
 
 **PreviewStates:** `"auto"`, `"sameAsShipping"`, `"different"`, `"withErrors"`
 
@@ -516,49 +532,61 @@ Rates come from the `shippingRateResolver` configured on the server; see the REA
 
 ---
 
-### EPPaymentElements
+### EPPaymentElements (deprecated)
 
-Stripe Payment Element wrapper. Loads Stripe.js from `https://js.stripe.com/v3` when it mounts in the browser.
+Renders its children and nothing else. It took its client secret only from
+EPCheckoutProvider, which is inert, so it could not show a card form. It stays
+registered ([ADR-0004](docs/adr/0004-registered-surfaces-are-append-only.md));
+`stripePublishableKey`, `appearance` and `previewState` are hidden and ignored.
+It loads no Stripe.js and publishes no `paymentData`. Use `EPStripePayment`
+inside EP Checkout Session Provider.
 
-**DataProvider `paymentData`:**
+---
 
-```ts
-{
-  isReady: boolean;
-  isProcessing: boolean;
-  error: string | null;
-  paymentMethodType: string;
-  clientSecret: string | null;  // from EPCheckoutProvider's internal context
-}
-```
+### EPCheckoutFormProvider payment
 
-**Props:**
+EP Checkout Form Provider places orders only through an EP Checkout Session
+Provider above it. **Payment Mode** offers `"auto"` and `"session"`; both pay
+through that provider. A page that stored `"proxy"`, or a form with no EP
+Checkout Session Provider above it, renders a setup error (`role="alert"`)
+that names EP Checkout Session Provider, and Place Order sets the same message
+as `checkoutFormData.error`. **Payment Gateway** and **Payment Method** are
+hidden and ignored; the payment component inside the session provider selects
+the gateway.
 
-| Prop | Type | Description |
-|------|------|-------------|
-| `stripePublishableKey` | `string?` | Stripe publishable key (pk_test_... or pk_live_...) |
-| `appearance` | `Record<string, any>?` | Stripe Elements appearance theme |
-| `previewState` | `"auto" \| "ready" \| "processing" \| "error"` | |
+**Show Errors** (`showError`, default on) shows, below the form in a
+`role="alert"` element (`[data-ep-checkout-error]`), why Place Order failed:
+a declined card, a failed card check, a payment that needs review. It also
+shows why the session provider could not start a checkout, such as an empty
+cart. Turn it off when the page shows `$ctx.checkoutFormData.error` itself.
 
-Reads `clientSecret` from EPCheckoutProvider's internal context, which it sets after calling `/api/checkout/setup-payment`.
+When the server refuses the email (`INVALID_EMAIL`), the form also puts that
+message on the email field (`email`, or the name Field Mapping gives it). EP
+Form Field shows it, with `aria-invalid`, until the shopper edits the field.
+
+While a card check is open, the form is locked: its fields are read-only and
+show the details saved in the checkout session, also after a reload.
+
+### EPManualPayment
+
+Selects Elastic Path's `manual` gateway (no card) inside EP Checkout Session
+Provider, for offline or invoice payment. A zero-total order completes without
+it. For an order with a total, the server allows `manual` only when the host
+registers `createManualAdapter({ allow })` and the rule returns `true` for that
+cart and account; otherwise Place Order fails with `GATEWAY_NOT_ALLOWED`. The
+README's Payment methods section shows the rule.
 
 ---
 
 ### Checkout API Routes
 
-The supported checkout runs on the checkout-session routes, whose handlers this
-package ships; the README lists them. EPCheckoutProvider without a checkout
-session calls these routes instead, which the package does not ship — you
-implement them:
-
-| Route | Method | Purpose | Request Body |
-|-------|--------|---------|-------------|
-| `/api/checkout/create-order` | POST | Creates EP order | `{ cartId?, customerData, billingAddress, shippingAddress }` |
-| `/api/checkout/setup-payment` | POST | Creates Stripe PaymentIntent | `{ orderId, amount, currency }` |
-| `/api/checkout/confirm-payment` | POST | Confirms payment | `{ orderId, transactionId, stripePaymentIntentId }` |
-
-Without a checkout session there are no shipping rates: the session's
-`shippingRateResolver` is the only source.
+Checkout runs on the checkout-session routes, whose handlers this package
+ships; the README lists them. The create route takes the cart from the
+shopper's session (`sessionCartId` on `SessionHandlerContext`), never from the
+request. It also takes the selected account (`accountToken`, `accountId`,
+`accountMemberId`): with one, every order the session places is linked to that
+account and member; with none, the order is a guest order. Pay returns `409`
+`ACCOUNT_CHANGED` when the selection changed after the session was created.
 
 ---
 
@@ -607,7 +635,7 @@ Every count `ep.getStock` returns is a `number`, not the SDK's `BigInt` — the 
 
 Neither function takes a `sort`; see [Choosing a listing path](#3-choosing-a-listing-path).
 
-The session (`accessToken`, `host`, `clientId`, `cartId?`, `accountId?`, `accountToken?`, `locale?`, `currency?`) is **not** an argument. `withEpSession(epCtx, callback)` establishes a per-request `AsyncLocalStorage` scope; each `ep.*` function reads the active session via `getCurrentEpSession()` internally. On the server, outside any `withEpSession` scope, they fail-soft to `null` / `[]` without calling Elastic Path. On a published page in the browser, they post to the proxy route. `locale` and `currency` come from `createEpAuth`'s `resolveLocaleAndCurrency`, which runs on every `getSession` with the request's cookies and headers (a server render that passes no headers gets the page request's), so the server render and the proxy route send Elastic Path the same `Accept-Language` and `X-Moltin-Currency`. Checkout reads the cart with the same pair when the host passes the session's `locale` and `currency` on `SessionHandlerContext`. In Studio they post to the design-time route, which serves the four catalog reads only: any other function returns its empty shape on the canvas and throws in the data-query Configure panel.
+The session (`accessToken`, `host`, `clientId`, `cartId?`, `accountId?`, `accountToken?`, `accountMemberId?`, `locale?`, `currency?`) is **not** an argument. `withEpSession(epCtx, callback)` establishes a per-request `AsyncLocalStorage` scope; each `ep.*` function reads the active session via `getCurrentEpSession()` internally. On the server, outside any `withEpSession` scope, they fail-soft to `null` / `[]` without calling Elastic Path. On a published page in the browser, they post to the proxy route. `locale` and `currency` come from `createEpAuth`'s `resolveLocaleAndCurrency`, which runs on every `getSession` with the request's cookies and headers (a server render that passes no headers gets the page request's), so the server render and the proxy route send Elastic Path the same `Accept-Language` and `X-Moltin-Currency`. Checkout reads the cart with the same pair when the host passes the session's `locale` and `currency` on `SessionHandlerContext`. In Studio they post to the design-time route, which serves the catalog reads only: any other function returns its empty shape on the canvas and throws in the data-query Configure panel.
 
 ### Studio binding
 
@@ -706,9 +734,10 @@ Lookup table for Plasmic dynamic value bindings (`$ctx.xxx`).
 
 | DataProvider Name | Source Component | Key Fields |
 |-------------------|-----------------|------------|
-| `checkoutData` | EPCheckoutProvider | `step`, `stepIndex`, `canProceed`, `isProcessing`, `summary.*`, `customerInfo`, `shippingAddress`, `billingAddress`, `sameAsShipping`, `selectedShippingRate`, `order`, `paymentStatus`, `error` |
-| `currentStep` | EPCheckoutStepIndicator | `name`, `stepKey`, `index`, `isActive`, `isCompleted`, `isFuture` |
-| `currentStepIndex` | EPCheckoutStepIndicator | `number` |
+| `checkoutSession` | EPCheckoutSessionProvider | `session`, `isLoading`, `error`, `errorCode` |
+| `checkoutData` | EPCheckoutProvider (deprecated) | Never published |
+| `currentStep` | EPCheckoutStepIndicator (deprecated) | Never published |
+| `currentStepIndex` | EPCheckoutStepIndicator (deprecated) | Never published |
 | `checkoutButtonData` | EPCheckoutButton | `label`, `isDisabled`, `isProcessing`, `step` |
 | `orderTotalsData` | EPOrderTotalsBreakdown | `subtotalFormatted`, `taxFormatted`, `shippingFormatted`, `discountFormatted`, `totalFormatted`, `hasDiscount`, `currency`, `itemCount` |
 | `customerInfoFieldsData` | EPCustomerInfoFields | `firstName`, `lastName`, `email`, `errors`, `touched`, `isValid`, `isDirty` |
@@ -716,7 +745,7 @@ Lookup table for Plasmic dynamic value bindings (`$ctx.xxx`).
 | `billingAddressFieldsData` | EPBillingAddressFields | `firstName`..`country`, `errors`, `touched`, `isValid`, `isDirty`, `isMirroringShipping` |
 | `currentShippingMethod` | EPShippingMethodSelector | `id`, `name`, `price`, `priceFormatted`, `estimatedDays`, `carrier`, `isSelected` |
 | `currentShippingMethodIndex` | EPShippingMethodSelector | `number` |
-| `paymentData` | EPPaymentElements | `isReady`, `isProcessing`, `error`, `paymentMethodType`, `clientSecret` |
+| `paymentData` | EPPaymentElements (deprecated) | Never published |
 | `cart` | EPCheckoutCartSummary | `items`, `itemCount`, `meta.display_price.{without_tax,tax,with_tax}` — Elastic Path's cart |
 | `currentCheckoutItem` | EPCheckoutCartItemList | Elastic Path's cart line: `id`, `name`, `sku`, `quantity`, `product_id`, `image.href`, `meta.display_price.*` |
 | `currentCheckoutItemIndex` | EPCheckoutCartItemList | `number` |

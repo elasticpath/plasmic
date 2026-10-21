@@ -16,7 +16,6 @@ export type {
   EpIdentityOperations,
   EpIdentityRoute,
   EpSelectAccountRequest,
-  EpSetCartRequest,
 } from "./operations";
 export { RELEASED_SESSION_PATHS } from "./session-shape";
 export type {

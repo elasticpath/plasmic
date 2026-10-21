@@ -15,6 +15,7 @@ import {
   ProductMeta,
   Variation,
 } from "../types/product";
+import { isShippingLine } from "../checkout/session/shipping-line-sku";
 import { completePrice, FormattedPrice } from "./price";
 
 // Variation matrix is a nested object mapping option IDs to child product IDs
@@ -269,24 +270,111 @@ const completeCartMeta = (
   return { ...(meta as object), display_price: completed } as CartMeta;
 };
 
+type RawLine = NonNullable<CartIncluded["items"]>[number];
+
+const LINE_PRICE_KEYS = [
+  "with_tax",
+  "without_tax",
+  "tax",
+  "discount",
+  "without_discount",
+] as const;
+
+/** A line's priced value for one display-price key, after discounts. */
+function lineValue(line: RawLine, key: (typeof LINE_PRICE_KEYS)[number]): number {
+  const l = line as any;
+  const priced = l.meta?.display_price?.[key]?.value?.amount;
+  if (typeof priced === "number") return priced;
+  if (key === "tax" || key === "discount") return 0;
+  return l.value?.amount ?? (l.unit_price?.amount ?? 0) * (l.quantity ?? 1);
+}
+
+/** What one promotion code took off a line. */
+function lineDiscount(line: RawLine, code: string): number {
+  const l = line as any;
+  const priced = l.meta?.display_price?.discounts?.[code]?.amount;
+  if (typeof priced === "number") return priced;
+  const listed = Array.isArray(l.discounts)
+    ? l.discounts.find((d: any) => d?.code === code)?.amount?.amount
+    : undefined;
+  return typeof listed === "number" ? listed : 0;
+}
+
+/** The price less `minus`, re-formatted; unchanged when nothing comes off. */
+function lessAmount(price: any, minus: number): any {
+  if (!price || typeof price.amount !== "number" || minus === 0) return price;
+  return { amount: price.amount - minus, currency: price.currency };
+}
+
+/** Cart totals as if the checkout's shipping lines were not in the cart. */
+function cartMetaWithoutShipping(meta: any, shippingLines: RawLine[]): any {
+  const displayPrice = meta?.display_price;
+  if (!displayPrice || shippingLines.length === 0) return meta;
+  const adjusted: Record<string, unknown> = { ...displayPrice };
+  LINE_PRICE_KEYS.forEach((key) => {
+    const minus = shippingLines.reduce((sum, l) => sum + lineValue(l, key), 0);
+    if (displayPrice[key]) adjusted[key] = lessAmount(displayPrice[key], minus);
+  });
+  return { ...meta, display_price: adjusted };
+}
+
+/** A promotion line less what it took off the shipping lines. */
+function promotionWithoutShipping(promotion: RawLine, shippingLines: RawLine[]): RawLine {
+  const p = promotion as any;
+  const code = p.sku ?? p.code;
+  const displayPrice = p.meta?.display_price;
+  if (!code || !displayPrice || shippingLines.length === 0) return promotion;
+  const minus = shippingLines.reduce((sum, l) => sum + lineDiscount(l, code), 0);
+  if (minus === 0) return promotion;
+  const quantity = typeof p.quantity === "number" && p.quantity > 0 ? p.quantity : 1;
+  const adjusted: Record<string, unknown> = { ...displayPrice };
+  (["with_tax", "without_tax"] as const).forEach((key) => {
+    const pair = displayPrice[key];
+    if (!pair) return;
+    adjusted[key] = {
+      ...pair,
+      unit: lessAmount(pair.unit, minus / quantity),
+      value: lessAmount(pair.value, minus),
+    };
+  });
+  return { ...p, meta: { ...p.meta, display_price: adjusted } };
+}
+
 export const normalizeCart = (
   cart: CartEntityResponse,
   locale?: string
 ): Cart => {
-  const data = cart.data ?? {};
+  const { id: _id, links: _links, ...data } = cart.data ?? {};
   // An applied promotion comes back as a promotion_item beside the real lines.
   // It is not something the shopper bought, so it is neither a line to render
   // nor a unit to count — but it is what tells the promo input a code is still
   // applied, so it is published separately rather than dropped. custom_item is
-  // kept as a line: that is a real adjustment.
-  const allItems = (cart.included?.items ?? []).map(normalizeCartItem);
-  const items = allItems.filter((item) => item.type !== "promotion_item");
-  const promotions = allItems.filter((item) => item.type === "promotion_item");
+  // kept as a line: that is a real adjustment. The checkout's shipping line is
+  // not a line or a unit; `meta` and `promotions` keep Elastic Path's money
+  // as it is, and `withoutShipping` totals the cart without that line.
+  const rawItems = cart.included?.items ?? [];
+  const shippingLines = rawItems.filter(isShippingLine);
+  const shopperItems = rawItems.filter((item) => !isShippingLine(item));
+  const items = shopperItems
+    .filter((item) => item.type !== "promotion_item")
+    .map(normalizeCartItem);
+  const rawPromotions = shopperItems.filter((item) => item.type === "promotion_item");
+  const meta = completeCartMeta(data.meta);
+  const promotions = rawPromotions.map(normalizeCartItem);
   return {
     ...data,
-    meta: completeCartMeta(data.meta),
+    meta,
     items,
     promotions,
+    withoutShipping:
+      shippingLines.length === 0
+        ? { meta, promotions }
+        : {
+            meta: completeCartMeta(cartMetaWithoutShipping(data.meta, shippingLines)),
+            promotions: rawPromotions
+              .map((p) => promotionWithoutShipping(p, shippingLines))
+              .map(normalizeCartItem),
+          },
     itemCount: items.reduce(
       (units, item) => units + ("quantity" in item ? item.quantity ?? 0 : 0),
       0

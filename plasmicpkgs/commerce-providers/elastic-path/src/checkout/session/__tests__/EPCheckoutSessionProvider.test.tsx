@@ -28,7 +28,6 @@ jest.mock("../use-checkout-session", () => ({
     session: {
       id: "sess-test",
       status: "open",
-      cartId: "cart-1",
       customerInfo: null,
       shippingAddress: null,
       billingAddress: null,
@@ -57,6 +56,16 @@ jest.mock("../use-checkout-session", () => ({
     reset: mockReset,
     refresh: mockRefresh,
   }),
+}));
+
+// A cart with a line to buy; the provider reads it before payment.
+jest.mock("../../../ep-server-functions/getCart", () => ({
+  epGetCart: jest.fn(async () => null),
+  epReadCart: jest.fn(async () => ({
+    items: [{ id: "line-1", type: "cart_item", sku: "sku-1", quantity: 1 }],
+    promotions: [],
+    itemCount: 1,
+  })),
 }));
 
 // Mock @plasmicapp/host with controllable usePlasmicCanvasContext
@@ -182,33 +191,6 @@ describe("EPCheckoutSessionProvider", () => {
   });
 
   describe("refActions", () => {
-    it("exposes createSession refAction", async () => {
-      const ref = React.createRef<any>();
-      render(
-        <EPCheckoutSessionProvider ref={ref}>
-          <span>content</span>
-        </EPCheckoutSessionProvider>
-      );
-      expect(ref.current?.createSession).toBeDefined();
-      await act(async () => {
-        await ref.current.createSession("cart-xyz");
-      });
-      expect(mockCreateSession).toHaveBeenCalledWith("cart-xyz");
-    });
-
-    it("createSession forwards undefined cartId — server resolves from better-auth session", async () => {
-      const ref = React.createRef<any>();
-      render(
-        <EPCheckoutSessionProvider ref={ref} autoCreate={false}>
-          <span>content</span>
-        </EPCheckoutSessionProvider>
-      );
-      await act(async () => {
-        await ref.current.createSession();
-      });
-      expect(mockCreateSession).toHaveBeenCalledWith(undefined);
-    });
-
     it("auto-creates a session on mount when none exists and autoCreate=true (default)", async () => {
       // Override the mock for this one test: no session present.
       useCheckoutSession.mockReturnValueOnce({
@@ -232,8 +214,6 @@ describe("EPCheckoutSessionProvider", () => {
         );
       });
       expect(mockCreateSession).toHaveBeenCalledTimes(1);
-      // Called with no cartId arg — server resolves from better-auth session.
-      expect(mockCreateSession).toHaveBeenCalledWith();
     });
 
     it("does NOT auto-create when autoCreate=false", async () => {
@@ -559,8 +539,7 @@ describe("EPCheckoutSessionProvider placeOrder 3DS continuation", () => {
       session: {
         id: "sess-test",
         status: "open",
-        cartId: "cart-1",
-        customerInfo: null,
+          customerInfo: null,
         shippingAddress: null,
         billingAddress: null,
         selectedShippingRateId: null,
@@ -643,6 +622,65 @@ describe("EPCheckoutSessionProvider placeOrder 3DS continuation", () => {
     expect(result.data.session.status).toBe("complete");
   });
 
+  it("continues an open challenge without asking for a card or paying again", async () => {
+    const open = {
+      id: "sess-test",
+      status: "open",
+      totals: { total: 2799 },
+      payment: { gateway: "stripe", status: "requires_action", clientToken: "pi_secret" },
+    };
+    useCheckoutSession.mockReturnValue({
+      ...useCheckoutSession(),
+      session: open,
+    });
+
+    const result = await placeWithGateway("stripe", mockCompleteRequiresAction);
+
+    expect(mockConfirm).not.toHaveBeenCalled();
+    expect(mockPlaceOrder).not.toHaveBeenCalled();
+    expect(mockCompleteRequiresAction).toHaveBeenCalledWith(open);
+    expect(result.data.session.status).toBe("complete");
+  });
+
+  it("continues the open challenge when pay answers that one is pending", async () => {
+    const pending = {
+      status: "open",
+      payment: {
+        gateway: "stripe",
+        status: "requires_action",
+        clientToken: "pi_secret",
+      },
+    };
+    mockPlaceOrder.mockResolvedValue({
+      success: false,
+      error: { code: "PAYMENT_ACTION_PENDING", message: "Finish the card check" },
+      data: { session: pending },
+    });
+
+    const result = await placeWithGateway("stripe", mockCompleteRequiresAction);
+
+    expect(mockCompleteRequiresAction).toHaveBeenCalledWith(pending);
+    expect(result.data.session.status).toBe("complete");
+  });
+
+  it("does not continue another gateway's pending challenge", async () => {
+    mockPlaceOrder.mockResolvedValue({
+      success: false,
+      error: { code: "PAYMENT_ACTION_PENDING", message: "Finish the card check" },
+      data: {
+        session: {
+          status: "open",
+          payment: { gateway: "stripe", status: "requires_action", clientToken: "pi_secret" },
+        },
+      },
+    });
+
+    const result = await placeWithGateway("paypal", mockCompleteRequiresAction);
+
+    expect(mockCompleteRequiresAction).not.toHaveBeenCalled();
+    expect(result.error.code).toBe("PAYMENT_ACTION_PENDING");
+  });
+
   it("invokes completeRequiresAction for a non-stripe gateway that registered it", async () => {
     const paySession = {
       status: "open",
@@ -719,8 +757,7 @@ describe("EPCheckoutSessionProvider placeOrder 3DS continuation", () => {
       session: {
         id: "sess-test",
         status: "open",
-        cartId: "cart-1",
-        customerInfo: null,
+          customerInfo: null,
         shippingAddress: null,
         billingAddress: null,
         selectedShippingRateId: null,
@@ -751,44 +788,29 @@ describe("EPCheckoutSessionProvider placeOrder 3DS continuation", () => {
     };
   }
 
-  it("does not abandon merely because the session is still requires_action", async () => {
-    useCheckoutSession.mockReturnValue(leftoverRequiresActionSession());
-    mockPlaceOrder.mockResolvedValue({
-      success: true,
-      data: { session: { status: "complete", order: { id: "ord-2" } } },
-    });
+  it("continues a leftover open challenge instead of abandoning it or paying again", async () => {
+    const leftover = leftoverRequiresActionSession();
+    useCheckoutSession.mockReturnValue(leftover);
 
     const result = await placeWithGateway("stripe", mockCompleteRequiresAction);
 
     expect(mockAbandonPayment).not.toHaveBeenCalled();
-    expect(mockPlaceOrder).toHaveBeenCalledTimes(1);
+    expect(mockConfirm).not.toHaveBeenCalled();
+    expect(mockPlaceOrder).not.toHaveBeenCalled();
+    expect(mockCompleteRequiresAction).toHaveBeenCalledWith(leftover.session);
     expect(mockResumePayment).not.toHaveBeenCalled();
     expect(result.data.session.status).toBe("complete");
   });
 
-  it("does not abandon a stuck resume (requires_action after 409/502, unpaid order present)", async () => {
-    useCheckoutSession.mockReturnValue(
-      leftoverRequiresActionSession({ order: { id: "order-unpaid" } })
-    );
-    const paySession = {
-      status: "open",
-      payment: {
-        gateway: "stripe",
-        status: "requires_action",
-        clientToken: "pi_old_secret",
-      },
-      order: { id: "order-unpaid" },
-    };
-    mockPlaceOrder.mockResolvedValue({
-      success: true,
-      data: { session: paySession },
-    });
+  it("continues a stuck resume (requires_action with its held order) without abandoning", async () => {
+    const leftover = leftoverRequiresActionSession({ order: { id: "order-unpaid" } });
+    useCheckoutSession.mockReturnValue(leftover);
 
     await placeWithGateway("stripe", mockCompleteRequiresAction);
 
     expect(mockAbandonPayment).not.toHaveBeenCalled();
-    expect(mockPlaceOrder).toHaveBeenCalledTimes(1);
-    expect(mockCompleteRequiresAction).toHaveBeenCalledWith(paySession);
+    expect(mockPlaceOrder).not.toHaveBeenCalled();
+    expect(mockCompleteRequiresAction).toHaveBeenCalledWith(leftover.session);
     expect(mockResumePayment).not.toHaveBeenCalled();
   });
 

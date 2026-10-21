@@ -3,6 +3,7 @@ export const EP_DESIGN_FN_NAMES = [
   "getProductList",
   "getProductPage",
   "getRelatedProducts",
+  "getSearchAttributes",
 ] as const;
 
 export type EpDesignFnName = (typeof EP_DESIGN_FN_NAMES)[number];

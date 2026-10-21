@@ -17,6 +17,7 @@ import {
   CartItemQuantityContext,
   CartItemQuantityContextValue,
 } from "./CartDrawerContext";
+import { useCanvasPreviewState } from "../utils/canvas-preview-state";
 
 const log = createLogger("EPCartItemQuantityControl");
 
@@ -90,8 +91,9 @@ export function EPCartItemQuantityControl(
     className,
     minQuantity = 1,
     maxQuantity = 99,
-    previewState = "auto",
+    previewState: savedPreviewState,
   } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const currentItem = useSelector("currentCartItem") as
     | {
@@ -218,7 +220,7 @@ export function EPCartItemQuantityControl(
         log.error("Quantity update failed", {
           error: message,
           code: readEpErrorCode(err),
-        } as Record<string, unknown>);
+        });
         setError(cartWriteErrorText(err, "update"));
 
         const revertTo = Math.max(minQuantity, Number(previousQty) || minQuantity);
