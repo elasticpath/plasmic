@@ -53,6 +53,8 @@ describe("createEpIdentityClient", () => {
     await client.selectAccount({ accountId: "acct-1" });
     await client.rollAccount();
     await client.logout();
+    await client.member();
+    await client.updateMember({ name: "Ada Lovelace" });
 
     expect(stub.calls.map((c) => c.url)).toEqual([
       "/api/ep/get-session",
@@ -65,6 +67,8 @@ describe("createEpIdentityClient", () => {
       "/api/ep/ep/account/select",
       "/api/ep/ep/account/roll",
       "/api/ep/ep/account/logout",
+      "/api/ep/ep/account/member",
+      "/api/ep/ep/account/member/update",
     ]);
   });
 
