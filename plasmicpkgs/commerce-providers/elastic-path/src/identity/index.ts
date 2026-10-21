@@ -7,6 +7,7 @@ export type {
   EpAccountLoginRequest,
   EpAccountLoginResult,
   EpAccountMemberResult,
+  EpAccountMemberUpdateRequest,
   EpAccountRegisterRequest,
   EpAccountRosterRequest,
   EpAccountRosterResult,

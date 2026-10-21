@@ -42,14 +42,18 @@ import {
 } from "./envelope";
 import type { EpAccountSlot, EpAnchorTokenSlot } from "./envelope";
 import {
+  AccountAuthenticationSettingsError,
   AccountMemberReadError,
+  AccountMemberUpdateError,
   EpAccountTokenError,
   collectAccountTokens,
   discoverPasswordProfileId,
   findAccountToken,
   mintAccountTokens,
   readAccountMember,
+  readAuthenticationRealmId,
   toAccountRoster,
+  updateUserAuthenticationInfo,
 } from "./account-tokens";
 import type {
   EpAccountCredential,
@@ -220,6 +224,63 @@ function noAccountMemberError(): Response {
     401,
     "No account member is signed in."
   );
+}
+
+function noAccountCredentialError(): Response {
+  return jsonError(
+    "no_account_credential",
+    401,
+    "This member belonged to no account when they signed in, so there is no credential to select with. Sign in again."
+  );
+}
+
+const PROFILE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * `identity.updateMember()` may send only a trimmed name and/or email.
+ * Anything else is an id, a token, or a field this operation does not write.
+ */
+function parseUpdateMemberBody(
+  body: unknown
+):
+  | { ok: true; profile: { name?: string; email?: string } }
+  | { ok: false; message: string } {
+  if (body == null || typeof body !== "object" || Array.isArray(body)) {
+    return {
+      ok: false,
+      message: "Body must be an object with name and/or email.",
+    };
+  }
+  const record = body as Record<string, unknown>;
+  for (const key of Object.keys(record)) {
+    if (key !== "name" && key !== "email") {
+      return { ok: false, message: "Body may include only name and email." };
+    }
+  }
+  const profile: { name?: string; email?: string } = {};
+  if ("name" in record) {
+    if (typeof record.name !== "string") {
+      return { ok: false, message: "name must be a string." };
+    }
+    const name = record.name.trim();
+    if (!name) return { ok: false, message: "name must not be empty." };
+    profile.name = name;
+  }
+  if ("email" in record) {
+    if (typeof record.email !== "string") {
+      return { ok: false, message: "email must be a string." };
+    }
+    const email = record.email.trim();
+    if (!email) return { ok: false, message: "email must not be empty." };
+    if (!PROFILE_EMAIL_RE.test(email)) {
+      return { ok: false, message: "Enter a valid email address." };
+    }
+    profile.email = email;
+  }
+  if (profile.name === undefined && profile.email === undefined) {
+    return { ok: false, message: "Body must include name or email." };
+  }
+  return { ok: true, profile };
 }
 
 /** `identity.member()` posts `{}`. Anything else is a selector the browser must not send. */
@@ -728,11 +789,7 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             if (lapsed.epLapsedAccount) return accountLapsedError();
             // A member of no account has nothing to re-mint from, so an
             // account granted since they signed in costs them a re-login.
-            return jsonError(
-              "no_account_credential",
-              401,
-              "This member belonged to no account when they signed in, so there is no credential to select with. Sign in again."
-            );
+            return noAccountCredentialError();
           }
 
           // Re-mint first. It is the only step that can fail, so a failure
@@ -903,6 +960,80 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
               "account_member_read_failed",
               502,
               "Elastic Path rejected the account-member read."
+            );
+          }
+        }
+      ),
+
+      epAccountMemberUpdate: createAuthEndpoint(
+        "/ep/account/member/update",
+        { method: "POST" },
+        async (ctx) => {
+          const existing = await readExistingSession(ctx);
+          if (!existing?.user || !existing?.session) return noSessionError();
+
+          const parsed = parseUpdateMemberBody(ctx.body);
+          if (!parsed.ok) {
+            return jsonError("invalid_input", 400, parsed.message);
+          }
+
+          const session = sessionWithLapseApplied(existing.session);
+          const memberId = session.epMemberId;
+          if (typeof memberId !== "string" || !memberId) {
+            return noAccountMemberError();
+          }
+
+          const accountToken = heldAccountCredential(session);
+          if (!accountToken) {
+            if (session.epLapsedAccount) return accountLapsedError();
+            return noAccountCredentialError();
+          }
+
+          if (
+            typeof session.epAccessToken !== "string" ||
+            !session.epAccessToken ||
+            typeof session.epHost !== "string" ||
+            !session.epHost ||
+            typeof session.epClientId !== "string" ||
+            !session.epClientId
+          ) {
+            return jsonError(
+              "account_member_update_failed",
+              502,
+              "Elastic Path was unreachable."
+            );
+          }
+
+          try {
+            const realmId = await readAuthenticationRealmId({
+              host: session.epHost,
+              implicitToken: session.epAccessToken,
+            });
+            await updateUserAuthenticationInfo({
+              host: session.epHost,
+              clientId: session.epClientId,
+              implicitToken: session.epAccessToken,
+              accountToken,
+              realmId,
+              memberId,
+              profile: parsed.profile,
+            });
+            return ctx.json(epIdentityPayload("updateMember", { id: memberId }));
+          } catch (err) {
+            if (
+              err instanceof AccountMemberUpdateError ||
+              err instanceof AccountAuthenticationSettingsError
+            ) {
+              return jsonError(
+                "account_member_update_failed",
+                err.status,
+                err.message
+              );
+            }
+            return jsonError(
+              "account_member_update_failed",
+              502,
+              "Elastic Path was unreachable."
             );
           }
         }

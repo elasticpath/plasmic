@@ -117,6 +117,18 @@ InstantSearch enters its module graph.
 - On the Studio canvas it never searches, and shows sample products while it is
   selected.
 
+`identity.updateMember({ name?, email? })` updates the signed-in account
+member's profile. The browser may send only a trimmed, non-empty `name`
+and/or `email`. The server writes those fields to the member's user
+authentication info with the selected account credential, or the anchor
+credential when no account is selected, and returns `{ id }` for the session
+member. It does not read the account member again. `EP Account Profile Form
+Provider` and `EP Account Profile Field` edit `name` and `email` from
+`$ctx.account.accountMember`, send only the fields the shopper changed, and
+then use the existing account reload. A zero-organisation member, or a
+member with no usable account credential, cannot update. Changing email does
+not change the login username.
+
 `accountMember` may now include `name` and `email` in addition to `id`.
 `EPAccountProvider` reads them from `identity.member()` during the existing
 account reload, and only when that result is for the same member id the
