@@ -343,11 +343,8 @@ export interface EpDesignRoutes {
 }
 
 // @public (undocumented)
-export interface EpDesignStore {
-    // (undocumented)
+export interface EpDesignStore extends Required<Pick<EpPluginOptions, "resolveConfig">> {
     hostAllowlist?: readonly string[];
-    // (undocumented)
-    resolveConfig: EpResolveConfig;
 }
 
 // @public

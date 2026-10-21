@@ -207,6 +207,9 @@ describe("a store with no auth instance", () => {
     const res = await routes.handle(...post("getProduct", { id: "p1" }));
 
     expect(res.status).toBe(500);
+    expect((await res.json()).message).toMatch(
+      /"https:\/\/evil\.example" is not on the EP host allow-list/
+    );
     expect(mintCalls).toBe(0);
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
@@ -238,6 +241,20 @@ describe("a store with no auth instance", () => {
     const res = await routes.handle(...post("getProduct", { id: "p1" }));
 
     expect(res.status).toBe(500);
+    expect((await res.json()).message).toMatch(/resolveConfig named no store/);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("fails when the bundle names a store without a clientId", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const routes = createEpDesignRoutes({
+      resolveConfig: async () => ({ clientId: "", host: EP_HOST }),
+    });
+
+    const res = await routes.handle(...post("getProduct", { id: "p1" }));
+
+    expect(res.status).toBe(500);
+    expect((await res.json()).message).toMatch(/resolveConfig named no store/);
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });

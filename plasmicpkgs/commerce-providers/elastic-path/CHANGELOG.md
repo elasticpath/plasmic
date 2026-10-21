@@ -299,7 +299,9 @@ serves only design time can mount the route with no `createEpAuth`, so it needs
 no session secret. `resolveConfig` names the store, for example from
 `extractEpProviderConfig` on the Plasmic bundle. The store's host must be on the
 same allow-list as for `createEpAuth`: the defaults, `hostAllowlist` and
-`EP_HOST_ALLOWLIST`. `createEpDesignRoutes(epAuth)` is unchanged.
+`EP_HOST_ALLOWLIST`. If `resolveConfig` names no store, or names a host that is
+not on the list, the route answers `500 dispatch_failed` and mints no token;
+there is no fallback store. `createEpDesignRoutes(epAuth)` is unchanged.
 
 Login is composable rather than a single form component.
 `EPAccountLoginFormProvider` owns the username and password internally and
