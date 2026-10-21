@@ -5,22 +5,31 @@ import {
   type EpProviderBundleConfig,
 } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
 
-let resolved: Promise<EpProviderBundleConfig | null> | null = null;
+const STORE_TTL_MS = 5_000;
+
+let memo: {
+  config: Promise<EpProviderBundleConfig | null>;
+  expiresAtMs: number;
+} | null = null;
 
 async function readBundleStore(
   hostAllowlist: readonly string[]
 ): Promise<EpProviderBundleConfig | null> {
-  const pages = await PLASMIC.fetchPages();
-  if (pages.length === 0) return null;
-  const data = await PLASMIC.maybeFetchComponentData(pages[0].path);
+  const data = await PLASMIC.maybeFetchComponentData();
   return extractEpProviderConfig(data, { hostAllowlist });
 }
 
 const routes = createEpDesignRoutes({
   resolveConfig: async ({ hostAllowlist }) => {
-    resolved ??= readBundleStore(hostAllowlist);
-    const config = await resolved.catch(() => null);
-    if (!config) resolved = null;
+    if (!memo || memo.expiresAtMs <= Date.now()) {
+      memo = {
+        config: readBundleStore(hostAllowlist),
+        expiresAtMs: Date.now() + STORE_TTL_MS,
+      };
+    }
+    const current = memo;
+    const config = await current.config.catch(() => null);
+    if (!config && memo === current) memo = null;
     return config;
   },
 });
