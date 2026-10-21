@@ -149,18 +149,24 @@ function checkNoRequireShim() {
   check("dist/esm has no require() shim", shimmed.length === 0, shimmed.join("\n"));
 }
 
-// A direct eval stops bundlers dropping any of the root's unused code.
-function checkRootHasNoDirectEval() {
-  for (const file of ["dist/index.esm.js", "dist/index.js"]) {
-    const evals = fs.readFileSync(path.join(installedDir, file), "utf8").match(/\beval\(/g) ?? [];
-    check(`${file} has no direct eval`, evals.length === 0, `${evals.length} found`);
-  }
+// A direct eval stops bundlers dropping any of a file's unused code.
+function checkNoDirectEval() {
+  const files = [
+    "dist/index.esm.js",
+    "dist/index.js",
+    "dist/server.js",
+    "dist/server.mjs",
+    ...perModuleFiles(),
+    ...perModuleFiles("dist/exports"),
+  ];
+  const withEval = files.filter((file) => /\beval\(/.test(fs.readFileSync(path.join(installedDir, file), "utf8")));
+  check(`no built JavaScript file has a direct eval (${files.length} files)`, withEval.length === 0, withEval.join("\n"));
 }
 
-function perModuleFiles() {
+function perModuleFiles(dir = "dist/esm") {
   return fs
-    .readdirSync(path.join(installedDir, "dist/esm"), { recursive: true })
-    .map((p) => `dist/esm/${p.split(path.sep).join("/")}`)
+    .readdirSync(path.join(installedDir, dir), { recursive: true })
+    .map((p) => `${dir}/${p.split(path.sep).join("/")}`)
     .filter((p) => p.endsWith(".js"));
 }
 
@@ -312,7 +318,9 @@ const DEPENDENCIES = [
 
 const LOADER_EXTERNALS = ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime", "@plasmicapp/*", "next", "next/*"];
 const ROOT_ONE_EXPORT_LIMIT = 500_000;
-const INSTANTSEARCH = /(?:^|\/)node_modules\/(?:instantsearch\.js|react-instantsearch(?:-[a-z]+)*|algoliasearch-helper)\//;
+const ONE_ENTRY_LIMIT = 80_000;
+const INSTANTSEARCH =
+  /(?:^|\/)node_modules\/(?:instantsearch\.js|react-instantsearch(?:-[a-z]+)*|algoliasearch-helper|@elasticpath\/catalog-search-instantsearch-adapter)\//;
 
 async function bundleAsLoader(name, contents) {
   const entry = path.join(installRoot, `${name}.js`);
@@ -401,6 +409,14 @@ async function smokeModules() {
     throughMap.search.length === 0,
     throughMap.search.join("\n")
   );
+  for (const name of ["EPCartDrawerTrigger", "EPProductGrid"]) {
+    const alone = await bundleAsLoader(`${name}-alone`, perModuleImports(map, [name]));
+    check(
+      `${name} on its own leaves out InstantSearch and bundles to under ${ONE_ENTRY_LIMIT} bytes (${alone.bytes})`,
+      alone.search.length === 0 && alone.bytes < ONE_ENTRY_LIMIT,
+      alone.search.join("\n")
+    );
+  }
   const cartTrigger = await bundleAsLoader("cart-trigger-root", `export { EPCartDrawerTrigger } from "${pkg.name}";\n`);
   check(
     `EPCartDrawerTrigger from the root bundles to under ${ROOT_ONE_EXPORT_LIMIT} bytes (${cartTrigger.bytes})`,
@@ -416,7 +432,7 @@ try {
   checkAttw(tarball, "./server", []);
   install(tarball);
   checkNoRequireShim();
-  checkRootHasNoDirectEval();
+  checkNoDirectEval();
   checkRootPullsInNoServerModule();
   for (const [label, smoke] of [
     ["/server smoke", smokeServer],
