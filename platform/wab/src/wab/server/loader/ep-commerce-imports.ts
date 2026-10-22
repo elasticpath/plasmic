@@ -29,17 +29,6 @@ export const splitEpCommerceImportsPlugin: EsbuildPlugin = {
         loader: "tsx",
       };
     });
-
-    build.onResolve(
-      { filter: /^@elasticpath\/plasmic-ep-commerce-elastic-path$/ },
-      () => ({
-        errors: [
-          {
-            text: `Cannot import ${EP_COMMERCE_PACKAGE} from its root: this bundle imports each name from its own entry point, and the root would add a second copy of the package`,
-          },
-        ],
-      })
-    );
   },
 };
 
