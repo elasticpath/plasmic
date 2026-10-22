@@ -41,6 +41,10 @@ import {
 } from "./envelope";
 import type { EpAccountSlot, EpAnchorTokenSlot } from "./envelope";
 import {
+  AccountAddressReadError,
+  readAccountAddresses,
+} from "./account-addresses";
+import {
   AccountAuthenticationSettingsError,
   AccountMemberReadError,
   AccountMemberUpdateError,
@@ -230,6 +234,14 @@ function noAccountCredentialError(): Response {
     "no_account_credential",
     401,
     "This member belonged to no account when they signed in, so there is no credential to select with. Sign in again."
+  );
+}
+
+function noSelectedAccountError(): Response {
+  return jsonError(
+    "no_selected_account",
+    401,
+    "No organisation is selected."
   );
 }
 
@@ -959,6 +971,76 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
               "account_member_read_failed",
               502,
               "Elastic Path rejected the account-member read."
+            );
+          }
+        }
+      ),
+
+      epAccountAddresses: createAuthEndpoint(
+        "/ep/account/addresses",
+        { method: "POST" },
+        async (ctx) => {
+          const existing = await readExistingSession(ctx);
+          if (!existing?.user || !existing?.session) return noSessionError();
+
+          if (!isEmptyRequestBody(ctx.body)) {
+            return jsonError("invalid_input", 400, "Body must be empty.");
+          }
+
+          const session = sessionWithLapseApplied(existing.session);
+          const memberId = session.epMemberId;
+          if (typeof memberId !== "string" || !memberId) {
+            return noAccountMemberError();
+          }
+          if (session.epLapsedAccount) return accountLapsedError();
+
+          const account = session.epAccount as EpAccountSlot | undefined;
+          if (
+            !account ||
+            typeof account.id !== "string" ||
+            !account.id ||
+            typeof account.token !== "string" ||
+            !account.token
+          ) {
+            return noSelectedAccountError();
+          }
+
+          if (
+            typeof session.epAccessToken !== "string" ||
+            !session.epAccessToken ||
+            typeof session.epHost !== "string" ||
+            !session.epHost ||
+            typeof session.epClientId !== "string" ||
+            !session.epClientId
+          ) {
+            return jsonError(
+              "account_addresses_read_failed",
+              502,
+              "Elastic Path was unreachable."
+            );
+          }
+
+          try {
+            const result = await readAccountAddresses({
+              host: session.epHost,
+              clientId: session.epClientId,
+              implicitToken: session.epAccessToken,
+              accountId: account.id,
+              accountToken: account.token,
+            });
+            return ctx.json(epIdentityPayload("accountAddresses", result));
+          } catch (err) {
+            if (err instanceof AccountAddressReadError) {
+              return jsonError(
+                "account_addresses_read_failed",
+                err.status,
+                err.message
+              );
+            }
+            return jsonError(
+              "account_addresses_read_failed",
+              502,
+              "Elastic Path was unreachable."
             );
           }
         }
