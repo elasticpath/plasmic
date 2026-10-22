@@ -116,6 +116,24 @@ describe("/api/ep/design/[fn] on the dev host", () => {
     expect(mintedClientIds()).toEqual(["bundle-client-id", "edited-client-id"]);
   });
 
+  it("reports a failed bundle fetch as itself and retries it", async () => {
+    const loaderError = new Error("loader code fetch 500");
+    maybeFetchComponentData.mockRejectedValueOnce(loaderError);
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    const failed = await POST(...post("getSearchAttributes"));
+    const retried = await POST(...post("getSearchAttributes"));
+
+    expect(failed.status).toBe(500);
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining("dispatch_failed"),
+      loaderError
+    );
+    expect(retried.status).toBe(200);
+  });
+
   it("serves only the design functions", async () => {
     const res = await POST(...post("getCart"));
 

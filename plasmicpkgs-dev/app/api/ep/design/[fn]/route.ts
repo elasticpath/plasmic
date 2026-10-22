@@ -28,7 +28,10 @@ const routes = createEpDesignRoutes({
       };
     }
     const current = memo;
-    const config = await current.config.catch(() => null);
+    const config = await current.config.catch((err) => {
+      if (memo === current) memo = null;
+      throw err;
+    });
     if (!config && memo === current) memo = null;
     return config;
   },
