@@ -371,6 +371,38 @@ async function bundleAsLoader(name, contents) {
   };
 }
 
+function webpackModules(name, contents) {
+  const entry = path.join(installRoot, `${name}.js`);
+  fs.writeFileSync(entry, contents);
+  const nextWebpack = require("next/dist/compiled/webpack/webpack");
+  nextWebpack.init();
+  return new Promise((resolve, reject) => {
+    nextWebpack.webpack(
+      {
+        mode: "production",
+        entry,
+        output: { path: path.join(installRoot, `${name}-out`) },
+        optimization: { concatenateModules: false, minimize: false },
+        externals: [/^(?:react|react-dom|next)(?:\/.*)?$/, /^@plasmicapp\//],
+        externalsType: "commonjs",
+        performance: { hints: false },
+      },
+      (error, stats) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        const info = stats.toJson({ modules: true, errors: true });
+        if (info.errors.length) {
+          reject(new Error(info.errors.map((e) => e.message).join("\n")));
+          return;
+        }
+        resolve(info.modules.filter((m) => m.chunks?.length).map((m) => m.name));
+      }
+    );
+  });
+}
+
 async function smokeModules() {
   const mapPath = require.resolve(`${pkg.name}/exports-map.json`);
   check(
@@ -446,6 +478,15 @@ async function smokeModules() {
     `EPCartDrawerTrigger from the root leaves out InstantSearch, catalog search, accounts and the checkout components, with under ${ROOT_OWN_CODE_LIMIT} bytes of the package's code (${fromRoot.ownBytes}; ${fromRoot.bytes} in all)`,
     fromRoot.search.length === 0 && unrelated.length === 0 && fromRoot.ownBytes < ROOT_OWN_CODE_LIMIT,
     [...fromRoot.search, ...unrelated].join("\n")
+  );
+
+  const cartWrite = await webpackModules(
+    "cart-write-webpack",
+    `import { epAddCartItem } from "${pkg.name}";\nglobalThis.__epAddCartItem = epAddCartItem;\n`
+  );
+  check(
+    "epAddCartItem from the root registers the cart cache under webpack, as the one-bundle root did",
+    cartWrite.some((m) => m.endsWith("/cart-provider/swr-cart-cache.js"))
   );
 }
 

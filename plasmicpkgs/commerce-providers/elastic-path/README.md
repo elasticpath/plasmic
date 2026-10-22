@@ -1349,9 +1349,10 @@ every root export with its subpath: `{ "EPProductGrid": "./EPProductGrid", … }
   declarations: import types from the root.
 
 `sideEffects` in `package.json` lets a bundler drop a file whose exports go
-unused. Only `dist/esm/cart-provider/use-ep-cart.js` does work when it is
+unused. Only `dist/esm/cart-provider/swr-cart-cache.js` does work when it is
 imported: it registers the cart cache that cart writes update. A module that
 does work when it is imported must be listed there too, or a bundler can drop
-it. The CommonJS root (`dist/index.js`) and the `/server` builds are listed,
-and so is `./src/**`, so that they and the root build see the same side effects
-as before.
+it. `dist/index.esm.js` imports every listed module, so any import of the root
+still runs that work, as it did when the root was one bundle. The root, the
+`/server` builds and `./src/**` are listed too, so that they and the root build
+see the same side effects as before.

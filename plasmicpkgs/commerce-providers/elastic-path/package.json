@@ -37,9 +37,10 @@
   "sideEffects": [
     "./src/**",
     "./dist/index.js",
+    "./dist/index.esm.js",
     "./dist/server.js",
     "./dist/server.mjs",
-    "./dist/esm/cart-provider/use-ep-cart.js"
+    "./dist/esm/cart-provider/swr-cart-cache.js"
   ],
   "scripts": {
     "build": "rm -rf dist && pnpm build:types && pnpm build:index && pnpm build:server && pnpm build:modules",

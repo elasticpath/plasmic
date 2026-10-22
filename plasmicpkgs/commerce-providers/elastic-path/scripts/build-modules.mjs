@@ -239,11 +239,19 @@ for (const output of [modulesDir, namesDir, mapFile]) {
 }
 const exportsByFile = await buildModules(modules);
 const map = writeNamedEntries(findDefiningModules(rootExports, exportsByFile));
+// Any root import runs every module's import-time work, as the one-bundle
+// root did: webpack skips a side-effect-free re-export file.
+const importTimeWork = JSON.parse(
+  fs.readFileSync(path.join(pkgDir, "package.json"), "utf8")
+)
+  .sideEffects.filter((file) => file.startsWith("./dist/esm/"))
+  .map((file) => `import "./${file.slice("./dist/".length)}";\n`)
+  .join("");
 // Named, not `export *`: Next.js rejects `export *` in a "use client" file
 // that a server component imports.
 fs.writeFileSync(
   path.join(distDir, "index.esm.js"),
-  `"use client";\nexport { ${Object.keys(map).join(
+  `"use client";\n${importTimeWork}export { ${Object.keys(map).join(
     ", "
   )} } from "./esm/index.js";\n`
 );
