@@ -163,6 +163,11 @@ function checkNoDirectEval() {
   check(`no built JavaScript file has a direct eval (${files.length} files)`, withEval.length === 0, withEval.join("\n"));
 }
 
+function checkRootNamesItsExports() {
+  const main = fs.readFileSync(path.join(installedDir, "dist/index.esm.js"), "utf8");
+  check("dist/index.esm.js names its exports, as Next.js needs of a client boundary", !/\bexport \*/.test(main));
+}
+
 function perModuleFiles(dir = "dist/esm") {
   return fs
     .readdirSync(path.join(installedDir, dir), { recursive: true })
@@ -325,8 +330,9 @@ const DEPENDENCIES = [
 ].flatMap((name) => [name, `${name}/*`]);
 
 const LOADER_EXTERNALS = ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime", "@plasmicapp/*", "next", "next/*"];
-const ROOT_ONE_EXPORT_LIMIT = 500_000;
+const ROOT_OWN_CODE_LIMIT = 40_000;
 const ONE_ENTRY_LIMIT = 100_000;
+const UNRELATED_TO_CART = /\/dist\/esm\/(?:catalog-search\/|account\/|checkout\/(?:.*\/)?EP[^/]*\.js$)/;
 const INSTANTSEARCH =
   /(?:^|\/)node_modules\/(?:instantsearch\.js|react-instantsearch(?:-[a-z]+)*|algoliasearch-helper|@elasticpath\/catalog-search-instantsearch-adapter)\//;
 
@@ -349,11 +355,20 @@ async function bundleAsLoader(name, contents) {
     metafile: true,
     logLevel: "silent",
   });
-  const search = Object.keys(result.metafile.inputs).filter((p) => INSTANTSEARCH.test(p));
+  const included = Object.values(result.metafile.outputs).flatMap((output) =>
+    Object.entries(output.inputs).filter(([, input]) => input.bytesInOutput > 0)
+  );
+  const search = [...new Set(included.map(([p]) => p).filter((p) => INSTANTSEARCH.test(p)))];
+  const own = included.filter(([p]) => p.includes(`/${pkg.name}/dist/`));
   const bytes = result.outputFiles
     .filter((f) => f.path.endsWith(".js"))
     .reduce((sum, f) => sum + f.contents.length, 0);
-  return { search, bytes };
+  return {
+    search,
+    bytes,
+    modules: own.map(([p]) => p),
+    ownBytes: own.reduce((sum, [, input]) => sum + input.bytesInOutput, 0),
+  };
 }
 
 async function smokeModules() {
@@ -425,10 +440,12 @@ async function smokeModules() {
       alone.search.join("\n")
     );
   }
-  const cartTrigger = await bundleAsLoader("cart-trigger-root", `export { EPCartDrawerTrigger } from "${pkg.name}";\n`);
+  const fromRoot = await bundleAsLoader("cart-trigger-root", `export { EPCartDrawerTrigger } from "${pkg.name}";\n`);
+  const unrelated = fromRoot.modules.filter((m) => UNRELATED_TO_CART.test(m));
   check(
-    `EPCartDrawerTrigger from the root bundles to under ${ROOT_ONE_EXPORT_LIMIT} bytes (${cartTrigger.bytes})`,
-    cartTrigger.bytes < ROOT_ONE_EXPORT_LIMIT
+    `EPCartDrawerTrigger from the root leaves out InstantSearch, catalog search, accounts and the checkout components, with under ${ROOT_OWN_CODE_LIMIT} bytes of the package's code (${fromRoot.ownBytes}; ${fromRoot.bytes} in all)`,
+    fromRoot.search.length === 0 && unrelated.length === 0 && fromRoot.ownBytes < ROOT_OWN_CODE_LIMIT,
+    [...fromRoot.search, ...unrelated].join("\n")
   );
 }
 
@@ -441,6 +458,7 @@ try {
   install(tarball);
   checkNoRequireShim();
   checkNoDirectEval();
+  checkRootNamesItsExports();
   checkRootPullsInNoServerModule();
   for (const [label, smoke] of [
     ["/server smoke", smokeServer],

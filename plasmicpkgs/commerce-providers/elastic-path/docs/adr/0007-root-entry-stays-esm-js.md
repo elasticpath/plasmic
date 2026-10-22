@@ -39,7 +39,8 @@ The root entry stays on the `.esm.js` shape: `index.js`, `index.esm.js`,
 The one-export entry points a loader imports instead of the root (`./*`, in
 `dist/exports`), and the modules under `dist/esm` behind them, take the same
 shape for the same reason. They are `.js` ESM, because the modules make the
-same default imports of `@plasmicapp/host`.
+same default imports of `@plasmicapp/host`. `index.esm.js` re-exports those
+modules by name, so the root's ES module build is them too.
 
 The findings below are recorded exceptions. `verify:package` ignores them by
 exact rule and path, so a new finding still fails CI:

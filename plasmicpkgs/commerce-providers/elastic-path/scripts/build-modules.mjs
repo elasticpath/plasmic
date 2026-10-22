@@ -239,8 +239,17 @@ for (const output of [modulesDir, namesDir, mapFile]) {
 }
 const exportsByFile = await buildModules(modules);
 const map = writeNamedEntries(findDefiningModules(rootExports, exportsByFile));
+// Named, not `export *`: Next.js rejects `export *` in a "use client" file
+// that a server component imports.
+fs.writeFileSync(
+  path.join(distDir, "index.esm.js"),
+  `"use client";\nexport { ${Object.keys(map).join(
+    ", "
+  )} } from "./esm/index.js";\n`
+);
+fs.rmSync(path.join(distDir, "index.esm.js.map"), { force: true });
 console.info(
   `built ${modules.length} ESM modules at "dist/esm" and ${
     Object.keys(map).length
-  } root exports at "dist/exports", listed in "dist/exports-map.json"`
+  } root exports at "dist/exports", listed in "dist/exports-map.json", and re-exported them from "dist/index.esm.js"`
 );

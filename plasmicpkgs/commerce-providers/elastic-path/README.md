@@ -1314,10 +1314,12 @@ button; re-author the slot per the wiring steps above.
 
 ## One entry point per export
 
-The root entry is one bundled module. A loader that splits a project's code
-with esbuild can split only between modules, so every page that imports any
-component from the root gets all of them. For that loader, every root export is
-also its own entry point, named after the export:
+The root entry's ES module, `dist/index.esm.js`, re-exports every export by
+name from the per-module files under `dist/esm`, so a bundler keeps only the
+modules an import needs. A loader that bundles all of a project's pages
+together with code splitting still puts every module that some page imports
+through the root into chunks that every page loads. For that loader, every
+root export is also its own entry point, named after the export:
 
 ```js
 import { EPProductGrid, EPProductListProvider as List } from "@elasticpath/plasmic-ep-commerce-elastic-path";
@@ -1350,5 +1352,6 @@ every root export with its subpath: `{ "EPProductGrid": "./EPProductGrid", … }
 unused. Only `dist/esm/cart-provider/use-ep-cart.js` does work when it is
 imported: it registers the cart cache that cart writes update. A module that
 does work when it is imported must be listed there too, or a bundler can drop
-it. The root and `/server` builds are listed, and so is `./src/**`, so that the
-root build and its consumers see the same side effects as before.
+it. The CommonJS root (`dist/index.js`) and the `/server` builds are listed,
+and so is `./src/**`, so that they and the root build see the same side effects
+as before.
