@@ -165,7 +165,7 @@ function checkNoDirectEval() {
 
 function checkRootNamesItsExports() {
   const main = fs.readFileSync(path.join(installedDir, "dist/index.esm.js"), "utf8");
-  check("dist/index.esm.js names its exports, as Next.js needs of a client boundary", !/\bexport \*/.test(main));
+  check("dist/index.esm.js re-exports by name, not with export *", !/\bexport \*/.test(main));
 }
 
 function perModuleFiles(dir = "dist/esm") {
