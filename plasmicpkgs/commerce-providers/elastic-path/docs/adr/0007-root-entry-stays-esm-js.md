@@ -2,11 +2,13 @@
 
 ## Status
 
-Accepted (2026-09-30)
+Accepted (2026-09-30). Amended 2026-10-22: the root's ES module re-exports the
+per-module files, and each export has its own entry point.
 
 ## Context
 
-The package builds with the repository's shared `build.mjs`. `verify:package`
+The package builds with the repository's shared `build.mjs`, and its own
+`build-modules.mjs` adds the per-module files. `verify:package`
 runs publint and arethetypeswrong on the packed tarball on every pull request.
 Without `"type": "module"`, a `.js` file is CommonJS to Node, so any ESM build
 that Node itself loads must be named `.mjs`.
@@ -38,9 +40,9 @@ The root entry stays on the `.esm.js` shape: `index.js`, `index.esm.js`,
 
 The one-export entry points a loader imports instead of the root (`./*`, in
 `dist/exports`), and the modules under `dist/esm` behind them, take the same
-shape for the same reason. They are `.js` ESM, because the modules make the
-same default imports of `@plasmicapp/host`. `index.esm.js` re-exports those
-modules by name, so the root's ES module build is them too.
+shape for the same reason: the modules make the same default imports of
+`@plasmicapp/host`. Since `index.esm.js` only re-exports those modules, they
+are the root's ES module code too.
 
 The findings below are recorded exceptions. `verify:package` ignores them by
 exact rule and path, so a new finding still fails CI:

@@ -481,10 +481,12 @@ package. `dist/index.esm.js`, which `import` and `module` resolve to, now
 re-exports every root export by name from the per-module files under
 `dist/esm`, so a bundler keeps only the modules the import needs. Any root
 import still registers the cart cache that cart writes update, as before. The
-CommonJS `dist/index.js` is still one bundle. The EP session scope also no longer falls
-back to `eval("require")` when `process.getBuiltinModule` is missing: a direct
-`eval` stopped bundlers from removing any of the code around it. Every Node
-version that `engines` allows has `process.getBuiltinModule`.
+CommonJS `dist/index.js` is still one bundle.
+
+The EP session scope no longer falls back to `eval("require")` when
+`process.getBuiltinModule` is missing. A direct `eval` stopped bundlers from
+removing any of the code around it. Every Node version that `engines` allows
+has `process.getBuiltinModule`.
 
 The proxy route answers a refusal the shopper can act on with `409` instead of
 `500`: `insufficient_stock`, `invalid_promo_code`, `checkout_in_progress`, and

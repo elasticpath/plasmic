@@ -128,9 +128,6 @@ describe("reaching async_hooks", () => {
   afterEach(() => {
     if (original) (process as any).getBuiltinModule = original;
     else delete (process as any).getBuiltinModule;
-    // `doMock` outlives the test that called it, so without this the mock
-    // that breaks one route silently breaks the next test's other route.
-    jest.dontMock("async_hooks");
     jest.resetModules();
   });
 
@@ -146,10 +143,6 @@ describe("reaching async_hooks", () => {
 
   it("uses getBuiltinModule", () => {
     jest.isolateModules(() => {
-      // No `require` route at all, so a pass can only come from the builtin.
-      jest.doMock("async_hooks", () => {
-        throw new Error("Dynamic require of 'async_hooks' is not supported");
-      });
       expect(storageIsReal()).toBe(true);
     });
   });

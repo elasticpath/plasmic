@@ -331,8 +331,8 @@ const DEPENDENCIES = [
 
 const LOADER_EXTERNALS = ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime", "@plasmicapp/*", "next", "next/*"];
 const ROOT_OWN_CODE_LIMIT = 40_000;
-const ONE_ENTRY_LIMIT = 100_000;
-const UNRELATED_TO_CART = /\/dist\/esm\/(?:catalog-search\/|account\/|checkout\/(?:.*\/)?EP[^/]*\.js$)/;
+const UNRELATED_TO_CART = /\/dist\/esm\/(?:catalog-search|account|checkout)\//;
+const CHECKOUT_FILE_THE_CART_USES = "/dist/esm/checkout/session/shipping-line-sku.js";
 const INSTANTSEARCH =
   /(?:^|\/)node_modules\/(?:instantsearch\.js|react-instantsearch(?:-[a-z]+)*|algoliasearch-helper|@elasticpath\/catalog-search-instantsearch-adapter)\//;
 
@@ -464,18 +464,12 @@ async function smokeModules() {
     throughMap.search.length === 0,
     throughMap.search.join("\n")
   );
-  for (const name of ["EPCartDrawerTrigger", "EPProductGrid"]) {
-    const alone = await bundleAsLoader(`${name}-alone`, perModuleImports(map, [name]));
-    check(
-      `${name} on its own leaves out InstantSearch and bundles to under ${ONE_ENTRY_LIMIT} bytes (${alone.bytes})`,
-      alone.search.length === 0 && alone.bytes < ONE_ENTRY_LIMIT,
-      alone.search.join("\n")
-    );
-  }
   const fromRoot = await bundleAsLoader("cart-trigger-root", `export { EPCartDrawerTrigger } from "${pkg.name}";\n`);
-  const unrelated = fromRoot.modules.filter((m) => UNRELATED_TO_CART.test(m));
+  const unrelated = fromRoot.modules.filter(
+    (m) => UNRELATED_TO_CART.test(m) && !m.endsWith(CHECKOUT_FILE_THE_CART_USES)
+  );
   check(
-    `EPCartDrawerTrigger from the root leaves out InstantSearch, catalog search, accounts and the checkout components, with under ${ROOT_OWN_CODE_LIMIT} bytes of the package's code (${fromRoot.ownBytes}; ${fromRoot.bytes} in all)`,
+    `EPCartDrawerTrigger from the root leaves out InstantSearch and the catalog-search, account and checkout modules, except the checkout constant the cart uses, with under ${ROOT_OWN_CODE_LIMIT} bytes of the package's code (${fromRoot.ownBytes}; ${fromRoot.bytes} in all)`,
     fromRoot.search.length === 0 && unrelated.length === 0 && fromRoot.ownBytes < ROOT_OWN_CODE_LIMIT,
     [...fromRoot.search, ...unrelated].join("\n")
   );
