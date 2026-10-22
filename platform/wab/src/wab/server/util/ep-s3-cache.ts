@@ -7,14 +7,37 @@
 
 import { logger } from "@/wab/server/observability";
 import { withTiming } from "@/wab/server/util/server-timing";
-import { ensureInstance } from "@/wab/shared/common";
-import S3 from "aws-sdk/clients/s3";
+import { ensure } from "@/wab/shared/common";
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 // Lazily-created singleton — avoids re-instantiating the S3 client on every
 // cache call. Reset via _testonly.resetS3Client in tests.
-let _s3: S3 | undefined;
-export function getS3Client(): S3 {
-  return (_s3 ??= new S3({ endpoint: process.env.S3_ENDPOINT }));
+let _s3: S3Client | undefined;
+export function makeS3Client(): S3Client {
+  return (_s3 ??= new S3Client({
+    endpoint: process.env.S3_ENDPOINT,
+    region: process.env.AWS_REGION ?? "us-east-1",
+    requestChecksumCalculation: process.env.S3_ENDPOINT
+      ? "WHEN_REQUIRED"
+      : undefined,
+    // LocalStack on localhost only serves path-style URLs.
+    forcePathStyle: process.env.S3_ENDPOINT?.includes("localhost"),
+    // v2 dropped a request after 2 minutes of socket inactivity; v3 never does.
+    requestHandler: { socketTimeout: 120_000 },
+  }));
+}
+
+/** Reads an object's whole body, which v3 returns as a stream. */
+export async function getS3ObjectString(
+  bucket: string,
+  key: string
+): Promise<string> {
+  const obj = await makeS3Client().send(
+    new GetObjectCommand({ Bucket: bucket, Key: key })
+  );
+  return ensure(obj.Body, "Unexpected empty S3 object body").transformToString(
+    "utf8"
+  );
 }
 
 /**
@@ -28,13 +51,11 @@ export async function tryGetS3CacheEntry<T>(opts: {
   deserialize: (str: string) => T;
 }): Promise<T | null> {
   const { bucket, key, deserialize } = opts;
-  const s3 = getS3Client();
   const shortKey = key.split("/").slice(-1)[0].slice(0, 24);
   try {
-    const obj = await withTiming(`s3-early-get-${shortKey}`, () =>
-      s3.getObject({ Bucket: bucket, Key: key }).promise()
+    const serialized = await withTiming(`s3-early-get-${shortKey}`, () =>
+      getS3ObjectString(bucket, key)
     );
-    const serialized = ensureInstance(obj.Body, Buffer).toString("utf8");
     logger().info(`S3 early cache hit for ${bucket} ${key}`, {
       s3CacheResult: "hit",
       bucket,
@@ -42,7 +63,7 @@ export async function tryGetS3CacheEntry<T>(opts: {
     });
     return deserialize(serialized);
   } catch (err) {
-    if (err.code === "TimeoutError") {
+    if (err.name === "TimeoutError") {
       throw err;
     }
     return null;

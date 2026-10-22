@@ -8,6 +8,7 @@ import { DbMgr, SUPER_USER } from "@/wab/server/db/DbMgr";
 import { TraceCarrier, withSpan } from "@/wab/server/util/apm-util";
 import { md5 } from "@/wab/server/util/hash";
 import { getHostlessPackageNpmVersion } from "@/wab/server/util/hostless-pkg-util";
+import { makeS3Client } from "@/wab/server/util/s3-util";
 import { ensureDevFlags } from "@/wab/server/workers/worker-utils";
 import { ProjectId } from "@/wab/shared/ApiSchema";
 import { Bundler } from "@/wab/shared/bundler";
@@ -51,8 +52,8 @@ import { asDataUrl } from "@/wab/shared/data-urls";
 import { isAdminTeamEmail } from "@/wab/shared/devflag-utils";
 import { DEVFLAGS, getProjectFlags } from "@/wab/shared/devflags";
 import { Site } from "@/wab/shared/model/classes";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { context, propagation } from "@opentelemetry/api";
-import S3 from "aws-sdk/clients/s3";
 import fs from "fs";
 import type { OverrideProperties, SetOptional } from "type-fest";
 import { ConnectionOptions } from "typeorm";
@@ -576,16 +577,17 @@ async function fetchImageAssetsFromS3(site: Site) {
         return;
       }
       const storagePath = new URL(i.dataUri).pathname.replace(/^\//, "");
-      const res = await new S3({ endpoint: process.env.S3_ENDPOINT })
-        .getObject({
+      const res = await makeS3Client().send(
+        new GetObjectCommand({
           Bucket: siteAssetsBucket,
           Key: storagePath,
         })
-        .promise();
+      );
       i.dataUri = asDataUrl(
-        Buffer.from(
-          ensure(res.Body, "Unexpected null body response") as string
-        ),
+        await ensure(
+          res.Body,
+          "Unexpected null body response"
+        ).transformToByteArray(),
         ensure(res.ContentType, "Unexpected response with no contentType")
       );
     })
