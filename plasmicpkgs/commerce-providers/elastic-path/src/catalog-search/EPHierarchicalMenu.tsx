@@ -11,17 +11,25 @@ import {
   usePlasmicCanvasContext,
 } from "@plasmicapp/host";
 import registerComponent, {
+  CanvasComponentProps,
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
 import React, { useImperativeHandle, useMemo } from "react";
 import { Registerable } from "../registerable";
+import { ChooseFieldPrompt } from "./ChooseFieldPrompt";
 import { MOCK_CATEGORY_ITEMS } from "./design-time-data";
 import type { CategoryItem } from "./design-time-data";
+import {
+  SearchAttributeContext,
+  hierarchyOptions,
+  useSearchAttributeDiscovery,
+} from "./search-attributes";
 import { useHierarchicalMenu } from "react-instantsearch";
 
 type PreviewState = "auto" | "withData";
 
-interface EPHierarchicalMenuProps {
+interface EPHierarchicalMenuProps
+  extends CanvasComponentProps<SearchAttributeContext> {
   children?: React.ReactNode;
   attributes?: string;
   className?: string;
@@ -45,11 +53,12 @@ export const epHierarchicalMenuMeta: CodeComponentMeta<EPHierarchicalMenuProps> 
       hidePlaceholder: true,
     },
     attributes: {
-      type: "string",
+      type: "choice",
       displayName: "Attributes",
       description:
-        'Comma-separated hierarchy levels (e.g., "categories.lvl0,categories.lvl1,categories.lvl2")',
-      defaultValue: "categories.lvl0,categories.lvl1,categories.lvl2",
+        "Hierarchy levels to navigate, listed from the connected store's catalog search. For levels the list does not show, bind a comma-separated value. Unset: the filter is left out of the search and shows nothing on a live page; on the canvas it asks for a field.",
+      options: (props, ctx) => hierarchyOptions(props.attributes, ctx),
+      allowSearch: true,
     },
     previewState: {
       type: "choice",
@@ -126,15 +135,41 @@ function DefaultCategoryRow(props: {
   );
 }
 
+function splitLevels(attributes: string | undefined): string[] {
+  return (attributes ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export const EPHierarchicalMenu = React.forwardRef<
   EPHierarchicalMenuActions,
   EPHierarchicalMenuProps
 >(function EPHierarchicalMenu(props, ref) {
-  const { children, attributes, className, previewState = "auto" } = props;
+  const {
+    children,
+    attributes,
+    className,
+    previewState = "auto",
+    setControlContextData,
+  } = props;
+
+  useSearchAttributeDiscovery(setControlContextData);
 
   const inEditor = !!usePlasmicCanvasContext();
   const useMock =
     previewState === "withData" || (previewState === "auto" && inEditor);
+
+  const levels = splitLevels(attributes);
+  if (levels.length === 0) {
+    return inEditor ? (
+      <ChooseFieldPrompt
+        propName="Attributes"
+        componentName="EP Hierarchical Menu"
+        className={className}
+      />
+    ) : null;
+  }
 
   if (useMock) {
     return (
@@ -147,7 +182,7 @@ export const EPHierarchicalMenu = React.forwardRef<
   return (
     <EPHierarchicalMenuInner
       ref={ref}
-      attributes={attributes}
+      attributes={levels.join(",")}
       className={className}
     >
       {children}
@@ -192,19 +227,11 @@ const EPHierarchicalMenuInner = React.forwardRef<
   EPHierarchicalMenuActions,
   {
     children?: React.ReactNode;
-    attributes?: string;
+    attributes: string;
     className?: string;
   }
 >(function EPHierarchicalMenuInner({ children, attributes, className }, ref) {
-
-  const attributeArray = useMemo(
-    () =>
-      (attributes || "categories.lvl0,categories.lvl1,categories.lvl2")
-        .split(",")
-        .map((s: string) => s.trim())
-        .filter(Boolean),
-    [attributes]
-  );
+  const attributeArray = useMemo(() => splitLevels(attributes), [attributes]);
 
   const { items, refine } = useHierarchicalMenu({
     attributes: attributeArray,

@@ -5,8 +5,9 @@
  * the next add-to-cart action lazily creates a fresh one. Account
  * dissociation is added in slice 2 (account checkout).
  *
- * Cleanup failures are logged but never propagate — the order is genuine,
- * cleanup is housekeeping. `runCartCleanup` returns void on both paths.
+ * Cleanup failures are logged but never thrown — the order is genuine.
+ * `runCartCleanup` resolves to whether Elastic Path then reports the cart
+ * empty.
  *
  * Note: esbuild does not hoist jest.mock(). We use require() for the SDK
  * mock so interception works regardless of import order.
@@ -14,12 +15,18 @@
 
 jest.mock("@epcc-sdk/sdks-shopper", () => ({
   deleteACart: jest.fn(),
+  deleteAllCartItems: jest.fn(),
+  getCartItems: jest.fn(),
+  updateACart: jest.fn(),
   createShopperClient: jest.fn(() => ({ client: {} })),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const epSdk = require("@epcc-sdk/sdks-shopper") as {
   deleteACart: jest.Mock;
+  deleteAllCartItems: jest.Mock;
+  getCartItems: jest.Mock;
+  updateACart: jest.Mock;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -33,7 +40,12 @@ const CONFIG = {
   getClientCredentialsToken: jest.fn(async () => "admin-token"),
 };
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  epSdk.getCartItems.mockResolvedValue({ data: { data: [] } });
+  epSdk.deleteAllCartItems.mockResolvedValue({ data: {} });
+  epSdk.updateACart.mockResolvedValue({ data: { data: {} } });
+});
 
 describe("runCartCleanup (guest happy path)", () => {
   it("deletes the EP cart with admin auth", async () => {
@@ -48,12 +60,32 @@ describe("runCartCleanup (guest happy path)", () => {
     });
   });
 
-  it("swallows errors from deleteACart and resolves successfully", async () => {
-    epSdk.deleteACart.mockRejectedValue(new Error("EP unavailable"));
+  it("reports a clean cart once Elastic Path shows it empty", async () => {
+    epSdk.deleteACart.mockResolvedValue({ data: undefined });
 
-    await expect(
-      runCartCleanup({ ...CONFIG, cartId: "cart-abc" })
-    ).resolves.toBeUndefined();
+    await expect(runCartCleanup({ ...CONFIG, cartId: "cart-abc" })).resolves.toBe(true);
+  });
+
+  it("empties and unlinks a cart Elastic Path will not delete (an account's last cart)", async () => {
+    epSdk.deleteACart.mockResolvedValue({
+      error: { errors: [{ status: 400, title: "Last cart" }] },
+      response: { status: 400 },
+    });
+
+    await expect(runCartCleanup({ ...CONFIG, cartId: "cart-abc" })).resolves.toBe(true);
+    expect(epSdk.deleteAllCartItems).toHaveBeenCalledWith(
+      expect.objectContaining({ path: { cartID: "cart-abc" } })
+    );
+    expect(epSdk.updateACart).toHaveBeenCalledWith(
+      expect.objectContaining({ body: { data: { payment_intent_id: "" } } })
+    );
+  });
+
+  it("does not throw, and reports failure, when the cart still holds lines", async () => {
+    epSdk.deleteACart.mockRejectedValue(new Error("EP unavailable"));
+    epSdk.getCartItems.mockResolvedValue({ data: { data: [{ id: "line-1", quantity: 1 }] } });
+
+    await expect(runCartCleanup({ ...CONFIG, cartId: "cart-abc" })).resolves.toBe(false);
   });
 
   it("does nothing when cartId is empty", async () => {

@@ -11,7 +11,7 @@ import {
 import type { FormatSpec } from "../../utils/field-format";
 import { FieldDisplay, useResolvedField } from "./useResolvedField";
 
-type ShowFacet = "value" | "label";
+type ShowFacet = "value" | "label" | "image";
 type PreviewState = "auto" | "withData";
 
 interface EPProductFieldProps {
@@ -29,7 +29,7 @@ export const epProductFieldMeta: CodeComponentMeta<EPProductFieldProps> = {
   name: "plasmic-commerce-ep-product-field",
   displayName: "EP Product Field",
   description:
-    "Displays one top-level product field (name, price, first image, …) picked from a dropdown — no `$ctx.currentProduct…` path. Renders the formatted value as text by default; drop children to gate a whole section on the field's presence and compose against the resolved value. Must be inside an EP Product Provider.",
+    "Displays one top-level product field (name, price, first image, …) picked from a dropdown — no `$ctx.currentProduct…` path. Renders the formatted value as text by default, or an image URL as an image; drop children to gate a whole section on the field's presence and compose against the resolved value. Reads currentProduct, so it works inside EP Product Provider and inside each EP Product Grid card.",
   props: {
     field: {
       type: "choice",
@@ -41,11 +41,11 @@ export const epProductFieldMeta: CodeComponentMeta<EPProductFieldProps> = {
     },
     show: {
       type: "choice",
-      options: SHOW_CHOICE_OPTIONS,
+      options: [...SHOW_CHOICE_OPTIONS, { label: "Image", value: "image" }],
       defaultValue: "value",
       displayName: "Show",
       description:
-        "Render the field's value, or its humanized label (for label:value pairs).",
+        "Render the field's value, its humanized label (for label:value pairs), or an image whose URL is the value (for First image URL).",
     },
     format: {
       type: "choice",
@@ -109,11 +109,19 @@ export function EPProductField(props: EPProductFieldProps) {
     locale,
     forceMock: previewState === "withData",
   });
+  const { resolved: imageAlt } = useResolvedField({
+    kind: "topLevel",
+    leafId: "firstImageAlt",
+    format: "text",
+    locale,
+    forceMock: previewState === "withData",
+  });
 
   return (
     <FieldDisplay
       resolved={resolved}
       show={show}
+      imageAlt={imageAlt.displayValue}
       children={children}
       notPresentContent={notPresentContent}
       className={className}

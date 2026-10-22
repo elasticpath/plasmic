@@ -18,6 +18,7 @@ const globalActionsRegistrations = {
       { name: "productId", displayName: "Product Id", type: "string" },
       { name: "variantId", displayName: "Variant Id", type: "string" },
       { name: "quantity", displayName: "Quantity", type: "number" },
+      { name: "location", displayName: "Location", type: "string" },
     ],
   },
   updateItem: {

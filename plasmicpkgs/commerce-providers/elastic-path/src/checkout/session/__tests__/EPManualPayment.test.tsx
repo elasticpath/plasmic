@@ -18,7 +18,6 @@ jest.mock("../use-checkout-session", () => ({
     session: {
       id: "sess-test",
       status: "open",
-      cartId: "cart-1",
       customerInfo: null,
       shippingAddress: null,
       billingAddress: null,
@@ -56,6 +55,16 @@ jest.mock("../use-checkout-session", () => ({
 }));
 
 const mockUsePlasmicCanvasContext = jest.fn().mockReturnValue(false);
+// A cart with a line to buy; the provider reads it before payment.
+jest.mock("../../../ep-server-functions/getCart", () => ({
+  epGetCart: jest.fn(async () => null),
+  epReadCart: jest.fn(async () => ({
+    items: [{ id: "line-1", type: "cart_item", sku: "sku-1", quantity: 1 }],
+    promotions: [],
+    itemCount: 1,
+  })),
+}));
+
 jest.mock("@plasmicapp/host", () => ({
   DataProvider: ({ children, name, data }: any) => (
     <div data-testid={`data-provider-${name}`} data-value={JSON.stringify(data)}>
@@ -232,7 +241,7 @@ describe("EPCheckoutSessionProvider placeOrder with EPManualPayment", () => {
     });
 
     expect(mockPlaceOrder).toHaveBeenCalledTimes(1);
-    expect(mockPlaceOrder).toHaveBeenCalledWith({ gateway: "manual" });
+    expect(mockPlaceOrder).toHaveBeenCalledWith({ gateway: "manual", shownTotal: 1000 });
     expect(mockPlaceOrder.mock.calls[0][0]).not.toHaveProperty(
       "confirmation_token"
     );
@@ -271,7 +280,7 @@ describe("EPCheckoutSessionProvider placeOrder with EPManualPayment", () => {
       await ref.current.placeOrder();
     });
 
-    expect(mockPlaceOrder).toHaveBeenCalledWith({ gateway: "manual" });
+    expect(mockPlaceOrder).toHaveBeenCalledWith({ gateway: "manual", shownTotal: 1000 });
     expect(mockResumePayment).not.toHaveBeenCalled();
     expect(mockAbandonPayment).not.toHaveBeenCalled();
     expect(mockConfirmPayment).not.toHaveBeenCalled();

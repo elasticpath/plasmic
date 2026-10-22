@@ -2,6 +2,7 @@ import { epGetProduct } from "../../ep-server-functions/getProduct";
 import { epGetProductList } from "../../ep-server-functions/getProductList";
 import { epGetProductPage } from "../../ep-server-functions/getProductPage";
 import { epGetRelatedProducts } from "../../ep-server-functions/getRelatedProducts";
+import { epGetSearchAttributes } from "../../ep-server-functions/getSearchAttributes";
 import {
   epDesignFnNotServedMessage,
   isEpDesignFnName,
@@ -23,6 +24,7 @@ const DESIGN_FN_DISPATCH: Record<
     epGetRelatedProducts(
       args as { productId: string; relationshipSlug: string; limit?: number }
     ),
+  getSearchAttributes: () => epGetSearchAttributes(),
 };
 
 const CORS_HEADERS: Record<string, string> = {

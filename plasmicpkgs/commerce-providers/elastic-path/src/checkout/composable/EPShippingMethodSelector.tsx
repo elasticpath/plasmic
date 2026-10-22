@@ -27,6 +27,7 @@ import { Registerable } from "../../registerable";
 import { MOCK_SHIPPING_RATES } from "../../utils/design-time-data";
 import { createLogger } from "../../utils/logger";
 import { useMoneyFormat } from "../../shopper-context/use-money-format";
+import { useCanvasPreviewState } from "../../utils/canvas-preview-state";
 
 const log = createLogger("EPShippingMethodSelector");
 
@@ -69,15 +70,11 @@ export const EPShippingMethodSelector = React.forwardRef<
     loadingContent,
     emptyContent,
     className,
-    previewState = "auto",
+    previewState: savedPreviewState,
   } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const inEditor = !!usePlasmicCanvasContext();
-
-  // Read composable checkout context (EPCheckoutProvider flow)
-  const checkoutData = useSelector("checkoutData") as
-    | { step?: string; selectedShippingRate?: { id: string } | null }
-    | undefined;
 
   // Read checkout session context (session-based flow)
   const checkoutSessionCtx = useSelector("checkoutSession") as
@@ -115,7 +112,7 @@ export const EPShippingMethodSelector = React.forwardRef<
   const hasSessionRates = !!(checkoutSessionCtx?.session?.availableShippingRates?.length);
 
   // Design-time preview
-  if (previewState !== "auto" || (inEditor && !checkoutSessionCtx && !checkoutData && !shippingAddress)) {
+  if (previewState !== "auto" || (inEditor && !checkoutSessionCtx && !shippingAddress)) {
     const effectivePreview = previewState === "auto" ? "withRates" : previewState;
 
     if (effectivePreview === "loading") {

@@ -120,7 +120,7 @@ describe("applyAbandonedRequiresAction", () => {
     expect(result.order).toBeNull();
   });
 
-  it("does not create or cancel an order", () => {
+  it("drops the order held for the abandoned PaymentIntent", () => {
     const withOrder = applyPaymentRequiresAction(
       makeSession({ order: { id: "order-unpaid" } }),
       {
@@ -129,7 +129,7 @@ describe("applyAbandonedRequiresAction", () => {
       }
     );
     const result = applyAbandonedRequiresAction(withOrder);
-    expect(result.order).toEqual({ id: "order-unpaid" });
+    expect(result.order).toBeNull();
   });
 });
 

@@ -19,6 +19,8 @@ export interface EpServerAuth {
   cartId?: string;
   accountId?: string;
   accountToken?: string;
+  /** The signed-in member, when an account is selected. */
+  accountMemberId?: string;
   /** Locale for price formatting / content negotiation. Defaults to "en-US". */
   locale?: string;
   /** ISO 4217 currency for the cart read (X-Moltin-Currency). Storefront-resolved. */

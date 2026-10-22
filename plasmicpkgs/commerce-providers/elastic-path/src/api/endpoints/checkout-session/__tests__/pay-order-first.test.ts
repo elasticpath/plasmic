@@ -96,7 +96,7 @@ function makeSession(overrides: Partial<CheckoutSession> = {}): CheckoutSession 
         serviceLevel: "standard",
       },
     ],
-    totals: null,
+    totals: { subtotal: 4900, tax: 0, shipping: 500, total: 5400, currency: "USD" },
     payment: {
       gateway: null,
       status: "idle",
@@ -170,10 +170,16 @@ function sessionWithExistingOrder(
 }
 
 
-function createManualCtx(session: CheckoutSession | null): SessionHandlerContext {
-  const registry = createAdapterRegistry();
-  registry.register("manual", createManualAdapter());
+function createManualCtx(
+  session: CheckoutSession | null,
+  registry: AdapterRegistry = createAdapterRegistry(),
+  accountId?: string
+): SessionHandlerContext {
+  if (!registry.getAdapter("manual")) {
+    registry.register("manual", createManualAdapter({ allow: () => true }));
+  }
   return {
+    ...(accountId ? { accountId, accountToken: "account-token" } : {}),
     epCredentials: {
       clientId: "test-id",
       apiBaseUrl: "https://api.test.com",
@@ -189,6 +195,10 @@ function createMockReq(body: Record<string, unknown> = {}): SessionRequest {
   return { body, headers: {}, cookies: {} };
 }
 
+const ORDER_META = {
+  display_price: { with_tax: { amount: 5400, currency: "USD" } },
+};
+
 beforeEach(() => {
   jest.clearAllMocks();
   epSdk.getACart.mockResolvedValue({
@@ -201,14 +211,14 @@ beforeEach(() => {
     },
   });
   epSdk.checkoutApi.mockResolvedValue({
-    data: { data: { id: "order-1" } },
+    data: { data: { id: "order-1", meta: ORDER_META } },
   });
   epSdk.confirmOrder.mockResolvedValue({ data: { data: { id: "order-1" } } });
   epSdk.paymentSetup.mockResolvedValue({
     data: { data: { id: "txn-1", status: "complete", transaction_type: "purchase" } },
   });
   epSdk.getAnOrder.mockResolvedValue({
-    data: { data: { id: "order-1", payment: "unpaid" } },
+    data: { data: { id: "order-1", payment: "unpaid", meta: ORDER_META } },
   });
   epSdk.updateACart.mockResolvedValue({ data: { data: {} } });
   epSdk.updateAnOrder.mockResolvedValue({ data: { data: { id: "order-1" } } });
@@ -230,6 +240,7 @@ describe("handlePay — order_first sequence", () => {
     );
 
     expect(res.status).toBe(200);
+    expect(JSON.stringify(res.body)).not.toContain("cart-abc");
     const body = res.body as any;
     expect(body.data.session.status).toBe("complete");
     expect(body.data.session.order?.id).toBe("order-1");
@@ -293,6 +304,7 @@ describe("handlePay — order_first sequence", () => {
     );
 
     expect(res.status).toBe(200);
+    expect(JSON.stringify(res.body)).not.toContain("cart-abc");
     const session = (res.body as any).data.session;
     expect(session.status).toBe("open");
     expect(session.payment.status).toBe("requires_action");
@@ -333,6 +345,55 @@ describe("handlePay — order_first retry / idempotency", () => {
     gatewayMetadata: {},
     actionData: null,
   };
+
+  it("takes no payment for a new order whose total is not the shown total", async () => {
+    epSdk.checkoutApi.mockResolvedValue({
+      data: {
+        data: {
+          id: "order-1",
+          meta: { display_price: { with_tax: { amount: 9999, currency: "USD" } } },
+        },
+      },
+    });
+    const ctx = createMockCtx(makeSession(), createOrderFirstAdapter());
+
+    const res = await handlePay(createMockReq({ gateway: "manual" }), ctx);
+
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("ORDER_TOTAL_CHANGED");
+    expect(epSdk.paymentSetup).not.toHaveBeenCalled();
+    expect((res.body as any).data.session.totals.total).toBe(9999);
+    expect((res.body as any).data.session.order).toBeNull();
+    expect(epSdk.updateAnOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { orderID: "order-1" },
+        body: { data: { type: "order", status: "cancelled" } },
+      })
+    );
+  });
+
+  it("drops an unpaid order whose total is not the shown total, and takes no payment", async () => {
+    epSdk.getAnOrder.mockResolvedValue({
+      data: {
+        data: {
+          id: "order-1",
+          payment: "unpaid",
+          meta: { display_price: { with_tax: { amount: 3000, currency: "USD" } } },
+        },
+      },
+    });
+    const ctx = createMockCtx(
+      sessionWithExistingOrder(failedPayment),
+      createOrderFirstAdapter()
+    );
+
+    const res = await handlePay(createMockReq({ gateway: "manual" }), ctx);
+
+    expect(res.status).toBe(409);
+    expect((res.body as any).error.code).toBe("ORDER_TOTAL_CHANGED");
+    expect(epSdk.paymentSetup).not.toHaveBeenCalled();
+    expect(lastStoredSession(ctx).order).toBeNull();
+  });
 
   it("failed first attempt → retry reuses same order, no second checkoutApi", async () => {
     epSdk.paymentSetup
@@ -516,6 +577,98 @@ describe("handlePay — order_first retry / idempotency", () => {
     expect((res.body as any).error.code).toBe("EP_ERROR");
     expect(epSdk.paymentSetup).not.toHaveBeenCalled();
     expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+  });
+});
+
+describe("handlePay — Manual gateway rule", () => {
+  it("refuses Manual for an order with a total when the host supplies no rule", async () => {
+    const registry = createAdapterRegistry();
+    registry.register("manual", createManualAdapter());
+    const ctx = createManualCtx(makeSession(), registry);
+
+    const res = await handlePay(createMockReq({ gateway: "manual" }), ctx);
+
+    expect(res.status).toBe(400);
+    expect((res.body as any).error.code).toBe("GATEWAY_NOT_ALLOWED");
+    expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+    expect(epSdk.paymentSetup).not.toHaveBeenCalled();
+  });
+
+  it("allows Manual only for the cart and account the host's rule approves", async () => {
+    const seen: unknown[] = [];
+    const registry = createAdapterRegistry();
+    registry.register(
+      "manual",
+      createManualAdapter({
+        allow: (input) => {
+          seen.push(input);
+          return input.account?.id === "acct-approved";
+        },
+      })
+    );
+
+    const refused = await handlePay(
+      createMockReq({ gateway: "manual" }),
+      createManualCtx(makeSession({ account: { id: "acct-other" } }), registry, "acct-other")
+    );
+    expect(refused.status).toBe(400);
+    expect((refused.body as any).error.code).toBe("GATEWAY_NOT_ALLOWED");
+    expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+
+    const allowed = await handlePay(
+      createMockReq({ gateway: "manual" }),
+      createManualCtx(makeSession({ account: { id: "acct-approved" } }), registry, "acct-approved")
+    );
+    expect(allowed.status).toBe(200);
+    expect(epSdk.checkoutApi.mock.calls[0][0].body.data.account).toEqual({ id: "acct-approved" });
+    expect((allowed.body as any).data.session.status).toBe("complete");
+    expect(epSdk.paymentSetup.mock.calls[0][0].body.data).toEqual({
+      gateway: "manual",
+      method: "purchase",
+    });
+
+    expect(seen[1]).toEqual({
+      cart: expect.objectContaining({
+        data: expect.objectContaining({ id: "cart-abc" }),
+        included: { items: CART_ITEMS },
+      }),
+      account: { id: "acct-approved" },
+    });
+  });
+
+  it("refuses Manual when the host's rule throws", async () => {
+    const registry = createAdapterRegistry();
+    registry.register(
+      "manual",
+      createManualAdapter({
+        allow: () => {
+          throw new Error("account lookup failed");
+        },
+      })
+    );
+
+    const res = await handlePay(
+      createMockReq({ gateway: "manual" }),
+      createManualCtx(makeSession({ account: { id: "acct-approved" } }), registry, "acct-approved")
+    );
+
+    expect(res.status).toBe(400);
+    expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+  });
+
+  it("sees no account when none is selected", async () => {
+    const allow = jest.fn(() => false);
+    const registry = createAdapterRegistry();
+    registry.register("manual", createManualAdapter({ allow }));
+
+    await handlePay(
+      createMockReq({ gateway: "manual" }),
+      createManualCtx(makeSession(), registry)
+    );
+
+    expect(allow).toHaveBeenCalledWith(
+      expect.objectContaining({ account: null })
+    );
   });
 });
 

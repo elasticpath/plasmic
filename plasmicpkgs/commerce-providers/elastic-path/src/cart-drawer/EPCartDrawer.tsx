@@ -22,6 +22,7 @@ import {
   OverlayEditorOpenProps,
   useOverlayEditorOpen,
 } from "./use-overlay-editor-open";
+import { useCanvasPreviewState } from "../utils/canvas-preview-state";
 
 const log = createLogger("EPCartDrawer");
 
@@ -200,9 +201,10 @@ export function EPCartDrawer(props: EPCartDrawerProps) {
     closeOnBackdropClick = true,
     closeOnEscape = true,
     trapFocus = true,
-    previewState = "auto",
+    previewState: savedPreviewState,
     inline = false,
   } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const { cart, error: cartError, isLoading: cartLoading } = useEpCart();
   const commerce = useEpCommerce();

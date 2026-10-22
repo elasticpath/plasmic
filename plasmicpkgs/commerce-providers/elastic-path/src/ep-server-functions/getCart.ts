@@ -35,3 +35,14 @@ export async function epGetCart(): Promise<CartReadResult> {
     return null;
   }
 }
+
+/**
+ * The shopper's cart as the storefront has it now, for a check that must not
+ * take a failed read for an empty cart: a failed browser read rejects.
+ */
+export async function epReadCart(): Promise<CartReadResult> {
+  if (!isUsableAuth(getCurrentEpSession()) && shouldUseProxy()) {
+    return callEpProxy<CartReadResult>("getCart", {});
+  }
+  return epGetCart();
+}

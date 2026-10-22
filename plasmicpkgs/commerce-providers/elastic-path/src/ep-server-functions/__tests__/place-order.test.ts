@@ -2,6 +2,8 @@ const mockCheckoutApi = jest.fn();
 const mockPaymentSetup = jest.fn();
 const mockDeleteAllCartItems = jest.fn();
 const mockUpdateACart = jest.fn();
+const mockGetACart = jest.fn();
+const mockGetAnOrder = jest.fn();
 
 jest.mock("@epcc-sdk/sdks-shopper", () => ({
   createShopperClient: jest.fn(() => ({
@@ -13,6 +15,8 @@ jest.mock("@epcc-sdk/sdks-shopper", () => ({
   paymentSetup: (...args: unknown[]) => mockPaymentSetup(...args),
   deleteAllCartItems: (...args: unknown[]) => mockDeleteAllCartItems(...args),
   updateACart: (...args: unknown[]) => mockUpdateACart(...args),
+  getACart: (...args: unknown[]) => mockGetACart(...args),
+  getAnOrder: (...args: unknown[]) => mockGetAnOrder(...args),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -55,8 +59,35 @@ const BILLING = {
   country: "GB",
 };
 
+const CART_RESPONSE = (amount: number | null) => ({
+  data: {
+    data: {
+      id: "cart-1",
+      type: "cart",
+      ...(amount === null
+        ? {}
+        : {
+            meta: {
+              display_price: { with_tax: { amount, currency: "CHF" } },
+            },
+          }),
+    },
+    included: { items: [{ id: "item-1", quantity: 1 }] },
+  },
+});
+
 beforeEach(() => {
+  mockGetACart.mockReset();
+  mockGetACart.mockResolvedValue(CART_RESPONSE(0));
   mockCheckoutApi.mockReset();
+  mockGetAnOrder.mockReset();
+  // Elastic Path refuses an order read with the shopper's implicit token.
+  mockGetAnOrder.mockResolvedValue({
+    data: undefined,
+    error: {
+      errors: [{ status: 403, code: "gateway.scopes.authorise", title: "Unauthorised call" }],
+    },
+  });
   mockPaymentSetup.mockReset();
   mockDeleteAllCartItems.mockReset();
   mockUpdateACart.mockReset();
@@ -101,17 +132,188 @@ describe("normalizeAddress", () => {
   });
 });
 
-describe("epPlaceOrder", () => {
-  it("checks out, takes manual payment, clears the cart, and reports the order", async () => {
+describe("epPlaceOrder payment method rule", () => {
+  it("refuses manual for an order with a total when no rule is given, before creating an order", async () => {
+    mockGetACart.mockResolvedValue(CART_RESPONSE(91900));
+
+    await expect(
+      withEpSession({ ...SESSION_BASE, cartId: "cart-1" }, () =>
+        epPlaceOrder({
+          customer: { name: "Ada Lovelace", email: "ada@ep.com" },
+          billingAddress: BILLING,
+        })
+      )
+    ).rejects.toThrow(/not available for this order/i);
+    expect(mockCheckoutApi).not.toHaveBeenCalled();
+    expect(mockPaymentSetup).not.toHaveBeenCalled();
+  });
+
+  it("gives the host's rule the cart and the account, and places the order it allows for that account", async () => {
+    mockGetACart.mockResolvedValue(CART_RESPONSE(91900));
     mockCheckoutApi.mockResolvedValue(ORDER_RESPONSE(91900));
-    mockPaymentSetup.mockResolvedValue({ data: { data: { status: "paid" } } });
+    mockPaymentSetup.mockResolvedValue({
+      data: { data: { id: "txn-1", status: "complete" } },
+    });
+    const allowManual = jest.fn(
+      ({ account }: { account: { id: string } | null }) =>
+        account?.id === "acct-approved"
+    );
+    const place = (accountId: string) =>
+      withEpSession(
+        { ...SESSION_BASE, cartId: "cart-1", accountId, accountToken: "account-token" },
+        () =>
+          epPlaceOrder(
+            {
+              customer: { name: "Ada Lovelace", email: "ada@ep.com" },
+              billingAddress: BILLING,
+            },
+            { allowManual }
+          )
+      );
+
+    await expect(place("acct-other")).rejects.toThrow(
+      /not available for this order/i
+    );
+    expect(mockCheckoutApi).not.toHaveBeenCalled();
+
+    await expect(place("acct-approved")).resolves.toMatchObject({
+      orderId: "order-1",
+    });
+    expect(allowManual).toHaveBeenLastCalledWith({
+      cart: CART_RESPONSE(91900).data,
+      account: { id: "acct-approved" },
+    });
+    expect(mockCheckoutApi.mock.calls[0][0].body.data.account).toEqual({
+      id: "acct-approved",
+    });
+  });
+
+  it("places no guest order for a scope with the account token but no account id", async () => {
+    mockGetACart.mockResolvedValue(CART_RESPONSE(0));
+    mockCheckoutApi.mockResolvedValue(ORDER_RESPONSE(0));
+
+    await expect(
+      withEpSession(
+        { ...SESSION_BASE, cartId: "cart-1", accountToken: "account-token" },
+        () =>
+          epPlaceOrder({
+            customer: { name: "Ada Lovelace", email: "ada@ep.com" },
+            billingAddress: BILLING,
+          })
+      )
+    ).rejects.toThrow(/accountId/);
+    expect(mockCheckoutApi).not.toHaveBeenCalled();
+  });
+
+  it("takes no manual payment when the order total is not zero, though the cart read was", async () => {
+    mockGetACart.mockResolvedValue(CART_RESPONSE(0));
+    mockCheckoutApi.mockResolvedValue(ORDER_RESPONSE(91900));
+
+    await expect(
+      withEpSession({ ...SESSION_BASE, cartId: "cart-1" }, () =>
+        epPlaceOrder({
+          customer: { name: "Ada Lovelace", email: "ada@ep.com" },
+          billingAddress: BILLING,
+        })
+      )
+    ).rejects.toThrow(/not available for this order/i);
+    expect(mockPaymentSetup).not.toHaveBeenCalled();
+    expect(mockDeleteAllCartItems).not.toHaveBeenCalled();
+  });
+
+  it("takes no payment when checkout reports no order total", async () => {
+    mockCheckoutApi.mockResolvedValue({
+      data: { data: { id: "order-1", type: "order" } },
+    });
+
+    await expect(
+      withEpSession({ ...SESSION_BASE, cartId: "cart-1" }, () =>
+        epPlaceOrder({
+          customer: { name: "Ada Lovelace", email: "ada@ep.com" },
+          billingAddress: BILLING,
+        })
+      )
+    ).rejects.toThrow(/order total/i);
+    expect(mockPaymentSetup).not.toHaveBeenCalled();
+  });
+
+  it("does not ask the rule about another gateway", async () => {
+    mockGetACart.mockResolvedValue(CART_RESPONSE(91900));
+    mockCheckoutApi.mockResolvedValue(ORDER_RESPONSE(91900));
+    mockPaymentSetup.mockResolvedValue({
+      data: { data: { id: "txn-1", status: "complete" } },
+    });
+    const allowManual = jest.fn(() => false);
+
+    await withEpSession({ ...SESSION_BASE, cartId: "cart-1" }, () =>
+      epPlaceOrder(
+        {
+          customer: { name: "Ada Lovelace", email: "ada@ep.com" },
+          billingAddress: BILLING,
+          paymentGateway: "stripe_connect",
+        },
+        { allowManual }
+      )
+    );
+
+    expect(allowManual).not.toHaveBeenCalled();
+    expect(mockCheckoutApi).toHaveBeenCalled();
+  });
+});
+
+describe("epPlaceOrder payment result", () => {
+  it("fails when payment fails, and keeps the cart", async () => {
+    mockCheckoutApi.mockResolvedValue(ORDER_RESPONSE(0));
+    mockPaymentSetup.mockResolvedValue({
+      data: { data: { id: "txn-1", status: "failed" } },
+    });
+
+    await expect(
+      withEpSession({ ...SESSION_BASE, cartId: "cart-1" }, () =>
+        epPlaceOrder({
+          customer: { name: "Ada Lovelace", email: "ada@ep.com" },
+          billingAddress: BILLING,
+        })
+      )
+    ).rejects.toThrow(/payment failed/i);
+    expect(mockDeleteAllCartItems).not.toHaveBeenCalled();
+  });
+
+  it("fails when Elastic Path rejects the payment request", async () => {
+    mockCheckoutApi.mockResolvedValue(ORDER_RESPONSE(0));
+    mockPaymentSetup.mockResolvedValue({
+      error: { errors: [{ detail: "gateway is not enabled" }] },
+    });
+
+    await expect(
+      withEpSession({ ...SESSION_BASE, cartId: "cart-1" }, () =>
+        epPlaceOrder({
+          customer: { name: "Ada Lovelace", email: "ada@ep.com" },
+          billingAddress: BILLING,
+        })
+      )
+    ).rejects.toThrow(/payment failed/i);
+    expect(mockDeleteAllCartItems).not.toHaveBeenCalled();
+  });
+});
+
+describe("epPlaceOrder", () => {
+  it("checks out, takes manual payment the host's rule allows, clears the cart, and reports the order", async () => {
+    mockGetACart.mockResolvedValue(CART_RESPONSE(91900));
+    mockCheckoutApi.mockResolvedValue(ORDER_RESPONSE(91900));
+    mockPaymentSetup.mockResolvedValue({
+      data: { data: { id: "txn-1", status: "complete", transaction_type: "purchase" } },
+    });
     mockDeleteAllCartItems.mockResolvedValue({});
 
     const result = await withEpSession({ ...SESSION_BASE, cartId: "cart-1" }, () =>
-      epPlaceOrder({
-        customer: { name: "Ada Lovelace", email: "ada@ep.com" },
-        billingAddress: BILLING,
-      })
+      epPlaceOrder(
+        {
+          customer: { name: "Ada Lovelace", email: "ada@ep.com" },
+          billingAddress: BILLING,
+        },
+        { allowManual: () => true }
+      )
     );
 
     expect(mockCheckoutApi).toHaveBeenCalledWith(
@@ -142,16 +344,49 @@ describe("epPlaceOrder", () => {
     expect(result).toEqual({
       orderId: "order-1",
       status: "complete",
-      payment: "paid",
+      payment: "complete",
       total: 91900,
       currency: "CHF",
       isFree: false,
     });
   });
 
+  it.each([
+    ["purchase", "complete"],
+    ["authorize", "processing"],
+  ])(
+    "reports the order status a %s sets, not the status checkout returned",
+    async (method, status) => {
+      mockGetACart.mockResolvedValue(CART_RESPONSE(91900));
+      const unpaid = ORDER_RESPONSE(91900);
+      unpaid.data.data.status = "incomplete";
+      unpaid.data.data.payment = "unpaid";
+      mockCheckoutApi.mockResolvedValue(unpaid);
+      mockPaymentSetup.mockResolvedValue({
+        data: { data: { id: "txn-1", status: "complete", transaction_type: method } },
+      });
+      mockDeleteAllCartItems.mockResolvedValue({});
+
+      const result = await withEpSession({ ...SESSION_BASE, cartId: "cart-1" }, () =>
+        epPlaceOrder(
+          {
+            customer: { name: "Ada Lovelace", email: "ada@ep.com" },
+            billingAddress: BILLING,
+            paymentMethod: method,
+          },
+          { allowManual: () => true }
+        )
+      );
+
+      expect(result.status).toBe(status);
+    }
+  );
+
   it("flags a zero-total order as free and still completes it via manual purchase", async () => {
     mockCheckoutApi.mockResolvedValue(ORDER_RESPONSE(0));
-    mockPaymentSetup.mockResolvedValue({ data: { data: { status: "paid" } } });
+    mockPaymentSetup.mockResolvedValue({
+      data: { data: { id: "txn-1", status: "complete" } },
+    });
     mockDeleteAllCartItems.mockResolvedValue({});
 
     const result = await withEpSession({ ...SESSION_BASE, cartId: "cart-1" }, () =>
@@ -168,7 +403,9 @@ describe("epPlaceOrder", () => {
 
   it("persists extra fields + consents as typed cart custom attributes before checkout", async () => {
     mockCheckoutApi.mockResolvedValue(ORDER_RESPONSE(0));
-    mockPaymentSetup.mockResolvedValue({ data: { data: { status: "paid" } } });
+    mockPaymentSetup.mockResolvedValue({
+      data: { data: { id: "txn-1", status: "complete" } },
+    });
     mockDeleteAllCartItems.mockResolvedValue({});
 
     await withEpSession({ ...SESSION_BASE, cartId: "cart-1" }, () =>
@@ -200,7 +437,9 @@ describe("epPlaceOrder", () => {
 
   it("skips the custom-attributes write when there is nothing to persist", async () => {
     mockCheckoutApi.mockResolvedValue(ORDER_RESPONSE(0));
-    mockPaymentSetup.mockResolvedValue({ data: { data: { status: "paid" } } });
+    mockPaymentSetup.mockResolvedValue({
+      data: { data: { id: "txn-1", status: "complete" } },
+    });
     mockDeleteAllCartItems.mockResolvedValue({});
 
     await withEpSession({ ...SESSION_BASE, cartId: "cart-1" }, () =>
@@ -214,7 +453,9 @@ describe("epPlaceOrder", () => {
 
   it("respects clearCart:false (cart left intact)", async () => {
     mockCheckoutApi.mockResolvedValue(ORDER_RESPONSE(0));
-    mockPaymentSetup.mockResolvedValue({ data: { data: { status: "paid" } } });
+    mockPaymentSetup.mockResolvedValue({
+      data: { data: { id: "txn-1", status: "complete" } },
+    });
 
     await withEpSession({ ...SESSION_BASE, cartId: "cart-1" }, () =>
       epPlaceOrder({
@@ -228,7 +469,11 @@ describe("epPlaceOrder", () => {
 
   it("allows a store to override gateway + method for a real paid order", async () => {
     mockCheckoutApi.mockResolvedValue(ORDER_RESPONSE(91900));
-    mockPaymentSetup.mockResolvedValue({ data: { data: { status: "authorized" } } });
+    mockPaymentSetup.mockResolvedValue({
+      data: {
+        data: { id: "txn-1", status: "complete", transaction_type: "authorize" },
+      },
+    });
     mockDeleteAllCartItems.mockResolvedValue({});
 
     await withEpSession({ ...SESSION_BASE, cartId: "cart-1" }, () =>
@@ -248,7 +493,9 @@ describe("epPlaceOrder", () => {
 
   it("omits shipping_address when shippingSameAsBilling is false", async () => {
     mockCheckoutApi.mockResolvedValue(ORDER_RESPONSE(0));
-    mockPaymentSetup.mockResolvedValue({ data: { data: { status: "paid" } } });
+    mockPaymentSetup.mockResolvedValue({
+      data: { data: { id: "txn-1", status: "complete" } },
+    });
     mockDeleteAllCartItems.mockResolvedValue({});
 
     await withEpSession({ ...SESSION_BASE, cartId: "cart-1" }, () =>

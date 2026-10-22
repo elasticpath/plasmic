@@ -1,31 +1,44 @@
 import {
   checkoutApi,
   deleteAllCartItems,
-  paymentSetup,
   updateACart,
 } from "@epcc-sdk/sdks-shopper";
+import type { AccountCheckout, CustomerCheckout } from "@epcc-sdk/sdks-shopper";
 import { buildEpClient, isUsableAuth } from "./ep-client";
 import { getCurrentEpSession } from "./session-context";
-import { callEpProxy, shouldUseProxy } from "./proxy-fetch";
+import { readCartResponse } from "./read-cart";
+import {
+  manualPaymentAllowed,
+  type ManualPaymentRule,
+} from "../checkout/session/manual-payment-rule";
+import { totalOf } from "../checkout/session/order-total";
+import {
+  orderRuleInput,
+  takeOrderPayment,
+} from "../checkout/session/order-payment";
+import {
+  MANUAL_GATEWAY,
+  MANUAL_PURCHASE_METHOD,
+} from "../checkout/session/adapters/manual-adapter";
+import { selectedAccount } from "../checkout/session/checkout-account";
+
+const NOT_AVAILABLE =
+  "epPlaceOrder: this payment method is not available for this order";
+
+export interface EpPlaceOrderOptions {
+  /** The same rule a host gives `createManualAdapter({ allow })`. */
+  allowManual?: ManualPaymentRule;
+}
 
 /**
- * Generic single-page order placement for the composable checkout.
+ * Server-side order placement for host code: converts the session's cart into
+ * an order, takes payment, and clears the cart. It needs a `withEpSession`
+ * scope and never runs from the browser; the EP proxy route does not place
+ * orders.
  *
- * Converts the current shopper's cart into an order, takes payment, and
- * clears the cart — the whole "place order" action in one server call, so
- * a single-page checkout (no multi-step flow, optionally no shipping) can
- * complete without orchestrating the 4-step EPCheckoutProvider.
- *
- * Payment defaults to the EP **manual** gateway with the **purchase**
- * method. Manual/purchase authorises-and-captures in one call and requires
- * no card UI, which is exactly the zero-total / free-product short-circuit:
- * a CHF 0 order is completed with no payment step. A store with a real
- * gateway overrides `paymentGateway` / `paymentMethod`.
- *
- * Isomorphic, mirroring `epGetCart`: when there is no SSR session (the
- * shopper-facing browser case — this runs from a button onClick) it POSTs
- * to the consumer's `/api/ep/proxy/placeOrder`, which re-enters this
- * function server-side under `withEpSession` with the real cart + token.
+ * Payment defaults to the `manual` gateway with the `purchase` method, under
+ * `options.allowManual`. Any other gateway is passed to Elastic Path
+ * unchanged. The call throws when payment does not succeed.
  */
 
 /** A billing or shipping address. Missing parts are sent as empty strings. */
@@ -42,7 +55,11 @@ export interface EpPlaceOrderAddress {
 }
 
 export interface EpPlaceOrderInput {
-  /** Order contact. `name` is the full display name; `email` the receipt address. */
+  /**
+   * Order contact. `name` is the full display name; `email` the receipt
+   * address. With an account selected in the session, the order is placed
+   * for that account and member, and this is its `contact`.
+   */
   customer: { name: string; email: string };
   billingAddress: EpPlaceOrderAddress;
   /**
@@ -72,6 +89,10 @@ export interface EpPlaceOrderInput {
 
 export interface EpPlaceOrderResult {
   orderId: string;
+  /**
+   * The order status the payment sets: `complete` after a purchase or
+   * capture, `processing` after an authorization; empty for any other.
+   */
   status: string;
   payment: string;
   total: number;
@@ -123,23 +144,33 @@ export function normalizeAddress(a: EpPlaceOrderAddress | undefined) {
   };
 }
 
+/**
+ * The order status Elastic Path sets for the payment taken. The shopper's
+ * token cannot read the order back (Elastic Path answers 403), so the status
+ * comes from the transaction: a completed purchase or capture leaves the
+ * order `complete`, a completed authorization leaves it `processing`.
+ */
+function orderStatusAfterPayment(transaction: {
+  status?: unknown;
+  transaction_type?: unknown;
+} | undefined): string {
+  if (transaction?.status !== "complete") return "";
+  switch (transaction.transaction_type) {
+    case "purchase":
+    case "capture":
+      return "complete";
+    case "authorize":
+      return "processing";
+    default:
+      return "";
+  }
+}
+
 export async function epPlaceOrder(
-  input: EpPlaceOrderInput
+  input: EpPlaceOrderInput,
+  options: EpPlaceOrderOptions = {}
 ): Promise<EpPlaceOrderResult> {
   const auth = getCurrentEpSession();
-
-  // Browser path: no SSR session → go through the consumer proxy, which
-  // re-enters this function server-side with the real session.
-  if (!isUsableAuth(auth) && shouldUseProxy()) {
-    const result = await callEpProxy<EpPlaceOrderResult | null>(
-      "placeOrder",
-      input as unknown as Record<string, unknown>
-    );
-    if (!result || !result.orderId) {
-      throw new Error("epPlaceOrder: order could not be placed");
-    }
-    return result;
-  }
 
   if (!isUsableAuth(auth)) {
     throw new Error("epPlaceOrder: no EP session");
@@ -150,6 +181,25 @@ export async function epPlaceOrder(
   }
 
   const client = buildEpClient(auth);
+  const account = selectedAccount(auth);
+
+  const gateway = input.paymentGateway ?? MANUAL_GATEWAY;
+  const isManual = gateway.trim().toLowerCase() === MANUAL_GATEWAY;
+  let manualForFreeOrder = false;
+  if (isManual) {
+    const cart = await readCartResponse(client, cartId, auth);
+    manualForFreeOrder =
+      cart.data?.meta?.display_price?.with_tax?.amount === 0;
+    if (
+      !manualForFreeOrder &&
+      !(await manualPaymentAllowed(
+        options.allowManual,
+        orderRuleInput(cart, account?.id)
+      ))
+    ) {
+      throw new Error(NOT_AVAILABLE);
+    }
+  }
 
   // 1. Persist extra fields + consents as cart custom attributes. A single
   //    update wins because EP replaces all custom attributes per write.
@@ -168,18 +218,28 @@ export async function epPlaceOrder(
   const shippingAddress =
     input.shippingAddress ??
     (input.shippingSameAsBilling === false ? undefined : input.billingAddress);
+  const contact = { name: input.customer.name, email: input.customer.email };
+  const buyer = account
+    ? {
+        account: {
+          id: account.id,
+          ...(account.memberId ? { member_id: account.memberId } : {}),
+        },
+        contact,
+      }
+    : { customer: contact };
   const checkoutRes = await checkoutApi({
     client,
     path: { cartID: cartId },
     body: {
       data: {
-        customer: { name: input.customer.name, email: input.customer.email },
+        ...buyer,
         billing_address: normalizeAddress(input.billingAddress) as never,
         ...(shippingAddress
           ? { shipping_address: normalizeAddress(shippingAddress) as never }
           : {}),
       },
-    },
+    } as unknown as CustomerCheckout | AccountCheckout,
   });
   const order = checkoutRes.data?.data;
   if (!order?.id) {
@@ -191,23 +251,36 @@ export async function epPlaceOrder(
     throw new Error(`epPlaceOrder: checkout did not return an order (${detail})`);
   }
 
-  const total = order.meta?.display_price?.with_tax?.amount ?? 0;
-  const currency =
-    order.meta?.display_price?.with_tax?.currency ?? auth.currency ?? "";
+  // The shopper's token cannot read the order back, so the total is the one
+  // checkout returned.
+  const orderTotal = totalOf(order);
+  if (!orderTotal) {
+    throw new Error(`epPlaceOrder: no order total for order ${order.id}`);
+  }
+  const total = orderTotal.amount;
+  const currency = orderTotal.currency ?? auth.currency ?? "";
 
-  // 3. Take payment. Manual/purchase completes the order with no card step,
-  //    which also satisfies the zero-total / free-product short-circuit.
-  const payRes = await paymentSetup({
+  if (manualForFreeOrder && total !== 0) {
+    throw new Error(NOT_AVAILABLE);
+  }
+
+  // 3. Take payment.
+  const { result: paid, response: payRes } = await takeOrderPayment(
     client,
-    path: { orderID: order.id },
-    body: {
-      data: {
-        gateway: input.paymentGateway ?? "manual",
-        method: input.paymentMethod ?? "purchase",
-      } as never,
-    },
-  });
-  const payment = payRes.data?.data;
+    order.id,
+    { gateway, method: input.paymentMethod ?? MANUAL_PURCHASE_METHOD }
+  );
+  if (paid.status !== "succeeded") {
+    throw new Error(
+      `epPlaceOrder: payment failed for order ${order.id} (${
+        paid.errorMessage ?? paid.status
+      })`
+    );
+  }
+  const payment = (
+    payRes as { data?: { data?: { status?: unknown; transaction_type?: unknown } } }
+  )?.data?.data;
+  const status = orderStatusAfterPayment(payment);
 
   // 4. Clear the cart on success (best-effort — a failed clear is non-fatal).
   if (input.clearCart !== false) {
@@ -220,7 +293,7 @@ export async function epPlaceOrder(
 
   return {
     orderId: order.id,
-    status: (order.status as string | undefined) ?? "",
+    status,
     payment:
       (payment?.status as string | undefined) ??
       (order.payment as string | undefined) ??

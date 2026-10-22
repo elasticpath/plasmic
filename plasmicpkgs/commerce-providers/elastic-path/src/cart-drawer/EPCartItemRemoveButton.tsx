@@ -12,6 +12,7 @@ import { createLogger } from "../utils/logger";
 import { readEpErrorCode } from "../browser-call";
 import { epRemoveCartItem } from "../ep-server-functions/cart-mutations";
 import { cartWriteErrorText } from "../ep-server-functions/cart-mutation-error-copy";
+import { useCanvasPreviewState } from "../utils/canvas-preview-state";
 
 const log = createLogger("EPCartItemRemoveButton");
 
@@ -50,7 +51,8 @@ export const epCartItemRemoveButtonMeta: CodeComponentMeta<EPCartItemRemoveButto
   };
 
 export function EPCartItemRemoveButton(props: EPCartItemRemoveButtonProps) {
-  const { children, className, previewState = "auto" } = props;
+  const { children, className, previewState: savedPreviewState } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const currentItem = useSelector("currentCartItem") as
     | { id: string; name?: string }
@@ -78,14 +80,14 @@ export function EPCartItemRemoveButton(props: EPCartItemRemoveButtonProps) {
       await epRemoveCartItem({ itemId: currentItem.id });
       log.info("Item removed from cart", {
         itemId: currentItem.id,
-      } as Record<string, unknown>);
+      });
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to remove item";
       log.error("Remove failed", {
         error: message,
         code: readEpErrorCode(err),
-      } as Record<string, unknown>);
+      });
       setError(cartWriteErrorText(err, "remove"));
     } finally {
       setIsLoading(false);

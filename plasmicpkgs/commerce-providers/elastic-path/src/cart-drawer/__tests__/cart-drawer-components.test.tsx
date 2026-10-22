@@ -143,6 +143,8 @@ const {
   MOCK_CART_DATA,
   MOCK_CART_LINE_ITEMS,
 } = require("../../utils/design-time-data");
+const { normalizeCart } = require("../../utils/normalize");
+const { SHIPPED_CART_RESPONSE } = require("../../test/shipped-cart-fixture");
 
 // --- Test helpers ---
 
@@ -660,6 +662,20 @@ describe("EPCartDrawerTrigger", () => {
 // ---------------------------------------------------------------------------
 
 describe("EPCartField", () => {
+  it("totals a cart the checkout wrote its shipping line into without that line", () => {
+    mockUseSelector.mockReturnValue(normalizeCart(SHIPPED_CART_RESPONSE));
+    const { container } = render(
+      <>
+        <EPCartField field="formattedTotal" />
+        <EPCartField field="formattedSubtotal" />
+        <EPCartField field="itemCount" />
+      </>
+    );
+    expect(
+      Array.from(container.querySelectorAll("span")).map((s) => s.textContent)
+    ).toEqual(["$19.80", "$19.80", "1"]);
+  });
+
   it("renders formattedTotal from cartData", () => {
     mockUseSelector.mockReturnValue(MOCK_CART_DATA);
     render(<EPCartField field="formattedTotal" />);
@@ -703,7 +719,9 @@ describe("EPCartField", () => {
     expect(screen.getByText("$149.96")).toBeTruthy();
   });
 
-  it("uses mock data when previewState=withData", () => {
+  it("uses mock data when previewState=withData on the canvas", () => {
+
+    mockUsePlasmicCanvasContext.mockReturnValue({});
     mockUseSelector.mockReturnValue(undefined);
     render(<EPCartField field="itemCount" previewState="withData" />);
     expect(screen.getByText("3")).toBeTruthy();
@@ -992,7 +1010,9 @@ describe("EPCartItemList", () => {
     expect(items.length).toBe(MOCK_CART_LINE_ITEMS.length);
   });
 
-  it("uses mock data when previewState=withItems", () => {
+  it("uses mock data when previewState=withItems on the canvas", () => {
+
+    mockUsePlasmicCanvasContext.mockReturnValue({});
     mockUseSelector.mockReturnValue(undefined);
     render(
       <EPCartItemList previewState="withItems">
@@ -1368,7 +1388,9 @@ describe("EPCartItemQuantityControl", () => {
     expect(mockCallEpProxy).not.toHaveBeenCalled();
   });
 
-  it("uses mock data when previewState=withData", () => {
+  it("uses mock data when previewState=withData on the canvas", () => {
+
+    mockUsePlasmicCanvasContext.mockReturnValue({});
     mockUseSelector.mockReturnValue(undefined);
     let ctxValue: any;
     render(
@@ -1382,7 +1404,9 @@ describe("EPCartItemQuantityControl", () => {
     expect(ctxValue.quantity).toBe(MOCK_CART_LINE_ITEMS[0].quantity);
   });
 
-  it("shows loading in preview state", () => {
+  it("shows loading in preview state on the canvas", () => {
+
+    mockUsePlasmicCanvasContext.mockReturnValue({});
     mockUseSelector.mockReturnValue(undefined);
     let ctxValue: any;
     render(
@@ -1396,7 +1420,9 @@ describe("EPCartItemQuantityControl", () => {
     expect(ctxValue.isLoading).toBe(true);
   });
 
-  it("minReached preview forces canDecrement=false", () => {
+  it("minReached preview forces canDecrement=false on the canvas", () => {
+
+    mockUsePlasmicCanvasContext.mockReturnValue({});
     mockUseSelector.mockReturnValue(undefined);
     let ctxValue: any;
     render(
@@ -1498,7 +1524,9 @@ describe("EPCartItemQuantityControl", () => {
     expect(readProviderState("quantityControl").error).toBeNull();
   });
 
-  it("previewState=error exposes a sample quantityControl.error", () => {
+  it("previewState=error exposes a sample quantityControl.error on the canvas", () => {
+
+    mockUsePlasmicCanvasContext.mockReturnValue({});
     mockUseSelector.mockReturnValue(undefined);
     render(
       <EPCartItemQuantityControl previewState="error">
@@ -1639,13 +1667,17 @@ describe("EPCartItemQuantityButton", () => {
     expect(mockCtx.decrement).not.toHaveBeenCalled();
   });
 
-  it("previewState=disabled forces disabled", () => {
+  it("previewState=disabled forces disabled on the canvas", () => {
+
+    mockUsePlasmicCanvasContext.mockReturnValue({});
     renderButton("increment", mockCtx, "disabled");
     const btn = screen.getByRole("button");
     expect(btn.getAttribute("aria-disabled")).toBe("true");
   });
 
-  it("previewState=enabled forces enabled even when context says disabled", () => {
+  it("previewState=enabled forces enabled even when context says disabled on the canvas", () => {
+
+    mockUsePlasmicCanvasContext.mockReturnValue({});
     renderButton("increment", { ...mockCtx, canIncrement: false }, "enabled");
     const btn = screen.getByRole("button");
     // Enabled state omits aria-disabled rather than setting "false"
@@ -1777,7 +1809,9 @@ describe("EPCartItemRemoveButton", () => {
     ).toBe("Remove item from cart");
   });
 
-  it("previewState=loading shows loading state", () => {
+  it("previewState=loading shows loading state on the canvas", () => {
+
+    mockUsePlasmicCanvasContext.mockReturnValue({});
     mockUseSelector.mockReturnValue({ id: "item-1" });
     render(
       <EPCartItemRemoveButton previewState="loading">
@@ -1789,7 +1823,9 @@ describe("EPCartItemRemoveButton", () => {
     expect((btn as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("previewState prevents actual remove call", async () => {
+  it("previewState prevents actual remove call on the canvas", async () => {
+
+    mockUsePlasmicCanvasContext.mockReturnValue({});
     mockCallEpProxy.mockResolvedValue(undefined);
     mockUseSelector.mockReturnValue({ id: "item-1" });
 
@@ -1882,7 +1918,9 @@ describe("EPCartItemRemoveButton", () => {
     expect(mockSwrMutate).toHaveBeenCalled();
   });
 
-  it("previewState=error exposes a sample removeItemState.error", () => {
+  it("previewState=error exposes a sample removeItemState.error on the canvas", () => {
+
+    mockUsePlasmicCanvasContext.mockReturnValue({});
     mockUseSelector.mockReturnValue({ id: "item-1" });
     render(
       <EPCartItemRemoveButton previewState="error">

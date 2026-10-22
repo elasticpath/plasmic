@@ -1,11 +1,8 @@
 /**
  * @jest-environment jsdom
  *
- * CC-1.3: EPCheckoutButton component tests
- *
- * Covers: derives label from step, exposes checkoutButtonData DataProvider,
- * isDisabled reflects processing/canProceed state, design-time preview,
- * onComplete fires on confirmation step, className application, registration.
+ * EPCheckoutButton: always the "Checkout" link to Checkout URL on a page;
+ * Preview State shows a step label on the canvas only.
  */
 
 let mockCheckoutData: any = undefined;
@@ -49,176 +46,51 @@ describe("EPCheckoutButton", () => {
     (usePlasmicCanvasContext as jest.Mock).mockReturnValue(false);
   });
 
-  describe("step label derivation", () => {
-    it("shows 'Continue to Shipping' on customer_info step", () => {
-      mockCheckoutData = {
-        step: "customer_info",
-        canProceed: true,
-        isProcessing: false,
-      };
+  describe("a leftover checkoutData from the page", () => {
+    // Nothing in the package publishes checkoutData any more. A page that
+    // still has one must not turn the link back into a step button.
+    const originalLocation = window.location;
 
-      render(
-        <EPCheckoutButton>
-          <span data-testid="child">Button</span>
-        </EPCheckoutButton>
-      );
-
-      const dp = screen.getByTestId("data-provider-checkoutButtonData");
-      const data = JSON.parse(dp.getAttribute("data-value")!);
-      expect(data.label).toBe("Continue to Shipping");
-      expect(data.step).toBe("customer_info");
-    });
-
-    it("shows 'Continue to Payment' on shipping step", () => {
-      mockCheckoutData = {
-        step: "shipping",
-        canProceed: true,
-        isProcessing: false,
-      };
-
-      render(
-        <EPCheckoutButton>
-          <span>Button</span>
-        </EPCheckoutButton>
-      );
-
-      const dp = screen.getByTestId("data-provider-checkoutButtonData");
-      const data = JSON.parse(dp.getAttribute("data-value")!);
-      expect(data.label).toBe("Continue to Payment");
-    });
-
-    it("shows 'Place Order' on payment step", () => {
-      mockCheckoutData = {
-        step: "payment",
-        canProceed: true,
-        isProcessing: false,
-      };
-
-      render(
-        <EPCheckoutButton>
-          <span>Button</span>
-        </EPCheckoutButton>
-      );
-
-      const dp = screen.getByTestId("data-provider-checkoutButtonData");
-      const data = JSON.parse(dp.getAttribute("data-value")!);
-      expect(data.label).toBe("Place Order");
-    });
-
-    it("shows 'Done' on confirmation step", () => {
+    beforeEach(() => {
       mockCheckoutData = {
         step: "confirmation",
         canProceed: false,
-        isProcessing: false,
-        order: { id: "order-1" },
-      };
-
-      render(
-        <EPCheckoutButton>
-          <span>Button</span>
-        </EPCheckoutButton>
-      );
-
-      const dp = screen.getByTestId("data-provider-checkoutButtonData");
-      const data = JSON.parse(dp.getAttribute("data-value")!);
-      expect(data.label).toBe("Done");
-    });
-  });
-
-  describe("isDisabled state", () => {
-    it("isDisabled true when isProcessing", () => {
-      mockCheckoutData = {
-        step: "customer_info",
-        canProceed: true,
         isProcessing: true,
-      };
-
-      render(
-        <EPCheckoutButton>
-          <span>Button</span>
-        </EPCheckoutButton>
-      );
-
-      const dp = screen.getByTestId("data-provider-checkoutButtonData");
-      const data = JSON.parse(dp.getAttribute("data-value")!);
-      expect(data.isDisabled).toBe(true);
-      expect(data.isProcessing).toBe(true);
-    });
-
-    it("isDisabled true when canProceed is false", () => {
-      mockCheckoutData = {
-        step: "customer_info",
-        canProceed: false,
-        isProcessing: false,
-      };
-
-      render(
-        <EPCheckoutButton>
-          <span>Button</span>
-        </EPCheckoutButton>
-      );
-
-      const dp = screen.getByTestId("data-provider-checkoutButtonData");
-      const data = JSON.parse(dp.getAttribute("data-value")!);
-      expect(data.isDisabled).toBe(true);
-    });
-
-    it("isDisabled false when canProceed is true and not processing", () => {
-      mockCheckoutData = {
-        step: "shipping",
-        canProceed: true,
-        isProcessing: false,
-      };
-
-      render(
-        <EPCheckoutButton>
-          <span>Button</span>
-        </EPCheckoutButton>
-      );
-
-      const dp = screen.getByTestId("data-provider-checkoutButtonData");
-      const data = JSON.parse(dp.getAttribute("data-value")!);
-      expect(data.isDisabled).toBe(false);
-    });
-  });
-
-  describe("onComplete event", () => {
-    it("fires onComplete with orderId on confirmation step click", () => {
-      mockCheckoutData = {
-        step: "confirmation",
-        canProceed: true,
-        isProcessing: false,
         order: { id: "order-abc" },
       };
-      const onComplete = jest.fn();
+      delete (window as any).location;
+      (window as any).location = { assign: jest.fn() } as any;
+    });
 
+    afterEach(() => {
+      (window as any).location = originalLocation;
+    });
+
+    it("still shows the enabled Checkout link", () => {
+      const { container } = render(<EPCheckoutButton />);
+
+      const dp = screen.getByTestId("data-provider-checkoutButtonData");
+      expect(JSON.parse(dp.getAttribute("data-value")!)).toEqual({
+        label: "Checkout",
+        isDisabled: false,
+        isProcessing: false,
+        step: "cart",
+      });
+      const root = container.querySelector("[data-ep-checkout-button]")!;
+      expect(root.getAttribute("aria-disabled")).toBeNull();
+      expect(root.getAttribute("data-processing")).toBeNull();
+    });
+
+    it("still goes to the checkout page and never fires On Complete", () => {
+      const onComplete = jest.fn();
       const { container } = render(
         <EPCheckoutButton onComplete={onComplete}>
           <span>Done</span>
         </EPCheckoutButton>
       );
 
-      const button = container.querySelector("[data-ep-checkout-button]")!;
-      fireEvent.click(button);
-      expect(onComplete).toHaveBeenCalledWith({ orderId: "order-abc" });
-    });
-
-    it("does not fire onComplete on non-confirmation steps", () => {
-      mockCheckoutData = {
-        step: "customer_info",
-        canProceed: true,
-        isProcessing: false,
-      };
-      const onComplete = jest.fn();
-
-      const { container } = render(
-        <EPCheckoutButton onComplete={onComplete}>
-          <span>Continue</span>
-        </EPCheckoutButton>
-      );
-
-      const button = container.querySelector("[data-ep-checkout-button]")!;
-      fireEvent.click(button);
+      fireEvent.click(container.querySelector("[data-ep-checkout-button]")!);
+      expect(window.location.assign).toHaveBeenCalledWith("/checkout");
       expect(onComplete).not.toHaveBeenCalled();
     });
   });
@@ -252,15 +124,48 @@ describe("EPCheckoutButton", () => {
       const data = JSON.parse(dp.getAttribute("data-value")!);
       expect(data.label).toBe("Place Order");
     });
+
+    it("shows what the published page shows when Preview State is auto", () => {
+      const { container } = render(<EPCheckoutButton />);
+
+      expect(
+        container.querySelector("[data-ep-checkout-button-label]")?.textContent
+      ).toBe("Checkout");
+    });
+  });
+
+  describe("Preview State on a published page", () => {
+    it.each(["customerInfo", "shipping", "payment", "confirmation"])(
+      "shows the plain Checkout link for a stored %s preview",
+      (previewState) => {
+        const { container } = render(
+          <EPCheckoutButton previewState={previewState} />
+        );
+
+        expect(
+          container.querySelector("[data-ep-checkout-button-label]")
+            ?.textContent
+        ).toBe("Checkout");
+      }
+    );
+
+    it("still goes to the checkout page", () => {
+      const originalLocation = window.location;
+      delete (window as any).location;
+      (window as any).location = { assign: jest.fn() } as any;
+      try {
+        const { container } = render(
+          <EPCheckoutButton previewState="payment" />
+        );
+        fireEvent.click(container.querySelector("[data-ep-checkout-button]")!);
+        expect(window.location.assign).toHaveBeenCalledWith("/checkout");
+      } finally {
+        (window as any).location = originalLocation;
+      }
+    });
   });
 
   it("applies className to root element", () => {
-    mockCheckoutData = {
-      step: "customer_info",
-      canProceed: false,
-      isProcessing: false,
-    };
-
     const { container } = render(
       <EPCheckoutButton className="my-button">
         <span>Button</span>
@@ -272,7 +177,7 @@ describe("EPCheckoutButton", () => {
   });
 
   describe("registration", () => {
-    it("renders the step-aware label when the slot is empty", () => {
+    it("renders the Checkout label when the slot is empty", () => {
       const { container } = render(<EPCheckoutButton />);
 
       expect(container.textContent).toContain("Checkout");
@@ -286,6 +191,31 @@ describe("EPCheckoutButton", () => {
 
       expect(slot.defaultValue).toBeUndefined();
       expect(slot.hidePlaceholder).toBe(true);
+    });
+
+    it("describes the link to the checkout page, not a step-aware button", () => {
+      const texts = [
+        epCheckoutButtonMeta.description,
+        ...Object.values<any>(epCheckoutButtonMeta.props).map(
+          (p) => p.description ?? ""
+        ),
+      ].join("\n");
+
+      expect(texts).not.toMatch(/step-aware/i);
+      expect(texts).not.toMatch(/outside an EP Checkout Provider/i);
+      expect(epCheckoutButtonMeta.description).toMatch(/checkout page/i);
+      expect(
+        (epCheckoutButtonMeta.props as any).onComplete.description
+      ).toMatch(/^Deprecated — ignored\./);
+      expect(
+        (epCheckoutButtonMeta.props as any).previewState.description
+      ).toMatch(/^Editor only\./);
+    });
+
+    it("hides the deprecated On Complete and keeps it off Studio's Interactions section", () => {
+      const onComplete = (epCheckoutButtonMeta.props as any).onComplete;
+      expect(onComplete.hidden()).toBe(true);
+      expect(onComplete.advanced).toBe(true);
     });
 
     it("has correct meta shape", () => {
@@ -306,10 +236,7 @@ describe("EPCheckoutButton", () => {
     });
   });
 
-  describe("outside an EP Checkout Provider", () => {
-    // On a cart page there is no flow to advance. The button used to render
-    // permanently aria-disabled with a dead click handler, so the composition
-    // the skeletons spec calls for did nothing at all.
+  describe("on a page", () => {
     const originalLocation = window.location;
 
     beforeEach(() => {
@@ -371,23 +298,6 @@ describe("EPCheckoutButton", () => {
 
       fireEvent.click(container.querySelector("[data-ep-checkout-button]")!);
       expect(window.location.assign).toHaveBeenCalledWith("/basket/checkout");
-    });
-
-    it("does not navigate when a provider is present", () => {
-      mockCheckoutData = {
-        step: "customer_info",
-        canProceed: true,
-        isProcessing: false,
-      };
-
-      const { container } = render(
-        <EPCheckoutButton>
-          <span>Button</span>
-        </EPCheckoutButton>
-      );
-
-      fireEvent.click(container.querySelector("[data-ep-checkout-button]")!);
-      expect(window.location.assign).not.toHaveBeenCalled();
     });
   });
 });

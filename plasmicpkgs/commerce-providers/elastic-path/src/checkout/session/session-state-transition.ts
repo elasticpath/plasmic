@@ -79,7 +79,9 @@ export function applyPaymentFailed(
  * unlinked via Update Cart (`payment_intent_id: ""`). Drop the stored
  * clientToken / actionData / paymentIntentId so the next /pay is a fresh
  * createCartPaymentIntent — not a continuation of the abandoned PI.
- * Does not create or cancel an EP order (failed 3DS is pre-checkoutApi).
+ * Drops the order held for that PI: it can only be paid by it, so the next
+ * /pay creates a new one. The held order stays unpaid in Elastic Path; it is
+ * not cancelled, so a payment that still completes can be matched to it.
  */
 export function applyAbandonedRequiresAction(
   session: CheckoutSession
@@ -89,7 +91,7 @@ export function applyAbandonedRequiresAction(
   return {
     ...session,
     status: "open",
-    order: session.order,
+    order: null,
     payment: {
       ...session.payment,
       status: "failed",

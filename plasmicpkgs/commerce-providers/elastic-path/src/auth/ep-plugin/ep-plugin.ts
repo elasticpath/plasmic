@@ -20,7 +20,6 @@ import type {
   EpAccountRegisterRequest,
   EpAccountRosterRequest,
   EpSelectAccountRequest,
-  EpSetCartRequest,
 } from "../../identity/operations";
 import {
   mintImplicitEpToken,
@@ -1039,15 +1038,15 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
         }
       ),
 
+      // No path: server code calls this through `auth.api`, the router never
+      // mounts it, and a browser cannot name the cart its session holds.
       epCart: createAuthEndpoint(
-        "/ep/cart",
         { method: "POST" },
         async (ctx) => {
           const existing = await readExistingSession(ctx);
           if (!existing?.user || !existing?.session) return noSessionError();
 
-          const { cartId } = ((ctx.body as any) ??
-            {}) as Partial<EpSetCartRequest>;
+          const { cartId } = ((ctx.body as any) ?? {}) as { cartId?: unknown };
           if (!cartId || typeof cartId !== "string") {
             return jsonError(
               "invalid_input",
@@ -1063,9 +1062,8 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             }),
             cartId
           );
-          const snap = { user: existing.user, session };
-          await setSessionCookie(ctx, snap as any);
-          return ctx.json(epIdentityPayload("setCart", snap));
+          await setSessionCookie(ctx, { user: existing.user, session } as any);
+          return ctx.json({ ok: true });
         }
       ),
     },

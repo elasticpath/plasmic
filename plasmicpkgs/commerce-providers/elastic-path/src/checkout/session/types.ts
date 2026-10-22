@@ -6,6 +6,7 @@
  * on-demand from the session's cartId / orderId rather than duplicated.
  */
 
+import type { getACart } from "@epcc-sdk/sdks-shopper";
 import type { EpLocaleAndCurrency } from "../../types/locale-and-currency";
 
 // ---------------------------------------------------------------------------
@@ -138,7 +139,19 @@ export interface CheckoutSession {
    * (customer/billing/shipping) are NOT carried here.
    */
   customAttributes?: Record<string, string | number | boolean>;
+  /**
+   * The account the order is placed for: the shopper's selected account when
+   * the session was created, or null for a guest checkout. Pay refuses with
+   * 409 `ACCOUNT_CHANGED` when the shopper's selection is no longer this one.
+   */
+  account?: CheckoutAccount | null;
   expiresAt: number; // epoch ms
+}
+
+/** An account checkout's buyer: the account and the signed-in member. */
+export interface CheckoutAccount {
+  id: string;
+  memberId?: string;
 }
 
 /**
@@ -182,15 +195,69 @@ export interface PaymentSetupRequest {
   [key: string]: unknown;
 }
 
-export interface CartPaymentIntentAdapter {
+/**
+ * Optional per-order check. /pay calls it before it creates an order for an
+ * order with a total above zero, and refuses the gateway unless it returns
+ * `true`.
+ */
+export interface PaymentAdapterOrderRule {
+  allowsOrder?(input: PaymentAdapterOrderRuleInput): boolean | Promise<boolean>;
+}
+
+export type EpCartResponse = NonNullable<
+  Awaited<ReturnType<typeof getACart>>["data"]
+>;
+
+/** What an order rule sees about the order it decides on. */
+export interface PaymentAdapterOrderRuleInput {
+  /** The cart, in Elastic Path's own shape, with its items under `included`. */
+  cart: EpCartResponse;
+  /** The account the shopper buys for, or `null` when none is selected. */
+  account: { id: string } | null;
+}
+
+/**
+ * A cart PaymentIntent's state, read without changing it.
+ * `settled`: the payment was taken. `awaiting_action`: the 3DS challenge is
+ * not passed yet. `failed`: it can no longer take the payment. `unreadable`:
+ * the read failed. `unverifiable`: the adapter has no way to read it.
+ */
+export type CartPaymentIntentState =
+  | "settled"
+  | "awaiting_action"
+  | "failed"
+  | "unreadable"
+  | "unverifiable";
+
+/**
+ * Keys the browser's payment component already holds (a Stripe publishable
+ * key and connected account). Resume sends them so the server can read the
+ * PaymentIntent when the adapter has no keys configured.
+ */
+export interface PaymentIntentReadKeys {
+  publishableKey: string;
+  stripeAccount?: string;
+}
+
+export interface CartPaymentIntentAdapter extends PaymentAdapterOrderRule {
   readonly paymentSequence: "cart_payment_intent";
   initializePayment(
     session: CheckoutSession,
     gatewayData: Record<string, unknown>
   ): Promise<PaymentAdapterResult>;
+  /**
+   * Reads the session's PaymentIntent state without changing it. Resume
+   * confirms the order only when this answers `settled`, because Elastic
+   * Path's confirm on a PaymentIntent still awaiting 3DS leaves the order
+   * unable to take that payment. An adapter without it cannot resume.
+   */
+  readPaymentIntentState?(
+    session: CheckoutSession,
+    keys?: PaymentIntentReadKeys
+  ): Promise<CartPaymentIntentState>;
 }
 
-export interface OrderFirstAdapter {
+export interface OrderFirstAdapter extends PaymentAdapterOrderRule {
   readonly paymentSequence: "order_first";
   buildPaymentSetup(
     session: CheckoutSession,
@@ -202,7 +269,7 @@ export interface OrderFirstAdapter {
  * Pre-sequence adapter shape (Clover). Not a payment sequence.
  * Kept so existing Clover files type-check without being edited.
  */
-export interface LegacyPaymentAdapter {
+export interface LegacyPaymentAdapter extends PaymentAdapterOrderRule {
   initializePayment(
     session: CheckoutSession,
     gatewayData: Record<string, unknown>
@@ -288,6 +355,13 @@ export interface SessionHandlerContext extends EpLocaleAndCurrency {
    */
   shopperAccessToken?: string;
   /**
+   * The shopper's session cart, `session.cart.id` from the same `getSession`.
+   * `handleCreateSession` checks out this cart and nothing else; without it,
+   * creating a checkout session returns 409 `NO_CART`. Never take it from the
+   * request.
+   */
+  sessionCartId?: string;
+  /**
    * The selected account's Elastic Path account-management token, resolved
    * per-request from the same session as `shopperAccessToken`. Sent with every
    * call made under the shopper's token, as the `ep.*` functions do. Omit it
@@ -295,6 +369,20 @@ export interface SessionHandlerContext extends EpLocaleAndCurrency {
    * call.
    */
   accountToken?: string;
+  /**
+   * The selected account's id, from the same session as `accountToken`. With
+   * `accountToken`, it makes the checkout an account checkout: the order is
+   * placed for this account, and a payment rule sees it. Omit it when no
+   * account is selected. Set both or neither: with only one, checkout
+   * refuses with `ACCOUNT_NOT_CONFIGURED`. `checkoutContextFromSession` sets
+   * them together.
+   */
+  accountId?: string;
+  /**
+   * The signed-in account member's id (`session.session.memberId`). An
+   * account order names this member. Omit it when no account is selected.
+   */
+  accountMemberId?: string;
   /**
    * Request-scoped admin token resolver for EP operations that require
    * `client_credentials` grant (createCartPaymentIntent, checkoutApi,
@@ -353,7 +441,6 @@ export interface AdapterRegistry {
 // ---------------------------------------------------------------------------
 
 export interface CreateSessionRequest {
-  cartId: string;
   /** Optional — see CheckoutSession.requiresShipping. Defaults to true. */
   requiresShipping?: boolean;
 }
@@ -382,5 +469,5 @@ export interface ConfirmRequest {
 
 export type ClientCheckoutSession = Omit<
   CheckoutSession,
-  "cartHash"
+  "cartHash" | "cartId" | "account"
 >;

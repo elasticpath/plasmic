@@ -13,6 +13,7 @@ import { MOCK_SESSION_COLLECTING } from "./design-time-data";
 import type { SessionShippingRate } from "./types";
 import { createLogger } from "../../utils/logger";
 import { useMoneyFormat } from "../../shopper-context/use-money-format";
+import { useCanvasPreviewState } from "../../utils/canvas-preview-state";
 
 const log = createLogger("EPCheckoutShippingRates");
 
@@ -119,8 +120,9 @@ export const EPCheckoutShippingRates = React.forwardRef<
     loadingContent,
     emptyContent,
     className,
-    previewState = "auto",
+    previewState: savedPreviewState,
   } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const inEditor = !!usePlasmicCanvasContext();
   const checkoutSessionCtx = useSelector("checkoutSession") as

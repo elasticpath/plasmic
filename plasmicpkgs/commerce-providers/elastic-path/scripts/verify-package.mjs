@@ -226,8 +226,16 @@ async function smokeServer() {
 
   for (const [format, mod] of [["ESM", esm], ["CJS", cjs]]) {
     const session = { marker: format };
-    const inside = await mod.withEpSession(session, async () => mod.getCurrentEpSession());
-    check(`${format} withEpSession scopes getCurrentEpSession`, inside === session);
+    const inside = await mod.withEpSession(session, async () => {
+      const scoped = mod.getCurrentEpSession();
+      scoped.cartId = "written-inside";
+      return scoped;
+    });
+    check(`${format} withEpSession scopes getCurrentEpSession`, inside?.marker === format);
+    check(
+      `${format} withEpSession keeps writes inside the scope off the caller's session`,
+      inside !== session && session.cartId === undefined && inside.cartId === "written-inside"
+    );
     check(`${format} getCurrentEpSession is empty outside the scope`, mod.getCurrentEpSession() === undefined);
     const fallback = await mod.seedCartFallback();
     check(

@@ -101,7 +101,7 @@ function makeSession(overrides: Partial<CheckoutSession> = {}): CheckoutSession 
     availableShippingRates: [
       { id: "rate-standard", name: "Standard", amount: 500, currency: "USD", serviceLevel: "standard" },
     ],
-    totals: null,
+    totals: { subtotal: 4900, tax: 0, shipping: 500, total: 5400, currency: "USD" },
     payment: {
       gateway: null,
       status: "idle",
@@ -410,6 +410,7 @@ describe("handlePay", () => {
         createMockCtx(makeSession(), adapter)
       );
       expect(res.status).toBe(200);
+      expect(JSON.stringify(res.body)).not.toContain("cart-abc");
     });
 
     it("session status remains 'open' on 'failed' to allow retry", async () => {
@@ -453,7 +454,17 @@ describe("handlePay", () => {
   });
 
   describe("adapter result: 'requires_action'", () => {
-    it("returns 200 with payment.status requires_action and no order", async () => {
+    const heldOrder = (amount: number) => ({
+      data: {
+        data: {
+          id: "order-held",
+          meta: { display_price: { with_tax: { amount, currency: "USD" } } },
+        },
+      },
+    });
+
+    it("returns 200 with payment.status requires_action and the order held for it", async () => {
+      epSdk.checkoutApi.mockResolvedValue(heldOrder(5400));
       const adapter = createMockAdapter({
         status: "requires_action",
         clientToken: "pi_secret",
@@ -473,10 +484,11 @@ describe("handlePay", () => {
         type: "stripe_3ds",
         paymentIntentId: "pi_3ds",
       });
-      expect(session.order).toBeNull();
+      expect(session.order).toEqual({ id: "order-held" });
     });
 
-    it("does not call checkoutApi, confirmOrder, or cart cleanup", async () => {
+    it("does not confirm the order or clean up the cart", async () => {
+      epSdk.checkoutApi.mockResolvedValue(heldOrder(5400));
       const adapter = createMockAdapter({
         status: "requires_action",
         clientToken: "pi_secret",
@@ -487,9 +499,28 @@ describe("handlePay", () => {
         createMockReq({ gateway: "stripe" }),
         createMockCtx(makeSession(), adapter)
       );
-      expect(epSdk.checkoutApi).not.toHaveBeenCalled();
+      expect(epSdk.checkoutApi).toHaveBeenCalledTimes(1);
       expect(epSdk.confirmOrder).not.toHaveBeenCalled();
       expect(epSdk.deleteACart).not.toHaveBeenCalled();
+    });
+
+    it("withholds the challenge when the held order's total is not the shown total", async () => {
+      epSdk.checkoutApi.mockResolvedValue(heldOrder(7400));
+      const adapter = createMockAdapter({
+        status: "requires_action",
+        clientToken: "pi_secret",
+        gatewayMetadata: { paymentIntentId: "pi_3ds" },
+      });
+      const res = await handlePay(
+        createMockReq({ gateway: "stripe" }),
+        createMockCtx(makeSession(), adapter)
+      );
+      expect(res.status).toBe(409);
+      expect((res.body as any).error.code).toBe("ORDER_TOTAL_CHANGED");
+      expect(JSON.stringify(res.body)).not.toContain("pi_secret");
+      expect(epSdk.updateACart).toHaveBeenCalledWith(
+        expect.objectContaining({ body: { data: { payment_intent_id: "" } } })
+      );
     });
   });
 
@@ -574,8 +605,17 @@ describe("handlePay", () => {
           ? cartIn("EUR", EUR_ITEMS, 4860)
           : cartIn("USD", CART_ITEMS, 5400)
       );
+      epSdk.checkoutApi.mockResolvedValue({
+        data: {
+          data: {
+            id: "order-1",
+            meta: { display_price: { with_tax: { amount: 4860, currency: "EUR" } } },
+          },
+        },
+      } as any);
       const session = makeSession({
         cartHash: hashCart(EUR_ITEMS),
+        totals: { subtotal: 4410, tax: 0, shipping: 450, total: 4860, currency: "EUR" },
         availableShippingRates: [
           { id: "rate-standard", name: "Standard", amount: 450, currency: "EUR" },
         ],
@@ -615,6 +655,17 @@ describe("handlePay", () => {
           ? cartIn("EUR", FREE_ITEMS, 0)
           : cartIn("USD", FREE_ITEMS, 700);
       });
+      epSdk.checkoutApi.mockResolvedValue({
+        data: {
+          data: {
+            id: "order-1",
+            meta: { display_price: { with_tax: { amount: 0, currency: "EUR" } } },
+          },
+        },
+      } as any);
+      epSdk.paymentSetup.mockResolvedValueOnce({
+        data: { data: { id: "txn-1", status: "complete" } },
+      });
       const adapter = createMockAdapter();
 
       const res = await handlePay(
@@ -624,6 +675,7 @@ describe("handlePay", () => {
             cartHash: hashCart(FREE_ITEMS),
             requiresShipping: false,
             selectedShippingRateId: null,
+            totals: { subtotal: 0, tax: 0, shipping: 0, total: 0, currency: "EUR" },
           }),
           adapter,
           { locale: "fr-FR", currency: "EUR" }
@@ -637,6 +689,7 @@ describe("handlePay", () => {
   });
 
   describe("selected account", () => {
+    const ACCOUNT = { accountToken: "account-token", accountId: "account-1" };
     const PAID = createMockAdapter.bind(null, {
       status: "succeeded",
       gatewayOrderId: "pi_1",
@@ -646,7 +699,7 @@ describe("handlePay", () => {
     it("re-reads the cart with the selected account's credential", async () => {
       await handlePay(
         createMockReq({ gateway: "stripe", confirmation_token: "ct" }),
-        createMockCtx(makeSession(), PAID(), { accountToken: "account-token" })
+        createMockCtx(makeSession({ account: { id: "account-1" } }), PAID(), ACCOUNT)
       );
 
       const { client } = epSdk.getACart.mock.calls[0][0];
@@ -668,9 +721,13 @@ describe("handlePay", () => {
       await handlePay(
         createMockReq({ gateway: "stripe", confirmation_token: "ct" }),
         createMockCtx(
-          makeSession({ cartHash: hashCart(digitalItems), requiresShipping: false }),
+          makeSession({
+            cartHash: hashCart(digitalItems),
+            requiresShipping: false,
+            account: { id: "account-1" },
+          }),
           PAID(),
-          { accountToken: "account-token" }
+          ACCOUNT
         )
       );
 
@@ -695,7 +752,7 @@ describe("handlePay", () => {
     it("keeps the account credential off the client_credentials checkout", async () => {
       await handlePay(
         createMockReq({ gateway: "stripe", confirmation_token: "ct" }),
-        createMockCtx(makeSession(), PAID(), { accountToken: "account-token" })
+        createMockCtx(makeSession({ account: { id: "account-1" } }), PAID(), ACCOUNT)
       );
 
       const { client } = epSdk.checkoutApi.mock.calls[0][0];

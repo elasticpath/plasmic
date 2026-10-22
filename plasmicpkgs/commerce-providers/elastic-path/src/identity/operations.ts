@@ -34,10 +34,6 @@ export interface EpSelectAccountRequest {
   accountId: string | null;
 }
 
-export interface EpSetCartRequest {
-  cartId: string;
-}
-
 /** The authenticated member's profile. `id` is always the session's member id. */
 export interface EpAccountMemberResult {
   id: string;
@@ -58,7 +54,6 @@ export interface EpIdentityOperations {
   getSession: { request: void; response: EpSessionEnvelope | null };
   signInAnonymously: { request: void; response: EpSessionEnvelope };
   refresh: { request: void; response: EpSessionEnvelope };
-  setCart: { request: EpSetCartRequest; response: EpSessionEnvelope };
   login: { request: EpAccountLoginRequest; response: EpAccountLoginResult };
   register: {
     request: EpAccountRegisterRequest;
@@ -98,7 +93,6 @@ export const EP_IDENTITY_ROUTES: {
   getSession: { path: "/get-session", method: "GET" },
   signInAnonymously: { path: "/ep/anonymous", method: "POST" },
   refresh: { path: "/ep/refresh", method: "POST" },
-  setCart: { path: "/ep/cart", method: "POST" },
   login: { path: "/ep/account/login", method: "POST" },
   register: { path: "/ep/account/register", method: "POST" },
   roster: { path: "/ep/account/roster", method: "POST" },

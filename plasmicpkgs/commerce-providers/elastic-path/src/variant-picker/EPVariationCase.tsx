@@ -89,7 +89,7 @@ export function EPVariationCase(props: EPVariationCaseProps) {
       forVariation: trimmedForVariation ?? "(fallback)",
       currentVariation: currentVariation.name,
       claimedVariations: Array.from(picker.claimedVariations),
-    } as Record<string, unknown>);
+    });
     return null;
   }
 

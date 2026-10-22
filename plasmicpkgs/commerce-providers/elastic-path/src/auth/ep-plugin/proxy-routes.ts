@@ -55,9 +55,13 @@ import type {
 } from "../../ep-server-functions";
 import {
   classifyEpFailure,
+  failureHttpStatus,
   epFailureReason,
 } from "../../ep-server-functions/call-error";
-import { withEpSession } from "../../ep-server-functions/session-context";
+import {
+  getCurrentEpSession,
+  withEpSession,
+} from "../../ep-server-functions/session-context";
 import { buildEpCtx } from "../../ep-server-functions/build-ep-ctx";
 import { parseCookieHeader } from "../../utils/cookie-header";
 import type { EpAuth } from "./create-ep-auth-better";
@@ -79,11 +83,7 @@ const SESSION_REQUIRED_FNS = new Set([
   "configureBundle",
 ]);
 
-/**
- * Names whose result is the shopper's cart, so an id the function auto-created
- * has to be written back to the envelope. Never widen this to a function that
- * returns something else with an `id` — the id is taken as a cart id.
- */
+/** Names that write the shopper's cart, so a cart they create reaches the envelope. */
 const CART_WRITE_FNS = new Set([
   "addCartItem",
   "updateCartItem",
@@ -243,8 +243,13 @@ export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes {
       const epCtx = buildEpCtx(sessionResult);
 
       let result: unknown;
+      let scopeCartId: string | undefined;
       try {
-        result = await withEpSession(epCtx, () => dispatch(args));
+        result = await withEpSession(epCtx, async () => {
+          const value = await dispatch(args);
+          scopeCartId = getCurrentEpSession()?.cartId;
+          return value;
+        });
       } catch (err) {
         const correlationId = crypto.randomUUID();
         console.error(
@@ -264,24 +269,21 @@ export function createEpProxyRoutes(epAuth: EpAuth): EpProxyRoutes {
               : { error: "dispatch_failed", code, correlationId }
           ),
           {
-            status: 500,
+            status: failureHttpStatus(err, code),
             headers: { "Content-Type": "application/json", ...cors },
           }
         );
       }
 
-      // For cart writes, the function may have auto-created a cart. Detect a
-      // cartId mismatch between the input session and the returned cart, and
-      // forward the better-auth Set-Cookie headers that /ep/cart emits so the
-      // browser session catches up.
+      // A cart write that created a cart points the request's session at it.
+      // Record that cart on the envelope and forward the cookies.
       const setCookies: string[] = [];
-      if (CART_WRITE_FNS.has(fnName)) {
-        const resultCartId = (result as { id?: string } | null)?.id;
-        if (resultCartId && resultCartId !== epCtx.cartId) {
-          setCookies.push(
-            ...(await persistCartId(epAuth, request, resultCartId))
-          );
-        }
+      if (
+        CART_WRITE_FNS.has(fnName) &&
+        scopeCartId &&
+        scopeCartId !== epCtx.cartId
+      ) {
+        setCookies.push(...(await persistCartId(epAuth, request, scopeCartId)));
       }
 
       const headers = new Headers({

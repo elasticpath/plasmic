@@ -6,6 +6,7 @@ import registerComponent, {
 import type { Cart } from "../types/cart";
 import { Registerable } from "../registerable";
 import { useEpCart } from "./use-ep-cart";
+import { useCanvasPreviewState } from "../utils/canvas-preview-state";
 
 type CartState = "loading" | "error" | "empty" | "ready";
 
@@ -41,8 +42,9 @@ export function EPCartProvider(props: EPCartProviderProps) {
     loadingContent,
     errorContent,
     emptyContent,
-    previewState = "auto",
+    previewState: savedPreviewState,
   } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
   const { cart, isLoading, error } = useEpCart();
 
   const state =

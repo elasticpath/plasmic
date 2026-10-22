@@ -165,9 +165,23 @@ account token, or under the bare implicit token, both return 200 — and the
 account relationship is an appendable **set**, so an account can add itself to a
 cart whose id it knows and thereafter enumerate it. That upgrades a one-time
 cart-id leak into durable access. It creates no capability that reading by id did
-not already have, and association must never be presented as a second layer:
-custody of the id is the whole defence. Association does not touch the expiry
-clock either.
+not already have, and association must never be presented as a second layer.
+Association does not touch the expiry clock either.
+
+**The id stays on the server, and that is the storefront's only control.** On
+2026-10-15 the id alone was confirmed to read and change a cart linked to an
+account too. So nothing the storefront sends to the browser contains it: not
+`$ctx.cart`, not a session, account or checkout response, not development
+error text. The Stripe PaymentIntent that Stripe.js reads during a card check
+carries no cart id: on the integration store its `description` was null in
+two walks, and the package sets no description or metadata on it. The browser
+cannot set the session's cart either; only server code
+records a cart it created. This prevents page scripts, browser extensions and
+anything that records what a page receives from learning the id through the
+storefront. It does not prevent access by a party that gets the id some other
+way: Elastic Path still grants the cart to any holder of the id, and the
+storefront cannot see or stop that access. A cart whose id reached a browser
+before this change gets no protection from it.
 
 **A resolver seam chooses the cart at an identity transition** — a login or an
 account switch — because merge semantics are merchant policy and Elastic Path
@@ -295,6 +309,16 @@ carries a deprecation signal, and under ADR-0004 neither can be removed anyway.
 - Catalog search shows fixtures at design time permanently — the canvas never
   mounts the provider's inner component — which is the one axis where the on-ramp
   path is better. Documented as a limitation, not closed here.
+- Which components read the store at design time (#662). Each one that does
+  drops to the labelled fixtures when its read fails, including when the route
+  is not mounted:
+
+  | Component | Design time |
+  | --- | --- |
+  | EP Product Provider | fetches through the design-time route |
+  | EP Product List Provider | fetches through the design-time route |
+  | EP Related Products Provider | fetches through the design-time route; fixtures when no product is chosen |
+  | EP Catalog Search Provider | fixtures |
 - Designers get no account-scoped design time. There are zero account-scoped
   components in this package, so there is no parity to preserve. The effort that
   adds them inherits two facts: a route that can name an account cannot be

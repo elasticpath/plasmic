@@ -67,16 +67,30 @@ _Avoid_: simple checkout, form provider checkout
 **Controlled-field checkout**:
 The refAction-orchestrated, fixed-schema checkout family:
 `EPCustomerInfoFields`/`EPShippingAddressFields`/`EPBillingAddressFields`
-with the 4-step `EPCheckoutProvider`. The breakout for multi-step flows,
+inside `EPCheckoutSessionProvider`. The breakout for multi-step flows,
 bring-your-own inputs, address suggestions, and shipping-rate selection.
-Either/or per page with managed-form, never mixed.
+Either/or per page with managed-form, never mixed. The 4-step
+`EPCheckoutProvider` is deprecated and inert: it called routes nothing serves.
 _Avoid_: composable checkout (ambiguous — both families are composable)
 
 **Checkout session**:
 The server-authoritative checkout state managed by
-`EPCheckoutSessionProvider` and the `/api/…/checkout/sessions*` routes. Holds
-orchestration and selection state only — never an authoritative amount. The
-managed form auto-detects it (`paymentMode: "auto"`) and submits through it.
+`EPCheckoutSessionProvider` and the `/api/…/checkout/sessions*` routes — the
+checkout path. Holds orchestration and selection state only — never an
+authoritative amount. It checks out the **session cart**, which the server
+takes from the shopper envelope when the session is created; the browser never
+names a cart. It also fixes, when created, who the order is for: the
+**selected account** and its member (an account order), or a guest when none
+is selected. The managed form submits through it, and shows a setup error
+without one. The checkout-session routes are the only place orders are placed;
+the proxy route never places one.
+
+**Manual payment rule**:
+The host's rule, `createManualAdapter({ allow })` or `epPlaceOrder`'s
+`allowManual`, that lets an order with a total use the `manual` gateway. It
+sees the cart and the account the order is placed for, and must return `true`. A zero-total order uses
+`manual` without one. The server applies it before it creates the order.
+_Avoid_: payment whitelist, invoice mode
 
 ### Session & security
 
@@ -192,7 +206,7 @@ cart** is reselected.
 
 **Session cart**:
 The one Elastic Path cart the shopper envelope points at, held as `epCartId`.
-A shopper has exactly one at a time.
+A shopper has exactly one at a time. Only server code reads or sets it.
 _Avoid_: active cart, current cart, basket
 
 **Guest cart**:
@@ -238,9 +252,11 @@ scoped by that authentication)
 
 **Identity operation**:
 One of the things a call site does to the shopper envelope — read it, mint
-it, rotate it, point it at a cart, register a member, sign a member in or
-out, read the roster, select an account, roll its credential. Reached as
-a method on the **identity client**, never as a route. Distinct from a
+it, rotate it, register a member, sign a member in or out, read the roster,
+select an account, roll its credential. Reached as a method on the
+**identity client**, never as a route. Pointing the envelope at a cart is
+not one: only server code does it, when a cart write creates the cart.
+Distinct from a
 *named operation*: these are authentication-plugin endpoints, so the client
 is derived from the endpoints rather than dispatched through the proxy.
 
@@ -260,8 +276,8 @@ deliberately not used)
 **Design-time catalog route**:
 `createEpDesignRoutes`, mounted at `app/api/ep/design/[fn]/route.ts`. The
 session-free route serving the store's default catalog to Studio under an
-anonymous implicit token, with four declared names and no cart or order
-access. Distinct from the shopper proxy, which carries session identity.
+anonymous implicit token, with a closed list of declared names and no cart
+or order access. Distinct from the shopper proxy, which carries session identity.
 
 **Mock floor**:
 The automatic canvas fallback to `"Sample"` fixtures beneath any design-time

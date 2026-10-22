@@ -5,7 +5,9 @@ import registerComponent, {
 import React from "react";
 import { Registerable } from "../registerable";
 import type { Cart } from "../types/cart";
+import { shopperCartTotals } from "../utils/cart-totals";
 import { MOCK_CART_DATA } from "../utils/design-time-data";
+import { useCanvasPreviewState } from "../utils/canvas-preview-state";
 
 type CartFieldName =
   | "itemCount"
@@ -63,7 +65,7 @@ export const epCartFieldMeta: CodeComponentMeta<EPCartFieldProps> = {
  * paths behind them move with Elastic Path's shape.
  */
 function cartFieldValue(cart: Cart, field: CartFieldName): unknown {
-  const price = cart.meta?.display_price;
+  const price = shopperCartTotals(cart);
   switch (field) {
     case "itemCount":
       return cart.itemCount;
@@ -81,7 +83,8 @@ function cartFieldValue(cart: Cart, field: CartFieldName): unknown {
 }
 
 export function EPCartField(props: EPCartFieldProps) {
-  const { field, className, previewState = "auto" } = props;
+  const { field, className, previewState: savedPreviewState } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const cart = useSelector("cart") as Cart | undefined;
   const inEditor = !!usePlasmicCanvasContext();

@@ -107,7 +107,13 @@ export {
   epRemoveCartItem,
   epUpdateCartItem,
 } from "./ep-server-functions/cart-mutations";
-export type { Cart, CartItem, CartItemType, CartMeta } from "./types/cart";
+export type {
+  Cart,
+  CartItem,
+  CartItemType,
+  CartMeta,
+  CartWithoutShipping,
+} from "./types/cart";
 export type { FormattedPrice } from "./utils/price";
 export type { CartResponse } from "@epcc-sdk/sdks-shopper";
 export type {
@@ -251,8 +257,10 @@ export function registerAll(loader?: Registerable) {
   // Legacy monolithic bundle configurator
   registerEPBundleConfigurator(loader);
 
-  // Deprecated — kept for backwards compatibility
+  // Legacy monolithic variant picker (live, not deprecated)
   registerEPProductVariantPicker(loader);
+
+  // Deprecated — kept registered because hostless publishing rejects a removed component
   registerEPMultiLocationStock(loader);
 
   // Account identity — register field/gate first so they're available as default slot content

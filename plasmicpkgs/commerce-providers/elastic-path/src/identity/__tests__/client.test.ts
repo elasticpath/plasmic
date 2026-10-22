@@ -41,7 +41,6 @@ describe("createEpIdentityClient", () => {
     await client.getSession();
     await client.signInAnonymously();
     await client.refresh();
-    await client.setCart({ cartId: "cart-1" });
     await client.login({ username: "buyer@example.com", password: "pw" });
     await client.register({
       username: "buyer@example.com",
@@ -60,7 +59,6 @@ describe("createEpIdentityClient", () => {
       "/api/ep/get-session",
       "/api/ep/ep/anonymous",
       "/api/ep/ep/refresh",
-      "/api/ep/ep/cart",
       "/api/ep/ep/account/login",
       "/api/ep/ep/account/register",
       "/api/ep/ep/account/roster",

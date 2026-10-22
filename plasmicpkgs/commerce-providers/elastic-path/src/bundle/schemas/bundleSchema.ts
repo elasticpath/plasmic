@@ -134,7 +134,7 @@ export function createBundleDefaultValues(
       const decoded = JSON.parse(atob(defaultConfiguration));
       Object.assign(defaults, decoded);
     } catch (error) {
-      log.error("Failed to parse default configuration", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
+      log.error("Failed to parse default configuration", { error: error instanceof Error ? error.message : String(error) });
     }
   }
   

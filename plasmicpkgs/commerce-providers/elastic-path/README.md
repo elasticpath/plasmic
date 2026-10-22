@@ -356,19 +356,33 @@ can rely on:
   relationship is an appendable set, so any account that learns a cart id can
   attach itself and then list that cart.
 
-**The cart id still reaches page scripts.** `get-session` returns `epCartId`,
-because EP Checkout Provider reads it to drive checkout. Treat it as a
-credential for that one cart: do not log it, put it in a URL, or send it to a
-third-party script.
+**The cart id stays on the server.** The id alone is enough to read and change
+a cart, and this is also true for a cart linked to an account. So nothing the
+storefront sends to the browser contains it:
+
+- `$ctx.cart`, and every cart the cart functions return, has no `id` and no
+  `links`.
+- `get-session` and the account routes do not return `epCartId`.
+- Checkout session responses have no `cartId`.
+- The browser cannot set the session's cart. When a cart write creates a cart,
+  the proxy route records it on the session.
+
+Server code that needs the id reads `session.cart?.id` from
+`epAuth.api.getSession`. This keeps the id away from page scripts, browser
+extensions and anything that records what a page receives. It does not make the
+id less powerful: a person who gets the id in a different way can still read
+and change the cart. In server code, treat the id as a credential for that one
+cart: do not put it in a URL or send it to a third-party service.
 
 **`next dev` exposes the session.** Next's React Server Components debug
 instrumentation serializes a server component's local variables into the page
 payload, and the session is one of them. Under `next dev`, the page source
-contains the shopper's access token and, once a member selects an
-organisation, that organisation's account credential. The account credential
-unlocks the organisation's order history, account and member records, and
-addresses. Neither is in `next build` output, and nothing this package does
-can suppress it. Treat a dev server as holding a live shopper credential:
+contains the shopper's access token, the session's cart id and, once a member
+selects an organisation, that organisation's account credential. A server
+component that reads the cart also adds the raw Elastic Path cart response,
+which carries the cart id. The account credential unlocks the organisation's
+order history, account and member records, and addresses. None of these is in
+`next build` output, and nothing this package does can suppress it. Treat a dev server as holding a live shopper credential:
 never run one on a shared host or against a production store.
 
 ### API Routes
@@ -380,7 +394,6 @@ never run one on a shared host or against a production store.
 |--------|------|-------------|
 | POST | `/api/ep/ep/anonymous` | Mint an anonymous session |
 | POST | `/api/ep/ep/refresh` | Rotate the EP token |
-| POST | `/api/ep/ep/cart` | Persist `epCartId` on the session |
 | POST | `/api/ep/ep/account/login` | Sign an account member in |
 | POST | `/api/ep/ep/account/register` | Register an account member |
 | POST | `/api/ep/ep/account/roster` | Read the accounts the member belongs to |
@@ -422,8 +435,9 @@ export const OPTIONS = routes.options;
 The design route reads no shopper session, which is what lets it answer inside
 Studio's editing frame: the session cookie is `SameSite=Lax` and never travels
 there once the app host is served from the storefront's own domain. It serves
-four catalog reads — `getProduct`, `getProductList`, `getProductPage`,
-`getRelatedProducts` — under a bare implicit token, and refuses every other
+the catalog reads `getProduct`, `getProductList`, `getProductPage` and
+`getRelatedProducts`, plus `getSearchAttributes` for the search filters'
+attribute dropdowns, under a bare implicit token, and refuses every other
 name. Mount it in production: designers edit against a deployed app host.
 
 Its CORS is `Access-Control-Allow-Origin: *` with no credentials and no origin
@@ -467,7 +481,6 @@ function SignIn() {
 | `getSession()` | — | the session, or `null` |
 | `signInAnonymously()` | — | the session |
 | `refresh()` | — | the session |
-| `setCart({ cartId })` | cart id | the session |
 | `login({ username, password, name? })` | credentials | the session, plus the member's organisations |
 | `register({ username, password, name, email })` | credentials | the session, plus the member's organisations |
 | `roster({ limit?, offset? })` | paging | every organisation, or one page when `limit` or `offset` is set |
@@ -521,6 +534,149 @@ checkout-session handlers carry it on every call made as the shopper: pass the
 selected account's token as `accountToken` on `SessionHandlerContext`, resolved
 from `session.session.account?.token` next to `shopperAccessToken`. Calls made
 with `getClientCredentialsToken` never carry it.
+
+An account member's checkout places the order for the selected account. Set
+the shopper's fields with `checkoutContextFromSession`, from `/server`. It
+reads one `getSession` result and sets `shopperAccessToken`, `sessionCartId`,
+`accountToken`, `accountId`, `accountMemberId`, `locale` and `currency`:
+
+```ts
+const session = await epAuth.api.getSession({ cookies, headers });
+const ctx: SessionHandlerContext = {
+  // ...
+  ...checkoutContextFromSession(session),
+};
+```
+
+`accountToken` and `accountId` go together. A context with only one of them
+(for example the 0.8.0 setup, which set only `accountToken`) cannot tell
+whether the order is for an account, so creating a checkout session and pay
+return `500` with code `ACCOUNT_NOT_CONFIGURED` and place no order, and
+`epPlaceOrder` throws. The server log names the fix.
+
+The checkout session takes the account when it is created. Every order it
+places is linked to that account and member, with the checkout form's name
+and email as the order's contact. With no account selected, the order is a
+guest order with that name and email. That includes a signed-in member who has
+not chosen an account: Elastic Path links an order to an account, not to a
+member alone. When the selected account changes after the checkout session is
+created (switched, deselected or lapsed), pay takes no payment, drops the
+checkout session and returns `409` with code `ACCOUNT_CHANGED`. The account
+and the member come only from the server-side session, never from the request.
+
+The session cart is `sessionCartId` (`session.cart?.id` on the same
+`getSession`). `handleCreateSession` checks out that cart and ignores any cart
+id in the request; without it, creating a checkout session returns `409` with
+code `NO_CART`. Every later checkout-session route works on the cart the
+session was created with.
+
+A cart with nothing to buy (no lines, or only the shipping line and
+promotions) returns `409` with code `EMPTY_CART`, both when a checkout session
+is created and at pay. Pay charges only the total the session last returned.
+When the cart's total differs, pay charges nothing and returns `409` with
+code `CART_MISMATCH` (the lines changed) or `TOTAL_CHANGED`, and the session
+it returns carries the new total. A pay request may say which total the page
+showed as `shownTotal` (EP Checkout Session Provider always does); pay then
+also refuses with `TOTAL_CHANGED` when that is not the total it would charge.
+Reading an open session (`GET …/current`) re-reads its cart, and when the
+lines changed it stores and returns the cart's new totals, so the page shows a
+cart change before the shopper pays. It does not move a session while a card
+check holds its order or a payment for its cart runs.
+
+The checkout's shipping line (SKU `__ep_shipping`) is in the cart only while a
+payment runs. Choosing a rate writes the line, reads the cart Elastic Path
+priced with it (promotions and tax included) as the session's totals, and
+takes the line out again; reading a session whose cart changed prices the rate
+the same way. Pay writes the line again before it charges, and pay, resume,
+abandon and confirm take it out when they end, unless a card check waits with
+no order held. Creating a session takes out a line an earlier checkout left.
+So a cart page outside a payment shows totals its lines add up to. A rate
+Elastic Path cannot price is not chosen: the update returns `502` with code
+`SHIPPING_NOT_APPLIED` and the session without that rate. A cart settles at most one order: pay,
+resume-payment and abandon-payment share one guard per cart. While one of
+them runs for a cart, another request from the same checkout session gets the
+same response, and one from a different checkout session gets `409` with code
+`CHECKOUT_IN_PROGRESS`, as does a session update. A cart write while the
+cart's payment runs is refused with code `checkout_in_progress`.
+
+**Run one checkout session on one server instance.** The guard lives in one
+server process. With more than one instance, route each checkout session's
+requests to the same instance (session affinity). Across instances, a double
+submit can create a duplicate order for one payment; it cannot charge twice.
+A planned follow-up, "every charge belongs to an order", removes this limit.
+
+When a card needs a 3DS challenge, pay creates the order first and returns
+the challenge only when that order's total is the total the session showed
+(else `409` with `ORDER_TOTAL_CHANGED`). Resume-payment confirms that order,
+so a cart change during the challenge does not change what is ordered. While
+the challenge is open, pay and session updates return `409` with code
+`PAYMENT_ACTION_PENDING` and the open session; finish the challenge (resume)
+or cancel it (abandon) first. EP Checkout Session Provider and EP Stripe
+Payment do this for you, and EP Checkout Form Provider shows its fields
+locked until the check ends. When the order completes, the cart keeps any
+line the shopper added during the challenge; the lines the order took are
+removed (the whole cart is emptied when that cannot be done safely).
+
+After any paid order the ordered lines leave the cart. An account's last cart
+cannot be deleted in Elastic Path, so its items are deleted instead and the
+cart stays linked to the account. If the lines cannot be removed, the next
+checkout session for that cart retries first and answers `409`
+`CART_CLEANUP_PENDING` until it can. A checkout Elastic Path refuses (for
+example, not enough stock) answers `409` `CHECKOUT_REJECTED` with Elastic
+Path's reason and takes no payment.
+
+**Out of stock after the charge.** Elastic Path checks stock when the order is
+created, after a card payment is taken. When stock runs out in between, the
+checkout ends with `409` `PAYMENT_NEEDS_REVIEW`, the shopper is told, and the
+server logs the payment for reconciliation; no order is created for it. The
+planned follow-up, "every charge belongs to an order", removes this limit.
+
+**An email Elastic Path refuses.** Elastic Path checks the customer email at
+checkout, also after a card payment. So a session update whose `customerInfo`
+email Elastic Path would refuse returns `400` with code `INVALID_EMAIL` and
+saves nothing, and pay checks the session's email again before any payment
+or order. The rule is the one Elastic Path applies: one RFC 5322 address, so
+`jane doe@example.com` and `jane@example.com.` are refused, and plus
+addressing, non-ASCII addresses and `Jane <jane@example.com>` pass.
+
+Abandoning a card check that can still complete voids its payment: the order
+held for the challenge is confirmed and its pending transaction cancelled,
+which cancels the PaymentIntent in Stripe, so the challenge can no longer
+charge the card. The stock that confirm took is returned and the order
+cancelled. If the challenge completes during the void, the payment is kept:
+the order is placed (or marked for reconciliation) and the checkout ends.
+
+Resume confirms the order only after Stripe reports that the payment was
+taken. Elastic Path cannot report this, and its confirm on a payment still
+waiting for 3DS leaves the order unable to take that payment. So resume reads
+the PaymentIntent from Stripe, the same read Stripe.js makes: its client
+secret (held in the checkout session) plus a publishable key and the
+connected account. Give the Stripe adapter those keys:
+
+```ts
+createStripeAdapter({
+  host: apiBaseUrl,
+  clientId,
+  getClientCredentialsToken,
+  publishableKey: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY, // pk_…
+  stripeAccount: process.env.NEXT_PUBLIC_STRIPE_ACCOUNT_ID, // acct_…
+});
+```
+
+Both are public values; no Stripe secret is involved. Without them, resume
+uses the keys EP Stripe Payment sends with the request. A resume the server
+cannot check this way returns `409` with code `PAYMENT_STATUS_UNVERIFIED` and
+places no order. A resume sent before the challenge is passed returns `409`
+with `PAYMENT_STILL_REQUIRES_ACTION`; a declined challenge frees the cart for
+a new payment. Abandon releases the payment only when Stripe reports it still
+waiting or failed: a payment Stripe reports as taken returns `409` with
+`PAYMENT_ALREADY_TAKEN` (resume instead), and one the server cannot check
+returns `409` `PAYMENT_STATUS_UNVERIFIED`. A payment in `processing` is
+waited for, not confirmed. When Stripe reports the payment taken but no
+matching order can record it, the checkout ends instead of looping: it
+completes with `reconciliationPending: true` (the order's `external_ref`
+records the payment), or returns `409` `PAYMENT_NEEDS_REVIEW` with no order
+when the cart changed and no order was held.
 
 Pass the session's `locale` and `currency` on `SessionHandlerContext` as well,
 from the same `getSession`:
@@ -603,9 +759,9 @@ own `authentication failed`, which says nothing about profiles. With one
 profile the package finds it.
 
 `get-session` releases `id`, `userId`, `expiresAt`, `createdAt`,
-`updatedAt`, `epCartId`, `epExpires`, `epMemberId`, `epAccount.{id,name}` and
-`epLapsedAccount.{id,name}`. The account credential and its expiry are
-withheld: the response is filtered to an allowlist of **paths**, so a field
+`updatedAt`, `epExpires`, `epMemberId`, `epAccount.{id,name}` and
+`epLapsedAccount.{id,name}`. The cart id is withheld, and so are the account
+credential and its expiry: the response is filtered to an allowlist of **paths**, so a field
 added inside `epAccount` later is withheld by default. `epLapsedAccount`
 states that a selection's credential ran out, rather than reverting the
 shopper to list prices with no signal.
@@ -622,8 +778,8 @@ The checkout-session handlers are mounted one route each, under the
 
 | Method | Path | Handler | Description |
 |--------|------|---------|-------------|
-| POST | `{apiBaseUrl}/checkout/sessions` | `handleCreateSession` | Open a session for the cart |
-| GET | `{apiBaseUrl}/checkout/sessions/current` | `handleGetSession` | Read the session |
+| POST | `{apiBaseUrl}/checkout/sessions` | `handleCreateSession` | Open a session for the shopper's session cart |
+| GET | `{apiBaseUrl}/checkout/sessions/current` | `handleGetSession` | Read the session; an open session takes the cart's new totals |
 | PATCH | `{apiBaseUrl}/checkout/sessions/current` | `handleUpdateSession` | Merge fields; a changed shipping address requotes |
 | POST | `{apiBaseUrl}/checkout/sessions/current/shipping` | `handleCalculateShipping` | Requote on demand, for example after the cart changes |
 | POST | `{apiBaseUrl}/checkout/sessions/current/pay` | `handlePay` | Place the order and start payment |
@@ -635,6 +791,40 @@ A saved shipping address is a quoted address: the update runs the
 `shippingRateResolver` in the same write, so a host that mounts only the
 session route still offers rates. A resolver failure leaves the address saved
 with no rates; the `/shipping` route is the retry.
+
+### Payment methods
+
+Orders are placed only through the checkout-session routes. The proxy route
+does not dispatch `placeOrder`.
+
+The server decides which gateway an order may use, before `/pay` creates the
+order:
+
+- A zero-total order completes with Elastic Path's `manual` gateway. It needs
+  no adapter and no rule.
+- An order with a total needs a registered adapter. The Manual adapter is
+  refused (`400`, `GATEWAY_NOT_ALLOWED`) unless the host gives it an `allow`
+  rule that returns `true` for that cart and account. A rule that throws
+  refuses.
+
+To offer offline or invoice payment, register the Manual adapter with a rule.
+The rule sees the account the order is placed for (see
+[Account identity](#account-identity)), or `null` for a guest order:
+
+```ts
+adapterRegistry.register(
+  "manual",
+  createManualAdapter({
+    method: "purchase",
+    allow: async ({ cart, account }) =>
+      account !== null && (await isApprovedForInvoice(account.id)),
+  })
+);
+```
+
+`cart` is the cart as Elastic Path returns it, with its items under
+`included`. `epPlaceOrder(input, { allowManual })` takes the same rule, runs
+only inside `withEpSession`, and throws when payment does not succeed.
 
 ### Which cart wins at sign-in
 
@@ -859,12 +1049,12 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 - **EPAddToCartButton** — Add to cart action
 
 ### Checkout (Composable)
-- **EPCheckoutProvider** — Checkout state management
-- **EPCheckoutStepIndicator** — Multi-step progress
+- **EPCheckoutProvider** — Deprecated. Renders its children and nothing else. Use **EPCheckoutSessionProvider**
+- **EPCheckoutStepIndicator** — Deprecated. Renders nothing; it read its step from EPCheckoutProvider
 - **EPCustomerInfoFields** / **EPShippingAddressFields** / **EPBillingAddressFields** — Form fields
 - **EPShippingMethodSelector** — Shipping options
-- **EPPaymentElements** — Payment form
-- **EPCheckoutButton** — Step-aware button: continue to shipping, continue to payment, place order. Outside a checkout provider it links to `checkoutUrl`
+- **EPPaymentElements** — Deprecated. Renders its children and nothing else; it took its client secret only from EPCheckoutProvider. Use **EPStripePayment**
+- **EPCheckoutButton** — "Checkout" control that goes to `checkoutUrl`, for a cart page
 - **EPPlaceOrderButton** — Places the order
 - **EPOrderTotalsBreakdown** — Order summary
 - **EPCheckoutCartSummary** / **EPCheckoutCartItemList** — Cart in checkout
@@ -872,8 +1062,10 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 - **EPCountrySelect** — Country picker
 
 ### Checkout (Session-based)
-- **EPCheckoutSessionProvider** — Server-authoritative session
+- **EPCheckoutSessionProvider** — The checkout path. Server-authoritative session for the cart in the shopper's session
+- **EPCheckoutFormProvider** — Single-page form; places orders through the session provider above it, and shows a setup error without one
 - **EPStripePayment** / **EPCloverPayment** — Payment adapters
+- **EPManualPayment** — Manual payment (no card); needs the host's Manual payment rule for orders with a total (see [Payment methods](#payment-methods))
 
 ### Accounts (Composable)
 - **EPAccountProvider** — Publishes `$ctx.account` from the shopper session: `accountMember`, `selectedAccount`, `accountRoster` (`{ accounts, total }`), `lapsedAccount`, derived `state` (`anonymous | memberOnly | selected | lapsed`), `isLoading` (true until the session read settles; Gates render nothing while it is true), and `isSelecting`. Tokens stay server-side; the Provider maps browser-readable identity only. `accountMember` is `{ id, name?, email? }`. The id comes from the shopper session. Name and email come from `identity.member()` when that result has the same id; an id-only result, a failed read, or a different id leaves them off and does not fail the account reload or a login or registration redirect that waits on it. Preview State is Studio only: explicit values force fixtures so Gates and Fields can be composed; `auto` uses live session identity when a member is present (otherwise the selected-account fixture). The published page always reads the live session and ignores Preview State. A normal Studio button calls this Provider's `logout()` ref action. `logout()` no-ops in the Plasmic canvas; the real sign-out runs at runtime and in interactive preview, then account state reloads. A normal Studio button calls `selectAccount(accountId)` to choose an organisation from `$ctx.account.accountRoster`. It no-ops in the Plasmic canvas. At runtime the already-selected id returns without a request or a reload; any other id selects through the identity client and then reloads account state. A further call while that selection is still in progress returns without another request or reload. `$ctx.account.isSelecting` is true only while that call is in progress, including its immediate reload, and is false again when the call resolves or rejects. Bind a selection button's Disabled prop to `$ctx.account.isSelecting`. Canvas and the already-selected id leave it false. It does not replace `isLoading`; Gates still close only while `isLoading` is true
@@ -906,7 +1098,7 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 - **EPCatalogSearchProvider** — InstantSearch over the store's Catalog Search index. See [Choosing a listing path](COMPONENTS.md#3-choosing-a-listing-path)
 - **EPSearchBox** / **EPSearchHits** / **EPSearchPagination** — Search UI
 - **EPSearchInfiniteHits** — Search results with load more, appended in place
-- **EPRefinementList** / **EPHierarchicalMenu** / **EPRangeFilter** — Faceted filtering
+- **EPRefinementList** / **EPHierarchicalMenu** / **EPRangeFilter** — Faceted filtering. In Studio, the attribute is picked from a list of the fields the store's catalog search can filter on, read through the design-time route. A filter with no attribute set renders nothing on a page and adds nothing to the search. On the canvas it shows "Choose a field" and names the prop to set
 - **EPSearchStats** / **EPSearchSortBy** — Search metadata
 
 ## Styling contract (catalog-search components)
