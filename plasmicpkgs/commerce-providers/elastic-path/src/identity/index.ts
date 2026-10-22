@@ -4,6 +4,8 @@ export type { EpIdentityClientOptions, EpIdentityError } from "./client";
 export { useEpIdentity } from "./useEpIdentity";
 export { EP_IDENTITY_ROUTES, EP_IDENTITY_OPERATION_NAMES } from "./operations";
 export type {
+  EpAccountAddress,
+  EpAccountAddressResult,
   EpAccountLoginRequest,
   EpAccountLoginResult,
   EpAccountMemberResult,

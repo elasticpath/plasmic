@@ -53,6 +53,7 @@ describe("createEpIdentityClient", () => {
     await client.rollAccount();
     await client.logout();
     await client.member();
+    await client.accountAddresses();
     await client.updateMember({ name: "Ada Lovelace" });
 
     expect(stub.calls.map((c) => c.url)).toEqual([
@@ -66,6 +67,7 @@ describe("createEpIdentityClient", () => {
       "/api/ep/ep/account/roll",
       "/api/ep/ep/account/logout",
       "/api/ep/ep/account/member",
+      "/api/ep/ep/account/addresses",
       "/api/ep/ep/account/member/update",
     ]);
   });
@@ -119,6 +121,17 @@ describe("createEpIdentityClient", () => {
       email: "buyer@example.com",
     });
     expect(stub.calls[0].url).toBe("/api/ep/ep/account/register");
+  });
+
+  it("asks for saved addresses with an empty body", async () => {
+    const stub = fetchStub(() => json({ addresses: [], total: 0 }));
+    const client = createEpIdentityClient({ fetch: stub.fetch });
+
+    await client.accountAddresses();
+
+    expect(stub.calls[0].init.method).toBe("POST");
+    expect(stub.calls[0].url).toBe("/api/ep/ep/account/addresses");
+    expect(JSON.parse(stub.calls[0].init.body as string)).toEqual({});
   });
 
   it("asks for the first page of the roster when given no paging", async () => {
