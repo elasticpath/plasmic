@@ -34,6 +34,10 @@ identity.member();
 // @ts-expect-error the server chooses the member; the browser sends nothing
 identity.member({ memberId: "member-1" });
 
+identity.accountAddresses();
+// @ts-expect-error the server chooses the account; the browser sends nothing
+identity.accountAddresses({ accountId: "acct-1" });
+
 identity.updateMember({ name: "Ada Lovelace" });
 identity.updateMember({ email: "ada@example.com" });
 // @ts-expect-error the server chooses the member; the browser sends no id
