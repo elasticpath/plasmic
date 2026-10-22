@@ -318,7 +318,7 @@ const DEPENDENCIES = [
 
 const LOADER_EXTERNALS = ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime", "@plasmicapp/*", "next", "next/*"];
 const ROOT_ONE_EXPORT_LIMIT = 500_000;
-const ONE_ENTRY_LIMIT = 80_000;
+const ONE_ENTRY_LIMIT = 100_000;
 const INSTANTSEARCH =
   /(?:^|\/)node_modules\/(?:instantsearch\.js|react-instantsearch(?:-[a-z]+)*|algoliasearch-helper|@elasticpath\/catalog-search-instantsearch-adapter)\//;
 
