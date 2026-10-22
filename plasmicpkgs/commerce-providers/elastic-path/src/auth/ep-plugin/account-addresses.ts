@@ -74,8 +74,16 @@ export function toAccountAddress(
   return address;
 }
 
-function hasNextPage(next: unknown): boolean {
-  return typeof next === "string" && next.length > 0;
+function resultTotal(meta: unknown, rawCount: number): number {
+  const results =
+    meta && typeof meta === "object"
+      ? (meta as { results?: { total?: unknown } }).results
+      : undefined;
+  const reported =
+    results && typeof results === "object" ? results.total : undefined;
+  return typeof reported === "number" && Number.isFinite(reported)
+    ? reported
+    : rawCount;
 }
 
 export async function readAccountAddresses(input: {
@@ -93,7 +101,7 @@ export async function readAccountAddresses(input: {
   const addresses: EpAccountAddress[] = [];
   let offset = 0;
 
-  for (let page = 0; page < ACCOUNT_ADDRESS_MAX_PAGES; page++) {
+  for (let page = 0; ; page++) {
     let result: Awaited<ReturnType<typeof getV2AccountAddresses>>;
     try {
       result = await getV2AccountAddresses({
@@ -121,7 +129,7 @@ export async function readAccountAddresses(input: {
 
     const body = (result.data ?? {}) as {
       data?: unknown;
-      links?: { next?: unknown };
+      meta?: unknown;
     };
     const rows = Array.isArray(body.data) ? body.data : [];
     for (const row of rows) {
@@ -129,16 +137,15 @@ export async function readAccountAddresses(input: {
       if (address) addresses.push(address);
     }
 
-    const anotherPage =
-      rows.length >= ACCOUNT_PAGE_LIMIT_MAX && hasNextPage(body.links?.next);
-    if (!anotherPage) {
+    if (rows.length === 0) {
+      return { addresses, total: addresses.length };
+    }
+    offset += ACCOUNT_PAGE_LIMIT_MAX;
+    if (offset >= resultTotal(body.meta, rows.length)) {
       return { addresses, total: addresses.length };
     }
     if (page === ACCOUNT_ADDRESS_MAX_PAGES - 1) {
       throw new AccountAddressReadError(502, INCOMPLETE);
     }
-    offset += ACCOUNT_PAGE_LIMIT_MAX;
   }
-
-  throw new AccountAddressReadError(502, INCOMPLETE);
 }

@@ -76,7 +76,8 @@ function headerValue(
 function addressPage(
   count: number,
   next: string | null,
-  accountId = "acct-north"
+  accountId = "acct-north",
+  total: number = count
 ) {
   return {
     data: Array.from({ length: count }, (_, index) => ({
@@ -101,7 +102,7 @@ function addressPage(
       token: FOREIGN_TOKEN,
     })),
     links: { next },
-    meta: { results: { total: 99999 }, token: FOREIGN_TOKEN },
+    meta: { results: { total }, token: FOREIGN_TOKEN },
   };
 }
 
@@ -559,13 +560,13 @@ describe("reading saved account addresses", () => {
     expect(JSON.stringify(body)).not.toContain("acct-south");
   });
 
-  it("walks pages internally and stops on a short page", async () => {
+  it("walks pages internally and stops when the result total is covered", async () => {
     const auth = buildAuth();
     store.accounts = [ACCOUNTS[0]];
     const cookies = await signedIn(auth);
     addressReplies = [
-      { status: 200, body: addressPage(100, "https://evil.example/next") },
-      { status: 200, body: addressPage(2, "https://evil.example/still-next") },
+      { status: 200, body: addressPage(100, "https://evil.example/next", "acct-north", 102) },
+      { status: 200, body: addressPage(2, "https://evil.example/still-next", "acct-north", 102) },
     ];
     addressCalls = [];
     fetchUrls = [];
@@ -580,17 +581,56 @@ describe("reading saved account addresses", () => {
     expect(body.total).not.toBe(99999);
   });
 
-  it("stops when the first full page has no next link", async () => {
+  it("keeps reading a short page when the result total says more remain", async () => {
     const auth = buildAuth();
     store.accounts = [ACCOUNTS[0]];
     const cookies = await signedIn(auth);
-    addressReplies = [{ status: 200, body: addressPage(100, null) }];
+    addressReplies = [
+      { status: 200, body: addressPage(2, null, "acct-north", 102) },
+      { status: 200, body: addressPage(100, null, "acct-north", 102) },
+    ];
+    addressCalls = [];
+    fetchUrls = [];
+
+    const { res, body } = await readAddresses(auth, cookies);
+    expect(res.status).toBe(200);
+    expect(addressCalls.map((call) => call.offset)).toEqual(["0", "100"]);
+    expect(body.addresses).toHaveLength(102);
+    expect(body.total).toBe(102);
+  });
+
+  it("stops when the result total is covered by the first page", async () => {
+    const auth = buildAuth();
+    store.accounts = [ACCOUNTS[0]];
+    const cookies = await signedIn(auth);
+    addressReplies = [
+      { status: 200, body: addressPage(100, "https://evil.example/next", "acct-north", 100) },
+    ];
     addressCalls = [];
 
     const { res, body } = await readAddresses(auth, cookies);
     expect(res.status).toBe(200);
     expect(addressCalls).toHaveLength(1);
     expect(body.total).toBe(100);
+    expect(fetchUrls.some((url) => url.includes("evil.example"))).toBe(false);
+  });
+
+  it("treats a page with no numeric result total as the whole result", async () => {
+    const auth = buildAuth();
+    store.accounts = [ACCOUNTS[0]];
+    const cookies = await signedIn(auth);
+    const page = addressPage(2, null);
+    delete (page.meta.results as { total?: number }).total;
+    addressReplies = [
+      { status: 200, body: page },
+      { status: 200, body: addressPage(100, null, "acct-north", 99999) },
+    ];
+    addressCalls = [];
+
+    const { res, body } = await readAddresses(auth, cookies);
+    expect(res.status).toBe(200);
+    expect(addressCalls).toHaveLength(1);
+    expect(body.total).toBe(2);
   });
 
   it("fails the read when ten full pages still have another page", async () => {
@@ -599,7 +639,7 @@ describe("reading saved account addresses", () => {
     const cookies = await signedIn(auth);
     addressReplies = Array.from({ length: 11 }, () => ({
       status: 200,
-      body: addressPage(100, "https://evil.example/next"),
+      body: addressPage(100, "https://evil.example/next", "acct-north", 99999),
     }));
     addressCalls = [];
 
