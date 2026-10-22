@@ -221,6 +221,15 @@ InstantSearch enters its module graph.
 - On the Studio canvas it never searches, and shows sample products while it is
   selected.
 
+`identity.accountAddresses()` and `POST /ep/account/addresses` read the saved
+addresses of the selected organisation. The body must be empty. The server
+uses that organisation's account-management token and the implicit shopper
+token, and returns `{ addresses, total }`. Each address is an
+`EpAccountAddress`: an `id` and the address strings Elastic Path returned.
+`total` is the number of addresses returned. With no organisation selected it
+answers `no_selected_account` and does not call Elastic Path. A rejection is
+`account_addresses_read_failed`.
+
 The Elastic Path Provider's **Add item to cart** global action takes an
 optional **Location** after **Quantity**. On a multi-location store, a product
 stocked only at named locations was refused with `insufficient_stock`

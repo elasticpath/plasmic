@@ -467,6 +467,46 @@ export const EP_IDENTITY_ROUTES: {
     readonly [K in EpIdentityOperationName]: EpIdentityRoute;
 };
 
+// @public
+export interface EpAccountAddress {
+    // (undocumented)
+    city?: string;
+    // (undocumented)
+    company_name?: string;
+    // (undocumented)
+    country?: string;
+    // (undocumented)
+    county?: string;
+    // (undocumented)
+    first_name?: string;
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    instructions?: string;
+    // (undocumented)
+    last_name?: string;
+    // (undocumented)
+    line_1?: string;
+    // (undocumented)
+    line_2?: string;
+    // (undocumented)
+    name?: string;
+    // (undocumented)
+    phone_number?: string;
+    // (undocumented)
+    postcode?: string;
+    // (undocumented)
+    region?: string;
+}
+
+// @public
+export interface EpAccountAddressResult {
+    // (undocumented)
+    addresses: EpAccountAddress[];
+    // (undocumented)
+    total: number;
+}
+
 // @public (undocumented)
 export function EPAccountField(props: EPAccountFieldProps): React_2.JSX.Element | null;
 
@@ -1014,6 +1054,11 @@ export type EpIdentityOperationName = keyof EpIdentityOperations;
 
 // @public
 export interface EpIdentityOperations {
+    // (undocumented)
+    accountAddresses: {
+        request: void;
+        response: EpAccountAddressResult;
+    };
     // (undocumented)
     getSession: {
         request: void;
