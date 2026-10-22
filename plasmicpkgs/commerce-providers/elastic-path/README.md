@@ -1311,3 +1311,49 @@ than continuing to ship the lie.
 PRD #308 also moved EPSearchBox from a chrome-rendering component to a
 provider. Existing EPSearchBox instances will lose their input and clear
 button; re-author the slot per the wiring steps above.
+
+## One entry point per export
+
+The root entry's ES module, `dist/index.esm.js`, re-exports every export by
+name from the per-module files under `dist/esm`. A bundler keeps only the
+modules an import needs. But a loader may bundle all of a project's pages at
+once and split the code into shared chunks. Then every module that any page
+imports through the root goes into a chunk that every page loads. For that
+loader, every root export is also its own entry point, named after the export:
+
+```js
+import { EPProductGrid, EPProductListProvider as List } from "@elasticpath/plasmic-ep-commerce-elastic-path";
+```
+
+becomes
+
+```js
+import { EPProductGrid } from "@elasticpath/plasmic-ep-commerce-elastic-path/EPProductGrid";
+import { EPProductListProvider as List } from "@elasticpath/plasmic-ep-commerce-elastic-path/EPProductListProvider";
+```
+
+Each entry point re-exports one name from the module that defines it. Every
+source module is its own ESM file under `dist/esm`, so two entry points on one
+page share one copy of each module they both need. `./exports-map.json` lists
+every root export with its subpath: `{ "EPProductGrid": "./EPProductGrid", … }`.
+
+- **Root imports and entry points can be mixed.** The root's ES module
+  re-exports the same files, so a bundle with both still has one copy of each
+  module. Only a CommonJS `require` of the root, which is one bundle, adds a
+  second copy, with its own module state. Every root export has an entry point,
+  or the build fails. Leave an import on the root if it is a namespace import
+  (`import * as`), or if the installed package has no `exports-map.json`.
+- The files are `.js` ESM for bundlers, for the same reason as the root's
+  `index.esm.js` ([ADR-0007](docs/adr/0007-root-entry-stays-esm-js.md)). Each
+  starts with `"use client"`, as the root does. They have no type
+  declarations: import types from the root.
+
+`sideEffects` in `package.json` lets a bundler drop a file whose exports go
+unused. Only `dist/esm/cart-provider/swr-cart-cache.js` does work when it is
+imported: it registers the cart cache that cart writes update. A module that
+does work when it is imported must be listed there too, or a bundler can drop
+it. `dist/index.esm.js` imports every listed module, so any import of the root
+still runs that work, as it did when the root was one bundle. The root files
+and the `/server` builds are listed too, so bundlers treat them as before.
+`./src/**` is listed so that this package's own root build treats the source
+files as before.
