@@ -23,9 +23,10 @@ const installRoot = path.join(pkgDir, "node_modules/.verify-package");
 const installedDir = path.join(installRoot, "node_modules", pkg.name);
 const require = createRequire(path.join(installRoot, "index.cjs"));
 
-const ROOT_PUBLINT_EXCEPTIONS = [
+const PUBLINT_EXCEPTIONS = [
   { code: "EXPORTS_TYPES_INVALID_FORMAT", path: ["exports", ".", "types"] },
   { code: "FILE_INVALID_FORMAT", path: ["exports", ".", "import"] },
+  { code: "FILE_INVALID_FORMAT", path: ["exports", "./*"] },
 ];
 const ROOT_ATTW_EXCEPTIONS = ["unexpected-module-syntax"];
 
@@ -37,8 +38,12 @@ const EXPECTED_DIST = [
   "dist/server.d.ts",
   "dist/server.js",
   "dist/server.mjs",
+  "dist/exports-map.json",
+  "dist/exports/registerAll.js",
+  "dist/esm/index.js",
 ];
 const EXPECTED_SOURCE_MAPS = EXPECTED_DIST.filter((p) => /\.m?js$/.test(p)).map((p) => `${p}.map`);
+const PER_MODULE_FILE = /^dist\/(?:esm\/.+\.js(?:\.map)?|exports\/[^/]+\.js)$/;
 
 const failures = [];
 function check(label, ok, detail) {
@@ -68,9 +73,15 @@ function checkFileSet(files) {
     (p) =>
       !EXPECTED_DIST.includes(p) &&
       !EXPECTED_SOURCE_MAPS.includes(p) &&
+      !PER_MODULE_FILE.test(p) &&
       !/^(package\.json|README|LICEN[CS]E|CHANGELOG)/i.test(p)
   );
   check("tarball carries only the built entry files", stray.length === 0, stray.join("\n"));
+  // A listed file that moves leaves its new path marked side-effect free.
+  const gone = pkg.sideEffects
+    .filter((p) => p.startsWith("./dist/"))
+    .filter((p) => !paths.includes(p.slice(2)));
+  check("every dist file in sideEffects is in the tarball", gone.length === 0, gone.join("\n"));
 }
 
 async function checkPublint(tarball) {
@@ -80,12 +91,12 @@ async function checkPublint(tarball) {
     level: "warning",
   });
   const isRecorded = (m) =>
-    ROOT_PUBLINT_EXCEPTIONS.some(
+    PUBLINT_EXCEPTIONS.some(
       (e) => e.code === m.code && e.path.join("/") === m.path.join("/")
     );
   const unexpected = messages.filter((m) => !isRecorded(m));
   check(
-    "publint reports only the recorded root exceptions",
+    "publint reports only the recorded exceptions",
     unexpected.length === 0,
     unexpected.map((m) => `${m.type}: ${formatMessage(m, packedPkg)}`).join("\n")
   );
@@ -114,20 +125,54 @@ function checkAttw(tarball, entrypoint, ignoreRules) {
 // esbuild turns a require() in an ESM build into a __require() shim that
 // throws wherever `require` is undefined: the canvas and hostless bundles in
 // the browser, and native Node ESM.
+function requireShims(file) {
+  return [
+    ...new Set(
+      fs
+        .readFileSync(path.join(installedDir, file), "utf8")
+        .match(/__require\("[^"]+"\)/g) ?? []
+    ),
+  ];
+}
+
 function checkNoRequireShim() {
   for (const file of ["dist/index.esm.js", "dist/server.mjs"]) {
     if (!fs.existsSync(path.join(installedDir, file))) {
       continue;
     }
-    const shimmed = [
-      ...new Set(
-        fs
-          .readFileSync(path.join(installedDir, file), "utf8")
-          .match(/__require\("[^"]+"\)/g) ?? []
-      ),
-    ];
+    const shimmed = requireShims(file);
     check(`${file} has no require() shim`, shimmed.length === 0, shimmed.join("\n"));
   }
+  const shimmed = perModuleFiles().flatMap((file) =>
+    requireShims(file).map((shim) => `${file}: ${shim}`)
+  );
+  check("dist/esm has no require() shim", shimmed.length === 0, shimmed.join("\n"));
+}
+
+// A direct eval stops bundlers dropping any of a file's unused code.
+function checkNoDirectEval() {
+  const files = [
+    "dist/index.esm.js",
+    "dist/index.js",
+    "dist/server.js",
+    "dist/server.mjs",
+    ...perModuleFiles(),
+    ...perModuleFiles("dist/exports"),
+  ];
+  const withEval = files.filter((file) => /\beval\(/.test(fs.readFileSync(path.join(installedDir, file), "utf8")));
+  check(`no built JavaScript file has a direct eval (${files.length} files)`, withEval.length === 0, withEval.join("\n"));
+}
+
+function checkRootNamesItsExports() {
+  const main = fs.readFileSync(path.join(installedDir, "dist/index.esm.js"), "utf8");
+  check("dist/index.esm.js re-exports by name, not with export *", !/\bexport \*/.test(main));
+}
+
+function perModuleFiles(dir = "dist/esm") {
+  return fs
+    .readdirSync(path.join(installedDir, dir), { recursive: true })
+    .map((p) => `${dir}/${p.split(path.sep).join("/")}`)
+    .filter((p) => p.endsWith(".js"));
 }
 
 // Browser code imports the root, so the root must not reach what only /server
@@ -136,7 +181,7 @@ const SERVER_ONLY_MODULE =
   /^(?:@?better-auth(?:\/|$)|next\/(?:server|headers)(?:\.js)?$|(?:node:)?(?:async_hooks|crypto)$)/;
 
 function checkRootPullsInNoServerModule() {
-  for (const file of ["dist/index.esm.js", "dist/index.js"]) {
+  for (const file of ["dist/index.esm.js", "dist/index.js", "dist/esm/index.js"]) {
     const { metafile } = esbuild.buildSync({
       entryPoints: [path.join(installedDir, file)],
       bundle: true,
@@ -219,9 +264,9 @@ function captureRegistrations(registerAll) {
 // IIFE, and supplies only React and @plasmicapp/host at run time, as CommonJS.
 const CANVAS_EXTERNALS = ["@plasmicapp/host", "react", "react-dom"];
 
-function loadRootAsCanvasBundle() {
+function loadAsCanvasBundle(contents) {
   const { outputFiles } = esbuild.buildSync({
-    entryPoints: [path.join(installedDir, "dist/index.esm.js")],
+    stdin: { contents, resolveDir: installRoot, loader: "js" },
     bundle: true,
     format: "iife",
     globalName: "__epRoot",
@@ -242,7 +287,7 @@ function loadRootAsCanvasBundle() {
 
 function smokeRoot() {
   const cjs = require(pkg.name);
-  const canvas = loadRootAsCanvasBundle();
+  const canvas = loadAsCanvasBundle(`export * from "${pkg.name}";`);
   sameNames("require(root) exposes the same names as the root ESM build", Object.keys(cjs), Object.keys(canvas));
 
   const fromCjs = captureRegistrations(cjs.registerAll);
@@ -274,6 +319,171 @@ function smokeRoot() {
   check("every registered importName is exported from the root", unreachable.length === 0, unreachable.join("\n"));
 }
 
+function perModuleImports(map, names) {
+  const imports = names.map((name) => `import { ${name} } from "${pkg.name}/${map[name].slice(2)}";`);
+  return `${imports.join("\n")}\nexport { ${names.join(", ")} };\n`;
+}
+
+const DEPENDENCIES = [
+  ...Object.keys(pkg.dependencies ?? {}),
+  ...Object.keys(pkg.peerDependencies ?? {}),
+].flatMap((name) => [name, `${name}/*`]);
+
+const LOADER_EXTERNALS = ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime", "@plasmicapp/*", "next", "next/*"];
+const ROOT_OWN_CODE_LIMIT = 40_000;
+const UNRELATED_TO_CART = /\/dist\/esm\/(?:catalog-search|account|checkout)\//;
+const CHECKOUT_FILE_THE_CART_USES = "/dist/esm/checkout/session/shipping-line-sku.js";
+const INSTANTSEARCH =
+  /(?:^|\/)node_modules\/(?:instantsearch\.js|react-instantsearch(?:-[a-z]+)*|algoliasearch-helper|@elasticpath\/catalog-search-instantsearch-adapter)\//;
+
+async function bundleAsLoader(name, contents) {
+  const entry = path.join(installRoot, `${name}.js`);
+  fs.writeFileSync(entry, contents);
+  const result = await esbuild.build({
+    entryPoints: [entry],
+    bundle: true,
+    splitting: true,
+    treeShaking: true,
+    minify: true,
+    format: "esm",
+    platform: "browser",
+    target: "es6",
+    external: LOADER_EXTERNALS,
+    define: { "process.env.NODE_ENV": JSON.stringify("production") },
+    outdir: path.join(installRoot, `${name}-out`),
+    write: false,
+    metafile: true,
+    logLevel: "silent",
+  });
+  const included = Object.values(result.metafile.outputs).flatMap((output) =>
+    Object.entries(output.inputs).filter(([, input]) => input.bytesInOutput > 0)
+  );
+  const search = [...new Set(included.map(([p]) => p).filter((p) => INSTANTSEARCH.test(p)))];
+  const own = included.filter(([p]) => p.includes(`/${pkg.name}/dist/`));
+  const bytes = result.outputFiles
+    .filter((f) => f.path.endsWith(".js"))
+    .reduce((sum, f) => sum + f.contents.length, 0);
+  return {
+    search,
+    bytes,
+    modules: own.map(([p]) => p),
+    ownBytes: own.reduce((sum, [, input]) => sum + input.bytesInOutput, 0),
+  };
+}
+
+function webpackModules(name, contents) {
+  const entry = path.join(installRoot, `${name}.js`);
+  fs.writeFileSync(entry, contents);
+  const nextWebpack = require("next/dist/compiled/webpack/webpack");
+  nextWebpack.init();
+  return new Promise((resolve, reject) => {
+    nextWebpack.webpack(
+      {
+        mode: "production",
+        entry,
+        output: { path: path.join(installRoot, `${name}-out`) },
+        optimization: { concatenateModules: false, minimize: false },
+        externals: [/^(?:react|react-dom|next)(?:\/.*)?$/, /^@plasmicapp\//],
+        externalsType: "commonjs",
+        performance: { hints: false },
+      },
+      (error, stats) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        const info = stats.toJson({ modules: true, errors: true });
+        if (info.errors.length) {
+          reject(new Error(info.errors.map((e) => e.message).join("\n")));
+          return;
+        }
+        resolve(info.modules.filter((m) => m.chunks?.length).map((m) => m.name));
+      }
+    );
+  });
+}
+
+async function smokeModules() {
+  const mapPath = require.resolve(`${pkg.name}/exports-map.json`);
+  check(
+    "exports-map.json resolves through exports",
+    mapPath === path.join(installedDir, "dist/exports-map.json"),
+    mapPath
+  );
+  const map = JSON.parse(fs.readFileSync(mapPath, "utf8"));
+  const names = Object.keys(map);
+  const cjs = require(pkg.name);
+  sameNames("the exports map lists every root export", names, Object.keys(cjs));
+  const misnamed = names.filter((name) => map[name] !== `./${name}`);
+  check("every root export has the subpath of its own name", misnamed.length === 0, misnamed.join("\n"));
+
+  let exported;
+  try {
+    const { metafile } = esbuild.buildSync({
+      stdin: { contents: perModuleImports(map, names), resolveDir: installRoot, loader: "js" },
+      bundle: true,
+      format: "esm",
+      platform: "neutral",
+      external: DEPENDENCIES,
+      outfile: path.join(installRoot, "all-modules.js"),
+      write: false,
+      metafile: true,
+      logLevel: "silent",
+    });
+    exported = Object.values(metafile.outputs)[0].exports;
+  } catch (error) {
+    check("every subpath in the exports map exports its name", false, error.message);
+    return;
+  }
+  sameNames("every subpath in the exports map exports its name", exported, names);
+
+  const fromCjs = captureRegistrations(cjs.registerAll);
+  const modules = loadAsCanvasBundle(perModuleImports(map, ["registerAll"]));
+  const fromModules = captureRegistrations(modules.registerAll);
+  sameNames(
+    "the per-module files register the same components as the CJS root",
+    fromModules.components.map((m) => m.name),
+    fromCjs.components.map((m) => m.name)
+  );
+  sameNames(
+    "the per-module files register the same global contexts as the CJS root",
+    fromModules.contexts.map((m) => m.name),
+    fromCjs.contexts.map((m) => m.name)
+  );
+
+  const searchBox = await bundleAsLoader("search-box", perModuleImports(map, ["EPSearchBox"]));
+  check("EPSearchBox pulls in InstantSearch, so the next check can see it", searchBox.search.length > 0);
+  const productList = ["EPProductListProvider", "EPProductGrid"];
+  const throughMap = await bundleAsLoader("product-list-modules", perModuleImports(map, productList));
+  const throughRoot = await bundleAsLoader(
+    "product-list-root",
+    `export { ${productList.join(", ")} } from "${pkg.name}";\n`
+  );
+  check(
+    `the product list through the map leaves out InstantSearch (${throughMap.bytes} bytes; ${throughRoot.bytes} through the root)`,
+    throughMap.search.length === 0,
+    throughMap.search.join("\n")
+  );
+  const fromRoot = await bundleAsLoader("cart-trigger-root", `export { EPCartDrawerTrigger } from "${pkg.name}";\n`);
+  const unrelated = fromRoot.modules.filter(
+    (m) => UNRELATED_TO_CART.test(m) && !m.endsWith(CHECKOUT_FILE_THE_CART_USES)
+  );
+  check(
+    `EPCartDrawerTrigger from the root leaves out InstantSearch and the catalog-search, account and checkout modules, except the checkout constant the cart uses, with under ${ROOT_OWN_CODE_LIMIT} bytes of the package's code (${fromRoot.ownBytes}; ${fromRoot.bytes} in all)`,
+    fromRoot.search.length === 0 && unrelated.length === 0 && fromRoot.ownBytes < ROOT_OWN_CODE_LIMIT,
+    [...fromRoot.search, ...unrelated].join("\n")
+  );
+
+  const cartWrite = await webpackModules(
+    "cart-write-webpack",
+    `import { epAddCartItem } from "${pkg.name}";\nglobalThis.__epAddCartItem = epAddCartItem;\n`
+  );
+  check(
+    "epAddCartItem from the root registers the cart cache under webpack, as the one-bundle root did",
+    cartWrite.some((m) => m.endsWith("/cart-provider/swr-cart-cache.js"))
+  );
+}
+
 const { tarball, files } = pack();
 try {
   checkFileSet(files);
@@ -282,8 +492,14 @@ try {
   checkAttw(tarball, "./server", []);
   install(tarball);
   checkNoRequireShim();
+  checkNoDirectEval();
+  checkRootNamesItsExports();
   checkRootPullsInNoServerModule();
-  for (const [label, smoke] of [["/server smoke", smokeServer], ["root smoke", smokeRoot]]) {
+  for (const [label, smoke] of [
+    ["/server smoke", smokeServer],
+    ["root smoke", smokeRoot],
+    ["per-module smoke", smokeModules],
+  ]) {
     try {
       await smoke();
     } catch (error) {

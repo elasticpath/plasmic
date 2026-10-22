@@ -29,14 +29,8 @@ function isNodeRuntime(): boolean {
 
 /**
  * Reaches `async_hooks` without a bare import, so no bundler tries to resolve
- * it for the client bundle. Two ways in, tried in order, because neither
- * covers every environment on its own:
- *
- *   - `process.getBuiltinModule` works in both module formats, and is the only
- *     one that works under native ESM. Node 20.16+ / 22.3+.
- *   - `eval("require")` covers older Node, but only under CommonJS: native ESM
- *     has no `require` at all, so Node below 20.16 running as ES modules has
- *     no route in and the scope degrades to the no-op below.
+ * it for the client bundle. `process.getBuiltinModule` (Node 20.16+ / 22.3+)
+ * works in both module formats.
  *
  * Returns null rather than throwing, whatever the runtime turns out to be.
  * This module is reachable from the browser bundle, so a throw here would
@@ -52,20 +46,13 @@ function loadAsyncHooks(): typeof import("async_hooks") | null {
     if (typeof fromBuiltin === "function") {
       try {
         const mod = fromBuiltin.call(process, "async_hooks");
-        if (mod?.AsyncLocalStorage) return mod;
+        return mod?.AsyncLocalStorage ? mod : null;
       } catch {
-        // Fall through and try `require` rather than giving up here.
+        return null;
       }
     }
   }
-  try {
-    // eslint-disable-next-line no-eval
-    const req = eval("require") as NodeRequire;
-    const mod = req("async_hooks") as typeof import("async_hooks");
-    return mod?.AsyncLocalStorage ? mod : null;
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 function makeStorage(): SessionStorage {
@@ -90,8 +77,7 @@ function makeStorage(): SessionStorage {
         console.warn(
           "[ep-commerce] Could not load `async_hooks`, so the EP session " +
             "scope is inert and every `ep.*` call will return null or []. " +
-            "Native ES " +
-            "modules need Node 20.16+ / 22.3+ for `process.getBuiltinModule`."
+            "It needs Node 20.16+ / 22.3+ for `process.getBuiltinModule`."
         );
       }
     } catch {

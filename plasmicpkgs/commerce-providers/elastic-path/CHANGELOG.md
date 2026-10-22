@@ -221,6 +221,18 @@ InstantSearch enters its module graph.
 - On the Studio canvas it never searches, and shows sample products while it is
   selected.
 
+Every root export is also its own entry point, named after the export, such
+as `@elasticpath/plasmic-ep-commerce-elastic-path/EPProductGrid`.
+`./exports-map.json` lists them all. A loader that rewrites root imports into
+these entry points gives each page only the components it uses, instead of
+every component the project uses. Each source module ships as its own ESM file
+under `dist/esm`, so entry points share the modules they both need.
+`package.json` declares `sideEffects`, so a bundler can drop a file whose
+exports go unused. Imports of the root entry and `/server` work as before.
+The README's
+[One entry point per export](README.md#one-entry-point-per-export) says how a
+loader uses them.
+
 `identity.accountAddresses()` and `POST /ep/account/addresses` read the saved
 addresses of the selected organisation. The body must be empty. The server
 uses that organisation's account-management token and the implicit shopper
@@ -492,6 +504,18 @@ only the ones that were already server-rendered. Nothing about the components
 changes: same props, same slots, same data.
 
 ### Fixed
+
+Importing one component from the root entry no longer brings the whole
+package. `dist/index.esm.js`, which `import` and `module` resolve to, now
+re-exports every root export by name from the per-module files under
+`dist/esm`, so a bundler keeps only the modules the import needs. Any root
+import still registers the cart cache that cart writes update, as before. The
+CommonJS `dist/index.js` is still one bundle.
+
+The EP session scope no longer falls back to `eval("require")` when
+`process.getBuiltinModule` is missing. A direct `eval` stopped bundlers from
+removing any of the code around it. Every Node version that `engines` allows
+has `process.getBuiltinModule`.
 
 The proxy route answers a refusal the shopper can act on with `409` instead of
 `500`: `insufficient_stock`, `invalid_promo_code`, `checkout_in_progress`, and
