@@ -8,22 +8,29 @@
  * comes from the client — it comes from the resolved rate, which the server
  * computed via `ctx.shippingRateResolver`.
  *
- * Idempotent: a cart has at most ONE shipping line. Re-selecting a rate
- * REPLACES the line (clear-then-write), never stacks. Lines are marked with a
- * sentinel SKU so the clear step finds them unambiguously and never touches a
- * catalog line.
+ * Idempotent: a cart ends with ONE shipping line at quantity 1. A line that
+ * already matches the rate is left alone. Otherwise the line is replaced
+ * (clear-then-write) and then checked: Elastic Path merges two adds of the
+ * same SKU into one line, so a concurrent write is folded back to quantity 1
+ * and any extra line is removed. Lines are marked with a sentinel SKU so these
+ * steps never touch a catalog line.
  *
  * Pure over an injected EP client (mockable). The caller supplies the client —
  * for authoritative shipping that is the `client_credentials` admin client, so
  * the write is server-only; the primitive itself is auth-agnostic.
  */
-import { deleteACartItem, getACart, manageCarts } from "@epcc-sdk/sdks-shopper";
-import { readCart } from "../../ep-server-functions/read-cart";
-import type { Cart } from "../../types/cart";
-import type { SessionShippingRate } from "./types";
+import {
+  deleteACartItem,
+  getACart,
+  manageCarts,
+  updateACartItem,
+} from "@epcc-sdk/sdks-shopper";
+import { readCartResponse } from "../../ep-server-functions/read-cart";
+import { EP_SHIPPING_LINE_SKU, isShippingLine } from "./shipping-line-sku";
+import { cartLines } from "./session-totals";
+import type { EpCartResponse, SessionShippingRate } from "./types";
 
-/** Sentinel SKU that marks a storefront-managed shipping line. */
-export const EP_SHIPPING_LINE_SKU = "__ep_shipping";
+export { EP_SHIPPING_LINE_SKU };
 
 type EpClient = Parameters<typeof manageCarts>[0]["client"];
 
@@ -47,9 +54,67 @@ export interface SetCartShippingLineInput {
   currency?: string;
 }
 
-/** True for a line previously written by this primitive (sentinel SKU). */
-function isManagedShippingLine(item: { sku?: unknown }): boolean {
-  return item?.sku === EP_SHIPPING_LINE_SKU;
+interface ShippingLine {
+  id?: string;
+  sku?: unknown;
+  name?: unknown;
+  quantity?: unknown;
+  unit_price?: { amount?: unknown };
+  custom_inputs?: { rateId?: unknown };
+}
+
+async function readShippingLines(
+  client: EpClient,
+  cartId: string
+): Promise<ShippingLine[]> {
+  const current = await getACart({
+    client,
+    path: { cartID: cartId },
+    query: { include: ["items"] },
+  });
+  return cartLines(current.data).filter(isShippingLine) as ShippingLine[];
+}
+
+function chargesRate(line: ShippingLine, rate: SessionShippingRate): boolean {
+  const rateId = line.custom_inputs?.rateId;
+  return (
+    line.unit_price?.amount === rate.amount &&
+    line.name === (rate.name || "Shipping") &&
+    (rateId === undefined || rateId === rate.id)
+  );
+}
+
+/**
+ * Leaves one line for `rate` at quantity 1, undoing a concurrent add. `added`
+ * is the add response, which lists the cart's lines after the add.
+ */
+async function foldToOneLine(
+  client: EpClient,
+  cartId: string,
+  rate: SessionShippingRate,
+  added: unknown
+): Promise<void> {
+  const after = (added as { data?: { data?: unknown } })?.data?.data;
+  if (!Array.isArray(after)) {
+    return;
+  }
+  const lines: ShippingLine[] = after.filter(isShippingLine);
+  const keep = lines.find((l) => chargesRate(l, rate)) ?? lines[0];
+  for (const line of lines) {
+    if (line !== keep && line.id) {
+      await deleteACartItem({
+        client,
+        path: { cartID: cartId, cartitemID: line.id },
+      });
+    }
+  }
+  if (keep?.id && keep.quantity !== 1) {
+    await updateACartItem({
+      client,
+      path: { cartID: cartId, cartitemID: keep.id },
+      body: { data: { id: keep.id, quantity: 1 } },
+    });
+  }
 }
 
 /**
@@ -67,17 +132,7 @@ export async function clearCartShippingLine(
     throw new Error("clearCartShippingLine: cartId is required");
   }
 
-  const current = await getACart({
-    client,
-    path: { cartID: cartId },
-    query: { include: ["items"] },
-  });
-  const items: Array<{ id?: string; sku?: unknown }> =
-    (current.data as { included?: { items?: unknown } })?.included?.items as never ??
-    (current.data as { data?: { items?: unknown } })?.data?.items as never ??
-    [];
-  const staleIds = items
-    .filter(isManagedShippingLine)
+  const staleIds = (await readShippingLines(client, cartId))
     .map((it) => it.id)
     .filter((id): id is string => Boolean(id));
   for (const cartitemID of staleIds) {
@@ -87,14 +142,14 @@ export async function clearCartShippingLine(
 }
 
 /**
- * Replace the cart's shipping line with one for `rate`, returning the re-priced,
- * normalized cart. Throws (before any write) on a missing cart or a malformed
+ * Replace the cart's shipping line with one for `rate`, returning the re-priced
+ * cart in Elastic Path's own shape, shipping line included. Throws (before any write) on a missing cart or a malformed
  * rate, and propagates the underlying SDK error on a backend failure.
  */
 export async function setCartShippingLine(
   client: EpClient,
   input: SetCartShippingLineInput
-): Promise<Cart> {
+): Promise<EpCartResponse> {
   const { cartId, rate } = input;
 
   if (!cartId) {
@@ -102,42 +157,54 @@ export async function setCartShippingLine(
   }
   // The rate is server-resolved and trusted; this guards against a malformed
   // source, never against a client value.
-  if (!rate || typeof rate.amount !== "number" || !Number.isFinite(rate.amount)) {
+  if (
+    !rate ||
+    typeof rate.amount !== "number" ||
+    !Number.isFinite(rate.amount)
+  ) {
     throw new Error(
       "setCartShippingLine: a resolved shipping rate with a numeric amount is required"
     );
   }
 
-  // 1. Idempotency — clear any existing managed shipping line(s) so a
-  //    re-selection replaces rather than stacks.
-  await clearCartShippingLine(client, { cartId });
+  const lines = await readShippingLines(client, cartId);
+  const inPlace =
+    lines.length === 1 &&
+    lines[0].quantity === 1 &&
+    chargesRate(lines[0], rate);
+  if (!inPlace) {
+    for (const line of lines) {
+      if (line.id) {
+        await deleteACartItem({
+          client,
+          path: { cartID: cartId, cartitemID: line.id },
+        });
+      }
+    }
+    const added = await manageCarts({
+      client,
+      path: { cartID: cartId },
+      body: {
+        data: {
+          type: "custom_item",
+          name: rate.name || "Shipping",
+          sku: EP_SHIPPING_LINE_SKU,
+          quantity: 1,
+          // includes_tax: true keeps the charged shipping exactly `rate.amount`.
+          price: { amount: rate.amount, includes_tax: true },
+          custom_inputs: {
+            kind: "shipping",
+            rateId: rate.id,
+            ...(rate.carrier ? { carrier: rate.carrier } : {}),
+            ...(rate.serviceLevel ? { serviceLevel: rate.serviceLevel } : {}),
+          },
+        } as never,
+      },
+    });
+    await foldToOneLine(client, cartId, rate, added);
+  }
 
-  // 2. Write the new shipping line — a custom_item carrying the SERVER amount.
-  await manageCarts({
-    client,
-    path: { cartID: cartId },
-    body: {
-      data: {
-        type: "custom_item",
-        name: rate.name || "Shipping",
-        sku: EP_SHIPPING_LINE_SKU,
-        quantity: 1,
-        // includes_tax: true keeps the charged shipping exactly `rate.amount`.
-        price: { amount: rate.amount, includes_tax: true },
-        // Tie the line back to the resolved rate so checkout re-assertion can
-        // recognise and re-verify it.
-        custom_inputs: {
-          kind: "shipping",
-          rateId: rate.id,
-          ...(rate.carrier ? { carrier: rate.carrier } : {}),
-          ...(rate.serviceLevel ? { serviceLevel: rate.serviceLevel } : {}),
-        },
-      } as never,
-    },
-  });
-
-  // 3. Re-read + normalize so the caller sees the re-priced total.
-  return readCart(client, cartId, {
+  return readCartResponse(client, cartId, {
     locale: input.locale,
     currency: input.currency,
   });

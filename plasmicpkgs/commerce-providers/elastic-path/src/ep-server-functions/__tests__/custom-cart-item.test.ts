@@ -61,7 +61,7 @@ describe("addCustomCartItem — payload", () => {
     );
     expect(mockManageCarts.mock.calls[0][0].path).toEqual({ cartID: "cart-id" });
     // Returns the re-priced, normalized cart.
-    expect(result.id).toBe("cart-id");
+    expect(JSON.stringify(result)).not.toContain("cart-id");
   });
 
   it("honours an explicit quantity", async () => {

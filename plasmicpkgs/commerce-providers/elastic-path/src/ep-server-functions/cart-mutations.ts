@@ -12,6 +12,7 @@ import {
   carriesForwardedMessage,
   classifyEpFailure,
   makeEpCallError,
+  withEpStatus,
 } from "./call-error";
 import { sequenceEpCartWrite } from "./cart-cache-registry";
 import {
@@ -28,6 +29,23 @@ import {
   type CartAdjustmentKind,
 } from "./custom-cart-item";
 import type { EpServerAuth } from "./types";
+import { isSettling } from "../checkout/session/settle-once";
+
+/**
+ * A cart write while that cart's payment is being settled in this process
+ * would change a cart that is being charged; refuse it.
+ */
+function refuseWhileSettling(cartId: string | undefined): void {
+  if (cartId && isSettling(cartId)) {
+    throw makeEpCallError({
+      code: "checkout_in_progress",
+      message: cartMutationErrorCopy(
+        { code: "checkout_in_progress" },
+        "Your payment is being processed. Try again in a moment."
+      ),
+    });
+  }
+}
 
 /**
  * Hey API defaults to `throwOnError: false`, so EP rejections resolve as
@@ -54,12 +72,13 @@ function formatEpSdkError(error: unknown, fallback: string): string {
 }
 
 function assertEpSdkOk(
-  result: { error?: unknown },
+  result: { error?: unknown; response?: { status?: number } },
   label: string
 ): void {
   if (result.error) {
-    throw new Error(
-      `${label}: ${formatEpSdkError(result.error, "unknown error")}`
+    throw withEpStatus(
+      new Error(`${label}: ${formatEpSdkError(result.error, "unknown error")}`),
+      result.response?.status
     );
   }
 }
@@ -206,7 +225,8 @@ function writeCart<I>(write: CartWrite<I>): Promise<Cart> {
  *
  * Rejects the same way on the server and in the browser: an `Error` whose
  * `message` is shopper copy and whose `code` is stable to branch on —
- * `insufficient_stock`, `no_session`, `dispatch_failed`, `route_not_found`,
+ * `insufficient_stock`, `no_session`, `checkout_in_progress` (the cart's
+ * payment is being settled), `dispatch_failed`, `route_not_found`,
  * or `design_fn_not_served` on the Studio canvas and in a configure panel.
  * `cause` holds the original failure; `correlationId` is set when a proxy
  * route logged it.
@@ -265,6 +285,7 @@ async function addCartItemWithSession(
   if (!isUsableAuth(auth)) {
     throw new Error("epAddCartItem: no EP session");
   }
+  refuseWhileSettling(auth.cartId);
   const client = buildEpClient(auth);
   let cartId = auth.cartId;
 
@@ -277,6 +298,7 @@ async function addCartItemWithSession(
     if (!cartId) {
       throw new Error("epAddCartItem: failed to create cart");
     }
+    auth.cartId = cartId;
   }
 
   const itemData: Record<string, unknown> = {
@@ -343,6 +365,7 @@ async function updateCartItemWithSession(
   if (!auth.cartId) {
     throw new Error("epUpdateCartItem: no cart on session");
   }
+  refuseWhileSettling(auth.cartId);
   const client = buildEpClient(auth);
 
   // Multilocation inventory: quantity changes (including decreases) are
@@ -435,6 +458,7 @@ export async function epApplyCartAdjustment(
   if (!auth.cartId) {
     throw new Error("epApplyCartAdjustment: no cart on session");
   }
+  refuseWhileSettling(auth.cartId);
   const client = buildEpClient(auth);
 
   return addCustomCartItem(client, {
@@ -458,6 +482,7 @@ async function removeCartItemWithSession(
   if (!auth.cartId) {
     throw new Error("epRemoveCartItem: no cart on session");
   }
+  refuseWhileSettling(auth.cartId);
   const client = buildEpClient(auth);
 
   const deleteRes = await deleteACartItem({
@@ -501,6 +526,7 @@ export async function epApplyPromoCode(
   if (!auth.cartId) {
     throw new Error("epApplyPromoCode: no cart on session");
   }
+  refuseWhileSettling(auth.cartId);
   const client = buildEpClient(auth);
 
   const applyRes = await manageCarts({
@@ -547,6 +573,7 @@ export async function epRemovePromoCode(
   if (!auth.cartId) {
     throw new Error("epRemovePromoCode: no cart on session");
   }
+  refuseWhileSettling(auth.cartId);
   const client = buildEpClient(auth);
 
   const deleteRes = await deleteAPromotionViaPromotionCode({

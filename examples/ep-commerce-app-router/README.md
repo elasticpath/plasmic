@@ -38,6 +38,40 @@ the last published version — anything unpublished is simply absent from the
 bundle, which shows up as server queries not executing and components falling
 back to their own client-side fetch.
 
+## Payment methods
+
+`lib/checkout-context.ts` registers Stripe only. A zero-total order completes
+without a registered gateway: the server settles it with Elastic Path's
+`manual` gateway.
+
+The server allows `manual` for an order with a total only through a rule the
+host supplies. To offer offline or invoice payment, register the Manual adapter
+with an `allow` rule. The rule sees the selected account that
+`checkoutContextFromSession` sets (`lib/checkout-context.ts` already uses it):
+
+```ts
+import { createManualAdapter } from "@elasticpath/plasmic-ep-commerce-elastic-path/server";
+
+adapterRegistry.register(
+  "manual",
+  createManualAdapter({
+    method: "purchase",
+    // Your own check, e.g. an account approved for invoice terms.
+    allow: async ({ cart, account }) =>
+      account !== null && (await isApprovedForInvoice(account.id)),
+  })
+);
+
+const ctx: SessionHandlerContext = {
+  // ...
+  ...checkoutContextFromSession(session),
+};
+```
+
+Then add EP Manual Payment inside the EP Checkout Session Provider in Studio.
+Without the rule, or when it returns anything but `true`, the server refuses
+`manual` for that order before it creates one.
+
 ## Testing an unreleased package change
 
 Registry versions can only ever exercise what has shipped. To run this app

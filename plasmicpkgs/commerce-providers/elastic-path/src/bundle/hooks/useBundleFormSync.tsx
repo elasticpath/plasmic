@@ -86,7 +86,7 @@ export function useBundleFormSync({
         url.searchParams.set("bundle_config", encoded);
         window.history.replaceState({}, "", url.toString());
       } catch (error) {
-        log.error("Failed to update URL", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
+        log.error("Failed to update URL", { error: error instanceof Error ? error.message : String(error) });
       }
     }
   }, [selectedOptions, updateUrlOnChange, isInitialized]);

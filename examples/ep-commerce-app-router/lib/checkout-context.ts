@@ -2,21 +2,22 @@
  * Checkout context factory — built per-request by every checkout-session route.
  *
  * Resolves:
- *   - shopperAccessToken from the better-auth session (shopper-scoped).
- *   - accountToken: the selected account's credential, from the same session.
+ *   - checkoutContextFromSession(session): the shopper token, the session
+ *     cart (the only cart checkout uses), the selected account and the
+ *     signed-in member, locale and currency, all from one getSession. With an
+ *     account selected, checkout places the order for that account.
  *   - getClientCredentialsToken: a closure-memoized admin token minter,
  *     scoped to this request only (no process-level cache).
- *   - epCartId from the better-auth session (lets routes that need a cartId
- *     read it server-side instead of trusting the client).
- *   - adapterRegistry with Stripe and Manual registered when EP_CLIENT_SECRET is set.
+ *   - adapterRegistry with Stripe registered when EP_CLIENT_SECRET is set.
+ *     Zero-total orders complete without a registered gateway.
  *   - sessionStore (cookie-based JWE).
  *   - shippingRateResolver: one static example rate (demo only).
  */
 import {
+  checkoutContextFromSession,
   CookieSessionStore,
   createAdapterRegistry,
   createClientCredentialsTokenResolver,
-  createManualAdapter,
   createStripeAdapter,
   resolveAuthSecret,
   type SessionHandlerContext,
@@ -34,8 +35,6 @@ const EXAMPLE_STANDARD_SHIPPING_AMOUNT_MINOR = 599;
 
 export interface RequestCheckoutContext {
   ctx: SessionHandlerContext;
-  /** epCartId from the better-auth session — used by /sessions create. */
-  epCartId: string | null;
 }
 
 export async function buildCheckoutContext(
@@ -61,9 +60,6 @@ export async function buildCheckoutContext(
     })
     .catch(() => null);
 
-  const shopperAccessToken = session?.session?.accessToken ?? "";
-  const accountToken = session?.session?.account?.token;
-  const epCartId = session?.cart?.id ?? null;
 
   // Per-request admin-token resolver. Built only when EP_CLIENT_SECRET is
   // present; absence cleanly disables admin-side EP calls (Stripe gateway
@@ -78,8 +74,8 @@ export async function buildCheckoutContext(
       })
     : undefined;
 
-  // Adapter registry — Stripe + Manual when admin auth is available
-  // (checkoutApi / paymentSetup need the client-credentials token).
+  // Adapter registry — Stripe when admin auth is available (checkoutApi /
+  // paymentSetup need the client-credentials token).
   const adapterRegistry = createAdapterRegistry();
   if (getClientCredentialsToken) {
     adapterRegistry.register(
@@ -88,12 +84,12 @@ export async function buildCheckoutContext(
         host: apiBaseUrl,
         clientId,
         getClientCredentialsToken,
+        // Lets resume read the PaymentIntent from Stripe before it confirms
+        // the order. Without them, resume relies on the keys EP Stripe
+        // Payment sends.
+        publishableKey: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || undefined,
+        stripeAccount: process.env.NEXT_PUBLIC_STRIPE_ACCOUNT_ID || undefined,
       })
-    );
-    // Manual settlement method is host config (purchase default; authorize optional).
-    adapterRegistry.register(
-      "manual",
-      createManualAdapter({ method: "purchase" })
     );
   }
 
@@ -101,8 +97,7 @@ export async function buildCheckoutContext(
     epCredentials: { clientId, apiBaseUrl },
     adapterRegistry,
     sessionStore,
-    shopperAccessToken,
-    accountToken,
+    ...checkoutContextFromSession(session),
     getClientCredentialsToken,
     // Example/demo pricing only. Production hosts must replace this with real
     // server-side rate logic (carrier API, EP rules, etc.).
@@ -119,5 +114,5 @@ export async function buildCheckoutContext(
     ],
   };
 
-  return { ctx, epCartId };
+  return { ctx };
 }

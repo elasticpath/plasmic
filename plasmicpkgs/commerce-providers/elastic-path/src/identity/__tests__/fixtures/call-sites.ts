@@ -34,6 +34,15 @@ identity.member();
 // @ts-expect-error the server chooses the member; the browser sends nothing
 identity.member({ memberId: "member-1" });
 
+identity.accountAddresses();
+// @ts-expect-error the server chooses the account; the browser sends nothing
+identity.accountAddresses({ accountId: "acct-1" });
+
+identity.updateMember({ name: "Ada Lovelace" });
+identity.updateMember({ email: "ada@example.com" });
+// @ts-expect-error the server chooses the member; the browser sends no id
+identity.updateMember({ memberId: "member-1" });
+
 // Deselecting is passing null, not omitting the field.
 identity.selectAccount({ accountId: "acct-1" });
 identity.selectAccount({ accountId: null });
@@ -42,7 +51,15 @@ identity.selectAccount({ accountId: 7 });
 
 export async function readsWhatIsReleased() {
   const { session } = await identity.signInAnonymously();
-  return { account: session.epAccount?.name, cart: session.epCartId };
+  return { account: session.epAccount?.name, expires: session.epExpires };
+}
+
+export async function cannotReadOrSetTheCart() {
+  const { session } = await identity.signInAnonymously();
+  // @ts-expect-error the cart id stays on the server
+  identity.setCart({ cartId: "cart-1" });
+  // @ts-expect-error the handler withholds the cart id
+  return session.epCartId;
 }
 
 export async function cannotReadACredential() {

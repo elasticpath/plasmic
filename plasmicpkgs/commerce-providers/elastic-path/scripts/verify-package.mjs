@@ -1,11 +1,9 @@
 /**
  * The packaging seam, run against the built output and the packed tarball:
- * publint, arethetypeswrong once per entry point, a smoke that loads each
- * bundle the way its consumer does, and the one-export entry points a loader
- * imports instead of the root. Run `pnpm build` first.
+ * publint, arethetypeswrong once per entry point, and a smoke that loads each
+ * bundle the way its consumer does. Run `pnpm build` first.
  *
- * The recorded exceptions, for the root entry and the per-module files, are
- * ADR-0007 (docs/adr).
+ * The root entry's recorded exceptions are ADR-0007 (docs/adr).
  */
 import esbuild from "esbuild";
 import { execFileSync } from "node:child_process";
@@ -151,10 +149,29 @@ function checkNoRequireShim() {
   check("dist/esm has no require() shim", shimmed.length === 0, shimmed.join("\n"));
 }
 
-function perModuleFiles() {
+// A direct eval stops bundlers dropping any of a file's unused code.
+function checkNoDirectEval() {
+  const files = [
+    "dist/index.esm.js",
+    "dist/index.js",
+    "dist/server.js",
+    "dist/server.mjs",
+    ...perModuleFiles(),
+    ...perModuleFiles("dist/exports"),
+  ];
+  const withEval = files.filter((file) => /\beval\(/.test(fs.readFileSync(path.join(installedDir, file), "utf8")));
+  check(`no built JavaScript file has a direct eval (${files.length} files)`, withEval.length === 0, withEval.join("\n"));
+}
+
+function checkRootNamesItsExports() {
+  const main = fs.readFileSync(path.join(installedDir, "dist/index.esm.js"), "utf8");
+  check("dist/index.esm.js names its exports, as Next.js needs of a client boundary", !/\bexport \*/.test(main));
+}
+
+function perModuleFiles(dir = "dist/esm") {
   return fs
-    .readdirSync(path.join(installedDir, "dist/esm"), { recursive: true })
-    .map((p) => `dist/esm/${p.split(path.sep).join("/")}`)
+    .readdirSync(path.join(installedDir, dir), { recursive: true })
+    .map((p) => `${dir}/${p.split(path.sep).join("/")}`)
     .filter((p) => p.endsWith(".js"));
 }
 
@@ -214,8 +231,16 @@ async function smokeServer() {
 
   for (const [format, mod] of [["ESM", esm], ["CJS", cjs]]) {
     const session = { marker: format };
-    const inside = await mod.withEpSession(session, async () => mod.getCurrentEpSession());
-    check(`${format} withEpSession scopes getCurrentEpSession`, inside === session);
+    const inside = await mod.withEpSession(session, async () => {
+      const scoped = mod.getCurrentEpSession();
+      scoped.cartId = "written-inside";
+      return scoped;
+    });
+    check(`${format} withEpSession scopes getCurrentEpSession`, inside?.marker === format);
+    check(
+      `${format} withEpSession keeps writes inside the scope off the caller's session`,
+      inside !== session && session.cartId === undefined && inside.cartId === "written-inside"
+    );
     check(`${format} getCurrentEpSession is empty outside the scope`, mod.getCurrentEpSession() === undefined);
     const fallback = await mod.seedCartFallback();
     check(
@@ -294,22 +319,22 @@ function smokeRoot() {
   check("every registered importName is exported from the root", unreachable.length === 0, unreachable.join("\n"));
 }
 
-// A loader rewrites each root import in generated code into imports of the
-// subpaths exports-map.json names, then bundles the result.
 function perModuleImports(map, names) {
   const imports = names.map((name) => `import { ${name} } from "${pkg.name}/${map[name].slice(2)}";`);
   return `${imports.join("\n")}\nexport { ${names.join(", ")} };\n`;
 }
 
-// Bundles the installed package and nothing it depends on.
 const DEPENDENCIES = [
   ...Object.keys(pkg.dependencies ?? {}),
   ...Object.keys(pkg.peerDependencies ?? {}),
 ].flatMap((name) => [name, `${name}/*`]);
 
-// As platform/wab's module-bundler.ts bundles a project for the browser.
 const LOADER_EXTERNALS = ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime", "@plasmicapp/*", "next", "next/*"];
-const INSTANTSEARCH = /(?:^|\/)node_modules\/(?:instantsearch\.js|react-instantsearch(?:-[a-z]+)*|algoliasearch-helper)\//;
+const ROOT_OWN_CODE_LIMIT = 40_000;
+const UNRELATED_TO_CART = /\/dist\/esm\/(?:catalog-search|account|checkout)\//;
+const CHECKOUT_FILE_THE_CART_USES = "/dist/esm/checkout/session/shipping-line-sku.js";
+const INSTANTSEARCH =
+  /(?:^|\/)node_modules\/(?:instantsearch\.js|react-instantsearch(?:-[a-z]+)*|algoliasearch-helper|@elasticpath\/catalog-search-instantsearch-adapter)\//;
 
 async function bundleAsLoader(name, contents) {
   const entry = path.join(installRoot, `${name}.js`);
@@ -330,11 +355,52 @@ async function bundleAsLoader(name, contents) {
     metafile: true,
     logLevel: "silent",
   });
-  const search = Object.keys(result.metafile.inputs).filter((p) => INSTANTSEARCH.test(p));
+  const included = Object.values(result.metafile.outputs).flatMap((output) =>
+    Object.entries(output.inputs).filter(([, input]) => input.bytesInOutput > 0)
+  );
+  const search = [...new Set(included.map(([p]) => p).filter((p) => INSTANTSEARCH.test(p)))];
+  const own = included.filter(([p]) => p.includes(`/${pkg.name}/dist/`));
   const bytes = result.outputFiles
     .filter((f) => f.path.endsWith(".js"))
     .reduce((sum, f) => sum + f.contents.length, 0);
-  return { search, bytes };
+  return {
+    search,
+    bytes,
+    modules: own.map(([p]) => p),
+    ownBytes: own.reduce((sum, [, input]) => sum + input.bytesInOutput, 0),
+  };
+}
+
+function webpackModules(name, contents) {
+  const entry = path.join(installRoot, `${name}.js`);
+  fs.writeFileSync(entry, contents);
+  const nextWebpack = require("next/dist/compiled/webpack/webpack");
+  nextWebpack.init();
+  return new Promise((resolve, reject) => {
+    nextWebpack.webpack(
+      {
+        mode: "production",
+        entry,
+        output: { path: path.join(installRoot, `${name}-out`) },
+        optimization: { concatenateModules: false, minimize: false },
+        externals: [/^(?:react|react-dom|next)(?:\/.*)?$/, /^@plasmicapp\//],
+        externalsType: "commonjs",
+        performance: { hints: false },
+      },
+      (error, stats) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        const info = stats.toJson({ modules: true, errors: true });
+        if (info.errors.length) {
+          reject(new Error(info.errors.map((e) => e.message).join("\n")));
+          return;
+        }
+        resolve(info.modules.filter((m) => m.chunks?.length).map((m) => m.name));
+      }
+    );
+  });
 }
 
 async function smokeModules() {
@@ -385,6 +451,8 @@ async function smokeModules() {
     fromCjs.contexts.map((m) => m.name)
   );
 
+  const searchBox = await bundleAsLoader("search-box", perModuleImports(map, ["EPSearchBox"]));
+  check("EPSearchBox pulls in InstantSearch, so the next check can see it", searchBox.search.length > 0);
   const productList = ["EPProductListProvider", "EPProductGrid"];
   const throughMap = await bundleAsLoader("product-list-modules", perModuleImports(map, productList));
   const throughRoot = await bundleAsLoader(
@@ -392,13 +460,27 @@ async function smokeModules() {
     `export { ${productList.join(", ")} } from "${pkg.name}";\n`
   );
   check(
-    "the root import of the product list pulls in InstantSearch, so the next check can see it",
-    throughRoot.search.length > 0
-  );
-  check(
     `the product list through the map leaves out InstantSearch (${throughMap.bytes} bytes; ${throughRoot.bytes} through the root)`,
     throughMap.search.length === 0,
     throughMap.search.join("\n")
+  );
+  const fromRoot = await bundleAsLoader("cart-trigger-root", `export { EPCartDrawerTrigger } from "${pkg.name}";\n`);
+  const unrelated = fromRoot.modules.filter(
+    (m) => UNRELATED_TO_CART.test(m) && !m.endsWith(CHECKOUT_FILE_THE_CART_USES)
+  );
+  check(
+    `EPCartDrawerTrigger from the root leaves out InstantSearch and the catalog-search, account and checkout modules, except the checkout constant the cart uses, with under ${ROOT_OWN_CODE_LIMIT} bytes of the package's code (${fromRoot.ownBytes}; ${fromRoot.bytes} in all)`,
+    fromRoot.search.length === 0 && unrelated.length === 0 && fromRoot.ownBytes < ROOT_OWN_CODE_LIMIT,
+    [...fromRoot.search, ...unrelated].join("\n")
+  );
+
+  const cartWrite = await webpackModules(
+    "cart-write-webpack",
+    `import { epAddCartItem } from "${pkg.name}";\nglobalThis.__epAddCartItem = epAddCartItem;\n`
+  );
+  check(
+    "epAddCartItem from the root registers the cart cache under webpack, as the one-bundle root did",
+    cartWrite.some((m) => m.endsWith("/cart-provider/swr-cart-cache.js"))
   );
 }
 
@@ -410,6 +492,8 @@ try {
   checkAttw(tarball, "./server", []);
   install(tarball);
   checkNoRequireShim();
+  checkNoDirectEval();
+  checkRootNamesItsExports();
   checkRootPullsInNoServerModule();
   for (const [label, smoke] of [
     ["/server smoke", smokeServer],

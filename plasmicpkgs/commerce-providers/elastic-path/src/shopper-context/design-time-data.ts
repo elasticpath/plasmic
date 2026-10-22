@@ -9,7 +9,6 @@ import { mockCartItem } from "../utils/design-time-data";
  * match the real EP API response shape.
  */
 export const MOCK_SERVER_CART_DATA: Cart = {
-  id: "mock-cart-001",
   type: "cart",
   itemCount: 3,
   promotions: [],

@@ -40,7 +40,7 @@
     "./dist/index.esm.js",
     "./dist/server.js",
     "./dist/server.mjs",
-    "./dist/esm/cart-provider/use-ep-cart.js"
+    "./dist/esm/cart-provider/swr-cart-cache.js"
   ],
   "scripts": {
     "build": "rm -rf dist && pnpm build:types && pnpm build:index && pnpm build:server && pnpm build:modules",
@@ -48,7 +48,7 @@
     "build:index": "node ../../../build.mjs ./src/index.tsx --use-client",
     "build:server": "node ../../../build.mjs ./src/server.ts --mjs",
     "build:modules": "node scripts/build-modules.mjs",
-    "start": "tsc && (tsc --watch --preserveWatchOutput & node ../../../build.mjs ./src/index.tsx --use-client --watch & node ../../../build.mjs ./src/server.ts --mjs --watch & wait)",
+    "start": "tsc && (tsc --watch --preserveWatchOutput & node ../../../build.mjs ./src/index.tsx --use-client --watch & node ../../../build.mjs ./src/server.ts --mjs --watch & node scripts/build-modules.mjs --watch & wait)",
     "test": "NODE_OPTIONS=--experimental-vm-modules TEST_CWD=`pwd` pnpm -w test --passWithNoTests && pnpm test:vitest",
     "test:vitest": "vitest run",
     "prepublishOnly": "npm run build && npm run verify:package",
@@ -77,7 +77,7 @@
   "dependencies": {
     "@algolia/autocomplete-core": "^1.17.7",
     "@elasticpath/catalog-search-instantsearch-adapter": "0.1.0",
-    "@epcc-sdk/sdks-shopper": "^0.1.0",
+    "@epcc-sdk/sdks-shopper": "^0.9.0",
     "@hookform/resolvers": "^3.3.2",
     "@types/react": "^18.0.27",
     "better-auth": "^1.6.9",

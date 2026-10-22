@@ -17,17 +17,14 @@ import type {
   SessionResponse,
   SessionHandlerContext,
   CheckoutSession,
-  ClientCheckoutSession,
   PaymentAdapterResult,
 } from "../../../checkout/session/types";
+import { settleOnceOrBusy } from "../../../checkout/session/settle-once";
+import { releasingShippingLine } from "../../../checkout/session/shipping-line-scope";
 import { createLogger } from "../../../utils/logger";
+import { toClientSession } from "../../../checkout/session/client-session";
 
 const log = createLogger("Confirm");
-
-function toClientSession(s: CheckoutSession): ClientCheckoutSession {
-  const { cartHash, ...rest } = s;
-  return rest;
-}
 
 export async function handleConfirm(
   req: SessionRequest,
@@ -42,7 +39,7 @@ export async function handleConfirm(
   } catch (err) {
     log.error("Failed to read session from store", {
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 500,
       body: { success: false, error: { message: "Failed to read session", code: "STORE_ERROR" } },
@@ -94,8 +91,26 @@ export async function handleConfirm(
     };
   }
 
+  const open = session;
+  const order = session.order;
+  const gateway = session.payment.gateway;
+  return settleOnceOrBusy(open, () =>
+    releasingShippingLine(ctx, open.cartId, () =>
+      confirmOpenSession(req, ctx, ttl, open, order, gateway)
+    )
+  );
+}
+
+async function confirmOpenSession(
+  req: SessionRequest,
+  ctx: SessionHandlerContext,
+  ttl: number,
+  session: CheckoutSession,
+  order: NonNullable<CheckoutSession["order"]>,
+  gateway: string
+): Promise<SessionResponse> {
   // 3. Delegate to adapter
-  const adapter = ctx.adapterRegistry.getAdapter(session.payment.gateway);
+  const adapter = ctx.adapterRegistry.getAdapter(gateway);
   if (!adapter) {
     return {
       status: 400,
@@ -136,7 +151,7 @@ export async function handleConfirm(
       gateway: session.payment.gateway,
       sessionId: session.id,
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 502,
       body: {
@@ -151,14 +166,14 @@ export async function handleConfirm(
 
   if (adapterResult.status === "succeeded") {
     // Capture the EP transaction
-    const orderId = session.order.id;
-    const transactionId = session.order.transactionId;
+    const orderId = order.id;
+    const transactionId = order.transactionId;
 
     if (!transactionId) {
       log.error("Cannot capture EP transaction — transactionId missing from session.order", {
         sessionId: session.id,
         orderId,
-      } as Record<string, unknown>);
+      });
       return {
         status: 500,
         body: {
@@ -197,7 +212,7 @@ export async function handleConfirm(
         orderId,
         transactionId,
         error: err instanceof Error ? err.message : String(err),
-      } as Record<string, unknown>);
+      });
       return {
         status: 502,
         body: {
@@ -250,7 +265,7 @@ export async function handleConfirm(
     log.error("Failed to persist session after confirm", {
       sessionId: session.id,
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 500,
       body: { success: false, error: { message: "Failed to store session", code: "STORE_ERROR" } },
@@ -261,7 +276,7 @@ export async function handleConfirm(
     sessionId: finalSession.id,
     adapterStatus: adapterResult.status,
     sessionStatus: finalSession.status,
-  } as Record<string, unknown>);
+  });
 
   return {
     status: 200,

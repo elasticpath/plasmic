@@ -1,14 +1,3 @@
-/**
- * Builds the files a loader imports one component from. Each source module the
- * root entry reaches becomes its own ESM file under `dist/esm`. Each root
- * export gets `dist/exports/<name>.js`, which re-exports it from the module
- * that defines it, so `<package>/<name>` imports one export and what it needs.
- * `dist/exports-map.json` lists every root export with its subpath. The root
- * entry itself is `build:index`, unchanged. Run after it.
- *
- * Each source module stays its own file, never a pre-bundled subpath, so two
- * components on one page share one copy of each internal module and its state.
- */
 import esbuild from "esbuild";
 import fs from "node:fs";
 import path from "node:path";
@@ -19,19 +8,26 @@ const pkgDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const srcDir = path.join(pkgDir, "src");
 const distDir = path.join(pkgDir, "dist");
 const modulesDir = path.join(distDir, "esm");
-const namesDir = path.join(distDir, "exports");
+const exportsDir = path.join(distDir, "exports");
 const mapFile = path.join(distDir, "exports-map.json");
+const rootFile = path.join(distDir, "index.esm.js");
 const entry = path.join(srcDir, "index.tsx");
+const pkg = JSON.parse(
+  fs.readFileSync(path.join(pkgDir, "package.json"), "utf8")
+);
+const watching = process.argv.includes("--watch");
 
 const SOURCE_EXTENSION = /\.(tsx?|jsx?)$/;
 
-/** A source module's built file, relative to `dist`. */
+function toPosix(p) {
+  return p.split(path.sep).join("/");
+}
+
 function builtPathOf(sourceFile) {
-  return `esm/${path
-    .relative(srcDir, sourceFile)
-    .split(path.sep)
-    .join("/")
-    .replace(SOURCE_EXTENSION, ".js")}`;
+  return `esm/${toPosix(path.relative(srcDir, sourceFile)).replace(
+    SOURCE_EXTENSION,
+    ".js"
+  )}`;
 }
 
 function outFileOf(sourceFile) {
@@ -42,10 +38,6 @@ function fail(lines) {
   throw new Error(`build-modules: ${lines.join("\n  ")}`);
 }
 
-/**
- * The source modules the root entry reaches, and the names it exports at run
- * time, as esbuild bundles it for `build:index`.
- */
 async function rootGraph() {
   const { metafile, outputFiles } = await esbuild.build({
     entryPoints: [entry],
@@ -77,10 +69,6 @@ async function rootGraph() {
   return { modules, rootExports: output.exports };
 }
 
-/**
- * Bundles each module on its own: every relative import stays an import, of
- * that module's file, and packages stay external as in `build:index`.
- */
 async function buildModules(modules) {
   const graph = new Set(modules);
   const { metafile } = await esbuild.build({
@@ -98,6 +86,8 @@ async function buildModules(modules) {
     metafile: true,
     logLevel: "warning",
     plugins: [
+      // Each module stays its own file, never pre-bundled, or two components
+      // on one page get two copies of its state.
       {
         name: "keep-modules",
         setup(build) {
@@ -123,13 +113,12 @@ async function buildModules(modules) {
                 ],
               };
             }
-            let specifier = path
-              .relative(
+            let specifier = toPosix(
+              path.relative(
                 path.dirname(outFileOf(args.importer)),
                 outFileOf(resolved.path)
               )
-              .split(path.sep)
-              .join("/");
+            );
             if (!specifier.startsWith(".")) {
               specifier = `./${specifier}`;
             }
@@ -151,12 +140,6 @@ async function buildModules(modules) {
   return exportsByFile;
 }
 
-/**
- * Follows each root export, through re-exports, to the module that declares
- * it. The build fails on any name it cannot place, because a name that falls
- * back to the root loads a second copy of the package next to the per-module
- * files, with its own module state.
- */
 function findDefiningModules(rootExports, exportsByFile) {
   const config = ts.getParsedCommandLineOfConfigFile(
     path.join(pkgDir, "tsconfig.json"),
@@ -167,7 +150,6 @@ function findDefiningModules(rootExports, exportsByFile) {
         fail([ts.flattenDiagnosticMessageText(d.messageText, "\n")]),
     }
   );
-  // Only symbols are read, so global type packages are not needed.
   const program = ts.createProgram({
     rootNames: [entry],
     options: { ...config.options, noEmit: true, types: [] },
@@ -209,6 +191,7 @@ function findDefiningModules(rootExports, exportsByFile) {
     }
     definedIn[name] = file;
   }
+  // A name left on the root would load a second copy of the package.
   if (problems.length) {
     fail([
       "cannot map every root export to the file that defines it:",
@@ -218,17 +201,9 @@ function findDefiningModules(rootExports, exportsByFile) {
   return definedIn;
 }
 
-/**
- * Writes `dist/exports/<name>.js` for each root export, and the map. Fails on
- * a name that another entry point already takes, and on two names that a
- * case-insensitive file system cannot tell apart.
- */
 function writeNamedEntries(definedIn) {
-  const { exports } = JSON.parse(
-    fs.readFileSync(path.join(pkgDir, "package.json"), "utf8")
-  );
   const taken = new Set(
-    Object.keys(exports)
+    Object.keys(pkg.exports)
       .filter((subpath) => !subpath.includes("*"))
       .map((subpath) => subpath.slice(2))
   );
@@ -249,11 +224,11 @@ function writeNamedEntries(definedIn) {
   if (problems.length) {
     fail(["cannot give every root export its own subpath:", ...problems]);
   }
-  fs.mkdirSync(namesDir, { recursive: true });
+  fs.mkdirSync(exportsDir, { recursive: true });
   const map = {};
   for (const [name, file] of Object.entries(definedIn)) {
     fs.writeFileSync(
-      path.join(namesDir, `${name}.js`),
+      path.join(exportsDir, `${name}.js`),
       `"use client";\nexport { ${name} } from "../${builtPathOf(file)}";\n`
     );
     map[name] = `./${name}`;
@@ -262,14 +237,86 @@ function writeNamedEntries(definedIn) {
   return map;
 }
 
-const { modules, rootExports } = await rootGraph();
-for (const output of [modulesDir, namesDir, mapFile]) {
-  fs.rmSync(output, { recursive: true, force: true });
+function importTimeModules() {
+  const files = pkg.sideEffects.filter((file) =>
+    file.startsWith("./dist/esm/")
+  );
+  const patterns = files.filter((file) => file.includes("*"));
+  if (patterns.length) {
+    fail([
+      "sideEffects names dist/esm files by pattern, which the root cannot import:",
+      ...patterns,
+    ]);
+  }
+  return files.map((file) => `./${file.slice("./dist/".length)}`);
 }
-const exportsByFile = await buildModules(modules);
-const map = writeNamedEntries(findDefiningModules(rootExports, exportsByFile));
-console.info(
-  `built ${modules.length} ESM modules at "dist/esm" and ${
-    Object.keys(map).length
-  } root exports at "dist/exports", listed in "dist/exports-map.json"`
-);
+
+// Any root import runs every module's import-time work, as the one-bundle
+// root did: webpack skips a side-effect-free re-export file.
+function rootSource(names) {
+  const imports = importTimeModules()
+    .map((file) => `import "${file}";\n`)
+    .join("");
+  return `"use client";\n${imports}export { ${names.join(
+    ", "
+  )} } from "./esm/index.js";\n`;
+}
+
+function writeRoot(content) {
+  fs.writeFileSync(rootFile, content);
+  fs.rmSync(`${rootFile}.map`, { force: true });
+}
+
+async function buildFiles() {
+  const { modules, rootExports } = await rootGraph();
+  if (!watching) {
+    for (const output of [modulesDir, exportsDir, mapFile]) {
+      fs.rmSync(output, { recursive: true, force: true });
+    }
+  }
+  const exportsByFile = await buildModules(modules);
+  const map = writeNamedEntries(
+    findDefiningModules(rootExports, exportsByFile)
+  );
+  const content = rootSource(Object.keys(map));
+  writeRoot(content);
+  console.info(
+    `built ${modules.length} ESM modules at "dist/esm" and ${
+      Object.keys(map).length
+    } root exports at "dist/exports", listed in "dist/exports-map.json", and re-exported them from "dist/index.esm.js"`
+  );
+  return content;
+}
+
+let source = await buildFiles();
+if (watching) {
+  let pending;
+  let queue = Promise.resolve();
+  fs.watch(srcDir, { recursive: true }, () => {
+    clearTimeout(pending);
+    pending = setTimeout(() => {
+      queue = queue
+        .then(buildFiles)
+        .then((built) => {
+          source = built;
+        })
+        .catch((error) => console.error(error.message));
+    }, 100);
+  });
+  // build.mjs's watcher rewrites dist/index.esm.js as one bundle on every change.
+  fs.watch(distDir, (event, file) => {
+    if (file !== "index.esm.js") {
+      return;
+    }
+    let current;
+    try {
+      current = fs.readFileSync(rootFile, "utf8");
+    } catch {
+      return;
+    }
+    if (current !== source) {
+      writeRoot(source);
+    }
+  });
+  console.info('watching "src" and keeping "dist/index.esm.js" a re-export...');
+}

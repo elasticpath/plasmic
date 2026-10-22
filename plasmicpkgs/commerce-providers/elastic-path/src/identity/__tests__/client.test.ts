@@ -41,7 +41,6 @@ describe("createEpIdentityClient", () => {
     await client.getSession();
     await client.signInAnonymously();
     await client.refresh();
-    await client.setCart({ cartId: "cart-1" });
     await client.login({ username: "buyer@example.com", password: "pw" });
     await client.register({
       username: "buyer@example.com",
@@ -53,18 +52,23 @@ describe("createEpIdentityClient", () => {
     await client.selectAccount({ accountId: "acct-1" });
     await client.rollAccount();
     await client.logout();
+    await client.member();
+    await client.accountAddresses();
+    await client.updateMember({ name: "Ada Lovelace" });
 
     expect(stub.calls.map((c) => c.url)).toEqual([
       "/api/ep/get-session",
       "/api/ep/ep/anonymous",
       "/api/ep/ep/refresh",
-      "/api/ep/ep/cart",
       "/api/ep/ep/account/login",
       "/api/ep/ep/account/register",
       "/api/ep/ep/account/roster",
       "/api/ep/ep/account/select",
       "/api/ep/ep/account/roll",
       "/api/ep/ep/account/logout",
+      "/api/ep/ep/account/member",
+      "/api/ep/ep/account/addresses",
+      "/api/ep/ep/account/member/update",
     ]);
   });
 
@@ -117,6 +121,17 @@ describe("createEpIdentityClient", () => {
       email: "buyer@example.com",
     });
     expect(stub.calls[0].url).toBe("/api/ep/ep/account/register");
+  });
+
+  it("asks for saved addresses with an empty body", async () => {
+    const stub = fetchStub(() => json({ addresses: [], total: 0 }));
+    const client = createEpIdentityClient({ fetch: stub.fetch });
+
+    await client.accountAddresses();
+
+    expect(stub.calls[0].init.method).toBe("POST");
+    expect(stub.calls[0].url).toBe("/api/ep/ep/account/addresses");
+    expect(JSON.parse(stub.calls[0].init.body as string)).toEqual({});
   });
 
   it("asks for the first page of the roster when given no paging", async () => {

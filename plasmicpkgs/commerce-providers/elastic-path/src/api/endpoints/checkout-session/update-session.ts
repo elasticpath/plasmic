@@ -4,47 +4,35 @@
  * Merges partial updates (customerInfo, shippingAddress, billingAddress,
  * selectedShippingRateId) onto the existing session. A changed shipping address
  * requotes through the shipping rate resolver in the same write. Only permitted
- * when the session is in "open" status. Returns 410 if no session exists.
+ * when the session is in "open" status. Returns 410 if no session exists, and
+ * 400 INVALID_EMAIL for a customer email Elastic Path would refuse at checkout.
  */
 import type {
   SessionRequest,
   SessionResponse,
   SessionHandlerContext,
   CheckoutSession,
-  ClientCheckoutSession,
-  SessionTotals,
   SessionShippingRate,
   UpdateSessionRequest,
 } from "../../../checkout/session/types";
-import type { Cart } from "../../../types/cart";
 import { filterAllowedCustomAttributes } from "../../../checkout/session/custom-attributes-allowlist";
-import { applyShippingSelection } from "../../../checkout/session/apply-shipping-selection";
-import { resolveShippingRate } from "../../../checkout/session/cart-shipping";
-import { buildAdminEpClient } from "../../../checkout/session/admin-client";
+import { ShippingResolutionError } from "../../../checkout/session/apply-shipping-selection";
+import { priceShippingSelection } from "../../../checkout/session/shipping-line-scope";
+import {
+  totalsFromCart,
+  totalsWithoutShipping,
+} from "../../../checkout/session/session-totals";
 import { sessionAddressesEquivalent } from "../../../checkout/session/address-utils";
 import { createLogger } from "../../../utils/logger";
+import { toClientSession } from "../../../checkout/session/client-session";
+import { isSettling } from "../../../checkout/session/settle-once";
+import { invalidEmail, isCheckoutEmail } from "../../../checkout/session/checkout-email";
+import {
+  awaitsCartPaymentChallenge,
+  paymentActionPending,
+} from "../../../checkout/session/payment-challenge";
 
 const log = createLogger("UpdateSession");
-
-function toClientSession(s: CheckoutSession): ClientCheckoutSession {
-  const { cartHash, ...rest } = s;
-  return rest;
-}
-
-/** Authoritative cart total from a normalized Cart (minor units), or null. */
-function cartWithTaxAmount(cart: Cart): number | null {
-  const amount = cart.meta?.display_price?.with_tax?.amount;
-  return typeof amount === "number" && Number.isFinite(amount) ? amount : null;
-}
-
-function totalsWithoutShipping(totals: SessionTotals | null): SessionTotals | null {
-  if (!totals) return totals;
-  return {
-    ...totals,
-    shipping: 0,
-    total: totals.subtotal + totals.tax,
-  };
-}
 
 /** Rates for a changed address; empty when the resolver is missing or fails. */
 async function requote(
@@ -60,7 +48,7 @@ async function requote(
       sessionId: session.id,
       cartId: session.cartId,
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return [];
   }
 }
@@ -77,7 +65,7 @@ export async function handleUpdateSession(
   } catch (err) {
     log.error("Failed to read session from store", {
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 500,
       body: {
@@ -110,7 +98,28 @@ export async function handleUpdateSession(
     };
   }
 
+  if (awaitsCartPaymentChallenge(session, ctx)) {
+    return paymentActionPending(session);
+  }
+
+  if (isSettling(session.cartId)) {
+    return {
+      status: 409,
+      body: {
+        success: false,
+        error: {
+          message: "Payment for this checkout is in progress",
+          code: "CHECKOUT_IN_PROGRESS",
+        },
+      },
+    };
+  }
+
   const update = req.body as UpdateSessionRequest;
+
+  if (update.customerInfo != null && !isCheckoutEmail(update.customerInfo.email)) {
+    return invalidEmail();
+  }
 
   // customAttributes are client-supplied. Gate them against the server-side
   // allow-list at this boundary so forged keys never enter session state.
@@ -136,7 +145,7 @@ export async function handleUpdateSession(
         sessionId: session.id,
         dropped: dropped.join(","),
         allowListConfigured: ctx.allowedCustomAttributeKeys !== undefined,
-      } as Record<string, unknown>);
+      });
     }
   }
 
@@ -170,44 +179,45 @@ export async function handleUpdateSession(
     updated = { ...updated, availableShippingRates: await requote(updated, ctx) };
   }
 
-  // When the shopper picks a shipping rate (an id only — never an amount), write
-  // the SERVER-resolved cost into the cart credentialed so the cart shows it
-  // before pay. Best-effort: this is a UX convenience, NOT the integrity
-  // boundary — /pay re-asserts the shipping line authoritatively (ADR-0013), so
-  // a write hiccup here is non-fatal and a forged/un-offered id simply fails to
-  // resolve (no line written). Skip when no rates have been computed yet
-  // (selection before calculate-shipping): nothing to resolve against.
+  // When the shopper picks a shipping rate (an id only — never an amount),
+  // Elastic Path prices the SERVER-resolved cost with the cart, and the line
+  // comes out of the cart again (shipping-line-scope.ts). /pay re-asserts the
+  // line (ADR-0013). A forged/un-offered id fails to resolve and writes no
+  // line. A rate Elastic Path could not price is not chosen, so the page never
+  // shows a total without the rate it shows chosen. Skip when no rates have
+  // been computed yet (selection before calculate-shipping).
+  let notApplied = false;
   if (
     !shippingAddressChanged &&
     update.selectedShippingRateId !== undefined &&
     updated.availableShippingRates.length > 0
   ) {
     try {
-      const client = await buildAdminEpClient(ctx);
-      const pricedCart = await applyShippingSelection(ctx, updated, { client });
-      const rate = resolveShippingRate(
-        updated.availableShippingRates,
-        updated.selectedShippingRateId ?? ""
-      );
-      const freshTotal = cartWithTaxAmount(pricedCart);
-      if (freshTotal != null) {
+      const pricedCart = await priceShippingSelection(ctx, updated);
+      const fresh = totalsFromCart(pricedCart);
+      if (fresh) {
         updated = {
           ...updated,
           totals: {
-            subtotal: updated.totals?.subtotal ?? 0,
-            tax: updated.totals?.tax ?? 0,
-            shipping: rate.amount,
-            total: freshTotal,
-            currency: updated.totals?.currency || rate.currency,
+            ...fresh,
+            currency: fresh.currency || updated.totals?.currency || "",
           },
         };
       }
     } catch (err) {
-      log.warn("Could not write shipping line on selection (deferred to /pay)", {
+      log.warn("Could not price the selected shipping rate", {
         sessionId: updated.id,
         rateId: updated.selectedShippingRateId,
         error: err instanceof Error ? err.message : String(err),
-      } as Record<string, unknown>);
+      });
+      if (!(err instanceof ShippingResolutionError)) {
+        notApplied = true;
+        updated = {
+          ...updated,
+          selectedShippingRateId: null,
+          totals: totalsWithoutShipping(session.totals),
+        };
+      }
     }
   }
 
@@ -218,7 +228,7 @@ export async function handleUpdateSession(
     log.error("Failed to persist updated session", {
       sessionId: session.id,
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
     return {
       status: 500,
       body: {
@@ -231,7 +241,22 @@ export async function handleUpdateSession(
   log.info("Session updated", {
     sessionId: updated.id,
     fields: Object.keys(update).filter((k) => (update as Record<string, unknown>)[k] !== undefined),
-  } as Record<string, unknown>);
+  });
+
+  if (notApplied) {
+    return {
+      status: 502,
+      body: {
+        success: false,
+        error: {
+          message: "That delivery option could not be added. Please choose it again.",
+          code: "SHIPPING_NOT_APPLIED",
+        },
+        data: { session: toClientSession(updated) },
+      },
+      headers: setResult.headers,
+    };
+  }
 
   return {
     status: 200,

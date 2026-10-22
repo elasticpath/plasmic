@@ -99,7 +99,7 @@ export function useBundleOptionProducts({
       onError: (err: Error) => {
         log.error("Error fetching bundle option products", {
           error: err.message,
-        } as Record<string, unknown>);
+        });
       },
     }
   );

@@ -15,6 +15,7 @@ import { createLogger } from "../utils/logger";
 import { useStock } from "../inventory/use-stock";
 import { MOCK_CART_LINE_ITEMS } from "../utils/design-time-data";
 import { getLocationSlug } from "../utils/getLocationSlug";
+import { useCanvasPreviewState } from "../utils/canvas-preview-state";
 
 const log = createLogger("EPCartItemList");
 
@@ -140,7 +141,8 @@ function selectedOptionsOf(item: CartItem): SelectedOption[] {
 }
 
 export function EPCartItemList(props: EPCartItemListProps) {
-  const { children, className, maxItems, previewState = "auto" } = props;
+  const { children, className, maxItems, previewState: savedPreviewState } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const cart = useSelector("cart") as Cart | undefined;
   const inEditor = !!usePlasmicCanvasContext();

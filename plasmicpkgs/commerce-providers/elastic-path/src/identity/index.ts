@@ -4,9 +4,12 @@ export type { EpIdentityClientOptions, EpIdentityError } from "./client";
 export { useEpIdentity } from "./useEpIdentity";
 export { EP_IDENTITY_ROUTES, EP_IDENTITY_OPERATION_NAMES } from "./operations";
 export type {
+  EpAccountAddress,
+  EpAccountAddressResult,
   EpAccountLoginRequest,
   EpAccountLoginResult,
   EpAccountMemberResult,
+  EpAccountMemberUpdateRequest,
   EpAccountRegisterRequest,
   EpAccountRosterRequest,
   EpAccountRosterResult,
@@ -15,7 +18,6 @@ export type {
   EpIdentityOperations,
   EpIdentityRoute,
   EpSelectAccountRequest,
-  EpSetCartRequest,
 } from "./operations";
 export { RELEASED_SESSION_PATHS } from "./session-shape";
 export type {

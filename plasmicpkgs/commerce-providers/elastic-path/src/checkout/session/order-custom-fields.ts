@@ -82,12 +82,12 @@ export async function persistOrderCustomFields(
       log.warn("Order custom fields write returned an error", {
         orderId: opts.orderId,
         error: JSON.stringify(err).slice(0, 300),
-      } as Record<string, unknown>);
+      });
     }
   } catch (err) {
     log.warn("Failed to persist order custom fields", {
       orderId: opts.orderId,
       error: err instanceof Error ? err.message : String(err),
-    } as Record<string, unknown>);
+    });
   }
 }

@@ -36,8 +36,10 @@ import React, {
   useState,
 } from "react";
 import { Registerable } from "../registerable";
+import { listContent } from "./list-content";
 import { ListingSourceContext } from "./listing-source";
 import { useProductList } from "./use-product-list";
+import { useEpCommerce } from "../shopper-context/EpCommerceContext";
 import { MOCK_PRODUCT_GRID_DATA, ProductGridData } from "./design-time-data";
 import type { Product } from "../types/product";
 
@@ -143,7 +145,7 @@ export const epProductListProviderMeta: CodeComponentMeta<EPProductListProviderP
       options: ["", "price-asc", "price-desc", "latest-desc", "trending-desc"],
       hidden: () => true,
       description:
-        "Deprecated and ignored. Elastic Path's catalog product endpoints take no sort parameter. Use EP Catalog Search Provider with EP Search Sort By.",
+        "Deprecated — ignored. Elastic Path's catalog product endpoints take no sort parameter. Use EP Catalog Search Provider with EP Search Sort By.",
     },
     pageSize: {
       type: "number",
@@ -164,7 +166,7 @@ export const epProductListProviderMeta: CodeComponentMeta<EPProductListProviderP
       defaultValue: "auto",
       displayName: "Preview State",
       description:
-        "Force a preview state with sample data for design-time editing",
+        "Studio only. `auto` shows the store's products, and labelled sample products when the read fails. The other values force a state on the canvas. Published pages always fetch.",
       advanced: true,
     },
   },
@@ -174,7 +176,7 @@ export const epProductListProviderMeta: CodeComponentMeta<EPProductListProviderP
   refActions: {
     setSort: {
       description:
-        "Deprecated — does nothing. Elastic Path's catalog product endpoints take no sort parameter. Use EP Catalog Search Provider with EP Search Sort By.",
+        "Deprecated — ignored. Elastic Path's catalog product endpoints take no sort parameter. Use EP Catalog Search Provider with EP Search Sort By.",
       argTypes: [{ name: "value", type: "string" }],
     },
     goToPage: {
@@ -225,6 +227,7 @@ const EPProductListProviderContent = React.forwardRef<
   } = props;
 
   const inEditor = !!usePlasmicCanvasContext();
+  const hasStore = !!useEpCommerce();
 
   // --- Design-time preview handling ---
   if (inEditor) {
@@ -262,10 +265,7 @@ const EPProductListProviderContent = React.forwardRef<
     }
   }
 
-  const useMock =
-    previewState === "withData" || (previewState === "auto" && inEditor);
-
-  if (useMock) {
+  if (inEditor && (previewState === "withData" || !hasStore)) {
     return (
       <MockProductListProvider ref={ref} className={className}>
         {children}
@@ -284,6 +284,7 @@ const EPProductListProviderContent = React.forwardRef<
       loadingContent={loadingContent}
       errorContent={errorContent}
       emptyContent={emptyContent}
+      sampleOnError={inEditor}
     >
       {children}
     </EPProductListProviderInner>
@@ -326,6 +327,7 @@ const EPProductListProviderInner = React.forwardRef<
     loadingContent?: React.ReactNode;
     errorContent?: React.ReactNode;
     emptyContent?: React.ReactNode;
+    sampleOnError?: boolean;
   }
 >(function EPProductListProviderInner(props, ref) {
   const {
@@ -338,6 +340,7 @@ const EPProductListProviderInner = React.forwardRef<
     loadingContent,
     errorContent,
     emptyContent,
+    sampleOnError,
   } = props;
 
   const [currentPage, setCurrentPage] = useState(0);
@@ -506,41 +509,25 @@ const EPProductListProviderInner = React.forwardRef<
     loadMore: handleLoadMore,
   }));
 
-  // Show loading/error/empty states
-  if (isLoading && displayProducts.length === 0) {
-    return (
-      <DataProvider name="productGridData" data={productGridData}>
-        <div className={className} data-ep-product-list-provider="">
-          {loadingContent}
-        </div>
-      </DataProvider>
-    );
-  }
-
-  if (error && displayProducts.length === 0) {
-    return (
-      <DataProvider name="productGridData" data={productGridData}>
-        <div className={className} data-ep-product-list-provider="">
-          {errorContent}
-        </div>
-      </DataProvider>
-    );
-  }
-
-  if (isEmpty) {
-    return (
-      <DataProvider name="productGridData" data={productGridData}>
-        <div className={className} data-ep-product-list-provider="">
-          {emptyContent}
-        </div>
-      </DataProvider>
-    );
-  }
+  const { content, showSample } = listContent({
+    isLoading,
+    productCount: displayProducts.length,
+    error,
+    sampleOnError,
+    isEmpty,
+    children,
+    loadingContent,
+    errorContent,
+    emptyContent,
+  });
 
   return (
-    <DataProvider name="productGridData" data={productGridData}>
+    <DataProvider
+      name="productGridData"
+      data={showSample ? MOCK_PRODUCT_GRID_DATA : productGridData}
+    >
       <div className={className} data-ep-product-list-provider="">
-        {children}
+        {content}
       </div>
     </DataProvider>
   );

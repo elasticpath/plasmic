@@ -12,6 +12,7 @@ import {
   resolveAccountPageOffset,
   collectAccountTokens,
   discoverPasswordProfileId,
+  readAuthenticationRealmId,
   findAccountToken,
   mintAccountTokens,
   toAccountRoster,
@@ -91,12 +92,62 @@ function profilesFetch(profiles: { id: string; name?: string }[]) {
 
 describe("discoverPasswordProfileId", () => {
   it("resolves the single profile on the store's realm", async () => {
-    globalThis.fetch = profilesFetch([
-      { id: "profile-1", name: "password" },
-    ]) as any;
+    const fetchImpl = profilesFetch([{ id: "profile-1", name: "password" }]);
+    globalThis.fetch = fetchImpl as any;
     await expect(
       discoverPasswordProfileId({ host: HOST, implicitToken: IMPLICIT })
     ).resolves.toBe("profile-1");
+    expect(fetchImpl.mock.calls.map(([url]) => String(url))).toEqual([
+      `${HOST}/v2/settings/account-authentication`,
+      `${HOST}/v2/authentication-realms/${REALM}/password-profiles`,
+    ]);
+  });
+
+  it("reads the authentication realm id from account-authentication settings", async () => {
+    globalThis.fetch = profilesFetch([]) as any;
+    await expect(
+      readAuthenticationRealmId({ host: HOST, implicitToken: IMPLICIT })
+    ).resolves.toBe(REALM);
+  });
+
+  it("keeps a rejected settings read as password_profile_unresolved 502", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      new Response(
+        JSON.stringify({ errors: [{ detail: "settings forbidden" }] }),
+        { status: 403, headers: { "Content-Type": "application/json" } }
+      )
+    ) as any;
+    await expect(
+      discoverPasswordProfileId({ host: HOST, implicitToken: IMPLICIT })
+    ).rejects.toMatchObject({
+      code: "password_profile_unresolved",
+      status: 502,
+      message:
+        "Elastic Path rejected the account-authentication settings read: settings forbidden",
+    });
+    await expect(
+      readAuthenticationRealmId({ host: HOST, implicitToken: IMPLICIT })
+    ).rejects.toMatchObject({
+      status: 403,
+      message: "settings forbidden",
+    });
+  });
+
+  it("keeps a settings body with no realm as password_profile_unresolved 502", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ data: {} }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    ) as any;
+    await expect(
+      discoverPasswordProfileId({ host: HOST, implicitToken: IMPLICIT })
+    ).rejects.toMatchObject({
+      code: "password_profile_unresolved",
+      status: 502,
+      message:
+        "Elastic Path's account-authentication settings name no authentication realm.",
+    });
   });
 
   it("names every candidate rather than guessing between them", async () => {

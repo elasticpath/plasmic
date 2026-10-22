@@ -28,6 +28,7 @@ import {
   MOCK_SHIPPING_ADDRESS_WITH_SUGGESTIONS,
 } from "../../utils/design-time-data";
 import { createLogger } from "../../utils/logger";
+import { useCanvasPreviewState } from "../../utils/canvas-preview-state";
 
 const log = createLogger("EPShippingAddressFields");
 
@@ -196,16 +197,11 @@ export const EPShippingAddressFields = React.forwardRef<
   EPShippingAddressFieldsActions,
   EPShippingAddressFieldsProps
 >(function EPShippingAddressFields(props, ref) {
-  const { children, className, showPhoneField = true, previewState = "auto" } = props;
+  const { children, className, showPhoneField = true, previewState: savedPreviewState } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const inEditor = !!usePlasmicCanvasContext();
 
-  // Pre-population priority:
-  // 1. checkoutData.shippingAddress (from EPCheckoutProvider — composable flow)
-  // 2. checkoutSession.shippingAddress (from EPCheckoutSessionProvider — session flow)
-  const checkoutData = useSelector("checkoutData") as
-    | { shippingAddress?: Record<string, string> | null }
-    | undefined;
   const checkoutSessionCtx = useSelector("checkoutSession") as
     | { session?: { shippingAddress?: Record<string, string> | null } }
     | undefined;
@@ -214,15 +210,10 @@ export const EPShippingAddressFields = React.forwardRef<
     | { addresses?: Array<Record<string, string | undefined>> | null }
     | undefined;
 
-  const effectiveAddress = useMemo(() => {
-    // Source 1: EPCheckoutProvider (composable flow)
-    const cd = checkoutData?.shippingAddress;
-    if (cd && (cd.firstName || cd.first_name || cd.line1 || cd.line_1)) {
-      return cd;
-    }
-    // Source 2: EPCheckoutSessionProvider (session flow)
-    return checkoutSessionCtx?.session?.shippingAddress ?? undefined;
-  }, [checkoutData?.shippingAddress, checkoutSessionCtx?.session?.shippingAddress]);
+  const effectiveAddress = useMemo(
+    () => checkoutSessionCtx?.session?.shippingAddress ?? undefined,
+    [checkoutSessionCtx?.session?.shippingAddress]
+  );
 
   const useMock =
     previewState !== "auto" ||
@@ -345,7 +336,7 @@ const EPShippingAddressFieldsRuntime = React.forwardRef<
       city: true, postcode: true, country: true, phone: true,
     });
     const valid = Object.values(errs).every((e) => e === null);
-    log.debug("Validation result", { valid, errors: errs } as Record<string, unknown>);
+    log.debug("Validation result", { valid, errors: errs });
     return valid;
   }, [values, country, showPhoneField]);
 
@@ -375,10 +366,10 @@ const EPShippingAddressFieldsRuntime = React.forwardRef<
     }
     const addr = accountAddresses.find((a) => a.id === addressId);
     if (!addr) {
-      log.debug("useAccountAddress: address not found", { addressId } as Record<string, unknown>);
+      log.debug("useAccountAddress: address not found", { addressId });
       return;
     }
-    log.debug("useAccountAddress: copying address", { addressId } as Record<string, unknown>);
+    log.debug("useAccountAddress: copying address", { addressId });
     // EP addresses have a single "name" field — split into firstName/lastName
     const nameParts = (addr.name ?? "").split(/\s+/);
     const fName = nameParts[0] ?? "";

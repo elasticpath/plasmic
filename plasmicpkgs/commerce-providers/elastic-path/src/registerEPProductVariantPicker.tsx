@@ -114,7 +114,7 @@ export function EPProductVariantPicker(props: EPProductVariantPickerProps) {
             url.searchParams.set('variant', String(selectedVariant.id));
             window.history.replaceState({}, '', url.toString());
           } catch (error) {
-            log.error("Failed to update URL", { error: error instanceof Error ? error.message : String(error) } as Record<string, unknown>);
+            log.error("Failed to update URL", { error: error instanceof Error ? error.message : String(error) });
           }
         }
       }

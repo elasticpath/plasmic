@@ -34,15 +34,40 @@ export interface EpSelectAccountRequest {
   accountId: string | null;
 }
 
-export interface EpSetCartRequest {
-  cartId: string;
-}
-
 /** The authenticated member's profile. `id` is always the session's member id. */
 export interface EpAccountMemberResult {
   id: string;
   name?: string;
   email?: string;
+}
+
+/** A profile edit. At least one field is required; omitted fields stay unchanged. */
+export type EpAccountMemberUpdateRequest =
+  | { name: string; email?: string }
+  | { email: string; name?: string };
+
+/** One saved address of the selected organisation. */
+export interface EpAccountAddress {
+  id: string;
+  name?: string;
+  first_name?: string;
+  last_name?: string;
+  company_name?: string;
+  phone_number?: string;
+  instructions?: string;
+  line_1?: string;
+  line_2?: string;
+  city?: string;
+  county?: string;
+  region?: string;
+  postcode?: string;
+  country?: string;
+}
+
+/** The selected organisation's saved addresses. `total` is `addresses.length`. */
+export interface EpAccountAddressResult {
+  addresses: EpAccountAddress[];
+  total: number;
 }
 
 /**
@@ -53,7 +78,6 @@ export interface EpIdentityOperations {
   getSession: { request: void; response: EpSessionEnvelope | null };
   signInAnonymously: { request: void; response: EpSessionEnvelope };
   refresh: { request: void; response: EpSessionEnvelope };
-  setCart: { request: EpSetCartRequest; response: EpSessionEnvelope };
   login: { request: EpAccountLoginRequest; response: EpAccountLoginResult };
   register: {
     request: EpAccountRegisterRequest;
@@ -70,6 +94,11 @@ export interface EpIdentityOperations {
   rollAccount: { request: void; response: EpSessionEnvelope };
   logout: { request: void; response: EpSessionEnvelope };
   member: { request: void; response: EpAccountMemberResult };
+  accountAddresses: { request: void; response: EpAccountAddressResult };
+  updateMember: {
+    request: EpAccountMemberUpdateRequest;
+    response: EpAccountMemberResult;
+  };
 }
 
 export type EpIdentityOperationName = keyof EpIdentityOperations;
@@ -89,7 +118,6 @@ export const EP_IDENTITY_ROUTES: {
   getSession: { path: "/get-session", method: "GET" },
   signInAnonymously: { path: "/ep/anonymous", method: "POST" },
   refresh: { path: "/ep/refresh", method: "POST" },
-  setCart: { path: "/ep/cart", method: "POST" },
   login: { path: "/ep/account/login", method: "POST" },
   register: { path: "/ep/account/register", method: "POST" },
   roster: { path: "/ep/account/roster", method: "POST" },
@@ -97,6 +125,8 @@ export const EP_IDENTITY_ROUTES: {
   rollAccount: { path: "/ep/account/roll", method: "POST" },
   logout: { path: "/ep/account/logout", method: "POST" },
   member: { path: "/ep/account/member", method: "POST" },
+  accountAddresses: { path: "/ep/account/addresses", method: "POST" },
+  updateMember: { path: "/ep/account/member/update", method: "POST" },
 };
 
 export const EP_IDENTITY_OPERATION_NAMES = Object.keys(

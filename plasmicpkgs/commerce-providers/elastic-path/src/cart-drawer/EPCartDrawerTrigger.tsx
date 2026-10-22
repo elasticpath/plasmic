@@ -10,6 +10,7 @@ import { useEpCart } from "../cart-provider/use-ep-cart";
 import { Registerable } from "../registerable";
 import { MOCK_CART_LINE_ITEMS } from "../utils/design-time-data";
 import { useDrawerOpen, setDrawerOpen } from "./CartDrawerContext";
+import { useCanvasPreviewState } from "../utils/canvas-preview-state";
 
 type PreviewState = "auto" | "withItems" | "empty";
 
@@ -60,8 +61,9 @@ export function EPCartDrawerTrigger(props: EPCartDrawerTriggerProps) {
     children,
     className,
     action = "toggle",
-    previewState = "auto",
+    previewState: savedPreviewState,
   } = props;
+  const previewState = useCanvasPreviewState(savedPreviewState);
 
   const { cart } = useEpCart();
   const inEditor = !!usePlasmicCanvasContext();

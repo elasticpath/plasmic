@@ -154,6 +154,7 @@ describe("handleCalculateShipping", () => {
         createMockCtx(makeSession())
       );
       expect(res.status).toBe(200);
+      expect(JSON.stringify(res.body)).not.toContain("cart-abc");
       expect((res.body as any).success).toBe(true);
     });
 
