@@ -15,7 +15,7 @@ import { default as React_2 } from 'react';
 import registerComponent from '@plasmicapp/host/registerComponent';
 import registerGlobalContext from '@plasmicapp/host/registerGlobalContext';
 
-// @public
+// @public (undocumented)
 export type AccountAddressBookContext = {
     status: AccountAddressBookStatus;
     addresses: EpAccountAddress[];
@@ -32,10 +32,10 @@ export type AccountAddressBookError = {
 // @public
 export type AccountAddressBookStatus = "loading" | "ready" | "empty" | "error";
 
-// @public
+// @public (undocumented)
 export type AccountAddressFieldName = "name" | "first_name" | "last_name" | "company_name" | "phone_number" | "instructions" | "line_1" | "line_2" | "city" | "county" | "region" | "postcode" | "country";
 
-// @public
+// @public (undocumented)
 export type AccountAddressPreviewState = "auto" | "withAddresses" | "empty" | "loading" | "error" | "noSelectedAccount" | "lapsed";
 
 // @public (undocumented)
