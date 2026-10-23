@@ -20,7 +20,9 @@
         "types": "./dist/server.d.ts",
         "default": "./dist/server.js"
       }
-    }
+    },
+    "./exports-map.json": "./dist/exports-map.json",
+    "./*": "./dist/exports/*.js"
   },
   "typesVersions": {
     "*": {
@@ -32,12 +34,21 @@
   "files": [
     "dist"
   ],
+  "sideEffects": [
+    "./src/**",
+    "./dist/index.js",
+    "./dist/index.esm.js",
+    "./dist/server.js",
+    "./dist/server.mjs",
+    "./dist/esm/cart-provider/swr-cart-cache.js"
+  ],
   "scripts": {
-    "build": "rm -rf dist && pnpm build:types && pnpm build:index && pnpm build:server",
+    "build": "rm -rf dist && pnpm build:types && pnpm build:index && pnpm build:server && pnpm build:modules",
     "build:types": "tsc",
     "build:index": "node ../../../build.mjs ./src/index.tsx --use-client",
     "build:server": "node ../../../build.mjs ./src/server.ts --mjs",
-    "start": "tsc && (tsc --watch --preserveWatchOutput & node ../../../build.mjs ./src/index.tsx --use-client --watch & node ../../../build.mjs ./src/server.ts --mjs --watch & wait)",
+    "build:modules": "node scripts/build-modules.mjs",
+    "start": "tsc && (tsc --watch --preserveWatchOutput & node ../../../build.mjs ./src/index.tsx --use-client --watch & node ../../../build.mjs ./src/server.ts --mjs --watch & node scripts/build-modules.mjs --watch & wait)",
     "test": "NODE_OPTIONS=--experimental-vm-modules TEST_CWD=`pwd` pnpm -w test --passWithNoTests && pnpm test:vitest",
     "test:vitest": "vitest run",
     "prepublishOnly": "npm run build && npm run verify:package",
