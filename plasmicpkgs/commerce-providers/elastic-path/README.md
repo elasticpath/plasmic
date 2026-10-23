@@ -1103,6 +1103,7 @@ Then bind the `EPProductProvider` component's advanced `product` prop to `$q.pro
 - **EPSearchInfiniteHits** — Search results with load more, appended in place
 - **EPRefinementList** / **EPHierarchicalMenu** / **EPRangeFilter** — Faceted filtering. In Studio, the attribute is picked from a list of the fields the store's catalog search can filter on, read through the design-time route. A filter with no attribute set renders nothing on a page and adds nothing to the search. On the canvas it shows "Choose a field" and names the prop to set
 - **EPSearchStats** / **EPSearchSortBy** — Search metadata
+- **EPSearchTypeahead** — Search box for a site header that lists a few products as the shopper types. Needs no EP Catalog Search Provider and loads no InstantSearch. See [A search box in the site header](COMPONENTS.md#a-search-box-in-the-site-header)
 
 ## Styling contract (catalog-search components)
 
@@ -1129,6 +1130,7 @@ The contract that every catalog-search component honours:
    | `EPSearchPagination` | the wrapper `<div data-ep-search-pagination>` |
    | `EPSearchStats` | the wrapper `<div data-ep-search-stats>` |
    | `EPSearchSortBy` | the wrapper `<div data-ep-search-sort-by>` |
+   | `EPSearchTypeahead` | the `<form data-ep-search-typeahead>`; the dropdown takes **Panel Style** and each hit **Hit Style** |
 
 2. **No inline `style` for appearance properties.** The components never set
    `border`, `border-radius`, `padding`, `font-*`, `color`, `background`, or

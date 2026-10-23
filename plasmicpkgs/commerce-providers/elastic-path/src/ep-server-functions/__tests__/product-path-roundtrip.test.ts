@@ -29,7 +29,7 @@ const { epGetProduct } = require("../getProduct");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { withEpSession } = require("../session-context");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { hitToProduct } = require("../../catalog-search/EPSearchHits");
+const { hitToProduct } = require("../../catalog-search/search-hit");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { epGetProductPage } = require("../getProductPage");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
