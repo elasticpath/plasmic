@@ -16,6 +16,29 @@ import registerComponent from '@plasmicapp/host/registerComponent';
 import registerGlobalContext from '@plasmicapp/host/registerGlobalContext';
 
 // @public (undocumented)
+export type AccountAddressBookContext = {
+    status: AccountAddressBookStatus;
+    addresses: EpAccountAddress[];
+    total: number;
+    error: AccountAddressBookError | null;
+};
+
+// @public (undocumented)
+export type AccountAddressBookError = {
+    code: string;
+    message: string;
+};
+
+// @public
+export type AccountAddressBookStatus = "loading" | "ready" | "empty" | "error";
+
+// @public (undocumented)
+export type AccountAddressFieldName = "name" | "first_name" | "last_name" | "company_name" | "phone_number" | "instructions" | "line_1" | "line_2" | "city" | "county" | "region" | "postcode" | "country";
+
+// @public (undocumented)
+export type AccountAddressPreviewState = "auto" | "withAddresses" | "empty" | "loading" | "error" | "noSelectedAccount" | "lapsed";
+
+// @public (undocumented)
 export type AccountContext = {
     state: AccountState;
     accountMember: AccountMember | null;
@@ -498,6 +521,24 @@ export interface EpAccountAddress {
     // (undocumented)
     region?: string;
 }
+
+// @public (undocumented)
+export function EPAccountAddressField(props: EPAccountAddressFieldProps): React_2.JSX.Element | null;
+
+// @public (undocumented)
+export const epAccountAddressFieldMeta: CodeComponentMeta<EPAccountAddressFieldProps>;
+
+// @public (undocumented)
+export function EPAccountAddressList(props: EPAccountAddressListProps): React_2.JSX.Element | null;
+
+// @public (undocumented)
+export const epAccountAddressListMeta: CodeComponentMeta<EPAccountAddressListProps>;
+
+// @public (undocumented)
+export function EPAccountAddressProvider(props: EPAccountAddressProviderProps): React_2.JSX.Element;
+
+// @public (undocumented)
+export const epAccountAddressProviderMeta: CodeComponentMeta<EPAccountAddressProviderProps>;
 
 // @public
 export interface EpAccountAddressResult {
@@ -1726,6 +1767,15 @@ export function registerAll(loader?: Registerable): void;
 
 // @public (undocumented)
 export function registerCommerceProvider(loader?: Registerable, customCommerceProviderMeta?: any): void;
+
+// @public (undocumented)
+export function registerEPAccountAddressField(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountAddressFieldProps>): void;
+
+// @public (undocumented)
+export function registerEPAccountAddressList(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountAddressListProps>): void;
+
+// @public (undocumented)
+export function registerEPAccountAddressProvider(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountAddressProviderProps>): void;
 
 // @public (undocumented)
 export function registerEPAccountField(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountFieldProps>): void;

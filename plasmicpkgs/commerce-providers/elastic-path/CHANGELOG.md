@@ -213,6 +213,27 @@ token, and returns `{ addresses, total }`. Each address is an
 answers `no_selected_account` and does not call Elastic Path. A rejection is
 `account_addresses_read_failed`.
 
+`EP Account Address Provider`, `EP Account Address List`, and `EP Account
+Address Field` display that result. The provider sits inside EP Account
+Provider, calls `identity.accountAddresses()` with no arguments when an
+organisation is selected, and publishes `$ctx.accountAddresses` (`status`,
+`addresses`, `total`, `error`). It does not take an account id, token,
+filter, or path, and it has no reload action. A selected account with rows
+is `ready`; an empty result is `empty`. No selected organisation is
+`no_selected_account`, a lapsed organisation is `account_lapsed`, and no
+account member is `no_account_member`. Those three do not call the read.
+`addresses` is empty unless `status` is `ready`. While the account
+provider is loading, including a logout or a reload of the same
+organisation, the list is cleared and the read is not repeated. If that
+reload settles on the same selected organisation, the committed book is
+shown again without another read. An account switch clears the previous
+rows on that render and reads the new organisation. The list repeats its
+children for each ready address and publishes `$ctx.currentAccountAddress`
+and `$ctx.currentAccountAddressIndex` on that row. The field displays one
+contract field; a missing value is blank, and `id` is not a field choice.
+Preview State is Studio only. `auto` shows two sample addresses, and the
+canvas does not call `identity.accountAddresses()`.
+
 The Elastic Path Provider's **Add item to cart** global action takes an
 optional **Location** after **Quantity**. On a multi-location store, a product
 stocked only at named locations was refused with `insufficient_stock`

@@ -43,6 +43,21 @@ export {
   registerEPAccountField,
   epAccountFieldMeta,
 } from "./EPAccountField";
+export {
+  EPAccountAddressProvider,
+  registerEPAccountAddressProvider,
+  epAccountAddressProviderMeta,
+} from "./EPAccountAddressProvider";
+export {
+  EPAccountAddressList,
+  registerEPAccountAddressList,
+  epAccountAddressListMeta,
+} from "./EPAccountAddressList";
+export {
+  EPAccountAddressField,
+  registerEPAccountAddressField,
+  epAccountAddressFieldMeta,
+} from "./EPAccountAddressField";
 export type {
   AccountContext,
   AccountState,
@@ -52,4 +67,9 @@ export type {
   AccountRoster,
   AccountGateWhen,
   AccountFieldName,
+  AccountAddressBookStatus,
+  AccountAddressBookError,
+  AccountAddressBookContext,
+  AccountAddressPreviewState,
+  AccountAddressFieldName,
 } from "./types";
