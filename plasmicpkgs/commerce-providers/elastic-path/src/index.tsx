@@ -81,6 +81,9 @@ import { registerEPAccountRegistrationFormProvider } from "./account/EPAccountRe
 import { registerEPAccountRegistrationField } from "./account/EPAccountRegistrationField";
 import { registerEPAccountProfileFormProvider } from "./account/EPAccountProfileFormProvider";
 import { registerEPAccountProfileField } from "./account/EPAccountProfileField";
+import { registerEPAccountAddressField } from "./account/EPAccountAddressField";
+import { registerEPAccountAddressList } from "./account/EPAccountAddressList";
+import { registerEPAccountAddressProvider } from "./account/EPAccountAddressProvider";
 import { Registerable } from "./registerable";
 
 export * from "./registerCommerceProvider";
@@ -273,6 +276,9 @@ export function registerAll(loader?: Registerable) {
   registerEPAccountRegistrationFormProvider(loader);
   registerEPAccountProfileField(loader);
   registerEPAccountProfileFormProvider(loader);
+  registerEPAccountAddressField(loader);
+  registerEPAccountAddressList(loader);
+  registerEPAccountAddressProvider(loader);
 
   // Checkout
   registerEPCheckout(loader);
