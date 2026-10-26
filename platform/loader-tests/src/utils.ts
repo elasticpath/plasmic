@@ -3,6 +3,7 @@ import fs from "fs";
 import fetch from "node-fetch";
 import path from "path";
 import { getEnvVar } from "./env";
+import { PostgresTestDatabase } from "./postgres-test-db";
 
 export interface TestOpts {
   projectId: string;
@@ -27,7 +28,9 @@ export function runCommand(
   if (!opts.env) {
     opts.env = {};
   }
-  console.log("EXEC", command, opts);
+  const label = `${command} (in ${opts.dir})`;
+  const startedAt = Date.now();
+  console.log("EXEC", label);
   const result = execa.command(command, {
     cwd: opts.dir,
     env: {
@@ -42,15 +45,18 @@ export function runCommand(
   });
   // Need to make sure we are returning the original ProcessPromise, so just attach these logs to the end without returning a new promise.
   if (!opts.noExit) {
+    const elapsed = () => `${Math.round((Date.now() - startedAt) / 1000)}s`;
     result.then(
       (outcome) =>
         console.log(
-          `EXEC resolved with code ${outcome?.exitCode}:`,
-          command,
-          opts
+          `EXEC resolved with code ${outcome?.exitCode} in ${elapsed()}:`,
+          label
         ),
       (reason) =>
-        console.log(`EXEC rejected with reason ${reason}:`, command, opts)
+        console.log(
+          `EXEC rejected in ${elapsed()} with reason ${reason}:`,
+          label
+        )
     );
   }
   return result;
@@ -144,6 +150,32 @@ export async function getApiToken() {
   return result.token.token;
 }
 
+export interface DataSourceReplacement {
+  fakeSourceId: string;
+}
+
+export async function createPostgresDataSource(
+  name: string,
+  connection: PostgresTestDatabase["connection"]
+): Promise<string> {
+  const { id } = await apiRequestWithLogin("POST", "/data-source/sources", {
+    source: "postgres",
+    name,
+    credentials: { password: connection.password },
+    settings: {
+      host: connection.host,
+      port: connection.port,
+      name: connection.name,
+      user: connection.user,
+    },
+  });
+  return id;
+}
+
+export async function removeDataSource(sourceId: string) {
+  await apiRequestWithLogin("DELETE", `/data-source/sources/${sourceId}`);
+}
+
 export async function uploadProject(
   fileName: string,
   projectName: string,
@@ -151,9 +183,7 @@ export async function uploadProject(
     bundleTransformation?: (value: string) => string;
     keepProjectIdsAndNames?: boolean;
     publish?: boolean;
-    dataSourceReplacement?: {
-      type: string;
-    };
+    dataSourceReplacement?: DataSourceReplacement;
   }
 ) {
   const {

@@ -15,7 +15,6 @@ import {
 import jsStringEscape from "js-string-escape";
 import camelCase from "lodash/camelCase";
 import head from "lodash/head";
-import memoize from "lodash/memoize";
 import sortBy from "lodash/sortBy";
 import path from "path";
 import { regex } from "regex";
@@ -45,12 +44,30 @@ export function ensureJsIdentifier(str: string) {
  * By default, the string will be camelCased.
  * Optionally, skip camelCasing or set capitalization.
  */
-export const toJsIdentifier = memoize(
-  toJsIdentifier_,
-  (...args: Parameters<typeof toJsIdentifier_>) => {
-    return `${args[0]}_${args[1]?.capitalizeFirst}_${args[1]?.camelCase}`;
-  }
+// One cache per distinct opts behavior, so the input string is the only key.
+const toJsIdentifierCaches = Array.from(
+  { length: 6 },
+  () => new Map<string, JsIdentifier>(),
 );
+export function toJsIdentifier(
+  ...args: Parameters<typeof toJsIdentifier_>
+): JsIdentifier {
+  const [original, opts] = args;
+  const capitalize =
+    opts?.capitalizeFirst === true
+      ? 1
+      : opts?.capitalizeFirst === false
+        ? 2
+        : 0;
+  const cache =
+    toJsIdentifierCaches[capitalize * 2 + (opts?.camelCase === false ? 1 : 0)];
+  let res = cache.get(original);
+  if (res === undefined) {
+    res = toJsIdentifier_(original, opts);
+    cache.set(original, res);
+  }
+  return res;
+}
 
 /**
  * Matches an invalid JS identifier character and following mark characters.
@@ -67,7 +84,7 @@ function toJsIdentifier_(
   opts?: {
     capitalizeFirst?: boolean;
     camelCase?: boolean;
-  }
+  },
 ): JsIdentifier {
   let str = original;
 
@@ -93,14 +110,14 @@ function toJsIdentifier_(
 
   assert(
     isValidJsIdentifier(str),
-    `Couldn't transform "${original}" into a valid JS identifier.`
+    `Couldn't transform "${original}" into a valid JS identifier.`,
   );
 
   return str;
 }
 
 export function sortedDict(
-  collection: { [key: string]: string } | [string, string][]
+  collection: { [key: string]: string } | [string, string][],
 ): string {
   const pairs = Array.isArray(collection)
     ? collection
@@ -128,7 +145,7 @@ export function paramToVarName(
   param: DeepReadonly<Param>,
   opts?: {
     useControlledProp?: boolean;
-  }
+  },
 ) {
   const paramName = param.variable.name;
   if (isCodeComponent(component)) {

@@ -5,18 +5,9 @@ import { Reaction } from "mobx";
 import { computedFn } from "mobx-utils";
 import type React from "react";
 
-/**
- * We use class to make it easier to detect in heap snapshots by name
- */
-class ObjectToBeRetainedByReact {}
-
-function objectToBeRetainedByReactFactory() {
-  return new ObjectToBeRetainedByReact();
-}
-
 export const mkCanvasObserver = computedFn(
   (sub, vc) => (props: { children: () => React.ReactElement | null }) =>
-    mkUseCanvasObserver(sub, vc)(props.children)
+    mkUseCanvasObserver(sub, vc)(props.children),
 );
 
 export const mkUseCanvasObserver = computedFn(
@@ -33,25 +24,21 @@ export const mkUseCanvasObserver = computedFn(
     function useObserver<T>(
       fn: () => T,
       baseComponentName: string = "observed",
-      onUpdateCallback?: () => void
+      onUpdateCallback?: () => void,
     ): T {
-      const [objectRetainedByReact] = sub.React.useState(
-        objectToBeRetainedByReactFactory
-      );
-
       const forceUpdate = useCanvasForceUpdate(sub);
 
       const rerenderOnEval = sub.React.useCallback(
         () => vc.addRerenderObserver(forceUpdate),
-        [forceUpdate]
+        [forceUpdate],
       );
       const onUpdate = onUpdateCallback ?? rerenderOnEval;
 
-      // StrictMode/ConcurrentMode/Suspense may mean that our component is
-      // rendered and abandoned multiple times, so we need to track leaked
-      // Reactions.
+      // StrictMode/ConcurrentMode/Suspense/errors may mean that our component
+      // is rendered and abandoned multiple times. The Reactions of abandoned
+      // renders are disposed by `trackUncommittedReaction`.
       const reactionTrackingRef = sub.React.useRef<IReactionTracking | null>(
-        null
+        null,
       );
 
       if (!reactionTrackingRef.current) {
@@ -74,38 +61,37 @@ export const mkUseCanvasObserver = computedFn(
               // when (and if) useEffect() arrives.
               trackingData.changedBeforeMount = true;
             }
-          }
+          },
         );
         vc.canvasObservers.add(newReaction);
 
-        const trackingData = addReactionToTrack(
-          reactionTrackingRef,
-          newReaction,
-          objectRetainedByReact
-        );
+        const trackingData: IReactionTracking = {
+          reaction: newReaction,
+          mounted: false,
+          changedBeforeMount: false,
+        };
+        reactionTrackingRef.current = trackingData;
+        trackUncommittedReaction(vc, reactionTrackingRef);
       }
 
       const { reaction } = reactionTrackingRef.current!;
 
       sub.React.useEffect(() => {
         // Called on first mount only
-        recordReactionAsCommitted(reactionTrackingRef);
-
         if (reactionTrackingRef.current) {
           // Great. We've already got our reaction from our render;
           // all we need to do is to record that it's now mounted,
           // to allow future observable changes to trigger re-renders
           reactionTrackingRef.current.mounted = true;
+          untrackCommittedReaction(vc, reactionTrackingRef);
           // Got a change before first mount, force an update
           if (reactionTrackingRef.current.changedBeforeMount) {
             reactionTrackingRef.current.changedBeforeMount = false;
             onUpdate();
           }
         } else {
-          // The reaction we set up in our render has been disposed.
-          // This can be due to bad timings of renderings, e.g. our
-          // component was paused for a _very_ long time, and our
-          // reaction got cleaned up
+          // The reaction we set up in our render has been disposed, e.g.
+          // StrictMode ran our effect cleanup before re-running the effect
 
           // Re-create the reaction
           reactionTrackingRef.current = {
@@ -114,11 +100,10 @@ export const mkUseCanvasObserver = computedFn(
               () => {
                 // We've definitely already been mounted at this point
                 onUpdate();
-              }
+              },
             ),
             mounted: true,
             changedBeforeMount: false,
-            cleanAt: Infinity,
           };
           vc.canvasObservers.add(reactionTrackingRef.current.reaction);
 
@@ -153,7 +138,7 @@ export const mkUseCanvasObserver = computedFn(
       }
 
       return rendering;
-    }
+    },
 );
 
 function observerComponentNameFor(baseComponentName: string) {
@@ -164,69 +149,94 @@ interface IReactionTracking {
   reaction: Reaction;
   mounted: boolean;
   changedBeforeMount: boolean;
-  cleanAt: number;
-  finalizationRegistryCleanupToken?: number;
 }
 
-const cleanupTokenToReactionTrackingMap = new Map<number, IReactionTracking>();
-
-let globalCleanupTokensCounter = 1;
-
-const registry = new FinalizationRegistry(function cleanupFunction(
-  token: number
-) {
-  const trackedReaction = cleanupTokenToReactionTrackingMap.get(token);
-  if (trackedReaction) {
-    if (!trackedReaction.reaction.isDisposed) {
-      trackedReaction.reaction.dispose();
-    }
-    cleanupTokenToReactionTrackingMap.delete(token);
-  }
-});
-
-function addReactionToTrack(
-  reactionTrackingRef: React.MutableRefObject<IReactionTracking | null>,
-  reaction: Reaction,
-  objectRetainedByReact: object
-) {
-  const token = globalCleanupTokensCounter++;
-
-  registry.register(objectRetainedByReact, token, reactionTrackingRef);
-  reactionTrackingRef.current = createTrackingData(reaction);
-  reactionTrackingRef.current.finalizationRegistryCleanupToken = token;
-  cleanupTokenToReactionTrackingMap.set(token, reactionTrackingRef.current);
-
-  return reactionTrackingRef.current;
-}
-
-function recordReactionAsCommitted(
-  reactionRef: React.MutableRefObject<IReactionTracking | null>
-) {
-  registry.unregister(reactionRef);
-
-  if (
-    reactionRef.current &&
-    reactionRef.current.finalizationRegistryCleanupToken
-  ) {
-    cleanupTokenToReactionTrackingMap.delete(
-      reactionRef.current.finalizationRegistryCleanupToken
-    );
-  }
-}
-
-function createTrackingData(reaction: Reaction): IReactionTracking {
-  return {
-    reaction,
-    mounted: false,
-    changedBeforeMount: false,
-    cleanAt: Date.now() + CLEANUP_LEAKED_REACTIONS_AFTER_MILLIS,
-  };
-}
+type ReactionTrackingRef = React.MutableRefObject<IReactionTracking | null>;
 
 /**
- * The minimum time before we'll clean up a Reaction created in a render
- * for a component that hasn't managed to run its effects. This needs to
- * be big enough to ensure that a component won't turn up and have its
- * effects run without being re-rendered.
+ * How long a render may take to commit before its Reaction is disposed. This
+ * needs to be long enough that a component won't have its effects run
+ * without being rendered again.
  */
-const CLEANUP_LEAKED_REACTIONS_AFTER_MILLIS = 10000;
+const CLEANUP_UNCOMMITTED_REACTIONS_AFTER_MS = 10000;
+
+/**
+ * Per ViewCtx, the Reactions of renders that haven't committed yet. A render
+ * that never commits never runs its effect cleanup, so this is what disposes
+ * its Reaction.
+ */
+const vcToUncommitted = new WeakMap<ViewCtx, UncommittedReactions>();
+
+interface UncommittedReactions {
+  /** When to dispose each ref's Reaction */
+  reactions: Map<ReactionTrackingRef, number>;
+  sweepTimeout: ReturnType<typeof setTimeout> | undefined;
+}
+
+function trackUncommittedReaction(vc: ViewCtx, ref: ReactionTrackingRef) {
+  let uncommitted = vcToUncommitted.get(vc);
+  if (!uncommitted) {
+    uncommitted = { reactions: new Map(), sweepTimeout: undefined };
+    vcToUncommitted.set(vc, uncommitted);
+  }
+  uncommitted.reactions.set(
+    ref,
+    Date.now() + CLEANUP_UNCOMMITTED_REACTIONS_AFTER_MS,
+  );
+  scheduleSweep(vc, uncommitted);
+}
+
+function untrackCommittedReaction(vc: ViewCtx, ref: ReactionTrackingRef) {
+  const uncommitted = vcToUncommitted.get(vc);
+  if (!uncommitted) {
+    return;
+  }
+  uncommitted.reactions.delete(ref);
+  if (uncommitted.reactions.size === 0) {
+    clearTimeout(uncommitted.sweepTimeout);
+    uncommitted.sweepTimeout = undefined;
+  }
+}
+
+function scheduleSweep(vc: ViewCtx, uncommitted: UncommittedReactions) {
+  if (uncommitted.sweepTimeout !== undefined) {
+    return;
+  }
+  // The pending timeout must not keep a disposed frame alive, so it only
+  // holds the ViewCtx weakly. If the ViewCtx is collected, so are its
+  // uncommitted Reactions.
+  const vcRef = new WeakRef(vc);
+  uncommitted.sweepTimeout = setTimeout(
+    () => sweepUncommittedReactions(vcRef),
+    CLEANUP_UNCOMMITTED_REACTIONS_AFTER_MS,
+  );
+}
+
+function sweepUncommittedReactions(vcRef: WeakRef<ViewCtx>) {
+  const vc = vcRef.deref();
+  const uncommitted = vc && vcToUncommitted.get(vc);
+  if (!vc || !uncommitted) {
+    return;
+  }
+  uncommitted.sweepTimeout = undefined;
+  const now = Date.now();
+  for (const [ref, cleanAt] of uncommitted.reactions) {
+    if (cleanAt > now && !vc.isDisposed) {
+      continue;
+    }
+    uncommitted.reactions.delete(ref);
+    const tracking = ref.current;
+    if (tracking && !tracking.mounted) {
+      vc.canvasObservers.delete(tracking.reaction);
+      if (!tracking.reaction.isDisposed) {
+        tracking.reaction.dispose();
+      }
+      // If the render does commit after all, its effect re-creates the
+      // Reaction
+      ref.current = null;
+    }
+  }
+  if (uncommitted.reactions.size > 0) {
+    scheduleSweep(vc, uncommitted);
+  }
+}

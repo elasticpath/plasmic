@@ -21,6 +21,7 @@ import {
   DefaultWorkspaceSectionProps,
   PlasmicWorkspaceSection,
 } from "@/wab/client/plasmic/plasmic_kit_dashboard/PlasmicWorkspaceSection";
+import { useHistory } from "@/wab/client/route/HistoryProvider";
 import { InlineEdit } from "@/wab/commons/components/InlineEdit";
 import { OnClickAway } from "@/wab/commons/components/OnClickAway";
 import { Stated } from "@/wab/commons/components/Stated";
@@ -41,10 +42,11 @@ import { HTMLElementRefOf } from "@plasmicapp/react-web";
 import * as _ from "lodash";
 import { trimStart } from "lodash";
 import * as React from "react";
-import { useHistory } from "react-router-dom";
 
-interface WorkspaceSectionProps
-  extends Omit<DefaultWorkspaceSectionProps, "databases"> {
+interface WorkspaceSectionProps extends Omit<
+  DefaultWorkspaceSectionProps,
+  "databases"
+> {
   workspace: ApiWorkspace;
   projects: ApiProject[];
   databases: ApiCmsDatabase[];
@@ -65,14 +67,14 @@ function WorkspaceSection_(
     filterProps,
     ...rest
   }: WorkspaceSectionProps,
-  ref: HTMLElementRefOf<"div">
+  ref: HTMLElementRefOf<"div">,
 ) {
   const appCtx = useAppCtx();
 
   const workspaceAccessLevel = getAccessLevelToResource(
     { type: "workspace", resource: workspace },
     appCtx.selfInfo,
-    perms
+    perms,
   );
 
   const teamPerms = filterDirectResourcePerms(perms, {
@@ -86,15 +88,15 @@ function WorkspaceSection_(
 
   const numMembers = _.uniq(
     filterMapTruthy([...teamPerms, ...workspacePerms], (p) =>
-      p.user ? p.user.id : p.email
-    )
+      p.user ? p.user.id : p.email,
+    ),
   ).length;
 
   const history = useHistory();
 
   const [showNewProjectModal, setShowNewProjectModal] = React.useState(false);
   const hashParams = new URLSearchParams(
-    trimStart(history.location.hash ?? "", "#")
+    trimStart(history.location.hash ?? "", "#"),
   );
   const tabFromHash = hashParams.get("tab") ?? "";
   const openTab = ["projects", "dataSources"].includes(tabFromHash)
@@ -110,7 +112,7 @@ function WorkspaceSection_(
   const [asyncData, fetchAsyncData] = useAsyncFnStrict(async () => {
     const dataSources = ensure(
       asOne(await appCtx.api.listDataSources(workspace.id)),
-      `Should have found a single team (possibly with an empty list of ${DATA_SOURCE_PLURAL_LOWER})`
+      `Should have found a single team (possibly with an empty list of ${DATA_SOURCE_PLURAL_LOWER})`,
     ).dataSources;
 
     const readOnly =
@@ -118,8 +120,8 @@ function WorkspaceSection_(
         getAccessLevelToResource(
           { type: "workspace", resource: workspace },
           appCtx.selfInfo,
-          perms
-        )
+          perms,
+        ),
       ) < accessLevelRank("editor");
 
     return {
@@ -170,8 +172,8 @@ function WorkspaceSection_(
                                       workspace.id,
                                       {
                                         name,
-                                      }
-                                    )
+                                      },
+                                    ),
                                 );
                                 await onUpdate();
                                 await appCtx.reloadAppCtx();
@@ -193,7 +195,7 @@ function WorkspaceSection_(
                     {...{
                       name: matcher.boldSnippets(
                         workspace.name,
-                        "yellow-snippet"
+                        "yellow-snippet",
                       ),
                       onEdit: onStart,
                     }}

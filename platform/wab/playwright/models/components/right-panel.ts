@@ -1,4 +1,4 @@
-import { FrameLocator, Locator, Page, expect, test } from "playwright/test";
+import { FrameLocator, Locator, Page, expect, test } from "@playwright/test";
 import { modifierKey } from "../../utils/key-utils";
 import { updateFormValuesInLiveMode } from "../../utils/studio-utils";
 import { BaseModel } from "../BaseModel";
@@ -6,61 +6,61 @@ import { BaseModel } from "../BaseModel";
 export class RightPanel extends BaseModel {
   readonly frame: FrameLocator = this.studioFrame;
   readonly addInteractionButton: Locator = this.frame.locator(
-    '[data-test-id="add-interaction"]'
+    '[data-test-id="add-interaction"]',
   );
   readonly interactionsSearchInput: Locator = this.frame.locator(
-    "#interactions-select"
+    "#interactions-select",
   );
   readonly actionsDropdownButton: Locator = this.frame.locator(
-    '[data-plasmic-prop="action-name"]'
+    '[data-plasmic-prop="action-name"]',
   );
   readonly addServerQueryButton: Locator = this.frame.locator(
-    '[id="server-queries-add-btn"]'
+    '[id="server-queries-add-btn"]',
   );
   readonly serverQueriesSection: Locator = this.frame.locator(
-    '[id="server-queries-section"]'
+    '[id="server-queries-section"]',
   );
   readonly serverQueriesSectionContent: Locator =
     this.serverQueriesSection.locator(`[class*="SidebarSection__Body"]`);
   readonly stateButton: Locator = this.frame.locator(
-    '[data-plasmic-prop="variable"]'
+    '[data-plasmic-prop="variable"]',
   );
-  readonly windowSaveButton: Locator = this.frame
-    .locator('[data-test-id="data-picker"]')
-    .locator("text=Save");
+  readonly windowSaveButton: Locator = this.frame.locator(
+    "#data-picker-save-btn",
+  );
   readonly operationDropdownButton: Locator = this.frame.locator(
-    '[data-plasmic-prop="operation"]'
+    '[data-plasmic-prop="operation"]',
   );
   readonly valueButton: Locator = this.frame.locator(
-    '[data-plasmic-prop="value"]'
+    '[data-plasmic-prop="value"]',
   );
   readonly valueCodeInput: Locator = this.frame.locator(
-    "div.react-monaco-editor-container"
+    "div.react-monaco-editor-container",
   );
   readonly closeSidebarButton: Locator = this.frame.locator(
-    '[data-test-id="close-sidebar-modal"]'
+    '[data-test-id="close-sidebar-modal"]',
   );
   readonly sidebarModal: Locator = this.frame.locator('[id="sidebar-modal"]');
   readonly designTabButton: Locator = this.frame.locator(
-    'button[data-test-tabkey="style"]'
+    'button[data-test-tabkey="style"]',
   );
   readonly componentNameInput: Locator = this.frame.locator(
-    'input[data-test-class="simple-text-box"]'
+    'input[data-test-class="simple-text-box"]',
   );
   readonly componentNameSubmit: Locator = this.frame.locator(
-    '[data-test-id="prompt-submit"]'
+    '[data-test-id="prompt-submit"]',
   );
   readonly zIndexInput: Locator = this.frame.locator(
-    'input[data-plasmic-prop="z-index"]'
+    'input[data-plasmic-prop="z-index"]',
   );
   readonly textContentButton: Locator = this.frame.locator(
-    "button.property-editor.text-ellipsis.flex-fill.text-align-left.right-panel-input-background.text-set"
+    "button.property-editor.text-ellipsis.flex-fill.text-align-left.right-panel-input-background.text-set",
   );
   readonly tagDropdownButton: Locator = this.frame.locator(
-    'div[data-test-class="tpl-tag-select"]'
+    'div[data-test-class="tpl-tag-select"]',
   );
   readonly addRepeatElementButton: Locator = this.frame.locator(
-    'button[data-test-id="btn-repeating-element-add"]'
+    'button[data-test-id="btn-repeating-element-add"]',
   );
   readonly repeatCollectionButton: Locator = this.frame
     .locator('div[data-test-id="repeating-element-collection"]')
@@ -68,20 +68,20 @@ export class RightPanel extends BaseModel {
   readonly monacoSwitchToCodeButton: Locator =
     this.frame.getByText("Switch to Code");
   readonly applyButtonMenu: Locator = this.frame.locator(
-    'button[data-test-id="apply-menu"]'
+    'button[data-test-id="apply-menu"]',
   );
   readonly useDynamicValueButton: Locator =
     this.frame.getByText("Use dynamic value");
   readonly removeDynamicValueButton: Locator = this.frame.getByText(
-    "Remove dynamic value"
+    "Remove dynamic value",
   );
   readonly elementVariantsButton: Locator =
     this.frame.getByText("Element variants");
   readonly addElemetVariantsButton: Locator = this.frame.locator(
-    'button[data-test-id="add-private-interaction-variant-button"]'
+    'button[data-test-id="add-private-interaction-variant-button"]',
   );
   readonly variantsRow: Locator = this.frame.locator(
-    'div[data-test-class="variant-row"]'
+    'div[data-test-class="variant-row"]',
   );
   /**
    * Toggles off an element variant by clicking on its row.
@@ -104,14 +104,14 @@ export class RightPanel extends BaseModel {
     name: "Size",
   });
   readonly fontFamilyInput: Locator = this.frame.locator(
-    `.canvas-editor__right-pane [data-test-id="font-family-selector"]`
+    `.canvas-editor__right-pane [data-test-id="font-family-selector"]`,
   );
   readonly underlineTextDecorationButton: Locator = this.frame
     .locator('[data-test-id="text-decoration-selector"]')
     .locator("button")
     .nth(0);
   readonly componentDataTabButton: Locator = this.frame.locator(
-    'button[data-test-tabkey="component"]'
+    'button[data-test-tabkey="component"]',
   );
   readonly globalVariantsHeader: Locator =
     this.frame.getByText("Global Variants");
@@ -121,159 +121,157 @@ export class RightPanel extends BaseModel {
     .locator("button")
     .first();
   readonly artboardConfigButton: Locator = this.frame.locator(
-    '[data-test-id="artboard-config-button"]'
+    '[data-test-id="artboard-config-button"]',
   );
   readonly artboardSizeWidthInput: Locator = this.frame.locator(
-    '[data-test-id="artboard-size-width"]'
+    '[data-test-id="artboard-size-width"]',
   );
   readonly variantRow: Locator = this.frame.locator(
-    '[data-test-class="variant-row"]'
+    '[data-test-class="variant-row"]',
   );
   readonly variantRecordButtonStart: Locator = this.frame.locator(
-    '[data-test-class="variant-record-button-start"]'
+    '[data-test-class="variant-record-button-start"]',
   );
 
   readonly addPropButton: Locator = this.frame.locator(
-    '[data-test-id="add-prop-btn"]'
+    '[data-test-id="add-prop-btn"]',
   );
   readonly propNameInput: Locator = this.frame.locator(
-    '[data-test-id="prop-name"]'
+    '[data-test-id="prop-name"]',
   );
   readonly propTypeDropdown: Locator = this.frame.locator(
-    '[data-test-id="prop-type"]'
+    '[data-test-id="prop-type"]',
   );
   readonly defaultValueInput: Locator = this.frame.locator(
-    'input[data-plasmic-prop="default-value"]'
+    'input[data-plasmic-prop="default-value"]',
   );
   readonly propSubmitButton: Locator = this.frame.locator(
-    'button[data-test-id="prop-submit"]'
+    'button[data-test-id="prop-submit"]',
   );
   readonly addStateButton: Locator = this.frame.locator(
-    '[data-test-id="add-state-btn"]'
+    '[data-test-id="add-state-btn"]',
   );
   readonly variableNameInput: Locator = this.frame.locator(
-    '[data-plasmic-prop="variable-name"]'
+    '[data-plasmic-prop="variable-name"]',
   );
   readonly variableTypeDropdown: Locator = this.frame.locator(
-    '[data-plasmic-prop="variable-type"]'
+    '[data-plasmic-prop="variable-type"]',
   );
   readonly initialValueInput: Locator = this.frame.locator(
-    '[data-plasmic-prop="initial-value"]'
+    '[data-plasmic-prop="initial-value"]',
   );
   readonly allowExternalAccessCheckbox: Locator = this.frame.locator(
-    'label [data-test-id="allow-external-access"]'
+    'label [data-test-id="allow-external-access"]',
   );
   readonly accessTypeDropdown: Locator = this.frame.locator(
-    '[data-plasmic-prop="access-type"]'
+    '[data-plasmic-prop="access-type"]',
   );
   readonly confirmButton: Locator = this.frame.locator(
-    '[data-test-id="confirm"]'
+    '[data-test-id="confirm"]',
   );
   readonly settingsTabButton: Locator = this.frame.locator(
-    'button[data-test-tabkey="settings"]'
+    'button[data-test-tabkey="settings"]',
   );
   readonly addInteractionVariantButton: Locator = this.frame.locator(
-    '[data-event="variantspanel-section-add-variant-to-group"]'
+    '[data-event="variantspanel-section-add-variant-to-group"]',
   );
   readonly variantSelectorInput: Locator = this.frame.locator(
-    'input[placeholder="e.g. :hover, :focus, :nth-child(odd)"]'
+    'input[placeholder="e.g. :hover, :focus, :nth-child(odd)"]',
   );
   readonly doneButton: Locator = this.frame.getByText("Done");
   readonly htmlAttributesSection: Locator = this.frame.locator(
-    '[data-test-id="html-attributes-section"] [data-test-id="show-extra-content"]'
+    '[data-test-id="html-attributes-section"] [data-test-id="show-extra-content"]',
   );
   readonly propEditorRows: Locator = this.frame.locator(
-    '[data-test-id^="prop-editor-row-"]:not([data-test-id^="prop-editor-row-default"])'
+    '[data-test-id^="prop-editor-row-"]:not([data-test-id^="prop-editor-row-default"])',
   );
   readonly previewValueInput: Locator = this.frame
     .locator('div[data-test-id="preview-value"]')
     .locator('input[data-plasmic-prop="preview-value"]');
 
   readonly advancedToggleInput: Locator = this.frame.locator(
-    '[data-plasmic-prop="advanced-toggle"]'
+    '[data-plasmic-prop="advanced-toggle"]',
   );
 
   readonly previewValueMenuButton: Locator = this.frame.locator(
-    '[data-test-id="preview-value-menu-btn"]'
+    '[data-test-id="preview-value-menu-btn"]',
   );
 
   readonly defaultValueMenuButton: Locator = this.frame.locator(
-    '[data-test-id="default-value-menu-btn"]'
+    '[data-test-id="default-value-menu-btn"]',
   );
 
   readonly pagePanel: Locator = this.frame.locator(
-    '[data-test-id="page-panel"]'
+    '[data-test-id="page-panel"]',
   );
 
   readonly pagePathInput: Locator = this.frame.locator(
-    '[data-test-id="page-path"] input'
+    '[data-test-id="page-path"] input',
   );
-  readonly dataPickerSaveButton: Locator = this.frame.locator(
-    '[data-test-id="data-picker"] button:has-text("Save")'
-  );
+  readonly dataPickerSaveButton: Locator = this.windowSaveButton;
 
   readonly projectMenuButton: Locator = this.frame.locator(
-    '[data-test-id="project-menu-btn"]'
+    '[data-test-id="project-menu-btn"]',
   );
   readonly configureProjectButton: Locator = this.frame.locator(
-    '[data-test-id="configure-project"]'
+    '[data-test-id="configure-project"]',
   );
   readonly hostUrlInput: Locator = this.page.locator(
-    '[data-test-id="host-url-input"]'
+    '[data-test-id="host-url-input"]',
   );
   readonly hostConfirmButton: Locator = this.page.locator(
-    'button:has-text("Confirm")'
+    'button:has-text("Confirm")',
   );
   readonly widthInput: Locator = this.frame.locator(
-    'input[data-plasmic-prop="width"]'
+    'input[data-plasmic-prop="width"]',
   );
   readonly heightInput: Locator = this.frame.locator(
-    'input[data-plasmic-prop="height"]'
+    'input[data-plasmic-prop="height"]',
   );
   readonly yearInput: Locator = this.frame.locator('input[placeholder="2022"]');
   readonly yearButton: Locator = this.frame.locator('button:has-text("2023")');
   readonly yearOption2020: Locator = this.frame.locator(
-    'div[role="option"]:has-text("2020")'
+    'div[role="option"]:has-text("2020")',
   );
 
   readonly addHtmlAttributeButton: Locator = this.frame.locator(
-    '[data-test-id="add-html-attribute"]'
+    '[data-test-id="add-html-attribute"]',
   );
 
   readonly sidebarSectionBody: Locator = this.frame.locator(
-    ".SidebarSection__Body"
+    ".SidebarSection__Body",
   );
 
   readonly addArgButton: Locator = this.frame.locator(
-    '[data-test-id="add-arg"]'
+    '[data-test-id="add-arg"]',
   );
   readonly argNameInput: Locator = this.frame.locator(
-    '[data-test-id="arg-name"]'
+    '[data-test-id="arg-name"]',
   );
   readonly argTypeDropdown: Locator = this.frame.locator(
-    '[data-test-id="arg-type"]'
+    '[data-test-id="arg-type"]',
   );
   readonly destinationInput = this.frame.locator(
-    '[data-plasmic-prop="destination"]'
+    '[data-plasmic-prop="destination"]',
   );
   readonly conditionalExprButton = this.frame.locator(
-    '[data-plasmic-prop="conditional-expr"]'
+    '[data-plasmic-prop="conditional-expr"]',
   );
   readonly customFunctionInput = this.frame.locator(
-    '[data-plasmic-prop="customFunction"]'
+    '[data-plasmic-prop="customFunction"]',
   );
   readonly eventRefButton = this.frame.locator(
-    '[data-plasmic-prop="eventRef"]'
+    '[data-plasmic-prop="eventRef"]',
   );
   readonly addNewActionButton = this.frame.locator(
-    '[data-test-id="add-new-action"]'
+    '[data-test-id="add-new-action"]',
   );
   readonly addVariantGroupButton = this.frame.locator(
-    '[data-test-id="add-variant-group-button"] .ant-dropdown-trigger'
+    '[data-test-id="add-variant-group-button"] .ant-dropdown-trigger',
   );
   readonly importedDataSourceDropdownButton: Locator = this.page.getByRole(
     "button",
-    { name: "Select an integration from" }
+    { name: "Select an integration from" },
   );
   readonly dynamicPageTableButton: Locator = this.frame.getByRole("button", {
     name: "unset",
@@ -289,7 +287,7 @@ export class RightPanel extends BaseModel {
 
   async selectInteractionEventById(eventHandler: string): Promise<Locator> {
     const dropdownElement = this.frame.locator(
-      `#interactions-select-opt-${eventHandler}`
+      `#interactions-select-opt-${eventHandler}`,
     );
     return dropdownElement;
   }
@@ -303,13 +301,13 @@ export class RightPanel extends BaseModel {
 
   async setPosition(
     direction: "left" | "right" | "top" | "bottom",
-    px: number
+    px: number,
   ) {
     const directionButton = this.frame.locator(
-      `button[data-plasmic-pos-trigger="${direction}"]`
+      `button[data-plasmic-pos-trigger="${direction}"]`,
     );
     const pixelsInput = this.frame.locator(
-      `input[data-plasmic-prop="${direction}"]`
+      `input[data-plasmic-prop="${direction}"]`,
     );
     await this.zIndexInput.scrollIntoViewIfNeeded();
     await directionButton.click();
@@ -392,7 +390,7 @@ export class RightPanel extends BaseModel {
       await this.page.keyboard.press("Enter");
     } else {
       const searchInput = this.frame.locator(
-        'input[placeholder="Search for token"]'
+        'input[placeholder="Search for token"]',
       );
       const searchInputVisible = await searchInput
         .isVisible({ timeout: 1000 })
@@ -452,7 +450,7 @@ export class RightPanel extends BaseModel {
       await baseVariant.click();
     } else {
       const activeVariants = this.frame.locator(
-        '[data-test-class="variant-pin-button-deactivate"]'
+        '[data-test-class="variant-pin-button-deactivate"]',
       );
       const count = await activeVariants.count();
       for (let i = 0; i < count; i++) {
@@ -484,7 +482,7 @@ export class RightPanel extends BaseModel {
     propType: string,
     defaultValue?: string,
     previewValue?: string,
-    advanced?: boolean
+    advanced?: boolean,
   ) {
     await this.addPropButton.click();
     await this.selectPropType(propType);
@@ -535,13 +533,13 @@ export class RightPanel extends BaseModel {
     if (opts.defaultValue !== undefined) {
       await this.selectChoiceValue(
         this.frame.locator('[data-test-id="default-value"]'),
-        opts.defaultValue
+        opts.defaultValue,
       );
     }
     if (opts.previewValue !== undefined) {
       await this.selectChoiceValue(
         this.frame.locator('[data-test-id="preview-value"]'),
-        opts.previewValue
+        opts.previewValue,
       );
     }
 
@@ -585,10 +583,11 @@ export class RightPanel extends BaseModel {
    * Renames an allowed value (by index) in the open choice prop modal.
    */
   async renameChoiceComponentPropOption(index: number, value: string) {
+    // Each row has a value textbox followed by a label textbox; this renames the value.
     const itemInput = this.frame
       .locator(`[data-test-id="component-prop-choices-${index}"]`)
       .getByRole("textbox")
-      .last();
+      .first();
     await itemInput.fill(value);
     await itemInput.press("Enter");
   }
@@ -637,7 +636,7 @@ export class RightPanel extends BaseModel {
    */
   async expandComponentPropsSection() {
     const showExtraContent = this.frame.locator(
-      '#component-props-section [data-test-id="show-extra-content"]'
+      '#component-props-section [data-test-id="show-extra-content"]',
     );
     if (
       (await showExtraContent.getAttribute("data-show-extra-content")) !==
@@ -676,7 +675,7 @@ export class RightPanel extends BaseModel {
 
   async setComponentPropPreviewValue(
     propName: string,
-    previewValue: string | undefined
+    previewValue: string | undefined,
   ) {
     await this.openComponentPropModal(propName);
     if (previewValue !== undefined) {
@@ -690,7 +689,7 @@ export class RightPanel extends BaseModel {
 
   async setComponentPropDefaultValue(
     propName: string,
-    defaultValue: string | undefined
+    defaultValue: string | undefined,
   ) {
     await this.openComponentPropModal(propName);
 
@@ -710,7 +709,9 @@ export class RightPanel extends BaseModel {
       .getByText(propName, { exact: true })
       .first()
       .click({ button: "right" });
-    await this.frame.getByText("Configure prop").click();
+    await this.frame
+      .locator(".ant-dropdown-menu-item", { hasText: /^\s*Configure\s*$/ })
+      .click();
   }
 
   async removePropValue(propName: string) {
@@ -729,7 +730,7 @@ export class RightPanel extends BaseModel {
   async setDataPlasmicProp(
     prop: string,
     value: string,
-    opts?: { reset?: boolean }
+    opts?: { reset?: boolean },
   ) {
     const editor = this.frame.locator(`[data-plasmic-prop="${prop}"]`).last();
     await editor.click();
@@ -756,9 +757,7 @@ export class RightPanel extends BaseModel {
   }
 
   async setPageParamPreviewValue(paramName: string, value: string) {
-    const pageParamInput = this.frame.locator(
-      `[data-test-id="page-param-${paramName}"] input`
-    );
+    const pageParamInput = await this.getPageParamInput(paramName);
     await pageParamInput.click();
     await this.page.keyboard.press("ControlOrMeta+a");
     await this.page.keyboard.press("Backspace");
@@ -769,7 +768,7 @@ export class RightPanel extends BaseModel {
   async selectPathInDataPicker(path: string[]) {
     for (let i = 0; i < path.length; i++) {
       const pathElement = this.frame.locator(
-        `[data-test-id="data-picker"] [data-test-id="${i}-${path[i]}"]`
+        `[data-test-id="data-picker"] [data-test-id="${i}-${path[i]}"]`,
       );
       await pathElement.click();
     }
@@ -802,7 +801,7 @@ export class RightPanel extends BaseModel {
 
   async expandSizeSection() {
     const sizeSection = this.frame.locator(
-      '[data-test-id="size-section"] [data-test-id="show-extra-content"]'
+      '[data-test-id="size-section"] [data-test-id="show-extra-content"]',
     );
     if (await sizeSection.isVisible()) {
       await sizeSection.click();
@@ -812,7 +811,7 @@ export class RightPanel extends BaseModel {
   async addVariantGroup(
     groupName: string,
     firstVariantName?: string,
-    opts?: { multi?: boolean }
+    opts?: { multi?: boolean },
   ) {
     await this.addVariantGroupButton.click();
 
@@ -852,7 +851,7 @@ export class RightPanel extends BaseModel {
       .filter({ hasText: groupName });
     if ((await variantGroupWidget.count()) > 0) {
       const addVariantButton = variantGroupWidget.locator(
-        '[data-test-class="add-variant-button"]'
+        '[data-test-class="add-variant-button"]',
       );
       await addVariantButton.click();
 
@@ -888,15 +887,40 @@ export class RightPanel extends BaseModel {
 
     await this.hostUrlInput.clear();
     await this.hostUrlInput.fill(plasmicHost);
+
+    await expect
+      .poll(
+        async () => {
+          const response = await this.page
+            .context()
+            .request.get(plasmicHost, {
+              failOnStatusCode: false,
+              timeout: 10000,
+            })
+            .catch(() => undefined);
+          if (!response) {
+            return false;
+          }
+          const isReady = response.ok();
+          await response.dispose();
+          return isReady;
+        },
+        {
+          message: `Waiting for custom app host at ${plasmicHost}`,
+          timeout: 120000,
+        },
+      )
+      .toBe(true);
+
     await this.hostConfirmButton.click();
 
     const hostFrame = this.page.locator(
       `iframe[src^="http://localhost:${
         process.env.CUSTOM_HOST_PORT || 3000
-      }/${page}"]`
+      }/${page}"]`,
     );
 
-    await hostFrame.waitFor({ timeout: 60000 });
+    await hostFrame.waitFor({ timeout: 120000 });
   }
 
   async setWidth(value: string) {
@@ -927,14 +951,13 @@ export class RightPanel extends BaseModel {
   }
 
   async closeNotificationWarning() {
-    await this.frame
-      .locator(".ant-notification-notice-message")
-      .filter({ hasText: "Unsupported host app detected" })
-      .waitFor();
-    await this.frame.locator(".ant-notification-notice-close").click();
-    await this.frame
-      .locator(".ant-notification-topRight")
-      .waitFor({ state: "hidden" });
+    const notice = this.frame
+      .locator(".ant-notification-notice")
+      .filter({ hasText: "Unsupported host app detected" });
+    await notice.waitFor();
+    await notice.locator(".ant-notification-notice-close").click();
+    // antd5 keeps the notice mounted for its leave animation, so wait on the notice.
+    await expect(this.frame.locator(".ant-notification-notice")).toHaveCount(0);
   }
 
   async addComplexInteraction(
@@ -958,7 +981,7 @@ export class RightPanel extends BaseModel {
       assertCustomFunctionOpModal?: (modal: Locator) => Promise<void>;
       mode?: "always" | "never" | "when";
       conditionalExpr?: string;
-    }>
+    }>,
   ) {
     await this.addInteractionButton.click();
     await this.interactionsSearchInput.fill(eventHandler);
@@ -1048,7 +1071,7 @@ export class RightPanel extends BaseModel {
 
       if (interaction.dynamicArgs) {
         for (const [argName, argValue] of Object.entries(
-          interaction.dynamicArgs
+          interaction.dynamicArgs,
         )) {
           const input = this.frame.locator(`[data-plasmic-prop="${argName}"]`);
           await input.click({ button: "right" });
@@ -1060,13 +1083,13 @@ export class RightPanel extends BaseModel {
       if (interaction.args.customFunctionOpCode) {
         await this.configureCustomFunctionOpAsCustomCode(
           interaction.args.customFunctionOpCode,
-          interaction.assertCustomFunctionOpModal
+          interaction.assertCustomFunctionOpModal,
         );
       }
 
       if (interaction.mode) {
         const modeButton = this.frame.locator(
-          `[data-plasmic-prop="mode-${interaction.mode}"]`
+          `[data-plasmic-prop="mode-${interaction.mode}"]`,
         );
         await modeButton.click();
 
@@ -1090,17 +1113,19 @@ export class RightPanel extends BaseModel {
    */
   private async configureCustomFunctionOpAsCustomCode(
     code: string,
-    assertWhileOpen?: (modal: Locator) => Promise<void>
+    assertWhileOpen?: (modal: Locator) => Promise<void>,
   ) {
     await this.frame
       .locator('[data-plasmic-prop="data-source-open-modal-btn"]')
       .click();
 
     const modal = this.frame.locator(
-      '[data-test-id="server-query-bottom-modal"]'
+      '[data-test-id="server-query-bottom-modal"]',
     );
-    await modal.getByText("Select...").click();
-    await this.frame.locator('[data-key="__custom_code__"]').click();
+    await modal.getByRole("button", { name: "Select...", exact: true }).click();
+    await this.frame
+      .getByRole("option", { name: "Custom code query...", exact: true })
+      .click();
 
     const editor = modal.locator("div.react-monaco-editor-container");
     await editor.click();
@@ -1122,7 +1147,7 @@ export class RightPanel extends BaseModel {
     interaction: {
       destination: string;
       isDynamicValue?: boolean;
-    }
+    },
   ) {
     await this.addInteractionButton.click();
     await this.interactionsSearchInput.fill(eventHandler);
@@ -1153,7 +1178,7 @@ export class RightPanel extends BaseModel {
 
   async createNewEventHandler(
     eventName: string,
-    args: { name: string; type: string }[]
+    args: { name: string; type: string }[],
   ) {
     await this.switchToComponentDataTab();
     await this.addPropButton.click();
@@ -1186,23 +1211,20 @@ export class RightPanel extends BaseModel {
 
   async getPropEditorRowByPropName(propName: string) {
     return this.frame.locator(
-      `[data-test-id="prop-editor-row-${propName}"] label`
+      `[data-test-id="prop-editor-row-${propName}"] label`,
     );
   }
 
   async pickDataSource(dataSourceName: string) {
     const pickIntegrationBtn = this.frame.locator(
-      "#data-source-modal-pick-integration-btn"
+      "#data-source-modal-pick-integration-btn",
     );
     if (await pickIntegrationBtn.isVisible()) {
       await pickIntegrationBtn.click();
       await this.page.waitForTimeout(1000);
 
       await this.importedDataSourceDropdownButton.click();
-      await this.page
-        .getByLabel("Plasmic Tutorial Integrations")
-        .getByText(dataSourceName)
-        .click();
+      await this.page.getByRole("option", { name: dataSourceName }).click();
 
       await this.page.getByRole("button", { name: "Confirm" }).click();
     } else {
@@ -1211,15 +1233,21 @@ export class RightPanel extends BaseModel {
   }
 
   async clickPageData() {
-    await this.frame.getByText("Page data").click();
+    await this.frame.getByRole("tab", { name: "Page data" }).click();
   }
 
   async getPagePathInput() {
     return this.frame.locator('[data-test-id="page-path"] input');
   }
 
-  async getPageParamNameInput() {
-    return this.frame.locator('[data-test-id="page-param-name"] input');
+  /**
+   * Preview value input of a URL param row in the page's "URL parameters"
+   * section, found by the row's label.
+   */
+  async getPageParamInput(paramName: string) {
+    return this.frame.locator(
+      `[data-plasmic-role="labeled-item"]:has(:text-is("${paramName}")) input[type="text"]`,
+    );
   }
 
   async clickViewDifferentRecord() {
@@ -1231,9 +1259,9 @@ export class RightPanel extends BaseModel {
   }
 
   async getViewButtons() {
-    return this.frame.locator(
-      ".bottom-modals tbody tr[data-row-key] td:has-text('View'):first-child"
-    );
+    return this.frame
+      .getByRole("table")
+      .getByRole("button", { name: "View", exact: true });
   }
 
   async clickCreateDynamicPageButton() {
@@ -1292,7 +1320,7 @@ export class RightPanel extends BaseModel {
 
   async removeItemFromArrayProp(prop: string, index: number) {
     const removeBtn = this.frame.locator(
-      `[data-test-id="${prop}-${index}-remove"]`
+      `[data-test-id="${prop}-${index}-remove"]`,
     );
     await removeBtn.click();
     await this.page.waitForTimeout(500);
@@ -1301,15 +1329,17 @@ export class RightPanel extends BaseModel {
   async setSelectByLabel(label: string, value: string) {
     const select = this.frame.locator(`[data-plasmic-prop="${label}"]`);
     await expect(select).toBeVisible({ timeout: 10000 });
-    await select.click();
 
-    const optionWithQuotes = this.frame.locator(`[data-key="'${value}'"]`);
-    if ((await optionWithQuotes.count()) > 0) {
-      await optionWithQuotes.click();
-    } else {
-      const optionWithoutQuotes = this.frame.locator(`[data-key="${value}"]`);
-      await optionWithoutQuotes.click();
-    }
+    // Options may load after the dropdown opens empty, so reopen until present
+    const option = this.frame
+      .locator(`[data-key="'${value}'"], [data-key="${value}"]`)
+      .first();
+    await expect(async () => {
+      if (!(await option.isVisible())) {
+        await select.click();
+      }
+      await option.click({ timeout: 2000 });
+    }).toPass({ timeout: 15000 });
   }
 
   async setSelectByValue(selectName: string, value: string) {
@@ -1321,7 +1351,7 @@ export class RightPanel extends BaseModel {
         }
         return null;
       },
-      { name: selectName, val: value }
+      { name: selectName, val: value },
     );
 
     if (result !== null) {
@@ -1337,7 +1367,7 @@ export class RightPanel extends BaseModel {
 
   async bindTextContentToCustomCode(code: string) {
     const textContentLabel = this.frame.locator(
-      '[data-test-id="text-content"] label'
+      '[data-test-id="text-content"] label',
     );
     await textContentLabel.click({ button: "right" });
     await this.frame.getByText("Use dynamic value").click();
@@ -1356,7 +1386,7 @@ export class RightPanel extends BaseModel {
 
   async ensureDataPickerInDataPickerMode() {
     const switchToDataPickerButton = this.frame.getByText(
-      "Switch to Data Picker"
+      "Switch to Data Picker",
     );
     if (await switchToDataPickerButton.isVisible()) {
       await switchToDataPickerButton.click();
@@ -1432,20 +1462,20 @@ export class RightPanel extends BaseModel {
 
     if (state.isInitValDynamicValue || state.initialValue == null) {
       const propEditorRow = this.frame.locator(
-        '[data-test-id="prop-editor-row-initial-value"]'
+        '[data-test-id="prop-editor-row-initial-value"]',
       );
       await propEditorRow.click({ button: "right" });
       await this.frame.getByText("Use dynamic value").click();
       await this.ensureDataPickerInCustomCodeMode();
       await this.page.waitForTimeout(200);
       await this.insertMonacoCode(
-        state.initialValue != null ? state.initialValue : "undefined"
+        state.initialValue != null ? state.initialValue : "undefined",
       );
       await this.page.waitForTimeout(200);
     } else {
       if (state.variableType === "number") {
         const initValInput = this.frame.locator(
-          '.ant-input-number input[data-plasmic-prop="initial-value"]'
+          '.ant-input-number input[data-plasmic-prop="initial-value"]',
         );
         const initValCount = await initValInput.count();
 
@@ -1466,7 +1496,7 @@ export class RightPanel extends BaseModel {
 
     if (state.accessType && state.accessType !== "private") {
       const accessTypeCheckbox = this.frame.locator(
-        '[data-test-id="allow-external-access"]'
+        '[data-test-id="allow-external-access"]',
       );
       await accessTypeCheckbox.click({ timeout: 10000, force: true });
       await this.page.waitForTimeout(200);
@@ -1478,116 +1508,6 @@ export class RightPanel extends BaseModel {
     const confirmButton = this.frame.locator('[data-test-id="confirm"]');
     await confirmButton.click();
     await this.page.waitForTimeout(2000);
-  }
-
-  async pickIntegration(dataSourceId?: string) {
-    const pickIntegrationBtn = this.frame.locator(
-      "#data-source-modal-pick-integration-btn"
-    );
-
-    await pickIntegrationBtn.waitFor({ state: "visible", timeout: 10000 });
-
-    if (await pickIntegrationBtn.isVisible()) {
-      await pickIntegrationBtn.click();
-
-      let result = null;
-
-      if (dataSourceId) {
-        result = await this.page.evaluate((dsId) => {
-          const w = window as any;
-          if (w.dbg?.testControls?.dataSource?.setByValue) {
-            return w.dbg.testControls.dataSource.setByValue(dsId);
-          }
-          return null;
-        }, dataSourceId);
-
-        if (result !== null) {
-          const confirmButton = this.page
-            .getByRole("button", { name: "Confirm" })
-            .or(
-              this.page
-                .locator("button")
-                .filter({ hasText: /confirm|ok|select/i })
-                .first()
-            );
-
-          await confirmButton.waitFor({ timeout: 5000 });
-          await confirmButton.click();
-          await this.page.waitForTimeout(3000);
-          return;
-        }
-      }
-
-      if (result === null) {
-        result = await this.page.evaluate(() => {
-          const w = window as any;
-          if (w.dbg?.testControls?.dataSource?.setByValue) {
-            const dataSourceControl = w.dbg.testControls.dataSource;
-            if (
-              dataSourceControl.options &&
-              dataSourceControl.options.length > 0
-            ) {
-              return dataSourceControl.setByValue(
-                dataSourceControl.options[0].value
-              );
-            }
-          }
-          return null;
-        });
-      }
-
-      if (result === null) {
-        const selectIntegrationBtn = this.page
-          .locator("button")
-          .filter({
-            hasText: "Select an integration from your workspace to use",
-          })
-          .or(
-            this.page
-              .locator("button")
-              .filter({ hasText: /select.*integration.*workspace/i })
-          )
-          .or(
-            this.page
-              .locator("button")
-              .filter({ hasText: /select.*integration/i })
-          );
-
-        await selectIntegrationBtn.waitFor({ timeout: 10000 });
-        await selectIntegrationBtn.click();
-
-        let integrationOption = this.page
-          .getByRole("option")
-          .filter({ hasText: /Fake Data Source/i })
-          .first();
-
-        const foundFakeSource = (await integrationOption.count()) > 0;
-
-        if (!foundFakeSource) {
-          integrationOption = this.page
-            .getByRole("option")
-            .filter({ hasText: /TutorialDB/i })
-            .first();
-        }
-
-        await integrationOption.waitFor({ timeout: 5000 });
-        await integrationOption.click();
-      }
-
-      const confirmButton = this.page
-        .getByRole("button", { name: "Confirm" })
-        .or(
-          this.page
-            .locator("button")
-            .filter({ hasText: /confirm|ok|select/i })
-            .first()
-        );
-
-      await confirmButton.waitFor({ timeout: 5000 });
-      await confirmButton.click();
-    } else {
-      await this.setDataPlasmicProp("dataSource", "default");
-    }
   }
 
   async addComponentQuery() {
@@ -1641,18 +1561,17 @@ export class RightPanel extends BaseModel {
   }
 
   async configureSchemaForm(options: {
+    dataSourceId: string;
     formType: "New Entry" | "Update Entry";
     tableName: string;
     lookupField?: string;
     idValue?: string;
   }) {
-    const { formType, tableName, lookupField, idValue } = options;
+    const { dataSourceId, formType, tableName, lookupField, idValue } = options;
 
-    const formTypeElements = this.frame
-      .locator("*")
-      .filter({ hasText: "Select the form type" });
-    await formTypeElements.first().click();
-    const selectElement = this.frame
+    const modal = this.frame.locator(".ant-modal");
+    await modal.getByText("Select the form type").waitFor();
+    const selectElement = modal
       .locator("select")
       .filter({ hasText: formType })
       .first();
@@ -1673,21 +1592,16 @@ export class RightPanel extends BaseModel {
         this.page
           .locator("select")
           .filter({ hasText: "Select an integration" })
-          .first()
+          .first(),
       );
     await integrationDropdown.click();
     await this.page.waitForTimeout(500);
 
-    const fakeDataSourceOption = this.page
-      .locator("option")
-      .filter({ hasText: /Fake.*Data.*Source/i })
-      .first();
-    const selectEl = this.page.locator("select").first();
-    const optionValue = await fakeDataSourceOption.getAttribute("value");
-    if (optionValue) {
-      await selectEl.selectOption({ value: optionValue });
-      await this.page.waitForTimeout(1000);
-    }
+    await this.page
+      .locator("select")
+      .first()
+      .selectOption({ value: dataSourceId });
+    await this.page.waitForTimeout(1000);
 
     const confirmBtn = this.page.locator('[data-test-id="prompt-submit"]');
     await confirmBtn.first().click();
@@ -1698,7 +1612,7 @@ export class RightPanel extends BaseModel {
     const tableOption = this.frame.locator(`option[value*="${tableName}"]`);
     const tableOptionValue = await tableOption.getAttribute("value");
     const tableSelect = this.frame.locator(
-      `select:has(option[value*="${tableName}"])`
+      `select:has(option[value*="${tableName}"])`,
     );
     if (tableOptionValue && (await tableSelect.count()) > 0) {
       await tableSelect.selectOption({ value: tableOptionValue });
@@ -1713,11 +1627,11 @@ export class RightPanel extends BaseModel {
         await this.page.waitForTimeout(500);
 
         const fieldOption = this.frame.locator(
-          `option[value="${lookupField}"]`
+          `option[value="${lookupField}"]`,
         );
         if ((await fieldOption.count()) > 0) {
           const fieldSelect = this.frame.locator(
-            `select:has(option[value="${lookupField}"])`
+            `select:has(option[value="${lookupField}"])`,
           );
           await fieldSelect.selectOption({ value: lookupField });
         }
@@ -1756,19 +1670,19 @@ export class RightPanel extends BaseModel {
     await this.addComponentQuery();
     await this.setSelectByLabel(
       "data-source-modal-pick-resource-btn",
-      resourceName
+      resourceName,
     );
     await this.saveDataSourceModal();
   }
 
   async verifySchemaFormFields(
     expectedFields: string[],
-    frame: FrameLocator
+    frame: FrameLocator,
   ): Promise<boolean> {
     await this.page.waitForTimeout(3000);
 
     const results = await Promise.all(
-      expectedFields.map((field) => frame.locator(`text=${field}`).count())
+      expectedFields.map((field) => frame.locator(`text=${field}`).count()),
     );
 
     return results.every((count) => count > 0);
@@ -1778,24 +1692,24 @@ export class RightPanel extends BaseModel {
     await this.switchToComponentDataTab();
 
     const explicitStateRows = this.frame.locator(
-      '[data-test-type="variable-row"]'
+      '[data-test-type="variable-row"]',
     );
     await expect(explicitStateRows).toHaveCount(explicit);
 
     if (!implicit) {
       const showExtraContentButton = this.frame.locator(
-        '[data-test-id="variables-section"] [data-test-id="show-extra-content"]'
+        '[data-test-id="variables-section"] [data-test-id="show-extra-content"]',
       );
       await expect(showExtraContentButton).not.toBeVisible();
     } else {
       // Expand the variables section to show implicit states
       const showExtraContentButton = this.frame.locator(
-        '[data-test-id="variables-section"] [data-test-id="show-extra-content"]'
+        '[data-test-id="variables-section"] [data-test-id="show-extra-content"]',
       );
       await showExtraContentButton.click();
 
       const implicitStateRows = this.frame.locator(
-        '[data-test-type="implicit-variable-row"]'
+        '[data-test-type="implicit-variable-row"]',
       );
       await expect(implicitStateRows).toHaveCount(implicit);
     }

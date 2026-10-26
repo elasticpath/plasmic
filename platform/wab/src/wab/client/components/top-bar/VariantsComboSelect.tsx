@@ -1,12 +1,11 @@
 import { usePreviewCtx } from "@/wab/client/components/live/PreviewCtx";
 import VariantsMenu from "@/wab/client/components/top-bar/VariantsMenu";
+import { useAutoFocus } from "@/wab/client/hooks/useAutoFocus";
 import {
   DefaultVariantsComboSelectProps,
   PlasmicVariantsComboSelect,
 } from "@/wab/client/plasmic/plasmic_kit_top_bar/PlasmicVariantsComboSelect";
 import { useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
-import { ensure, partitions, xGroupBy } from "@/wab/shared/common";
-import { isVariantUsedInSplits } from "@/wab/shared/core/splits";
 import {
   getAllVariantsForTpl,
   getVariantLabel,
@@ -17,15 +16,16 @@ import {
   isStandaloneVariant,
   isStyleOrCodeComponentVariant,
 } from "@/wab/shared/Variants";
+import { ensure, partitions, xGroupBy } from "@/wab/shared/common";
+import { isVariantUsedInSplits } from "@/wab/shared/core/splits";
 import { Dropdown } from "antd";
-import { defer } from "lodash";
 import { observer } from "mobx-react";
 import * as React from "react";
 
 type VariantsComboSelectProps = DefaultVariantsComboSelectProps;
 
 const VariantsComboSelect = observer(function VariantsComboSelect(
-  props: VariantsComboSelectProps
+  props: VariantsComboSelectProps,
 ) {
   const studioCtx = useStudioCtx();
   const previewCtx = usePreviewCtx();
@@ -34,11 +34,7 @@ const VariantsComboSelect = observer(function VariantsComboSelect(
   const [isOpen, setIsOpen] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
-  React.useLayoutEffect(() => {
-    if (showDropdown) {
-      defer(() => inputRef.current?.focus());
-    }
-  }, [showDropdown]);
+  useAutoFocus(showDropdown && inputRef);
 
   if (!previewCtx?.component) {
     return null;
@@ -53,7 +49,7 @@ const VariantsComboSelect = observer(function VariantsComboSelect(
       !isStyleOrCodeComponentVariant(v) &&
       !isScreenVariant(v) &&
       !isPrivateStyleVariant(v) &&
-      !isBaseVariant(v)
+      !isBaseVariant(v),
   );
 
   const [standaloneVariants, splitVariants, compVariants, globalVariants] =
@@ -74,7 +70,7 @@ const VariantsComboSelect = observer(function VariantsComboSelect(
       })),
       ...[
         ...xGroupBy(compVariants, (v) =>
-          ensure(v.parent, `Variant ${v.name} (uuid ${v.uuid}) has no parent`)
+          ensure(v.parent, `Variant ${v.name} (uuid ${v.uuid}) has no parent`),
         ).entries(),
       ].map(([vg, vs]) => ({
         type: vg.multi ? ("multi" as const) : ("single" as const),
@@ -92,7 +88,7 @@ const VariantsComboSelect = observer(function VariantsComboSelect(
         : []),
       ...[
         ...xGroupBy(globalVariants, (v) =>
-          ensure(v.parent, `Variant ${v.name} (uuid ${v.uuid}) has no parent`)
+          ensure(v.parent, `Variant ${v.name} (uuid ${v.uuid}) has no parent`),
         ).entries(),
       ].map(([vg, vs]) => ({
         type: vg.multi ? ("multi" as const) : ("single" as const),
@@ -111,7 +107,7 @@ const VariantsComboSelect = observer(function VariantsComboSelect(
       transitionName=""
       trigger={["click"]}
       placement={"topLeft"}
-      visible={showDropdown}
+      open={showDropdown}
       onVisibleChange={(v) => {
         setIsOpen(v);
         setShowDropdown(v);

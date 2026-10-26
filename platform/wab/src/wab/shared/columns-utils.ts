@@ -10,6 +10,7 @@ import {
   TplTag,
   Variant,
 } from "@/wab/shared/model/classes";
+import { instFieldValues } from "@/wab/shared/model/model-meta";
 import { clamp, isEqual, isUndefined, range, sum } from "lodash";
 
 export const hasMaxWidthVariant = (variant: Variant): boolean => {
@@ -55,7 +56,7 @@ export const isReverseValue = (val: string) => val.endsWith("-reverse");
 export function isTplColumnsVariantReversed(
   tpl: TplColumnsTag,
   variants: Variant[],
-  vtm: VariantTplMgr
+  vtm: VariantTplMgr,
 ) {
   const tplVs = ensure(vtm.ensureVariantSetting(tpl, variants));
   const rsh = RSH(tplVs.rs, tpl);
@@ -70,7 +71,7 @@ export function adjustVariantTplColumns(
   tpl: TplColumnsTag,
   variants: Variant[],
   newConfig: ColumnsConfigParams,
-  vtm: VariantTplMgr
+  vtm: VariantTplMgr,
 ) {
   const tplVs = vtm.ensureVariantSetting(tpl, variants);
 
@@ -101,7 +102,7 @@ export function adjustVariantTplColumns(
 export function updateCurrentTplColumns(
   tpl: TplColumnsTag,
   newConfig: Partial<ColumnsConfigParams>,
-  vtm: VariantTplMgr
+  vtm: VariantTplMgr,
 ) {
   const currentConfig = ensure(vtm.effectiveVariantSetting(tpl).columnsConfig);
   const variants = vtm.ensureCurrentVariantSetting(tpl).variants;
@@ -116,7 +117,7 @@ export function updateCurrentTplColumns(
         ? newConfig.breakUpRows
         : currentConfig.breakUpRows,
     },
-    vtm
+    vtm,
   );
 }
 
@@ -124,13 +125,13 @@ export function calcMovedColSizes(
   cols: number[],
   idx: number,
   delta: number,
-  fullWidth: number
+  fullWidth: number,
 ): number[] {
   const colSize = fullWidth / COL_NUMBER;
   const colDiff = clamp(
     Math.round(delta / colSize),
     -cols[idx] + 1,
-    cols[idx + 1] - 1
+    cols[idx + 1] - 1,
   );
   const newCols = [...cols];
   newCols[idx] += colDiff;
@@ -140,7 +141,7 @@ export function calcMovedColSizes(
 
 export function adjustAllTplColumnsSizes(
   tpl: TplColumnsTag,
-  vtm: VariantTplMgr
+  vtm: VariantTplMgr,
 ) {
   tpl.vsettings.forEach((vs) => {
     if (vs.columnsConfig) {
@@ -148,9 +149,9 @@ export function adjustAllTplColumnsSizes(
         tpl,
         vs.variants,
         {
-          ...vs.columnsConfig,
+          ...instFieldValues(vs.columnsConfig),
         },
-        vtm
+        vtm,
       );
     }
   });
@@ -158,7 +159,7 @@ export function adjustAllTplColumnsSizes(
 
 export function equalColumnDistribution(len: number) {
   return range(len).map(
-    (_, idx) => Math.floor(COL_NUMBER / len) + (idx < COL_NUMBER % len ? 1 : 0)
+    (_, idx) => Math.floor(COL_NUMBER / len) + (idx < COL_NUMBER % len ? 1 : 0),
   );
 }
 
@@ -168,25 +169,25 @@ export function equalColumnDistribution(len: number) {
 export function redistributeColumns(
   cols: number[],
   len: number,
-  opts: { forceEqual?: boolean } = {}
+  opts: { forceEqual?: boolean } = {},
 ) {
   if (isEqual(cols, equalColumnDistribution(cols.length)) || opts.forceEqual) {
     return equalColumnDistribution(len);
   } else {
     const newCols = range(len).map((_, idx) =>
-      idx < cols.length ? cols[idx] : 1
+      idx < cols.length ? cols[idx] : 1,
     );
     // We adjust the column sizes so that they are proportional and that the sum is smaller then COL_NUMBER
     const colsSum = sum(newCols);
     const proportionalCols = newCols.map((colSize) =>
-      Math.max(Math.floor(COL_NUMBER * (colSize / colsSum)), 1)
+      Math.max(Math.floor(COL_NUMBER * (colSize / colsSum)), 1),
     );
     // If there are missing cols, probably because it was not possible to redistribute properly to COL_NUMBER
     // just distribute the length to the first columns
     const proportionalSum = sum(proportionalCols);
     const missingCols = COL_NUMBER - proportionalSum;
     const redistributedCols = proportionalCols.map(
-      (colSize, idx) => colSize + (idx < missingCols ? 1 : 0)
+      (colSize, idx) => colSize + (idx < missingCols ? 1 : 0),
     );
     return redistributedCols;
   }
@@ -195,7 +196,7 @@ export function redistributeColumns(
 export function redistributeColumnsSizes(
   tpl: TplColumnsTag,
   vtm: VariantTplMgr,
-  opts: { forceEqual?: boolean } = {}
+  opts: { forceEqual?: boolean } = {},
 ) {
   tpl.vsettings.forEach((vs) => {
     if (vs.columnsConfig) {
@@ -209,17 +210,17 @@ export function redistributeColumnsSizes(
           : redistributeColumns(
               vs.columnsConfig.colsSizes,
               tpl.children.length,
-              opts
+              opts,
             );
 
       adjustVariantTplColumns(
         tpl,
         vs.variants,
         {
-          ...vs.columnsConfig,
+          ...instFieldValues(vs.columnsConfig),
           colsSizes: newCols,
         },
-        vtm
+        vtm,
       );
     }
   });

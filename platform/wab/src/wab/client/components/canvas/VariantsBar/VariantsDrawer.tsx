@@ -33,10 +33,10 @@ import {
   Variant,
   isKnownVariant,
 } from "@/wab/shared/model/classes";
+import { defer } from "lodash";
 import { observer } from "mobx-react";
 import * as React from "react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import defer = setTimeout;
 
 const elementInteractionsLabel = "Element Variants";
 const styleVariantsLabel = "Component Interactions";
@@ -96,7 +96,7 @@ function VariantsDrawer_({
     } else if (isCodeComponentVariant(v)) {
       return v.codeComponentVariantKeys?.some(
         (key) =>
-          matcher.matches(key) || matcher.matches(codeComponentVariantsLabel)
+          matcher.matches(key) || matcher.matches(codeComponentVariantsLabel),
       );
     } else if (isStyleVariant(v)) {
       return v.selectors?.some(
@@ -104,7 +104,7 @@ function VariantsDrawer_({
           matcher.matches(sel) ||
           (isPrivateStyleVariant(v) &&
             matcher.matches(elementInteractionsLabel)) ||
-          matcher.matches(styleVariantsLabel)
+          matcher.matches(styleVariantsLabel),
       );
     } else {
       return (
@@ -118,7 +118,6 @@ function VariantsDrawer_({
   const getVariantRowRef = useRefMap<Variant, HTMLDivElement>();
   const lockMouseInteractionsRef = useRef(true);
   const baseVariantRef = useRef<HTMLDivElement>(null);
-  const preventDismissingRef = useRef(false);
   const [highlightIndex, setHighlightIndex] = useState(0);
 
   const groupedVariants = useGroupedVariants(
@@ -126,39 +125,32 @@ function VariantsDrawer_({
     filteredVariants,
     shouldShowBase,
     !hideInteractions,
-    !hideScreen
+    !hideScreen,
   );
 
   const flattenedVariants = useMemo(
     () =>
       groupedVariants.flatMap<string | Variant | undefined>((it) =>
-        it.isBase ? "base" : it.variants
+        it.isBase ? "base" : it.variants,
       ),
-    [groupedVariants, shouldShowBase]
+    [groupedVariants, shouldShowBase],
   );
   const variantIndices = useMemo(
     () => new Map(flattenedVariants.map((v, index) => [v, index])),
-    [flattenedVariants]
+    [flattenedVariants],
   );
 
   const handleDismiss = () => {
-    if (!preventDismissingRef.current) {
-      onDismiss?.();
-      defer(() => {
-        setQuery("");
-        lockMouseInteractionsRef.current = true;
-      });
-    } else {
-      searchInputRef_.current?.focus();
-    }
+    onDismiss?.();
+    defer(() => {
+      setQuery("");
+      lockMouseInteractionsRef.current = true;
+    });
   };
 
   const handleSearchInputFocus = () => {
-    // if opening drawer
-    if (!preventDismissingRef.current) {
-      variantsListRef.current?.scrollTo(0, 0);
-      setHighlightIndex(0);
-    }
+    variantsListRef.current?.scrollTo(0, 0);
+    setHighlightIndex(0);
   };
 
   const shiftHighlightIndex = (step: 1 | -1) => {
@@ -215,7 +207,7 @@ function VariantsDrawer_({
 
   const handleVariantClick = (variant: Variant | string | undefined) => {
     return (e?: React.MouseEvent) => {
-      e?.preventDefault();
+      e?.preventDefault(); // prevent focus, keep focus on search input
 
       spawn(
         studioCtx.changeUnsafe(() => {
@@ -226,7 +218,7 @@ function VariantsDrawer_({
           } else {
             onClearVariants?.();
           }
-        })
+        }),
       );
       if (!variant) {
         handleDismiss();
@@ -278,7 +270,9 @@ function VariantsDrawer_({
                 ref={baseVariantRef}
                 isBase
                 highlight={highlightIndex === 0}
-                onMouseDown={(e) => e.preventDefault()}
+                onMouseDown={(e) => {
+                  e.preventDefault(); // prevent focus, keep focus on search input
+                }}
                 onClick={handleVariantClick(undefined)}
                 onMouseEnter={handleRowMouseEnter(0)}
                 onMouseLeave={handleRowMouseEnter(-1)}
@@ -292,10 +286,12 @@ function VariantsDrawer_({
                   ref={getVariantRowRef(variant)}
                   isRecording={targetedVariantsSet.has(variant)}
                   highlight={flattenedVariants[highlightIndex] === variant}
-                  onMouseDown={(e) => e.preventDefault()}
+                  onMouseDown={(e) => {
+                    e.preventDefault(); // prevent focus, keep focus on search input
+                  }}
                   onClick={handleVariantClick(variant)}
                   onMouseEnter={handleRowMouseEnter(
-                    variantIndices.get(variant)!
+                    variantIndices.get(variant)!,
                   )}
                   onMouseLeave={handleRowMouseEnter(-1)}
                 >
@@ -307,7 +303,7 @@ function VariantsDrawer_({
               <VariantsSectionDivider className={styles.sectionDivider} />
             )}
           </Fragment>
-        )
+        ),
       )}
 
       {!shouldShowBase && !groupedVariants.length && (
@@ -324,7 +320,7 @@ function useGroupedVariants(
   filteredVariants: Variant[],
   shouldShowBase: boolean,
   shouldShowInteractions: boolean,
-  shouldShowScreen: boolean
+  shouldShowScreen: boolean,
 ): {
   isBase?: boolean;
   key: string;
@@ -393,13 +389,13 @@ function useGroupedVariants(
       {
         key: "standalone variant groups",
         variants: compVariants.filter((it) =>
-          isStandaloneVariantGroup(it.parent)
+          isStandaloneVariantGroup(it.parent),
         ),
       },
       ...[
         ...xGroupBy(
           compVariants.filter((it) => !isStandaloneVariantGroup(it.parent)),
-          (v) => v.parent!
+          (v) => v.parent!,
         ).entries(),
       ].map(([group, variants]) => ({
         key: group.param.variable.name,
@@ -419,7 +415,7 @@ function useGroupedVariants(
       ...[
         ...xGroupBy(
           globalVariants.filter((v) => shouldShowScreen || !isScreenVariant(v)),
-          (v) => v.parent!
+          (v) => v.parent!,
         ).entries(),
       ].map(([group, variants]) => ({
         key: group.param.variable.name,

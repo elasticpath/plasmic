@@ -6,4 +6,6 @@ export function safeRecordUsage() {}
 
 export function recordUsage() {}
 
+export function recordUsages() {}
+
 export function recordPulledUsage() {}

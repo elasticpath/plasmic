@@ -38,7 +38,6 @@ import { cx, ensure, spawn, switchType } from "@/wab/shared/common";
 import { getComponentDisplayName } from "@/wab/shared/core/components";
 import { extractComponentUsages } from "@/wab/shared/core/sites";
 import { extractTokenUsages } from "@/wab/shared/core/styles";
-import { DEVFLAGS } from "@/wab/shared/devflags";
 import { Component, DataToken, StyleToken } from "@/wab/shared/model/classes";
 import { LeftTabKey } from "@/wab/shared/ui-config-utils";
 import L from "lodash";
@@ -59,7 +58,7 @@ const LeftPane = observer(function LeftPane(props: LeftPaneProps) {
   const wrapTab = (
     tabKey: LeftTabKey,
     panel: React.ReactNode,
-    unmount = false
+    unmount = false,
   ) => {
     return (
       (!unmount || studioCtx.leftTabKey === tabKey) && (
@@ -82,16 +81,16 @@ const LeftPane = observer(function LeftPane(props: LeftPaneProps) {
         spawn(
           studioCtx.changeUnsafe(() => {
             studioCtx.leftPaneWidth = newWidth;
-          })
+          }),
         );
       },
-      [studioCtx]
+      [studioCtx],
     ),
   });
 
   const [dismissVersionsCTA, setDismissVersionsCTA] = useLocalStorage(
     `${studioCtx.siteInfo.id}-dismissVersionsCTA`,
-    false
+    false,
   );
 
   // revision number of latest published version
@@ -104,10 +103,10 @@ const LeftPane = observer(function LeftPane(props: LeftPaneProps) {
       (async () => {
         const { rev: latestPublishedRev } = await studioCtx.getLatestVersion(
           latestPublishedVersion?.revisionId,
-          latestPublishedVersion?.branchId ?? undefined
+          latestPublishedVersion?.branchId ?? undefined,
         );
         setLatestPublishedRevNum(latestPublishedRev?.revision);
-      })()
+      })(),
     );
   }, [studioCtx, latestPublishedVersion]);
 
@@ -192,11 +191,9 @@ const LeftPane = observer(function LeftPane(props: LeftPaneProps) {
                   {wrapTab("responsiveness", <ResponsivenessPanel />)}
                   {wrapTab("outline", <OutlineTab />)}
                   {wrapTab("tokens", <LeftGeneralTokensPanel />)}
-                  {studioCtx.showDataTokens() &&
-                    wrapTab("dataTokens", <LeftGeneralDataTokensPanel />)}
+                  {wrapTab("dataTokens", <LeftGeneralDataTokensPanel />)}
                   {wrapTab("mixins", <MixinsPanel />)}
-                  {DEVFLAGS.showAnimations &&
-                    wrapTab("animationSequences", <AnimationSequencesPanel />)}
+                  {wrapTab("animationSequences", <AnimationSequencesPanel />)}
                   {wrapTab("components", <LeftComponentsPanel />)}
                   {wrapTab("expressions", <LeftExprsSearchPanel />)}
                   {wrapTab("themes", <DefaultStylesPanel />)}
@@ -211,7 +208,7 @@ const LeftPane = observer(function LeftPane(props: LeftPaneProps) {
                         useVersionsCTA={useVersionsCTA}
                         dismissVersionsCTA={() => setDismissVersionsCTA(true)}
                       />,
-                      true
+                      true,
                     )}
                   {wrapTab("settings", <LeftProjectSettingsPanel />)}
                   {wrapTab("splits", <LeftSplitsPanel />)}
@@ -234,17 +231,17 @@ const LeftPane = observer(function LeftPane(props: LeftPaneProps) {
               studioCtx.findReferencesComponent,
               studioCtx.findReferencesStyleToken,
               studioCtx.findReferencesDataToken,
-            ].find((x) => x != null) as Component | StyleToken | DataToken
+            ].find((x) => x != null) as Component | StyleToken | DataToken,
           )}
         />
       )}
-    </SidebarModalProvider>
+    </SidebarModalProvider>,
   );
 });
 
 const getFindReferencesProps = (
   studioCtx: StudioCtx,
-  reference: Component | StyleToken | DataToken
+  reference: Component | StyleToken | DataToken,
 ) => {
   return switchType(reference)
     .when(Component, (component) => ({
@@ -284,7 +281,7 @@ const getFindReferencesProps = (
       usageSummary: extractDataTokenUsages(
         studioCtx.siteInfo.id,
         studioCtx.site,
-        token
+        token,
       ),
       onClose: () => {
         studioCtx.findReferencesDataToken = undefined;

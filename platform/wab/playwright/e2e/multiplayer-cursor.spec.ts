@@ -10,7 +10,7 @@ import { goToProject, waitForFrameToLoad } from "../utils/studio-utils";
 
 async function getCursor(
   studio: StudioModel,
-  user: TestUserCredentials
+  user: TestUserCredentials,
 ): Promise<Locator> {
   const name = `${user.firstName}-${user.lastName}`;
   const cursorId = name.replace(/[^a-zA-Z0-9-]/g, "");
@@ -20,7 +20,7 @@ async function getCursor(
 
 async function getCursorPosition(
   studio: StudioModel,
-  user: TestUserCredentials
+  user: TestUserCredentials,
 ): Promise<{ x: number; y: number } | null> {
   const cursor = await getCursor(studio, user);
   const box = await cursor.boundingBox({ timeout: 2000 });
@@ -41,7 +41,7 @@ testMultiplayer.describe.skip("multiplayer cursors", () => {
       admin,
       user1,
       user2,
-      "multiplayer-cursor-test"
+      "multiplayer-cursor-test",
     );
   });
 
@@ -80,7 +80,7 @@ testMultiplayer.describe.skip("multiplayer cursors", () => {
       await forEachAsync(sessions, async (session, index) => {
         await session.page.mouse.move(
           anchorBox!.x + 100 + index * 50,
-          anchorBox!.y + 100 + index * 30
+          anchorBox!.y + 100 + index * 30,
         );
       });
 
@@ -163,6 +163,6 @@ testMultiplayer.describe.skip("multiplayer cursors", () => {
 
       expect(user2XDiff).toBeLessThanOrEqual(user2XTolerance);
       expect(user2YDiff).toBeLessThanOrEqual(user2YTolerance);
-    }
+    },
   );
 });

@@ -32,30 +32,30 @@ export async function findConflictNames(em: EntityManager) {
   const numberOfProjects = await dbMgr.countAllProjects();
 
   const printData = () => {
-    logger().info(
+    logger.info(
       numberOfProjects === processedProjects
         ? "FINISHED"
-        : `${((100 * processedProjects) / numberOfProjects).toFixed(2)}%`
+        : `${((100 * processedProjects) / numberOfProjects).toFixed(2)}%`,
     );
-    logger().info(`# of projects to check: ${numberOfProjects}`);
-    logger().info(`# of processed projects: ${processedProjects}`);
-    logger().info(
-      `# of projects with conflicts: ${projectsWithConflicts.length}`
+    logger.info(`# of projects to check: ${numberOfProjects}`);
+    logger.info(`# of processed projects: ${processedProjects}`);
+    logger.info(
+      `# of projects with conflicts: ${projectsWithConflicts.length}`,
     );
-    logger().info(
+    logger.info(
       `Tpl node name and Slots = ${
         conflictCounter[CONFLICT_TYPE.NODE_AND_SLOT]
-      }`
+      }`,
     );
-    logger().info(
+    logger.info(
       `Tpl node name and Variants = ${
         conflictCounter[CONFLICT_TYPE.NODE_AND_VARIANT]
-      }`
+      }`,
     );
-    logger().info(
-      `Tpl node name and Prop = ${conflictCounter[CONFLICT_TYPE.NODE_AND_PROP]}`
+    logger.info(
+      `Tpl node name and Prop = ${conflictCounter[CONFLICT_TYPE.NODE_AND_PROP]}`,
     );
-    logger().info("Projects with conflicts:", {
+    logger.info("Projects with conflicts:", {
       projectsWithConflictsSummary: projectsWithConflicts,
     });
   };
@@ -72,12 +72,12 @@ export async function findConflictNames(em: EntityManager) {
         const namer = makeNodeNamer(component);
         const realParamsName = getParamNames(
           component,
-          getRealParams(component, { includeSlots: true })
+          getRealParams(component, { includeSlots: true }),
         ); //slots and meta-props
         const realParams = getRealParams(component, { includeSlots: true }); //slots and meta-props
         const variantParamsName = getParamNames(
           component,
-          getVariantParams(component)
+          getVariantParams(component),
         );
 
         flattenTplsWithoutThrowawayNodes(component).forEach((node) => {
@@ -88,14 +88,14 @@ export async function findConflictNames(em: EntityManager) {
 
           const addConflictFound = (conflictType: CONFLICT_TYPE) => {
             conflictCounter[conflictType]++;
-            logger().info(
+            logger.info(
               `${
                 conflictType === CONFLICT_TYPE.NODE_AND_PROP
                   ? "prop"
                   : conflictType === CONFLICT_TYPE.NODE_AND_SLOT
-                  ? "slot"
-                  : "variant"
-              } conflict found: ${component.name} ${name}`
+                    ? "slot"
+                    : "variant"
+              } conflict found: ${component.name} ${name}`,
             );
             projectHasConflict = true;
           };
@@ -104,7 +104,7 @@ export async function findConflictNames(em: EntityManager) {
             addConflictFound(CONFLICT_TYPE.NODE_AND_VARIANT);
           } else if (realParamsName.includes(name)) {
             const param = realParams.find(
-              (p) => paramToVarName(component, p) === name
+              (p) => paramToVarName(component, p) === name,
             );
             assert(param, "param not found");
             if (isSlot(param)) {
@@ -123,7 +123,7 @@ export async function findConflictNames(em: EntityManager) {
         printData();
       }
     } catch (e) {
-      logger().error(`Unbundle failed on project ${project.id}`, e as any);
+      logger.error(`Unbundle failed on project ${project.id}`, e as any);
     }
   }
   printData();

@@ -7,7 +7,6 @@ import {
 } from "@/wab/client/components/menu-builder";
 import { IFrameAwareDropdownMenu } from "@/wab/client/components/widgets";
 import { Icon } from "@/wab/client/components/widgets/Icon";
-import { useAppCtx } from "@/wab/client/contexts/AppContexts";
 import HidePlaceholderIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__HidePlaceholder";
 import ShowPlaceholderIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__ShowPlaceholder";
 import Refresh2SvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__Refresh2Svg";
@@ -45,7 +44,6 @@ const contentCreatorModeHelp = (
 
 const ViewButton = observer(function ViewButton(props: ViewButtonProps) {
   const studioCtx = useStudioCtx();
-  const appCtx = useAppCtx();
   const vc = studioCtx.focusedViewCtx();
   const showSlotPlaceholder = studioCtx.showSlotPlaceholder();
   const showContainerPlaceholder = studioCtx.showContainerPlaceholder();
@@ -72,7 +70,7 @@ const ViewButton = observer(function ViewButton(props: ViewButtonProps) {
               />
               {showSlotPlaceholder ? "Hide " : "Show "} placeholders for empty
               slots
-            </Menu.Item>
+            </Menu.Item>,
           );
           push(
             <Menu.Item
@@ -89,7 +87,7 @@ const ViewButton = observer(function ViewButton(props: ViewButtonProps) {
               />
               {showContainerPlaceholder ? "Hide " : "Show "} placeholders for
               empty containers
-            </Menu.Item>
+            </Menu.Item>,
           );
           push(
             <Menu.Item
@@ -106,30 +104,25 @@ const ViewButton = observer(function ViewButton(props: ViewButtonProps) {
               />
               {showMultiplayerSelections ? "Hide " : "Show "} cursors and
               selections from other users
-            </Menu.Item>
+            </Menu.Item>,
           );
-          if (
-            DEVFLAGS.ancestorsBoxes ||
-            studioCtx.appCtx.appConfig.ancestorsBoxes
-          ) {
-            push(
-              <Menu.Item
-                onClick={async () => studioCtx.toggleShowAncestorsHoverBoxes()}
-                key="toggle-show-ancestors-hover-boxes"
-              >
-                <Icon
-                  className="dimfg mr-sm"
-                  icon={
-                    showSlotPlaceholder
-                      ? HidePlaceholderIcon
-                      : ShowPlaceholderIcon
-                  }
-                />
-                {showAncestorsHoverBoxes ? "Hide " : "Show "} container outlines
-                when hovering
-              </Menu.Item>
-            );
-          }
+          push(
+            <Menu.Item
+              onClick={async () => studioCtx.toggleShowAncestorsHoverBoxes()}
+              key="toggle-show-ancestors-hover-boxes"
+            >
+              <Icon
+                className="dimfg mr-sm"
+                icon={
+                  showSlotPlaceholder
+                    ? HidePlaceholderIcon
+                    : ShowPlaceholderIcon
+                }
+              />
+              {showAncestorsHoverBoxes ? "Hide " : "Show "} container outlines
+              when hovering
+            </Menu.Item>,
+          );
 
           if (vc) {
             const isOutlineMode = vc.canvasCtx.isOutlineMode();
@@ -143,7 +136,7 @@ const ViewButton = observer(function ViewButton(props: ViewButtonProps) {
                 <TextAndShortcut shortcut={getComboForAction("OUTLINE_MODE")}>
                   {isOutlineMode ? "Hide " : "Show "} outline mode
                 </TextAndShortcut>
-              </Menu.Item>
+              </Menu.Item>,
             );
           }
 
@@ -161,21 +154,19 @@ const ViewButton = observer(function ViewButton(props: ViewButtonProps) {
                 >
                   {isFocusedMode ? "Turn on " : "Turn off "} design mode
                 </TextAndShortcut>
-              </Menu.Item>
+              </Menu.Item>,
             );
           }
 
-          if (appCtx.appConfig.autoOpen) {
-            const isAutoOpenMode = studioCtx.isAutoOpenMode;
-            push(
-              <Menu.Item
-                onClick={() => studioCtx.toggleAutoOpenMode()}
-                key="toggle-auto-open-mode"
-              >
-                {isAutoOpenMode ? "Turn off " : "Turn on "} auto-open mode
-              </Menu.Item>
-            );
-          }
+          const isAutoOpenMode = studioCtx.isAutoOpenMode;
+          push(
+            <Menu.Item
+              onClick={() => studioCtx.toggleAutoOpenMode()}
+              key="toggle-auto-open-mode"
+            >
+              {isAutoOpenMode ? "Turn off " : "Turn on "} auto-open mode
+            </Menu.Item>,
+          );
 
           if (studioCtx.showComments()) {
             const showCommentsOverlay = studioCtx.showCommentsOverlay;
@@ -185,7 +176,7 @@ const ViewButton = observer(function ViewButton(props: ViewButtonProps) {
                 key="toggle-show-comments-overlay"
               >
                 {showCommentsOverlay ? "Hide " : "Show "} comments overlay
-              </Menu.Item>
+              </Menu.Item>,
             );
           }
 
@@ -206,7 +197,7 @@ const ViewButton = observer(function ViewButton(props: ViewButtonProps) {
                   {studioCtx.contentEditorMode ? "Turn off " : "Turn on "}{" "}
                   content creator mode
                 </Tooltip>
-              </Menu.Item>
+              </Menu.Item>,
             );
           }
 
@@ -220,7 +211,7 @@ const ViewButton = observer(function ViewButton(props: ViewButtonProps) {
             >
               <Icon className="dimfg mr-sm" icon={Refresh2SvgIcon} />
               Refresh data
-            </Menu.Item>
+            </Menu.Item>,
           );
         });
 

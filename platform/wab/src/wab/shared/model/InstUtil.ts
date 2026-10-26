@@ -9,12 +9,12 @@ export class InstUtil {
   constructor(
     // eslint-disable-next-line @typescript-eslint/no-shadow
     public meta: MetaRuntime,
-    realClasses: { [key: string]: Function }
+    realClasses: { [key: string]: Function },
   ) {
     this.realClass2Class = new Map(
       Object.entries(realClasses).map(([name, cls]) =>
-        tuple(cls, meta.clsByName[name])
-      )
+        tuple(cls, meta.clsByName[name]),
+      ),
     );
   }
 
@@ -24,10 +24,6 @@ export class InstUtil {
 
   isObjInst(inst: any): inst is classes.ObjInst {
     return !!inst && !!this.tryGetInstClass(inst);
-  }
-
-  getMetaClassForRealClass(cls: Function) {
-    return ensure(this.realClass2Class.get(cls));
   }
 
   getInstClass(inst: classes.ObjInst) {
@@ -42,7 +38,7 @@ export class InstUtil {
     x: any,
     y: any,
     shallow: boolean,
-    ignoreUuidsAndNils: boolean
+    ignoreUuidsAndNils: boolean,
   ) {
     const fcmp = shallow
       ? // eslint-disable-next-line @typescript-eslint/no-shadow
@@ -84,9 +80,9 @@ export class InstUtil {
               f.name !== "uuid" || !ignoreUuidsAndNils
                 ? fcmp(
                     this.meta.readField(x, f.name),
-                    this.meta.readField(y, f.name)
+                    this.meta.readField(y, f.name),
                   )
-                : true
+                : true,
             )
             .every(L.identity);
         }
@@ -102,10 +98,6 @@ export class InstUtil {
       }
     };
     return rec(x, y);
-  }
-
-  shallowEquals(x: any, y: any, ignoreUuidsAndNils: boolean = false) {
-    return this._equals(x, y, true, ignoreUuidsAndNils);
   }
 
   deepEquals(x: any, y: any, ignoreUuidsAndNils: boolean = false) {

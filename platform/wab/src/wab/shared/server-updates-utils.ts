@@ -18,6 +18,7 @@ import {
   ModelChange,
   RecordedChanges,
 } from "@/wab/shared/core/observable-model";
+import { serverQueryId } from "@/wab/shared/core/query-ids";
 import { toFinalToken } from "@/wab/shared/core/tokens";
 import {
   removeMarkersToTpl,
@@ -41,9 +42,12 @@ import {
   ComponentArena,
   ComponentDataQuery,
   ComponentInstance,
+  ComponentServerQuery,
   ComponentVariantGroup,
   CompositeExpr,
   CustomCode,
+  CustomFunction,
+  CustomFunctionExpr,
   DataSourceOpExpr,
   ensureKnownEventHandler,
   Expr,
@@ -56,6 +60,9 @@ import {
   isKnownArgType,
   isKnownComponent,
   isKnownComponentDataQuery,
+  isKnownComponentServerQuery,
+  isKnownCustomFunction,
+  isKnownCustomFunctionExpr,
   isKnownExpr,
   isKnownImageAsset,
   isKnownMixin,
@@ -129,8 +136,10 @@ export interface DeletedAssetsSummary {
   deletedStates: State[];
   deletedTplNodes: TplNode[];
   deletedComponentDataQueries: ComponentDataQuery[];
+  deletedComponentServerQueries: ComponentServerQuery[];
   deletedThemes: Theme[];
   deletedArgTypes: ArgType[];
+  deletedCustomFunctions: CustomFunction[];
   deletedExprs: Expr[];
 }
 
@@ -147,8 +156,10 @@ export function getEmptyDeletedAssetsSummary(): DeletedAssetsSummary {
     deletedStates: [],
     deletedTplNodes: [],
     deletedComponentDataQueries: [],
+    deletedComponentServerQueries: [],
     deletedThemes: [],
     deletedArgTypes: [],
+    deletedCustomFunctions: [],
     deletedExprs: [],
   };
 }
@@ -158,7 +169,7 @@ export function updateSummaryFromDeletedInstances(
   insts: ObjInst[],
   opts?: {
     includeTplNodesAndExprs?: boolean;
-  }
+  },
 ) {
   insts.forEach((inst) => {
     if (isKnownComponent(inst)) {
@@ -181,10 +192,14 @@ export function updateSummaryFromDeletedInstances(
       summary.deletedStates.push(inst);
     } else if (isKnownComponentDataQuery(inst)) {
       summary.deletedComponentDataQueries.push(inst);
+    } else if (isKnownComponentServerQuery(inst)) {
+      summary.deletedComponentServerQueries.push(inst);
     } else if (isKnownTheme(inst)) {
       summary.deletedThemes.push(inst);
     } else if (isKnownArgType(inst)) {
       summary.deletedArgTypes.push(inst);
+    } else if (isKnownCustomFunction(inst)) {
+      summary.deletedCustomFunctions.push(inst);
     } else if (opts?.includeTplNodesAndExprs && isKnownTplNode(inst)) {
       // We don't always include tpl nodes as it could affect multiplayer
       // performance and the only possible conflicts are really hard to happen, e.g.
@@ -199,7 +214,7 @@ export function updateSummaryFromDeletedInstances(
 }
 
 function cloneDeletedAssetsSummary(
-  summary: DeletedAssetsSummary
+  summary: DeletedAssetsSummary,
 ): DeletedAssetsSummary {
   return {
     deletedComponents: [...summary.deletedComponents],
@@ -213,8 +228,10 @@ function cloneDeletedAssetsSummary(
     deletedStates: [...summary.deletedStates],
     deletedTplNodes: [...summary.deletedTplNodes],
     deletedComponentDataQueries: [...summary.deletedComponentDataQueries],
+    deletedComponentServerQueries: [...summary.deletedComponentServerQueries],
     deletedThemes: [...summary.deletedThemes],
     deletedArgTypes: [...summary.deletedArgTypes],
+    deletedCustomFunctions: [...summary.deletedCustomFunctions],
     deletedExprs: [...summary.deletedExprs],
   };
 }
@@ -246,10 +263,20 @@ export function undoChangesAndResolveConflicts(
   site: Site,
   recorder: IChangeRecorder,
   serverSummary: DeletedAssetsSummary,
-  changes: ModelChange[]
+  changes: ModelChange[],
 ): RecordedChanges {
   return recorder.withRecording(() => {
     undoChanges(changes);
+
+    // A restored component is observed without its tplTree, so its nodes
+    // would have no path from the site and look deleted below.
+    recorder.maybeObserveComponents(
+      changes.flatMap((change) =>
+        change.type === "array-splice"
+          ? change.removed.filter(isKnownComponent)
+          : [],
+      ),
+    );
 
     const toBeDeleted = recorder.getToBeDeletedInsts();
     const isInstDeleted = (inst: ObjInst) =>
@@ -290,17 +317,17 @@ export function undoChangesAndResolveConflicts(
 const deleteParentRefsToTpl = (childToDelete: TplNode) => {
   switchType(childToDelete.parent)
     .when(TplTag, (tpl) =>
-      removeWhere(tpl.children, (child) => child === childToDelete)
+      removeWhere(tpl.children, (child) => child === childToDelete),
     )
     .when(TplSlot, (tpl) =>
-      removeWhere(tpl.defaultContents, (child) => child === childToDelete)
+      removeWhere(tpl.defaultContents, (child) => child === childToDelete),
     )
     .when(TplComponent, (tpl) =>
       [...(tryGetBaseVariantSetting(tpl)?.args ?? [])].forEach(
         (arg) =>
           isKnownRenderExpr(arg.expr) &&
-          removeWhere(arg.expr.tpl, (child) => child === childToDelete)
-      )
+          removeWhere(arg.expr.tpl, (child) => child === childToDelete),
+      ),
     )
     .when(null, () => {})
     .result();
@@ -309,7 +336,7 @@ const deleteParentRefsToTpl = (childToDelete: TplNode) => {
 export function fixDanglingReferenceConflicts(
   site: Site,
   recorder: IChangeRecorder,
-  deletedSummary: DeletedAssetsSummary
+  deletedSummary: DeletedAssetsSummary,
 ) {
   let hasMoreInstancesToBeDeleted: boolean;
   let currentIteraction = 0;
@@ -320,14 +347,14 @@ export function fixDanglingReferenceConflicts(
     hasMoreInstancesToBeDeleted = false;
     const toBeDeleted = mergeSets(
       recorder.getToBeDeletedInsts(),
-      recorder.getDeletedInstsWithDanglingRefs()
+      recorder.getDeletedInstsWithDanglingRefs(),
     );
     const summary = updateSummaryFromDeletedInstances(
       cloneDeletedAssetsSummary(deletedSummary),
       [...toBeDeleted.keys()],
       {
         includeTplNodesAndExprs: true,
-      }
+      },
     );
 
     // Make sure the component roots are up-to-date after all changes
@@ -339,8 +366,8 @@ export function fixDanglingReferenceConflicts(
     const unexpectedRef = (inst: ObjInst, ref: ObjInst) => {
       throw new UnresolvedConflictError(
         `Unexpected instance ${instUtil.getInstClassName(
-          inst
-        )} to be referenced by ${instUtil.getInstClassName(ref)}`
+          inst,
+        )} to be referenced by ${instUtil.getInstClassName(ref)}`,
       );
     };
 
@@ -348,6 +375,26 @@ export function fixDanglingReferenceConflicts(
     // we should double check
     const isInstDeleted = (inst: ObjInst) =>
       toBeDeleted.has(inst) || !recorder.getAnyPathToChild(inst);
+
+    // Finds the param that a `FunctionArg` of a deleted `ArgType` should point
+    // at instead: the function's current param with the same name and type.
+    // This happens when both sides of a merge re-synced the same registered
+    // function param, so each side has its own `ArgType` for it.
+    const findReplacementArgType = (
+      functionArg: FunctionArg,
+      argType: ArgType,
+    ) => {
+      const customFunctionExpr = recorder
+        .getRefsToInst(functionArg)
+        .find(isKnownCustomFunctionExpr);
+      return customFunctionExpr?.func.params.find(
+        (param) =>
+          param !== argType &&
+          param.argName === argType.argName &&
+          param.type.name === argType.type.name &&
+          !isInstDeleted(param),
+      );
+    };
 
     // Deletes `Expr`s containing WeakRefs
     const deleteExpr = (
@@ -360,6 +407,7 @@ export function fixDanglingReferenceConflicts(
         | FunctionArg
         | StrongFunctionArg
         | FunctionExpr
+        | CustomFunctionExpr,
     ) =>
       recorder.getRefsToInst(expr).forEach((ref) =>
         switchType(ref)
@@ -375,7 +423,7 @@ export function fixDanglingReferenceConflicts(
               recorder.getRefsToInst(arg).forEach((argRef) =>
                 switchType(argRef)
                   .when(VariantSetting, (vs) => tryRemove(vs.args, arg))
-                  .elseUnsafe(() => unexpectedRef(arg, argRef))
+                  .elseUnsafe(() => unexpectedRef(arg, argRef)),
               );
             }
           })
@@ -395,22 +443,30 @@ export function fixDanglingReferenceConflicts(
           .when(PageHref, (href) => {
             const key = ensure(
               Object.keys(href.params).find((k) => href.params[k] === expr),
-              () => `Expected to find param referencing the expression`
+              () => `Expected to find param referencing the expression`,
             );
             delete href.params[key];
           })
           .when(FunctionArg, (functionArg) => deleteExpr(functionArg))
+          .when(CustomFunctionExpr, (customFunctionExpr) =>
+            removeWhere(customFunctionExpr.args, (arg) => arg === expr),
+          )
+          .when(ComponentServerQuery, (query) => {
+            if (query.op === expr) {
+              query.op = null;
+            }
+          })
           .when(CollectionExpr, (collectionExpr) => {
             collectionExpr.exprs = collectionExpr.exprs.map((childExpr) =>
-              childExpr === expr ? null : childExpr
+              childExpr === expr ? null : childExpr,
             );
           })
           .when(MapExpr, (mapExpr) => {
             const key = ensure(
               Object.keys(mapExpr.mapExpr).find(
-                (k) => mapExpr.mapExpr[k] === expr
+                (k) => mapExpr.mapExpr[k] === expr,
               ),
-              () => `Expected to find expression reference`
+              () => `Expected to find expression reference`,
             );
             delete mapExpr.mapExpr[key];
           })
@@ -418,9 +474,9 @@ export function fixDanglingReferenceConflicts(
           .when(CompositeExpr, (compositeExpr) => {
             const key = ensure(
               Object.keys(compositeExpr.substitutions).find(
-                (k) => compositeExpr.substitutions[k] === expr
+                (k) => compositeExpr.substitutions[k] === expr,
               ),
-              () => `Expected to find substitution referencing the expression`
+              () => `Expected to find substitution referencing the expression`,
             );
             delete compositeExpr.substitutions[key];
           })
@@ -429,11 +485,28 @@ export function fixDanglingReferenceConflicts(
               recorder.getRefsToInst(nameArg).forEach((argRef) =>
                 switchType(argRef)
                   .when(Interaction, (i) => tryRemove(i.args, nameArg))
-                  .elseUnsafe(() => unexpectedRef(nameArg, argRef))
+                  .elseUnsafe(() => unexpectedRef(nameArg, argRef)),
               );
             }
           })
-          .elseUnsafe(() => unexpectedRef(expr, ref))
+          .elseUnsafe(() => unexpectedRef(expr, ref)),
+      );
+
+    const deleteQueryRef = (queryRef: QueryRef) =>
+      recorder.getRefsToInst(queryRef).forEach((ref) =>
+        switchType(ref)
+          .when(DataSourceOpExpr, (dataSourceOpExpr) => {
+            if (dataSourceOpExpr.parent === queryRef) {
+              dataSourceOpExpr.parent = null;
+            }
+          })
+          .when(QueryInvalidationExpr, (queryInvalidationExpr) => {
+            queryInvalidationExpr.invalidationQueries =
+              queryInvalidationExpr.invalidationQueries.filter(
+                (invalidationQuery) => invalidationQuery !== queryRef,
+              );
+          })
+          .elseUnsafe(() => unexpectedRef(queryRef, ref)),
       );
 
     const deleteState = (state: State) =>
@@ -450,18 +523,18 @@ export function fixDanglingReferenceConflicts(
               const component = ensure(
                 recorder.getRefsToInst(vg, false).find(isKnownComponent),
                 () =>
-                  `No component found for VariantGroup ${vg.param.variable.name}`
+                  `No component found for VariantGroup ${vg.param.variable.name}`,
               );
               removeWhere(component.variantGroups, (group) => group === vg);
             })
             .when(Param, (param) => {
               const component = ensure(
                 recorder.getRefsToInst(param, false).find(isKnownComponent),
-                () => `No component found for Param ${param.variable.name}`
+                () => `No component found for Param ${param.variable.name}`,
               );
               removeWhere(component.params, (p) => p === param);
             })
-            .elseUnsafe(() => unexpectedRef(state, ref))
+            .elseUnsafe(() => unexpectedRef(state, ref)),
         );
 
     const deleteSplitContent = (content: SplitContent) =>
@@ -485,10 +558,10 @@ export function fixDanglingReferenceConflicts(
                       removeWhere(site.splits, (split2) => split2 === split);
                     }
                   })
-                  .elseUnsafe(() => unexpectedRef(slice, sliceRef))
+                  .elseUnsafe(() => unexpectedRef(slice, sliceRef)),
               );
             })
-            .elseUnsafe(() => unexpectedRef(content, ref))
+            .elseUnsafe(() => unexpectedRef(content, ref)),
         );
 
     summary.deletedComponents.filter(isInstDeleted).forEach((c) => {
@@ -513,7 +586,7 @@ export function fixDanglingReferenceConflicts(
                 .filter((inst) => !isInstDeleted(inst))
                 .find(
                   (owner): owner is Component =>
-                    isKnownComponent(owner) && owner.tplTree === tplComponent
+                    isKnownComponent(owner) && owner.tplTree === tplComponent,
                 );
               if (maybeOwner) {
                 replaceTplTreeByEmptyBox(maybeOwner);
@@ -533,16 +606,16 @@ export function fixDanglingReferenceConflicts(
                 .when(RenderableType, (renderable) =>
                   removeWhere(
                     renderable.params,
-                    (param) => param === instanceType
-                  )
+                    (param) => param === instanceType,
+                  ),
                 )
                 .when(RenderFuncType, (renderable) =>
                   removeWhere(
                     renderable.allowed,
-                    (param) => param === instanceType
-                  )
+                    (param) => param === instanceType,
+                  ),
                 )
-                .elseUnsafe(() => unexpectedRef(instanceType, ref))
+                .elseUnsafe(() => unexpectedRef(instanceType, ref)),
             );
           })
           .when(PageHref, (expr) => deleteExpr(expr))
@@ -564,7 +637,7 @@ export function fixDanglingReferenceConflicts(
           })
           .when(State, (state) => deleteState(state))
           .when(SplitContent, (content) => deleteSplitContent(content))
-          .elseUnsafe(() => unexpectedRef(c, componentRef))
+          .elseUnsafe(() => unexpectedRef(c, componentRef)),
       );
 
       if (needsToRemoveFrames) {
@@ -596,7 +669,7 @@ export function fixDanglingReferenceConflicts(
               }
             }
           })
-          .elseUnsafe(() => unexpectedRef(asset, assetRef))
+          .elseUnsafe(() => unexpectedRef(asset, assetRef)),
       );
     });
     summary.deletedMixins.filter(isInstDeleted).forEach((mixin) => {
@@ -606,7 +679,7 @@ export function fixDanglingReferenceConflicts(
       refs.forEach((ref) =>
         switchType(ref)
           .when(RuleSet, (rs) => removeWhere(rs.mixins, (m) => m === mixin))
-          .elseUnsafe(() => unexpectedRef(mixin, ref))
+          .elseUnsafe(() => unexpectedRef(mixin, ref)),
       );
     });
     summary.deletedParams.filter(isInstDeleted).forEach((param) => {
@@ -622,7 +695,8 @@ export function fixDanglingReferenceConflicts(
           .when(Arg, (arg) => {
             const vs = ensure(
               recorder.getRefsToInst(arg).filter(isKnownVariantSetting)[0],
-              () => `No VariantSetting found for arg ${arg.param.variable.name}`
+              () =>
+                `No VariantSetting found for arg ${arg.param.variable.name}`,
             );
             removeWhere(vs.args, (a) => a === arg);
           })
@@ -630,14 +704,14 @@ export function fixDanglingReferenceConflicts(
             const component = ensure(
               recorder.getRefsToInst(vg).find(isKnownComponent),
               () =>
-                `No component found for VariantGroup ${vg.param.variable.name}`
+                `No component found for VariantGroup ${vg.param.variable.name}`,
             );
             removeWhere(component.variantGroups, (group) => group === vg);
           })
           .when(State, (state) => {
             const component = ensure(
               recorder.getRefsToInst(state).filter(isKnownComponent)[0],
-              () => `No component found for State ${state.param.variable.name}`
+              () => `No component found for State ${state.param.variable.name}`,
             );
             removeWhere(component.states, (s) => state === s);
           })
@@ -665,7 +739,7 @@ export function fixDanglingReferenceConflicts(
             t.value = resolveAllTokenRefs(t.value, deletedFinalTokens);
           })
           .when(StyleTokenRef, (t) => deleteExpr(t))
-          .elseUnsafe(() => unexpectedRef(token, ref))
+          .elseUnsafe(() => unexpectedRef(token, ref)),
       );
     });
     summary.deletedVars.filter(isInstDeleted).forEach((variable) => {
@@ -688,24 +762,24 @@ export function fixDanglingReferenceConflicts(
             recorder.getRefsToInst(row).forEach((ref) =>
               switchType(ref)
                 .when(ArenaFrameGrid, (grid) =>
-                  removeWhere(grid.rows, (r) => r === row)
+                  removeWhere(grid.rows, (r) => r === row),
                 )
-                .elseUnsafe(() => unexpectedRef(row, ref))
+                .elseUnsafe(() => unexpectedRef(row, ref)),
             );
           })
           .when(Site, (s) => {
             assert(
               s.activeScreenVariantGroup === vg,
               () =>
-                `Expected Site to reference VariantGroup through activeScreenVariantGroup`
+                `Expected Site to reference VariantGroup through activeScreenVariantGroup`,
             );
             s.activeScreenVariantGroup = s.globalVariantGroups.find((group) =>
-              isScreenVariantGroup(group)
+              isScreenVariantGroup(group),
             );
           })
           .when(SplitContent, (content) => deleteSplitContent(content))
           .when(State, (state) => deleteState(state))
-          .elseUnsafe(() => unexpectedRef(vg, vgRef))
+          .elseUnsafe(() => unexpectedRef(vg, vgRef)),
       );
     });
     summary.deletedVariants.filter(isInstDeleted).forEach((variant) => {
@@ -719,18 +793,18 @@ export function fixDanglingReferenceConflicts(
             recorder.getRefsToInst(row).forEach((ref) =>
               switchType(ref)
                 .when(ArenaFrameGrid, (grid) =>
-                  removeWhere(grid.rows, (r) => r === row)
+                  removeWhere(grid.rows, (r) => r === row),
                 )
-                .elseUnsafe(() => unexpectedRef(row, ref))
+                .elseUnsafe(() => unexpectedRef(row, ref)),
             );
           })
           .when(ArenaFrameCell, (cell) => {
             recorder.getRefsToInst(cell).forEach((ref) =>
               switchType(ref)
                 .when(ArenaFrameRow, (row) =>
-                  removeWhere(row.cols, (c) => c === cell)
+                  removeWhere(row.cols, (c) => c === cell),
                 )
-                .elseUnsafe(() => unexpectedRef(cell, ref))
+                .elseUnsafe(() => unexpectedRef(cell, ref)),
             );
           })
           .when(ArenaFrame, (frame) => {
@@ -745,7 +819,7 @@ export function fixDanglingReferenceConflicts(
           })
           .when(
             ColumnsSetting,
-            (settings) => (settings.screenBreakpoint = null)
+            (settings) => (settings.screenBreakpoint = null),
           )
           .when(VariantSetting, (vs) => {
             recorder
@@ -766,8 +840,8 @@ export function fixDanglingReferenceConflicts(
                                 Array.isArray(variant.selectors) &&
                                 arrayEqIgnoreOrder(
                                   v.selectors,
-                                  variant.selectors
-                                )))
+                                  variant.selectors,
+                                ))),
                         );
                         if (newVariant) {
                           // The variant was replaced with another one -
@@ -775,8 +849,8 @@ export function fixDanglingReferenceConflicts(
                           // created style variants for the same selector
                           vs.variants = uniq(
                             vs.variants.map((v) =>
-                              v === variant ? newVariant : v
-                            )
+                              v === variant ? newVariant : v,
+                            ),
                           );
                           return;
                         }
@@ -784,36 +858,36 @@ export function fixDanglingReferenceConflicts(
                     }
                     removeWhere(tpl.vsettings, (vs2) => vs2 === vs);
                   })
-                  .elseUnsafe(() => unexpectedRef(vs, vsRef))
+                  .elseUnsafe(() => unexpectedRef(vs, vsRef)),
               );
           })
           .when(VariantsRef, (expr) =>
-            removeWhere(expr.variants, (v) => v === variant)
+            removeWhere(expr.variants, (v) => v === variant),
           )
           .when(VariantedValue, (variantedValue) =>
             recorder.getRefsToInst(variantedValue).forEach((ref) =>
               switchType(ref)
                 .when(StyleToken, (token) =>
                   removeWhere(token.variantedValues, (val) =>
-                    val.variants.includes(variant)
-                  )
+                    val.variants.includes(variant),
+                  ),
                 )
-                .elseUnsafe(() => unexpectedRef(variantedValue, ref))
-            )
+                .elseUnsafe(() => unexpectedRef(variantedValue, ref)),
+            ),
           )
           .when(VariantedRuleSet, (variantedRS) =>
             recorder.getRefsToInst(variantedRS).forEach((ref) =>
               switchType(ref)
                 .when(Mixin, (mixin) =>
                   removeWhere(mixin.variantedRs, (val) =>
-                    val.variants.includes(variant)
-                  )
+                    val.variants.includes(variant),
+                  ),
                 )
-                .elseUnsafe(() => unexpectedRef(variantedRS, ref))
-            )
+                .elseUnsafe(() => unexpectedRef(variantedRS, ref)),
+            ),
           )
           .when(SplitContent, (content) => deleteSplitContent(content))
-          .elseUnsafe(() => unexpectedRef(variant, variantRef))
+          .elseUnsafe(() => unexpectedRef(variant, variantRef)),
       );
     });
     summary.deletedStates.filter(isInstDeleted).forEach((state) => {
@@ -834,17 +908,17 @@ export function fixDanglingReferenceConflicts(
             assert(
               v.forTpl === tpl,
               () =>
-                `Expected variant to weakly reference TplNode through 'forTpl' field`
+                `Expected variant to weakly reference TplNode through 'forTpl' field`,
             );
             site.components.forEach((c) =>
-              removeWhere(c.variants, (v2) => v2 === v)
+              removeWhere(c.variants, (v2) => v2 === v),
             );
           })
           .when(SlotParam, (slotParam) => {
             const component = ensure(
               recorder.getRefsToInst(slotParam, false).find(isKnownComponent),
               () =>
-                `No component found for slot param ${slotParam.variable.name}`
+                `No component found for slot param ${slotParam.variable.name}`,
             );
             removeWhere(component.params, (p) => p === slotParam);
           })
@@ -857,27 +931,11 @@ export function fixDanglingReferenceConflicts(
               .forEach((markerRef) =>
                 switchType(markerRef)
                   .when(RawText, (text) => removeMarkersToTpl(text, tpl))
-                  .elseUnsafe(() => unexpectedRef(marker, markerRef))
+                  .elseUnsafe(() => unexpectedRef(marker, markerRef)),
               );
           })
-          .when(QueryRef, (q) => {
-            recorder.getRefsToInst(q).forEach((ref) =>
-              switchType(ref)
-                .when(DataSourceOpExpr, (dataSourceOpExpr) => {
-                  if (dataSourceOpExpr.parent === q) {
-                    dataSourceOpExpr.parent = null;
-                  }
-                })
-                .when(QueryInvalidationExpr, (queryInvalidationExpr) => {
-                  queryInvalidationExpr.invalidationQueries =
-                    queryInvalidationExpr.invalidationQueries.filter(
-                      (invalidationQuery) => invalidationQuery !== q
-                    );
-                })
-                .elseUnsafe(() => unexpectedRef(q, ref))
-            );
-          })
-          .elseUnsafe(() => unexpectedRef(tpl, tplRef))
+          .when(QueryRef, (q) => deleteQueryRef(q))
+          .elseUnsafe(() => unexpectedRef(tpl, tplRef)),
       );
     });
     summary.deletedComponentDataQueries
@@ -888,24 +946,38 @@ export function fixDanglingReferenceConflicts(
           .filter((inst) => !isInstDeleted(inst));
         refs.forEach((queryRef) =>
           switchType(queryRef)
+            .when(QueryRef, (q) => deleteQueryRef(q))
+            .elseUnsafe(() => unexpectedRef(query, queryRef)),
+        );
+      });
+
+    summary.deletedComponentServerQueries
+      .filter(isInstDeleted)
+      .forEach((query) => {
+        const id = serverQueryId(query);
+        // Similar check to TplMgr.fixReferencesToRemovedServerQueries to
+        // ensure QueryRef are moved to another surviving query.
+        const replacement = id
+          ? site.components
+              .flatMap((c) => c.serverQueries)
+              .find(
+                (q) =>
+                  q !== query && !isInstDeleted(q) && serverQueryId(q) === id,
+              )
+          : undefined;
+        const refs = recorder
+          .getRefsToInst(query)
+          .filter((inst) => !isInstDeleted(inst));
+        refs.forEach((queryRef) =>
+          switchType(queryRef)
             .when(QueryRef, (q) => {
-              recorder.getRefsToInst(q).forEach((ref) =>
-                switchType(ref)
-                  .when(DataSourceOpExpr, (dataSourceOpExpr) => {
-                    if (dataSourceOpExpr.parent === q) {
-                      dataSourceOpExpr.parent = null;
-                    }
-                  })
-                  .when(QueryInvalidationExpr, (queryInvalidationExpr) => {
-                    queryInvalidationExpr.invalidationQueries =
-                      queryInvalidationExpr.invalidationQueries.filter(
-                        (invalidationQuery) => invalidationQuery !== q
-                      );
-                  })
-                  .elseUnsafe(() => unexpectedRef(q, ref))
-              );
+              if (replacement) {
+                q.ref = replacement;
+              } else {
+                deleteQueryRef(q);
+              }
             })
-            .elseUnsafe(() => unexpectedRef(query, queryRef))
+            .elseUnsafe(() => unexpectedRef(query, queryRef)),
         );
       });
     summary.deletedThemes.filter(isInstDeleted).forEach((theme) => {
@@ -919,17 +991,37 @@ export function fixDanglingReferenceConflicts(
               s.activeTheme = s.themes[0] ?? null;
             }
           })
-          .elseUnsafe(() => unexpectedRef(theme, themeRef))
+          .elseUnsafe(() => unexpectedRef(theme, themeRef)),
       );
     });
+    summary.deletedCustomFunctions
+      .filter(isInstDeleted)
+      .forEach((customFunction) => {
+        const refs = recorder
+          .getRefsToInst(customFunction)
+          .filter((inst) => !isInstDeleted(inst));
+        refs.forEach((ref) =>
+          switchType(ref)
+            .when(CustomFunctionExpr, (expr) => deleteExpr(expr))
+            .elseUnsafe(() => unexpectedRef(customFunction, ref)),
+        );
+      });
     summary.deletedArgTypes.filter(isInstDeleted).forEach((argType) => {
       const refs = recorder
         .getRefsToInst(argType)
         .filter((inst) => !isInstDeleted(inst));
       refs.forEach((ref) =>
         switchType(ref)
-          .when([FunctionArg, StrongFunctionArg], (expr) => deleteExpr(expr))
-          .elseUnsafe(() => unexpectedRef(argType, ref))
+          .when(StrongFunctionArg, (expr) => deleteExpr(expr))
+          .when(FunctionArg, (functionArg) => {
+            const replacement = findReplacementArgType(functionArg, argType);
+            if (replacement) {
+              functionArg.argType = replacement;
+            } else {
+              deleteExpr(functionArg);
+            }
+          })
+          .elseUnsafe(() => unexpectedRef(argType, ref)),
       );
     });
     summary.deletedExprs.filter(isInstDeleted).forEach((expr) => {
@@ -944,21 +1036,21 @@ export function fixDanglingReferenceConflicts(
                 only(
                   recorder
                     .getRefsToInst(i, false)
-                    .filter((inst) => !isInstDeleted(inst))
-                )
+                    .filter((inst) => !isInstDeleted(inst)),
+                ),
               );
               i.parent = actualParent;
             }
           })
-          .elseUnsafe(() => unexpectedRef(expr, ref))
+          .elseUnsafe(() => unexpectedRef(expr, ref)),
       );
     });
     const nextToBeDeleted = mergeSets(
       recorder.getToBeDeletedInsts(),
-      recorder.getDeletedInstsWithDanglingRefs()
+      recorder.getDeletedInstsWithDanglingRefs(),
     );
     hasMoreInstancesToBeDeleted = Array.from(nextToBeDeleted.keys()).some(
-      (inst) => !toBeDeleted.has(inst)
+      (inst) => !toBeDeleted.has(inst),
     );
   } while (hasMoreInstancesToBeDeleted);
 }

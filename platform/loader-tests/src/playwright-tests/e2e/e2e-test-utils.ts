@@ -21,13 +21,13 @@ export interface E2eTestCase {
  * On the CI, all changed packages are published to verdaccio and contribute to these tests.
  * To run this test locally, build/publish all changed packages to verdaccio and then run the test.
  *
- * 1. yarn local-publish
- * 3. yarn run local:playwright-ui
+ * 1. pnpm local-publish
+ * 3. pnpm run local:playwright-ui
  */
 export function defineE2eTests(
   platform: CodegenPlatform,
   cases: E2eTestCase[],
-  assertions: (page: Page, host: string) => Promise<void>
+  assertions: (page: Page, host: string, testCase: E2eTestCase) => Promise<void>
 ) {
   test.describe(`${platform} e2e`, () => {
     let cmsDatabase: { id: string; publicToken: string };
@@ -40,7 +40,8 @@ export function defineE2eTests(
       await teardownCms(cmsDatabase.id);
     });
 
-    for (const { scheme, typescript, appDir } of cases) {
+    for (const testCase of cases) {
+      const { scheme, typescript, appDir } = testCase;
       const lang = typescript ? "TS" : "JS";
       const router = appDir === undefined ? "" : appDir ? "App" : "Pages";
 
@@ -69,7 +70,7 @@ export function defineE2eTests(
         });
 
         try {
-          await assertions(page, ctx.host);
+          await assertions(page, ctx.host, testCase);
         } finally {
           await teardownCodegenTest(ctx);
         }

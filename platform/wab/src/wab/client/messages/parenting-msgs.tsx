@@ -14,15 +14,15 @@ export type ClientCantAddChildMsg = CantAddChildMsg | CantAddToSlotOutOfContext;
 
 export function renderCantAddMsg(
   msg: CantInsertTplReason | ClientCantAddChildMsg | CantAddSiblingMsg,
-  opts: { format: "string" }
+  opts: { format: "string" },
 ): string;
 export function renderCantAddMsg(
   msg: CantInsertTplReason | ClientCantAddChildMsg | CantAddSiblingMsg,
-  opts?: { format?: "string" }
+  opts?: { format?: "string" },
 ): React.ReactNode;
 export function renderCantAddMsg(
   msg: CantInsertTplReason | ClientCantAddChildMsg | CantAddSiblingMsg,
-  opts?: { format?: "string" }
+  opts?: { format?: "string" },
 ) {
   const asString = opts?.format === "string";
   switch (msg.type) {
@@ -62,7 +62,7 @@ export function renderCantAddMsg(
           Cannot add element that references component props (
           {joinReactNodes(
             msg.vars.map((v) => <code>{v.name}</code>),
-            ", "
+            ", ",
           )}
           ) as default content of a slot.
         </>
@@ -93,6 +93,18 @@ export function renderCantAddMsg(
       return `You cannot insert a component into itself.`;
     case "NestedSlots":
       return `You cannot insert a slot as the default contents of another slot.`;
+    case "CantWrapWith":
+      return `Can only wrap in basic elements or components with a children slot.`;
+    case "CantWrapColumn":
+      return `You cannot wrap Column elements.`;
+    case "CantReplaceSlot":
+      return `You cannot replace a slot.`;
+    case "CantReplaceRootInVariant":
+      return `The component root is shared across variants. Replace it in the base variant, or replace a child element instead.`;
+    case "CantReplaceRootWithMany":
+      return `You cannot replace the component root with multiple elements. Wrap them in a single container element instead.`;
+    case "CantRemoveTpl":
+      return `You cannot replace this element. ${msg.message}`;
     default:
       throw new Error(`Unexpected msg type ${(msg as any).type}`);
   }

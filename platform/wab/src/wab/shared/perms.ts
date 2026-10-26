@@ -1,5 +1,6 @@
 import {
   ApiPermission,
+  ApiProject,
   ApiResource,
   ApiUser,
   TeamId,
@@ -41,7 +42,7 @@ export type TaggedResourceIds = MakeADT<
 
 export function createTaggedResourceId(
   type: ResourceType,
-  id: ResourceId
+  id: ResourceId,
 ): TaggedResourceId {
   switch (type) {
     case "project":
@@ -54,7 +55,7 @@ export function createTaggedResourceId(
 }
 
 export function pluralizeResourceId(
-  taggedResourceId: TaggedResourceId
+  taggedResourceId: TaggedResourceId,
 ): TaggedResourceIds {
   switch (taggedResourceId.type) {
     case "project":
@@ -66,27 +67,14 @@ export function pluralizeResourceId(
   }
 }
 
-export function explodeResourceIds(
-  taggedResourceIds: TaggedResourceIds
-): TaggedResourceId[] {
-  switch (taggedResourceIds.type) {
-    case "project":
-      return taggedResourceIds.ids.map((id) => ({ type: "project", id }));
-    case "workspace":
-      return taggedResourceIds.ids.map((id) => ({ type: "workspace", id }));
-    case "team":
-      return taggedResourceIds.ids.map((id) => ({ type: "team", id }));
-  }
-}
-
 export function resourceTypeIdField(
-  resourceType: "project" | "workspace" | "team"
+  resourceType: "project" | "workspace" | "team",
 ) {
   return resourceType + "Id";
 }
 
 export function convertToTaggedResourceId(
-  resource: ApiResource
+  resource: ApiResource,
 ): TaggedResourceId {
   return createTaggedResourceId(resource.type, resource.resource.id);
 }
@@ -94,7 +82,7 @@ export function convertToTaggedResourceId(
 export function canEditDataSource(
   dataSourceOwnerId: string | null | undefined,
   userId: string | null | undefined,
-  workspaceAccessLevel: AccessLevel
+  workspaceAccessLevel: AccessLevel,
 ): boolean {
   if (accessLevelRank(workspaceAccessLevel) >= accessLevelRank("owner")) {
     return true;
@@ -109,7 +97,7 @@ export function canEditDataSource(
 export function getAccessLevelToResource(
   resource: ApiResource,
   user: ApiUser | null,
-  perms: ApiPermission[]
+  perms: ApiPermission[],
 ): AccessLevel {
   return (
     _.maxBy(
@@ -117,19 +105,50 @@ export function getAccessLevelToResource(
         ...filterUserDirectResourcePerms(
           perms,
           convertToTaggedResourceId(resource),
-          user?.id
+          user?.id,
         ).map((p) => p.accessLevel),
         getAccessLevelToParent(resource, user, perms),
       ],
-      (level) => accessLevelRank(level)
+      (level) => accessLevelRank(level),
     ) ?? "blocked"
   );
+}
+
+export function checkAccessLevelRank(
+  user: ApiUser | null,
+  project: ApiProject,
+  perms: ApiPermission[],
+  rank: AccessLevel,
+) {
+  if (!user) {
+    return false;
+  }
+  return (
+    accessLevelRank(
+      getAccessLevelToResource(
+        {
+          type: "project",
+          resource: project,
+        },
+        user,
+        perms,
+      ),
+    ) >= accessLevelRank(rank)
+  );
+}
+
+export function isUserProjectEditor(
+  user: ApiUser | null,
+  project: ApiProject,
+  perms: ApiPermission[],
+) {
+  return checkAccessLevelRank(user, project, perms, "editor");
 }
 
 export function getAccessLevelToParent(
   resource: ApiResource,
   user: ApiUser | null,
-  perms: ApiPermission[]
+  perms: ApiPermission[],
 ): AccessLevel {
   let filteredPerms: ApiPermission[] = [];
   if (
@@ -142,18 +161,18 @@ export function getAccessLevelToParent(
       ...filterUserDirectResourcePerms(
         perms,
         createTaggedResourceId("workspace", resource.resource.workspaceId),
-        user?.id
+        user?.id,
       ),
       ...filterUserDirectResourcePerms(
         perms,
         createTaggedResourceId("team", resource.resource.teamId),
-        user?.id
+        user?.id,
       ),
       ...(resource.resource.parentTeamId
         ? filterUserDirectResourcePerms(
             perms,
             createTaggedResourceId("team", resource.resource.parentTeamId),
-            user?.id
+            user?.id,
           )
         : []),
     ];
@@ -163,13 +182,13 @@ export function getAccessLevelToParent(
       ...filterUserDirectResourcePerms(
         perms,
         createTaggedResourceId("team", resource.resource.team.id),
-        user?.id
+        user?.id,
       ),
       ...(resource.resource.team.parentTeamId
         ? filterUserDirectResourcePerms(
             perms,
             createTaggedResourceId("team", resource.resource.team.parentTeamId),
-            user?.id
+            user?.id,
           )
         : []),
     ];
@@ -179,7 +198,7 @@ export function getAccessLevelToParent(
       ...filterUserDirectResourcePerms(
         perms,
         createTaggedResourceId("team", resource.resource.parentTeamId),
-        user?.id
+        user?.id,
       ),
     ];
   }
@@ -189,7 +208,7 @@ export function getAccessLevelToParent(
 
 export function filterDirectResourcePerms(
   perms: ApiPermission[],
-  res: TaggedResourceId
+  res: TaggedResourceId,
 ) {
   const field = resourceTypeIdField(res.type);
   return perms.filter((p) => p[field] === res.id);
@@ -198,7 +217,7 @@ export function filterDirectResourcePerms(
 export function filterUserDirectResourcePerms(
   perms: ApiPermission[],
   res: TaggedResourceId,
-  userId?: string
+  userId?: string,
 ) {
   const filteredPerms = filterDirectResourcePerms(perms, res);
   return userId ? filteredPerms.filter((p) => p.userId === userId) : [];
@@ -206,7 +225,7 @@ export function filterUserDirectResourcePerms(
 
 export function getUniqueUsersFromApiPermissions(permissions: ApiPermission[]) {
   const users = withoutNils(
-    permissions.map((permission) => permission.user)
+    permissions.map((permission) => permission.user),
   ).sort((a, b) => {
     const userAFullName = fullName(a);
     const userBFullName = fullName(b);

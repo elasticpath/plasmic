@@ -1,22 +1,26 @@
-FROM node:18.19.0
+FROM node:24.4.0
 
-# Set the working directory
-WORKDIR /app
+# The published CLI searches ancestors for an `app` directory to detect the
+# Next.js App Router. A top-level /app would misclassify Pages Router fixtures.
+WORKDIR /integration-tests
 
-# Copy package.json and package-lock.json first for better caching
-COPY package*.json ./
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable
+
+# Copy the manifests first for better caching
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
 # Install dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends git && \
-    npm install -g @plasmicapp/cli@latest create-plasmic-app@latest && \
-    yarn install && \
-    yarn cache clean && \
-    apt-get purge -y --auto-remove git && \
+    corepack install -g pnpm@11.10.0 && \
+    pnpm install --frozen-lockfile && \
+    pnpm store prune && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy the rest of the application code
 COPY . .
 
 # Run tests
-CMD ["yarn", "test"]
+CMD ["pnpm", "test"]

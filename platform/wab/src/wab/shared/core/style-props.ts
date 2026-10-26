@@ -227,17 +227,6 @@ export const plasmicImgAttrStyles = [
   "max-height",
 ];
 
-// Style props that we use in the canvas when rendering `ValNode`s
-export const styleNamesForValNodes = [
-  "display",
-
-  // We use styles like `width` and `height` for passing `displayWidth` and
-  // `displayHeight` to the PlasmicImg
-  ...plasmicImgAttrStyles,
-
-  ...gridCssProps,
-];
-
 // Props to ignore when checking if a text node can be converted
 // into a plaintext node
 export const ignoredConvertablePlainTextProps = [
@@ -326,7 +315,7 @@ export function isValidStyleProp(prop: string): boolean {
   return (
     FAKE_CSS_PROPS.includes(prop) ||
     ["-webkit-mask-image", "-webkit-mask-size", "-webkit-mask-repeat"].includes(
-      prop
+      prop,
     ) ||
     tryGetCssInitial(prop, undefined) !== undefined
   );

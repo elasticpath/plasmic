@@ -14,18 +14,46 @@
 import * as React from "react";
 
 import {
+  Flex as Flex__,
+  MultiChoiceArg,
+  PlasmicDataSourceContextProvider as PlasmicDataSourceContextProvider__,
+  PlasmicIcon as PlasmicIcon__,
+  PlasmicImg as PlasmicImg__,
+  PlasmicLink as PlasmicLink__,
+  PlasmicPageGuard as PlasmicPageGuard__,
+  SingleBooleanChoiceArg,
+  SingleChoiceArg,
+  Stack as Stack__,
+  StrictProps,
+  Trans as Trans__,
   classNames,
   createPlasmicElementProxy,
   deriveRenderOpts,
-  Flex as Flex__,
+  ensureGlobalVariants,
+  generateOnMutateForSpec,
+  generateStateOnChangeProp,
+  generateStateOnChangePropForCodeComponents,
+  generateStateValueProp,
+  get as $stateGet,
   hasVariant,
-  PlasmicLink as PlasmicLink__,
+  initializeCodeComponentStates,
+  initializePlasmicStates,
+  makeFragment,
+  omit,
+  pick,
   renderPlasmicSlot,
-  SingleBooleanChoiceArg,
-  StrictProps,
+  set as $stateSet,
+  useCurrentUser,
   useDollarState,
+  usePlasmicTranslator,
+  useTrigger,
+  wrapWithClassName
 } from "@plasmicapp/react-web";
-import { useDataEnv } from "@plasmicapp/react-web/lib/host";
+import {
+  DataCtxReader as DataCtxReader__,
+  useDataEnv,
+  useGlobalActions
+} from "@plasmicapp/react-web/lib/host";
 
 import { _useGlobalVariants } from "./plasmic"; // plasmic-import: ooL7EhXDmFQWnW9sxtchhE/projectModule
 import { _useStyleTokens } from "./PlasmicStyleTokensProvider"; // plasmic-import: ooL7EhXDmFQWnW9sxtchhE/styleTokensProvider
@@ -35,7 +63,7 @@ import "@plasmicapp/react-web/lib/plasmic.css";
 import "../PP__plasmickit_dashboard.css"; // plasmic-import: ooL7EhXDmFQWnW9sxtchhE/projectcss
 import sty from "./PlasmicNavWorkspaceButton.module.css"; // plasmic-import: Cma6XahJmS/css
 
-import Icon19Icon from "./icons/PlasmicIcon__Icon19"; // plasmic-import: MHEeMLIhlB/icon
+import ItemBulletIcon from "./icons/PlasmicIcon__ItemBullet"; // plasmic-import: MHEeMLIhlB/icon
 
 createPlasmicElementProxy;
 
@@ -100,7 +128,7 @@ function PlasmicNavWorkspaceButton__RenderFunc(props: {
 
   const $props = {
     ...args,
-    ...variants,
+    ...variants
   };
 
   const $ctx = useDataEnv?.() || {};
@@ -113,14 +141,14 @@ function PlasmicNavWorkspaceButton__RenderFunc(props: {
         path: "selected",
         type: "private",
         variableType: "variant",
-        initFunc: ({ $props, $state, $queries, $q, $ctx }) => $props.selected,
+        initFunc: ({ $props, $state, $queries, $q, $ctx }) => $props.selected
       },
       {
         path: "noIcon",
         type: "private",
         variableType: "variant",
-        initFunc: ({ $props, $state, $queries, $q, $ctx }) => $props.noIcon,
-      },
+        initFunc: ({ $props, $state, $queries, $q, $ctx }) => $props.noIcon
+      }
     ],
     [$props, $ctx, $refs]
   );
@@ -132,7 +160,7 @@ function PlasmicNavWorkspaceButton__RenderFunc(props: {
     $ctx,
     $queries: {},
     $q: {},
-    $refs,
+    $refs
   });
 
   const styleTokensClassNames = _useStyleTokens();
@@ -154,7 +182,7 @@ function PlasmicNavWorkspaceButton__RenderFunc(props: {
         sty.root,
         {
           [sty.rootnoIcon]: hasVariant($state, "noIcon", "noIcon"),
-          [sty.rootselected]: hasVariant($state, "selected", "selected"),
+          [sty.rootselected]: hasVariant($state, "selected", "selected")
         }
       )}
       href={args.href}
@@ -163,14 +191,15 @@ function PlasmicNavWorkspaceButton__RenderFunc(props: {
       <div
         data-plasmic-name={"freeBox"}
         data-plasmic-override={overrides.freeBox}
+
         className={classNames("all", sty.freeBox, {
-          [sty.freeBoxnoIcon]: hasVariant($state, "noIcon", "noIcon"),
+          [sty.freeBoxnoIcon]: hasVariant($state, "noIcon", "noIcon")
         })}
       >
         {(hasVariant($state, "noIcon", "noIcon") ? false : true)
           ? renderPlasmicSlot({
               defaultContents: (
-                <Icon19Icon
+                <ItemBulletIcon
                   className={classNames("all", sty.svg___9PPAp)}
                   role={"img"}
                 />
@@ -182,8 +211,8 @@ function PlasmicNavWorkspaceButton__RenderFunc(props: {
                   $state,
                   "noIcon",
                   "noIcon"
-                ),
-              }),
+                )
+              })
             })
           : null}
       </div>
@@ -196,8 +225,8 @@ function PlasmicNavWorkspaceButton__RenderFunc(props: {
             $state,
             "selected",
             "selected"
-          ),
-        }),
+          )
+        })
       })}
     </PlasmicLink__>
   ) as React.ReactElement | null;
@@ -205,7 +234,7 @@ function PlasmicNavWorkspaceButton__RenderFunc(props: {
 
 const PlasmicDescendants = {
   root: ["root", "freeBox"],
-  freeBox: ["freeBox"],
+  freeBox: ["freeBox"]
 } as const;
 type NodeNameType = keyof typeof PlasmicDescendants;
 type DescendantsType<T extends NodeNameType> =
@@ -226,8 +255,9 @@ type NodeComponentProps<T extends NodeNameType> =
     variants?: PlasmicNavWorkspaceButton__VariantsArgs;
     args?: PlasmicNavWorkspaceButton__ArgsType;
     overrides?: NodeOverridesType<T>;
-  } & // Specify variants directly as props
-  Omit<PlasmicNavWorkspaceButton__VariantsArgs, ReservedPropsType> &
+  } &
+    // Specify variants directly as props
+    Omit<PlasmicNavWorkspaceButton__VariantsArgs, ReservedPropsType> &
     // Specify args directly as props
     Omit<PlasmicNavWorkspaceButton__ArgsType, ReservedPropsType> &
     // Specify overrides for each element directly as props
@@ -252,7 +282,7 @@ function makeNodeComponent<NodeName extends NodeNameType>(nodeName: NodeName) {
           name: nodeName,
           descendantNames: PlasmicDescendants[nodeName],
           internalArgPropNames: PlasmicNavWorkspaceButton__ArgProps,
-          internalVariantPropNames: PlasmicNavWorkspaceButton__VariantProps,
+          internalVariantPropNames: PlasmicNavWorkspaceButton__VariantProps
         }),
       [props, nodeName]
     );
@@ -260,7 +290,7 @@ function makeNodeComponent<NodeName extends NodeNameType>(nodeName: NodeName) {
       variants,
       args,
       overrides,
-      forNode: nodeName,
+      forNode: nodeName
     });
   };
   if (nodeName === "root") {
@@ -280,7 +310,7 @@ export const PlasmicNavWorkspaceButton = Object.assign(
 
     // Metadata about props expected for PlasmicNavWorkspaceButton
     internalVariantProps: PlasmicNavWorkspaceButton__VariantProps,
-    internalArgProps: PlasmicNavWorkspaceButton__ArgProps,
+    internalArgProps: PlasmicNavWorkspaceButton__ArgProps
   }
 );
 

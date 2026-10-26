@@ -30,9 +30,8 @@ function MyPlayground_(props: MyPlaygroundProps, ref: HTMLElementRefOf<"div">) {
       query: "byWorkspace",
       workspaceId,
     });
-    const databases = await appCtx.api.listCmsDatabasesForWorkspace(
-      workspaceId
-    );
+    const databases =
+      await appCtx.api.listCmsDatabasesForWorkspace(workspaceId);
     const perms = uniqBy([...workspacePerms, ...projectsPerms], (p) => p.id);
     return { workspace, projects, databases, perms };
   }, []);
@@ -45,37 +44,37 @@ function MyPlayground_(props: MyPlaygroundProps, ref: HTMLElementRefOf<"div">) {
     props: filterProps,
   } = useProjectsFilter(asyncData.value?.projects, asyncData.value?.databases);
 
+  const data = asyncData.value;
+  if (!data) {
+    return (
+      <>
+        {documentTitle(PERSONAL_WORKSPACE)}
+        <Spinner />
+      </>
+    );
+  }
+
   return (
     <>
       {documentTitle(PERSONAL_WORKSPACE)}
       <PlasmicMyPlayground
-        root={{ ref }}
         {...props}
-        defaultLayout={{
-          wrapChildren: (children) =>
-            !asyncData?.value ? <Spinner /> : children,
+        root={{
+          ref,
+          workspace: {
+            ...data.workspace,
+            name: PERSONAL_WORKSPACE,
+            description: PERSONAL_WORKSPACE,
+          },
+          filterProps,
+          databases,
+          projects,
+          perms: data.perms,
+          matcher,
+          onUpdate: async () => {
+            await fetchAsyncData();
+          },
         }}
-        workspaceSection={
-          !asyncData?.value
-            ? {
-                render: () => null,
-              }
-            : {
-                workspace: {
-                  ...asyncData.value?.workspace,
-                  name: PERSONAL_WORKSPACE,
-                  description: PERSONAL_WORKSPACE,
-                },
-                filterProps,
-                databases,
-                projects,
-                perms: asyncData.value.perms,
-                matcher,
-                onUpdate: async () => {
-                  await fetchAsyncData();
-                },
-              }
-        }
       />
     </>
   );

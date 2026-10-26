@@ -53,13 +53,13 @@ export type MaybeWithSuffix<T extends string | null> = T extends null
 export type KeysFiltered<
   T,
   Prefix extends string | null = null,
-  Suffix extends string | null = null
+  Suffix extends string | null = null,
 > = {
   [K in keyof T]: K extends MaybeWithPrefix<Prefix>
     ? never
     : K extends MaybeWithSuffix<Suffix>
-    ? never
-    : K;
+      ? never
+      : K;
 }[keyof T];
 
 /**
@@ -73,19 +73,20 @@ export type KeysExtended<T, Extended> = {
 export type ModelConflictsMeta = {
   // For each class (each export that extends TypeStamped and isn't
   // an abstract class) we create an object describing the fields
-  [Cls in KeysExtended<
-    typeof classes,
-    TypeStamped<any> & (new (...args: any) => any)
-  >]: {
-    [P in KeysFiltered<
-      InstanceType<(typeof classes)[Cls]>,
-      "uid" | "typeTag"
-    >]: FieldConflictDescriptorMeta<InstanceType<(typeof classes)[Cls]>, P>;
+  [
+    Cls in KeysExtended<
+      typeof classes,
+      TypeStamped<any> & (new (...args: any) => any)
+    >
+  ]: {
+    [
+      P in KeysFiltered<InstanceType<(typeof classes)[Cls]>, "uid" | "typeTag">
+    ]: FieldConflictDescriptorMeta<InstanceType<(typeof classes)[Cls]>, P>;
   };
 };
 
 export type MergeSpecialFieldHandler<
-  Cls extends classes.ObjInst = classes.ObjInst
+  Cls extends classes.ObjInst = classes.ObjInst,
 > = (
   ancestorCtx: NodeCtx<Cls>,
   leftCtx: NodeCtx<Cls>,
@@ -93,12 +94,12 @@ export type MergeSpecialFieldHandler<
   mergedCtx: NodeCtx<Cls>,
   bundler: Bundler,
   picks: DirectConflictPickMap | undefined,
-  recorder: ChangeRecorder
+  recorder: ChangeRecorder,
 ) => DirectConflict[];
 
 export type FieldConflictDescriptorMeta<
   Cls extends classes.ObjInst = classes.ObjInst,
-  P extends keyof Cls = any
+  P extends keyof Cls = any,
 > =
   | "harmless"
   | "unexpected"
@@ -111,66 +112,65 @@ export type FieldConflictDescriptorMeta<
       excludeFromClone: (v: Cls[P]) => boolean;
     }
   | (NonNullable<Cls[P]> extends Array<infer E>
-      ?
-          | { arrayType: "atomic" }
-          | ({
-              arrayType: "ordered" | "unordered";
-              contents?: boolean;
-            } & (
-              | { conflictType: "unexpected" }
-              | (E extends classes.ObjInst
-                  ? // `walkAndFixNames` expects array values to be `ObjInst`s
-                    | {
-                          conflictType: "rename";
-                          /** nameKey should never traverse WeakRefs */
-                          nameKey: Leaves<E>;
-                          customRenameFn?: (
-                            site: classes.Site,
-                            node: E,
-                            newName: string
-                          ) => void;
-                          excludeFromRename?: (node: E, parent: Cls) => boolean;
-                        }
-                      | {
-                          conflictType: "special";
-                          forceRename: true;
-                          nameKey: Paths<E>;
-                          excludeFromRename?: (node: E, parent: Cls) => boolean;
-                          handler: MergeSpecialFieldHandler<Cls>;
-                        }
-                  : never)
-              | ({
-                  conflictType: "merge";
-                  excludeFromMerge?: (node: E) => boolean;
-                } & (
+      ? | { arrayType: "atomic" }
+        | ({
+            arrayType: "ordered" | "unordered";
+            contents?: boolean;
+          } & (
+            | { conflictType: "unexpected" }
+            | (E extends classes.ObjInst
+                ? // `walkAndFixNames` expects array values to be `ObjInst`s
                   | {
-                      mergeKey: Paths<E>;
-                      // When the merge key changes but the instance is
-                      // preserved, we must clone the instance to make sure the
-                      // merged site will see it as a new instance and clone all
-                      // field values.
-                      handleUpdatedValues: (
-                        newVals: E[],
-                        parent: Cls,
-                        bundler: Bundler
-                      ) => E[];
+                      conflictType: "rename";
+                      /** nameKey should never traverse WeakRefs */
+                      nameKey: Leaves<E>;
+                      customRenameFn?: (
+                        site: classes.Site,
+                        node: E,
+                        newName: string,
+                      ) => void;
+                      excludeFromRename?: (node: E, parent: Cls) => boolean;
                     }
                   | {
-                      mergeKeyIsIdentity: true;
+                      conflictType: "special";
+                      forceRename: true;
+                      nameKey: Paths<E>;
+                      excludeFromRename?: (node: E, parent: Cls) => boolean;
+                      handler: MergeSpecialFieldHandler<Cls>;
                     }
-                  | {
-                      mergeKeyFn: (node: E) => any;
-                      handleUpdatedValues: (
-                        newVals: E[],
-                        parent: Cls,
-                        bundler: Bundler
-                      ) => E[];
-                    }
-                ))
-            ))
-          | "generic"
-          | "contents"
-          | "special"
+                : never)
+            | ({
+                conflictType: "merge";
+                excludeFromMerge?: (node: E) => boolean;
+              } & (
+                | {
+                    mergeKey: Paths<E>;
+                    // When the merge key changes but the instance is
+                    // preserved, we must clone the instance to make sure the
+                    // merged site will see it as a new instance and clone all
+                    // field values.
+                    handleUpdatedValues: (
+                      newVals: E[],
+                      parent: Cls,
+                      bundler: Bundler,
+                    ) => E[];
+                  }
+                | {
+                    mergeKeyIsIdentity: true;
+                  }
+                | {
+                    mergeKeyFn: (node: E) => any;
+                    handleUpdatedValues: (
+                      newVals: E[],
+                      parent: Cls,
+                      bundler: Bundler,
+                    ) => E[];
+                  }
+              ))
+          ))
+        | "generic"
+        | "contents"
+        | "special"
       : "generic" | "contents" | "special");
 
 const immutableClass = <T>() =>
@@ -200,12 +200,12 @@ const tplVariantableMeta = {
  */
 function shallowCloneArrayValuesAndAddToBundle<
   T extends classes.ObjInst | string | number | boolean | null | undefined,
-  U extends new (arg: any) => any
+  U extends new (arg: any) => any,
 >(
   vals: T[],
   parent: classes.ObjInst,
   bundler: Bundler,
-  types: U[]
+  types: U[],
 ): Exclude<
   T,
   InstanceType<U> | string | number | boolean | null | undefined
@@ -395,7 +395,7 @@ export const modelConflictsMeta: ModelConflictsMeta = {
           merged,
           bundler,
           picks,
-          recorder
+          recorder,
         ),
     },
     defaultComponents: "generic",
@@ -412,7 +412,7 @@ export const modelConflictsMeta: ModelConflictsMeta = {
           merged,
           bundler,
           picks,
-          recorder
+          recorder,
         ),
     },
     globalVariant: "unexpected",
@@ -495,7 +495,6 @@ export const modelConflictsMeta: ModelConflictsMeta = {
       arrayType: "unordered",
       conflictType: "merge",
       mergeKeyIsIdentity: true,
-      contents: true,
     },
     codeLibraries: {
       arrayType: "unordered",
@@ -713,6 +712,7 @@ export const modelConflictsMeta: ModelConflictsMeta = {
   ImageAsset: {
     aspectRatio: "generic",
     dataUri: "generic",
+    description: "generic",
     height: "generic",
     name: "generic",
     type: "unexpected",
@@ -818,10 +818,10 @@ export const modelConflictsMeta: ModelConflictsMeta = {
         const tplMgr = new TplMgr({ site });
         const component = ensure(
           site.components.find((c) => c.params.includes(param)),
-          "Param should belong to some component in site"
+          "Param should belong to some component in site",
         );
         const maybeGroup = component.variantGroups.find(
-          (vg) => vg.param === param
+          (vg) => vg.param === param,
         );
         if (maybeGroup) {
           tplMgr.renameVariantGroup(maybeGroup, newName);
@@ -865,7 +865,7 @@ export const modelConflictsMeta: ModelConflictsMeta = {
           merged,
           bundler,
           picks,
-          recorder
+          recorder,
         ),
     },
     dataQueries: {
@@ -1231,6 +1231,7 @@ export const modelConflictsMeta: ModelConflictsMeta = {
     query: "generic",
     fragment: "generic",
     page: "generic",
+    encode: "generic",
   },
   VariantsRef: {
     variants: {
@@ -1362,7 +1363,7 @@ function checkMetas() {
           const field = meta.getFieldByName(startingFromType, path[0]);
           assert(
             !isWeakRefField(field),
-            `nameKeys cannot traverse WeakRefs, but ${cls}.${fieldName} has nameKey of ${_meta.nameKey} and ${field.name} is a weakRef`
+            `nameKeys cannot traverse WeakRefs, but ${cls}.${fieldName} has nameKey of ${_meta.nameKey} and ${field.name} is a weakRef`,
           );
           const elementTypeName = getCoreType(field.type).type;
           if (path.length === 1) {
@@ -1370,7 +1371,7 @@ function checkMetas() {
           }
           return pathContainsWeakRef(
             meta.clsByName[elementTypeName].name,
-            path.slice(1)
+            path.slice(1),
           );
         }
         pathContainsWeakRef(cls, [fieldName, ..._meta.nameKey.split(".")]);

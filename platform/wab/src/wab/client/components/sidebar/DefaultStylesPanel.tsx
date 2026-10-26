@@ -9,15 +9,17 @@ import {
 } from "@/wab/client/plasmic/plasmic_kit_left_pane/PlasmicDefaultStylesPanel";
 import { useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { isScreenVariant } from "@/wab/shared/Variants";
-import { ensure, mkShortId } from "@/wab/shared/common";
+import { ensure } from "@/wab/shared/common";
+import { getApplicableSelectors } from "@/wab/shared/core/styles";
+import { ensureThemeStyleMixin } from "@/wab/shared/core/theme-styles";
 import {
-  BASE_THEMEABLE_TAG,
+  BASE_THEMABLE_TAG,
   THEMABLE_TAGS,
   ThemableTag,
-  getApplicableSelectors,
-  mkRuleSet,
-} from "@/wab/shared/core/styles";
-import { Mixin, ThemeStyle, Variant } from "@/wab/shared/model/classes";
+  tagDisplayLabel,
+} from "@/wab/shared/html";
+import { Mixin, Variant } from "@/wab/shared/model/classes";
+import { naturalSort } from "@/wab/shared/sort";
 import { HTMLElementRefOf } from "@plasmicapp/react-web";
 import { observer } from "mobx-react";
 import { ok } from "neverthrow";
@@ -28,13 +30,13 @@ export type DefaultStylesPanelProps = DefaultDefaultStylesPanelProps;
 const DefaultStylesPanel = observer(
   React.forwardRef(function DefaultStylesPanel(
     props: DefaultStylesPanelProps,
-    ref: HTMLElementRefOf<"div">
+    ref: HTMLElementRefOf<"div">,
   ) {
     const studioCtx = useStudioCtx();
     const site = studioCtx.site;
     const activeTheme = site.activeTheme;
     const readOnly = studioCtx.getLeftTabPermission("themes") === "readable";
-    const [tag, setTag] = React.useState<ThemableTag>(BASE_THEMEABLE_TAG);
+    const [tag, setTag] = React.useState<ThemableTag>(BASE_THEMABLE_TAG);
     const [pseudoClass, setPseudoClass] = React.useState<string>("");
     const [mixin, setMixin] = React.useState<Mixin | undefined>(undefined);
     const [selectedGlobalVariants, setSelectedGlobalVariants] = React.useState<
@@ -57,6 +59,18 @@ const DefaultStylesPanel = observer(
         return;
       }
 
+      // A pseudo-class left over from the previous tag (a:visited -> h1) would
+      // create an invalid entry.
+      if (
+        pseudoClass &&
+        !getApplicableSelectors(tag, true, false).some(
+          (op) => op.cssSelector === pseudoClass,
+        )
+      ) {
+        setPseudoClass("");
+        return;
+      }
+
       const selector = `${tag}${pseudoClass}`;
       const existing = activeTheme.styles.find((m) => m.selector === selector);
       if (existing) {
@@ -65,42 +79,29 @@ const DefaultStylesPanel = observer(
       }
 
       await studioCtx.change<never>(() => {
-        const newMixin = new Mixin({
-          name: `Default "${selector}"`,
-          rs: mkRuleSet({}),
-          preview: undefined,
-          uuid: mkShortId(),
-          forTheme: true,
-          variantedRs: [],
-        });
-        activeTheme.styles.push(
-          new ThemeStyle({
-            selector,
-            style: newMixin,
-          })
-        );
-        setMixin(newMixin);
+        setMixin(ensureThemeStyleMixin(activeTheme, selector));
         return ok();
       });
     }, [activeTheme, tag, pseudoClass]);
 
     const nonScreenGlobalVariants = studioCtx.site.globalVariantGroups.flatMap(
-      (variantGroup) => variantGroup.variants.filter((v) => !isScreenVariant(v))
+      (variantGroup) =>
+        variantGroup.variants.filter((v) => !isScreenVariant(v)),
     );
 
     if (
       selectedGlobalVariants.some(
         (v) =>
           !nonScreenGlobalVariants.includes(v) &&
-          !studioCtx.site.activeScreenVariantGroup?.variants.includes(v)
+          !studioCtx.site.activeScreenVariantGroup?.variants.includes(v),
       )
     ) {
       setSelectedGlobalVariants(
         selectedGlobalVariants.filter(
           (v) =>
             nonScreenGlobalVariants.includes(v) ||
-            studioCtx.site.activeScreenVariantGroup?.variants.includes(v)
-        )
+            studioCtx.site.activeScreenVariantGroup?.variants.includes(v),
+        ),
       );
     }
 
@@ -112,13 +113,13 @@ const DefaultStylesPanel = observer(
           nonScreenGlobalVariants.some((v) => v.uuid === variantId)
             ? ensure(
                 nonScreenGlobalVariants.find((v) => v.uuid === variantId),
-                "Could not find global variant"
+                "Could not find global variant",
               )
             : ensure(
                 studioCtx.site.activeScreenVariantGroup?.variants.find(
-                  (v) => v.uuid === variantId
+                  (v) => v.uuid === variantId,
                 ),
-                "Could not find screen variant"
+                "Could not find screen variant",
               ),
         ]);
       }
@@ -136,20 +137,16 @@ const DefaultStylesPanel = observer(
         tagSelect={{
           props: {
             options: [
-              { value: BASE_THEMEABLE_TAG, label: "Normal text" },
-              ...THEMABLE_TAGS.map((themeTag) => ({
-                value: themeTag,
-                label: (
-                  <>
-                    Tag: <strong>{themeTag}</strong>
-                    {themeTag === "a" && ` (links)`}
-                    {themeTag === "i" && ` (italic)`}
-                  </>
-                ),
-              })),
+              { value: BASE_THEMABLE_TAG, label: "Normal text" },
+              ...naturalSort(THEMABLE_TAGS, tagDisplayLabel).map(
+                (themeTag) => ({
+                  value: themeTag,
+                  label: tagDisplayLabel(themeTag),
+                }),
+              ),
             ],
             onChange: (_tag) =>
-              setTag((_tag as ThemableTag | null) || BASE_THEMEABLE_TAG),
+              setTag((_tag as ThemableTag | null) || BASE_THEMABLE_TAG),
             value: tag,
           },
         }}
@@ -184,7 +181,7 @@ const DefaultStylesPanel = observer(
                           (variant) => ({
                             value: variant.uuid,
                             label: variant.name,
-                          })
+                          }),
                         ),
                     },
                   ]
@@ -229,7 +226,7 @@ const DefaultStylesPanel = observer(
         {...props}
       />
     );
-  })
+  }),
 );
 
 export default DefaultStylesPanel;

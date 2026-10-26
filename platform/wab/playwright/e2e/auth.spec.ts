@@ -1,4 +1,4 @@
-import { expect } from "playwright/test";
+import { expect } from "@playwright/test";
 import { test } from "../fixtures/test";
 
 test.describe("Authentication", () => {
@@ -11,11 +11,12 @@ test.describe("Authentication", () => {
 
     await models.auth.login("user2@example.com", "!53kr3tz!");
 
+    // Login can complete before the dashboard loads on a cold dev server.
     await expect(
-      page.locator('a[href="/projects"]', {
-        hasText: "All projects",
-      })
-    ).toBeVisible();
+      page.locator('a[href="/playground"]', {
+        hasText: "My Playground",
+      }),
+    ).toBeVisible({ timeout: 60_000 });
 
     await models.auth.logout();
 

@@ -1,14 +1,14 @@
-import type {
-  MentionableResource,
-  MentionableResourceKind,
-} from "@/wab/client/components/copilot/resource-mention-utils";
+import type { MentionableResources } from "@/wab/client/components/copilot/resource-mention-utils";
+import type { RemoteFileDragEvent } from "@/wab/client/file-drag/file-drag-monitor";
 import {
   PublishResult,
   StudioAppUser,
 } from "@/wab/client/studio-ctx/StudioCtx";
-import { ApiBranch, BranchId } from "@/wab/shared/ApiSchema";
+import type { UiActionType } from "@/wab/client/studio-ctx/ui/UiActionBus";
+import type { ModelUiId, UiId } from "@/wab/client/studio-ctx/ui/studio-ui-ids";
+import { ApiBranch, ArenaRef, BranchId } from "@/wab/shared/ApiSchema";
 import { PkgVersionInfoMeta } from "@/wab/shared/SharedApi";
-import type { AiOutputFormat } from "@/wab/shared/copilot/copilot-tool-types";
+import type { AiIdentity } from "@/wab/shared/copilot/copilot-tool-types";
 import { ChangeLogEntry, SemVerReleaseType } from "@/wab/shared/site-diffs";
 import { LeftTabKey } from "@/wab/shared/ui-config-utils";
 import { ExtendedKeyboardEvent } from "mousetrap";
@@ -16,13 +16,13 @@ import { ExtendedKeyboardEvent } from "mousetrap";
 export type HostFrameApi = {
   switchLeftTab(
     tabKey: LeftTabKey | undefined,
-    opts?: { highlight?: boolean }
+    opts?: { highlight?: boolean },
   ): Promise<void>;
   refreshSiteInfo(): Promise<void>;
   publishVersion(
     versionTags: string[],
     versionDesc: string,
-    branchId: BranchId | undefined
+    branchId: BranchId | undefined,
   ): Promise<PublishResult>;
   getLatestPublishedVersionId(): Promise<string | undefined>;
   getProjectReleases(opts?: {
@@ -41,12 +41,12 @@ export type HostFrameApi = {
     e: Pick<
       ExtendedKeyboardEvent,
       "key" | "shiftKey" | "ctrlKey" | "metaKey" | "code" | "keyCode"
-    >
+    >,
   ): Promise<void>;
   updateLocalizationProjectFlags(
     localization: boolean,
     keyScheme?: string,
-    tagPrefix?: string
+    tagPrefix?: string,
   ): Promise<void>;
   switchToBranch(branch: ApiBranch | undefined): Promise<void>;
   mutateSWRKeys(keys: string[]): Promise<void>;
@@ -57,19 +57,23 @@ export type HostFrameApi = {
   /** This helps execute an Copilot tool call in the HostFrame where StudioCtx is available */
   executeCopilotToolCall(
     toolName: string,
-    toolArgs: Record<string, unknown>
+    toolArgs: Record<string, unknown>,
+    identity: AiIdentity,
   ): Promise<CopilotToolCallResult>;
-  /** Store the AI agent's preferred copilot tool output format on StudioCtx. */
-  setPreferredAiOutputFormat(format: AiOutputFormat): Promise<void>;
   /** Resolves once the studio and its active canvas are ready. */
   waitForStudioReady(): Promise<void>;
-  listMentionableResources(): Promise<MentionableResource[]>;
-  /** Rewrite `@<…>` mentions in the text to their resolved (uuid-carrying) form. */
-  resolveMentions(text: string): Promise<string>;
-  navigateToMentionedResource(
-    kind: MentionableResourceKind,
-    uuid: string
-  ): Promise<void>;
+  /**
+   * Makes the studio read-only
+   */
+  blockChanges(): Promise<void>;
+  listMentionableResources(): Promise<MentionableResources>;
+  getCurrentArena(): Promise<ArenaRef | undefined>;
+  subscribeResource(
+    uiId: ModelUiId,
+    onLabel: (label: string | undefined) => void,
+  ): Promise<() => void>;
+  dispatchUiAction(uiId: UiId, type: UiActionType): Promise<void>;
+  onFileDragEventInTop(event: RemoteFileDragEvent): Promise<void>;
 };
 
 /** Structured error for copilot tool calls — Comlink-serializable. */
@@ -88,18 +92,3 @@ export type CopilotToolCallResult =
       success: false;
       error: CopilotToolCallError;
     };
-
-/** Convert an unknown caught copilot error value into a human-readable error message. */
-export function serializeCopilotError(err: unknown): string {
-  if (err instanceof Error) {
-    return err.message || err.name || "Unknown error";
-  }
-  if (typeof err === "string") {
-    return err;
-  }
-  try {
-    return JSON.stringify(err);
-  } catch {
-    return String(err);
-  }
-}
