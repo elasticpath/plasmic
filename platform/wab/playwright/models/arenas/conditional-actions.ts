@@ -1,11 +1,11 @@
-import { FrameLocator, Locator, Page } from "playwright/test";
+import { FrameLocator, Locator, Page } from "@playwright/test";
 import { BaseModel } from "../BaseModel";
 
 export class ConditionalActionsArena extends BaseModel {
   constructor(
     page: Page,
     readonly contentFrame: FrameLocator,
-    readonly runInteractionButton: Locator
+    readonly runInteractionButton: Locator,
   ) {
     super(page);
   }
@@ -24,7 +24,7 @@ export class ConditionalActionsArena extends BaseModel {
     const instance = new ConditionalActionsArena(
       page,
       contentFrame,
-      runInteractionButton
+      runInteractionButton,
     );
     return instance;
   }

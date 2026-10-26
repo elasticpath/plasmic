@@ -1,7 +1,4 @@
-import {
-  ExtraSlotCanvasEnvData,
-  RenderingCtx,
-} from "@/wab/client/components/canvas/canvas-rendering";
+import { ExtraSlotCanvasEnvData } from "@/wab/client/components/canvas/canvas-rendering";
 import { Fiber } from "@/wab/client/react-global-hook/fiber";
 import {
   GlobalHookCtx,
@@ -12,7 +9,6 @@ import {
   dataCanvasEnvsProp,
   frameUidProp,
   plasmicClonedIndex,
-  renderingCtxProp,
   richTextProp,
   slotArgCompKeyProp,
   slotArgParamProp,
@@ -51,7 +47,7 @@ function hasKey(v: any, key: string) {
 
 const tryReadInternalProp = (
   node: Fiber,
-  propName: string
+  propName: string,
 ): string | undefined => {
   if (
     hasKey(node.memoizedProps, propName) &&
@@ -76,7 +72,7 @@ const tryReadInternalProp = (
 
 export function mergeArgsData(
   obj1: Record<string, SlotArgsData>,
-  obj2: Record<string, SlotArgsData>
+  obj2: Record<string, SlotArgsData>,
 ) {
   return structuralMerge2(obj1, obj2);
 }
@@ -100,15 +96,8 @@ export const tryGetFrameUid = (node: Fiber): number | undefined => {
   return undefined;
 };
 
-export const tryGetRenderingCtx = (node: Fiber): RenderingCtx | undefined => {
-  if (hasKey(node.memoizedProps, renderingCtxProp)) {
-    return node.memoizedProps[renderingCtxProp] as RenderingCtx;
-  }
-  return undefined;
-};
-
 export const tryGetSlotCanvasEnv = (
-  node: Fiber
+  node: Fiber,
 ): ExtraSlotCanvasEnvData | undefined => {
   if (hasKey(node.memoizedProps, slotExtraCanvasEnvProp)) {
     return node.memoizedProps[slotExtraCanvasEnvProp] as ExtraSlotCanvasEnvData;
@@ -137,21 +126,21 @@ export function tryGetRichTextData(node: Fiber):
 
 function tryGetEnvFromId(
   globalHookCtx: GlobalHookCtx,
-  id: string | undefined | null
+  id: string | undefined | null,
 ) {
   return id != null
     ? ensure(
         globalHookCtx.envIdToEnvs
           .get(ensure(id, () => `Missing canvas env props`))
           ?.deref(),
-        () => `Couldn't find envs`
+        () => `Couldn't find envs`,
       )
     : undefined;
 }
 
 export function tryGetNodeCanvasEnvs(
   globalHookCtx: GlobalHookCtx,
-  node: Fiber
+  node: Fiber,
 ) {
   const id = tryReadInternalProp(node, dataCanvasEnvsProp);
   return tryGetEnvFromId(globalHookCtx, id);
@@ -159,7 +148,7 @@ export function tryGetNodeCanvasEnvs(
 
 export function tryGetEnvFromFullKey(
   globalHookCtx: GlobalHookCtx,
-  fullKey: string
+  fullKey: string,
 ) {
   const id = globalHookCtx.fullKeyToEnvId.get(fullKey);
   return tryGetEnvFromId(globalHookCtx, id);
@@ -223,7 +212,7 @@ export function createValNode(opts: {
         children: [],
         className: ensure(
           className,
-          () => `Couldn't get className for ValTag ${fullKey}`
+          () => `Couldn't get className for ValTag ${fullKey}`,
         ),
       };
       if (isTplTextBlock(tplTag)) {
@@ -246,10 +235,10 @@ export function createValNode(opts: {
           tpl: tplComponent,
           className: ensure(
             className,
-            () => `Couldn't get className for ValComponent ${fullKey}`
+            () => `Couldn't get className for ValComponent ${fullKey}`,
           ),
           slotCanvasEnvs: new Map(),
-        })
+        }),
     )
     .when(
       TplSlot,
@@ -258,7 +247,7 @@ export function createValNode(opts: {
           ...commonValNodeParams,
           tpl: tplSlot,
           contents: [],
-        })
+        }),
     )
     .result();
 
@@ -289,8 +278,3 @@ export function createValNode(opts: {
   }
   return valNode;
 }
-
-export const mkFrameValKeyToContextDataKey = (
-  frameUid: number,
-  valKey: string
-) => `${frameUid}.${valKey}`;

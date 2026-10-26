@@ -39,7 +39,7 @@ export interface WIVariantSettings {
 }
 
 export interface WIBase {
-  type: "container" | "text" | "svg" | "component" | "slot-target";
+  type: "container" | "image" | "text" | "svg" | "component" | "slot-target";
   tag: string;
   /**
    * Source HTML locator for each WI node to enrich WIErrors raised during parsing.
@@ -54,9 +54,16 @@ export interface WIContainer extends WIBase {
   children: WIElement[];
 }
 
+export interface WIImage extends WIBase {
+  type: "image";
+}
+
 export interface WIText extends WIBase {
   type: "text";
-  text: string;
+  /**
+   * The element's content as a nested structure for RichText content.
+   */
+  content: (string | WIText)[];
 }
 
 export interface WISVG extends WIBase {
@@ -93,6 +100,7 @@ export interface WIFragment {
 
 export type WIElement =
   | WIContainer
+  | WIImage
   | WIText
   | WISVG
   | WIComponent
@@ -120,28 +128,6 @@ export interface WITree {
   /** Partial errors collected while parsing HTML. */
   errors: WIError[];
 }
-
-export const getWIVariantKey = (variant: WIVariant) => {
-  if (variant.type === "base") {
-    return "base";
-  }
-
-  if (variant.type === "style") {
-    return `${variant.type}:${variant.selectors.sort().join(",")}`;
-  }
-
-  return `${variant.type}:${variant.width}`;
-};
-
-export const getWIVariantComboKey = (variantCombo: WIVariant[]): string => {
-  return variantCombo
-    .map((v) => getWIVariantKey(v))
-    .sort()
-    .join("|");
-};
-
-export const hasStyleVariant = (vs: WIVariantSettings) =>
-  vs.variantCombo.some((v) => v.type === "style");
 
 export const isWIBaseVariantSettings = (vs: WIVariantSettings) =>
   vs.variantCombo.length === 1 && vs.variantCombo[0].type === "base";

@@ -1,5 +1,9 @@
+<<<<<<< HEAD
 import { useAppCtx, useTopFrameApi } from "@/wab/client/contexts/AppContexts";
 import { shouldHideForRestrictedUser } from "@/wab/client/ep/dashboard-restriction";
+=======
+import { useTopFrameApi } from "@/wab/client/contexts/AppContexts";
+>>>>>>> upstream/master
 import { useCodegenType } from "@/wab/client/hooks/useCodegenType";
 import CirclesvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__CircleSvg";
 import PlasmicCodeButton from "@/wab/client/plasmic/plasmic_kit_top_bar/PlasmicCodeButton";
@@ -8,7 +12,6 @@ import { toClassName } from "@/wab/shared/codegen/util";
 import { spawn } from "@/wab/shared/common";
 import { isPlasmicComponent } from "@/wab/shared/core/components";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
 import { PlasmicIcon } from "@plasmicapp/react-web";
 import { Menu, Tooltip } from "antd";
 import { defer } from "lodash";
@@ -19,7 +22,6 @@ import { useLocalStorage } from "react-use";
 
 export const CodeButton = observer(function CodeButton() {
   const studioCtx = useStudioCtx();
-  const appCtx = useAppCtx();
   const topFrameApi = useTopFrameApi();
 
   const artboardComponent = studioCtx.focusedViewCtx()?.component;
@@ -40,7 +42,7 @@ export const CodeButton = observer(function CodeButton() {
 
   const [hasClicked, setHasClicked] = useLocalStorage(
     "CodeButton--hasClicked",
-    false
+    false,
   );
 
   const codegenType = useCodegenType();
@@ -48,22 +50,20 @@ export const CodeButton = observer(function CodeButton() {
     hasClicked &&
     isFocusedComponentPlasmicComponent &&
     focusedComponentNameOrUuid
-      ? fillRoute(APP_ROUTES.projectDocsComponent, {
+      ? APP_ROUTES.projectDocsComponent.fill({
           projectId: studioCtx.siteInfo.id,
           componentIdOrClassName: focusedComponentNameOrUuid,
           codegenType,
         })
-      : fillRoute(APP_ROUTES.projectDocs, {
+      : APP_ROUTES.projectDocs.fill({
           projectId: studioCtx.siteInfo.id,
         });
 
   // Quick and dirty way of disabling the red dot on Plasmic Levels.
   const isPlasmicLevels = studioCtx.siteInfo.name.includes("Plasmic Levels");
-  const enableCircles =
-    !isPlasmicLevels && !appCtx.appConfig.hideSyncStatusIndicator;
   const projectWasNeverSyncedOrImported =
     studioCtx.siteInfo.latestRevisionSynced === 0;
-  const redCircle = enableCircles && projectWasNeverSyncedOrImported;
+  const redCircle = !isPlasmicLevels && projectWasNeverSyncedOrImported;
 
   function showQuickstarts() {
     if (!isPlasmicLevels) {

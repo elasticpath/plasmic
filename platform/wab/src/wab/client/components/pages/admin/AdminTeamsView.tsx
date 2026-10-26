@@ -115,7 +115,7 @@ function TeamLookupByUser() {
   const listTeams = useAsyncStrict(
     async () =>
       userId ? await nonAuthCtx.api.adminListTeams({ userId }) : undefined,
-    [nonAuthCtx, userId]
+    [nonAuthCtx, userId],
   );
 
   return (
@@ -140,7 +140,7 @@ function PayingTeamsView() {
             featureTierIds: listFeatureTiers.value.map((ft) => ft.id),
           })
         : undefined,
-    [nonAuthCtx, listFeatureTiers.value]
+    [nonAuthCtx, listFeatureTiers.value],
   );
 
   return (
@@ -354,10 +354,7 @@ function Billing(props: TeamProps) {
       <div className="flex-row gap-m">
         {props.team.featureTier && (
           <>
-            <CheckStripeSubscription
-              {...props}
-              featureTier={props.team.featureTier}
-            />
+            <CheckStripeSubscription {...props} />
             <CancelTeamPlan {...props} featureTier={props.team.featureTier} />
           </>
         )}
@@ -368,25 +365,15 @@ function Billing(props: TeamProps) {
   );
 }
 
-function CheckStripeSubscription({
-  team,
-  featureTier,
-  refetch,
-}: TeamProps & { featureTier: ApiFeatureTier }) {
+function CheckStripeSubscription({ team, refetch }: TeamProps) {
   const nonAuthCtx = useNonAuthCtx();
   return (
     <Button
       onClick={async () => {
-        const res = await nonAuthCtx.api.getSubscription(team.id);
-        if (res.type === "success") {
-          notification.info({
-            message: `Organization ${team.name} on ${featureTier.name} plan has Stripe subscription status ${res.subscription.status}`,
-          });
-        } else {
-          notification.error({
-            message: `Organization ${team.name} does not have a subscription`,
-          });
-        }
+        const res = await nonAuthCtx.api.refreshSubscription(team.id);
+        notification.info({
+          message: `Organization ${team.name} has subscription status ${res.subscriptionStatus}`,
+        });
         refetch();
       }}
     >
@@ -504,7 +491,7 @@ function TeamTierControls({ team }: TeamProps) {
             includeLegacyTiers: true,
           });
           const tier = tiers.find(
-            (t) => t.name.toLowerCase() === featureTierName.toLowerCase()
+            (t) => t.name.toLowerCase() === featureTierName.toLowerCase(),
           );
           if (!tier) {
             return setError(`Cannot find a tier with name ${featureTierName}`);
@@ -568,7 +555,7 @@ function TeamTierControls({ team }: TeamProps) {
           placeholder="Stripe Subscription Id"
           onChange={(e) =>
             setStripeSubscriptionId(
-              uncheckedCast<StripeSubscriptionId>(e.target.value)
+              uncheckedCast<StripeSubscriptionId>(e.target.value),
             )
           }
         />
@@ -594,7 +581,7 @@ function TeamTierControls({ team }: TeamProps) {
           }
           const { tiers } = await nonAuthCtx.api.listCurrentFeatureTiers();
           const tier = tiers.find(
-            (t) => t.name.toLowerCase() === featureTierName.toLowerCase()
+            (t) => t.name.toLowerCase() === featureTierName.toLowerCase(),
           );
           if (!tier) {
             return setError(`Cannot find a tier with name ${featureTierName}`);
@@ -657,7 +644,7 @@ function Members({ team, perms, refetch }: TeamProps) {
       perms.filter((perm) => {
         return !!perm.user;
       }),
-    [perms]
+    [perms],
   ) as (ApiPermission & { user: ApiUser })[];
 
   return (
@@ -686,7 +673,9 @@ function Members({ team, perms, refetch }: TeamProps) {
             return (
               <Button
                 onClick={async () => {
-                  await nonAuthCtx.api.changeTeamOwner(team.id, userId);
+                  await nonAuthCtx.api.changeTeamOwner(team.id, userId, {
+                    allowUnpaidTransfer: true,
+                  });
                   refetch();
                 }}
               >
@@ -747,9 +736,6 @@ function ConfigureSso({ team, refetch }: TeamProps) {
             ...existing,
             domain: existing.domains[0],
             config: JSON.stringify(existing.config, undefined, 2),
-            whitelabelConfig: existing.whitelabelConfig
-              ? JSON.stringify(existing.whitelabelConfig, undefined, 2)
-              : null,
           };
         }
 
@@ -768,9 +754,6 @@ function ConfigureSso({ team, refetch }: TeamProps) {
                   const data = {
                     ...event,
                     config: JSON.parse(event.config),
-                    whitelabelConfig: event.whitelabelConfig
-                      ? JSON.parse(event.whitelabelConfig)
-                      : null,
                   };
                   console.log("Submitting", data);
                   const sso = await nonAuthCtx.api.upsertSsoConfig(data);
@@ -803,9 +786,6 @@ function ConfigureSso({ team, refetch }: TeamProps) {
                 </Select>
               </Form.Item>
               <Form.Item name="config" label="Config">
-                <Input.TextArea autoSize={{ minRows: 4 }} className="code" />
-              </Form.Item>
-              <Form.Item name="whitelabelConfig" label="Whitelabel Config">
                 <Input.TextArea autoSize={{ minRows: 4 }} className="code" />
               </Form.Item>
               <Form.Item>
@@ -860,7 +840,6 @@ function WhiteLabel(props: TeamProps) {
     <div className="flex-row gap-m">
       <UpdateWhiteLabelName {...props} />
       <UpdateWhiteLabelJwt {...props} />
-      <UpdateWhiteLabelTeamClientCredentials {...props} />
     </div>
   );
 }
@@ -890,7 +869,7 @@ function UpdateWhiteLabelName({ team, refetch }: TeamProps) {
                   const updatedTeam =
                     await nonAuthCtx.api.updateTeamWhiteLabelName(
                       team.id,
-                      values.whiteLabelName
+                      values.whiteLabelName,
                     );
                   refetch();
                   Modal.destroyAll();
@@ -951,7 +930,7 @@ function UpdateWhiteLabelJwt({ team, refetch }: TeamProps) {
                   console.log("New WhiteLabelInfo", whiteLabelInfo);
                   await nonAuthCtx.api.updateTeamWhiteLabelInfo(
                     team.id,
-                    whiteLabelInfo
+                    whiteLabelInfo,
                   );
                   refetch();
                   Modal.destroyAll();
@@ -980,73 +959,6 @@ function UpdateWhiteLabelJwt({ team, refetch }: TeamProps) {
   );
 }
 
-function UpdateWhiteLabelTeamClientCredentials({ team, refetch }: TeamProps) {
-  const nonAuthCtx = useNonAuthCtx();
-  if (!team.whiteLabelName) {
-    return null;
-  }
-  return (
-    <Button
-      onClick={() => {
-        Modal.confirm({
-          title: "Update white label client credentials",
-          okButtonProps: { style: { display: "none" } },
-          content: (
-            <>
-              <h3>
-                Team "{team.name}" ({team.whiteLabelName})
-              </h3>
-              <Form
-                initialValues={team.whiteLabelInfo ?? undefined}
-                onFinish={async (event) => {
-                  const whiteLabelInfo: TeamWhiteLabelInfo = {
-                    apiClientCredentials: {
-                      ...event.apiClientCredentials,
-                    },
-                  };
-                  await nonAuthCtx.api.updateTeamWhiteLabelInfo(
-                    team.id,
-                    whiteLabelInfo
-                  );
-                  refetch();
-                  Modal.destroyAll();
-                  notification.success({ message: "Updated!" });
-                }}
-              >
-                <Form.Item
-                  name={["apiClientCredentials", "clientId"]}
-                  label="Client ID"
-                >
-                  <Input />
-                </Form.Item>
-                <Form.Item
-                  name={["apiClientCredentials", "issuer"]}
-                  label="Issuer"
-                >
-                  <Input />
-                </Form.Item>
-                <Form.Item
-                  name={["apiClientCredentials", "aud"]}
-                  label="Expected audience (aud)"
-                >
-                  <Input />
-                </Form.Item>
-                <Form.Item>
-                  <Button htmlType="submit" type="primary">
-                    Save
-                  </Button>
-                </Form.Item>
-              </Form>
-            </>
-          ),
-        });
-      }}
-    >
-      Update white label client credentials
-    </Button>
-  );
-}
-
 function TeamDiscourseInfo(props: TeamProps) {
   const nonAuthCtx = useNonAuthCtx();
   return (
@@ -1071,7 +983,7 @@ function TeamDiscourseInfo(props: TeamProps) {
           <Button
             onClick={async () => {
               console.log(
-                `Sending support welcome email to members of team ${props.team.name}`
+                `Sending support welcome email to members of team ${props.team.name}`,
               );
               const { sent, failed } =
                 await nonAuthCtx.api.sendTeamSupportWelcomeEmail(props.team.id);
@@ -1145,7 +1057,7 @@ function TeamDiscourseInfoForm({
       initialValues={initialValues}
       onFinish={async (values) => {
         console.log(
-          `Syncing ${team.name} team's to Discourse slug=${values.slug} name=${values.name}`
+          `Syncing ${team.name} team's to Discourse slug=${values.slug} name=${values.name}`,
         );
         await nonAuthCtx.api.syncTeamDiscourseInfo(team.id, values);
         console.log(`Sync success`);
@@ -1191,7 +1103,7 @@ function TeamDiscourseInfoForm({
 function suggestSlug(team: ApiTeam) {
   // Get the part of the name before any punctuation
   const companyNameBeforePunctuation = team.name.split(
-    /[.,/#!$%^&*;:{}=\-_`~()]/
+    /[.,/#!$%^&*;:{}=\-_`~()]/,
   )[0];
   const slug = companyNameBeforePunctuation
     .replace(/[^\w\s]/gi, "") // Remove non-word characters

@@ -1,5 +1,4 @@
 import { ProjectId } from "@/wab/shared/ApiSchema";
-import { componentToReferenced } from "@/wab/shared/cached-selectors";
 import {
   ComponentGenHelper,
   SiteGenHelper,
@@ -64,9 +63,6 @@ import {
   isCodeComponent,
   isPageComponent,
 } from "@/wab/shared/core/components";
-import { siteFinalStyleTokensAllDeps } from "@/wab/shared/core/site-style-tokens";
-import { allImageAssets, allMixins } from "@/wab/shared/core/sites";
-import { CssVarResolver } from "@/wab/shared/core/styles";
 import {
   isTplComponent,
   isTplSlot,
@@ -107,6 +103,7 @@ import {
 export const tplMarker = `/*__TPL_MARKER__*/`;
 
 export function exportReactPlain(
+  siteHelper: SiteGenHelper,
   component: Component,
   site: Site,
   projectConfig: ProjectConfig,
@@ -133,7 +130,7 @@ export function exportReactPlain(
     targetEnv: "codegen",
   },
   siteCtx: SerializerSiteContext,
-  extraOpts: Partial<SerializerBaseContext> = {}
+  extraOpts: Partial<SerializerBaseContext> = {},
 ): ComponentExportOutput {
   const { fakeTpls, replacedHostlessComponentImportPath } =
     optimizeGeneratedCodeForHostlessPackages(component, site, false);
@@ -141,18 +138,17 @@ export function exportReactPlain(
   const reactHookSpecs = deriveReactHookSpecs(component, nodeNamer);
   const projectFlags = getProjectFlags(site);
 
+  const compHelper = new ComponentGenHelper(siteHelper, undefined);
   const usedGlobalVariantGroups = getUsedGlobalVariantGroups(
-    site,
+    siteHelper,
     component,
-    projectFlags
+    projectFlags,
   );
   const variantComboChecker = makeVariantComboChecker(
     component,
     reactHookSpecs,
-    "triggers"
+    "triggers",
   );
-  const siteHelper = new SiteGenHelper(site, false);
-  const compHelper = new ComponentGenHelper(siteHelper, undefined);
   const ctx: SerializerBaseContext = {
     componentGenHelper: compHelper,
     component,
@@ -170,12 +166,7 @@ export function exportReactPlain(
     s3ImageLinks: {},
     projectFlags,
     forceAllCsr: false,
-    cssVarResolver: new CssVarResolver(
-      siteFinalStyleTokensAllDeps(site),
-      allMixins(site, { includeDeps: "all" }),
-      allImageAssets(site, { includeDeps: "all" }),
-      site.activeTheme
-    ),
+    cssVarResolver: siteCtx.cssVarResolver,
     usesComponentLevelQueries:
       component.dataQueries.filter((q) => !!q.op).length > 0,
     usesDataSourceInteraction: hasDataSourceInteractions(component),
@@ -212,21 +203,21 @@ export function exportReactPlain(
     `;
   }
 
-  const referencedComponents = componentToReferenced(component);
+  const referencedComponents = [...siteHelper.componentToReferenced(component)];
   const referencedImports = generateReferencedImports(
     referencedComponents,
     opts,
     false,
     // We are importing from "impl", or, the "skeleton" files
     true,
-    ctx.aliases
+    ctx.aliases,
   );
   const iconImports = makeIconImports(
     site,
     component,
     ctx.exportOpts,
     "managed",
-    ctx.aliases
+    ctx.aliases,
   );
   const importGlobalVariantContexts =
     usedGlobalVariantGroups.size === 0
@@ -265,7 +256,7 @@ ${makeStylesImports(
   component,
   projectConfig,
   ctx.exportOpts,
-  "plain"
+  "plain",
 )}
 ${iconImports}
 ${makePictureImports(site, component, ctx.exportOpts, "managed")}
@@ -274,10 +265,10 @@ ${getSuperComponents(component)
   .map(
     (superComp) => `
 import SUPER__${makePlasmicComponentName(
-      superComp
+      superComp,
     )} from "./${getExportedComponentName(superComp)}"; // plasmic-import: ${
       superComp.uuid
-    }/component`
+    }/component`,
   )
   .join("\n")}
 
@@ -328,15 +319,15 @@ function ${componentName}_(props: ${makeComponentPropsTypeName(component)}${
     ...pick(props, ...${jsLiteral(
       getParamNames(
         component,
-        vgs.map((vg) => vg.param)
-      )
+        vgs.map((vg) => vg.param),
+      ),
     )}),
     ${plumePlugin ? "...plumeProps.variants" : ""}
   };
   const args = {
     ...${serializeArgsDefaultValues(ctx)},
     ...pick(props, ...${jsLiteral(
-      getParamNames(component, getArgParams(ctx))
+      getParamNames(component, getArgParams(ctx)),
     )}),
     ${plumePlugin ? "...plumeProps.args" : ""}
   };
@@ -450,7 +441,7 @@ function serializeTplTag(ctx: SerializerBaseContext, node: TplTag) {
     {
       additionalClassExprs:
         node === ctx.component.tplTree ? [`props.className`] : undefined,
-    }
+    },
   );
 
   const tagType = tag;
@@ -462,11 +453,11 @@ function serializeTplTag(ctx: SerializerBaseContext, node: TplTag) {
   const hasPlumeOverride = !!nodeName && !!plumePlugin?.genHook;
   if (hasPlumeOverride) {
     attrs["data-plasmic-override"] = `plumeProps.overrides[${jsLiteral(
-      nodeName
+      nodeName,
     )}]`;
   }
   const triggerPropNames = L.uniq(
-    triggeredHooks.flatMap((spec) => spec.getTriggerPropNames())
+    triggeredHooks.flatMap((spec) => spec.getTriggerPropNames()),
   );
 
   const jsx = makeElement(tagType, attrs, children, {
@@ -486,7 +477,7 @@ function makeElement(
     spreadProps?: string[];
     useProxy?: boolean;
     isTag?: boolean;
-  }
+  },
 ) {
   const hasChildren = serializedChildren.length > 0;
   if (opts.useProxy) {
@@ -542,7 +533,7 @@ function serializeTplComponent(ctx: SerializerBaseContext, node: TplComponent) {
   const hasPlumeOverride = !!nodeName && !!plumePlugin?.genHook;
   if (hasPlumeOverride) {
     attrs["data-plasmic-override"] = `plumeProps.overrides[${jsLiteral(
-      nodeName
+      nodeName,
     )}]`;
   }
   const jsx = makeElement(
@@ -551,7 +542,7 @@ function serializeTplComponent(ctx: SerializerBaseContext, node: TplComponent) {
     serializedChildren,
     {
       useProxy: hasPlumeOverride,
-    }
+    },
   );
 
   return maybeCondExpr(orderedCondStr, jsx);
@@ -559,7 +550,7 @@ function serializeTplComponent(ctx: SerializerBaseContext, node: TplComponent) {
 
 function serializeTplSlotArgsAsArray(
   ctx: SerializerBaseContext,
-  nodes: TplNode[]
+  nodes: TplNode[],
 ) {
   // If possible to serialize as a string prop, do so
   const asStringProp = maybeSerializeAsStringProp(ctx, nodes);
@@ -576,7 +567,7 @@ function serializeTplSlot(ctx: SerializerBaseContext, node: TplSlot) {
     serializeTplSlotBase(ctx, node);
 
   const serializedFallback = asOneNode(
-    serializeTplSlotArgsAsArray(ctx, fallback)
+    serializeTplSlotArgsAsArray(ctx, fallback),
   );
 
   const serializedSlot = `renderPlasmicSlot({
@@ -590,7 +581,7 @@ function serializeTplSlot(ctx: SerializerBaseContext, node: TplSlot) {
 
 function serializeTplNodesAsArray(
   ctx: SerializerBaseContext,
-  nodes: TplNode[]
+  nodes: TplNode[],
 ): string[] {
   return nodes.map((child) => serializeTplNode(ctx, child));
 }
@@ -604,7 +595,7 @@ export function exportReactPlainTypical(
   projectName: string,
   projectId: ProjectId,
   component: Component,
-  extraOpts?: Partial<SerializerBaseContext>
+  extraOpts?: Partial<SerializerBaseContext>,
 ) {
   const exportOpts: ExportOpts = {
     lang: "ts",
@@ -641,15 +632,16 @@ export function exportReactPlainTypical(
     0,
     "",
     "latest",
-    exportOpts
+    exportOpts,
   );
   const { skeletonModule } = exportReactPlain(
+    new SiteGenHelper(project, false),
     component,
     project,
     projectConfig,
     exportOpts,
     computeSerializerSiteContext(project),
-    extraOpts
+    extraOpts,
   );
   return skeletonModule;
 }

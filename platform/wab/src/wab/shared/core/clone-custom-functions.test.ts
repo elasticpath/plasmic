@@ -57,7 +57,11 @@ function makeFixture() {
       condExpr: null,
       parent: handler,
       args: [new NameArg({ name: "customFunctionOp", expr: op })],
+<<<<<<< HEAD
     })
+=======
+    }),
+>>>>>>> upstream/master
   );
   const component = mkComponent({
     name: "Clone probe",
@@ -71,8 +75,13 @@ function makeFixture() {
 function getCall(component: Component) {
   return ensureKnownCustomFunctionExpr(
     findExprsInNode(component.tplTree).find(({ expr }) =>
+<<<<<<< HEAD
       isKnownCustomFunctionExpr(expr)
     )?.expr
+=======
+      isKnownCustomFunctionExpr(expr),
+    )?.expr,
+>>>>>>> upstream/master
   );
 }
 
@@ -118,9 +127,15 @@ test.each([false, true])(
     expect(op.func).toBe(func);
     expect(op.args[0].argType).toBe(func.params[0]);
     expect(bundler.bundle(cloned, "clone", "1").deps).toEqual(
+<<<<<<< HEAD
       imported ? ["dependency"] : []
     );
   }
+=======
+      imported ? ["dependency"] : [],
+    );
+  },
+>>>>>>> upstream/master
 );
 
 test("component duplication still remaps arguments belonging to component props", () => {

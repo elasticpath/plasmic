@@ -1,27 +1,36 @@
-import { ForbiddenError, checkPermissions } from "@/wab/server/db/DbMgr";
+import { DbMgr, ForbiddenError, checkPermissions } from "@/wab/server/db/DbMgr";
 import { prepareTeamSupportUrls as doPrepareTeamSupportUrls } from "@/wab/server/discourse/prepareTeamSupportUrls";
+import { checkInviteEmailPhishing } from "@/wab/server/emails/invite-phishing-check";
 import { sendShareEmail } from "@/wab/server/emails/share-email";
 import { Project, Team, Workspace } from "@/wab/server/entities/Entities";
+<<<<<<< HEAD
 import { isTeamOnFreeTrial } from "@/wab/server/freeTrial";
 import { customCreateTeam } from "@/wab/server/routes/custom-routes";
 import { filterProjectsByKind } from "@/wab/server/routes/project-kind-filter";
+=======
+>>>>>>> upstream/master
 import { mkApiProject } from "@/wab/server/routes/projects";
 import { getPromotionCodeCookie } from "@/wab/server/routes/promo-code";
 import {
+  checkStripeSubscription,
   maybeTriggerPaywall,
-  passPaywall,
   resetStripeCustomer,
   syncDataWithStripe,
 } from "@/wab/server/routes/team-plans";
 import {
   commitTransaction,
   getUser,
+  passPaywall,
   rollbackTransaction,
   startTransaction,
   superDbMgr,
   userDbMgr,
 } from "@/wab/server/routes/util";
-import { mkApiWorkspace } from "@/wab/server/routes/workspaces";
+import { mkApiWorkspaces } from "@/wab/server/routes/workspaces";
+import {
+  getEntitledTeam,
+  loadSubscriptionStatuses,
+} from "@/wab/server/subscription-status";
 import { BadRequestError } from "@/wab/shared/ApiErrors/errors";
 import {
   ApiPermission,
@@ -45,6 +54,7 @@ import {
   Revoke,
   TeamId,
   TeamMember,
+  TeamSubscriptionStatus,
   WorkspaceId,
 } from "@/wab/shared/ApiSchema";
 import {
@@ -68,8 +78,12 @@ import {
 } from "@/wab/shared/urls";
 import { Request, Response } from "express-serve-static-core";
 import L from "lodash";
+import validator from "validator";
 
-export function mkApiTeam(team: Team): ApiTeam {
+function mkApiTeam(
+  team: Team,
+  subscriptionStatus: TeamSubscriptionStatus,
+): ApiTeam {
   return L.assign(
     L.pick(team, [
       "createdAt",
@@ -98,10 +112,21 @@ export function mkApiTeam(team: Team): ApiTeam {
       parentTeamId: team.parentTeamId,
       featureTier: team.featureTier || team.parentTeam?.featureTier || null,
       uiConfig: mergeUiConfigs(team.parentTeam?.uiConfig, team.uiConfig),
-      onTrial: isTeamOnFreeTrial(team),
-    }
+      subscriptionStatus,
+      onTrial: subscriptionStatus === "trial",
+    },
   );
 }
+
+export async function mkApiTeams(
+  mgr: DbMgr,
+  teams: Team[],
+): Promise<ApiTeam[]> {
+  const statuses = await loadSubscriptionStatuses(mgr, teams);
+  return teams.map((team, i) => mkApiTeam(team, statuses[i]));
+}
+
+export const _testonly = { mkApiTeam };
 
 export async function listCurrentFeatureTiers(req: Request, res: Response) {
   const mgr = userDbMgr(req);
@@ -119,15 +144,11 @@ export async function listTeams(req: Request, res: Response) {
   const userMgr = userDbMgr(req);
   const teams = await userMgr.getAffiliatedTeams();
   const perms = await userMgr.getPermissionsForTeams(teams.map((t) => t.id));
-  const apiTeams = teams.map((team) => mkApiTeam(team));
+  const apiTeams = await mkApiTeams(userMgr, teams);
   res.json(ensureType<ListTeamsResponse>({ teams: apiTeams, perms }));
 }
 
 export async function createTeam(req: Request, res: Response) {
-  if (await customCreateTeam(req, res)) {
-    return;
-  }
-
   const userMgr = userDbMgr(req);
   const superMgr = superDbMgr(req);
   const { name: rawName } = uncheckedCast<CreateTeamRequest>(req.body);
@@ -139,19 +160,27 @@ export async function createTeam(req: Request, res: Response) {
     ? (await superMgr.getPromotionCodeById(promotionCode.id))?.trialDays
     : undefined;
 
-  const team = await userMgr.createTeam(teamName, { extendedFreeTrial });
+  // Refresh cached Stripe state before counting unpaid organizations.
+  for (const ownedTeam of await userMgr.getAffiliatedTeams()) {
+    if (ownedTeam.createdById === getUser(req).id) {
+      await checkStripeSubscription(req, getEntitledTeam(ownedTeam));
+    }
+  }
+  await userMgr.checkCanCreateTeam();
+  let team = await userMgr.createTeam(teamName, { extendedFreeTrial });
   await userMgr.updateUser({
     id: getUser(req).id,
     needsTeamCreationPrompt: false,
   });
-  const apiTeam = mkApiTeam(team);
 
-  if (req.devflags.freeTrial) {
+  if (req.devflags.freeTrial && (await userMgr.canStartFreeTrial(team.id))) {
     await userMgr.startFreeTrial({
       teamId: team.id,
       featureTierName: req.devflags.freeTrialTierName,
     });
+    team = await userMgr.getTeamById(team.id);
   }
+  const [apiTeam] = await mkApiTeams(userMgr, [team]);
 
   // Automatically create a new workspace in the new team.
   await userMgr.createWorkspace({
@@ -169,16 +198,35 @@ export async function createTeam(req: Request, res: Response) {
   res.json(ensureType<CreateTeamResponse>({ team: apiTeam }));
 }
 
+/**
+ * Trims `email` and throws a BadRequestError if it isn't a valid email
+ * address. Uses the same validator as the entities' `@IsEmail` checks.
+ */
+function ensureValidEmail(email: unknown, field: string): string {
+  const trimmed = typeof email === "string" ? email.trim() : undefined;
+  if (!trimmed || !validator.isEmail(trimmed, { ignore_max_length: true })) {
+    throw new BadRequestError(`${field} must be a valid email address`);
+  }
+  return trimmed;
+}
+
 export async function updateTeam(req: Request, res: Response) {
   const userMgr = userDbMgr(req);
+  const fields = { ...req.body };
+  if ("billingEmail" in fields) {
+    fields.billingEmail = ensureValidEmail(fields.billingEmail, "billingEmail");
+  }
   const team = await userMgr.updateTeam({
     id: req.params.teamId,
-    ...req.body,
+    ...fields,
   });
 
-  await syncDataWithStripe(team, req.config.host);
+  // Only sync what Stripe stores.
+  if ("name" in req.body || "billingEmail" in req.body) {
+    await syncDataWithStripe(team, req.config.host);
+  }
 
-  const apiTeam = mkApiTeam(team);
+  const [apiTeam] = await mkApiTeams(userMgr, [team]);
   res.json(ensureType<CreateTeamResponse>({ team: apiTeam }));
 }
 
@@ -188,7 +236,7 @@ export async function deleteTeam(req: Request, res: Response) {
   const superMgr = superDbMgr(req);
   const team = await userMgr.getTeamById(teamId);
   // Cancel any active subscriptions first
-  await resetStripeCustomer(userMgr, superMgr, team);
+  await resetStripeCustomer(superMgr, team);
 
   req.analytics.track("Delete team", {
     teamName: team.name,
@@ -201,7 +249,7 @@ export async function getTeamById(req: Request, res: Response) {
   const userMgr = userDbMgr(req);
   const { teamId } = uncheckedCast<{ teamId: TeamId }>(req.params);
   const team = await userMgr.getTeamById(teamId);
-  const apiTeam = mkApiTeam(team);
+  const [apiTeam] = await mkApiTeams(userMgr, [team]);
   const perms = await userMgr.getPermissionsForTeams([teamId]);
   const members = await userMgr.getTeamMembers(teamId);
   res.json(ensureType<GetTeamResponse>({ team: apiTeam, perms, members }));
@@ -220,13 +268,18 @@ export async function changeResourcePermissions(req: Request, res: Response) {
     MayTriggerPaywall<GrantRevokeResponse>
   >(req, async () => {
     const mgr = userDbMgr(req);
-    const { grants, revokes, requireSignUp } =
-      uncheckedCast<GrantRevokeRequest>(req.body);
-    if (grants.length > MAX_GRANTS_PER_REQUEST) {
+    const sharer = getUser(req);
+    const body = uncheckedCast<GrantRevokeRequest>(req.body);
+    const { revokes, requireSignUp } = body;
+    if (body.grants.length > MAX_GRANTS_PER_REQUEST) {
       throw new BadRequestError(
-        `Cannot grant access to more than ${MAX_GRANTS_PER_REQUEST} recipients at a time.`
+        `Cannot grant access to more than ${MAX_GRANTS_PER_REQUEST} recipients at a time.`,
       );
     }
+    const grants = body.grants.map((grant) => ({
+      ...grant,
+      email: ensureValidEmail(grant.email, "email"),
+    }));
     const host = req.config.host;
     const resourcesById: Record<string, Team | Workspace | Project> = {};
     const emailsToSend: {
@@ -239,7 +292,7 @@ export async function changeResourcePermissions(req: Request, res: Response) {
     // Grants
     const handleGrant = async (
       type: ResourceType,
-      getId: (r: Grant) => ResourceId | undefined
+      getId: (r: Grant) => ResourceId | undefined,
     ) => {
       const grantsById = xGroupBy(grants, getId);
       for (const [id, toGrant] of grantsById) {
@@ -254,22 +307,29 @@ export async function changeResourcePermissions(req: Request, res: Response) {
           taggedResourceId.type === "project"
             ? await mgr.getProjectById(taggedResourceId.id)
             : taggedResourceId.type === "workspace"
-            ? await mgr.getWorkspaceById(taggedResourceId.id)
-            : await mgr.getTeamById(taggedResourceId.id);
+              ? await mgr.getWorkspaceById(taggedResourceId.id)
+              : await mgr.getTeamById(taggedResourceId.id);
         resourcesById[taggedResourceId.id] = resource;
         const resourceUrl =
           taggedResourceId.type === "project"
             ? createProjectUrl(host, id)
             : taggedResourceId.type === "workspace"
-            ? createWorkspaceUrl(host, id)
-            : createTeamUrl(host, id);
+              ? createWorkspaceUrl(host, id)
+              : createTeamUrl(host, id);
+        if (
+          taggedResourceId.type === "team" &&
+          toGrant.some((grant) => grant.accessLevel === "owner")
+        ) {
+          // Refresh Stripe state since ownership transfer requires a paid team.
+          await checkStripeSubscription(req, getEntitledTeam(resource as Team));
+        }
 
         for (const { email, accessLevel } of toGrant) {
           await mgr.grantResourcesPermissionByEmail(
             pluralizeResourceId(taggedResourceId),
             email,
             accessLevel,
-            requireSignUp
+            requireSignUp,
           );
           req.analytics.track("Share resource", {
             type,
@@ -282,8 +342,8 @@ export async function changeResourcePermissions(req: Request, res: Response) {
           // Note: we intentionally do not check whether this is a new permission or
           // not. We always re-send share emails if the user re-requested sharing with
           // a user!
-          // Skip emailing the actor about their own role change (e.g., self-demotion during ownership transfer)
-          if (email !== getUser(req).email) {
+          // Skip emailing the actor about their own role change
+          if (email !== sharer.email) {
             emailsToSend.push({
               email: email,
               resourceType: type,
@@ -301,7 +361,7 @@ export async function changeResourcePermissions(req: Request, res: Response) {
     // Revokes
     const handleRevoke = async (
       type: ResourceType,
-      getId: (r: Revoke) => ResourceId | undefined
+      getId: (r: Revoke) => ResourceId | undefined,
     ) => {
       const revokesById = xGroupBy(revokes, getId);
       for (const [id, toRevoke] of revokesById) {
@@ -315,13 +375,13 @@ export async function changeResourcePermissions(req: Request, res: Response) {
           taggedResourceId.type === "project"
             ? await mgr.getProjectById(taggedResourceId.id)
             : taggedResourceId.type === "workspace"
-            ? await mgr.getWorkspaceById(taggedResourceId.id)
-            : await mgr.getTeamById(taggedResourceId.id);
+              ? await mgr.getWorkspaceById(taggedResourceId.id)
+              : await mgr.getTeamById(taggedResourceId.id);
         resourcesById[taggedResourceId.id] = resource;
         const emails = toRevoke.map(({ email }) => email);
         await mgr.revokeResourcesPermissionsByEmail(
           pluralizeResourceId(taggedResourceId),
-          emails
+          emails,
         );
       }
     };
@@ -331,11 +391,11 @@ export async function changeResourcePermissions(req: Request, res: Response) {
 
     // Get the final permissions of affected resources
     const getUniqueAffectedIds = (
-      getId: (r: Grant | Revoke) => ResourceId | undefined
+      getId: (r: Grant | Revoke) => ResourceId | undefined,
     ) => L.uniq(filterFalsy([...grants.map(getId), ...revokes.map(getId)]));
     const projectIds = getUniqueAffectedIds((x) => x.projectId);
     const workspaceIds = getUniqueAffectedIds(
-      (x) => x.workspaceId
+      (x) => x.workspaceId,
     ) as WorkspaceId[];
     const teamIds = getUniqueAffectedIds((x) => x.teamId) as TeamId[];
     const perms = [
@@ -354,11 +414,11 @@ export async function changeResourcePermissions(req: Request, res: Response) {
       ...L.uniq(
         filterFalsy([
           ...projectIds.map(
-            (id) => (resourcesById[id] as Project).workspace?.teamId
+            (id) => (resourcesById[id] as Project).workspace?.teamId,
           ),
           ...workspaceIds.map((id) => (resourcesById[id] as Workspace).teamId),
           ...teamIds,
-        ])
+        ]),
       ).map((id) => createTaggedResourceId("team", id)),
       ...projectIds.map((id) => createTaggedResourceId("project", id)),
     ];
@@ -366,8 +426,9 @@ export async function changeResourcePermissions(req: Request, res: Response) {
       req,
       affectedResourceIds,
       {},
-      passResponse
+      passResponse,
     );
+<<<<<<< HEAD
     if (paywall.paywall == "pass" && !req.apiTeam?.whiteLabelInfo) {
       // Temporary bypass for SMTP issues
       if (process.env.SKIP_GRANT_REVOKE_EMAILS === "true") {
@@ -390,6 +451,34 @@ export async function changeResourcePermissions(req: Request, res: Response) {
         );
         await Promise.all(promises);
       }
+=======
+    if (
+      paywall.paywall == "pass" &&
+      !req.apiTeam?.whiteLabelInfo &&
+      emailsToSend.length > 0
+    ) {
+      await checkInviteEmailPhishing(req, res, {
+        sharer,
+        resources: L.uniqBy(emailsToSend, (x) => x.resourceUrl).map((x) => ({
+          type: x.resourceType,
+          name: x.resourceName,
+          url: x.resourceUrl,
+        })),
+      });
+      const promises = emailsToSend.map(
+        async (x) =>
+          await sendShareEmail(
+            req,
+            sharer,
+            x.email,
+            x.resourceType,
+            x.resourceName,
+            x.resourceUrl,
+            !!(await mgr.tryGetUserByEmail(x.email)),
+          ),
+      );
+      await Promise.all(promises);
+>>>>>>> upstream/master
     }
     if (paywall.paywall === "pass") {
       return commitTransaction(paywall);
@@ -485,7 +574,7 @@ export async function getTeamProjects(req: Request, res: Response) {
   // workspaces and projects that the user can't access.
 
   const team = await superMgr.getTeamById(teamId);
-  const apiTeam = mkApiTeam(team);
+  const [apiTeam] = await mkApiTeams(userMgr, [team]);
 
   let members: TeamMember[] = [];
   let teamPerms: ApiPermission[] = [];
@@ -501,13 +590,13 @@ export async function getTeamProjects(req: Request, res: Response) {
   const workspaces = await userMgr.getAffiliatedWorkspaces(teamId);
   const workspacePerms = await userMgr.getPermissionsForWorkspaces(
     workspaces.map((workspace) => workspace.id),
-    true
+    true,
   );
-  const apiWorkspaces = workspaces.map((w) => mkApiWorkspace(w));
+  const apiWorkspaces = await mkApiWorkspaces(userMgr, workspaces);
 
   checkPermissions(
     teamPerms.length > 0 || workspaces.length > 0,
-    `User does not have access to team or any of its workspaces.`
+    `User does not have access to team or any of its workspaces.`,
   );
 
   const allProjects = await userMgr.getAffiliatedProjects(teamId);
@@ -515,7 +604,7 @@ export async function getTeamProjects(req: Request, res: Response) {
   const projects = filterProjectsByKind(allProjects, excludeKinds);
   const projectPerms = await userMgr.getPermissionsForProjects(
     projects.map((project) => project.id),
-    true
+    true,
   );
   const apiProjects = projects.map((p) => mkApiProject(p));
 
@@ -526,7 +615,7 @@ export async function getTeamProjects(req: Request, res: Response) {
       projects: apiProjects,
       perms: [...teamPerms, ...workspacePerms, ...projectPerms],
       members,
-    })
+    }),
   );
 }
 
@@ -541,7 +630,7 @@ export async function getTeamWorkspaces(req: Request, res: Response) {
   // workspaces and projects that the user can't access.
 
   const team = await superMgr.getTeamById(teamId);
-  const apiTeam = mkApiTeam(team);
+  const [apiTeam] = await mkApiTeams(userMgr, [team]);
 
   let teamPerms: ApiPermission[] = [];
   try {
@@ -555,13 +644,13 @@ export async function getTeamWorkspaces(req: Request, res: Response) {
   const workspaces = await userMgr.getAffiliatedWorkspaces(teamId);
   const workspacePerms = await userMgr.getPermissionsForWorkspaces(
     workspaces.map((workspace) => workspace.id),
-    true
+    true,
   );
-  const apiWorkspaces = workspaces.map((w) => mkApiWorkspace(w));
+  const apiWorkspaces = await mkApiWorkspaces(userMgr, workspaces);
 
   checkPermissions(
     teamPerms.length > 0 || workspaces.length > 0,
-    `User does not have access to team or any of its workspaces.`
+    `User does not have access to team or any of its workspaces.`,
   );
 
   res.json(
@@ -569,7 +658,7 @@ export async function getTeamWorkspaces(req: Request, res: Response) {
       team: apiTeam,
       workspaces: apiWorkspaces,
       perms: [...teamPerms, ...workspacePerms],
-    })
+    }),
   );
 }
 

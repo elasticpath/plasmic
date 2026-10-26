@@ -14,22 +14,58 @@
 import * as React from "react";
 
 import {
+  Flex as Flex__,
+  MultiChoiceArg,
+  PlasmicDataSourceContextProvider as PlasmicDataSourceContextProvider__,
+  PlasmicIcon as PlasmicIcon__,
+  PlasmicImg as PlasmicImg__,
+  PlasmicLink as PlasmicLink__,
+  PlasmicPageGuard as PlasmicPageGuard__,
+  SingleBooleanChoiceArg,
+  SingleChoiceArg,
+  Stack as Stack__,
+  StrictProps,
+  Trans as Trans__,
   classNames,
   createPlasmicElementProxy,
   deriveRenderOpts,
-  Flex as Flex__,
+  ensureGlobalVariants,
+  generateOnMutateForSpec,
+  generateStateOnChangeProp,
+  generateStateOnChangePropForCodeComponents,
+  generateStateValueProp,
+  get as $stateGet,
   hasVariant,
+<<<<<<< HEAD
   PlasmicImg as PlasmicImg__,
   SingleBooleanChoiceArg,
   SingleChoiceArg,
   StrictProps,
+=======
+  initializeCodeComponentStates,
+  initializePlasmicStates,
+  makeFragment,
+  omit,
+  pick,
+  renderPlasmicSlot,
+  set as $stateSet,
+  useCurrentUser,
+>>>>>>> upstream/master
   useDollarState,
+  usePlasmicTranslator,
+  useTrigger,
+  wrapWithClassName
 } from "@plasmicapp/react-web";
-import { useDataEnv } from "@plasmicapp/react-web/lib/host";
+import {
+  DataCtxReader as DataCtxReader__,
+  useDataEnv,
+  useGlobalActions
+} from "@plasmicapp/react-web/lib/host";
 
-import { CopilotPromptInput } from "../../components/copilot/CopilotPromptInput"; // plasmic-import: pnV7KLVDUyoz/component
-import CopilotMsg from "../../components/CopilotMsg"; // plasmic-import: CdMYaSGMjG/component
 import IconButton from "../../components/widgets/IconButton"; // plasmic-import: LPry-TF4j22a/component
+import CopilotMsg from "../../components/CopilotMsg"; // plasmic-import: CdMYaSGMjG/component
+import { CopilotPromptInput } from "../../components/copilot/CopilotPromptInput"; // plasmic-import: pnV7KLVDUyoz/component
+import { _useGlobalVariants } from "./plasmic"; // plasmic-import: w2GXN278dkQ2gQTVQnPehW/projectModule
 import { _useStyleTokens } from "./PlasmicStyleTokensProvider"; // plasmic-import: w2GXN278dkQ2gQTVQnPehW/styleTokensProvider
 
 import "@plasmicapp/react-web/lib/plasmic.css";
@@ -38,6 +74,7 @@ import "./plasmic_plasmic_kit_data_binding.css"; // plasmic-import: w2GXN278dkQ2
 import sty from "./PlasmicCopilotPromptDialog.module.css"; // plasmic-import: -zGA-erYhCmv/css
 
 import HistoryIcon from "../plasmic_kit/PlasmicIcon__History"; // plasmic-import: 6ZOswzsUR/icon
+import ChevronDownSvgIcon from "../plasmic_kit_icons/icons/PlasmicIcon__ChevronDownSvg"; // plasmic-import: xZrB9_0ir/icon
 import CloseSvgIcon from "../plasmic_kit_icons/icons/PlasmicIcon__CloseSvg"; // plasmic-import: DhvEHyCHT/icon
 import SpinnerIcon from "./icons/PlasmicIcon__Spinner"; // plasmic-import: EfDOV4MDLj/icon
 import imageUYmVmRYjy from "./images/image.png"; // plasmic-import: UYmVmRYjy/picture
@@ -124,7 +161,7 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
 
   const $props = {
     ...args,
-    ...variants,
+    ...variants
   };
 
   const $ctx = useDataEnv?.() || {};
@@ -137,12 +174,13 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
         path: "state",
         type: "private",
         variableType: "variant",
-        initFunc: ({ $props, $state, $queries, $q, $ctx }) => $props.state,
+        initFunc: ({ $props, $state, $queries, $q, $ctx }) => $props.state
       },
       {
         path: "type",
         type: "private",
         variableType: "variant",
+<<<<<<< HEAD
         initFunc: ({ $props, $state, $queries, $q, $ctx }) => $props.type,
       },
       {
@@ -152,6 +190,10 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
         initFunc: ({ $props, $state, $queries, $q, $ctx }) =>
           $props.withAdminOverrides,
       },
+=======
+        initFunc: ({ $props, $state, $queries, $q, $ctx }) => $props.type
+      }
+>>>>>>> upstream/master
     ],
     [$props, $ctx, $refs]
   );
@@ -161,7 +203,7 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
     $ctx,
     $queries: {},
     $q: {},
-    $refs,
+    $refs
   });
 
   const styleTokensClassNames = _useStyleTokens();
@@ -203,18 +245,23 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
           ),
           [sty.rootContainerstate_ready]: hasVariant($state, "state", "ready"),
           [sty.rootContainertype_sql]: hasVariant($state, "type", "sql"),
+<<<<<<< HEAD
           [sty.rootContainertype_ui]: hasVariant($state, "type", "ui"),
           [sty.rootContainerwithAdminOverrides]: hasVariant(
             $state,
             "withAdminOverrides",
             "withAdminOverrides"
           ),
+=======
+          [sty.rootContainertype_ui]: hasVariant($state, "type", "ui")
+>>>>>>> upstream/master
         }
       )}
     >
       <div
         data-plasmic-name={"sizerContainer"}
         data-plasmic-override={overrides.sizerContainer}
+
         className={classNames("all", sty.sizerContainer, {
           [sty.sizerContainerstate_error]: hasVariant($state, "state", "error"),
           [sty.sizerContainerstate_history]: hasVariant(
@@ -237,17 +284,22 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
             hasVariant($state, "type", "ui") &&
             hasVariant($state, "state", "ready"),
           [sty.sizerContainertype_sql]: hasVariant($state, "type", "sql"),
+<<<<<<< HEAD
           [sty.sizerContainertype_ui]: hasVariant($state, "type", "ui"),
           [sty.sizerContainerwithAdminOverrides]: hasVariant(
             $state,
             "withAdminOverrides",
             "withAdminOverrides"
           ),
+=======
+          [sty.sizerContainertype_ui]: hasVariant($state, "type", "ui")
+>>>>>>> upstream/master
         })}
       >
         <div
           data-plasmic-name={"promptDialog"}
           data-plasmic-override={overrides.promptDialog}
+
           className={classNames("all", sty.promptDialog, {
             [sty.promptDialogstate_historyEmpty]: hasVariant(
               $state,
@@ -269,17 +321,22 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
               hasVariant($state, "type", "ui") &&
               hasVariant($state, "state", "ready"),
             [sty.promptDialogtype_sql]: hasVariant($state, "type", "sql"),
+<<<<<<< HEAD
             [sty.promptDialogtype_ui]: hasVariant($state, "type", "ui"),
             [sty.promptDialogwithAdminOverrides]: hasVariant(
               $state,
               "withAdminOverrides",
               "withAdminOverrides"
             ),
+=======
+            [sty.promptDialogtype_ui]: hasVariant($state, "type", "ui")
+>>>>>>> upstream/master
           })}
         >
           <div
             data-plasmic-name={"headerContainer"}
             data-plasmic-override={overrides.headerContainer}
+
             className={classNames("all", sty.headerContainer, {
               [sty.headerContainerstate_quotaExceeded]: hasVariant(
                 $state,
@@ -291,17 +348,22 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
                 "state",
                 "ready"
               ),
+<<<<<<< HEAD
               [sty.headerContainertype_sql]: hasVariant($state, "type", "sql"),
               [sty.headerContainerwithAdminOverrides]: hasVariant(
                 $state,
                 "withAdminOverrides",
                 "withAdminOverrides"
               ),
+=======
+              [sty.headerContainertype_sql]: hasVariant($state, "type", "sql")
+>>>>>>> upstream/master
             })}
           >
             <div
               data-plasmic-name={"promptLabel"}
               data-plasmic-override={overrides.promptLabel}
+
               className={classNames("all", "__wab_text", sty.promptLabel, {
                 [sty.promptLabelstate_historyEmpty]: hasVariant(
                   $state,
@@ -312,7 +374,7 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
                   $state,
                   "state",
                   "history"
-                ),
+                )
               })}
             >
               {"Describe what you want to get:"}
@@ -320,6 +382,7 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
             <h6
               data-plasmic-name={"history"}
               data-plasmic-override={overrides.history}
+
               className={classNames(
                 "all",
                 "h6",
@@ -337,11 +400,7 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
                     "state",
                     "history"
                   ),
-                  [sty.historystate_ready]: hasVariant(
-                    $state,
-                    "state",
-                    "ready"
-                  ),
+                  [sty.historystate_ready]: hasVariant($state, "state", "ready")
                 }
               )}
             >
@@ -350,11 +409,13 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
             <div
               data-plasmic-name={"rightButtons"}
               data-plasmic-override={overrides.rightButtons}
+
               className={classNames("all", sty.rightButtons)}
             >
               <IconButton
                 data-plasmic-name={"historyBtn"}
                 data-plasmic-override={overrides.historyBtn}
+
                 className={classNames("__wab_instance", sty.historyBtn)}
                 size={"small"}
               >
@@ -369,7 +430,7 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
                       $state,
                       "state",
                       "history"
-                    ),
+                    )
                   })}
                   role={"img"}
                 />
@@ -377,6 +438,7 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
               <IconButton
                 data-plasmic-name={"cancelBtn"}
                 data-plasmic-override={overrides.cancelBtn}
+
                 className={classNames("__wab_instance", sty.cancelBtn)}
                 size={"small"}
               >
@@ -390,6 +452,7 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
           <div
             data-plasmic-name={"contents"}
             data-plasmic-override={overrides.contents}
+
             className={classNames("all", sty.contents, {
               [sty.contentsstate_historyEmpty]: hasVariant(
                 $state,
@@ -401,19 +464,20 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
                 "state",
                 "history"
               ),
-              [sty.contentstype_sql]: hasVariant($state, "type", "sql"),
+              [sty.contentstype_sql]: hasVariant($state, "type", "sql")
             })}
           >
             {(
               hasVariant($state, "state", "historyEmpty")
                 ? true
                 : hasVariant($state, "state", "history")
-                ? true
-                : false
+                  ? true
+                  : false
             ) ? (
               <div
                 data-plasmic-name={"historyContainer"}
                 data-plasmic-override={overrides.historyContainer}
+
                 className={classNames("all", sty.historyContainer, {
                   [sty.historyContainerstate_historyEmpty]: hasVariant(
                     $state,
@@ -429,12 +493,13 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
                     $state,
                     "state",
                     "quotaExceeded"
-                  ),
+                  )
                 })}
               >
                 <div
                   data-plasmic-name={"historyEmptyMsg"}
                   data-plasmic-override={overrides.historyEmptyMsg}
+
                   className={classNames(
                     "all",
                     "__wab_text",
@@ -449,7 +514,7 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
                         $state,
                         "state",
                         "history"
-                      ),
+                      )
                     }
                   )}
                 >
@@ -460,6 +525,7 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
                 <div
                   data-plasmic-name={"historyContents"}
                   data-plasmic-override={overrides.historyContents}
+
                   className={classNames("all", sty.historyContents, {
                     [sty.historyContentsstate_historyEmpty]: hasVariant(
                       $state,
@@ -475,7 +541,7 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
                       $state,
                       "state",
                       "quotaExceeded"
-                    ),
+                    )
                   })}
                 >
                   <CopilotMsg
@@ -501,7 +567,7 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
                       {
                         [sty.copilotMsgstate_history_type_ui__sfkbSFmeFiGWzJo]:
                           hasVariant($state, "type", "ui") &&
-                          hasVariant($state, "state", "history"),
+                          hasVariant($state, "state", "history")
                       }
                     )}
                     userPrompt={true}
@@ -514,7 +580,7 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
                       {
                         [sty.copilotMsgstate_history_type_ui__yboe1FmeFiGWzJo]:
                           hasVariant($state, "type", "ui") &&
-                          hasVariant($state, "state", "history"),
+                          hasVariant($state, "state", "history")
                       }
                     )}
                     rightMargin={true}
@@ -523,6 +589,7 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
                 <div
                   data-plasmic-name={"historyBottomDiv"}
                   data-plasmic-override={overrides.historyBottomDiv}
+
                   className={classNames("all", sty.historyBottomDiv, {
                     [sty.historyBottomDivstate_history]: hasVariant(
                       $state,
@@ -533,13 +600,14 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
                       $state,
                       "state",
                       "quotaExceeded"
-                    ),
+                    )
                   })}
                   id={"history-bottom-div"}
                 >
                   <PlasmicImg__
                     data-plasmic-name={"onLoadTrigger"}
                     data-plasmic-override={overrides.onLoadTrigger}
+
                     alt={""}
                     className={classNames(sty.onLoadTrigger, {
                       [sty.onLoadTriggerstate_historyEmpty]: hasVariant(
@@ -556,14 +624,14 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
                         $state,
                         "state",
                         "quotaExceeded"
-                      ),
+                      )
                     })}
                     displayHeight={
                       hasVariant($state, "state", "historyEmpty")
                         ? "1px"
                         : hasVariant($state, "state", "history")
-                        ? "1px"
-                        : "auto"
+                          ? "1px"
+                          : "auto"
                     }
                     displayMaxHeight={"none"}
                     displayMaxWidth={"100%"}
@@ -573,11 +641,11 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
                       hasVariant($state, "state", "historyEmpty")
                         ? "1px"
                         : hasVariant($state, "state", "history")
-                        ? "1px"
-                        : "auto"
+                          ? "1px"
+                          : "auto"
                     }
                     loading={"eager"}
-                    onLoad={async (event) => {
+                    onLoad={async event => {
                       const $steps = {};
 
                       $steps["runCode"] = true
@@ -587,7 +655,7 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
                                 return document
                                   .getElementById("history-bottom-div")
                                   .scrollIntoView();
-                              },
+                              }
                             };
                             return (({ customFunction }) => {
                               return customFunction();
@@ -608,16 +676,16 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
                             src: imageUYmVmRYjy,
                             fullWidth: 1,
                             fullHeight: 1,
-                            aspectRatio: undefined,
+                            aspectRatio: undefined
                           }
                         : hasVariant($state, "state", "history")
-                        ? {
-                            src: imageUYmVmRYjy,
-                            fullWidth: 1,
-                            fullHeight: 1,
-                            aspectRatio: undefined,
-                          }
-                        : undefined
+                          ? {
+                              src: imageUYmVmRYjy,
+                              fullWidth: 1,
+                              fullHeight: 1,
+                              aspectRatio: undefined
+                            }
+                          : undefined
                     }
                   />
                 </div>
@@ -626,6 +694,7 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
             <CopilotPromptInput
               data-plasmic-name={"promptInput"}
               data-plasmic-override={overrides.promptInput}
+
               className={classNames("__wab_instance", sty.promptInput, {
                 [sty.promptInputstate_loading]: hasVariant(
                   $state,
@@ -642,9 +711,9 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
                   hasVariant($state, "state", "ready"),
                 [sty.promptInputtype_code]: hasVariant($state, "type", "code"),
                 [sty.promptInputtype_sql]: hasVariant($state, "type", "sql"),
-                [sty.promptInputtype_ui]: hasVariant($state, "type", "ui"),
+                [sty.promptInputtype_ui]: hasVariant($state, "type", "ui")
               })}
-              isLoading={
+              loading={
                 hasVariant($state, "state", "loading") ? true : undefined
               }
               placeholder={
@@ -652,7 +721,6 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
                   ? 'e.g. "Generate a hero section"'
                   : undefined
               }
-              withAction={true}
             />
 
             {(hasVariant($state, "state", "loading") ? true : false) ? (
@@ -667,7 +735,7 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
                     $state,
                     "state",
                     "ready"
-                  ),
+                  )
                 })}
                 role={"img"}
               />
@@ -675,6 +743,7 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
             <div
               data-plasmic-name={"errorMessage"}
               data-plasmic-override={overrides.errorMessage}
+
               className={classNames("all", "__wab_text", sty.errorMessage, {
                 [sty.errorMessagestate_error]: hasVariant(
                   $state,
@@ -685,7 +754,7 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
                   $state,
                   "state",
                   "ready"
-                ),
+                )
               })}
             >
               {"Error! \ud83d\ude14"}
@@ -693,6 +762,7 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
             <div
               data-plasmic-name={"quotaExceededMsg"}
               data-plasmic-override={overrides.quotaExceededMsg}
+
               className={classNames("all", "__wab_text", sty.quotaExceededMsg, {
                 [sty.quotaExceededMsgstate_quotaExceeded]: hasVariant(
                   $state,
@@ -706,7 +776,7 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
                   $state,
                   "state",
                   "ready"
-                ),
+                )
               })}
             >
               {hasVariant($state, "state", "quotaExceeded")
@@ -716,13 +786,14 @@ function PlasmicCopilotPromptDialog__RenderFunc(props: {
             <CopilotMsg
               data-plasmic-name={"reply"}
               data-plasmic-override={overrides.reply}
+
               className={classNames("__wab_instance", sty.reply, {
                 [sty.replystate_quotaExceeded]: hasVariant(
                   $state,
                   "state",
                   "quotaExceeded"
                 ),
-                [sty.replystate_ready]: hasVariant($state, "state", "ready"),
+                [sty.replystate_ready]: hasVariant($state, "state", "ready")
               })}
             />
           </div>
@@ -752,7 +823,7 @@ const PlasmicDescendants = {
     "promptInput",
     "errorMessage",
     "quotaExceededMsg",
-    "reply",
+    "reply"
   ],
   sizerContainer: [
     "sizerContainer",
@@ -772,7 +843,7 @@ const PlasmicDescendants = {
     "promptInput",
     "errorMessage",
     "quotaExceededMsg",
-    "reply",
+    "reply"
   ],
   promptDialog: [
     "promptDialog",
@@ -791,7 +862,7 @@ const PlasmicDescendants = {
     "promptInput",
     "errorMessage",
     "quotaExceededMsg",
-    "reply",
+    "reply"
   ],
   headerContainer: [
     "headerContainer",
@@ -799,7 +870,7 @@ const PlasmicDescendants = {
     "history",
     "rightButtons",
     "historyBtn",
-    "cancelBtn",
+    "cancelBtn"
   ],
   promptLabel: ["promptLabel"],
   history: ["history"],
@@ -816,14 +887,14 @@ const PlasmicDescendants = {
     "promptInput",
     "errorMessage",
     "quotaExceededMsg",
-    "reply",
+    "reply"
   ],
   historyContainer: [
     "historyContainer",
     "historyEmptyMsg",
     "historyContents",
     "historyBottomDiv",
-    "onLoadTrigger",
+    "onLoadTrigger"
   ],
   historyEmptyMsg: ["historyEmptyMsg"],
   historyContents: ["historyContents"],
@@ -832,7 +903,7 @@ const PlasmicDescendants = {
   promptInput: ["promptInput"],
   errorMessage: ["errorMessage"],
   quotaExceededMsg: ["quotaExceededMsg"],
-  reply: ["reply"],
+  reply: ["reply"]
 } as const;
 type NodeNameType = keyof typeof PlasmicDescendants;
 type DescendantsType<T extends NodeNameType> =
@@ -870,8 +941,9 @@ type NodeComponentProps<T extends NodeNameType> =
     variants?: PlasmicCopilotPromptDialog__VariantsArgs;
     args?: PlasmicCopilotPromptDialog__ArgsType;
     overrides?: NodeOverridesType<T>;
-  } & // Specify variants directly as props
-  Omit<PlasmicCopilotPromptDialog__VariantsArgs, ReservedPropsType> &
+  } &
+    // Specify variants directly as props
+    Omit<PlasmicCopilotPromptDialog__VariantsArgs, ReservedPropsType> &
     // Specify args directly as props
     Omit<PlasmicCopilotPromptDialog__ArgsType, ReservedPropsType> &
     // Specify overrides for each element directly as props
@@ -896,7 +968,7 @@ function makeNodeComponent<NodeName extends NodeNameType>(nodeName: NodeName) {
           name: nodeName,
           descendantNames: PlasmicDescendants[nodeName],
           internalArgPropNames: PlasmicCopilotPromptDialog__ArgProps,
-          internalVariantPropNames: PlasmicCopilotPromptDialog__VariantProps,
+          internalVariantPropNames: PlasmicCopilotPromptDialog__VariantProps
         }),
       [props, nodeName]
     );
@@ -904,7 +976,7 @@ function makeNodeComponent<NodeName extends NodeNameType>(nodeName: NodeName) {
       variants,
       args,
       overrides,
-      forNode: nodeName,
+      forNode: nodeName
     });
   };
   if (nodeName === "rootContainer") {
@@ -941,7 +1013,7 @@ export const PlasmicCopilotPromptDialog = Object.assign(
 
     // Metadata about props expected for PlasmicCopilotPromptDialog
     internalVariantProps: PlasmicCopilotPromptDialog__VariantProps,
-    internalArgProps: PlasmicCopilotPromptDialog__ArgProps,
+    internalArgProps: PlasmicCopilotPromptDialog__ArgProps
   }
 );
 

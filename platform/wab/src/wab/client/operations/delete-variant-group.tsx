@@ -1,4 +1,7 @@
-import { deleteResourcesWithUsages } from "@/wab/client/operations/delete-resources";
+import {
+  deleteResourcesWithUsages,
+  type DeleteResourcesOpts,
+} from "@/wab/client/operations/delete-resources";
 import type { StudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import type { TplMgr } from "@/wab/shared/TplMgr";
 import {
@@ -30,16 +33,20 @@ import {
   isKnownComponentVariantGroup,
 } from "@/wab/shared/model/classes";
 import { getPlumeEditorPlugin } from "@/wab/shared/plume/plume-registry";
+import { Result, err } from "neverthrow";
 
-export type DeleteVariantGroupResult =
-  | { result: "success"; messages: string[] }
-  | {
-      result: "error";
-      message: string;
-      variantGroupRefs?: ExprReference[];
-      /** True when the user dismissed the confirmation dialog without deleting. */
-      cancelled?: boolean;
-    };
+export interface DeleteVariantGroupError {
+  message: string;
+  variantGroupRefs?: ExprReference[];
+  /** True when the user dismissed the confirmation dialog without deleting. */
+  cancelled?: boolean;
+}
+
+/** Ok value is the list of user-facing messages describing what was deleted. */
+export type DeleteVariantGroupResult = Result<
+  string[],
+  DeleteVariantGroupError
+>;
 
 /**
  * Delete a variant group from a component or site.
@@ -51,7 +58,6 @@ export type DeleteVariantGroupResult =
  * @param site - The site
  * @param studioCtx - StudioCtx for change tracking
  * @param tplMgr - TplMgr for cleanup
- * @param opts - Deletion options with behaviour ("confirm-if-referenced", "delete-if-referenced", "error-if-referenced")
  * @returns Promise<DeleteVariantGroupResult> indicating success or detailed error
  */
 export async function deleteVariantGroup(
@@ -60,23 +66,17 @@ export async function deleteVariantGroup(
   site: Site,
   studioCtx: StudioCtx,
   tplMgr: TplMgr,
-  opts?: {
-    behaviour?:
-      | "confirm-if-referenced"
-      | "delete-if-referenced"
-      | "error-if-referenced";
-  }
+  opts?: DeleteResourcesOpts,
 ): Promise<DeleteVariantGroupResult> {
   if (component) {
     // Check if variant group is referenced in the component
     if (isKnownComponentVariantGroup(group)) {
       const refs = findVariantGroupReferences(component, group);
       if (refs.length > 0) {
-        return {
-          result: "error",
+        return err({
           message: `Variant group is referenced in the current component.`,
           variantGroupRefs: refs,
-        };
+        });
       }
     }
 
@@ -85,13 +85,12 @@ export async function deleteVariantGroup(
       const groupName = toVarName(group.param.variable.name);
       const plugin = getPlumeEditorPlugin(component);
       const isRequired = plugin?.componentMeta.variantDefs.some(
-        (def) => def.group === groupName && def.required
+        (def) => def.group === groupName && def.required,
       );
       if (isRequired) {
-        return {
-          result: "error",
+        return err({
           message: `The "${group.param.variable.name}" variant group is required for the "${component.name}" component to function properly.`,
-        };
+        });
       }
     }
 
@@ -102,18 +101,22 @@ export async function deleteVariantGroup(
         : [];
       if (implicitUsages.length > 0) {
         const components = Array.from(
-          new Set(implicitUsages.map((usage) => usage.component))
+          new Set(implicitUsages.map((usage) => usage.component)),
         );
-        return {
-          result: "error",
+        return err({
           message: `Variant group is referenced in ${components
             .map((c) => getComponentDisplayName(c))
             .join(", ")}.`,
-        };
+        });
       }
     }
   }
 
+  if (component) {
+    // deleteResourcesWithUsages only observes the components using the group,
+    // but removing it also edits the owning component's tpl tree.
+    studioCtx.observeComponents([component]);
+  }
   const usageSummary = extractVariantGroupUsages(site, group, component);
   const usageCount =
     usageSummary.components.length +
@@ -134,20 +137,14 @@ export async function deleteVariantGroup(
       studioCtx.pruneInvalidViewCtxs();
     },
     {
-      behaviour: opts?.behaviour ?? "confirm-if-referenced",
+      ...opts,
       deleteLabel: `variant group ${group.param.variable.name}`,
-    }
+    },
   );
 
-  if (result.errors && result.errors.length > 0) {
-    return {
-      result: "error",
-      message: result.errors[0],
-      cancelled: result.cancelled,
-    };
-  }
-
-  return { result: "success", messages: result.messages };
+  return result
+    .map(({ messages }) => messages)
+    .mapErr(({ errors, cancelled }) => ({ message: errors[0], cancelled }));
 }
 
 /**
@@ -157,7 +154,7 @@ export async function deleteVariantGroup(
 function extractVariantGroupUsages(
   site: Site,
   group: VariantGroup,
-  component?: Component
+  component?: Component,
 ): GeneralUsageSummary & { splits: Split[]; tokens: StyleToken[] } {
   const usingComps = new Set<Component>();
   for (const variant of group.variants) {
@@ -183,13 +180,13 @@ function extractVariantGroupUsages(
  */
 function findVariantGroupReferences(
   component: Component,
-  group: VariantGroup
+  group: VariantGroup,
 ): ExprReference[] {
   const state = ensure(
     findStateForParam(component, group.param),
-    "Variant group param must correspond to state"
+    "Variant group param must correspond to state",
   );
   return findExprsInComponent(component).filter(({ expr }) =>
-    isStateUsedInExpr(state, expr)
+    isStateUsedInExpr(state, expr),
   );
 }

@@ -24,7 +24,7 @@ export async function main() {
   // month. Otherwise, we only prune revisions older than that.
   const aggressivePruning: boolean = opts.aggressive;
 
-  logger().info(`Start pruning${aggressivePruning ? " AGGRESSIVELY" : ""}...`);
+  logger.info(`Start pruning${aggressivePruning ? " AGGRESSIVELY" : ""}...`);
 
   await con.transaction(async (em) => {
     const db = new DbMgr(em, SUPER_USER);
@@ -74,12 +74,12 @@ export async function main() {
           `
           SELECT COUNT(*)
           FROM to_delete`,
-          opts.limit
-        )
+          opts.limit,
+        ),
       )
     )[0];
 
-    logger().info(`Deleting ${toDeleteRevsCount} revisions from database`);
+    logger.info(`Deleting ${toDeleteRevsCount} revisions from database`);
 
     const { count: allRevsCount } = (
       await em.query(`
@@ -88,7 +88,7 @@ export async function main() {
     `)
     )[0];
 
-    logger().info(`Out of ${allRevsCount}`);
+    logger.info(`Out of ${allRevsCount}`);
 
     const { count: versionCount } = (
       await em.query(`
@@ -111,8 +111,8 @@ export async function main() {
     `)
     )[0];
 
-    logger().info(
-      `(${projectCount} projects, ${branchCount} branches, ${versionCount} published versions)`
+    logger.info(
+      `(${projectCount} projects, ${branchCount} branches, ${versionCount} published versions)`,
     );
 
     // ### End of logging ###
@@ -141,7 +141,7 @@ export async function main() {
         })
       )
         .filter((x) => !!x.id && !!x.revision)
-        .map((x) => [`${x.projectId} ${x.branchId}`, x.revision!])
+        .map((x) => [`${x.projectId} ${x.branchId}`, x.revision!]),
     );
 
     const assertProjectRevIdExists = async (id: string) => {
@@ -152,7 +152,7 @@ export async function main() {
       assert(count > 0, `Expected ProjectRevision to exist: ${id}`);
     };
 
-    logger().info(`Loaded ${prevProject2LatestRevNum.size} latest revisions`);
+    logger.info(`Loaded ${prevProject2LatestRevNum.size} latest revisions`);
     const allVersions: {
       id: string;
       revisionId: string;
@@ -161,14 +161,14 @@ export async function main() {
       FROM pkg_version
     `);
 
-    logger().info("Start deleting...");
+    logger.info("Start deleting...");
 
     // Actually issue the delete
     let deleted = 0;
     const toDelete = +toDeleteRevsCount;
     while (deleted < toDelete) {
       const limit = Math.min(2000, toDelete - deleted);
-      logger().info(
+      logger.info(
         (
           await em.query(
             "EXPLAIN ANALYZE" +
@@ -177,21 +177,21 @@ export async function main() {
                 DELETE FROM project_revision AS pr
                 USING to_delete
                 WHERE pr.id=to_delete.id`,
-                limit
-              )
+                limit,
+              ),
           )
         )
           .map((plan) => plan["QUERY PLAN"])
-          .join("\n")
+          .join("\n"),
       );
       deleted += limit;
-      logger().info(`Deleted ${deleted} of ${toDelete}...`);
+      logger.info(`Deleted ${deleted} of ${toDelete}...`);
     }
 
-    logger().info("Done deleting. Running assertions...");
+    logger.info("Done deleting. Running assertions...");
 
     // Make sure every project still has a latest revision
-    logger().info("Asserting every project still has latest revision...");
+    logger.info("Asserting every project still has latest revision...");
     const newProject2LatestRevNum = new Map<string, number>(
       (
         await db.listLatestProjectAndBranchRevisions({
@@ -199,7 +199,7 @@ export async function main() {
         })
       )
         .filter((x) => !!x.id && !!x.revision)
-        .map((x) => [`${x.projectId} ${x.branchId}`, x.revision!])
+        .map((x) => [`${x.projectId} ${x.branchId}`, x.revision!]),
     );
     for (const [key, rev] of prevProject2LatestRevNum.entries()) {
       const [projectId, branchId] = key.split(" ");
@@ -207,17 +207,17 @@ export async function main() {
         ensure(
           newProject2LatestRevNum.get(key),
           () =>
-            `No revision found for project ${projectId} (branch ${branchId})`
+            `No revision found for project ${projectId} (branch ${branchId})`,
         ) >= rev,
         () =>
           `Latest revision for project ${projectId} (branch ${branchId}) is ${newProject2LatestRevNum.get(
-            key
-          )} which is smaller than the previous revision ${rev}`
+            key,
+          )} which is smaller than the previous revision ${rev}`,
       );
     }
 
     // Make sure every the revision of every published version is still present
-    logger().info("Asserting every revision of PkgVersions still present...");
+    logger.info("Asserting every revision of PkgVersions still present...");
     for (const version of allVersions) {
       if (version.revisionId) {
         await assertProjectRevIdExists(version.revisionId);
@@ -226,16 +226,16 @@ export async function main() {
 
     if (!aggressivePruning) {
       // Also checks that recent revisions haven't been deleted
-      logger().info("Asserting recent revisions haven't been deleted...");
+      logger.info("Asserting recent revisions haven't been deleted...");
       for (const rev of revIdsToCheck) {
         await assertProjectRevIdExists(rev.id);
       }
     }
 
-    logger().info("Assertions passed.");
+    logger.info("Assertions passed.");
   });
 
-  logger().info("Done pruning.");
+  logger.info("Done pruning.");
 }
 
 if (require.main === module) {

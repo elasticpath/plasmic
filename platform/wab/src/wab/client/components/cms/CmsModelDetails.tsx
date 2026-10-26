@@ -1,15 +1,14 @@
-import { useRRouteMatch } from "@/wab/client/cli-routes";
+import {
+  ContentEntryFormContext,
+  ValueSwitch,
+  renderEntryField,
+  renderMaybeLocalizedInput,
+} from "@/wab/client/components/cms/CmsInputs";
 import {
   useCmsDatabase,
   useCmsTable,
   useMutateTable,
 } from "@/wab/client/components/cms/cms-contexts";
-import {
-  ContentEntryFormContext,
-  renderEntryField,
-  renderMaybeLocalizedInput,
-  ValueSwitch,
-} from "@/wab/client/components/cms/CmsInputs";
 import { confirm } from "@/wab/client/components/quick-modals";
 import PlasmicWebhookHeader from "@/wab/client/components/webhooks/plasmic/plasmic_kit_continuous_deployment/PlasmicWebhookHeader";
 import PlasmicWebhooksItem from "@/wab/client/components/webhooks/plasmic/plasmic_kit_continuous_deployment/PlasmicWebhooksItem";
@@ -27,18 +26,22 @@ import {
   DefaultCmsModelDetailsProps,
   PlasmicCmsModelDetails,
 } from "@/wab/client/plasmic/plasmic_kit_cms/PlasmicCmsModelDetails";
+import { useHistory } from "@/wab/client/route/HistoryProvider";
+import { useBeforeNavigation } from "@/wab/client/route/useBeforeNavigation";
+import { useMatchedRoute } from "@/wab/client/route/useMatchedRoute";
 import {
   ApiCmsDatabase,
   CMS_TYPE_DISPLAY_NAMES,
   CmsDatabaseId,
   CmsFieldMeta,
-  cmsFieldMetaDefaults,
   CmsMetaType,
   CmsTableId,
   CmsTableSettings,
   CmsTypeMeta,
   CmsTypeName,
+  cmsFieldMetaDefaults,
 } from "@/wab/shared/ApiSchema";
+import { httpMethods } from "@/wab/shared/HttpClientUtil";
 import { ALLOWED_UNIQUE_TYPES } from "@/wab/shared/cms";
 import {
   ensureType,
@@ -48,11 +51,9 @@ import {
   tuple,
   uniqueName,
 } from "@/wab/shared/common";
-import { extractParamsFromPagePath } from "@/wab/shared/core/components";
 import { DEVFLAGS } from "@/wab/shared/devflags";
-import { httpMethods } from "@/wab/shared/HttpClientUtil";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
+import { extractParamsFromPagePath } from "@/wab/shared/utils/url-utils";
 import { HTMLElementRefOf } from "@plasmicapp/react-web";
 import {
   Collapse,
@@ -67,8 +68,6 @@ import {
 import { FormInstance, useForm } from "antd/lib/form/Form";
 import L, { isEqual, sortBy } from "lodash";
 import * as React from "react";
-import { Prompt, useHistory } from "react-router";
-import { useBeforeUnload } from "react-use";
 
 const NESTED_TYPES = [CmsMetaType.LIST, CmsMetaType.OBJECT];
 
@@ -85,7 +84,7 @@ function renderTypeSpecificSubform(
   localized: boolean,
   fieldPath: any[],
   locales: string[],
-  typeMeta: CmsTypeMeta
+  typeMeta: CmsTypeMeta,
 ): React.ReactElement {
   return (
     <>
@@ -136,7 +135,7 @@ function renderModelFieldForm(
   fullFieldsPath: any[],
   handles: any,
   locales: string[],
-  isNested: boolean
+  isNested: boolean,
 ) {
   function moveBy(delta: number) {
     const fields = form.getFieldValue(fullFieldsPath);
@@ -179,7 +178,7 @@ function renderModelFieldForm(
               "": undefined,
               ...(!isNested
                 ? Object.fromEntries(
-                    locales.map((locale) => tuple(locale, undefined))
+                    locales.map((locale) => tuple(locale, undefined)),
                   )
                 : {}),
             };
@@ -227,7 +226,7 @@ function renderModelFieldForm(
               </Form.Item>
             )}
             {NESTED_TYPES.includes(
-              getFieldValue([...fullFieldPath, "type"])
+              getFieldValue([...fullFieldPath, "type"]),
             ) && (
               <Form.Item
                 label={"Nested fields"}
@@ -343,7 +342,7 @@ function renderModelFieldForm(
               getFieldValue([...fullFieldPath, "localized"]) && !isNested,
               fieldPath,
               locales,
-              getFieldValue([...fullFieldPath])
+              getFieldValue([...fullFieldPath]),
             )}
           </React.Fragment>
         )}
@@ -391,12 +390,12 @@ export type CmsModelDetailsProps = DefaultCmsModelDetailsProps;
 
 export function CmsModelDetails_(
   props: CmsModelDetailsProps,
-  ref: HTMLElementRefOf<"div">
+  ref: HTMLElementRefOf<"div">,
 ) {
   const api = useApi();
-  const match = useRRouteMatch(APP_ROUTES.cmsModelSchema)!;
+  const match = useMatchedRoute(APP_ROUTES.cmsModelSchema)!;
   const history = useHistory();
-  const { databaseId, tableId } = match.params;
+  const { databaseId, tableId } = match.pathParams;
   const [showSettingsModal, setShowSettingsModal] = React.useState(false);
 
   const database = useCmsDatabase(databaseId);
@@ -444,9 +443,7 @@ export function CmsModelDetails_(
     return !isEqual(sortedSchemaFields, sortedFields);
   };
 
-  useBeforeUnload(() => {
-    return hasChanges();
-  }, "You have unsaved changes, are you sure?");
+  useBeforeNavigation(hasChanged, "You have unsaved changes, are you sure?");
 
   function computeFormValidationErrorMessage() {
     const fields: CmsFieldMeta[] = form.getFieldValue(["schema", "fields"]);
@@ -466,10 +463,6 @@ export function CmsModelDetails_(
 
   return (
     <>
-      <Prompt
-        when={hasChanged}
-        message={"You have unsaved changes, are you sure?"}
-      />
       <Form
         form={form}
         className={"max-scrollable fill-width"}
@@ -482,7 +475,7 @@ export function CmsModelDetails_(
         }}
         onValuesChange={(changedValues, allValues) => {
           setFormValidationErrorMessage(
-            computeFormValidationErrorMessage() ?? undefined
+            computeFormValidationErrorMessage() ?? undefined,
           );
           setHasChanged(hasChanges());
         }}
@@ -543,7 +536,7 @@ export function CmsModelDetails_(
                       await api.deleteCmsTable(tableId);
                       await mutateTable(databaseId, tableId);
                       history.push(
-                        fillRoute(APP_ROUTES.cmsSchemaRoot, { databaseId })
+                        APP_ROUTES.cmsSchemaRoot.fill({ databaseId }),
                       );
                     }
                   }}
@@ -677,7 +670,7 @@ function ModelFields({
                         fullFieldsPath,
                         handles,
                         database.extraData.locales,
-                        isNested
+                        isNested,
                       )
                     }
                   </Form.Item>
@@ -696,7 +689,7 @@ function ModelFields({
                           .getFieldValue(fullFieldsPath)
                           .map((field) => field.identifier),
                         `newField`,
-                        { separator: "" }
+                        { separator: "" },
                       ),
                       name: "",
                       localized: false,
@@ -706,7 +699,7 @@ function ModelFields({
                       unique: false,
                       type: CmsMetaType.TEXT,
                       defaultValueByLocale: {},
-                    })
+                    }),
                   );
                 }}
               >
@@ -808,13 +801,13 @@ function ModelSettingsModal(props: {
                 validator: (_, value, callback) => {
                   const pathParams = extractParamsFromPagePath(value);
                   const invalidParams = pathParams.filter(
-                    (p) => !table.schema.fields.find((f) => f.identifier === p)
+                    (p) => !table.schema.fields.find((f) => f.identifier === p),
                   );
                   if (invalidParams.length > 0) {
                     callback(
                       `URL references fields that don't exist on this model: ${invalidParams.join(
-                        ", "
-                      )}`
+                        ", ",
+                      )}`,
                     );
                   } else {
                     callback();

@@ -4,17 +4,32 @@ import { SlotSelection } from "@/wab/shared/core/slots";
 import { ValComponent, ValNode } from "@/wab/shared/core/val-nodes";
 import { CanvasEnv } from "@/wab/shared/eval";
 import { TplNode } from "@/wab/shared/model/classes";
+import { IObservableValue, ObservableMap } from "mobx";
 
 export interface GlobalHookCtx {
   uuidToTplNode: Map<string, WeakRef<TplNode>>;
   valKeyToOwnerKey: Map<string, string | undefined>;
   fiberToVal: WeakMap<Fiber, ValNode | undefined>;
   fiberToSlotPlaceholderKeys: WeakMap<Fiber, SlotPlaceholderData | undefined>;
-  frameUidToValRoot: Map<number, ValComponent | null>;
-  frameUidToRenderState: Map<number, RenderState>;
   envIdToEnvs: Map<string, WeakRef<{ env: CanvasEnv; wrappingEnv: CanvasEnv }>>;
   fullKeyToEnvId: Map<string, string>;
-  frameValKeyToContextData: Map<string, WeakRef<any>>;
+  frames: Map<number, FrameState>;
+  createFrameState: (frame: {
+    uid: number;
+    objectPrototype: object;
+  }) => FrameState;
+  dispose: () => void;
+}
+
+/** Frame state that lives on the global hook. */
+export interface FrameState {
+  readonly uid: number;
+  readonly renderState: RenderState;
+  /** The frame's root ValComponent, set by the hook on each commit. */
+  readonly valRoot: IObservableValue<ValComponent | null>;
+  /** Context data set by the frame's code components, by val key. */
+  readonly contextData: ObservableMap<string, any>;
+  /** Dispose frame state so the frame can be freed from memory. */
   dispose: () => void;
 }
 
@@ -32,7 +47,7 @@ export type UpdateableVal<T extends ValNode = ValNode> = {
  * that it's stable). This cached version is always computed by merging the data
  * in each of the non-cached versions, therefore it should never be mutated
  * directly. We can, instead, modify the non-cached version and call
- * `renderState.recomputeCachedVal` so the cached version gets updated.
+ * `renderState.invalidateCachedVal` so the cached version gets updated.
  * For that reason, only `nonCached` is `UpdateableVal`.
  */
 export type SlotArgsData = Record<
@@ -60,7 +75,8 @@ export type SlotCanvasEnv = Record<string /* Param uuid */, CanvasEnv>;
 
 export interface GlobalHook {
   plasmic: GlobalHookCtx;
-  inject: (injected: any) => void;
+  renderers?: Map<number, unknown>;
+  inject: (injected: any) => number | undefined;
   onCommitFiberRoot: (
     rendererID: any,
     fiberRoot: FiberRoot,

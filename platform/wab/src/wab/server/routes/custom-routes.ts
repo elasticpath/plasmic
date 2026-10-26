@@ -21,24 +21,8 @@ function addHostingRoutes(app: Application) {
 function addPaymentRoutes(app: Application) {
   app.get(
     "/api/v1/billing/subscription/:teamId",
-    withNext(getBillingSubscription)
+    withNext(getBillingSubscription),
   );
-}
-
-/**
- * Hook for custom logic for creating a team. If handled, returns true;
- * else returns false and default handling will take place.
- */
-export async function customCreateTeam(req: Request, res: Response) {
-  return false;
-}
-
-/**
- * Returns true if req corresponds to a custom public API request, and thus
- * does not need CSRF checking
- */
-export function isCustomPublicApiRequest(req: Request) {
-  return false;
 }
 
 function revalidatePlasmicHosting(req: Request, res: Response) {

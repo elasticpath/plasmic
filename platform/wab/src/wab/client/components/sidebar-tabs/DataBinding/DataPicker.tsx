@@ -1,5 +1,6 @@
 import type { FullCodeEditor } from "@/wab/client/components/coding/FullCodeEditor";
 import {
+  checkDisallowedStateBindingAssignment,
   checkDisallowedUseOfLibs,
   checkStrSizeLimit,
   checkSyntaxError,
@@ -14,7 +15,6 @@ import {
   DataPickerOpts,
   DataPickerSupportedVariableType,
   evalExpr,
-  formatErrorMessage,
   getItemChildColumns,
   getItemPath,
   getSupportedObjectKeys,
@@ -40,6 +40,7 @@ import { UnwrappedQueryResult } from "@/wab/shared/core/custom-functions";
 import { flattenedKeys } from "@/wab/shared/core/exprs";
 import { getFlattenedStateNames } from "@/wab/shared/core/states";
 import { DEVFLAGS } from "@/wab/shared/devflags";
+import { formatErrorMessage } from "@/wab/shared/error-handling";
 import {
   pathToString,
   transformDataTokenPathToBundle,
@@ -89,8 +90,10 @@ export const DataPickerRunCodeActionContext = React.createContext<
   | undefined
 >(undefined);
 
-export interface DataPickerProps
-  extends Omit<DefaultDataPickerProps, "expectedValues" | "hasExpectedValues"> {
+export interface DataPickerProps extends Omit<
+  DefaultDataPickerProps,
+  "expectedValues" | "hasExpectedValues"
+> {
   value: DataPickerValueType;
   onChange: (value: DataPickerValueType) => void;
   onCancel: () => void;
@@ -140,28 +143,28 @@ function DataPicker_(props: DataPickerProps, ref: HTMLElementRefOf<"div">) {
       return transformDataTokensToDisplay(
         value,
         viewCtx.site,
-        viewCtx.siteInfo.id
+        viewCtx.siteInfo.id,
       );
     }
     return transformDataTokenPathToDisplay(
       value,
       viewCtx.site,
-      viewCtx.siteInfo.id
+      viewCtx.siteInfo.id,
     );
   }, [value, viewCtx?.site, viewCtx?.siteInfo]);
 
   const [codeEditing, setCodeEditing] = React.useState(
     !displayValue
       ? initialMode === "codeEditing"
-      : typeof displayValue === "string"
+      : typeof displayValue === "string",
   );
   const [query, setQuery] = React.useState("");
   const [draft, setDraft] = React.useState<string | undefined>(
     typeof displayValue === "string"
       ? displayValue
       : displayValue && typeof displayValue === "object"
-      ? pathToString(displayValue)
-      : undefined
+        ? pathToString(displayValue)
+        : undefined,
   );
   const focusedTpl =
     viewCtx?.focusedTpls().length === 1
@@ -178,15 +181,15 @@ function DataPicker_(props: DataPickerProps, ref: HTMLElementRefOf<"div">) {
           ...data,
         },
         viewCtx?.currentComponent(),
-        focusedTpl
+        focusedTpl,
       ),
-    [data, schema, viewCtx?.currentComponent(), focusedTpl]
+    [data, schema, viewCtx?.currentComponent(), focusedTpl],
   );
   // fixedData unwraps `$q` with `unwrapStatefulQueryResult`, but the code
   // editor preview needs real query results so `$q.x.data` throws on error.
   const codePreviewData = React.useMemo(
     () => (fixedData && data?.$q ? { ...fixedData, $q: data.$q } : fixedData),
-    [fixedData, data]
+    [fixedData, data],
   );
   const [showAdvancedFields, setShowAdvancedFields] = React.useState(false);
   const opts: DataPickerOpts = {
@@ -194,7 +197,7 @@ function DataPicker_(props: DataPickerProps, ref: HTMLElementRefOf<"div">) {
   };
   const dataHasAdvancedFields = React.useMemo(
     () => hasAdvancedFields(data),
-    [data]
+    [data],
   );
   const itemsRef = React.useRef<HTMLDivElement>(null);
   const searchboxRef = React.useRef<TextboxRef>(null);
@@ -202,15 +205,15 @@ function DataPicker_(props: DataPickerProps, ref: HTMLElementRefOf<"div">) {
   const getFixedInitialColumns = (val: DataPickerValueType) =>
     getFixedInitialColumnsFor(val, opts, fixedData, viewCtx?.component);
   const [columns, setColumns] = React.useState<Array<Column>>(() =>
-    getFixedInitialColumns(displayValue)
+    getFixedInitialColumns(displayValue),
   );
   const selectedItem = React.useMemo(
     () => getLastSelectedItem(columns),
-    [columns]
+    [columns],
   );
   const currentItemPath = React.useMemo(
     () => getCurrentItemPath(columns),
-    [columns]
+    [columns],
   );
   useUpdateEffect(() => {
     setColumns(getFixedInitialColumns(currentItemPath));
@@ -225,7 +228,7 @@ function DataPicker_(props: DataPickerProps, ref: HTMLElementRefOf<"div">) {
     const createSearchResult = (
       currentColumnItems: ColumnItem[],
       newColumns: Column[],
-      depth: number
+      depth: number,
     ) => {
       currentColumnItems.forEach((item, index) => {
         const path = getItemPath(item);
@@ -243,7 +246,7 @@ function DataPicker_(props: DataPickerProps, ref: HTMLElementRefOf<"div">) {
         const previewValue = !isListType(variableType)
           ? evalExpr(
               path,
-              ensure(fixedData, "Should only be called if data exists")
+              ensure(fixedData, "Should only be called if data exists"),
             )
           : keyCount + ` item${keyCount === 1 ? "" : "s"}`;
 
@@ -283,7 +286,7 @@ function DataPicker_(props: DataPickerProps, ref: HTMLElementRefOf<"div">) {
               selectedItem: index,
               columnItems: currentColumnItems,
             }),
-            depth + 1
+            depth + 1,
           );
         }
       });
@@ -292,7 +295,7 @@ function DataPicker_(props: DataPickerProps, ref: HTMLElementRefOf<"div">) {
     createSearchResult(
       columns[columns.length - 1].columnItems,
       columns.slice(0, -1),
-      0
+      0,
     );
 
     return searchResults;
@@ -300,7 +303,7 @@ function DataPicker_(props: DataPickerProps, ref: HTMLElementRefOf<"div">) {
 
   const searchResults = React.useMemo(
     () => sortBy(getSearchResults(), (x) => x.depth),
-    [query, data]
+    [query, data],
   );
 
   const onItemSelectedHandle = React.useCallback(
@@ -316,7 +319,7 @@ function DataPicker_(props: DataPickerProps, ref: HTMLElementRefOf<"div">) {
       setQuery("");
       searchboxRef.current?.focus();
     },
-    [columns]
+    [columns],
   );
 
   const addQueryProps =
@@ -351,6 +354,10 @@ function DataPicker_(props: DataPickerProps, ref: HTMLElementRefOf<"div">) {
       }
 
       if (!checkSyntaxError(val)) {
+        return false;
+      }
+
+      if (!checkDisallowedStateBindingAssignment(val)) {
         return false;
       }
 
@@ -392,6 +399,7 @@ function DataPicker_(props: DataPickerProps, ref: HTMLElementRefOf<"div">) {
             },
           }}
           saveButton={{
+            id: "data-picker-save-btn",
             onClick: () => {
               if (editorRef.current && trySave(editorRef.current.getValue())) {
                 const code = editorRef.current.getValue();
@@ -400,7 +408,7 @@ function DataPicker_(props: DataPickerProps, ref: HTMLElementRefOf<"div">) {
                   ? transformDataTokensInCode(
                       code,
                       viewCtx.site,
-                      viewCtx.studioCtx.siteInfo.id
+                      viewCtx.studioCtx.siteInfo.id,
                     ).code
                   : code;
                 onChange(transformedCode);
@@ -458,8 +466,8 @@ function DataPicker_(props: DataPickerProps, ref: HTMLElementRefOf<"div">) {
           !dataHasAdvancedFields
             ? undefined
             : showAdvancedFields
-            ? "hide"
-            : "show"
+              ? "hide"
+              : "show"
         }
         advancedSwitch={{
           onClick: (e) => {
@@ -499,8 +507,8 @@ function DataPicker_(props: DataPickerProps, ref: HTMLElementRefOf<"div">) {
                   idx,
                   ensure(
                     _props.selectedItem,
-                    "Unexpected undefined value after type check"
-                  )
+                    "Unexpected undefined value after type check",
+                  ),
                 );
               }}
               key={idx}
@@ -525,7 +533,7 @@ function DataPicker_(props: DataPickerProps, ref: HTMLElementRefOf<"div">) {
               savedPath = transformDataTokenPathToBundle(
                 savedPath,
                 viewCtx.site,
-                viewCtx.siteInfo.id
+                viewCtx.siteInfo.id,
               );
             }
             onChange(savedPath);
@@ -541,7 +549,7 @@ function DataPicker_(props: DataPickerProps, ref: HTMLElementRefOf<"div">) {
                 selectedItem.column,
                 selectedItem.item !== undefined
                   ? Math.max(selectedItem.item - 1, 0)
-                  : 0
+                  : 0,
               );
             } else if (e.key === "ArrowDown") {
               onItemSelectedHandle(
@@ -549,9 +557,9 @@ function DataPicker_(props: DataPickerProps, ref: HTMLElementRefOf<"div">) {
                 selectedItem.item !== undefined
                   ? Math.min(
                       selectedItem.item + 1,
-                      columns[selectedItem.column].columnItems.length - 1
+                      columns[selectedItem.column].columnItems.length - 1,
                     )
-                  : 0
+                  : 0,
               );
             } else if (e.key === "ArrowLeft") {
               const previousColumn = Math.max(selectedItem.column - 1, 0);
@@ -569,7 +577,7 @@ function DataPicker_(props: DataPickerProps, ref: HTMLElementRefOf<"div">) {
                 if (isListType(variableType)) {
                   const nextColumnKeys = getSupportedObjectKeys(
                     nextColumn,
-                    opts
+                    opts,
                   );
                   if (nextColumnKeys.length !== 0) {
                     onItemSelectedHandle(selectedItem.column + 1, 0);
@@ -613,7 +621,7 @@ function getFixedInitialColumnsFor(
   value: DataPickerValueType,
   opts: DataPickerOpts,
   data: Record<string, any> | undefined,
-  component: Component | undefined
+  component: Component | undefined,
 ): Column[] {
   const initialColumns = getInitialColumns(value, opts, data, component);
   const [firstColumn] = initialColumns;
@@ -632,7 +640,7 @@ function getInitialColumns(
   value: DataPickerValueType,
   opts: DataPickerOpts,
   data: Record<string, any> | undefined,
-  component: Component | undefined
+  component: Component | undefined,
 ): Column[] {
   if (!data) {
     return [];
@@ -659,20 +667,20 @@ function getInitialColumns(
 function mkRootColumnItems(
   data: Record<string, any>,
   opts: DataPickerOpts,
-  component: Component | undefined
+  component: Component | undefined,
 ): ColumnItem[] {
   const keys = getSupportedObjectKeys(data, opts, undefined, []);
   // Inlined containers' members are promoted ahead of the root's own items.
   const [flattened, normal] = partition(keys, ({ key }) =>
-    flattenedKeys.has(key)
+    flattenedKeys.has(key),
   );
   return [
     ...flattened.flatMap(({ key }) =>
       key === "$q"
         ? mkQueryColumnItems(data[key], opts)
         : key === "$state"
-        ? mkStateColumnItems(data[key], opts, component)
-        : mkColumnItems(data[key], [key], opts)
+          ? mkStateColumnItems(data[key], opts, component)
+          : mkColumnItems(data[key], [key], opts),
     ),
     ...normal.map(({ key, label }) => ({
       name: key,
@@ -686,7 +694,7 @@ function mkRootColumnItems(
 /** Special case for $q: each query's root column item is `$q.<name>.data` */
 function mkQueryColumnItems(
   queries: Record<string, any>,
-  opts: DataPickerOpts
+  opts: DataPickerOpts,
 ): ColumnItem[] {
   return mkColumnItems(queries, ["$q"], opts).map((item) => {
     const query = item.value as UnwrappedQueryResult;
@@ -711,14 +719,14 @@ function mkQueryColumnItems(
 function mkStateColumnItems(
   states: Record<string, any>,
   opts: DataPickerOpts,
-  component: Component | undefined
+  component: Component | undefined,
 ): ColumnItem[] {
   const flattenedStateNames = component
     ? getFlattenedStateNames(component)
     : undefined;
   const items = mkColumnItems(states, ["$state"], opts);
   const [surfaced, normal] = partition(items, (item) =>
-    flattenedStateNames?.has(item.name)
+    flattenedStateNames?.has(item.name),
   );
   return [
     ...surfaced.flatMap((stateItem) =>
@@ -726,8 +734,8 @@ function mkStateColumnItems(
         (item) => ({
           ...item,
           label: [stateItem.name, item.label ?? item.name].join(" → "),
-        })
-      )
+        }),
+      ),
     ),
     ...normal,
   ];
@@ -742,10 +750,10 @@ function mkStateColumnItems(
 function walkColumns(
   columnItems: ColumnItem[],
   savedPath: (string | number)[],
-  opts: DataPickerOpts
+  opts: DataPickerOpts,
 ): Column[] {
   const selectedItem = columnItems.findIndex((item) =>
-    isPrefixArray(getItemPath(item), savedPath)
+    isPrefixArray(getItemPath(item), savedPath),
   );
   const column: Column = {
     columnItems,

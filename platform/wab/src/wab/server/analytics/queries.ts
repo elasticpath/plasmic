@@ -1,15 +1,9 @@
-import { omitNils } from "@/wab/shared/common";
 import { getClickHouseConnection } from "@/wab/server/clickhouse";
+import { omitNils } from "@/wab/shared/common";
 import { groupBy, mapValues } from "lodash";
 import moment from "moment";
 
 export type Period = "day" | "month";
-
-const PERIOD_OPTIONS: Period[] = ["day", "month"];
-
-export function convertValueToPeriod(value: any): Period {
-  return PERIOD_OPTIONS.find((e) => e === value) ?? "month";
-}
 
 const STARTOF_FUNC: Record<Period, string> = {
   day: "toStartOfDay",
@@ -45,7 +39,7 @@ function filterByProjectId(projectId?: string) {
 }
 
 function filterByComponentId(
-  componentId: string = AnalyticsQueryConstants.ROOT_PROVIDER
+  componentId: string = AnalyticsQueryConstants.ROOT_PROVIDER,
 ) {
   return `and JSONExtractString(events.properties, 'rootComponentId') = ${AnalyticsQueryConstants.COMPONENT_ID}`;
 }
@@ -62,7 +56,7 @@ function filterByRange(
   from: string,
   to: string,
   timezone: string,
-  period: Period = "day"
+  period: Period = "day",
 ) {
   return `
 and ${STARTOF_FUNC[period]}(events.timestamp, ${AnalyticsQueryConstants.TIMEZONE}) >= ${AnalyticsQueryConstants.FROM}
@@ -134,16 +128,7 @@ group by
 
 // You cannot have conversions based on Team or based on Components
 export function getConversionsQuery(opts: AnalyticsQueryOpts) {
-  const {
-    teamId,
-    from,
-    to,
-    timezone,
-    projectId,
-    componentId,
-    splitId,
-    period = "day",
-  } = opts;
+  const { from, to, timezone, projectId, splitId, period = "day" } = opts;
   return escapeQuery(`
 select
   ${selectTime(timezone, period)},
@@ -297,7 +282,7 @@ function normalizeQueryResult<T extends { time: string }>(
   fillWith: T,
   from: string,
   to: string,
-  period: Period = "day"
+  period: Period = "day",
 ): T[] {
   const properRange = formatFromAndTo(from, to, period);
   from = properRange.from;
@@ -330,7 +315,7 @@ function normalizeIds(opts: { teamId?: string; projectId?: string }) {
 export function formatFromAndTo(
   from: string,
   to: string,
-  period: Period = "day"
+  period: Period = "day",
 ) {
   return {
     from: moment(from).startOf(period).format(DATE_FORMAT[period]),
@@ -359,7 +344,7 @@ function getQueryParams(opts: AnalyticsQueryOpts) {
 }
 
 export async function getImpressions(
-  opts: AnalyticsQueryOpts
+  opts: AnalyticsQueryOpts,
 ): Promise<ImpressionsByTime[] | Record<string, ImpressionsByTime[]>> {
   const {
     teamId,
@@ -392,12 +377,12 @@ export async function getImpressions(
   }
   const groupedBySlice = groupBy(result, "slice");
   return mapValues(groupedBySlice, (e) =>
-    normalizeQueryResult(e, EMPTY_IMPRESSION, from, to, period)
+    normalizeQueryResult(e, EMPTY_IMPRESSION, from, to, period),
   );
 }
 
 export async function getConversions(
-  opts: AnalyticsQueryOpts
+  opts: AnalyticsQueryOpts,
 ): Promise<ConversionsByTime[] | Record<string, ConversionsByTime[]>> {
   const {
     teamId,
@@ -436,17 +421,17 @@ export async function getConversions(
       EMPTY_CONVERSION_EVENT,
       from,
       to,
-      period
+      period,
     );
   }
   const groupedBySlice = groupBy(result, "slice");
   return mapValues(groupedBySlice, (e) =>
-    normalizeQueryResult(e, EMPTY_CONVERSION_EVENT, from, to, period)
+    normalizeQueryResult(e, EMPTY_CONVERSION_EVENT, from, to, period),
   );
 }
 
 export async function getConversionRate(
-  opts: AnalyticsQueryOpts
+  opts: AnalyticsQueryOpts,
 ): Promise<ConversionRateByTime[] | Record<string, ConversionRateByTime[]>> {
   const {
     teamId,
@@ -485,12 +470,12 @@ export async function getConversionRate(
       EMPTY_CONVERSION_RATE_EVENT,
       from,
       to,
-      period
+      period,
     );
   }
   const groupedBySlice = groupBy(result, "slice");
   return mapValues(groupedBySlice, (e) =>
-    normalizeQueryResult(e, EMPTY_CONVERSION_RATE_EVENT, from, to, period)
+    normalizeQueryResult(e, EMPTY_CONVERSION_RATE_EVENT, from, to, period),
   );
 }
 
@@ -502,7 +487,7 @@ interface AnalyticsBillingQueryOpts {
 }
 
 export function buildRendersInTimestampRangeQuery(
-  opts: AnalyticsBillingQueryOpts
+  opts: AnalyticsBillingQueryOpts,
 ) {
   return escapeQuery(`
 select count(*) as renders
@@ -518,7 +503,7 @@ where
 }
 
 export async function getRendersInTimestampRange(
-  opts: AnalyticsBillingQueryOpts
+  opts: AnalyticsBillingQueryOpts,
 ) {
   const { start, end, projectId, teamId } = opts;
   const clickhouse = getClickHouseConnection();
@@ -546,7 +531,7 @@ export async function getRecentlyTrackedProjectComponents(projectId: string) {
 select distinct JSONExtractString(events.properties, 'rootComponentId') as componentId from events
 where timestamp >= now() - toIntervalDay(14)
 ${filterByRootProjectId()}
-`
+`,
     ),
     query_params: {
       rootProjectId: projectId,

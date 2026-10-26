@@ -4,7 +4,7 @@ import {
   getOperationCurrentUserUsage,
 } from "@/wab/server/data-sources/data-source-utils";
 import { DbMgr } from "@/wab/server/db/DbMgr";
-import { logger } from "@/wab/server/observability";
+import { logger, withSpan } from "@/wab/server/observability";
 import {
   extractAppUserFromToken,
   trackAppUserActivity,
@@ -17,21 +17,20 @@ import {
 } from "@/wab/server/routes/end-user";
 import { superDbMgr, userDbMgr } from "@/wab/server/routes/util";
 import { asyncTimed } from "@/wab/server/timing-util";
-import { withSpan } from "@/wab/server/util/apm-util";
 import { GenericDataSource } from "@/wab/shared/data-sources-meta/data-source-registry";
 import { OperationTemplate } from "@/wab/shared/data-sources-meta/data-sources";
 import { Request, Response } from "express-serve-static-core";
 import { isString } from "lodash";
 
 export function executeDataSourceOperationWithCurrentUserHandler(
-  inStudioAuth: boolean
+  inStudioAuth: boolean,
 ) {
   const getCurrentUserInfo = asyncTimed(
     "getCurrentUserInfo",
     async function getCurrentUserInfo(
       req: Request,
       mgr: DbMgr,
-      op: OperationTemplate
+      op: OperationTemplate,
     ): Promise<
       | {
           appUser: Awaited<ReturnType<typeof getAppUserInfo>>;
@@ -60,7 +59,7 @@ export function executeDataSourceOperationWithCurrentUserHandler(
                     // canCurrentUserExecuteOperation function. This way it won't require the
                     // user to have access to the directory/team to perform the operation.
                     skipDirectoryPermsCheck: true,
-                  }
+                  },
                 )
               : undefined;
             return {
@@ -84,13 +83,13 @@ export function executeDataSourceOperationWithCurrentUserHandler(
           req.con,
           mgr,
           userInfo,
-          authUsage.usesCurrentUserCustomProperties
+          authUsage.usesCurrentUserCustomProperties,
         );
         const isAuthorized = await canCurrentUserExecuteOperation(
           mgr,
           userInfo.appId,
           appUser,
-          op
+          op,
         );
 
         if (userInfo.appId && userInfo.endUserId && "email" in appUser) {
@@ -98,7 +97,7 @@ export function executeDataSourceOperationWithCurrentUserHandler(
             req,
             userInfo.appId,
             userInfo.endUserId,
-            "data-operation"
+            "data-operation",
           );
         }
 
@@ -128,7 +127,7 @@ export function executeDataSourceOperationWithCurrentUserHandler(
               req,
               mgr,
               userInfo.appId,
-              identifier
+              identifier,
             );
 
           if (!isAbleToExecuteAs) {
@@ -142,13 +141,13 @@ export function executeDataSourceOperationWithCurrentUserHandler(
             mgr,
             userInfo.appId,
             identifier,
-            authUsage.usesCurrentUserCustomProperties
+            authUsage.usesCurrentUserCustomProperties,
           );
           const isAuthorized = await canCurrentUserExecuteOperation(
             mgr,
             userInfo.appId,
             appUser,
-            op
+            op,
           );
           return {
             appId: userInfo.appId,
@@ -168,12 +167,12 @@ export function executeDataSourceOperationWithCurrentUserHandler(
               mgr,
               userInfo.appId,
               {},
-              op
+              op,
             ),
           };
         }
       }
-    }
+    },
   );
 
   return async function (req: Request, res: Response) {
@@ -199,8 +198,8 @@ export function executeDataSourceOperationWithCurrentUserHandler(
     }
 
     if (!currentUserInfo.isAuthorized) {
-      logger().error(
-        `App: ${currentUserInfo.appId} (User: ${currentUserInfo.appUserEmail}) (ExtId: ${currentUserInfo.appUserExternalId}) (RoleId: ${currentUserInfo.appRoleId}) is not authorized to perform operation requiring (RoleId: ${op.roleId})`
+      logger.error(
+        `App: ${currentUserInfo.appId} (User: ${currentUserInfo.appUserEmail}) (ExtId: ${currentUserInfo.appUserExternalId}) (RoleId: ${currentUserInfo.appRoleId}) is not authorized to perform operation requiring (RoleId: ${op.roleId})`,
       );
       res.status(401).json({
         error: "Not authorized",
@@ -224,12 +223,12 @@ export function executeDataSourceOperationWithCurrentUserHandler(
             paginate: req.body.paginate,
           },
           currentUser,
-          false
-        )
+          false,
+        ),
       ),
       `ExecuteDataOp ${dataSourceId} (${dataSource.source} - "${
         dataSource.name
-      }") op:${opString} args:${JSON.stringify(userArgs)}`
+      }") op:${opString} args:${JSON.stringify(userArgs)}`,
     );
 
     res.json(data);

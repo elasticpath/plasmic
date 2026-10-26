@@ -2,9 +2,12 @@ import { expect, FrameLocator, Page } from "@playwright/test";
 import { v4 } from "uuid";
 import { test } from "../../fixtures/test";
 import type { StudioModel } from "../../models/studio-model";
+import {
+  createPostgresTestDatabase,
+  type PostgresTestDatabase,
+} from "../../utils/postgres-test-db";
 import { goToProject, waitForFrameToLoad } from "../../utils/studio-utils";
 
-const TUTORIAL_DB_TYPE = "northwind";
 const DEFAULT_CUSTOMERS = [
   "Maria Anders",
   "Ana Trujillo",
@@ -34,11 +37,16 @@ type InteractionConfig = {
 test.describe("Postgres Data Source", () => {
   let projectId: string;
   let dataSourceName: string;
+  let testDatabase: PostgresTestDatabase | undefined;
 
   test.beforeEach(async ({ apiClient, page, context, request }) => {
-    dataSourceName = `TutorialDB ${v4()}`;
+    dataSourceName = `Postgres ${v4()}`;
 
-    await apiClient.createTutorialDataSource(TUTORIAL_DB_TYPE, dataSourceName);
+    testDatabase = await createPostgresTestDatabase();
+    await apiClient.createPostgresDataSource(
+      dataSourceName,
+      testDatabase.connection,
+    );
 
     await apiClient.login("user2@example.com", "!53kr3tz!");
     const storageState = await request.storageState();
@@ -52,9 +60,16 @@ test.describe("Postgres Data Source", () => {
   });
 
   test.afterEach(async ({ apiClient }) => {
-    await apiClient.deleteDataSourceOfCurrentTest();
-    if (projectId) {
-      await apiClient.removeProject(projectId);
+    try {
+      try {
+        await apiClient.deleteDataSourceOfCurrentTest();
+      } finally {
+        if (projectId) {
+          await apiClient.removeProject(projectId);
+        }
+      }
+    } finally {
+      await testDatabase?.dispose();
     }
   });
 
@@ -103,8 +118,8 @@ test.describe("Postgres Data Source", () => {
     await studio.leftPanel.insertNode("Text");
     await studio.bindRichTextBlockToDynamicValue(["insertedId"]);
 
-    const updateStepName = "tutorialdbUpdateById";
-    const createStepName = "tutorialdbCreate";
+    const updateStepName = "postgresUpdateById";
+    const createStepName = "postgresCreate";
 
     const { actionLabels: updateActionLabels } =
       await configureButtonInteractions(studio, page, "Update", [
@@ -177,7 +192,7 @@ test.describe("Postgres Data Source", () => {
       throw new Error(
         `Expected both actions on Update button, got: ${[
           ...updateActionLabels,
-        ].join(", ")}`
+        ].join(", ")}`,
       );
     }
 
@@ -211,14 +226,14 @@ test.describe("Postgres Data Source", () => {
 
 async function configureCustomersQuery(
   studio: StudioModel,
-  dataSourceName: string
+  dataSourceName: string,
 ) {
   await studio.rightPanel.switchToComponentDataTab();
   await studio.rightPanel.addComponentQuery();
   await studio.rightPanel.pickDataSource(dataSourceName);
 
   const resourceBtn = studio.rightPanel.frame.locator(
-    '[data-plasmic-prop="data-source-modal-pick-resource-btn"]'
+    '[data-plasmic-prop="data-source-modal-pick-resource-btn"]',
   );
   await resourceBtn.click();
   await studio.rightPanel.frame
@@ -226,7 +241,7 @@ async function configureCustomersQuery(
     .click();
 
   const sortBtn = studio.rightPanel.frame.locator(
-    '[data-plasmic-prop="data-source-sort"]'
+    '[data-plasmic-prop="data-source-sort"]',
   );
   await sortBtn.click();
   await studio.rightPanel.frame.locator('[data-key="customer_id"]').click();
@@ -236,7 +251,7 @@ async function configureCustomersQuery(
     "5",
     {
       reset: true,
-    }
+    },
   );
   await studio.rightPanel.saveDataSourceModal();
 }
@@ -250,7 +265,7 @@ async function setupCustomersList(studio: StudioModel) {
 
 async function expectCustomersInDesign(
   studio: StudioModel,
-  customers: string[]
+  customers: string[],
 ) {
   const frame = studio.getComponentFrameByIndex(0);
   await expectCustomersInFrame(frame, customers);
@@ -258,7 +273,7 @@ async function expectCustomersInDesign(
 
 async function expectCustomersInFrame(
   frame: FrameLocator,
-  customers: string[]
+  customers: string[],
 ) {
   for (const customer of customers) {
     await expect(frame.locator(`text="${customer}"`)).toBeVisible();
@@ -269,7 +284,7 @@ async function configureButtonInteractions(
   studio: StudioModel,
   page: Page,
   label: string,
-  actions: InteractionConfig[]
+  actions: InteractionConfig[],
 ) {
   await studio.leftPanel.insertNode("Button");
   await studio.rightPanel.bindTextContentToCustomCode(`"${label}"`);
@@ -279,7 +294,7 @@ async function configureButtonInteractions(
 async function addOnClickActions(
   studio: StudioModel,
   page: Page,
-  actions: InteractionConfig[]
+  actions: InteractionConfig[],
 ) {
   const { rightPanel } = studio;
   const actionLabels = new Set<string>();
@@ -320,7 +335,7 @@ async function addOnClickActions(
       await page.waitForTimeout(2000);
 
       const integrationBtn = rightPanel.frame.locator(
-        '[data-plasmic-prop="data-source-modal-pick-integration-btn"]'
+        '[data-plasmic-prop="data-source-modal-pick-integration-btn"]',
       );
       await integrationBtn.click();
       await page.waitForTimeout(300);
@@ -330,7 +345,7 @@ async function addOnClickActions(
       await page.waitForTimeout(500);
 
       const operationBtn = rightPanel.frame.locator(
-        '[data-plasmic-prop="data-source-modal-pick-operation-btn"]'
+        '[data-plasmic-prop="data-source-modal-pick-operation-btn"]',
       );
       await operationBtn.click();
       await page.waitForTimeout(300);
@@ -344,7 +359,7 @@ async function addOnClickActions(
 
       if (dsOp.args.resource) {
         const resourceBtn = rightPanel.frame.locator(
-          '[data-plasmic-prop="data-source-modal-pick-resource-btn"]'
+          '[data-plasmic-prop="data-source-modal-pick-resource-btn"]',
         );
         await resourceBtn.click();
         await page.waitForTimeout(300);
@@ -381,7 +396,7 @@ async function addOnClickActions(
         page,
         action.args.variable || [],
         action.args.operation || "newValue",
-        action.args.value || ""
+        action.args.value || "",
       );
     }
   }
@@ -395,7 +410,7 @@ async function addOnClickActions(
 async function selectAction(
   studio: StudioModel,
   page: Page,
-  actionKey: string
+  actionKey: string,
 ) {
   const { rightPanel } = studio;
   const actionDropdown = rightPanel.frame
@@ -418,7 +433,7 @@ async function configureUpdateVariable(
   page: Page,
   variable: string[],
   operation: string,
-  valueExpression: string
+  valueExpression: string,
 ) {
   const { rightPanel } = studio;
 

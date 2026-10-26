@@ -200,20 +200,6 @@ export function ElementVariantsTooltip() {
   );
 }
 
-export function ProjectDependenciesTooltip() {
-  return (
-    <div>
-      <p className={"tooltip-title"}>Project Dependencies</p>
-      <p>
-        You can import other Plasmic projects as a dependency. The imported
-        components are labeled as <em>imported components</em>, in the
-        Components tab. Imported components are read-only. In order to edit
-        these components, please visit their home project.
-      </p>
-    </div>
-  );
-}
-
 export function AttributesTooltip() {
   return (
     <div>
@@ -318,22 +304,6 @@ export function RepeaterPropsTooltip() {
   );
 }
 
-export function PageParamsTooltip() {
-  return (
-    <div>
-      <p className={"tooltip-title"}>Preview parameters</p>
-      <p>{`
-        This section shows URL parameters defined in page path using brackets
-        (e.g. [param]). In production, such parameters are defined based in
-        the URL, but in studio you can customize what preview value they
-        should have. For example, if your page path is /products/[slug] you
-        can see how the page looks like and customize its styles using
-        different "slug" values.
-      `}</p>
-    </div>
-  );
-}
-
 export function PageQueryParamsTooltip() {
   return (
     <div style={{ paddingBottom: 10 }}>
@@ -383,19 +353,26 @@ export function ServerQueriesTooltip() {
   );
 }
 
-export function DataQueriesDeprecatedTooltip() {
+export function DataQueriesDeprecatedTooltip(props: { showMigrate?: boolean }) {
   return (
     <div style={{ paddingBottom: 10 }}>
       <p>
-        Old data queries are deprecated. Please use the new data queries in the
-        section above.
+        Legacy data queries (<code>$queries</code>) are deprecated. Please use
+        the new data queries (<code>$q</code>) in the section above.
       </p>
+      {props.showMigrate && (
+        <p>
+          Use the <strong>Migrate all</strong> button, or{" "}
+          <strong>Migrate</strong> in an individual query's menu, to convert to
+          new data queries with Plasmic AI.
+        </p>
+      )}
       <p>
         <a
           target={"_blank"}
-          href="https://docs.plasmic.app/learn/integrations#data-queries"
+          href="https://docs.plasmic.app/learn/integrations-migration-guide"
         >
-          Learn more about this change in the docs
+          Learn more in the migration guide
         </a>
         .
       </p>
@@ -626,5 +603,19 @@ Pass this into \`ensurePlasmicAppUser()\` to get a user token, and thus be able 
 [Learn more in the docs](https://docs.plasmic.app/learn/auth-integration).
 `}
     </StandardMarkdown>
+  );
+}
+
+export function StylePreviewTooltip() {
+  return (
+    <div>
+      <p className={"tooltip-title"}>Preview</p>
+      <p>
+        This is how text will look on your site. Styles you define layer on top
+        of the base default styles and Plasmic's CSS resets, just like on your
+        published pages; anything you leave unset falls back to those. Click the
+        preview text to edit.
+      </p>
+    </div>
   );
 }

@@ -14,7 +14,6 @@ import {
   isFrameComponent,
   isReusableComponent,
 } from "@/wab/shared/core/components";
-import { isIcon } from "@/wab/shared/core/image-assets";
 import {
   ImportableObject,
   extractTransitiveDepsFromComponentDefaultSlots,
@@ -31,14 +30,12 @@ import {
   trackComponentRoot,
   trackComponentSite,
 } from "@/wab/shared/core/tpls";
-import { InsertableIconsGroup } from "@/wab/shared/devflags";
 import {
   inlineMixins,
   inlineTokens,
 } from "@/wab/shared/insertable-templates/inliners";
 import {
   Component,
-  ImageAsset,
   ProjectDependency,
   Site,
   Variant,
@@ -105,7 +102,7 @@ export class ProjectDependencyManager {
               : (await this._sc.appCtx.api.getPkgVersionMeta(dep.model.pkgId))
                   .pkg,
         };
-      })
+      }),
     );
     await this._sc.changeUnsafe(() => {
       data.forEach((d) => {
@@ -122,7 +119,7 @@ export class ProjectDependencyManager {
       const plumeSite = unbundleProjectDependency(
         bundler,
         plumePkg.pkg,
-        plumePkg.depPkgs
+        plumePkg.depPkgs,
       ).projectDependency.site;
       this.plumeSite = this.inlineAssets(plumeSite);
     }
@@ -150,7 +147,7 @@ export class ProjectDependencyManager {
    */
   private _trackDep(
     dep: ProjectDependency,
-    latestPkgVersionMeta?: PkgVersionInfoMeta
+    latestPkgVersionMeta?: PkgVersionInfoMeta,
   ) {
     this._dependencyMap[dep.pkgId] = { model: dep, latestPkgVersionMeta };
     this._trackDepObjs(dep);
@@ -171,7 +168,7 @@ export class ProjectDependencyManager {
    * Precondition: there must be only 1 version of any Pkg in our dependency tree
    */
   private _buildDependencyMap(
-    input: Site | ProjectDependency
+    input: Site | ProjectDependency,
   ): Dict<ProjectDependency> {
     // pkgId => version
     const result: Dict<ProjectDependency> = {};
@@ -186,7 +183,7 @@ export class ProjectDependencyManager {
             dep.name
           } with 2 conflicting versions:[${dep.version}, ${
             result[dep.pkgId].version
-          }]`
+          }]`,
         );
         continue;
       }
@@ -214,18 +211,8 @@ export class ProjectDependencyManager {
    */
   public containsProjectId(projectId: string): boolean {
     return this._sc.site.projectDependencies.some(
-      (d) => d.projectId === projectId
+      (d) => d.projectId === projectId,
     );
-  }
-
-  /**
-   * Look for the package in the full dependency tree and return
-   * the version we're currently using.
-   * @param pkgId
-   */
-  public getVersionByPkgId(pkgId: string): string | undefined {
-    const depMap = this._buildDependencyMap(this._sc.site);
-    return depMap[pkgId] ? depMap[pkgId].version : undefined;
   }
 
   // mobx computed value of direct dependencies
@@ -248,7 +235,7 @@ export class ProjectDependencyManager {
     }
     return L.sortBy(
       unsorted.filter((v) => v != null),
-      (o) => o.model.name
+      (o) => o.model.name,
     );
   };
 
@@ -269,7 +256,7 @@ export class ProjectDependencyManager {
       // Check for circular dependencies
       assert(
         pkgId !== maybeMyPkg?.id,
-        `Importing ${projectId} failed because of a circular dependency with this project. Please remove any circular dependencies and try again.`
+        `Importing ${projectId} failed because of a circular dependency with this project. Please remove any circular dependencies and try again.`,
       );
 
       // Check for conflicts
@@ -278,7 +265,7 @@ export class ProjectDependencyManager {
         localDepMap[pkgId].version !== importedDepMap[pkgId].version
       ) {
         throw new Error(
-          `Importing ${projectId} failed due to conflicting dependencies. The imported project depends on '${importedDepMap[pkgId].name}'(pkgId=${pkgId}) version ${importedDepMap[pkgId].version}, when this project uses version ${localDepMap[pkgId].version}. Please reconcile these versions before trying again.`
+          `Importing ${projectId} failed due to conflicting dependencies. The imported project depends on '${importedDepMap[pkgId].name}'(pkgId=${pkgId}) version ${importedDepMap[pkgId].version}, when this project uses version ${localDepMap[pkgId].version}. Please reconcile these versions before trying again.`,
         );
       }
     }
@@ -300,8 +287,8 @@ export class ProjectDependencyManager {
         ...extractTransitiveDepsFromComponentDefaultSlots(
           this._sc.site,
           projectDependency.site.components.filter((c) =>
-            isReusableComponent(c)
-          )
+            isReusableComponent(c),
+          ),
         ),
         ...extractTransitiveHostLessPackages(this._sc.site),
       ]).forEach((dep) => {
@@ -338,9 +325,8 @@ export class ProjectDependencyManager {
     }
 
     // Get the latest version
-    const { pkg: maybePkg } = await this._sc.appCtx.api.getPkgByProjectId(
-      projectId
-    );
+    const { pkg: maybePkg } =
+      await this._sc.appCtx.api.getPkgByProjectId(projectId);
     if (!maybePkg) {
       throw new Error(`${projectId} has no published versions.`);
     }
@@ -354,18 +340,18 @@ export class ProjectDependencyManager {
       await this._sc.appCtx.api.getAppAuthPubConfig(projectId);
     if (dependencyHasAppAuth) {
       throw new Error(
-        `You cannot import ${projectId} because it has auth enabled.`
+        `You cannot import ${projectId} because it has auth enabled.`,
       );
     }
 
     // Download this local project's Pkg, to be used later to check for circular dependencies
     const { pkg: maybeMyPkg } = await this._sc.appCtx.api.getPkgByProjectId(
-      this._sc.siteInfo.id
+      this._sc.siteInfo.id,
     );
 
     // Download the PkgVersion, which stores a Site pkgVersion.model
     const { pkg: latest, depPkgs } = await this._sc.appCtx.api.getPkgVersion(
-      pkg.id
+      pkg.id,
     );
 
     const { projectDependency, depPkgs: depPkgVersions } =
@@ -375,9 +361,9 @@ export class ProjectDependencyManager {
       checkDepPkgHosts(this._sc.appCtx, this._sc.siteInfo, [
         projectDependency,
         ...depPkgVersions.filter((dep): dep is ProjectDependency =>
-          isKnownProjectDependency(dep)
+          isKnownProjectDependency(dep),
         ),
-      ])
+      ]),
     );
 
     this.canAddDependency(projectDependency, maybeMyPkg);
@@ -397,7 +383,7 @@ export class ProjectDependencyManager {
   addTransitiveDepAsDirectDep(dep: ProjectDependency) {
     assert(
       !this._dependencyMap[dep.pkgId],
-      "Must not be an existing direct dep"
+      "Must not be an existing direct dep",
     );
     this._sc.site.projectDependencies.push(dep);
     this._trackDep(dep);
@@ -411,11 +397,11 @@ export class ProjectDependencyManager {
       const pkgDependents = Object.values(this._dependencyMap)
         .filter((pkgDependency) =>
           (pkgDependency.model.site.hostLessPackageInfo?.deps ?? []).includes(
-            hostLessPackageInfo.name
-          )
+            hostLessPackageInfo.name,
+          ),
         )
         .map(
-          (pkgDependency) => pkgDependency.model.site.hostLessPackageInfo!.name
+          (pkgDependency) => pkgDependency.model.site.hostLessPackageInfo!.name,
         );
       return pkgDependents;
     } else {
@@ -431,8 +417,8 @@ export class ProjectDependencyManager {
     if (hostLessPackageDependents.length > 0) {
       throw new Error(
         `Cannot remove ${pkgId} because it is a hostless package dependency for ${hostLessPackageDependents.join(
-          ", "
-        )}`
+          ", ",
+        )}`,
       );
     }
     const dep = this._dependencyMap[pkgId];
@@ -465,7 +451,7 @@ export class ProjectDependencyManager {
               dep.name
             } has two conflicting versions: ${dep.version} and ${
               result[dep.pkgId].version
-            }. Please reconcile these versions before trying again.`
+            }. Please reconcile these versions before trying again.`,
           );
         }
         continue;
@@ -477,7 +463,7 @@ export class ProjectDependencyManager {
 
   async upgradeProjectDeps(
     targetDeps: ProjectDependency[],
-    opts?: { noUndoRecord?: boolean }
+    opts?: { noUndoRecord?: boolean },
   ) {
     this.ensureCanUpgradeDeps(targetDeps);
     await this._sc.siteOps().upgradeProjectDeps(targetDeps, opts);
@@ -485,7 +471,7 @@ export class ProjectDependencyManager {
     // invalidate cache after upgrading dep
     for (const dep of targetDeps) {
       ensureClientMemoizedFunction(getUsedDataSourcesFromDep).cache.delete(
-        dep.site
+        dep.site,
       );
     }
   }
@@ -564,7 +550,7 @@ export class ProjectDependencyManager {
     const insertableSite = unbundleProjectDependency(
       bundler,
       latestPkgVersion.pkg,
-      latestPkgVersion.depPkgs
+      latestPkgVersion.depPkgs,
     ).projectDependency.site;
     this.insertableSites[projectId] = insertableSite;
     this.insertableVersions[projectId] = latestPkgVersion.etag;
@@ -593,7 +579,7 @@ export class ProjectDependencyManager {
     const site = this.insertableSites[projectId];
     const components = site.components.filter((c) => !isFrameComponent(c));
     const component = components.find(
-      (c) => c.name === meta.componentName || c.uuid === meta.componentId
+      (c) => c.name === meta.componentName || c.uuid === meta.componentId,
     );
     return !component
       ? undefined
@@ -603,28 +589,12 @@ export class ProjectDependencyManager {
         };
   }
 
-  /**
-   * Fetch all icons from the project
-   * @param meta
-   * @returns
-   */
-  getInsertableIcons(meta: InsertableIconsGroup): ImageAsset[] {
-    const projectId = meta.projectId;
-    if (!this.insertableSites[projectId]) {
-      return [];
-    }
-
-    const site = this.insertableSites[projectId];
-    const icons = site.imageAssets.filter((i) => isIcon(i));
-    return icons;
-  }
-
   getNiceDepName(dep: ProjectDependency) {
     const maybeHostlessPkg = this._sc.appCtx.appConfig.hostLessComponents?.find(
       (pkg) =>
         typeof pkg.projectId === "string"
           ? dep.projectId === pkg.projectId
-          : dep.projectId === last(pkg.projectId)
+          : dep.projectId === last(pkg.projectId),
     );
 
     if (maybeHostlessPkg) {

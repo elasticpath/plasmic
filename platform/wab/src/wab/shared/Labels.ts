@@ -9,12 +9,10 @@ export const VARIABLE_CAP = "State variable";
 export const VARIABLE_LOWER = VARIABLE_CAP.toLowerCase();
 
 export const VARIABLE_PLURAL_CAP = "State variables";
-export const VARIABLE_PLURAL_LOWER = VARIABLE_PLURAL_CAP.toLowerCase();
 
 export const DATA_QUERY_CAP = "Data query";
 export const DATA_QUERY_PLURAL_CAP = "Data queries";
 export const DATA_QUERY_LOWER = DATA_QUERY_CAP.toLowerCase();
-export const DATA_QUERY_PLURAL_LOWER = DATA_QUERY_PLURAL_CAP.toLowerCase();
 
 export const DATA_SOURCE_CAP = "Integration";
 export const DATA_SOURCE_PLURAL_CAP = "Integrations";
@@ -23,31 +21,29 @@ export const DATA_SOURCE_LOWER = DATA_SOURCE_CAP.toLowerCase();
 export const DATA_SOURCE_PLURAL_LOWER = DATA_SOURCE_PLURAL_CAP.toLowerCase();
 
 export const DATA_SOURCE_OPERATION_CAP = "Operation";
-export const DATA_SOURCE_OPERATION_PLURAL_CAP = "Operations";
 export const DATA_SOURCE_OPERATION_LOWER =
   DATA_SOURCE_OPERATION_CAP.toLowerCase();
-export const DATA_SOURCE_OPERATION_PLURAL_LOWER =
-  DATA_SOURCE_OPERATION_PLURAL_CAP.toLowerCase();
 
 export const SERVER_QUERY_CAP = "Data query";
 export const SERVER_QUERY_PLURAL_CAP = "Data queries";
-export const A_SERVER_QUERY_LOWER = "a " + SERVER_QUERY_CAP.toLowerCase();
 export const SERVER_QUERY_LOWER = SERVER_QUERY_CAP.toLowerCase();
-export const SERVER_QUERY_PLURAL_LOWER = SERVER_QUERY_PLURAL_CAP.toLowerCase();
 export const CUSTOM_CODE_QUERY_CAP = "Custom code query";
 
 export const COMPONENT_PROP_CAP = "Prop";
 export const COMPONENT_PROP_LOWER = COMPONENT_PROP_CAP.toLowerCase();
 
 export const COMPONENT_PROP_PLURAL_CAP = "Props";
-export const COMPONENT_PROP_PLURAL_LOWER =
-  COMPONENT_PROP_PLURAL_CAP.toLowerCase();
 
 /**
  * Verb for resetting/clearing/removing a prop/style value,
  * resulting in the prop/style reverting to its default value.
  */
 export const RESET_CAP = "Remove";
+
+// Standard action labels for resources
+export const CONFIGURE_ACTION = "Configure";
+export const DUPLICATE_ACTION = "Duplicate";
+export const DELETE_ACTION = "Delete";
 
 export const CONTAINER_LOWER = "box";
 export const STACK_LOWER = "stack";

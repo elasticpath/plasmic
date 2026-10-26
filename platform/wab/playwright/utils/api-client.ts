@@ -1,11 +1,18 @@
-import playwright from "playwright";
-import { APIRequestContext, BrowserContext, Page } from "playwright/test";
+import {
+  APIRequestContext,
+  BrowserContext,
+  Page,
+  request as playwrightRequest,
+} from "@playwright/test";
 
 export class ApiClient {
   private token: string | undefined = undefined;
   private dataSourceId: string | undefined = undefined;
 
-  constructor(public request: APIRequestContext, public baseUrl: string) {}
+  constructor(
+    public request: APIRequestContext,
+    public baseUrl: string,
+  ) {}
 
   async getCsrf() {
     const csrfRes = await this.request.get(`${this.baseUrl}/api/v1/auth/csrf`);
@@ -13,22 +20,22 @@ export class ApiClient {
     if (!csrfRes.ok()) {
       const errorText = await csrfRes.text();
       throw new Error(
-        `Failed to get CSRF token: ${csrfRes.status()} ${errorText}`
+        `Failed to get CSRF token: ${csrfRes.status()} ${errorText}`,
       );
     }
     return (await csrfRes.json()).csrf;
   }
 
   private async withAdminContext<T>(
-    operation: (context: APIRequestContext, token: string) => Promise<T>
+    operation: (context: APIRequestContext, token: string) => Promise<T>,
   ): Promise<T> {
-    const adminContext = await playwright.request.newContext({
+    const adminContext = await playwrightRequest.newContext({
       baseURL: this.baseUrl,
     });
 
     try {
       const csrfRes = await adminContext.get(
-        `${this.baseUrl}/api/v1/auth/csrf`
+        `${this.baseUrl}/api/v1/auth/csrf`,
       );
       const adminToken = (await csrfRes.json()).csrf;
 
@@ -38,7 +45,7 @@ export class ApiClient {
       });
 
       const csrfRes2 = await adminContext.get(
-        `${this.baseUrl}/api/v1/auth/csrf`
+        `${this.baseUrl}/api/v1/auth/csrf`,
       );
       const adminToken2 = (await csrfRes2.json()).csrf;
 
@@ -65,7 +72,7 @@ export class ApiClient {
     if (!csrfRes2.ok()) {
       const errorText = await csrfRes2.text();
       throw new Error(
-        `Failed to refresh CSRF token after login: ${csrfRes2.status()} ${errorText}`
+        `Failed to refresh CSRF token after login: ${csrfRes2.status()} ${errorText}`,
       );
     }
 
@@ -78,6 +85,43 @@ export class ApiClient {
 
   async removeProject(projectId: string) {
     await this.request.delete(`${this.baseUrl}/api/v1/projects/${projectId}`);
+  }
+
+  async setupPaidWorkspace(): Promise<string> {
+    const csrf = await this.getCsrf();
+    const teamsRes = await this.request.get(`${this.baseUrl}/api/v1/teams`);
+    const team = (await teamsRes.json()).teams.find(
+      (t) => t.name === "Test Pro Org",
+    );
+    if (!team) {
+      throw new Error("Seeded paid team not found");
+    }
+
+    const workspacesRes = await this.request.get(
+      `${this.baseUrl}/api/v1/teams/${team.id}/workspaces`,
+    );
+    const existing = (await workspacesRes.json()).workspaces[0];
+    if (existing) {
+      return existing.id;
+    }
+
+    const createRes = await this.request.post(
+      `${this.baseUrl}/api/v1/workspaces`,
+      {
+        data: { name: "Paid workspace", teamId: team.id },
+        headers: { "X-CSRF-Token": csrf },
+      },
+    );
+    if (!createRes.ok()) {
+      throw new Error(`Failed to create workspace: ${await createRes.text()}`);
+    }
+    const result = await createRes.json();
+    if (result.paywall !== "pass") {
+      throw new Error(
+        `Workspace creation hit a paywall: ${JSON.stringify(result)}`,
+      );
+    }
+    return result.response.workspace.id;
   }
 
   async importProjectFromTemplate(bundle: any) {
@@ -93,7 +137,7 @@ export class ApiClient {
           migrationsStrict: true,
         },
         headers: { "X-CSRF-Token": this.token },
-      }
+      },
     );
     return (await res.json()).projectId;
   }
@@ -160,6 +204,34 @@ export class ApiClient {
         }> & { name: string })[];
     devFlags?: Record<string, any>;
   }): Promise<string> {
+    const { project } = await this.createProjectWithHostlessPackages({
+      name,
+      hostLessPackagesInfo,
+      devFlags,
+    });
+    return project.id;
+  }
+
+  /**
+   * Publishes hostless packages and returns their project ids, leaving behind
+   * the scratch project they were installed into. Point a `hostLessComponents`
+   * devflag at one to exercise an install flow (see setE2eDevFlags).
+   */
+  async publishHostlessPackages(
+    args: Parameters<ApiClient["setupProjectWithHostlessPackages"]>[0],
+  ): Promise<string[]> {
+    return (await this.createProjectWithHostlessPackages(args))
+      .hostLessProjectIds;
+  }
+
+  private async createProjectWithHostlessPackages({
+    name,
+    hostLessPackagesInfo,
+    devFlags = {},
+  }: Parameters<ApiClient["setupProjectWithHostlessPackages"]>[0]): Promise<{
+    project: { id: string };
+    hostLessProjectIds: string[];
+  }> {
     const csrfRes = await this.request.get(`${this.baseUrl}/api/v1/auth/csrf`);
     const csrf = (await csrfRes.json()).csrf;
 
@@ -192,10 +264,10 @@ export class ApiClient {
         },
         headers: { "X-CSRF-Token": csrf },
         timeout: 30000,
-      }
+      },
     );
 
-    return (await res.json()).project.id;
+    return await res.json();
   }
 
   async codegen(page: Page) {
@@ -209,7 +281,8 @@ export class ApiClient {
           "x-plasmic-api-user": "user2@example.com",
           "x-plasmic-api-token": await this.getApiToken(),
         },
-      }
+        timeout: 60000,
+      },
     );
 
     return response.json();
@@ -231,50 +304,44 @@ export class ApiClient {
     return tokenData.token.token;
   }
 
-  async createTutorialDb(type: string) {
-    return this.withAdminContext(async (context, token) => {
-      const response = await context.post(
-        `${this.baseUrl}/api/v1/admin/create-tutorial-db`,
-        {
-          data: { type },
-          headers: { "X-CSRF-Token": token },
-        }
-      );
-      return (await response.json()).id;
-    });
-  }
-
-  async createTutorialDataSource(type: string, dsname: string) {
-    let csrfRes = await this.request.get(`${this.baseUrl}/api/v1/auth/csrf`);
-    let csrf = (await csrfRes.json()).csrf;
+  async createPostgresDataSource(
+    dsname: string,
+    connection: {
+      host: string;
+      port: string;
+      name: string;
+      user: string;
+      password: string;
+    },
+  ) {
+    const csrfRes = await this.request.get(`${this.baseUrl}/api/v1/auth/csrf`);
+    const csrf = (await csrfRes.json()).csrf;
 
     const workspaceRes = await this.request.get(
       `${this.baseUrl}/api/v1/personal-workspace`,
-      { headers: { "X-CSRF-Token": csrf } }
+      { headers: { "X-CSRF-Token": csrf } },
     );
     const workspaceId = (await workspaceRes.json()).workspace.id;
-
-    await this.logout();
-    const dbId = await this.createTutorialDb(type);
-    csrfRes = await this.request.get(`${this.baseUrl}/api/v1/auth/csrf`);
-    csrf = (await csrfRes.json()).csrf;
 
     const response = await this.request.post(
       `${this.baseUrl}/api/v1/data-source/sources`,
       {
         data: {
-          source: "tutorialdb",
+          source: "postgres",
           name: dsname,
           workspaceId: workspaceId,
           credentials: {
-            tutorialDbId: dbId,
+            password: connection.password,
           },
           settings: {
-            type: "northwind",
+            host: connection.host,
+            port: connection.port,
+            name: connection.name,
+            user: connection.user,
           },
         },
         headers: { "X-CSRF-Token": csrf },
-      }
+      },
     );
     const result = await response.json();
     this.dataSourceId = result.id;
@@ -284,13 +351,33 @@ export class ApiClient {
   async removeProjectAfterTest(
     projectId: string | undefined,
     email: string,
-    password: string
+    password: string,
   ) {
     if (!projectId) {
       throw new Error("Project ID is required for project removal");
     }
     await this.login(email, password);
     await this.removeProject(projectId);
+  }
+
+  async updateProjectMeta(projectId: string, meta: Record<string, any>) {
+    const csrf = await this.getCsrf();
+
+    const res = await this.request.put(
+      `${this.baseUrl}/api/v1/projects/${projectId}/meta`,
+      {
+        data: meta,
+        headers: { "X-CSRF-Token": csrf },
+      },
+    );
+
+    if (!res.ok()) {
+      const errorText = await res.text();
+      throw new Error(
+        `Failed to update project meta: ${res.status()} ${errorText}`,
+      );
+    }
+    return await res.json();
   }
 
   async createComponentState(
@@ -301,7 +388,7 @@ export class ApiClient {
       variableType: string;
       accessType: string;
       initialValue: string;
-    }
+    },
   ) {
     const csrfRes = await this.request.get(`${this.baseUrl}/api/v1/auth/csrf`);
     const csrf = (await csrfRes.json()).csrf;
@@ -316,7 +403,7 @@ export class ApiClient {
           initialValue: state.initialValue,
         },
         headers: { "X-CSRF-Token": csrf },
-      }
+      },
     );
 
     return await response.json();
@@ -327,7 +414,7 @@ export class ApiClient {
 
     const workspaceRes = await this.request.get(
       `${this.baseUrl}/api/v1/personal-workspace`,
-      { headers: { "X-CSRF-Token": csrf } }
+      { headers: { "X-CSRF-Token": csrf } },
     );
     const workspaceId = (await workspaceRes.json()).workspace.id;
 
@@ -343,7 +430,7 @@ export class ApiClient {
       {
         headers: { "X-CSRF-Token": csrf },
         data: createDataSourceOptions,
-      }
+      },
     );
 
     const result = await response.json();
@@ -359,7 +446,7 @@ export class ApiClient {
         `${this.baseUrl}/api/v1/data-source/sources/${this.dataSourceId}`,
         {
           headers: { "X-CSRF-Token": csrf },
-        }
+        },
       );
 
       this.dataSourceId = undefined;
@@ -369,7 +456,7 @@ export class ApiClient {
   async grantProjectPermission(
     projectId: string,
     userEmail: string,
-    accessLevel: string = "editor"
+    accessLevel: string = "editor",
   ) {
     const csrf = await this.getCsrf();
 
@@ -393,8 +480,8 @@ export class ApiClient {
     templateNameOrBundle: string | any,
     options?: {
       keepProjectIdsAndNames?: boolean;
-      dataSourceReplacement?: Record<string, string>;
-    }
+      dataSourceReplacement?: { fakeSourceId: string };
+    },
   ) {
     let bundle: any;
 
@@ -427,38 +514,17 @@ export class ApiClient {
           migrationsStrict: true,
           dataSourceReplacement: options?.dataSourceReplacement,
         },
-      }
+      },
     );
 
     if (!importResponse.ok()) {
       const errorText = await importResponse.text();
       throw new Error(
-        `Failed to import template: ${importResponse.status()} ${errorText}`
+        `Failed to import template: ${importResponse.status()} ${errorText}`,
       );
     }
     const importData = await importResponse.json();
     return importData.projectId;
-  }
-
-  async getDevFlags() {
-    return this.withAdminContext(async (context) => {
-      const response = await context.get(
-        `${this.baseUrl}/api/v1/admin/devflags`
-      );
-      const responseBody = await response.json();
-      return JSON.parse(responseBody.data);
-    });
-  }
-
-  async upsertDevFlags(devFlags: Record<string, any>) {
-    return this.withAdminContext(async (context, token) => {
-      await context.put(`${this.baseUrl}/api/v1/admin/devflags`, {
-        data: {
-          data: JSON.stringify(devFlags),
-        },
-        headers: { "X-CSRF-Token": token },
-      });
-    });
   }
 
   async deleteProjectAndRevisions(projectId: string) {
@@ -470,7 +536,7 @@ export class ApiClient {
             projectId,
           },
           headers: { "X-CSRF-Token": token },
-        }
+        },
       );
     });
   }
@@ -484,7 +550,7 @@ export class ApiClient {
       {
         data: { email },
         headers: { "X-CSRF-Token": csrf },
-      }
+      },
     );
 
     const responseBody = await response.json();
@@ -505,13 +571,13 @@ export class ApiClient {
       {
         data: { name, workspaceId },
         headers: { "X-CSRF-Token": csrf },
-      }
+      },
     );
 
     if (!response.ok()) {
       const errorText = await response.text();
       throw new Error(
-        `Failed to clone project ${projectId}: ${response.status()} ${errorText}`
+        `Failed to clone project ${projectId}: ${response.status()} ${errorText}`,
       );
     }
 
@@ -523,7 +589,7 @@ export class ApiClient {
     request: APIRequestContext,
     context: BrowserContext,
     email = "user2@example.com",
-    password = "!53kr3tz!"
+    password = "!53kr3tz!",
   ) {
     const client = new ApiClient(request, "http://localhost:3003");
     await client.login(email, password);

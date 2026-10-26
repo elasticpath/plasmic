@@ -5,6 +5,7 @@ import {
   PaywallError,
   maybeShowPaywall,
 } from "@/wab/client/components/modals/PricingModal";
+import { reactConfirm } from "@/wab/client/components/quick-modals";
 import {
   ClickStopper,
   Spinner,
@@ -31,6 +32,7 @@ import {
   ApiTeam,
   Grant,
   GrantRevokeRequest,
+  ProjectId,
   Revoke,
 } from "@/wab/shared/ApiSchema";
 import { getUserEmail } from "@/wab/shared/ApiSchemaUtil";
@@ -39,12 +41,12 @@ import { ORGANIZATION_LOWER } from "@/wab/shared/Labels";
 import {
   assert,
   ensure,
-  isValidEmail,
   spawn,
   unexpected,
   withoutFalsy,
 } from "@/wab/shared/common";
 import { DEVFLAGS } from "@/wab/shared/devflags";
+import { parseEmailAddress } from "@/wab/shared/email-address";
 import {
   convertToTaggedResourceId,
   filterDirectResourcePerms,
@@ -52,7 +54,6 @@ import {
   resourceTypeIdField,
 } from "@/wab/shared/perms";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
 import { getPublicUrl } from "@/wab/shared/urls";
 import { Menu, notification } from "antd";
 import copy from "copy-to-clipboard";
@@ -74,7 +75,7 @@ export const personalProjectPaywallMessage = (
 
 export function getTeamInviteLink(team: ApiTeam) {
   const url = new URL(
-    fillRoute(APP_ROUTES.org, {
+    APP_ROUTES.org.fill({
       teamId: team.id,
     }),
     getPublicUrl()
@@ -164,7 +165,7 @@ function ShareDialogContent(props: ShareDialogContentProps) {
       return { enqueued };
     } catch (err) {
       if (err instanceof PaywallError && err.type === "requireTeam") {
-        notification.warn({
+        notification.warning({
           message: personalProjectPaywallMessage,
           duration: 0,
         });
@@ -176,8 +177,8 @@ function ShareDialogContent(props: ShareDialogContentProps) {
   }
 
   async function invite() {
-    const cleaned = email.trim();
-    if (!isValidEmail(cleaned)) {
+    const parsedEmail = parseEmailAddress(email);
+    if (!parsedEmail) {
       setEmailInvalid(true);
       notification.error({ message: "Insert a valid email to invite" });
       return;
@@ -186,7 +187,9 @@ function ShareDialogContent(props: ShareDialogContentProps) {
     setSubmitting(true);
     try {
       const { enqueued } = await doGrantRevoke({
-        grants: [{ email: cleaned, accessLevel: inviteAccessLevel }],
+        grants: [
+          { email: parsedEmail.normalized, accessLevel: inviteAccessLevel },
+        ],
         revokes: [],
       });
 
@@ -265,11 +268,45 @@ function ShareDialogContent(props: ShareDialogContentProps) {
             accessLevel={perm.accessLevel}
             tier={tier}
             canEdit={canEdit}
+            showOwnerOption={
+              resource.type === "project" && ownAccessLevel === "owner"
+            }
             onGrant={async (accessLevel) => {
-              await doGrantRevoke({
-                grants: [{ email: permEmail, accessLevel }],
-                revokes: [],
-              });
+              if (accessLevel === "owner") {
+                const selfEmail = ensure(
+                  appCtx.selfInfo?.email,
+                  "Must be logged in to transfer ownership"
+                );
+                const confirmed = await reactConfirm({
+                  title: "Transfer ownership",
+                  message: (
+                    <>
+                      You will lose owner status and become an editor. Transfer
+                      ownership of <strong>{resource.resource.name}</strong> to{" "}
+                      {permEmail}?
+                    </>
+                  ),
+                });
+                if (!confirmed) {
+                  throw new Error("Ownership transfer cancelled");
+                }
+                await doGrantRevoke({
+                  // Order matters: the new owner must be promoted before the
+                  // current owner self-demotes, since the server processes
+                  // grants sequentially and the actor must still be an owner to
+                  // grant owner.
+                  grants: [
+                    { email: permEmail, accessLevel: "owner" },
+                    { email: selfEmail, accessLevel: "editor" },
+                  ],
+                  revokes: [],
+                });
+              } else {
+                await doGrantRevoke({
+                  grants: [{ email: permEmail, accessLevel }],
+                  revokes: [],
+                });
+              }
             }}
             onRevoke={async () => {
               await doGrantRevoke({
@@ -301,9 +338,6 @@ function ShareDialogContent(props: ShareDialogContentProps) {
           <Select.Option value="commenter">{commenterTooltip}</Select.Option>,
           <Select.Option
             value="content"
-            style={{
-              display: appCtx.appConfig.contentOnly ? undefined : "none",
-            }}
             isDisabled={
               !tier.contentRole ||
               ownAccessLevelRank < accessLevelRank("content")
@@ -319,9 +353,6 @@ function ShareDialogContent(props: ShareDialogContentProps) {
           </Select.Option>,
           <Select.Option
             value="designer"
-            style={{
-              display: appCtx.appConfig.contentOnly ? undefined : "none",
-            }}
             isDisabled={
               !tier.designerRole ||
               ownAccessLevelRank < accessLevelRank("designer")
@@ -355,13 +386,7 @@ function ShareDialogContent(props: ShareDialogContentProps) {
                 <Select.Option value="commenter">
                   {commenterTooltip}
                 </Select.Option>,
-                <Select.Option
-                  value="content"
-                  style={{
-                    display: appCtx.appConfig.contentOnly ? undefined : "none",
-                  }}
-                  isDisabled={!tier.contentRole}
-                >
+                <Select.Option value="content" isDisabled={!tier.contentRole}>
                   {tier.contentRole ? (
                     contentCreatorTooltip
                   ) : (
@@ -370,13 +395,7 @@ function ShareDialogContent(props: ShareDialogContentProps) {
                     </TextWithInfo>
                   )}
                 </Select.Option>,
-                <Select.Option
-                  value="designer"
-                  style={{
-                    display: appCtx.appConfig.contentOnly ? undefined : "none",
-                  }}
-                  isDisabled={!tier.designerRole}
-                >
+                <Select.Option value="designer" isDisabled={!tier.designerRole}>
                   {tier.designerRole ? (
                     designerTooltip
                   ) : (
@@ -416,7 +435,7 @@ function ShareDialogContent(props: ShareDialogContentProps) {
       newUserEmail={{
         onChange: (e) => {
           setEmail(e.target.value);
-          if (isEmailInvalid && isValidEmail(e.target.value)) {
+          if (isEmailInvalid && parseEmailAddress(e.target.value)) {
             setEmailInvalid(false);
           }
         },
@@ -478,7 +497,7 @@ function ShareDialogContent(props: ShareDialogContentProps) {
         resource.resource.workspaceName
           ? {
               props: {
-                href: fillRoute(APP_ROUTES.workspace, {
+                href: APP_ROUTES.workspace.fill({
                   workspaceId: resource.resource.workspaceId,
                 }),
                 target: "_blank",
@@ -491,9 +510,9 @@ function ShareDialogContent(props: ShareDialogContentProps) {
         props: {
           href:
             resource.type === "project" && resource.resource.teamId
-              ? fillRoute(APP_ROUTES.org, { teamId: resource.resource.teamId })
+              ? APP_ROUTES.org.fill({ teamId: resource.resource.teamId })
               : resource.type === "workspace"
-              ? fillRoute(APP_ROUTES.org, { teamId: resource.resource.team.id })
+              ? APP_ROUTES.org.fill({ teamId: resource.resource.team.id })
               : undefined,
           target: "_blank",
         },
@@ -516,8 +535,8 @@ function ShareDialogContent(props: ShareDialogContentProps) {
           });
           copy(
             new URL(
-              fillRoute(APP_ROUTES.project, {
-                projectId: resource.resource.id,
+              APP_ROUTES.project.fill({
+                projectId: resource.resource.id as ProjectId,
               }),
               getPublicUrl()
             ).toString()
@@ -532,8 +551,8 @@ function ShareDialogContent(props: ShareDialogContentProps) {
                 });
                 copy(
                   new URL(
-                    fillRoute(APP_ROUTES.project, {
-                      projectId: resource.resource.id,
+                    APP_ROUTES.project.fill({
+                      projectId: resource.resource.id as ProjectId,
                     }),
                     getPublicUrl()
                   ).toString()
@@ -560,9 +579,9 @@ function ShareDialogContent(props: ShareDialogContentProps) {
                   });
                   copy(
                     new URL(
-                      fillRoute(APP_ROUTES.projectPreview, {
-                        projectId: resource.resource.id,
-                        previewPath: arenaId,
+                      APP_ROUTES.projectPreview.fill({
+                        projectId: resource.resource.id as ProjectId,
+                        previewPath: [arenaId],
                       }),
                       getPublicUrl()
                     ).toString()

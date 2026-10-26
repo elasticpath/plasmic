@@ -2,11 +2,16 @@ import {
   coalesce,
   ensure,
   filterMapTruthy,
+  isEqualWithoutKeys,
   multimap,
   tuple,
 } from "@/wab/shared/common";
+<<<<<<< HEAD
 import isObject from "lodash/isObject";
 import keysIn from "lodash/keysIn";
+=======
+import type { ObjInst } from "@/wab/shared/model/classes";
+>>>>>>> upstream/master
 import pick from "lodash/pick";
 import uniqBy from "lodash/uniqBy";
 
@@ -60,13 +65,13 @@ export class BaseRuntime {
     this.schema = schema1;
     this.nextUid = nextUid;
     this.clsByName = Object.fromEntries(
-      this.schema.map((cls: /*TWZ*/ Class) => tuple(cls.name, cls))
+      this.schema.map((cls: /*TWZ*/ Class) => tuple(cls.name, cls)),
     );
     this.class2subclasses = multimap(
       filterMapTruthy(
         schema1,
-        (cls) => cls.base && tuple(this.clsByName[cls.base], cls)
-      )
+        (cls) => cls.base && tuple(this.clsByName[cls.base], cls),
+      ),
     );
   }
 
@@ -82,16 +87,16 @@ export class BaseRuntime {
     return coalesce(
       cls != null
         ? cls.fields.concat(
-            cls.base ? this.allFields(this.clsByName[cls.base]) : []
+            cls.base ? this.allFields(this.clsByName[cls.base]) : [],
           )
         : undefined,
-      () => []
+      () => [],
     );
   }
   getFieldByName(clsName: string, fieldName: string) {
     return ensure(
       this.allFields(this.clsByName[clsName]).find((f) => f.name === fieldName),
-      `Field ${fieldName} does not exist on class ${clsName}`
+      `Field ${fieldName} does not exist on class ${clsName}`,
     );
   }
 
@@ -119,7 +124,7 @@ export class BaseRuntime {
   setNextUid(newNextUid) {
     if (newNextUid < this.nextUid) {
       throw new Error(
-        `new UID of ${newNextUid} is smaller than current UID of ${this.nextUid}`
+        `new UID of ${newNextUid} is smaller than current UID of ${this.nextUid}`,
       );
     }
     return (this.nextUid = newNextUid);
@@ -161,7 +166,7 @@ export class MetaRuntime extends BaseRuntime {
               args,
               this.allFieldKeys(cls),
               this.allTransientFieldKeys(cls),
-              cls.name
+              cls.name,
             );
           } catch (e) {
             if (this.strict) {
@@ -182,8 +187,8 @@ export class MetaRuntime extends BaseRuntime {
 
           inst.uid = this.mkUid();
           return inst;
-        })
-      )
+        }),
+      ),
     );
   }
 
@@ -191,7 +196,11 @@ export class MetaRuntime extends BaseRuntime {
     if (this.clsToFieldsCache.has(cls)) {
       return ensure(
         this.clsToFieldsCache.get(cls),
+<<<<<<< HEAD
         () => `Class ${cls} does not exist in clsToFieldsCache`
+=======
+        `Class ${cls} does not exist in clsToFieldsCache`,
+>>>>>>> upstream/master
       );
     }
 
@@ -200,7 +209,7 @@ export class MetaRuntime extends BaseRuntime {
         ...cls.fields,
         ...(cls.base ? this.allFields(this.clsByName[cls.base]) : []),
       ],
-      (f: /*TWZ*/ Field) => f.name
+      (f: /*TWZ*/ Field) => f.name,
     );
     this.clsToFieldsCache.set(cls, fields);
     return fields;
@@ -210,7 +219,11 @@ export class MetaRuntime extends BaseRuntime {
     if (this.clsToFieldKeysCache.has(cls)) {
       return ensure(
         this.clsToFieldKeysCache.get(cls),
+<<<<<<< HEAD
         () => `Class ${cls} does not exist in clsToFieldKeysCache`
+=======
+        `Class ${cls} does not exist in clsToFieldKeysCache`,
+>>>>>>> upstream/master
       );
     }
 
@@ -224,7 +237,11 @@ export class MetaRuntime extends BaseRuntime {
     if (this.clsToTransientFieldKeysCache.has(cls)) {
       return ensure(
         this.clsToTransientFieldKeysCache.get(cls),
+<<<<<<< HEAD
         () => `Class ${cls} does not exist in clsToPersistentFieldKeysCache`
+=======
+        `Class ${cls} does not exist in clsToPersistentFieldKeysCache`,
+>>>>>>> upstream/master
       );
     }
 
@@ -232,7 +249,7 @@ export class MetaRuntime extends BaseRuntime {
     const fieldKeys = new Set(
       fields
         .filter((f) => f.annotations.includes("Transient"))
-        .map((f) => f.name)
+        .map((f) => f.name),
     );
     this.clsToTransientFieldKeysCache.set(cls, fieldKeys);
     return fieldKeys;
@@ -256,6 +273,19 @@ export interface ObjInstBase {
   uid: number;
 }
 
+/** An inst's field values as plain properties, unlike a spread of its type */
+export type FieldValues<T> = { [K in keyof T]: T[K] };
+
+/**
+ * A plain object with the inst's field values. Use it instead of spreading an
+ * inst, so that copies keep working if fields stop being own properties.
+ */
+export function instFieldValues<T extends ObjInstBase>(
+  inst: T,
+): FieldValues<T> {
+  return Object.assign({}, inst);
+}
+
 export function isStrongRefField(f: Field) {
   // We assume no @WeakRef implies StrongRef
   return !isWeakRefField(f);
@@ -273,7 +303,7 @@ export function checkEqKeys(
   x: any,
   allKeys: Set<string>,
   transientKeys: Set<string>,
-  clsName: string
+  clsName: string,
 ) {
   let diff = "";
   for (const key of Object.keys(x)) {
@@ -299,7 +329,7 @@ export function checkEqKeys(
 
 export function toTs(type: Type) {
   const renderedParams = type.params.map((t) =>
-    typeof t === "string" ? JSON.stringify(t) : toTs(t)
+    typeof t === "string" ? JSON.stringify(t) : toTs(t),
   );
   const simple = (name: string) => {
     if (type.params.length === 0) {
@@ -336,6 +366,7 @@ export function toTs(type: Type) {
   }
 }
 
+<<<<<<< HEAD
 /**
  * Converts the model structure to one that:
  *
@@ -380,4 +411,9 @@ export function withoutUids(
     }
   }
   return rec(x_);
+=======
+/** Returns whether model instances a and b are deeply equal. */
+export function areModelsEqual(a: ObjInst, b: ObjInst): boolean {
+  return isEqualWithoutKeys(a, b, ["uid", "uuid"]);
+>>>>>>> upstream/master
 }

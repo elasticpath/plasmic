@@ -18,7 +18,6 @@ import {
 import {
   ApiFeatureTier,
   ApiPermission,
-  TeamId,
   TeamMember,
 } from "@/wab/shared/ApiSchema";
 import { fullName, getUserEmail } from "@/wab/shared/ApiSchemaUtil";
@@ -37,13 +36,12 @@ interface TeamMemberListItemProps extends DefaultTeamMemberListItemProps {
   changeRole: (email: string, role?: GrantableAccessLevel) => Promise<void>;
   removeUser: (email: string) => Promise<void>;
   disabled?: boolean;
-  teamId?: TeamId;
   perms: ApiPermission[];
 }
 
 function TeamMemberListItem_(
   props: TeamMemberListItemProps,
-  ref: HTMLElementRefOf<"div">
+  ref: HTMLElementRefOf<"div">,
 ) {
   const {
     user,
@@ -53,7 +51,6 @@ function TeamMemberListItem_(
     changeRole,
     removeUser,
     disabled,
-    teamId,
     perms,
     ...rest
   } = props;
@@ -73,7 +70,7 @@ function TeamMemberListItem_(
   const roleValue =
     !!perm &&
     ["owner", "editor", "designer", "content", "commenter", "viewer"].includes(
-      perm.accessLevel
+      perm.accessLevel,
     )
       ? perm.accessLevel
       : "none";
@@ -85,10 +82,10 @@ function TeamMemberListItem_(
       root={{ ref }}
       {...rest}
       name={matcher.boldSnippets(
-        user.type === "user" ? fullName(user) : user.email
+        user.type === "user" ? fullName(user) : user.email,
       )}
       email={matcher.boldSnippets(
-        user.type === "user" ? getUserEmail(user) : user.email
+        user.type === "user" ? getUserEmail(user) : user.email,
       )}
       lastActive={
         user.type === "user" && user.lastActive
@@ -127,13 +124,7 @@ function TeamMemberListItem_(
             Owner
           </Select.Option>,
           <Select.Option value="editor">{developerTooltip}</Select.Option>,
-          <Select.Option
-            value="content"
-            style={{
-              display: appCtx.appConfig.contentOnly ? undefined : "none",
-            }}
-            isDisabled={!tier.contentRole}
-          >
+          <Select.Option value="content" isDisabled={!tier.contentRole}>
             {tier.contentRole ? (
               contentCreatorTooltip
             ) : (
@@ -142,13 +133,7 @@ function TeamMemberListItem_(
               </TextWithInfo>
             )}
           </Select.Option>,
-          <Select.Option
-            value="designer"
-            style={{
-              display: appCtx.appConfig.contentOnly ? undefined : "none",
-            }}
-            isDisabled={!tier.designerRole}
-          >
+          <Select.Option value="designer" isDisabled={!tier.designerRole}>
             {tier.designerRole ? (
               designerTooltip
             ) : (

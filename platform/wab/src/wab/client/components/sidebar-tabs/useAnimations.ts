@@ -27,7 +27,7 @@ export function useAnimations(options: UseAnimationsOptions) {
   // Get animations using VariantTplMgr (handles private vs component variant logic)
   const { animations, definedIndicator } = vtm.getAnimationInfoForVariantCombo(
     tpl,
-    variants
+    variants,
   );
 
   const allAnimSequences = allAnimationSequences(studioCtx.site, {
@@ -54,8 +54,8 @@ export function useAnimations(options: UseAnimationsOptions) {
     spawn(
       studioCtx.styleMgrBcast.playAnimationPreview(
         focusedTpl,
-        previewAnimations
-      )
+        previewAnimations,
+      ),
     );
   };
 
@@ -82,7 +82,7 @@ export function useAnimations(options: UseAnimationsOptions) {
   const addAnimationLayer = () => {
     if (allAnimSequences.length === 0) {
       studioCtx.switchLeftTab("animationSequences", { highlight: true });
-      notification.warn({
+      notification.warning({
         message: `Please add ${ANIMATIONS_LOWER} in your project.`,
       });
       return;
@@ -98,7 +98,7 @@ export function useAnimations(options: UseAnimationsOptions) {
         triggerAnimationPreviewOnUpdate(newAnimations);
 
         return ok();
-      })
+      }),
     );
   };
 
@@ -112,7 +112,7 @@ export function useAnimations(options: UseAnimationsOptions) {
         const tplAnimations = vtm.removeAnimation(tpl, animation, variants);
         triggerAnimationPreviewOnUpdate(tplAnimations);
         return ok();
-      })
+      }),
     );
   };
 
@@ -126,7 +126,7 @@ export function useAnimations(options: UseAnimationsOptions) {
         const newAnimations = vtm.reorderAnimations(tpl, from, to, variants);
         triggerAnimationPreviewOnUpdate(newAnimations);
         return ok();
-      })
+      }),
     );
   };
 
@@ -140,7 +140,7 @@ export function useAnimations(options: UseAnimationsOptions) {
         vtm.ensureAnimationsForEditing(tpl, variants);
         setInspectedIndex(index);
         return ok();
-      })
+      }),
     );
   };
 

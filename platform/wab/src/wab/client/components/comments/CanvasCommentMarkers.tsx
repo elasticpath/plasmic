@@ -15,11 +15,7 @@ import {
 } from "@/wab/client/studio-ctx/view-ctx";
 import { AnyArena } from "@/wab/shared/Arenas";
 import { ensure, ensureString, withoutNils } from "@/wab/shared/common";
-import {
-  isTplNamable,
-  isTplVariantable,
-  tryGetTplOwnerComponent,
-} from "@/wab/shared/core/tpls";
+import { isTplNamable, tryGetTplOwnerComponent } from "@/wab/shared/core/tpls";
 import { ArenaFrame, ObjInst, TplNode } from "@/wab/shared/model/classes";
 import { mkSemVerSiteElement } from "@/wab/shared/site-diffs";
 import { Popover, Tooltip } from "antd";
@@ -70,7 +66,7 @@ const CanvasCommentMarker = observer(function CanvasCommentMarker(props: {
     .objByAddr(commentThread.location.subject) as TplNode;
   const author = ensure(
     commentsCtx.computedData().usersMap.get(ensureString(comment.createdById)),
-    "Comment author should exist"
+    "Comment author should exist",
   );
   const isSelected = openedThread?.threadId === commentThread.id;
 
@@ -146,7 +142,7 @@ export const CanvasAddCommentMarker = observer(
 
     const variants = getSetOfPinnedVariantsForViewCtx(
       viewCtx,
-      viewCtx.bundler()
+      viewCtx.bundler(),
     );
 
     const offsetRight =
@@ -177,7 +173,7 @@ export const CanvasAddCommentMarker = observer(
         </Tooltip>
       </CanvasCommentOverlay>
     );
-  }
+  },
 );
 
 const CanvasSubjectCommentMarkers = observer(
@@ -189,13 +185,13 @@ const CanvasSubjectCommentMarkers = observer(
     viewCtx: ViewCtx;
   }) {
     const [hoveredThreadId, setHoveredThreadId] = React.useState<string | null>(
-      null
+      null,
     );
     const commentsCtx = viewCtx.studioCtx.commentsCtx;
     const openedThreadId = commentsCtx.openedThread()?.threadId;
 
     const focusedIndex = subjectCommentThreads.findIndex(
-      (t) => t.id === (hoveredThreadId ?? openedThreadId)
+      (t) => t.id === (hoveredThreadId ?? openedThreadId),
     );
 
     return (
@@ -228,7 +224,7 @@ const CanvasSubjectCommentMarkers = observer(
         })}
       </>
     );
-  }
+  },
 );
 
 export const CanvasCommentMarkers = observer(function CanvasCommentMarkers({
@@ -266,7 +262,7 @@ export const CanvasCommentMarkers = observer(function CanvasCommentMarkers({
             subjectCommentThreads={subjectCommentThreads}
             viewCtx={viewCtx}
           />
-        )
+        ),
       )}
     </>
   );
@@ -306,10 +302,6 @@ export const CanvasCommentOverlay = observer(function CanvasCommentOverlay({
     return null;
   }
 
-  const isTargetingSomeNonBaseVariant =
-    isTplVariantable(tpl) &&
-    viewCtx.variantTplMgr().isTargetingNonBaseVariant(tpl);
-
   return createPortal(
     <CanvasTransformedBox
       relativeTo={"arena"}
@@ -328,6 +320,6 @@ export const CanvasCommentOverlay = observer(function CanvasCommentOverlay({
         {children}
       </div>
     </CanvasTransformedBox>,
-    ensure(document.querySelector(".canvas-editor__scaler"), "")
+    ensure(document.querySelector(".canvas-editor__scaler"), ""),
   );
 });

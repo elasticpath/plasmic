@@ -1,12 +1,13 @@
-import { Locator, Page } from "playwright/test";
+import { Locator, Page } from "@playwright/test";
 import { BaseModel } from "./BaseModel";
 
 export class AuthPage extends BaseModel {
   readonly emailInput: Locator = this.page.locator('input[name="email"]');
   readonly passwordInput: Locator = this.page.locator('input[name="password"]');
   readonly submitButton: Locator = this.page.locator('button[type="submit"]');
-  readonly signOutDropdownItem: Locator = this.page.locator(".ant-dropdown", {
-    hasText: "Sign Out",
+  readonly signOutDropdownItem: Locator = this.page.getByRole("menuitem", {
+    name: "Sign Out",
+    exact: true,
   });
 
   constructor(page: Page) {
