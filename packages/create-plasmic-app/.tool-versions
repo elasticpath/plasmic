@@ -1,1 +1,1 @@
-nodejs 22.18.0 # gatsby doesn't work on node 24 yet
+nodejs 22.23.4 # gatsby doesn't work on node 24 yet
