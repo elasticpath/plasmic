@@ -522,11 +522,53 @@ export interface EpAccountAddress {
     region?: string;
 }
 
+// @public
+export interface EpAccountAddressCreateRequest {
+    // (undocumented)
+    city?: string;
+    // (undocumented)
+    company_name?: string;
+    // (undocumented)
+    country?: string;
+    // (undocumented)
+    county?: string;
+    // (undocumented)
+    first_name?: string;
+    // (undocumented)
+    instructions?: string;
+    // (undocumented)
+    last_name?: string;
+    // (undocumented)
+    line_1?: string;
+    // (undocumented)
+    line_2?: string;
+    // (undocumented)
+    name?: string;
+    // (undocumented)
+    phone_number?: string;
+    // (undocumented)
+    postcode?: string;
+    // (undocumented)
+    region?: string;
+}
+
 // @public (undocumented)
 export function EPAccountAddressField(props: EPAccountAddressFieldProps): React_2.JSX.Element | null;
 
 // @public (undocumented)
 export const epAccountAddressFieldMeta: CodeComponentMeta<EPAccountAddressFieldProps>;
+
+// @public (undocumented)
+export function EPAccountAddressFormField(props: EPAccountAddressFormFieldProps): React_2.JSX.Element | null;
+
+// @public (undocumented)
+export const epAccountAddressFormFieldMeta: CodeComponentMeta<EPAccountAddressFormFieldProps>;
+
+// @public (undocumented)
+export const EPAccountAddressFormProvider: React_2.ForwardRefExoticComponent<EPAccountAddressFormProviderProps & React_2.RefAttributes<EPAccountAddressFormProviderActions>>;
+
+// @public (undocumented)
+export const epAccountAddressFormProviderMeta: CodeComponentMeta<EPAccountAddressFormProviderProps>;
 
 // @public (undocumented)
 export function EPAccountAddressList(props: EPAccountAddressListProps): React_2.JSX.Element | null;
@@ -1099,6 +1141,11 @@ export interface EpIdentityOperations {
     accountAddresses: {
         request: void;
         response: EpAccountAddressResult;
+    };
+    // (undocumented)
+    createAccountAddress: {
+        request: EpAccountAddressCreateRequest;
+        response: EpAccountAddress;
     };
     // (undocumented)
     getSession: {
@@ -1770,6 +1817,12 @@ export function registerCommerceProvider(loader?: Registerable, customCommercePr
 
 // @public (undocumented)
 export function registerEPAccountAddressField(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountAddressFieldProps>): void;
+
+// @public (undocumented)
+export function registerEPAccountAddressFormField(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountAddressFormFieldProps>): void;
+
+// @public (undocumented)
+export function registerEPAccountAddressFormProvider(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountAddressFormProviderProps>): void;
 
 // @public (undocumented)
 export function registerEPAccountAddressList(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountAddressListProps>): void;

@@ -56,6 +56,7 @@ const {
   EPAccountAddressProvider,
   registerEPAccountAddressProvider,
   epAccountAddressProviderMeta,
+  useAccountAddressBookRefresh,
 } = require("../EPAccountAddressProvider");
 const { EPAccountAddressList } = require("../EPAccountAddressList");
 const { EPAccountAddressField } = require("../EPAccountAddressField");
@@ -554,6 +555,152 @@ describe("EPAccountAddressProvider", () => {
       "addr-a",
     ]);
     expect(mockAccountAddresses).toHaveBeenCalledTimes(1);
+  });
+
+  describe("mutation refresh", () => {
+    function RefreshHandle(props: {
+      current: { refresh: () => Promise<void> };
+    }) {
+      props.current.refresh = useAccountAddressBookRefresh();
+      return null;
+    }
+
+    it("replaces the committed book and keeps the current rows until then", async () => {
+      const refresh = deferred<EpAccountAddressResult>();
+      mockAccountAddresses
+        .mockResolvedValueOnce({ addresses: [addressA], total: 1 })
+        .mockImplementationOnce(() => refresh.promise);
+      const handle = {
+        refresh: () => Promise.resolve(),
+      };
+      render(
+        <Harness account={selected("acct-a")}>
+          <RefreshHandle current={handle} />
+          <EPAccountAddressList>
+            <EPAccountAddressField field="line_1" />
+          </EPAccountAddressList>
+        </Harness>
+      );
+      await waitFor(() => expect(screen.getByText("Line A")).toBeTruthy());
+
+      let settled = false;
+      const pending = handle.refresh().then(() => {
+        settled = true;
+      });
+      expect(screen.getByText("Line A")).toBeTruthy();
+      expect(published().addresses.map((address) => address.id)).toEqual([
+        "addr-a",
+      ]);
+      expect(settled).toBe(false);
+      expect(mockAccountAddresses).toHaveBeenCalledTimes(2);
+      expect(mockAccountAddresses.mock.calls[1]).toEqual([]);
+
+      await act(async () => {
+        refresh.resolve({ addresses: [addressB], total: 1 });
+        await pending;
+      });
+      expect(screen.getByText("Line B")).toBeTruthy();
+      expect(screen.queryByText("Line A")).toBeNull();
+      expect(published()).toEqual({
+        status: "ready",
+        addresses: [addressB],
+        total: 1,
+        error: null,
+      });
+    });
+
+    it("keeps B's committed rows when A's refresh resolves afterwards", async () => {
+      const requests: Array<ReturnType<typeof deferred<EpAccountAddressResult>>> =
+        [];
+      mockAccountAddresses.mockImplementation(() => {
+        const next = deferred<EpAccountAddressResult>();
+        requests.push(next);
+        return next.promise;
+      });
+      const handle = { refresh: () => Promise.resolve() };
+      const rows = (
+        <EPAccountAddressList>
+          <EPAccountAddressField field="line_1" />
+        </EPAccountAddressList>
+      );
+      const { rerender } = render(
+        <Harness account={selected("acct-a")}>
+          <RefreshHandle current={handle} />
+          {rows}
+        </Harness>
+      );
+      await act(async () => {
+        requests[0].resolve({ addresses: [addressA], total: 1 });
+      });
+      await waitFor(() => expect(screen.getByText("Line A")).toBeTruthy());
+
+      const stale = handle.refresh();
+      expect(requests).toHaveLength(2);
+
+      rerender(
+        <Harness account={selected("acct-b")}>
+          <RefreshHandle current={handle} />
+          {rows}
+        </Harness>
+      );
+      expect(requests).toHaveLength(3);
+
+      await act(async () => {
+        requests[2].resolve({ addresses: [addressB], total: 1 });
+      });
+      await waitFor(() => expect(screen.getByText("Line B")).toBeTruthy());
+      expect(screen.queryByText("Line A")).toBeNull();
+      expect(published()).toEqual({
+        status: "ready",
+        addresses: [addressB],
+        total: 1,
+        error: null,
+      });
+
+      await act(async () => {
+        requests[1].resolve({
+          addresses: [{ id: "stale", line_1: "Stale" }],
+          total: 1,
+        });
+        await stale;
+      });
+      expect(screen.getByText("Line B")).toBeTruthy();
+      expect(screen.queryByText("Stale")).toBeNull();
+      expect(screen.queryByText("Line A")).toBeNull();
+      expect(published()).toEqual({
+        status: "ready",
+        addresses: [addressB],
+        total: 1,
+        error: null,
+      });
+    });
+
+    it("leaves the previous book in place when the refresh fails", async () => {
+      mockAccountAddresses
+        .mockResolvedValueOnce({ addresses: [addressA], total: 1 })
+        .mockRejectedValueOnce(new Error("Elastic Path was unreachable."));
+      const handle = { refresh: () => Promise.resolve() };
+      render(
+        <Harness account={selected("acct-a")}>
+          <RefreshHandle current={handle} />
+          <EPAccountAddressList>
+            <EPAccountAddressField field="line_1" />
+          </EPAccountAddressList>
+        </Harness>
+      );
+      await waitFor(() => expect(screen.getByText("Line A")).toBeTruthy());
+
+      await expect(handle.refresh()).rejects.toThrow(
+        "Elastic Path was unreachable."
+      );
+      expect(screen.getByText("Line A")).toBeTruthy();
+      expect(published()).toEqual({
+        status: "ready",
+        addresses: [addressA],
+        total: 1,
+        error: null,
+      });
+    });
   });
 
   describe("registration", () => {

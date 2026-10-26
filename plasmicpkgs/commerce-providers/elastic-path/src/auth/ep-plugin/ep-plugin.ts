@@ -41,7 +41,10 @@ import {
 } from "./envelope";
 import type { EpAccountSlot, EpAnchorTokenSlot } from "./envelope";
 import {
+  AccountAddressCreateError,
   AccountAddressReadError,
+  createAccountAddress,
+  parseAccountAddressCreateBody,
   readAccountAddresses,
 } from "./account-addresses";
 import {
@@ -1039,6 +1042,78 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             }
             return jsonError(
               "account_addresses_read_failed",
+              502,
+              "Elastic Path was unreachable."
+            );
+          }
+        }
+      ),
+
+      epAccountAddressCreate: createAuthEndpoint(
+        "/ep/account/addresses/create",
+        { method: "POST" },
+        async (ctx) => {
+          const existing = await readExistingSession(ctx);
+          if (!existing?.user || !existing?.session) return noSessionError();
+
+          const parsed = parseAccountAddressCreateBody(ctx.body);
+          if (!parsed.ok) {
+            return jsonError("invalid_input", 400, parsed.message);
+          }
+
+          const session = sessionWithLapseApplied(existing.session);
+          const memberId = session.epMemberId;
+          if (typeof memberId !== "string" || !memberId) {
+            return noAccountMemberError();
+          }
+          if (session.epLapsedAccount) return accountLapsedError();
+
+          const account = session.epAccount as EpAccountSlot | undefined;
+          if (
+            !account ||
+            typeof account.id !== "string" ||
+            !account.id ||
+            typeof account.token !== "string" ||
+            !account.token
+          ) {
+            return noSelectedAccountError();
+          }
+
+          if (
+            typeof session.epAccessToken !== "string" ||
+            !session.epAccessToken ||
+            typeof session.epHost !== "string" ||
+            !session.epHost ||
+            typeof session.epClientId !== "string" ||
+            !session.epClientId
+          ) {
+            return jsonError(
+              "account_address_create_failed",
+              502,
+              "Elastic Path was unreachable."
+            );
+          }
+
+          try {
+            const address = await createAccountAddress({
+              host: session.epHost,
+              clientId: session.epClientId,
+              implicitToken: session.epAccessToken,
+              accountId: account.id,
+              accountToken: account.token,
+              address: parsed.address,
+            });
+            return ctx.json(epIdentityPayload("createAccountAddress", address));
+          } catch (err) {
+            if (err instanceof AccountAddressCreateError) {
+              return jsonError(
+                "account_address_create_failed",
+                err.status,
+                err.message
+              );
+            }
+            return jsonError(
+              "account_address_create_failed",
               502,
               "Elastic Path was unreachable."
             );
