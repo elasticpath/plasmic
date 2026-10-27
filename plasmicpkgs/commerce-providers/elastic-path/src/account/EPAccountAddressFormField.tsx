@@ -4,7 +4,7 @@ import { usePlasmicCanvasContext } from "@plasmicapp/host";
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
-import React, { useEffect } from "react";
+import React, { useEffect, useId } from "react";
 import { COUNTRIES } from "../checkout/composable/countries";
 import { Registerable } from "../registerable";
 import { useAccountAddressForm } from "./EPAccountAddressFormProvider";
@@ -87,6 +87,7 @@ export function EPAccountAddressFormField(
   props: EPAccountAddressFormFieldProps
 ) {
   const { className, name = "name", label: labelProp, required = false } = props;
+  const instanceId = useId();
   const label =
     labelProp ?? (isAddressFieldName(name) ? DEFAULT_LABEL[name] : "");
   const inEditor = !!usePlasmicCanvasContext();
@@ -94,18 +95,18 @@ export function EPAccountAddressFormField(
 
   useEffect(() => {
     if (!isAddressFieldName(name)) return;
-    form.registerField(name, { required });
-    return () => form.unregisterField(name);
-    // register/unregister are stable; re-run only when the field identity changes
+    form.registerField(instanceId, { name, required });
+    return () => form.unregisterField(instanceId);
+    // register/unregister are stable; re-run only when this instance changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, required]);
+  }, [instanceId, name, required]);
 
   if (!isAddressFieldName(name)) return null;
 
   const value = form.values[name] ?? "";
   const error = form.errors[name] ?? null;
   const locked = inEditor || form.status === "submitting";
-  const id = `ep-account-address-form-${name}`;
+  const id = `ep-account-address-form-${instanceId}`;
 
   const described = error ? { "aria-invalid": true as const } : {};
 

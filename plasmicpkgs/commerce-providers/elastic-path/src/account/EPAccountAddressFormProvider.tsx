@@ -65,8 +65,11 @@ export interface AccountAddressFormContextValue {
   status: AddressStatus;
   error: AccountAddressFormError | null;
   setField(name: AccountAddressFieldName, value: string): void;
-  registerField(name: AccountAddressFieldName, opts: { required?: boolean }): void;
-  unregisterField(name: AccountAddressFieldName): void;
+  registerField(
+    instanceId: string,
+    opts: { name: AccountAddressFieldName; required?: boolean }
+  ): void;
+  unregisterField(instanceId: string): void;
   submit(): Promise<void>;
 }
 
@@ -149,18 +152,24 @@ export const EPAccountAddressFormProvider = React.forwardRef<
   const [error, setError] = useState<AccountAddressFormError | null>(null);
   const submittingRef = useRef(false);
   const registry = useRef<
-    Map<AccountAddressFieldName, { required: boolean }>
+    Map<string, { name: AccountAddressFieldName; required: boolean }>
   >(new Map());
 
   const registerField = useCallback(
-    (name: AccountAddressFieldName, opts: { required?: boolean }) => {
-      registry.current.set(name, { required: !!opts.required });
+    (
+      instanceId: string,
+      opts: { name: AccountAddressFieldName; required?: boolean }
+    ) => {
+      registry.current.set(instanceId, {
+        name: opts.name,
+        required: !!opts.required,
+      });
     },
     []
   );
 
-  const unregisterField = useCallback((name: AccountAddressFieldName) => {
-    registry.current.delete(name);
+  const unregisterField = useCallback((instanceId: string) => {
+    registry.current.delete(instanceId);
   }, []);
 
   const setField = useCallback(
@@ -177,9 +186,12 @@ export const EPAccountAddressFormProvider = React.forwardRef<
     if (submittingRef.current) return;
 
     const nextErrors = { ...EMPTY_ERRORS };
+    const requiredNames = new Set<AccountAddressFieldName>();
+    registry.current.forEach((reg) => {
+      if (reg.required) requiredNames.add(reg.name);
+    });
     let missing = false;
-    registry.current.forEach((reg, field) => {
-      if (!reg.required) return;
+    requiredNames.forEach((field) => {
       if (!drafts[field].trim()) {
         nextErrors[field] = REQUIRED_FIELD;
         missing = true;

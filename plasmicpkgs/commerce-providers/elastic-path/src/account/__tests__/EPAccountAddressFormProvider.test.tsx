@@ -383,6 +383,134 @@ describe("EPAccountAddressFormProvider", () => {
     expect(lineInput().getAttribute("aria-invalid")).toBeNull();
   });
 
+  describe("duplicate fields", () => {
+    function renderDuplicates(
+      fields: React.ReactNode,
+      ref: React.RefObject<FormActions>
+    ) {
+      render(
+        <EPAccountAddressFormProvider ref={ref}>
+          <EPAccountAddressFormField name="line_1" label="Line" />
+          {fields}
+        </EPAccountAddressFormProvider>
+      );
+      fireEvent.change(screen.getByLabelText("Line"), {
+        target: { value: "123 A" },
+      });
+    }
+
+    function expectPostcodeStillRequired() {
+      expect(mockCreateAccountAddress).not.toHaveBeenCalled();
+      expect(publishedForm().error).toEqual({
+        code: "invalid_input",
+        message: "Please complete the required fields.",
+      });
+      expect(screen.getAllByText("This field is required.").length).toBeGreaterThan(
+        0
+      );
+      expect(
+        screen.getByLabelText("Postcode *").getAttribute("aria-invalid")
+      ).toBe("true");
+    }
+
+    it("keeps Postcode required after a second Postcode unmounts", async () => {
+      const ref = React.createRef<FormActions>();
+      function Harness() {
+        const [showSecond, setShowSecond] = React.useState(true);
+        return (
+          <EPAccountAddressFormProvider ref={ref}>
+            <EPAccountAddressFormField name="line_1" label="Line" />
+            <EPAccountAddressFormField name="postcode" label="Postcode" required />
+            {showSecond ? (
+              <EPAccountAddressFormField
+                name="postcode"
+                label="Extra postcode"
+                required
+              />
+            ) : null}
+            <button type="button" onClick={() => setShowSecond(false)}>
+              Hide extra
+            </button>
+          </EPAccountAddressFormProvider>
+        );
+      }
+      render(<Harness />);
+      fireEvent.change(screen.getByLabelText("Line"), {
+        target: { value: "123 A" },
+      });
+      expect(screen.getByLabelText("Extra postcode *")).toBeTruthy();
+      fireEvent.click(screen.getByText("Hide extra"));
+      expect(screen.queryByLabelText("Extra postcode *")).toBeNull();
+      await act(async () => {
+        await ref.current!.submit();
+      });
+      expectPostcodeStillRequired();
+    });
+
+    it.each(["required-first", "optional-first"] as const)(
+      "treats Postcode as required when any mounted copy is required (%s)",
+      async (order) => {
+        const ref = React.createRef<FormActions>();
+        const required = (
+          <EPAccountAddressFormField
+            key="required"
+            name="postcode"
+            label="Postcode"
+            required
+          />
+        );
+        const optional = (
+          <EPAccountAddressFormField
+            key="optional"
+            name="postcode"
+            label="Other postcode"
+          />
+        );
+        renderDuplicates(
+          order === "required-first" ? (
+            <>
+              {required}
+              {optional}
+            </>
+          ) : (
+            <>
+              {optional}
+              {required}
+            </>
+          ),
+          ref
+        );
+        await act(async () => {
+          await ref.current!.submit();
+        });
+        expectPostcodeStillRequired();
+      }
+    );
+
+    it("gives each mounted field its own input id", () => {
+      render(
+        <EPAccountAddressFormProvider>
+          <EPAccountAddressFormField name="postcode" label="Postcode A" />
+          <EPAccountAddressFormField name="postcode" label="Postcode B" />
+          <EPAccountAddressFormField name="country" label="Country A" />
+          <EPAccountAddressFormField name="country" label="Country B" />
+        </EPAccountAddressFormProvider>
+      );
+      const ids = ["Postcode A", "Postcode B", "Country A", "Country B"].map(
+        (label) => {
+          const control = screen.getByLabelText(label);
+          const ownLabel = control
+            .closest("[data-ep-form-field]")
+            ?.querySelector("[data-ep-field-label]");
+          expect(control.id).toBeTruthy();
+          expect(ownLabel?.getAttribute("for")).toBe(control.id);
+          return control.id;
+        }
+      );
+      expect(new Set(ids).size).toBe(ids.length);
+    });
+  });
+
   it("blocks a second submit and keeps inputs read-only while creating", async () => {
     const gate = deferred<typeof CREATED>();
     mockCreateAccountAddress.mockReturnValue(gate.promise);

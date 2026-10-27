@@ -254,13 +254,15 @@ publishes `$ctx.accountAddressFormData` (`status`, `error`, `isSubmitting`),
 and does not publish the field values. The default composition is first
 name, last name, line 1, city, county, postcode, and country, with
 Required on for each except city. Required is a per-field Studio
-setting. Submit checks only the mounted fields that have it on. Name
-stays available as a field choice. A store that changes its mandatory
-address settings is still enforced by Elastic Path. After a successful
-create the address provider reads the book again and keeps the current
-rows until that read commits. If the create succeeds and the read fails,
-the form stays `submitted` and says the address was created but the list
-could not be refreshed. The canvas submit does nothing.
+setting. Submit checks only the mounted fields that have it on. Two
+fields for the same address property share one value, and that value is
+required when any mounted copy has Required on. Each copy has its own
+input id. Name stays available as a field choice. A store that changes
+its mandatory address settings is still enforced by Elastic Path. After
+a successful create the address provider reads the book again and keeps
+the current rows until that read commits. If the create succeeds and the
+read fails, the form stays `submitted` and says the address was created
+but the list could not be refreshed. The canvas submit does nothing.
 
 The Elastic Path Provider's **Add item to cart** global action takes an
 optional **Location** after **Quantity**. On a multi-location store, a product
