@@ -5,7 +5,11 @@
  * account-management token come from the selected session slot, and the
  * implicit bearer rides on the fixed-token shopper client.
  */
-import { getV2AccountAddresses } from "@epcc-sdk/sdks-shopper";
+import {
+  getV2AccountAddresses,
+  postV2AccountAddress,
+} from "@epcc-sdk/sdks-shopper";
+import { COUNTRIES } from "../../checkout/composable/countries";
 import type { EpAccountAddress } from "../../identity/operations";
 import { buildFixedTokenEpClient } from "../../ep-server-functions/fixed-token-ep-client";
 import { ACCOUNT_PAGE_LIMIT_MAX } from "./account-tokens";
@@ -33,6 +37,22 @@ const ADDRESS_FIELDS = [
 const UNREACHABLE = "Elastic Path was unreachable.";
 const REJECTED = "Elastic Path rejected the account-address read.";
 const INCOMPLETE = "Elastic Path did not return the full address list.";
+const CREATE_UNREACHABLE = "Elastic Path was unreachable.";
+const CREATE_REJECTED = "Elastic Path rejected the account-address create.";
+const COUNTRY_CODES = new Set(COUNTRIES.map((country) => country.code));
+
+type AddressField = (typeof ADDRESS_FIELDS)[number];
+type AddressInput = Partial<Record<AddressField, string>>;
+
+export class AccountAddressCreateError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "AccountAddressCreateError";
+    this.status = status;
+  }
+}
 
 export class AccountAddressReadError extends Error {
   readonly status: number;
@@ -148,4 +168,118 @@ export async function readAccountAddresses(input: {
       throw new AccountAddressReadError(502, INCOMPLETE);
     }
   }
+}
+
+export function parseAccountAddressCreateBody(
+  body: unknown
+):
+  | { ok: true; address: AddressInput }
+  | { ok: false; message: string } {
+  if (body == null || typeof body !== "object" || Array.isArray(body)) {
+    return { ok: false, message: "Body must be an object." };
+  }
+  const record = body as Record<string, unknown>;
+  const allowed = new Set<string>(ADDRESS_FIELDS);
+  for (const key of Object.keys(record)) {
+    if (!allowed.has(key)) {
+      return { ok: false, message: "Body may include only address fields." };
+    }
+  }
+  const address: AddressInput = {};
+  for (const field of ADDRESS_FIELDS) {
+    if (!(field in record)) continue;
+    const value = record[field];
+    if (typeof value !== "string") {
+      return { ok: false, message: `${field} must be a string.` };
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return { ok: false, message: `${field} must not be empty.` };
+    }
+    if (field === "country") {
+      const code = trimmed.toUpperCase();
+      if (!COUNTRY_CODES.has(code)) {
+        return {
+          ok: false,
+          message: "country must be a two-letter country code.",
+        };
+      }
+      address.country = code;
+      continue;
+    }
+    address[field] = trimmed;
+  }
+  if (Object.keys(address).length === 0) {
+    return { ok: false, message: "Body must include an address field." };
+  }
+  return { ok: true, address };
+}
+
+function validationText(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function validationMessage(error: unknown): string {
+  const errors =
+    error && typeof error === "object"
+      ? (error as { errors?: unknown }).errors
+      : undefined;
+  const first = Array.isArray(errors) ? errors[0] : undefined;
+  if (!first || typeof first !== "object") return CREATE_REJECTED;
+  const record = first as { detail?: unknown; title?: unknown };
+  return (
+    validationText(record.detail) ??
+    validationText(record.title) ??
+    CREATE_REJECTED
+  );
+}
+
+export async function createAccountAddress(input: {
+  host: string;
+  clientId: string;
+  implicitToken: string;
+  accountId: string;
+  accountToken: string;
+  address: AddressInput;
+}): Promise<EpAccountAddress> {
+  const client = buildFixedTokenEpClient({
+    host: input.host,
+    clientId: input.clientId,
+    token: input.implicitToken,
+  });
+  let result: Awaited<ReturnType<typeof postV2AccountAddress>>;
+  try {
+    result = await postV2AccountAddress({
+      client,
+      path: { accountID: input.accountId },
+      headers: { [EP_ACCOUNT_TOKEN_HEADER]: input.accountToken },
+      body: {
+        data: {
+          type: "address",
+          ...input.address,
+        },
+      },
+    });
+  } catch {
+    throw new AccountAddressCreateError(502, CREATE_UNREACHABLE);
+  }
+
+  if (!result.response) {
+    throw new AccountAddressCreateError(502, CREATE_UNREACHABLE);
+  }
+  if (!result.response.ok) {
+    throw new AccountAddressCreateError(
+      result.response.status || 502,
+      result.response.status === 400
+        ? validationMessage(result.error)
+        : CREATE_REJECTED
+    );
+  }
+
+  const row = (result.data as { data?: unknown } | undefined)?.data;
+  const address = toAccountAddress(row, input.accountId);
+  if (!address) {
+    throw new AccountAddressCreateError(502, CREATE_REJECTED);
+  }
+  return address;
 }

@@ -58,6 +58,16 @@ export {
   registerEPAccountAddressField,
   epAccountAddressFieldMeta,
 } from "./EPAccountAddressField";
+export {
+  EPAccountAddressFormProvider,
+  registerEPAccountAddressFormProvider,
+  epAccountAddressFormProviderMeta,
+} from "./EPAccountAddressFormProvider";
+export {
+  EPAccountAddressFormField,
+  registerEPAccountAddressFormField,
+  epAccountAddressFormFieldMeta,
+} from "./EPAccountAddressFormField";
 export type {
   AccountContext,
   AccountState,

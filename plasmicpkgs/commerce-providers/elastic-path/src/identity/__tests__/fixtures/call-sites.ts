@@ -38,6 +38,26 @@ identity.accountAddresses();
 // @ts-expect-error the server chooses the account; the browser sends nothing
 identity.accountAddresses({ accountId: "acct-1" });
 
+identity.createAccountAddress({ line_1: "1 High Street", country: "GB" });
+// @ts-expect-error the address object is required
+identity.createAccountAddress();
+// @ts-expect-error the server chooses the account
+identity.createAccountAddress({ accountId: "acct-1", line_1: "1 High Street" });
+// @ts-expect-error the server chooses the address id
+identity.createAccountAddress({ id: "addr-1", line_1: "1 High Street" });
+// @ts-expect-error the server sets the address type
+identity.createAccountAddress({ type: "address", line_1: "1 High Street" });
+// @ts-expect-error tokens stay on the server
+identity.createAccountAddress({ token: "secret", line_1: "1 High Street" });
+// @ts-expect-error account tokens stay on the server
+identity.createAccountAddress({ accountToken: "secret", line_1: "1 High Street" });
+// @ts-expect-error filters stay on the server
+identity.createAccountAddress({ filter: "eq(country,GB)", line_1: "1 High Street" });
+// @ts-expect-error line 3 is not a saved-address field
+identity.createAccountAddress({ line_3: "Floor 2", line_1: "1 High Street" });
+// @ts-expect-error relationships stay on the server
+identity.createAccountAddress({ relationships: {}, line_1: "1 High Street" });
+
 identity.updateMember({ name: "Ada Lovelace" });
 identity.updateMember({ email: "ada@example.com" });
 // @ts-expect-error the server chooses the member; the browser sends no id

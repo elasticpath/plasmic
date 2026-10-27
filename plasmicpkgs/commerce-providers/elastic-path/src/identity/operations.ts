@@ -70,6 +70,23 @@ export interface EpAccountAddressResult {
   total: number;
 }
 
+/** A saved address to create. At least one field is required at runtime. */
+export interface EpAccountAddressCreateRequest {
+  name?: string;
+  first_name?: string;
+  last_name?: string;
+  company_name?: string;
+  phone_number?: string;
+  instructions?: string;
+  line_1?: string;
+  line_2?: string;
+  city?: string;
+  county?: string;
+  region?: string;
+  postcode?: string;
+  country?: string;
+}
+
 /**
  * The identity operations. `void` marks one that takes no input; a union with
  * `void` marks one whose input is optional.
@@ -95,6 +112,10 @@ export interface EpIdentityOperations {
   logout: { request: void; response: EpSessionEnvelope };
   member: { request: void; response: EpAccountMemberResult };
   accountAddresses: { request: void; response: EpAccountAddressResult };
+  createAccountAddress: {
+    request: EpAccountAddressCreateRequest;
+    response: EpAccountAddress;
+  };
   updateMember: {
     request: EpAccountMemberUpdateRequest;
     response: EpAccountMemberResult;
@@ -126,6 +147,10 @@ export const EP_IDENTITY_ROUTES: {
   logout: { path: "/ep/account/logout", method: "POST" },
   member: { path: "/ep/account/member", method: "POST" },
   accountAddresses: { path: "/ep/account/addresses", method: "POST" },
+  createAccountAddress: {
+    path: "/ep/account/addresses/create",
+    method: "POST",
+  },
   updateMember: { path: "/ep/account/member/update", method: "POST" },
 };
 

@@ -14,7 +14,7 @@ import {
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { epIdentityErrorCode } from "../identity/client";
 import type { EpAccountAddressResult } from "../identity/operations";
 import { useEpIdentity } from "../identity/useEpIdentity";
@@ -138,6 +138,15 @@ type CommittedBook = {
   book: AccountAddressBookContext;
 };
 
+const NOOP_REFRESH = () => Promise.resolve();
+
+const AccountAddressRefreshContext =
+  React.createContext<() => Promise<void>>(NOOP_REFRESH);
+
+export function useAccountAddressBookRefresh(): () => Promise<void> {
+  return useContext(AccountAddressRefreshContext);
+}
+
 export const epAccountAddressProviderMeta: CodeComponentMeta<EPAccountAddressProviderProps> =
   {
     name: "plasmic-commerce-ep-account-address-provider",
@@ -188,7 +197,12 @@ export function EPAccountAddressProvider(
   const identity = useEpIdentity();
   const requestId = useRef(0);
   const heldKeyRef = useRef<string | null>(null);
+  const committedRef = useRef<CommittedBook | null>(null);
   const [committed, setCommitted] = useState<CommittedBook | null>(null);
+  const commitBook = useCallback((next: CommittedBook) => {
+    committedRef.current = next;
+    setCommitted(next);
+  }, []);
 
   if (!account) {
     heldKeyRef.current = "no-account-member";
@@ -206,7 +220,7 @@ export function EPAccountAddressProvider(
     const key = effectKey;
 
     if (!key.startsWith("selected:")) {
-      setCommitted({ key, book: errorBookForKey(key) });
+      commitBook({ key, book: errorBookForKey(key) });
       return () => {
         requestId.current += 1;
       };
@@ -216,18 +230,39 @@ export function EPAccountAddressProvider(
     identity.accountAddresses().then(
       (result) => {
         if (cancelled || id !== requestId.current) return;
-        setCommitted({ key, book: bookFromResult(result) });
+        commitBook({ key, book: bookFromResult(result) });
       },
       (err: unknown) => {
         if (cancelled || id !== requestId.current) return;
-        setCommitted({ key, book: readFailureBook(err) });
+        commitBook({ key, book: readFailureBook(err) });
       }
     );
     return () => {
       cancelled = true;
       requestId.current += 1;
     };
-  }, [inEditor, effectKey, identity]);
+  }, [inEditor, effectKey, identity, commitBook]);
+
+  const refreshBook = useCallback(() => {
+    if (inEditor) return Promise.resolve();
+    const key = heldKeyRef.current;
+    if (!key?.startsWith("selected:")) return Promise.resolve();
+
+    const id = ++requestId.current;
+    return identity.accountAddresses().then(
+      (result) => {
+        if (id !== requestId.current || heldKeyRef.current !== key) return;
+        commitBook({ key, book: bookFromResult(result) });
+      },
+      (err: unknown) => {
+        if (id !== requestId.current || heldKeyRef.current !== key) return;
+        if (committedRef.current?.key !== key) {
+          commitBook({ key, book: readFailureBook(err) });
+        }
+        throw err;
+      }
+    );
+  }, [inEditor, identity, commitBook]);
 
   const book = inEditor
     ? previewBook(preview)
@@ -236,11 +271,13 @@ export function EPAccountAddressProvider(
       : LOADING_BOOK;
 
   return (
-    <DataProvider name="accountAddresses" data={book}>
-      <div className={className} data-ep-account-address-provider="">
-        {children}
-      </div>
-    </DataProvider>
+    <AccountAddressRefreshContext.Provider value={refreshBook}>
+      <DataProvider name="accountAddresses" data={book}>
+        <div className={className} data-ep-account-address-provider="">
+          {children}
+        </div>
+      </DataProvider>
+    </AccountAddressRefreshContext.Provider>
   );
 }
 

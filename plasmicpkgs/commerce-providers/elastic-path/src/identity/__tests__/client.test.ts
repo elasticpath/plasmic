@@ -54,6 +54,7 @@ describe("createEpIdentityClient", () => {
     await client.logout();
     await client.member();
     await client.accountAddresses();
+    await client.createAccountAddress({ line_1: "1 High Street" });
     await client.updateMember({ name: "Ada Lovelace" });
 
     expect(stub.calls.map((c) => c.url)).toEqual([
@@ -68,6 +69,7 @@ describe("createEpIdentityClient", () => {
       "/api/ep/ep/account/logout",
       "/api/ep/ep/account/member",
       "/api/ep/ep/account/addresses",
+      "/api/ep/ep/account/addresses/create",
       "/api/ep/ep/account/member/update",
     ]);
   });
@@ -121,6 +123,31 @@ describe("createEpIdentityClient", () => {
       email: "buyer@example.com",
     });
     expect(stub.calls[0].url).toBe("/api/ep/ep/account/register");
+  });
+
+  it("creates a saved address with only the address fields it was given", async () => {
+    const created = {
+      id: "addr-1",
+      line_1: "1 High Street",
+      country: "GB",
+    };
+    const stub = fetchStub(() => json(created));
+    const client = createEpIdentityClient({ fetch: stub.fetch });
+
+    await expect(
+      client.createAccountAddress({
+        line_1: "1 High Street",
+        country: "GB",
+      })
+    ).resolves.toEqual(created);
+
+    expect(stub.calls[0].init.method).toBe("POST");
+    expect(stub.calls[0].url).toBe("/api/ep/ep/account/addresses/create");
+    expect(JSON.parse(stub.calls[0].init.body as string)).toEqual({
+      line_1: "1 High Street",
+      country: "GB",
+    });
+    expect(stub.calls[0].init.credentials).toBe("include");
   });
 
   it("asks for saved addresses with an empty body", async () => {
