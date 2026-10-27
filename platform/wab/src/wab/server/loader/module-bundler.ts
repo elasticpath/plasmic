@@ -35,6 +35,7 @@ import {
   loaderProvidesNextNavigation,
   nextModulesPlugin,
 } from "@/wab/server/loader/next-modules";
+import { splitEpCommerceImportsPlugin } from "@/wab/server/loader/ep-commerce-imports";
 
 export interface ComponentMeta {
   id: string;
@@ -216,6 +217,7 @@ async function bundleModulesEsbuild(
       plugins: withoutNils([
         externalizeCssUrlsPlugin,
         fixAntdPathPlugin,
+        splitEpCommerceImportsPlugin,
         nextModulesPlugin(opts),
         // Replace hardcoded data.plasmic.app URL in @plasmicapp/data-sources
         // with DATA_HOST env var for self-hosted deployments

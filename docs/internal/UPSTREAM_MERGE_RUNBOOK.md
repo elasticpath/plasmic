@@ -112,6 +112,19 @@ library fails to build on non-Next platforms and asks a Next.js loader for
 `new Headers()`: loader 1.x supports Node 10 and later, and Node has no global `Headers`
 before 18.
 
+**`platform/wab/src/wab/server/loader/module-bundler.ts` — EP commerce imports (#731)**
+
+EP additions to preserve:
+- Import of `splitEpCommerceImportsPlugin` from `@/wab/server/loader/ep-commerce-imports`
+- `splitEpCommerceImportsPlugin` in the esbuild `plugins` list of `bundleModulesEsbuild`,
+  after `fixAntdPathPlugin`
+
+The plugin rewrites each import of the commerce package root in generated code into one
+import per name, from that name's entry point, as the installed package's
+`exports-map.json` says. Without it, every page that uses any commerce component loads all
+of them, InstantSearch included. It does nothing while `loader-bundle-env` installs a
+version without the map.
+
 **`platform/canvas-packages/esbuild.js` — next/headers and next/navigation (#547)**
 
 EP additions to preserve:
@@ -268,6 +281,8 @@ If upstream somehow conflicts with these, always keep our version entirely:
 | `platform/canvas-packages/next-shims/` | Canvas shims for `next/headers` and `next/navigation` (#547) |
 | `platform/wab/src/wab/server/loader/next-modules.ts` | Loader-bundle esbuild plugin for `next/headers` and `next/navigation` (#547) |
 | `platform/wab/src/wab/server/loader/next-modules.spec.ts` | Tests for that plugin through `bundleModules` |
+| `platform/wab/src/wab/server/loader/ep-commerce-imports.ts` | Loader-bundle esbuild plugin that imports the EP commerce package one export at a time (#731) |
+| `platform/wab/src/wab/server/loader/ep-commerce-imports.spec.ts` | Tests for that plugin, one of them through `bundleModules` |
 | `packages/plasmic-mcp/` | MCP server |
 | `packages/plasmic-mcp-registry/` | MCP registry |
 | `.github/workflows/` | All CI/CD workflows |
