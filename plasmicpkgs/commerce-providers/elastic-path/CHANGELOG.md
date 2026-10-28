@@ -264,6 +264,35 @@ the current rows until that read commits. If the create succeeds and the
 read fails, the form stays `submitted` and says the address was created
 but the list could not be refreshed. The canvas submit does nothing.
 
+`identity.deleteAccountAddress({ id })` deletes one saved address of the
+selected organisation through `POST /ep/account/addresses/delete`. The
+browser may send only `id`. The server trims it and rejects a missing,
+non-string, or blank id, or any other field, before calling Elastic Path.
+It uses that organisation's account-management token and the implicit
+shopper token. With no organisation selected it answers
+`no_selected_account` and does not call Elastic Path. Success is Elastic
+Path `204` only, and the package returns `{ id }`. A `200`, a `404`, or
+any other status is `account_address_delete_failed` with a fixed message.
+An address id from another organisation is still deleted only under the
+selected account.
+
+`EP Account Address Provider` deletes one saved address through
+`delete(addressId)`. A normal Studio button inside an address-list row
+calls that action with `$ctx.currentAccountAddress.id`. The canvas action
+does nothing. The provider trims the id and sends
+`identity.deleteAccountAddress({ id })`, then reads the book again and
+keeps the current rows until that read commits. Each row publishes
+`$ctx.accountAddressDeleteData` for its own id. Only the address being
+deleted has `status: "deleting"`; every row's `isDeleting` is true until
+that delete and its address-book read finish, so every Delete button bound
+to `isDeleting` is disabled for the cycle. Other rows stay `idle` and do
+not show that row's error. If the delete succeeds and the read fails, that row
+stays `deleted` and says the address was deleted but the list could not be
+refreshed. A further `delete` of that id does not send another request. Another
+address is not deleted until that delete and its address-book read
+settle. The list, field, and form do not
+grow a delete action, and the provider still has no reload action.
+
 The Elastic Path Provider's **Add item to cart** global action takes an
 optional **Location** after **Quantity**. On a multi-location store, a product
 stocked only at named locations was refused with `insufficient_stock`

@@ -552,6 +552,12 @@ export interface EpAccountAddressCreateRequest {
     region?: string;
 }
 
+// @public
+export interface EpAccountAddressDeleteRequest {
+    // (undocumented)
+    id: string;
+}
+
 // @public (undocumented)
 export function EPAccountAddressField(props: EPAccountAddressFieldProps): React_2.JSX.Element | null;
 
@@ -577,7 +583,13 @@ export function EPAccountAddressList(props: EPAccountAddressListProps): React_2.
 export const epAccountAddressListMeta: CodeComponentMeta<EPAccountAddressListProps>;
 
 // @public (undocumented)
-export function EPAccountAddressProvider(props: EPAccountAddressProviderProps): React_2.JSX.Element;
+export const EPAccountAddressProvider: React_2.ForwardRefExoticComponent<EPAccountAddressProviderProps & React_2.RefAttributes<EPAccountAddressProviderActions>>;
+
+// @public (undocumented)
+export interface EPAccountAddressProviderActions {
+    // (undocumented)
+    delete(addressId: string): Promise<void>;
+}
 
 // @public (undocumented)
 export const epAccountAddressProviderMeta: CodeComponentMeta<EPAccountAddressProviderProps>;
@@ -1146,6 +1158,13 @@ export interface EpIdentityOperations {
     createAccountAddress: {
         request: EpAccountAddressCreateRequest;
         response: EpAccountAddress;
+    };
+    // (undocumented)
+    deleteAccountAddress: {
+        request: EpAccountAddressDeleteRequest;
+        response: {
+            id: string;
+        };
     };
     // (undocumented)
     getSession: {

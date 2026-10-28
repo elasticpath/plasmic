@@ -48,6 +48,7 @@ export {
   registerEPAccountAddressProvider,
   epAccountAddressProviderMeta,
 } from "./EPAccountAddressProvider";
+export type { EPAccountAddressProviderActions } from "./EPAccountAddressProvider";
 export {
   EPAccountAddressList,
   registerEPAccountAddressList,

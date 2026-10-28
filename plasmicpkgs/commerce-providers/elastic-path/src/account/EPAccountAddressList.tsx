@@ -13,6 +13,10 @@ import React from "react";
 import type { EpAccountAddress } from "../identity/operations";
 import { Registerable } from "../registerable";
 import { MOCK_ACCOUNT_ADDRESSES } from "../utils/design-time-data";
+import {
+  accountAddressDeleteDataFor,
+  useAccountAddressDeletes,
+} from "./EPAccountAddressProvider";
 import type { AccountAddressBookContext } from "./types";
 
 interface EPAccountAddressListProps {
@@ -25,7 +29,7 @@ export const epAccountAddressListMeta: CodeComponentMeta<EPAccountAddressListPro
     name: "plasmic-commerce-ep-account-address-list",
     displayName: "EP Account Address List",
     description:
-      "Repeats children for each saved address. Each row provides currentAccountAddress and currentAccountAddressIndex. Renders no rows while addresses are loading, empty, or failed. Place inside an EP Account Address Provider.",
+      "Repeats children for each saved address. Each row provides currentAccountAddress, currentAccountAddressIndex, and accountAddressDeleteData for that row. Renders no rows while addresses are loading, empty, or failed. Place inside an EP Account Address Provider.",
     props: {
       children: {
         type: "slot",
@@ -75,6 +79,7 @@ export function EPAccountAddressList(props: EPAccountAddressListProps) {
     | AccountAddressBookContext
     | undefined;
   const inEditor = !!usePlasmicCanvasContext();
+  const deletes = useAccountAddressDeletes();
   const addresses: EpAccountAddress[] =
     book?.status === "ready"
       ? book.addresses
@@ -90,7 +95,12 @@ export function EPAccountAddressList(props: EPAccountAddressListProps) {
         <div key={address.id} role="listitem">
           <DataProvider name="currentAccountAddress" data={address}>
             <DataProvider name="currentAccountAddressIndex" data={i}>
-              {repeatedElement(i, children)}
+              <DataProvider
+                name="accountAddressDeleteData"
+                data={accountAddressDeleteDataFor(deletes, address.id)}
+              >
+                {repeatedElement(i, children)}
+              </DataProvider>
             </DataProvider>
           </DataProvider>
         </div>

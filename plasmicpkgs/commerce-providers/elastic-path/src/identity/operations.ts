@@ -70,6 +70,11 @@ export interface EpAccountAddressResult {
   total: number;
 }
 
+/** The saved address to delete. The server trims `id` and chooses the account. */
+export interface EpAccountAddressDeleteRequest {
+  id: string;
+}
+
 /** A saved address to create. At least one field is required at runtime. */
 export interface EpAccountAddressCreateRequest {
   name?: string;
@@ -116,6 +121,10 @@ export interface EpIdentityOperations {
     request: EpAccountAddressCreateRequest;
     response: EpAccountAddress;
   };
+  deleteAccountAddress: {
+    request: EpAccountAddressDeleteRequest;
+    response: { id: string };
+  };
   updateMember: {
     request: EpAccountMemberUpdateRequest;
     response: EpAccountMemberResult;
@@ -149,6 +158,10 @@ export const EP_IDENTITY_ROUTES: {
   accountAddresses: { path: "/ep/account/addresses", method: "POST" },
   createAccountAddress: {
     path: "/ep/account/addresses/create",
+    method: "POST",
+  },
+  deleteAccountAddress: {
+    path: "/ep/account/addresses/delete",
     method: "POST",
   },
   updateMember: { path: "/ep/account/member/update", method: "POST" },

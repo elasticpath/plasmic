@@ -6,6 +6,7 @@
  * implicit bearer rides on the fixed-token shopper client.
  */
 import {
+  deleteV2AccountAddress,
   getV2AccountAddresses,
   postV2AccountAddress,
 } from "@epcc-sdk/sdks-shopper";
@@ -39,10 +40,22 @@ const REJECTED = "Elastic Path rejected the account-address read.";
 const INCOMPLETE = "Elastic Path did not return the full address list.";
 const CREATE_UNREACHABLE = "Elastic Path was unreachable.";
 const CREATE_REJECTED = "Elastic Path rejected the account-address create.";
+const DELETE_UNREACHABLE = "Elastic Path was unreachable.";
+const DELETE_REJECTED = "Elastic Path rejected the account-address delete.";
 const COUNTRY_CODES = new Set(COUNTRIES.map((country) => country.code));
 
 type AddressField = (typeof ADDRESS_FIELDS)[number];
 type AddressInput = Partial<Record<AddressField, string>>;
+
+export class AccountAddressDeleteError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "AccountAddressDeleteError";
+    this.status = status;
+  }
+}
 
 export class AccountAddressCreateError extends Error {
   readonly status: number;
@@ -232,6 +245,70 @@ function validationMessage(error: unknown): string {
     validationText(record.title) ??
     CREATE_REJECTED
   );
+}
+
+export function parseAccountAddressDeleteBody(
+  body: unknown
+): { ok: true; id: string } | { ok: false; message: string } {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return { ok: false, message: "Body must include an address id." };
+  }
+  const record = body as Record<string, unknown>;
+  if (!("id" in record)) {
+    return { ok: false, message: "Body must include an address id." };
+  }
+  if (Object.keys(record).length !== 1) {
+    return { ok: false, message: "Body may include only an address id." };
+  }
+  const value = record.id;
+  if (typeof value !== "string") {
+    return { ok: false, message: "id must be a string." };
+  }
+  const id = value.trim();
+  if (!id) {
+    return { ok: false, message: "id must not be empty." };
+  }
+  return { ok: true, id };
+}
+
+export async function deleteAccountAddress(input: {
+  host: string;
+  clientId: string;
+  implicitToken: string;
+  accountId: string;
+  accountToken: string;
+  id: string;
+}): Promise<{ id: string }> {
+  const client = buildFixedTokenEpClient({
+    host: input.host,
+    clientId: input.clientId,
+    token: input.implicitToken,
+  });
+  let result: Awaited<ReturnType<typeof deleteV2AccountAddress>>;
+  try {
+    result = await deleteV2AccountAddress({
+      client,
+      path: {
+        accountID: input.accountId,
+        addressID: input.id,
+      },
+      headers: { [EP_ACCOUNT_TOKEN_HEADER]: input.accountToken },
+    });
+  } catch {
+    throw new AccountAddressDeleteError(502, DELETE_UNREACHABLE);
+  }
+
+  if (!result.response) {
+    throw new AccountAddressDeleteError(502, DELETE_UNREACHABLE);
+  }
+  if (result.response.status !== 204) {
+    const status = result.response.status;
+    throw new AccountAddressDeleteError(
+      status >= 400 && status <= 599 ? status : 502,
+      DELETE_REJECTED
+    );
+  }
+  return { id: input.id };
 }
 
 export async function createAccountAddress(input: {

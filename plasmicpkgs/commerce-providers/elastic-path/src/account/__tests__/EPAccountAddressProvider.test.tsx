@@ -721,7 +721,21 @@ describe("EPAccountAddressProvider", () => {
       expect(epAccountAddressProviderMeta.parentComponentName).toBe(
         "plasmic-commerce-ep-account-provider"
       );
-      expect(epAccountAddressProviderMeta.refActions).toBeUndefined();
+      expect(epAccountAddressProviderMeta.refActions?.delete).toEqual({
+        displayName: "Delete",
+        description:
+          "Delete one saved address by id, then read the address book again. Pass the row's `$ctx.currentAccountAddress.id`. No-op in the Studio canvas. Does nothing while a delete is in progress, and does nothing again for an address that has already been deleted.",
+        argTypes: [
+          {
+            name: "addressId",
+            type: "string",
+            displayName: "Address ID",
+          },
+        ],
+      });
+      expect(Object.keys(epAccountAddressProviderMeta.refActions ?? {})).toEqual([
+        "delete",
+      ]);
       expect(Object.keys(epAccountAddressProviderMeta.props ?? {}).sort()).toEqual(
         ["children", "previewState"]
       );
