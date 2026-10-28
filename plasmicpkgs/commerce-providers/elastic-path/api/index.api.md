@@ -586,6 +586,12 @@ export const epAccountAddressListMeta: CodeComponentMeta<EPAccountAddressListPro
 export const EPAccountAddressProvider: React_2.ForwardRefExoticComponent<EPAccountAddressProviderProps & React_2.RefAttributes<EPAccountAddressProviderActions>>;
 
 // @public (undocumented)
+export interface EPAccountAddressProviderActions {
+    // (undocumented)
+    delete(addressId: string): Promise<void>;
+}
+
+// @public (undocumented)
 export const epAccountAddressProviderMeta: CodeComponentMeta<EPAccountAddressProviderProps>;
 
 // @public

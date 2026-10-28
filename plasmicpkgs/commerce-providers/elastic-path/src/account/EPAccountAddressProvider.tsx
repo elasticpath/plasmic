@@ -54,13 +54,13 @@ function deleteFailure(err: unknown): { code: string; message: string } {
   return { code, message };
 }
 
-export type AccountAddressDeleteStatus =
+type AccountAddressDeleteStatus =
   | "idle"
   | "deleting"
   | "deleted"
   | "error";
 
-export type AccountAddressDeleteData = {
+type AccountAddressDeleteData = {
   status: AccountAddressDeleteStatus;
   error: { code: string; message: string } | null;
   isDeleting: boolean;
@@ -219,7 +219,7 @@ export function useAccountAddressDeletes(): Readonly<
   return useContext(AccountAddressDeleteContext);
 }
 
-interface EPAccountAddressProviderActions {
+export interface EPAccountAddressProviderActions {
   delete(addressId: string): Promise<void>;
 }
 

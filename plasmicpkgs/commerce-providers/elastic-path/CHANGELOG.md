@@ -288,8 +288,9 @@ that delete and its address-book read finish, so every Delete button bound
 to `isDeleting` is disabled for the cycle. Other rows stay `idle` and do
 not show that row's error. If the delete succeeds and the read fails, that row
 stays `deleted` and says the address was deleted but the list could not be
-refreshed. A further `delete` of that id does not send another request. A
-different address can still be deleted. The list, field, and form do not
+refreshed. A further `delete` of that id does not send another request. Another
+address is not deleted until that delete and its address-book read
+settle. The list, field, and form do not
 grow a delete action, and the provider still has no reload action.
 
 The Elastic Path Provider's **Add item to cart** global action takes an
