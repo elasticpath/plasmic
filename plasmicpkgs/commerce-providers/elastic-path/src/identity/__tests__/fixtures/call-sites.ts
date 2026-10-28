@@ -58,6 +58,20 @@ identity.createAccountAddress({ line_3: "Floor 2", line_1: "1 High Street" });
 // @ts-expect-error relationships stay on the server
 identity.createAccountAddress({ relationships: {}, line_1: "1 High Street" });
 
+identity.deleteAccountAddress({ id: "addr-1" });
+// @ts-expect-error the address id is required
+identity.deleteAccountAddress();
+// @ts-expect-error the server chooses the account
+identity.deleteAccountAddress({ id: "addr-1", accountId: "acct-1" });
+// @ts-expect-error tokens stay on the server
+identity.deleteAccountAddress({ id: "addr-1", token: "secret" });
+// @ts-expect-error account tokens stay on the server
+identity.deleteAccountAddress({ id: "addr-1", accountToken: "secret" });
+// @ts-expect-error the account path stays on the server
+identity.deleteAccountAddress({ id: "addr-1", path: "/v2/accounts/acct-1/addresses/addr-1" });
+// @ts-expect-error SDK options stay on the server
+identity.deleteAccountAddress({ id: "addr-1", client: {} });
+
 identity.updateMember({ name: "Ada Lovelace" });
 identity.updateMember({ email: "ada@example.com" });
 // @ts-expect-error the server chooses the member; the browser sends no id

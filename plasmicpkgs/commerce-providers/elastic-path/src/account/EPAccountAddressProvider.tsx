@@ -14,7 +14,14 @@ import {
 import registerComponent, {
   CodeComponentMeta,
 } from "@plasmicapp/host/registerComponent";
-import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import { epIdentityErrorCode } from "../identity/client";
 import type { EpAccountAddressResult } from "../identity/operations";
 import { useEpIdentity } from "../identity/useEpIdentity";
@@ -32,6 +39,61 @@ const NO_SELECTED = "No organisation is selected.";
 const LAPSED =
   "The account credential ran out and cannot be re-minted. Sign in again.";
 const READ_FAILED = "Elastic Path rejected the account-address read.";
+const DELETE_FAILED = "Elastic Path rejected the account-address delete.";
+const REFRESH_FAILED =
+  "The saved address was deleted, but the address list could not be refreshed.";
+const REFRESH_FAILED_ERROR = {
+  code: "account_addresses_refresh_failed",
+  message: REFRESH_FAILED,
+};
+
+function deleteFailure(err: unknown): { code: string; message: string } {
+  const code = epIdentityErrorCode(err) ?? "account_address_delete_failed";
+  const message =
+    err instanceof Error && err.message ? err.message : DELETE_FAILED;
+  return { code, message };
+}
+
+export type AccountAddressDeleteStatus =
+  | "idle"
+  | "deleting"
+  | "deleted"
+  | "error";
+
+export type AccountAddressDeleteData = {
+  status: AccountAddressDeleteStatus;
+  error: { code: string; message: string } | null;
+  isDeleting: boolean;
+};
+
+const IDLE_DELETE: AccountAddressDeleteData = {
+  status: "idle",
+  error: null,
+  isDeleting: false,
+};
+
+type AddressDeleteRecord = {
+  status: Exclude<AccountAddressDeleteStatus, "idle">;
+  error: { code: string; message: string } | null;
+};
+
+export function accountAddressDeleteDataFor(
+  records: Readonly<Record<string, AddressDeleteRecord>>,
+  addressId: string | undefined
+): AccountAddressDeleteData {
+  const bookIsDeleting = Object.values(records).some(
+    (record) => record.status === "deleting"
+  );
+  const record = addressId ? records[addressId] : undefined;
+  if (!record) {
+    return { ...IDLE_DELETE, isDeleting: bookIsDeleting };
+  }
+  return {
+    status: record.status,
+    error: record.error,
+    isDeleting: bookIsDeleting,
+  };
+}
 
 const LOADING_BOOK: AccountAddressBookContext = {
   status: "loading",
@@ -147,12 +209,26 @@ export function useAccountAddressBookRefresh(): () => Promise<void> {
   return useContext(AccountAddressRefreshContext);
 }
 
+const AccountAddressDeleteContext = React.createContext<
+  Readonly<Record<string, AddressDeleteRecord>>
+>({});
+
+export function useAccountAddressDeletes(): Readonly<
+  Record<string, AddressDeleteRecord>
+> {
+  return useContext(AccountAddressDeleteContext);
+}
+
+interface EPAccountAddressProviderActions {
+  delete(addressId: string): Promise<void>;
+}
+
 export const epAccountAddressProviderMeta: CodeComponentMeta<EPAccountAddressProviderProps> =
   {
     name: "plasmic-commerce-ep-account-address-provider",
     displayName: "EP Account Address Provider",
     description:
-      "Publishes the selected organisation's saved addresses as `$ctx.accountAddresses`. Place inside an EP Account Provider. Studio Preview State uses sample addresses and does not read the shopper's address book.",
+      "Publishes the selected organisation's saved addresses as `$ctx.accountAddresses`. Place inside an EP Account Provider. A normal Studio button calls `delete(addressId)` with `$ctx.currentAccountAddress.id`. Studio Preview State uses sample addresses and does not read or delete the shopper's address book.",
     props: {
       children: {
         type: "slot",
@@ -185,11 +261,26 @@ export const epAccountAddressProviderMeta: CodeComponentMeta<EPAccountAddressPro
     importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
     importName: "EPAccountAddressProvider",
     parentComponentName: "plasmic-commerce-ep-account-provider",
+    refActions: {
+      delete: {
+        displayName: "Delete",
+        description:
+          "Delete one saved address by id, then read the address book again. Pass the row's `$ctx.currentAccountAddress.id`. No-op in the Studio canvas. Does nothing while a delete is in progress, and does nothing again for an address that has already been deleted.",
+        argTypes: [
+          {
+            name: "addressId",
+            type: "string",
+            displayName: "Address ID",
+          },
+        ],
+      },
+    },
   };
 
-export function EPAccountAddressProvider(
-  props: EPAccountAddressProviderProps
-) {
+export const EPAccountAddressProvider = React.forwardRef<
+  EPAccountAddressProviderActions,
+  EPAccountAddressProviderProps
+>(function EPAccountAddressProvider(props, ref) {
   const { children, className, previewState } = props;
   const inEditor = !!usePlasmicCanvasContext();
   const preview = useCanvasPreviewState(previewState);
@@ -203,6 +294,14 @@ export function EPAccountAddressProvider(
     committedRef.current = next;
     setCommitted(next);
   }, []);
+  const [deleteRecords, setDeleteRecords] = useState<
+    Record<string, AddressDeleteRecord>
+  >({});
+  const opGen = useRef(0);
+  const busyRef = useRef(false);
+  const deletedIdsRef = useRef(new Set<string>());
+  const mountedRef = useRef(true);
+  const seenAccountKey = useRef<string | null | undefined>(undefined);
 
   if (!account) {
     heldKeyRef.current = "no-account-member";
@@ -213,8 +312,23 @@ export function EPAccountAddressProvider(
   const renderKey = renderAccountKey(account);
 
   useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (inEditor) return;
     if (effectKey == null) return;
+
+    if (seenAccountKey.current !== effectKey) {
+      seenAccountKey.current = effectKey;
+      opGen.current += 1;
+      busyRef.current = false;
+      deletedIdsRef.current = new Set();
+      setDeleteRecords({});
+    }
 
     const id = ++requestId.current;
     const key = effectKey;
@@ -264,6 +378,62 @@ export function EPAccountAddressProvider(
     );
   }, [inEditor, identity, commitBook]);
 
+  const deleteAddress = useCallback(
+    async (addressId: string) => {
+      if (inEditor) return;
+      const captured = typeof addressId === "string" ? addressId.trim() : "";
+      if (!captured) return;
+      if (busyRef.current || deletedIdsRef.current.has(captured)) return;
+
+      const gen = opGen.current;
+      const key = heldKeyRef.current;
+      const still = () =>
+        mountedRef.current &&
+        gen === opGen.current &&
+        heldKeyRef.current === key;
+
+      busyRef.current = true;
+      setDeleteRecords((prev) => ({
+        ...prev,
+        [captured]: { status: "deleting", error: null },
+      }));
+      try {
+        await identity.deleteAccountAddress({ id: captured });
+      } catch (err) {
+        if (!still()) return;
+        busyRef.current = false;
+        setDeleteRecords((prev) => ({
+          ...prev,
+          [captured]: { status: "error", error: deleteFailure(err) },
+        }));
+        return;
+      }
+
+      if (!still()) return;
+      deletedIdsRef.current.add(captured);
+      try {
+        await refreshBook();
+      } catch {
+        if (!still()) return;
+        busyRef.current = false;
+        setDeleteRecords((prev) => ({
+          ...prev,
+          [captured]: { status: "deleted", error: REFRESH_FAILED_ERROR },
+        }));
+        return;
+      }
+      if (!still()) return;
+      busyRef.current = false;
+      setDeleteRecords((prev) => ({
+        ...prev,
+        [captured]: { status: "deleted", error: null },
+      }));
+    },
+    [identity, inEditor, refreshBook]
+  );
+
+  useImperativeHandle(ref, () => ({ delete: deleteAddress }), [deleteAddress]);
+
   const book = inEditor
     ? previewBook(preview)
     : committed?.key === renderKey
@@ -272,14 +442,16 @@ export function EPAccountAddressProvider(
 
   return (
     <AccountAddressRefreshContext.Provider value={refreshBook}>
-      <DataProvider name="accountAddresses" data={book}>
-        <div className={className} data-ep-account-address-provider="">
-          {children}
-        </div>
-      </DataProvider>
+      <AccountAddressDeleteContext.Provider value={deleteRecords}>
+        <DataProvider name="accountAddresses" data={book}>
+          <div className={className} data-ep-account-address-provider="">
+            {children}
+          </div>
+        </DataProvider>
+      </AccountAddressDeleteContext.Provider>
     </AccountAddressRefreshContext.Provider>
   );
-}
+});
 
 export function registerEPAccountAddressProvider(
   loader?: Registerable,
