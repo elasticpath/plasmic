@@ -13,6 +13,30 @@ const mockIdentity = {
   accountAddresses: mockAccountAddresses,
 };
 
+/** Records useState writes after unmount. React 18 does not warn for them. */
+let mockRecordProviderState = false;
+const mockProviderStatePublications: unknown[] = [];
+
+jest.mock("react", () => {
+  const actual = jest.requireActual("react");
+  return {
+    ...actual,
+    useState: (initial: unknown) => {
+      const tuple = actual.useState(initial);
+      const setState = tuple[1];
+      const recordSetState = (value: unknown) => {
+        if (mockRecordProviderState) {
+          mockProviderStatePublications.push(
+            typeof value === "function" ? value(tuple[0]) : value
+          );
+        }
+        return setState(value);
+      };
+      return [tuple[0], recordSetState];
+    },
+  };
+});
+
 jest.mock("@plasmicapp/host", () => {
   const React = require("react");
   const DataCtx = React.createContext({});
@@ -177,6 +201,8 @@ describe("EP account address delete", () => {
       total: 3,
     });
     mockUsePlasmicCanvasContext.mockReturnValue(false);
+    mockRecordProviderState = false;
+    mockProviderStatePublications.length = 0;
     $refs.addressProvider = null;
     for (const id of Object.keys(rowRerender)) delete rowRerender[id];
   });
@@ -325,6 +351,36 @@ describe("EP account address delete", () => {
     });
     expect(mockDeleteAccountAddress).toHaveBeenCalledTimes(2);
     expect(mockDeleteAccountAddress).toHaveBeenLastCalledWith({ id: "addr-b" });
+  });
+
+  it("does not publish delete state after the provider unmounts during refresh", async () => {
+    const refresh = deferred<{ addresses: unknown[]; total: number }>();
+    mockAccountAddresses
+      .mockResolvedValueOnce({
+        addresses: [ADDRESS_A, ADDRESS_B],
+        total: 2,
+      })
+      .mockImplementationOnce(() => refresh.promise);
+    const { unmount } = renderBook();
+    await waitFor(() => expect($refs.addressProvider).toBeTruthy());
+
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = $refs.addressProvider!.delete("addr-a");
+      await Promise.resolve();
+    });
+    expect(mockDeleteAccountAddress).toHaveBeenCalledTimes(1);
+    expect(mockAccountAddresses).toHaveBeenCalledTimes(2);
+
+    unmount();
+    mockRecordProviderState = true;
+    mockProviderStatePublications.length = 0;
+    await act(async () => {
+      refresh.resolve({ addresses: [ADDRESS_B], total: 1 });
+      await pending;
+    });
+    expect(mockProviderStatePublications).toEqual([]);
+    mockRecordProviderState = false;
   });
 
   it("keeps the row until the refresh commits", async () => {
