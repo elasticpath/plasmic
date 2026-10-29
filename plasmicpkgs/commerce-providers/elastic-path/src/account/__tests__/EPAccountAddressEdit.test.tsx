@@ -409,6 +409,52 @@ describe("EP Account Address Detail Provider", () => {
     expect(screen.queryByText("New York")).toBeNull();
   });
 
+  it("stays ready when a refresh fails after the address book is committed", async () => {
+    const committed = [ADDRESS_B, ADDRESS_A];
+    mockAccountAddresses
+      .mockResolvedValueOnce({ addresses: committed, total: 2 })
+      .mockRejectedValueOnce(new Error("Elastic Path was unreachable."));
+    const formRef = React.createRef<FormActions>();
+    render(
+      <AccountScope>
+        <EPAccountAddressProvider>
+          <EPAccountAddressDetailProvider addressId="addr-a">
+            <EPAccountAddressField field="line_1" />
+            <EPAccountAddressFormProvider ref={formRef} mode="edit">
+              <EditFields />
+            </EPAccountAddressFormProvider>
+          </EPAccountAddressDetailProvider>
+        </EPAccountAddressProvider>
+      </AccountScope>
+    );
+    await waitFor(() => expect(cityInput().value).toBe("London"));
+    expect(published("accountAddressDetailData")).toEqual({
+      status: "ready",
+      error: null,
+    });
+    expect(published("currentAccountAddress")).toEqual(ADDRESS_A);
+    expect(published("currentAccountAddressIndex")).toBe(1);
+
+    fireEvent.change(cityInput(), { target: { value: "Manchester" } });
+    await act(async () => {
+      await formRef.current!.submit();
+    });
+
+    expect(published("accountAddressDetailData")).toEqual({
+      status: "ready",
+      error: null,
+    });
+    expect(published("currentAccountAddress")).toEqual(ADDRESS_A);
+    expect(published("currentAccountAddressIndex")).toBe(1);
+    expect(published("accountAddresses")).toEqual({
+      status: "ready",
+      addresses: committed,
+      total: 2,
+      error: null,
+    });
+    expect(screen.getByText("1 Strand")).toBeTruthy();
+  });
+
   it("returns to ready when the address id changes to another saved address", async () => {
     const { rerender } = render(
       <AccountScope>
