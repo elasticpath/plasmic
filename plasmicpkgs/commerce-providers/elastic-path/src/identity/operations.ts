@@ -75,6 +75,24 @@ export interface EpAccountAddressDeleteRequest {
   id: string;
 }
 
+/** A saved-address edit. `id` names the address. */
+export interface EpAccountAddressUpdateRequest {
+  id: string;
+  name?: string;
+  first_name?: string;
+  last_name?: string;
+  company_name?: string;
+  phone_number?: string;
+  instructions?: string;
+  line_1?: string;
+  line_2?: string;
+  city?: string;
+  county?: string;
+  region?: string;
+  postcode?: string;
+  country?: string;
+}
+
 /** A saved address to create. At least one field is required at runtime. */
 export interface EpAccountAddressCreateRequest {
   name?: string;
@@ -125,6 +143,10 @@ export interface EpIdentityOperations {
     request: EpAccountAddressDeleteRequest;
     response: { id: string };
   };
+  updateAccountAddress: {
+    request: EpAccountAddressUpdateRequest;
+    response: EpAccountAddress;
+  };
   updateMember: {
     request: EpAccountMemberUpdateRequest;
     response: EpAccountMemberResult;
@@ -162,6 +184,10 @@ export const EP_IDENTITY_ROUTES: {
   },
   deleteAccountAddress: {
     path: "/ep/account/addresses/delete",
+    method: "POST",
+  },
+  updateAccountAddress: {
+    path: "/ep/account/addresses/update",
     method: "POST",
   },
   updateMember: { path: "/ep/account/member/update", method: "POST" },

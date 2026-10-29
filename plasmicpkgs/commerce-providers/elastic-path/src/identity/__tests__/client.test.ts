@@ -56,6 +56,7 @@ describe("createEpIdentityClient", () => {
     await client.accountAddresses();
     await client.createAccountAddress({ line_1: "1 High Street" });
     await client.deleteAccountAddress({ id: "addr-1" });
+    await client.updateAccountAddress({ id: "addr-1", city: "Manchester" });
     await client.updateMember({ name: "Ada Lovelace" });
 
     expect(stub.calls.map((c) => c.url)).toEqual([
@@ -72,6 +73,7 @@ describe("createEpIdentityClient", () => {
       "/api/ep/ep/account/addresses",
       "/api/ep/ep/account/addresses/create",
       "/api/ep/ep/account/addresses/delete",
+      "/api/ep/ep/account/addresses/update",
       "/api/ep/ep/account/member/update",
     ]);
   });
@@ -164,6 +166,29 @@ describe("createEpIdentityClient", () => {
     expect(stub.calls[0].url).toBe("/api/ep/ep/account/addresses/delete");
     expect(JSON.parse(stub.calls[0].init.body as string)).toEqual({
       id: "addr-1",
+    });
+    expect(stub.calls[0].init.credentials).toBe("include");
+  });
+
+  it("updates a saved address with the id and only the changed fields", async () => {
+    const updated = { id: "addr-1", city: "Manchester", phone_number: "" };
+    const stub = fetchStub(() => json(updated));
+    const client = createEpIdentityClient({ fetch: stub.fetch });
+
+    await expect(
+      client.updateAccountAddress({
+        id: "addr-1",
+        city: "Manchester",
+        phone_number: "",
+      })
+    ).resolves.toEqual(updated);
+
+    expect(stub.calls[0].init.method).toBe("POST");
+    expect(stub.calls[0].url).toBe("/api/ep/ep/account/addresses/update");
+    expect(JSON.parse(stub.calls[0].init.body as string)).toEqual({
+      id: "addr-1",
+      city: "Manchester",
+      phone_number: "",
     });
     expect(stub.calls[0].init.credentials).toBe("include");
   });

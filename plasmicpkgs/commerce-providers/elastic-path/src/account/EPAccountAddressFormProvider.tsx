@@ -1,8 +1,9 @@
-/** EPAccountAddressFormProvider — creates one saved address. */
+/** EPAccountAddressFormProvider — creates or edits one saved address. */
 
 import {
   DataProvider,
   usePlasmicCanvasContext,
+  useSelector,
 } from "@plasmicapp/host";
 import registerComponent, {
   CodeComponentMeta,
@@ -15,9 +16,15 @@ import React, {
   useState,
 } from "react";
 import { epIdentityErrorCode } from "../identity/client";
-import type { EpAccountAddressCreateRequest } from "../identity/operations";
+import type {
+  EpAccountAddress,
+  EpAccountAddressCreateRequest,
+  EpAccountAddressUpdateRequest,
+} from "../identity/operations";
 import { useEpIdentity } from "../identity/useEpIdentity";
 import { Registerable } from "../registerable";
+import { useCanvasPreviewState } from "../utils/canvas-preview-state";
+import { MOCK_ACCOUNT_ADDRESSES } from "../utils/design-time-data";
 import { useAccountAddressBookRefresh } from "./EPAccountAddressProvider";
 import type { AccountAddressFieldName } from "./types";
 
@@ -104,6 +111,26 @@ const REFRESH_FAILED: AccountAddressFormError = {
     "The saved address was created, but the address list could not be refreshed.",
 };
 
+const UPDATE_FAILED: AccountAddressFormError = {
+  code: "account_address_update_failed",
+  message: "Elastic Path rejected the account-address update.",
+};
+
+const UPDATE_REFRESH_FAILED: AccountAddressFormError = {
+  code: "account_addresses_refresh_failed",
+  message:
+    "The saved address was updated, but the address list could not be refreshed.",
+};
+
+type AddressFormMode = "create" | "edit";
+
+type AddressFormPreviewState =
+  | "auto"
+  | "idle"
+  | "submitting"
+  | "submitted"
+  | "error";
+
 const NOOP_FORM: AccountAddressFormContextValue = {
   values: EMPTY_VALUES,
   errors: EMPTY_ERRORS,
@@ -125,6 +152,20 @@ export function useAccountAddressForm(): AccountAddressFormContextValue {
 interface EPAccountAddressFormProviderProps {
   children?: React.ReactNode;
   className?: string;
+  mode?: AddressFormMode;
+  previewState?: AddressFormPreviewState;
+}
+
+function seedValues(
+  address: EpAccountAddress | undefined
+): Record<AccountAddressFieldName, string> {
+  const next = { ...EMPTY_VALUES };
+  if (!address) return next;
+  for (const field of ADDRESS_FIELDS) {
+    const value = address[field];
+    if (typeof value === "string") next[field] = value;
+  }
+  return next;
 }
 
 interface EPAccountAddressFormProviderActions {
@@ -138,12 +179,23 @@ function createFailure(err: unknown): AccountAddressFormError {
   return { code, message };
 }
 
+function updateFailure(err: unknown): AccountAddressFormError {
+  const code = epIdentityErrorCode(err) ?? UPDATE_FAILED.code;
+  const message =
+    err instanceof Error && err.message ? err.message : UPDATE_FAILED.message;
+  return { code, message };
+}
+
 export const EPAccountAddressFormProvider = React.forwardRef<
   EPAccountAddressFormProviderActions,
   EPAccountAddressFormProviderProps
 >(function EPAccountAddressFormProvider(props, ref) {
-  const { children, className } = props;
+  const { children, className, mode = "create", previewState } = props;
   const inEditor = !!usePlasmicCanvasContext();
+  const preview = useCanvasPreviewState(previewState);
+  const current = useSelector("currentAccountAddress") as
+    | EpAccountAddress
+    | undefined;
   const identity = useEpIdentity();
   const refreshBook = useAccountAddressBookRefresh();
   const [drafts, setDrafts] = useState(EMPTY_VALUES);
@@ -151,9 +203,43 @@ export const EPAccountAddressFormProvider = React.forwardRef<
   const [status, setStatus] = useState<AddressStatus>("idle");
   const [error, setError] = useState<AccountAddressFormError | null>(null);
   const submittingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const sessionIdRef = useRef<string | null>(null);
+  const sessionGenerationRef = useRef(0);
+  const baselineRef = useRef(EMPTY_VALUES);
   const registry = useRef<
     Map<string, { name: AccountAddressFieldName; required: boolean }>
   >(new Map());
+  const currentAddress =
+    inEditor && mode === "edit"
+      ? current ?? MOCK_ACCOUNT_ADDRESSES[0]
+      : current;
+  const currentAddressId =
+    currentAddress &&
+    typeof currentAddress.id === "string" &&
+    currentAddress.id
+      ? currentAddress.id
+      : null;
+  const editTargetId = mode === "edit" ? currentAddressId : null;
+
+  React.useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  if (mode === "edit" && sessionIdRef.current !== currentAddressId) {
+    sessionIdRef.current = currentAddressId;
+    sessionGenerationRef.current += 1;
+    submittingRef.current = false;
+    const seeded = seedValues(currentAddressId ? currentAddress : undefined);
+    baselineRef.current = seeded;
+    setDrafts(seeded);
+    setErrors(EMPTY_ERRORS);
+    setStatus("idle");
+    setError(null);
+  }
 
   const registerField = useCallback(
     (
@@ -184,6 +270,81 @@ export const EPAccountAddressFormProvider = React.forwardRef<
   const submit = useCallback(async () => {
     if (inEditor) return;
     if (submittingRef.current) return;
+
+    if (mode === "edit") {
+      if (!editTargetId) return;
+
+      const nextErrors = { ...EMPTY_ERRORS };
+      const requiredNames = new Set<AccountAddressFieldName>();
+      registry.current.forEach((reg) => {
+        if (reg.required) requiredNames.add(reg.name);
+      });
+      let missing = false;
+      requiredNames.forEach((field) => {
+        if (!drafts[field].trim()) {
+          nextErrors[field] = REQUIRED_FIELD;
+          missing = true;
+        }
+      });
+      if (missing) {
+        setErrors(nextErrors);
+        setStatus("error");
+        setError(REQUIRED_FORM);
+        return;
+      }
+
+      const request: EpAccountAddressUpdateRequest = { id: editTargetId };
+      const mountedNames = new Set<AccountAddressFieldName>();
+      registry.current.forEach((reg) => mountedNames.add(reg.name));
+      mountedNames.forEach((field) => {
+        const submitted = drafts[field].trim();
+        if (submitted !== baselineRef.current[field].trim()) {
+          request[field] = submitted;
+        }
+      });
+      if (Object.keys(request).length === 1) {
+        setErrors(EMPTY_ERRORS);
+        setError(null);
+        if (status === "error") setStatus("idle");
+        return;
+      }
+
+      const capturedId = editTargetId;
+      const capturedGeneration = sessionGenerationRef.current;
+      const submittedDrafts = { ...drafts };
+      submittingRef.current = true;
+      setStatus("submitting");
+      setError(null);
+      setErrors(EMPTY_ERRORS);
+      const still = () =>
+        mountedRef.current &&
+        sessionIdRef.current === capturedId &&
+        sessionGenerationRef.current === capturedGeneration;
+      try {
+        await identity.updateAccountAddress(request);
+      } catch (err) {
+        if (!still()) return;
+        setStatus("error");
+        setError(updateFailure(err));
+        submittingRef.current = false;
+        return;
+      }
+      if (!still()) return;
+      baselineRef.current = submittedDrafts;
+      try {
+        await refreshBook();
+      } catch {
+        if (!still()) return;
+        setStatus("submitted");
+        setError(UPDATE_REFRESH_FAILED);
+        submittingRef.current = false;
+        return;
+      }
+      if (!still()) return;
+      setStatus("submitted");
+      submittingRef.current = false;
+      return;
+    }
 
     const nextErrors = { ...EMPTY_ERRORS };
     const requiredNames = new Set<AccountAddressFieldName>();
@@ -239,7 +400,7 @@ export const EPAccountAddressFormProvider = React.forwardRef<
     } finally {
       submittingRef.current = false;
     }
-  }, [inEditor, drafts, identity, refreshBook]);
+  }, [inEditor, mode, editTargetId, drafts, status, identity, refreshBook]);
 
   useImperativeHandle(ref, () => ({ submit }), [submit]);
 
@@ -257,13 +418,27 @@ export const EPAccountAddressFormProvider = React.forwardRef<
     [drafts, errors, status, error, setField, registerField, unregisterField, submit]
   );
 
+  const canvasEditPreview =
+    inEditor && mode === "edit" && preview !== "auto" && preview !== "idle";
+  const publishedStatus: AddressStatus = canvasEditPreview
+    ? preview === "submitting"
+      ? "submitting"
+      : preview === "submitted"
+        ? "submitted"
+        : "error"
+    : status;
+  const publishedError = canvasEditPreview
+    ? preview === "error"
+      ? UPDATE_FAILED
+      : null
+    : error;
   const accountAddressFormData = React.useMemo(
     () => ({
-      status,
-      error,
-      isSubmitting: status === "submitting",
+      status: publishedStatus,
+      error: publishedError,
+      isSubmitting: publishedStatus === "submitting",
     }),
-    [status, error]
+    [publishedStatus, publishedError]
   );
 
   return (
@@ -282,7 +457,7 @@ export const epAccountAddressFormProviderMeta: CodeComponentMeta<EPAccountAddres
     name: "plasmic-commerce-ep-account-address-form-provider",
     displayName: "EP Account Address Form Provider",
     description:
-      "Creates a saved address for the selected organisation, then refreshes the surrounding EP Account Address Provider. Wire a button to the Submit action. Submit is blocked only by mounted fields whose Required prop is on. Sends only non-empty trimmed address fields. Does not publish the field values.",
+      "Creates or edits one saved address for the selected organisation, then refreshes the surrounding EP Account Address Provider. Mode defaults to create. Edit shows the current saved address and sends only fields that differ from it, including an empty string when a field is cleared. Edit submit does nothing when no current address is published, including after that address is deleted. Wire a button to the Submit action. Submit is blocked only by mounted fields whose Required prop is on. Does not publish the field values.",
     props: {
       children: {
         type: "slot",
@@ -291,6 +466,30 @@ export const epAccountAddressFormProviderMeta: CodeComponentMeta<EPAccountAddres
           name: "plasmic-commerce-ep-account-address-form-field",
           props: field,
         })),
+      },
+      mode: {
+        type: "choice",
+        options: [
+          { label: "Create", value: "create" },
+          { label: "Edit", value: "edit" },
+        ],
+        defaultValue: "create",
+        displayName: "Mode",
+      },
+      previewState: {
+        type: "choice",
+        options: [
+          { label: "Auto", value: "auto" },
+          { label: "Idle", value: "idle" },
+          { label: "Submitting", value: "submitting" },
+          { label: "Submitted", value: "submitted" },
+          { label: "Error", value: "error" },
+        ],
+        defaultValue: "auto",
+        displayName: "Preview State",
+        advanced: true,
+        description:
+          "Studio only, for edit mode. Auto and idle show a sample saved address. The other values force that form state on the canvas. The canvas does not update a saved address. Published pages ignore this.",
       },
     },
     providesData: true,
@@ -301,7 +500,7 @@ export const epAccountAddressFormProviderMeta: CodeComponentMeta<EPAccountAddres
       submit: {
         displayName: "Submit",
         description:
-          "Create the saved address, then refresh the address book. No-op in the Studio canvas. Does nothing while a mounted field with Required turned on is blank.",
+          "Create or update the saved address, then refresh the address book. Edit sends only fields that differ from the saved address. No-op in the Studio canvas, no-op in edit mode when nothing changed, and no-op in edit mode when there is no current address. Does nothing while a mounted field with Required turned on is blank.",
         argTypes: [],
       },
     },

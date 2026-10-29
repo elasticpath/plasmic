@@ -73,6 +73,18 @@ export type AccountAddressBookContext = {
   error: AccountAddressBookError | null;
 };
 
+/** `$ctx.accountAddressDetailData.status`. Derived from the loaded address book. */
+export type AccountAddressDetailStatus =
+  | "loading"
+  | "ready"
+  | "not-found"
+  | "error";
+
+export type AccountAddressDetailData = {
+  status: AccountAddressDetailStatus;
+  error: AccountAddressBookError | null;
+};
+
 export type AccountAddressPreviewState =
   | "auto"
   | "withAddresses"

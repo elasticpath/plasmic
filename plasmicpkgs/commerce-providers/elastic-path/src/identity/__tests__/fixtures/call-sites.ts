@@ -72,6 +72,29 @@ identity.deleteAccountAddress({ id: "addr-1", path: "/v2/accounts/acct-1/address
 // @ts-expect-error SDK options stay on the server
 identity.deleteAccountAddress({ id: "addr-1", client: {} });
 
+identity.updateAccountAddress({ id: "addr-1", city: "Manchester" });
+identity.updateAccountAddress({ id: "addr-1", phone_number: "" });
+// @ts-expect-error the address id is required
+identity.updateAccountAddress({ city: "Manchester" });
+// @ts-expect-error the server chooses the account
+identity.updateAccountAddress({ id: "addr-1", accountId: "acct-1", city: "Manchester" });
+// @ts-expect-error tokens stay on the server
+identity.updateAccountAddress({ id: "addr-1", token: "secret", city: "Manchester" });
+// @ts-expect-error account tokens stay on the server
+identity.updateAccountAddress({ id: "addr-1", accountToken: "secret", city: "Manchester" });
+// @ts-expect-error the account path stays on the server
+identity.updateAccountAddress({ id: "addr-1", path: "/v2/accounts/acct-1/addresses/addr-1", city: "Manchester" });
+// @ts-expect-error the server sets the address type
+identity.updateAccountAddress({ id: "addr-1", type: "address", city: "Manchester" });
+// @ts-expect-error SDK options stay on the server
+identity.updateAccountAddress({ id: "addr-1", client: {}, city: "Manchester" });
+// @ts-expect-error filters stay on the server
+identity.updateAccountAddress({ id: "addr-1", filter: "eq(country,GB)", city: "Manchester" });
+// @ts-expect-error line 3 is not a saved-address field
+identity.updateAccountAddress({ id: "addr-1", line_3: "Floor 2", city: "Manchester" });
+// @ts-expect-error relationships stay on the server
+identity.updateAccountAddress({ id: "addr-1", relationships: {}, city: "Manchester" });
+
 identity.updateMember({ name: "Ada Lovelace" });
 identity.updateMember({ email: "ada@example.com" });
 // @ts-expect-error the server chooses the member; the browser sends no id
