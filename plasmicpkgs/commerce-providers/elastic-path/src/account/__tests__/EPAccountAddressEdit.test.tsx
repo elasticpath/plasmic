@@ -274,7 +274,8 @@ describe("EP Account Address Detail Provider", () => {
         expect(published("accountAddressDetailData").status).toBe("not-found")
       );
       expect(published("accountAddressDetailData").error).toBeNull();
-      expect(screen.queryByTestId("data-provider-currentAccountAddress")).toBeNull();
+      expect(published("currentAccountAddress")).toBeNull();
+      expect(published("currentAccountAddressIndex")).toBeNull();
       expect(screen.queryByText("1 Strand")).toBeNull();
     }
   );
@@ -295,7 +296,8 @@ describe("EP Account Address Detail Provider", () => {
       status: "loading",
       error: null,
     });
-    expect(screen.queryByTestId("data-provider-currentAccountAddress")).toBeNull();
+    expect(published("currentAccountAddress")).toBeNull();
+    expect(published("currentAccountAddressIndex")).toBeNull();
     expect(screen.queryByText("1 Strand")).toBeNull();
 
     await act(async () => {
@@ -361,7 +363,8 @@ describe("EP Account Address Detail Provider", () => {
       status: "not-found",
       error: null,
     });
-    expect(screen.queryByTestId("data-provider-currentAccountAddress")).toBeNull();
+    expect(published("currentAccountAddress")).toBeNull();
+    expect(published("currentAccountAddressIndex")).toBeNull();
     expect(screen.queryByText("1 Strand")).toBeNull();
     expect(cityInput().value).toBe("");
 
@@ -379,7 +382,7 @@ describe("EP Account Address Detail Provider", () => {
       error: null,
       isSubmitting: false,
     });
-    expect(screen.queryByTestId("data-provider-currentAccountAddress")).toBeNull();
+    expect(published("currentAccountAddress")).toBeNull();
     expect(Object.keys(epAccountAddressProviderMeta.refActions ?? {})).toEqual(["delete"]);
     expect(epAccountAddressDetailProviderMeta.refActions).toBeUndefined();
   });
@@ -404,7 +407,8 @@ describe("EP Account Address Detail Provider", () => {
         },
       })
     );
-    expect(screen.queryByTestId("data-provider-currentAccountAddress")).toBeNull();
+    expect(published("currentAccountAddress")).toBeNull();
+    expect(published("currentAccountAddressIndex")).toBeNull();
     expect(screen.queryByText("1 Strand")).toBeNull();
     expect(screen.queryByText("New York")).toBeNull();
   });
@@ -484,6 +488,40 @@ describe("EP Account Address Detail Provider", () => {
       error: null,
     });
     expect(published("currentAccountAddress")).toEqual(ADDRESS_B);
+  });
+
+  it("does not let an outer current address show through a missing detail", async () => {
+    const { DataProvider } = require("@plasmicapp/host");
+    const outer: EpAccountAddress = {
+      ...ADDRESS_A,
+      id: "outer",
+      line_1: "Outer Street",
+      city: "Outer City",
+    };
+    render(
+      <AccountScope>
+        <DataProvider name="currentAccountAddress" data={outer}>
+          <DataProvider name="currentAccountAddressIndex" data={7}>
+            <EPAccountAddressProvider>
+              <EPAccountAddressDetailProvider addressId="missing">
+                <EPAccountAddressField field="line_1" />
+              </EPAccountAddressDetailProvider>
+            </EPAccountAddressProvider>
+          </DataProvider>
+        </DataProvider>
+      </AccountScope>
+    );
+    await waitFor(() =>
+      expect(published("accountAddressDetailData").status).toBe("not-found")
+    );
+    expect(screen.queryByText("Outer Street")).toBeNull();
+    expect(screen.queryByText("1 Strand")).toBeNull();
+    const addresses = screen.getAllByTestId("data-provider-currentAccountAddress");
+    expect(
+      JSON.parse(addresses[addresses.length - 1].getAttribute("data-value")!)
+    ).toBeNull();
+    const indexes = screen.getAllByTestId("data-provider-currentAccountAddressIndex");
+    expect(JSON.parse(indexes[indexes.length - 1].getAttribute("data-value")!)).toBeNull();
   });
 
   it("has no ref actions", () => {

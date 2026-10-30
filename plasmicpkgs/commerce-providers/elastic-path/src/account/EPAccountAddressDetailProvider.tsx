@@ -97,14 +97,16 @@ export function EPAccountAddressDetailProvider(
     | undefined;
   const { detail, address, index } = detailForBook(book, addressId);
 
-  const body = address ? (
-    <DataProvider name="currentAccountAddress" data={address}>
-      <DataProvider name="currentAccountAddressIndex" data={index}>
+  // Non-ready states still set these keys so an outer address cannot show through.
+  const body = (
+    <DataProvider name="currentAccountAddress" data={address ?? null}>
+      <DataProvider
+        name="currentAccountAddressIndex"
+        data={address ? index : null}
+      >
         {children}
       </DataProvider>
     </DataProvider>
-  ) : (
-    children
   );
 
   return (
