@@ -801,6 +801,105 @@ describe("editing a saved address", () => {
     expect(mockUpdateAccountAddress).not.toHaveBeenCalled();
   });
 
+  it("does not publish A's refresh failure into the address B session", async () => {
+    const updates: Array<ReturnType<typeof deferred<EpAccountAddress>>> = [];
+    mockUpdateAccountAddress.mockImplementation(() => {
+      const next = deferred<EpAccountAddress>();
+      updates.push(next);
+      return next.promise;
+    });
+    const reads: Array<
+      ReturnType<typeof deferred<{ addresses: EpAccountAddress[]; total: number }>>
+    > = [];
+    mockAccountAddresses.mockImplementation(() => {
+      const next = deferred<{ addresses: EpAccountAddress[]; total: number }>();
+      reads.push(next);
+      return next.promise;
+    });
+
+    const ref = React.createRef<FormActions>();
+    const { rerender } = render(editSurface("addr-a", ref));
+    await act(async () => {
+      reads[0].resolve({ addresses: [ADDRESS_A, ADDRESS_B], total: 2 });
+    });
+    await waitFor(() => expect(cityInput().value).toBe("London"));
+    fireEvent.change(cityInput(), { target: { value: "Manchester" } });
+    let submitA!: Promise<void>;
+    await act(async () => {
+      submitA = ref.current!.submit();
+      await Promise.resolve();
+    });
+    expect(mockUpdateAccountAddress).toHaveBeenCalledWith({
+      id: "addr-a",
+      city: "Manchester",
+    });
+
+    rerender(editSurface("addr-b", ref));
+    await waitFor(() => expect(firstNameInput().value).toBe("Grace"));
+    expect(cityInput().value).toBe("New York");
+    expect(phoneInput().value).toBe("");
+    expect(countrySelect().value).toBe("US");
+    expect(published("accountAddressFormData")).toEqual({
+      status: "idle",
+      error: null,
+      isSubmitting: false,
+    });
+
+    await act(async () => {
+      updates[0].resolve({ ...ADDRESS_A, city: "Manchester" });
+      await Promise.resolve();
+    });
+    expect(reads).toHaveLength(2);
+
+    await act(async () => {
+      reads[1].reject(new Error("Elastic Path was unreachable."));
+      await submitA;
+    });
+    expect(published("accountAddressFormData")).toEqual({
+      status: "idle",
+      error: null,
+      isSubmitting: false,
+    });
+    expect(firstNameInput().value).toBe("Grace");
+    expect(cityInput().value).toBe("New York");
+    expect(phoneInput().value).toBe("");
+    expect(countrySelect().value).toBe("US");
+
+    await act(async () => {
+      await ref.current!.submit();
+    });
+    expect(mockUpdateAccountAddress).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(cityInput(), { target: { value: "Boston" } });
+    let submitB!: Promise<void>;
+    await act(async () => {
+      submitB = ref.current!.submit();
+      await Promise.resolve();
+    });
+    expect(mockUpdateAccountAddress).toHaveBeenLastCalledWith({
+      id: "addr-b",
+      city: "Boston",
+    });
+    await act(async () => {
+      updates[1].resolve({ ...ADDRESS_B, city: "Boston" });
+      await Promise.resolve();
+    });
+    expect(reads).toHaveLength(3);
+    await act(async () => {
+      reads[2].resolve({
+        addresses: [{ ...ADDRESS_A, city: "Manchester" }, { ...ADDRESS_B, city: "Boston" }],
+        total: 2,
+      });
+      await submitB;
+    });
+    expect(cityInput().value).toBe("Boston");
+    expect(published("accountAddressFormData")).toEqual({
+      status: "submitted",
+      error: null,
+      isSubmitting: false,
+    });
+  });
+
   it("ignores the abandoned update when the shopper returns to the same address", async () => {
     const updates: Array<ReturnType<typeof deferred<EpAccountAddress>>> = [];
     mockUpdateAccountAddress.mockImplementation(() => {
