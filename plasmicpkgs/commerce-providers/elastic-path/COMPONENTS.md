@@ -152,6 +152,56 @@ when you switch. EP Product Grid builds the link inside EP Related Products
 Provider too. `currentHit.path` is the only link field: `currentProduct` has no
 `path`.
 
+### A search box in the site header
+
+Use **EP Search Typeahead** for a search box that is on every page, such as
+one in the site header. As the shopper types, it lists a few matching
+products. Submitting goes to your search page, where EP Catalog Search Provider
+shows the full results.
+
+EP Search Typeahead calls `ep.multiSearch` itself. It needs no EP Catalog
+Search Provider and loads no InstantSearch. EP Search Autocomplete runs inside
+EP Catalog Search Provider, so in a header it puts InstantSearch on every page.
+
+- **Searching.** It searches when the shopper stops typing for **Debounce
+  (ms)** (300), and only when the query has at least **Minimum Query Length**
+  (2) characters. It lists up to **Max Hits** (5) products. Only the answer to
+  the latest query is shown. **Query By** and **Base Filter** work as they do
+  on EP Catalog Search Provider. Give both components the same values.
+- **Hit cards.** The **Hit Card** slot repeats once for each hit, with the same
+  `currentProduct`, `currentHit` and `currentProductIndex` as EP Search Hits.
+  A card built for search results works here too. Bind a link in the card to
+  `currentHit.path`. Clicking a hit, or pressing Enter on it, follows the
+  card's first link. A card with no link goes to `currentHit.path`.
+- **Loading, empty and error.** **Loading Content** shows until the first
+  answer arrives. After that, the list keeps the previous hits while the next
+  search runs. **Empty Content** shows when nothing matches, and **Error
+  Content** when the search fails.
+- **Submitting** goes to **Search Page Path** (`/search`) with the query in
+  **Query Parameter** (`search[query]`). That is the parameter EP Catalog
+  Search Provider reads with its default **Index Name**. If you change the
+  Index Name, set Query Parameter to `<index name>[query]`. The box is a
+  `<form method="get">` and the input is named with that parameter, so a
+  search submitted before the page hydrates still arrives.
+- **Keyboard.** The input is an ARIA combobox and the list is a listbox. The
+  arrow keys move through the hits. Escape closes the list, and a second
+  Escape clears the query. The list also closes when focus leaves the
+  typeahead.
+- **Styling.** Put one input in the **Search Input** slot and style it freely.
+  Style the dropdown with **Panel Style**, and each hit with **Hit Style**,
+  which has Hovered and Active states.
+- **Design time.** On the Studio canvas it never searches. It shows sample
+  products while it is selected. To keep the list open while you style it, set
+  **Preview State** to `withData`, `loading`, `empty` or `error`.
+
+| What EP Search Typeahead exposes | Type | Use it for |
+| --- | --- | --- |
+| `$ctx.searchTypeaheadData.query` | `string` | what the shopper has typed |
+| `$ctx.searchTypeaheadData.status` | `"idle" \| "loading" \| "success" \| "error"` | `idle` until the query is long enough and the shopper stops typing |
+| `$ctx.searchTypeaheadData.isOpen` | `boolean` | whether the list, or its loading, empty or error content, shows |
+| `$ctx.searchTypeaheadData.hitCount` | `number` | how many hits the list shows |
+| `$ctx.searchTypeaheadData.searchPageUrl` | `string` | a "See all results" link, for example in Empty Content |
+
 ---
 
 ## 4. Cart
@@ -751,3 +801,5 @@ Lookup table for Plasmic dynamic value bindings (`$ctx.xxx`).
 | `currentCheckoutItemIndex` | EPCheckoutCartItemList | `number` |
 | `billingToggleData` | EPBillingAddressToggle | `isSameAsShipping` |
 | `promoCodeData` | EPPromoCodeInput | `code`, `state`, `formattedDiscount`, `errorMessage` |
+| `searchTypeaheadData` | EPSearchTypeahead | `query`, `status`, `isOpen`, `hitCount`, `searchPageUrl` |
+| `currentProduct`, `currentHit`, `currentProductIndex` | EPSearchTypeahead | each hit, the same as EP Search Hits publishes |
