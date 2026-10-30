@@ -1,8 +1,11 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createEpAuth } from "../create-ep-auth-better";
 import { EP_DESIGN_FN_NAMES } from "../../../ep-server-functions/design-fn-names";
+import { epGetProduct } from "../../../ep-server-functions/getProduct";
+import { epGetProductList } from "../../../ep-server-functions/getProductList";
+import { getCurrentEpSession } from "../../../ep-server-functions/session-context";
+import { createEpAuth } from "../create-ep-auth-better";
 
 const SECRET = "x".repeat(48);
 const EP_HOST = "https://api.test.elasticpath.com";
@@ -24,9 +27,6 @@ vi.mock("../../../ep-server-functions/getRelatedProducts", () => ({
 const { createEpDesignRoutes, resetEpDesignTokenCache } = await import(
   "../design-routes"
 );
-import { epGetProduct } from "../../../ep-server-functions/getProduct";
-import { epGetProductList } from "../../../ep-server-functions/getProductList";
-import { getCurrentEpSession } from "../../../ep-server-functions/session-context";
 
 let originalFetch: typeof fetch;
 let mintCalls: number;
@@ -173,6 +173,92 @@ describe("the implicit token", () => {
   });
 });
 
+describe("a store with no auth instance", () => {
+  it("serves from the store resolveConfig names, with no secret", async () => {
+    const routes = createEpDesignRoutes({
+      resolveConfig: async () => ({ clientId: EP_CLIENT_ID, host: EP_HOST }),
+    });
+    let seen: any;
+    (epGetProduct as any).mockImplementation(async () => {
+      seen = getCurrentEpSession();
+      return { id: "p1" };
+    });
+
+    const res = await routes.handle(...post("getProduct", { id: "p1" }));
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ id: "p1" });
+    expect(seen).toEqual({
+      accessToken: "implicit-token-1",
+      host: EP_HOST,
+      clientId: EP_CLIENT_ID,
+    });
+  });
+
+  it("mints nothing for a host outside the allow-list", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const routes = createEpDesignRoutes({
+      resolveConfig: async () => ({
+        clientId: EP_CLIENT_ID,
+        host: "https://evil.example",
+      }),
+    });
+
+    const res = await routes.handle(...post("getProduct", { id: "p1" }));
+
+    expect(res.status).toBe(500);
+    expect((await res.json()).message).toMatch(
+      /"https:\/\/evil\.example" is not on the EP host allow-list/
+    );
+    expect(mintCalls).toBe(0);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("serves a custom host the allow-list option names", async () => {
+    const custom = "https://api.acme.example";
+    globalThis.fetch = vi.fn(async (url: any) => {
+      expect(String(url)).toBe(`${custom}/oauth/access_token`);
+      return new Response(
+        JSON.stringify({ access_token: "t", expires_in: 3600 }),
+        { status: 200 }
+      );
+    }) as any;
+    const routes = createEpDesignRoutes({
+      hostAllowlist: ["*.acme.example"],
+      resolveConfig: async () => ({ clientId: EP_CLIENT_ID, host: custom }),
+    });
+    (epGetProduct as any).mockResolvedValue(null);
+
+    const res = await routes.handle(...post("getProduct", { id: "p1" }));
+
+    expect(res.status).toBe(200);
+  });
+
+  it("fails when the bundle names no store", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const routes = createEpDesignRoutes({ resolveConfig: async () => null });
+
+    const res = await routes.handle(...post("getProduct", { id: "p1" }));
+
+    expect(res.status).toBe(500);
+    expect((await res.json()).message).toMatch(/resolveConfig named no store/);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("fails when the bundle names a store without a clientId", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const routes = createEpDesignRoutes({
+      resolveConfig: async () => ({ clientId: "", host: EP_HOST }),
+    });
+
+    const res = await routes.handle(...post("getProduct", { id: "p1" }));
+
+    expect(res.status).toBe(500);
+    expect((await res.json()).message).toMatch(/resolveConfig named no store/);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+});
+
 describe("CORS", () => {
   it("is open with no credentials and no origin gate", async () => {
     const routes = createEpDesignRoutes(makeAuth());
@@ -181,12 +267,17 @@ describe("CORS", () => {
     const preflight = routes.options();
     expect(preflight.status).toBe(204);
     expect(preflight.headers.get("Access-Control-Allow-Origin")).toBe("*");
-    expect(preflight.headers.get("Access-Control-Allow-Credentials")).toBeNull();
+    expect(
+      preflight.headers.get("Access-Control-Allow-Credentials")
+    ).toBeNull();
 
     const [request, context] = post("getProduct", { id: "a" });
     const hostile = new Request(request.url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", origin: "https://evil.example" },
+      headers: {
+        "Content-Type": "application/json",
+        origin: "https://evil.example",
+      },
       body: JSON.stringify({ id: "a" }),
     });
     const res = await routes.handle(hostile, context);
@@ -233,6 +324,8 @@ describe("the file itself", () => {
   });
 
   it("applies no origin gate", () => {
-    expect(code).not.toMatch(/enforceOriginGate|isTrustedOrigin|trustedOrigins/);
+    expect(code).not.toMatch(
+      /enforceOriginGate|isTrustedOrigin|trustedOrigins/
+    );
   });
 });

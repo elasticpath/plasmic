@@ -22,7 +22,4 @@ export const PLASMIC = initPlasmicLoader({
   // project, allowing you to see your designs without publishing.  Please
   // only use this for development, as this is significantly slower.
   preview: true,
-
-  // Needed for Next.js app router support.
-  nextNavigation: NextNavigation,
 });

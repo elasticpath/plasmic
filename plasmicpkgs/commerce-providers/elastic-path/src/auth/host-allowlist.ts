@@ -9,6 +9,21 @@ export const DEFAULT_HOST_ALLOWLIST: readonly string[] = [
   "epcc-integration.global.ssl.fastly.net",
 ];
 
+/** The defaults, extended (never replaced) by the option and the env var. */
+export function resolveHostAllowlist(
+  configured: readonly string[] | undefined
+): readonly string[] {
+  const out = new Set<string>(DEFAULT_HOST_ALLOWLIST);
+  for (const host of [
+    ...(configured ?? []),
+    ...(process.env.EP_HOST_ALLOWLIST ?? "").split(","),
+  ]) {
+    const trimmed = host.trim();
+    if (trimmed) out.add(trimmed);
+  }
+  return Object.freeze([...out]);
+}
+
 const LOOPBACK_HOSTS: readonly string[] = ["localhost", "127.0.0.1", "::1"];
 
 function normalizeHost(value: string): string | null {

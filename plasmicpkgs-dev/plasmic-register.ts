@@ -12,12 +12,14 @@ import { registerAll as registerElasticPath } from "@elasticpath/plasmic-ep-comm
 import { registerAllCmsFunctions as registerPlasmicCms } from "@plasmicpkgs/cms";
 import { registerAll as registerCommerce } from "@plasmicpkgs/commerce";
 import { registerAll as registerShopify } from "@plasmicpkgs/commerce-shopify";
+import { registerContentful } from "@plasmicpkgs/contentful";
 import { registerFetch } from "@plasmicpkgs/fetch";
 import { registerGraphQL } from "@plasmicpkgs/graphql";
 import { registerVideo } from "@plasmicpkgs/plasmic-basic-components";
 import { registerAll as registerPlasmicCmsComponents } from "@plasmicpkgs/plasmic-cms";
 import { registerAll as registerStrapiComponents } from "@plasmicpkgs/plasmic-strapi";
 import { registerStrapi } from "@plasmicpkgs/strapi";
+import { registerWordpress } from "@plasmicpkgs/wordpress";
 
 export function registerAllPackages(plasmic: typeof PLASMIC) {
   function register() {
@@ -31,6 +33,8 @@ export function registerAllPackages(plasmic: typeof PLASMIC) {
     registerShopify(plasmic);
     registerElasticPath(plasmic);
     registerVideo(plasmic);
+    registerContentful(plasmic);
+    registerWordpress(plasmic);
   }
 
   const useDevNames = true; // set true to avoid conflicting with production hostless names
