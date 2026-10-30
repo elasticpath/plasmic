@@ -748,7 +748,7 @@ describe("editing a saved address", () => {
       updates[0].resolve({ ...ADDRESS_A, city: "Manchester" });
       await Promise.resolve();
     });
-    expect(refreshes).toHaveLength(1);
+    expect(refreshes).toHaveLength(2);
     expect(cityInput().value).toBe("Boston");
     expect(firstNameInput().value).toBe("Grace");
     expect(published("accountAddressFormData")).toEqual({
@@ -765,26 +765,23 @@ describe("editing a saved address", () => {
       updates[1].resolve({ ...ADDRESS_B, city: "Boston" });
       await Promise.resolve();
     });
-    expect(refreshes).toHaveLength(2);
+    expect(refreshes).toHaveLength(3);
     expect(published("accountAddressFormData").isSubmitting).toBe(true);
     expect(published("accountAddresses").addresses[1].city).toBe("New York");
 
-    const newestRefresh = refreshes.length - 1;
     await act(async () => {
-      refreshes[newestRefresh].resolve({
+      refreshes[2].resolve({
         addresses: [{ ...ADDRESS_A, city: "Manchester" }, { ...ADDRESS_B, city: "Boston" }],
         total: 2,
       });
       await submitB;
-      await submitA;
     });
     await act(async () => {
-      for (let i = newestRefresh - 1; i >= 1; i -= 1) {
-        refreshes[i].resolve({
-          addresses: [{ id: "stale", line_1: "Stale", city: "Stale City", country: "GB" }],
-          total: 1,
-        });
-      }
+      refreshes[1].resolve({
+        addresses: [{ id: "stale", line_1: "Stale", city: "Stale City", country: "GB" }],
+        total: 1,
+      });
+      await submitA;
     });
     expect(cityInput().value).toBe("Boston");
     expect(published("accountAddressFormData")).toEqual({
@@ -1200,10 +1197,43 @@ describe("editing a saved address", () => {
     expect(screen.queryByDisplayValue("Stale City")).toBeNull();
   });
 
-  it("does not publish form state after the form unmounts", async () => {
+  it("shows the next address under StrictMode and does not submit the previous values", async () => {
+    const ref = React.createRef<FormActions>();
+    const tree = (addressId: string) => (
+      <React.StrictMode>{editSurface(addressId, ref)}</React.StrictMode>
+    );
+    const { rerender } = render(tree("addr-a"));
+    await waitFor(() => expect(cityInput().value).toBe("London"));
+    expect(firstNameInput().value).toBe("Ada");
+    expect(phoneInput().value).toBe("123456");
+    expect(countrySelect().value).toBe("GB");
+
+    rerender(tree("addr-b"));
+    await waitFor(() => expect(firstNameInput().value).toBe("Grace"));
+    expect(cityInput().value).toBe("New York");
+    expect(phoneInput().value).toBe("");
+    expect(countrySelect().value).toBe("US");
+    await act(async () => {
+      await ref.current!.submit();
+    });
+    expect(mockUpdateAccountAddress).not.toHaveBeenCalled();
+
+    fireEvent.change(cityInput(), { target: { value: "Boston" } });
+    await act(async () => {
+      await ref.current!.submit();
+    });
+    expect(mockUpdateAccountAddress).toHaveBeenCalledTimes(1);
+    expect(mockUpdateAccountAddress).toHaveBeenCalledWith({
+      id: "addr-b",
+      city: "Boston",
+    });
+  });
+
+  it("refreshes the address book after the form unmounts without publishing form state", async () => {
     const gate = deferred<EpAccountAddress>();
     mockUpdateAccountAddress.mockReturnValue(gate.promise);
-    const { ref, unmount } = renderEdit();
+    const ref = React.createRef<FormActions>();
+    const { rerender } = render(editSurface("addr-a", ref));
     await waitFor(() => expect(cityInput().value).toBe("London"));
     fireEvent.change(cityInput(), { target: { value: "Manchester" } });
     let submit!: Promise<void>;
@@ -1211,14 +1241,38 @@ describe("editing a saved address", () => {
       submit = ref.current!.submit();
       await Promise.resolve();
     });
+    const reads = mockAccountAddresses.mock.calls.length;
     mockRecordState = true;
     mockStatePublications.length = 0;
-    unmount();
+    rerender(
+      <AccountScope>
+        <EPAccountAddressProvider>
+          <EPAccountAddressDetailProvider addressId="addr-a" />
+        </EPAccountAddressProvider>
+      </AccountScope>
+    );
     await act(async () => {
       gate.resolve({ ...ADDRESS_A, city: "Manchester" });
       await submit;
     });
-    expect(mockStatePublications).toEqual([]);
+    expect(mockAccountAddresses.mock.calls.length).toBe(reads + 1);
+    expect(published("accountAddresses").addresses.map((row: EpAccountAddress) => row.id)).toEqual([
+      "addr-a",
+      "addr-b",
+    ]);
+    expect(
+      mockStatePublications.filter(
+        (value) =>
+          value === "submitted" ||
+          value === "error" ||
+          value === "idle" ||
+          value === "submitting" ||
+          (!!value &&
+            typeof value === "object" &&
+            "first_name" in (value as Record<string, unknown>) &&
+            !("book" in (value as Record<string, unknown>)))
+      )
+    ).toEqual([]);
   });
 });
 

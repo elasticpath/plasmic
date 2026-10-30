@@ -207,6 +207,7 @@ export const EPAccountAddressFormProvider = React.forwardRef<
   const sessionIdRef = useRef<string | null>(null);
   const sessionGenerationRef = useRef(0);
   const baselineRef = useRef(EMPTY_VALUES);
+  const [sessionTargetId, setSessionTargetId] = useState<string | null>(null);
   const registry = useRef<
     Map<string, { name: AccountAddressFieldName; required: boolean }>
   >(new Map());
@@ -229,17 +230,23 @@ export const EPAccountAddressFormProvider = React.forwardRef<
     };
   }, []);
 
-  if (mode === "edit" && sessionIdRef.current !== currentAddressId) {
-    sessionIdRef.current = currentAddressId;
-    sessionGenerationRef.current += 1;
-    submittingRef.current = false;
+  if (mode === "edit" && sessionTargetId !== currentAddressId) {
     const seeded = seedValues(currentAddressId ? currentAddress : undefined);
-    baselineRef.current = seeded;
+    setSessionTargetId(currentAddressId);
     setDrafts(seeded);
     setErrors(EMPTY_ERRORS);
     setStatus("idle");
     setError(null);
   }
+
+  React.useLayoutEffect(() => {
+    if (mode !== "edit") return;
+    if (sessionIdRef.current === currentAddressId) return;
+    sessionIdRef.current = currentAddressId;
+    sessionGenerationRef.current += 1;
+    submittingRef.current = false;
+    baselineRef.current = seedValues(currentAddressId ? currentAddress : undefined);
+  }, [mode, currentAddressId, currentAddress]);
 
   const registerField = useCallback(
     (
@@ -329,8 +336,9 @@ export const EPAccountAddressFormProvider = React.forwardRef<
         submittingRef.current = false;
         return;
       }
-      if (!still()) return;
-      baselineRef.current = submittedDrafts;
+      if (still()) {
+        baselineRef.current = submittedDrafts;
+      }
       try {
         await refreshBook();
       } catch {
