@@ -465,7 +465,7 @@ export const epAccountAddressFormProviderMeta: CodeComponentMeta<EPAccountAddres
     name: "plasmic-commerce-ep-account-address-form-provider",
     displayName: "EP Account Address Form Provider",
     description:
-      "Creates or edits one saved address for the selected organisation, then refreshes the surrounding EP Account Address Provider. Mode defaults to create. Edit shows the current saved address and sends only fields that differ from it, including an empty string when a field is cleared. Edit submit does nothing when no current address is published, including after that address is deleted. Wire a button to the Submit action. Submit is blocked only by mounted fields whose Required prop is on. Does not publish the field values.",
+      "Creates or edits one saved address for the selected organisation, then refreshes the surrounding EP Account Address Provider. Mode defaults to create. Edit shows the current saved address and sends only fields that differ from it, including an empty string when a field is cleared. Edit submit does nothing when no current address is published, including after that address is deleted. Wire a button to the Submit action. Submit is blocked only by mounted fields whose Required prop is on. Does not publish the field values. Do not place EP Account Address Form Provider with mode=\"edit\" inside a component repeated by EP Account Address List — its submit ref action resolves to a shared Plasmic ref across repeated instances, not a per-row instance (see #621 for the original discovery of this failure mode).",
     props: {
       children: {
         type: "slot",
