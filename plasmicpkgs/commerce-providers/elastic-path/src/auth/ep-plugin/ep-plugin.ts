@@ -44,11 +44,14 @@ import {
   AccountAddressCreateError,
   AccountAddressDeleteError,
   AccountAddressReadError,
+  AccountAddressUpdateError,
   createAccountAddress,
   deleteAccountAddress,
   parseAccountAddressCreateBody,
   parseAccountAddressDeleteBody,
+  parseAccountAddressUpdateBody,
   readAccountAddresses,
+  updateAccountAddress,
 } from "./account-addresses";
 import {
   AccountAuthenticationSettingsError,
@@ -1189,6 +1192,79 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
             }
             return jsonError(
               "account_address_delete_failed",
+              502,
+              "Elastic Path was unreachable."
+            );
+          }
+        }
+      ),
+
+      epAccountAddressUpdate: createAuthEndpoint(
+        "/ep/account/addresses/update",
+        { method: "POST" },
+        async (ctx) => {
+          const existing = await readExistingSession(ctx);
+          if (!existing?.user || !existing?.session) return noSessionError();
+
+          const parsed = parseAccountAddressUpdateBody(ctx.body);
+          if (!parsed.ok) {
+            return jsonError("invalid_input", 400, parsed.message);
+          }
+
+          const session = sessionWithLapseApplied(existing.session);
+          const memberId = session.epMemberId;
+          if (typeof memberId !== "string" || !memberId) {
+            return noAccountMemberError();
+          }
+          if (session.epLapsedAccount) return accountLapsedError();
+
+          const account = session.epAccount as EpAccountSlot | undefined;
+          if (
+            !account ||
+            typeof account.id !== "string" ||
+            !account.id ||
+            typeof account.token !== "string" ||
+            !account.token
+          ) {
+            return noSelectedAccountError();
+          }
+
+          if (
+            typeof session.epAccessToken !== "string" ||
+            !session.epAccessToken ||
+            typeof session.epHost !== "string" ||
+            !session.epHost ||
+            typeof session.epClientId !== "string" ||
+            !session.epClientId
+          ) {
+            return jsonError(
+              "account_address_update_failed",
+              502,
+              "Elastic Path was unreachable."
+            );
+          }
+
+          try {
+            const address = await updateAccountAddress({
+              host: session.epHost,
+              clientId: session.epClientId,
+              implicitToken: session.epAccessToken,
+              accountId: account.id,
+              accountToken: account.token,
+              id: parsed.id,
+              address: parsed.address,
+            });
+            return ctx.json(epIdentityPayload("updateAccountAddress", address));
+          } catch (err) {
+            if (err instanceof AccountAddressUpdateError) {
+              return jsonError(
+                "account_address_update_failed",
+                err.status,
+                err.message
+              );
+            }
+            return jsonError(
+              "account_address_update_failed",
               502,
               "Elastic Path was unreachable."
             );
