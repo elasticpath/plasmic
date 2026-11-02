@@ -519,10 +519,13 @@ describe("reading account order history", () => {
     fetchUrls = [];
 
     const { res, body } = await readOrders(auth, cookies);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(502);
     expect(body.code).toBe("account_orders_read_failed");
+    expect(body.code).not.toBe("invalid_input");
     expect(body.orders).toBeUndefined();
     expect(body.message).toBe("Elastic Path rejected the account-order read.");
+    expect(JSON.stringify(body)).not.toContain(SOUTH);
+    expect(JSON.stringify(body)).not.toContain("eq(account_id");
     expect(orderCalls).toEqual([]);
     expect(fetchUrls.filter((url) => url.includes("/v2/orders"))).toEqual([]);
     expectNoSecrets(body);
@@ -1071,24 +1074,62 @@ describe("reading account order history", () => {
     expectNoSecrets(body);
   });
 
-  it("keeps an Elastic Path error status and does not echo the body", async () => {
+  it("maps upstream rejections to 502 without echoing the response", async () => {
     const auth = buildAuth();
     store.accounts = [ACCOUNTS[0]];
     const cookies = await signedIn(auth);
-    orderReplies = [
-      {
-        status: 403,
+
+    for (const status of [400, 401, 403, 404, 429, 500, 503]) {
+      const failure = {
+        status,
         body: {
-          errors: [{ detail: SECRET_STREET, title: "Forbidden" }],
+          errors: [
+            {
+              status: String(status),
+              detail: SECRET_STREET,
+              title: "Upstream",
+            },
+          ],
+          request: { url: "https://api.test.elasticpath.com/v2/orders" },
         },
-      },
-    ];
+      };
+      // The shopper SDK retries a rejected GET. A later default 200 would
+      // hide the failure, so every retry is rejected too.
+      orderReplies = Array.from({ length: 6 }, () => failure);
+
+      orderCalls = [];
+      const { res, body } = await readOrders(auth, cookies);
+      expect(res.status, `upstream ${status} calls ${orderCalls.length}`).toBe(502);
+      expect(body.code).toBe("account_orders_read_failed");
+      expect(body.message).toBe("Elastic Path rejected the account-order read.");
+      expect(body.orders).toBeUndefined();
+      expect(JSON.stringify(body)).not.toContain("Upstream");
+      expect(JSON.stringify(body)).not.toContain("/v2/orders");
+      expect(JSON.stringify(body)).not.toContain(SECRET_STREET);
+      expectNoSecrets(body);
+    }
+  });
+
+  it("fails ten full pages when no result total is reported", async () => {
+    const auth = buildAuth();
+    store.accounts = [ACCOUNTS[0]];
+    const cookies = await signedIn(auth);
+    orderReplies = Array.from({ length: 10 }, () => {
+      const page = orderPage(100, NORTH, 0);
+      delete (page.meta.results as { total?: number }).total;
+      return { status: 200, body: page };
+    });
+    orderCalls = [];
 
     const { res, body } = await readOrders(auth, cookies);
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(502);
     expect(body.code).toBe("account_orders_read_failed");
-    expect(body.message).toBe("Elastic Path rejected the account-order read.");
+    expect(body.message).toBe(
+      "Elastic Path did not return the full order history."
+    );
     expect(body.orders).toBeUndefined();
+    expect(orderCalls).toHaveLength(10);
+    expect(orderCalls[9].offset).toBe("900");
     expectNoSecrets(body);
   });
 

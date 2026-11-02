@@ -14,7 +14,6 @@ export type {
   EpAccountOrderResult,
   EpAccountOrderShipping,
   EpAccountOrderStatus,
-  EpFormattedPrice,
   EpAccountLoginRequest,
   EpAccountLoginResult,
   EpAccountMemberResult,

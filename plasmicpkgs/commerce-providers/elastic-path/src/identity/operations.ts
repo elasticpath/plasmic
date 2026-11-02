@@ -1,3 +1,4 @@
+import type { FormattedPrice } from "../utils/price";
 import type { EpAccountSummary, EpSessionEnvelope } from "./session-shape";
 
 export interface EpAccountLoginRequest {
@@ -89,13 +90,6 @@ export type EpAccountOrderPayment =
 /** `OrderResponse.shipping` values this package will display. */
 export type EpAccountOrderShipping = "unfulfilled" | "fulfilled";
 
-export interface EpFormattedPrice {
-  amount: number;
-  currency: string;
-  formatted: string;
-  float_price: number;
-}
-
 /** One order of the selected organisation. Only summary fields are present. */
 export interface EpAccountOrder {
   id: string;
@@ -104,7 +98,7 @@ export interface EpAccountOrder {
   payment?: EpAccountOrderPayment;
   shipping?: EpAccountOrderShipping;
   created_at?: string;
-  total?: EpFormattedPrice;
+  total?: FormattedPrice;
 }
 
 /** The selected organisation's order history. `total` is `orders.length`. */

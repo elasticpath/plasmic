@@ -199,7 +199,7 @@ async function loadAccountOrderPage(input: {
     throw new AccountOrderReadError(502, UNREACHABLE);
   }
   if (!result.response.ok) {
-    throw new AccountOrderReadError(result.response.status || 502, REJECTED);
+    throw new AccountOrderReadError(502, REJECTED);
   }
 
   const body = (result.data ?? {}) as { data?: unknown; meta?: unknown };
@@ -218,7 +218,7 @@ export async function readAccountOrders(input: {
 }): Promise<EpAccountOrderResult> {
   const accountId = canonicalAccountId(input.accountId);
   if (!accountId) {
-    throw new AccountOrderReadError(400, REJECTED);
+    throw new AccountOrderReadError(502, REJECTED);
   }
 
   const client = buildFixedTokenEpClient({

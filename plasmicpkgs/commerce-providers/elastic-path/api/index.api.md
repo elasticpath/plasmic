@@ -745,7 +745,7 @@ export interface EpAccountOrder {
     // (undocumented)
     status?: EpAccountOrderStatus;
     // (undocumented)
-    total?: EpFormattedPrice;
+    total?: FormattedPrice;
 }
 
 // @public (undocumented)
@@ -1226,18 +1226,6 @@ export const EPCustomerInfoFields: React_2.ForwardRefExoticComponent<EPCustomerI
 
 // @public (undocumented)
 export const epCustomerInfoFieldsMeta: CodeComponentMeta<EPCustomerInfoFieldsProps>;
-
-// @public (undocumented)
-export interface EpFormattedPrice {
-    // (undocumented)
-    amount: number;
-    // (undocumented)
-    currency: string;
-    // (undocumented)
-    float_price: number;
-    // (undocumented)
-    formatted: string;
-}
 
 // @public (undocumented)
 export function EPFormField(props: EPFormFieldProps): React_2.JSX.Element;
