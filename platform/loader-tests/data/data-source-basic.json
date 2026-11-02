@@ -28340,7 +28340,11 @@
         }
       },
       "deps": [],
+<<<<<<< HEAD
       "version": "259-repoint-ep-commerce-bindings"
+=======
+      "version": "259-add-image-asset-description"
+>>>>>>> upstream/master
     }
   ],
   [
@@ -32548,7 +32552,11 @@
         }
       },
       "deps": [],
+<<<<<<< HEAD
       "version": "259-repoint-ep-commerce-bindings"
+=======
+      "version": "259-add-image-asset-description"
+>>>>>>> upstream/master
     }
   ],
   [
@@ -32883,7 +32891,11 @@
         }
       },
       "deps": [],
+<<<<<<< HEAD
       "version": "259-repoint-ep-commerce-bindings"
+=======
+      "version": "259-add-image-asset-description"
+>>>>>>> upstream/master
     }
   ],
   [
@@ -36418,7 +36430,8 @@
           "params": {},
           "__type": "PageHref",
           "query": {},
-          "fragment": null
+          "fragment": null,
+          "encode": false
         },
         "nZK5MaUvFXBk": { "text": ["Home"], "__type": "TemplatedString" },
         "eBwiFMkvj_Ql": {
@@ -37300,7 +37313,8 @@
           "width": 150,
           "height": 150,
           "aspectRatio": 1000000000000,
-          "__type": "ImageAsset"
+          "__type": "ImageAsset",
+          "description": null
         },
         "EWq0fp_qDFMW": {
           "uuid": "2AZCi9uKHCzA",
@@ -37310,7 +37324,8 @@
           "width": 150,
           "height": 150,
           "aspectRatio": 1000000000000,
-          "__type": "ImageAsset"
+          "__type": "ImageAsset",
+          "description": null
         },
         "7WvC4NqmKOYx": {
           "uuid": "PtGbY0Mu3auE",
@@ -37320,7 +37335,8 @@
           "width": 150,
           "height": 150,
           "aspectRatio": 1000000,
-          "__type": "ImageAsset"
+          "__type": "ImageAsset",
+          "description": null
         },
         "EV4lR2s9QjcD": {
           "components": [
@@ -37663,7 +37679,11 @@
         "88b7de88-9046-4021-b08b-d5d7d1db6a8c",
         "0b5c4773-e201-48c2-86a4-c29335ea539b"
       ],
+<<<<<<< HEAD
       "version": "259-repoint-ep-commerce-bindings"
+=======
+      "version": "259-add-image-asset-description"
+>>>>>>> upstream/master
     }
   ]
 ]

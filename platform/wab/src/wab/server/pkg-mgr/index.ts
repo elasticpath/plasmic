@@ -13,20 +13,23 @@ import path from "path";
  * PkgMgr is responsible for generating Plasmic projects from data/*-master-pkg.json files.
  * This helps seed our localhost dev setup with a set of important Plasmic projects (like Plume, Plexus, etc.)
  *
- * Feel free to add more projects to data/*-master-pkg.json and then running `yarn db:reset` should create those projects locally
+ * Feel free to add more projects to data/*-master-pkg.json and then running `pnpm db:reset` should create those projects locally
  *
  * To download a project's data/*-master-pkg.json file from prod, use studio.plasmic.app/admin/dev -> Download Pkg as JSON for Pkg-mgr
  */
 export class PkgMgr {
-  constructor(private db: DbMgr, private sysname: InsertableId) {
-    logger().info(`created with sysname ${sysname}`);
+  constructor(
+    private db: DbMgr,
+    private sysname: InsertableId,
+  ) {
+    logger.info(`created with sysname ${sysname}`);
   }
 
   async unbundleAndSave(
     bundle: Bundle,
     user: User,
     depPkgVersionId: string,
-    sysname?: InsertableId
+    sysname?: InsertableId,
   ) {
     const name = bundle.map[bundle.root].name;
     const projectId = bundle.map[bundle.root].projectId;
@@ -38,8 +41,8 @@ export class PkgMgr {
       // We want Plume and PLexus (and its dependencies) to have general read access, so that any other non-admin project can install them
       inviteOnly: false,
     });
-    logger().info(
-      `Created ${this.sysname} ${name} project ${project.id} for user ${user.email}`
+    logger.info(
+      `Created ${this.sysname} ${name} project ${project.id} for user ${user.email}`,
     );
 
     // Create the pkg linked to that project, so that the developer
@@ -55,7 +58,7 @@ export class PkgMgr {
   async seedPkg() {
     assert(
       !(await this.tryGetPkg(this.sysname)),
-      `Not expecting a ${this.sysname} pkg to already exist`
+      `Not expecting a ${this.sysname} pkg to already exist`,
     );
 
     // Create a new project, owned by the "oldest" user
@@ -76,14 +79,14 @@ export class PkgMgr {
     await Promise.all(
       deps.map(async ([depPkgVersionId, bundle]) => {
         await this.unbundleAndSave(bundle, user, depPkgVersionId);
-      })
+      }),
     );
 
     await this.unbundleAndSave(
       masterBundle,
       user,
       masterPkgVersionId,
-      this.sysname
+      this.sysname,
     );
   }
 
@@ -91,10 +94,10 @@ export class PkgMgr {
    * Updates the existing pkg to be the content of master-pkg.json
    */
   async upgradePkg() {
-    logger().info(`Upgrading ${this.sysname}...`);
+    logger.info(`Upgrading ${this.sysname}...`);
     const pkg = await this.tryGetPkg(this.sysname);
     if (!pkg) {
-      logger().info(`Creating ${this.sysname} pkg for the first time...`);
+      logger.info(`Creating ${this.sysname} pkg for the first time...`);
       await this.seedPkg();
       return;
     }
@@ -109,11 +112,11 @@ export class PkgMgr {
         const depPkg = await this.tryGetPkg(depName);
         if (!depPkg) {
           throw new Error(
-            `Could not find dependency ${depName} of existing ${this.sysname} pkg`
+            `Could not find dependency ${depName} of existing ${this.sysname} pkg`,
           );
         }
         await this.upsertLatest(depPkg, bundle, depPkgVersionId);
-      })
+      }),
     );
     await this.upsertLatest(pkg, masterBundle, masterPkgVersionId);
   }
@@ -121,7 +124,7 @@ export class PkgMgr {
   private async upsertLatest(
     pkg: Pkg,
     pkgBundle: Bundle,
-    pkgVersionId: string
+    pkgVersionId: string,
   ) {
     const rev = await this.db.getLatestProjectRev(pkg.projectId);
 
@@ -130,7 +133,7 @@ export class PkgMgr {
       this.db,
       bundler,
       pkg.projectId,
-      pkgBundle
+      pkgBundle,
     )) as ProjectDependency;
 
     const deleteRes = await this.db
@@ -139,19 +142,17 @@ export class PkgMgr {
       .delete({
         pkgId: pkg.id,
       });
-    logger().info(
-      `Deleting existing versions (there are ${deleteRes.affected})`
-    );
+    logger.info(`Deleting existing versions (there are ${deleteRes.affected})`);
 
-    logger().info(`Updating to ${this.sysname} package version ${dep.version}`);
+    logger.info(`Updating to ${this.sysname} package version ${dep.version}`);
     const newRev = await this.db.saveProjectRev({
       projectId: rev.projectId,
       data: JSON.stringify(
-        bundler.bundle(dep.site, rev.projectId, await getLastBundleVersion())
+        bundler.bundle(dep.site, rev.projectId, await getLastBundleVersion()),
       ),
       revisionNum: rev.revision + 1,
     });
-    logger().info(`created a new revision ${newRev.revision}`);
+    logger.info(`created a new revision ${newRev.revision}`);
     // create the new pkg version with the same pkgId as in the master-pkg.json, because it will be used in the deps array
     const pkgVersion = await this.db.insertPkgVersion(
       pkg.id,
@@ -161,9 +162,9 @@ export class PkgMgr {
       "",
       newRev.revision,
       undefined,
-      pkgVersionId
+      pkgVersionId,
     );
-    logger().info(`inserted a pkg version ${pkgVersion.id}`);
+    logger.info(`inserted a pkg version ${pkgVersion.id}`);
   }
 
   private async tryGetPkg(sysname: InsertableId) {
@@ -188,7 +189,7 @@ export function parseMasterPkg(sysname: InsertableId) {
   const projectData = JSON.parse(
     fs
       .readFileSync(path.join(__dirname, "data", `${sysname}-master-pkg.json`))
-      .toString()
+      .toString(),
   ) as [string, Bundle][];
 
   const deps = projectData.slice(0, -1);

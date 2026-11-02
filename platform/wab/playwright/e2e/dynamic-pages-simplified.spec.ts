@@ -1,21 +1,27 @@
 import { expect } from "@playwright/test";
 import { test } from "../fixtures/test";
+import {
+  createPostgresTestDatabase,
+  type PostgresTestDatabase,
+} from "../utils/postgres-test-db";
 import { goToProject } from "../utils/studio-utils";
 
 test.describe("dynamic-pages-simplified", () => {
   let projectId: string;
   let dsname: string;
+  let testDatabase: PostgresTestDatabase | undefined;
 
   test.beforeEach(async ({ apiClient, page, context, request }) => {
-    dsname = `TutorialDB ${Date.now()}`;
+    dsname = `Postgres ${Date.now()}`;
 
-    await apiClient.createTutorialDataSource("northwind", dsname);
+    testDatabase = await createPostgresTestDatabase();
+    await apiClient.createPostgresDataSource(dsname, testDatabase.connection);
 
     await apiClient.makeApiClient(
       request,
       context,
       "user2@example.com",
-      "!53kr3tz!"
+      "!53kr3tz!",
     );
 
     projectId = await apiClient.setupNewProject({ name: "dynamic-pages" });
@@ -25,11 +31,21 @@ test.describe("dynamic-pages-simplified", () => {
   });
 
   test.afterEach(async ({ apiClient }) => {
-    await apiClient.removeProjectAfterTest(
-      projectId,
-      "user2@example.com",
-      "!53kr3tz!"
-    );
+    try {
+      try {
+        await apiClient.deleteDataSourceOfCurrentTest();
+      } finally {
+        if (projectId) {
+          await apiClient.removeProjectAfterTest(
+            projectId,
+            "user2@example.com",
+            "!53kr3tz!",
+          );
+        }
+      }
+    } finally {
+      await testDatabase?.dispose();
+    }
   });
 
   test("simplified works", async ({ models }) => {
@@ -48,7 +64,7 @@ test.describe("dynamic-pages-simplified", () => {
 
         await models.studio.rightPanel.waitForProductIdButton();
         await models.studio.rightPanel.clickCreateDynamicPageButton();
-      }
+      },
     );
 
     const framed = models.studio.frame.locator("iframe").first().contentFrame();
@@ -61,7 +77,7 @@ test.describe("dynamic-pages-simplified", () => {
     await expect(selectedElt).toHaveText("1");
 
     const pageParamInput =
-      await models.studio.rightPanel.getPageParamNameInput();
+      await models.studio.rightPanel.getPageParamInput("product_id");
     await expect(pageParamInput).toHaveValue("1");
 
     await models.studio.rightPanel.clickViewDifferentRecord();

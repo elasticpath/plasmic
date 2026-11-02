@@ -28,7 +28,6 @@ describe("mkDefinePluginOptsForEnv", () => {
         NODE_ENV: REQUIRED_VAR,
         COMMITHASH: "123456",
         PUBLICPATH: "/",
-        INTERCOM_APP_ID: OPTIONAL_VAR,
         POSTHOG_API_KEY: OPTIONAL_VAR,
         POSTHOG_HOST: OPTIONAL_VAR,
         POSTHOG_REVERSE_PROXY_HOST: OPTIONAL_VAR,
@@ -36,12 +35,11 @@ describe("mkDefinePluginOptsForEnv", () => {
         SENTRY_ORG_ID: OPTIONAL_VAR,
         SENTRY_PROJECT_ID: OPTIONAL_VAR,
         STRIPE_PUBLISHABLE_KEY: OPTIONAL_VAR,
-      })
+      }),
     ).toEqual({
       "process.env.NODE_ENV": '"development"',
       "process.env.COMMITHASH": '"123456"',
       "process.env.PUBLICPATH": '"/"',
-      "process.env.INTERCOM_APP_ID": undefined,
       "process.env.POSTHOG_API_KEY": undefined,
       "process.env.POSTHOG_HOST": undefined,
       "process.env.POSTHOG_REVERSE_PROXY_HOST": undefined,
@@ -58,7 +56,6 @@ describe("mkDefinePluginOptsForEnv", () => {
         NODE_ENV: REQUIRED_VAR,
         COMMITHASH: "123456",
         PUBLICPATH: "/",
-        INTERCOM_APP_ID: OPTIONAL_VAR,
         POSTHOG_API_KEY: OPTIONAL_VAR,
         POSTHOG_HOST: OPTIONAL_VAR,
         POSTHOG_REVERSE_PROXY_HOST: OPTIONAL_VAR,
@@ -66,12 +63,11 @@ describe("mkDefinePluginOptsForEnv", () => {
         SENTRY_ORG_ID: OPTIONAL_VAR,
         SENTRY_PROJECT_ID: OPTIONAL_VAR,
         STRIPE_PUBLISHABLE_KEY: OPTIONAL_VAR,
-      })
+      }),
     ).toThrow("production build");
   });
   it("works in production with all optional vars", () => {
     process.env.NODE_ENV = "production";
-    process.env.INTERCOM_APP_ID = "intercom_app_id";
     process.env.POSTHOG_API_KEY = "posthog_api_key";
     process.env.POSTHOG_HOST = "posthog_host";
     process.env.POSTHOG_REVERSE_PROXY_HOST = "posthog_reverse_proxy_host";
@@ -84,7 +80,6 @@ describe("mkDefinePluginOptsForEnv", () => {
         NODE_ENV: REQUIRED_VAR,
         COMMITHASH: "123456",
         PUBLICPATH: "/",
-        INTERCOM_APP_ID: OPTIONAL_VAR,
         POSTHOG_API_KEY: OPTIONAL_VAR,
         POSTHOG_HOST: OPTIONAL_VAR,
         POSTHOG_REVERSE_PROXY_HOST: OPTIONAL_VAR,
@@ -92,12 +87,11 @@ describe("mkDefinePluginOptsForEnv", () => {
         SENTRY_ORG_ID: OPTIONAL_VAR,
         SENTRY_PROJECT_ID: OPTIONAL_VAR,
         STRIPE_PUBLISHABLE_KEY: OPTIONAL_VAR,
-      })
+      }),
     ).toEqual({
       "process.env.NODE_ENV": '"production"',
       "process.env.COMMITHASH": '"123456"',
       "process.env.PUBLICPATH": '"/"',
-      "process.env.INTERCOM_APP_ID": '"intercom_app_id"',
       "process.env.POSTHOG_API_KEY": '"posthog_api_key"',
       "process.env.POSTHOG_HOST": '"posthog_host"',
       "process.env.POSTHOG_REVERSE_PROXY_HOST": '"posthog_reverse_proxy_host"',
@@ -113,7 +107,6 @@ describe("mkDefinePluginOptsForEnv", () => {
         NODE_ENV: "development", // already set in process.env
         COMMITHASH: "123456",
         PUBLICPATH: "/",
-        INTERCOM_APP_ID: OPTIONAL_VAR,
         POSTHOG_API_KEY: OPTIONAL_VAR,
         POSTHOG_HOST: OPTIONAL_VAR,
         POSTHOG_REVERSE_PROXY_HOST: OPTIONAL_VAR,
@@ -121,7 +114,7 @@ describe("mkDefinePluginOptsForEnv", () => {
         SENTRY_ORG_ID: OPTIONAL_VAR,
         SENTRY_PROJECT_ID: OPTIONAL_VAR,
         STRIPE_PUBLISHABLE_KEY: OPTIONAL_VAR,
-      })
+      }),
     ).toThrow("found");
   });
   it("throws if required process.env value is missing", () => {
@@ -130,7 +123,6 @@ describe("mkDefinePluginOptsForEnv", () => {
         NODE_ENV: REQUIRED_VAR,
         COMMITHASH: "123456",
         PUBLICPATH: REQUIRED_VAR, // missing in process.env
-        INTERCOM_APP_ID: OPTIONAL_VAR,
         POSTHOG_API_KEY: OPTIONAL_VAR,
         POSTHOG_HOST: OPTIONAL_VAR,
         POSTHOG_REVERSE_PROXY_HOST: OPTIONAL_VAR,
@@ -138,7 +130,7 @@ describe("mkDefinePluginOptsForEnv", () => {
         SENTRY_ORG_ID: OPTIONAL_VAR,
         SENTRY_PROJECT_ID: OPTIONAL_VAR,
         STRIPE_PUBLISHABLE_KEY: OPTIONAL_VAR,
-      })
+      }),
     ).toThrow("missing");
   });
 });

@@ -62,7 +62,7 @@ export const StyleExprButton = observer(function StyleExprButton(props: {
     (isCodeComponent(component) && component._meta?.classNameProp === attr);
   const param = ensure(
     component.params.find((p) => p.variable.name === attr),
-    `Component param of name ${attr} must exist`
+    `Component param of name ${attr} must exist`,
   );
   const arg = vtm.getArg(tpl, param.variable);
   const expr = arg?.expr ? ensureKnownStyleExpr(arg.expr) : undefined;
@@ -89,7 +89,7 @@ export const StyleExprButton = observer(function StyleExprButton(props: {
                         isBase: true,
                       }),
                     ],
-                  })
+                  }),
                 );
               }
               setShow(true);
@@ -134,7 +134,7 @@ const StyleExprPopup = observer(function StyleExprPopup(props: {
     })) ?? []),
   ]);
   const [selector, setSelector] = React.useState<string | null>(
-    selectorOptions?.[0]?.value ?? null
+    selectorOptions?.[0]?.value ?? null,
   );
   const hasAdditionalSelectors =
     spec.selectors &&
@@ -147,13 +147,14 @@ const StyleExprPopup = observer(function StyleExprPopup(props: {
       if (!expr.styles.find((s) => s.selector === selector)) {
         spawn(
           studioCtx.changeUnsafe(() => {
-            expr.styles.push(
+            expr.styles = [
+              ...expr.styles,
               mkSelectorRuleSet({
                 selector,
                 isBase: false,
-              })
-            );
-          })
+              }),
+            ];
+          }),
         );
       }
     }
@@ -201,7 +202,7 @@ const StyleExprForm = observer(function StyleExprForm(props: {
   const { spec, studioCtx, selector, expr } = props;
 
   const selectorRuleSet = expr.styles.find((sty) =>
-    selector === "base" ? !sty.selector : sty.selector === selector
+    selector === "base" ? !sty.selector : sty.selector === selector,
   );
 
   if (!selectorRuleSet) {
@@ -212,7 +213,7 @@ const StyleExprForm = observer(function StyleExprForm(props: {
     selectorRuleSet.rs,
     new RuleSetHelpers(selectorRuleSet.rs, "div"),
     studioCtx,
-    /*unremovableProps=*/ []
+    /*unremovableProps=*/ [],
   );
   const styleComponent = mkStyleComponent({ expsProvider });
 
@@ -222,7 +223,7 @@ const StyleExprForm = observer(function StyleExprForm(props: {
 
   return providesStyleComponent(
     styleComponent,
-    `${expr.uuid}`
+    `${expr.uuid}`,
   )(
     <>
       {show(PublicStyleSection.Typography) && (
@@ -267,6 +268,6 @@ const StyleExprForm = observer(function StyleExprForm(props: {
       {show(PublicStyleSection.Transform) && (
         <TransformPanelSection expsProvider={expsProvider} />
       )}
-    </>
+    </>,
   );
 });

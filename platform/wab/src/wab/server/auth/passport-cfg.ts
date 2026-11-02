@@ -1,4 +1,3 @@
-import { setupCustomPassport } from "@/wab/server/auth/custom-passport-cfg";
 import { createUserFull } from "@/wab/server/auth/routes";
 import { Config } from "@/wab/server/config";
 import { DbMgr, SUPER_USER } from "@/wab/server/db/DbMgr";
@@ -17,7 +16,10 @@ import {
   MultiOAuth2Strategy,
   OAuth2Config,
 } from "@/wab/server/util/passport-multi-oauth2";
-import { BadRequestError } from "@/wab/shared/ApiErrors/errors";
+import {
+  BadRequestError,
+  UnauthorizedError,
+} from "@/wab/shared/ApiErrors/errors";
 import { SsoConfigId, UserId } from "@/wab/shared/ApiSchema";
 import { accessLevelRank } from "@/wab/shared/EntUtil";
 import {
@@ -45,7 +47,7 @@ const LocalStrategy = passportLocal.Strategy;
 export async function setupPassport(
   dbMgr: DbMgr,
   config: Config,
-  devflags: DevFlagsType
+  devflags: DevFlagsType,
 ) {
   passport.serializeUser<User, any>((user: any, done: any) => {
     done(undefined, user.id);
@@ -54,13 +56,11 @@ export async function setupPassport(
   passport.deserializeUser((id: string, done) => {
     asyncToCallback(done, async () => {
       const mgr = new DbMgr(getManager(), SUPER_USER);
-      try {
-        return await mgr.getUserById(id);
-      } catch (err) {
-        // Do not use NotFoundError.  This is necessary for now since our global error handler blindly transforms
-        // NotFoundErrors into 404s.
-        throw new Error(err.message);
+      const user = await mgr.tryGetUserById(id);
+      if (!user) {
+        throw new UnauthorizedError("Must be logged in");
       }
+      return user;
     });
   });
 
@@ -89,8 +89,8 @@ export async function setupPassport(
             return false;
           }
         });
-      }
-    )
+      },
+    ),
   );
 
   /**
@@ -112,11 +112,11 @@ export async function setupPassport(
             accessToken,
             refreshToken,
             profile,
-            { requireRefreshToken: true }
+            { requireRefreshToken: true },
           );
           return user;
-        })
-    )
+        }),
+    ),
   );
 
   passport.use(
@@ -140,7 +140,7 @@ export async function setupPassport(
                 ...sso,
               };
               return fullConfig;
-            }
+            },
           );
         },
       },
@@ -152,7 +152,7 @@ export async function setupPassport(
 
           const row = await extractSsoConfig(req);
           profile.tenantId = row.tenantId;
-          logger().info("SSO profile", profile);
+          logger.info("SSO profile", profile);
           let user = await upsertOauthUser(
             req,
             row.provider,
@@ -161,7 +161,7 @@ export async function setupPassport(
             profile,
             {
               ssoConfigId: row.id,
-            }
+            },
           );
 
           const mgr = superDbMgr(req);
@@ -177,7 +177,7 @@ export async function setupPassport(
           // If the user is already on the team, don't do anything
           const userCurrentAccessLevel = await mgr.getTeamAccessLevelByUser(
             row.teamId,
-            user.id
+            user.id,
           );
           if (
             accessLevelRank(userCurrentAccessLevel) >= accessLevelRank("viewer")
@@ -190,13 +190,13 @@ export async function setupPassport(
           await mgr.grantTeamPermissionByEmail(
             row?.teamId,
             user.email,
-            team.defaultAccessLevel ?? "editor"
+            team.defaultAccessLevel ?? "editor",
           );
 
           return user;
         });
-      }
-    )
+      },
+    ),
   );
 
   const airtableSsoSecrets = getAirtableSsoSecrets();
@@ -210,7 +210,7 @@ export async function setupPassport(
         callbackURL: `${config.host}/api/v1/oauth2/airtable/callback`,
         customHeaders: {
           Authorization: `Basic ${Buffer.from(
-            `${airtableSsoSecrets.clientId}:${airtableSsoSecrets.clientSecret}`
+            `${airtableSsoSecrets.clientId}:${airtableSsoSecrets.clientSecret}`,
           ).toString("base64")}`,
         },
         state: true,
@@ -227,10 +227,10 @@ export async function setupPassport(
             user.id,
             "airtable",
             { accessToken, refreshToken },
-            {}
+            {},
           );
           return row;
-        })
+        }),
     );
     passport.use("airtable", airtableStrategy);
     refresh.use("airtable", airtableStrategy);
@@ -251,23 +251,21 @@ export async function setupPassport(
         asyncToCallback<User | undefined>(done, async () => {
           const mgr = superDbMgr(req);
           const user = await mgr.tryGetUserById(
-            ensure(req.user, "Should have a user").id
+            ensure(req.user, "Should have a user").id,
           );
           assert(user, "Oauth2Error: unable to get user");
-          const row = await mgr.upsertOauthToken(
+          await mgr.upsertOauthToken(
             user.id,
             "google-sheets",
             { accessToken, refreshToken },
-            {}
+            {},
           );
           return undefined;
-        })
+        }),
     );
     passport.use("google-sheets", googleStrategy);
     refresh.use("google-sheets", googleStrategy);
   }
-
-  await setupCustomPassport(dbMgr, config);
 }
 
 export async function extractSsoConfig(req: Request) {
@@ -289,7 +287,7 @@ export async function upsertOauthUser(
   opts: {
     requireRefreshToken?: boolean;
     ssoConfigId?: SsoConfigId;
-  }
+  },
 ): Promise<User> {
   const mgr = superDbMgr(req);
 
@@ -300,8 +298,8 @@ export async function upsertOauthUser(
   assert(
     email,
     `Oauth2Error: unable to get profile email. Profile: ${JSON.stringify(
-      profile
-    )}`
+      profile,
+    )}`,
   );
 
   // NOTE: devflags is loaded on startup, not per request!
@@ -309,12 +307,12 @@ export async function upsertOauthUser(
   const googleRequiredDom = isGoogleAuthRequiredEmailDomain(email, devflags);
   assert(
     !googleRequiredDom || provider === "google",
-    `${googleRequiredDom} users should sign in with Google`
+    `${googleRequiredDom} users should sign in with Google`,
   );
 
   assert(
     userFields.emailVerified !== false,
-    `OAuth2Error: user email is not verified`
+    `OAuth2Error: user email is not verified`,
   );
 
   let user = await mgr.tryGetUserByEmail(email);
@@ -341,7 +339,7 @@ export async function upsertOauthUser(
       provider,
       { accessToken, refreshToken },
       (profile as any)._json,
-      opts.ssoConfigId
+      opts.ssoConfigId,
     );
   }
 
@@ -353,10 +351,10 @@ export async function upsertOauthUser(
   return user;
 }
 
-export async function updateUserFromProfile(
+async function updateUserFromProfile(
   mgr: DbMgr,
   userId: UserId,
-  profile: Profile
+  profile: Profile,
 ) {
   const userFields = deriveOAuthUserFields(profile);
   return await mgr.updateUser({

@@ -1345,7 +1345,11 @@
         }
       },
       "deps": [],
+<<<<<<< HEAD
       "version": "259-repoint-ep-commerce-bindings"
+=======
+      "version": "259-add-image-asset-description"
+>>>>>>> upstream/master
     }
   ],
   [
@@ -2589,7 +2593,8 @@
           "width": 150,
           "height": 150,
           "aspectRatio": 1000000,
-          "__type": "ImageAsset"
+          "__type": "ImageAsset",
+          "description": null
         },
         "qkP78v4NuNLB": {
           "uuid": "-JTRe3YcQ8y8",
@@ -2599,7 +2604,8 @@
           "width": 150,
           "height": 150,
           "aspectRatio": 1000000,
-          "__type": "ImageAsset"
+          "__type": "ImageAsset",
+          "description": null
         },
         "P8hUdZkGBYov": {
           "uuid": "gGghalT6VlIe",
@@ -9245,7 +9251,8 @@
           "width": 150,
           "height": 150,
           "aspectRatio": null,
-          "__type": "ImageAsset"
+          "__type": "ImageAsset",
+          "description": null
         },
         "CUEv0dZhpMRo": {
           "uuid": "9qNAm3tH_YLt",
@@ -14799,7 +14806,11 @@
         }
       },
       "deps": ["1397401c-b15c-47b2-8659-9b44c397e887"],
+<<<<<<< HEAD
       "version": "259-repoint-ep-commerce-bindings"
+=======
+      "version": "259-add-image-asset-description"
+>>>>>>> upstream/master
     }
   ]
 ]

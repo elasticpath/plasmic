@@ -34,7 +34,7 @@ function UsersView() {
 function UserProjects() {
   const nonAuthCtx = useNonAuthCtx();
   const [selectedUserId, setSelectedUserId] = useState<string | undefined>(
-    undefined
+    undefined,
   );
   const { value: projects } = useAsyncStrict(async () => {
     if (!selectedUserId) {
@@ -175,7 +175,7 @@ function DeactivateUserView() {
       <Form
         onFinish={async (event) => {
           try {
-            const res = await nonAuthCtx.api.deactivateUserAsAdmin(event.email);
+            await nonAuthCtx.api.deactivateUserAsAdmin(event.email);
             notification.success({
               message: "User deactivated",
             });

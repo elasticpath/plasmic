@@ -1,4 +1,13 @@
-/** @jest-environment node */
+/** @vitest-environment node */
+import {
+  PublicApiTester,
+  SharedApiTester,
+  expectStatus,
+} from "@/wab/server/__testonly__/api-tester";
+import {
+  createBackend,
+  createDatabase,
+} from "@/wab/server/__testonly__/backend-util";
 import { seedTestUserAndProjects } from "@/wab/server/db/DbInit";
 import { DbMgr, normalActor } from "@/wab/server/db/DbMgr";
 import {
@@ -7,12 +16,6 @@ import {
   CmsTable,
   User,
 } from "@/wab/server/entities/Entities";
-import {
-  PublicApiTester,
-  SharedApiTester,
-  expectStatus,
-} from "@/wab/server/test/api-tester";
-import { createBackend, createDatabase } from "@/wab/server/test/backend-util";
 import { CmsMetaType } from "@/wab/shared/ApiSchema";
 
 describe("CMS public routes", () => {
@@ -52,7 +55,7 @@ describe("CMS public routes", () => {
         {
           email: "user@example.com",
         },
-        0
+        0,
       );
       user = userAndProjects.user;
 
@@ -136,10 +139,10 @@ describe("CMS public routes", () => {
                         num % 15 === 0
                           ? "fizzbuzz"
                           : num % 3 === 0
-                          ? "fizz"
-                          : num % 5 === 0
-                          ? "buzz"
-                          : null,
+                            ? "fizz"
+                            : num % 5 === 0
+                              ? "buzz"
+                              : null,
                       draft: false,
                       secretNum: 120 - num,
                     },
@@ -148,10 +151,10 @@ describe("CMS public routes", () => {
                         num % 15 === 0
                           ? "FIZZBUZZ"
                           : num % 3 === 0
-                          ? "FIZZ"
-                          : num % 5 === 0
-                          ? "BUZZ"
-                          : null,
+                            ? "FIZZ"
+                            : num % 5 === 0
+                              ? "BUZZ"
+                              : null,
                     },
                   }
                 : undefined,
@@ -162,15 +165,15 @@ describe("CMS public routes", () => {
                   num % 15 === 0
                     ? "fizzbuzz"
                     : num % 3 === 0
-                    ? "fizz"
-                    : num % 5 === 0
-                    ? "buzz"
-                    : null,
+                      ? "fizz"
+                      : num % 5 === 0
+                        ? "buzz"
+                        : null,
                 draft: true,
               },
             },
           };
-        })
+        }),
       );
 
       // Create animal table
@@ -568,7 +571,7 @@ describe("CMS public routes", () => {
 
       const publicTokenRes =
         await publicApi.tsRestClient.publicCmsReadsContract.queryTable(
-          draftRequest
+          draftRequest,
         );
       const {
         body: { error },
@@ -1046,7 +1049,7 @@ describe("CMS public routes", () => {
 
       const publicTokenRes =
         await publicApi.tsRestClient.publicCmsReadsContract.countTable(
-          draftRequest
+          draftRequest,
         );
       const {
         body: { error },

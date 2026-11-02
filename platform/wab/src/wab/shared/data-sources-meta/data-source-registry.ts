@@ -28,11 +28,6 @@ import {
   SupabaseDataSource,
 } from "@/wab/shared/data-sources-meta/supabase-meta";
 import {
-  QueryBuilderTutorialDbConfig,
-  TUTORIALDB_META,
-  TutorialDbDataSource,
-} from "@/wab/shared/data-sources-meta/tutorialdb-meta";
-import {
   ZAPIER_META,
   ZapierDataSource,
 } from "@/wab/shared/data-sources-meta/zapier-meta";
@@ -47,7 +42,6 @@ export type GenericDataSource =
   | SupabaseDataSource
   | PostgresDataSource
   | ZapierDataSource
-  | TutorialDbDataSource
   | FakeDataSource;
 
 const DATA_SOURCE_METAS = {
@@ -57,7 +51,6 @@ const DATA_SOURCE_METAS = {
   supabase: SUPABASE_META,
   postgres: POSTGRES_META,
   zapier: ZAPIER_META,
-  tutorialdb: TUTORIALDB_META,
   fake: FAKE_META,
 } as const;
 
@@ -65,14 +58,19 @@ export type DataSourceType = keyof typeof DATA_SOURCE_METAS;
 
 export function getDataSourceMeta(type: string): DataSourceMeta {
   return ensure(
-    DATA_SOURCE_METAS[type],
-    () => `Unexpected ${DATA_SOURCE_LOWER} type ${type}`
+    tryGetDataSourceMeta(type),
+    () => `Unexpected ${DATA_SOURCE_LOWER} type ${type}`,
   );
+}
+
+/** For callers that can carry on without knowing the type, e.g. a stale tab. */
+export function tryGetDataSourceMeta(type: string): DataSourceMeta | undefined {
+  return DATA_SOURCE_METAS[type];
 }
 
 export function getAllPublicDataSourceMetas() {
   return getAllDataSourceMetas().filter(
-    (meta) => !DEVFLAGS.hiddenDataSources.includes(meta.id)
+    (meta) => !DEVFLAGS.hiddenDataSources.includes(meta.id),
   );
 }
 
@@ -87,13 +85,12 @@ export function getAllDataSourceTypes() {
 export const DATA_SOURCE_QUERY_BUILDER_CONFIG = {
   postgres: QueryBuilderPostgresConfig,
   airtable: QueryBuilderAirtableConfig,
-  tutorialdb: QueryBuilderTutorialDbConfig,
   fake: QueryBuilderFakeConfig,
 };
 
 export function getDataSourceQueryBuilderConfig(type: string): Config {
   return ensure(
     DATA_SOURCE_QUERY_BUILDER_CONFIG[type],
-    () => `Unexpected ${DATA_SOURCE_LOWER} type ${type}`
+    () => `Unexpected ${DATA_SOURCE_LOWER} type ${type}`,
   );
 }

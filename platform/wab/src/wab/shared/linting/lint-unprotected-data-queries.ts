@@ -2,7 +2,7 @@ import { ApiAppRole } from "@/wab/shared/ApiSchema";
 import { findAllDataSourceOpExpr } from "@/wab/shared/cached-selectors";
 import { UnprotectedDataQueryLintIssue } from "@/wab/shared/linting/lint-types";
 import { lintIssuesEquals } from "@/wab/shared/linting/lint-utils";
-import { maybeComputedFn } from "@/wab/shared/mobx-util";
+import { siteSelector } from "@/wab/shared/mobx-util";
 import {
   Component,
   DataSourceOpExpr,
@@ -12,7 +12,7 @@ import {
 
 const TYPE = "unprotected-data-query";
 
-export const lintUnprotectedDataQueries = maybeComputedFn(
+export const lintUnprotectedDataQueries = siteSelector(
   function lintUnprotectedDataQueries(site: Site, roles: ApiAppRole[]) {
     const defaultPageRoleId = site.defaultPageRoleId;
     const defaultPageRoleOrder =
@@ -39,13 +39,13 @@ export const lintUnprotectedDataQueries = maybeComputedFn(
     keepAlive: false,
     equals: lintIssuesEquals,
     name: "lintUnprotectedDataQueries",
-  }
+  },
 );
 
 function makeIssueKey(
   component: Component,
   expr: DataSourceOpExpr,
-  tpl?: TplNode
+  tpl?: TplNode,
 ) {
   return `${TYPE}-${component.uuid}-${expr.uid}-${tpl?.uuid}`;
 }

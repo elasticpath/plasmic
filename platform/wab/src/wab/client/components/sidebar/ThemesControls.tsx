@@ -1,10 +1,8 @@
+import { activateTheme } from "@/wab/client/activate-theme";
 import PlasmicLeftThemesPanel from "@/wab/client/plasmic/plasmic_kit_left_pane/PlasmicLeftThemesPanel";
 import { useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
-import { ensure, withoutNils } from "@/wab/shared/common";
-import { DEVFLAGS } from "@/wab/shared/devflags";
-import { RuleSetHelpers } from "@/wab/shared/RuleSetHelpers";
-import { isHostLessPackage } from "@/wab/shared/core/sites";
-import { uniq } from "lodash";
+import { ensure } from "@/wab/shared/common";
+import { getSelectableThemes } from "@/wab/shared/core/theme-styles";
 import { observer } from "mobx-react";
 import React from "react";
 
@@ -12,14 +10,7 @@ export const DefaultStylesPanel = observer(function DefaultStylesPanel() {
   const studioCtx = useStudioCtx();
   const site = studioCtx.site;
   const activeTheme = site.activeTheme;
-  const themes = uniq(
-    withoutNils([
-      ...site.themes,
-      ...site.projectDependencies
-        .filter((dep) => !isHostLessPackage(dep.site))
-        .map((dep) => dep.site.activeTheme),
-    ])
-  );
+  const themes = getSelectableThemes(site).map((st) => st.theme);
 
   return (
     <PlasmicLeftThemesPanel
@@ -33,7 +24,7 @@ export const DefaultStylesPanel = observer(function DefaultStylesPanel() {
               : `Theme from ${
                   ensure(
                     studioCtx.projectDependencyManager.getOwnerDep(theme),
-                    "Could not find owner dep for theme"
+                    "Could not find owner dep for theme",
                   ).name
                 }`,
           })),
@@ -42,19 +33,12 @@ export const DefaultStylesPanel = observer(function DefaultStylesPanel() {
             const theme = themes.find((th) => th.defaultStyle.uuid === newVal);
             if (theme && theme !== activeTheme) {
               await studioCtx.changeUnsafe(() => {
-                site.activeTheme = theme;
-                studioCtx.fontManager.useFont(
-                  studioCtx,
-                  new RuleSetHelpers(theme.defaultStyle.rs, "div").get(
-                    "font-family"
-                  )
-                );
+                activateTheme(studioCtx, theme);
               });
             }
           },
         },
       }}
-      noLayout={!DEVFLAGS.pageLayout}
       notOwnedBySite={!!activeTheme && !site.themes.includes(activeTheme)}
     />
   );

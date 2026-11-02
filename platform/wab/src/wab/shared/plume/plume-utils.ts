@@ -51,17 +51,6 @@ export function createDefaultSlotContentsStub(sub: SubDeps) {
   }, {});
 }
 
-export function convertToDefaultProp(
-  attrs: Record<string, string>,
-  prop: string,
-  defaultProp: string
-) {
-  if (prop in attrs && !(defaultProp in attrs) && attrs[prop]) {
-    attrs[defaultProp] = attrs[prop];
-  }
-  delete attrs[prop];
-}
-
 export function fixupForPlume(summary: ChangeSummary, viewCtx?: ViewCtx) {
   for (const tree of summary.newTrees) {
     for (const tpl of flattenTpls(tree)) {
@@ -81,7 +70,7 @@ export function fixupForPlume(summary: ChangeSummary, viewCtx?: ViewCtx) {
 
 export function serializeComponentSubstitutionCallsForDefaultContents(
   ctx: SerializerBaseContext,
-  paramNames: string[]
+  paramNames: string[],
 ) {
   if (!ctx.exportOpts.useComponentSubstitutionApi) {
     return "";
@@ -109,7 +98,7 @@ export function serializeComponentSubstitutionCallsForDefaultContents(
   const calls = generateSubstituteComponentCalls(
     [...referencedComponents],
     ctx.exportOpts,
-    ctx.aliases
+    ctx.aliases,
   );
 
   return calls.join("\n");
@@ -117,7 +106,7 @@ export function serializeComponentSubstitutionCallsForDefaultContents(
 
 export function getSerializedDefaultSlotContent(
   ctx: SerializerBaseContext,
-  paramName: string
+  paramName: string,
 ) {
   const { component } = ctx;
   const param = component.params.find((p) => p.variable.name === paramName);
@@ -127,17 +116,17 @@ export function getSerializedDefaultSlotContent(
   }
 
   return asOneNode(
-    serializeTplSlotArgsAsArray(ctx, slot.param, slot.defaultContents)
+    serializeTplSlotArgsAsArray(ctx, slot.param, slot.defaultContents),
   );
 }
 
 export function maybeIncludeSerializedDefaultSlotContent(
   ctx: SerializerBaseContext,
-  paramName: string
+  paramName: string,
 ) {
   const serializedDefaultContent = getSerializedDefaultSlotContent(
     ctx,
-    paramName
+    paramName,
   );
   if (!serializedDefaultContent) {
     return "";
@@ -157,7 +146,7 @@ export function maybeIncludeSerializedDefaultSlotContent(
 export function makeComponentImportPath(
   component: Component,
   ctx: SerializerBaseContext,
-  type: "render" | "skeleton"
+  type: "render" | "skeleton",
 ) {
   if (type === "render") {
     return ctx.exportOpts.idFileNames
@@ -174,7 +163,7 @@ export function makeComponentImportPath(
 
 export function traverseReactEltTree(
   children: React.ReactNode,
-  callback: (elt: React.ReactElement) => void
+  callback: (elt: React.ReactElement) => void,
 ) {
   const rec = (elts: React.ReactNode) => {
     if (Array.isArray(elts)) {
@@ -189,14 +178,14 @@ export function traverseReactEltTree(
 
 export function isPlumeTypeElement(
   elt: React.ReactElement,
-  type: PlumeType
+  type: PlumeType,
 ): elt is React.ReactElement {
   return !!elt && !!elt.type && (elt.type as any).__plumeType === type;
 }
 
 export function ensureValidPlumeCodeMeta(
   comp: Component,
-  meta: PlumeCodeComponentMeta
+  meta: PlumeCodeComponentMeta,
 ): PlumeCodeComponentMeta {
   // Certain props in meta.props are safe to add to the Plume component,
   // but we should not add a slot prop if it doesn't already exist,
@@ -207,14 +196,14 @@ export function ensureValidPlumeCodeMeta(
       if (getPropTypeType(propType) === "slot") {
         if (
           !comp.params.find(
-            (p) => toVarName(p.variable.name) === prop && isSlot(p)
+            (p) => toVarName(p.variable.name) === prop && isSlot(p),
           )
         ) {
           return false;
         }
       }
       return true;
-    })
+    }),
   );
 
   const states = !meta.states
@@ -244,7 +233,7 @@ export function ensureValidPlumeCodeMeta(
           }
 
           return true;
-        })
+        }),
       );
 
   return {

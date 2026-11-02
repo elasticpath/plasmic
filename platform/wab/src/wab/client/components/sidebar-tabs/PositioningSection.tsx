@@ -5,7 +5,6 @@ import {
 import {
   FullRow,
   LabeledStyleDimItem,
-  LabeledStyleItemRow,
 } from "@/wab/client/components/sidebar/sidebar-helpers";
 import {
   PosControls2,
@@ -21,15 +20,8 @@ import {
 import StyleToggleButton from "@/wab/client/components/style-controls/StyleToggleButton";
 import StyleToggleButtonGroup from "@/wab/client/components/style-controls/StyleToggleButtonGroup";
 import { AlignItemsControls } from "@/wab/client/components/style-controls/align-items-controls";
-import { DimTokenSpinner } from "@/wab/client/components/widgets/DimTokenSelector";
 import { LabelWithDetailedTooltip } from "@/wab/client/components/widgets/LabelWithDetailedTooltip";
 import { isStylePropSet } from "@/wab/client/utils/style-utils";
-import {
-  Axis,
-  TrackRange,
-  parseGridChildAreaCss,
-  showGridChildCss,
-} from "@/wab/shared/Grids";
 import { isBaseVariant } from "@/wab/shared/Variants";
 import { mapify, maybe } from "@/wab/shared/common";
 import { isCodeComponent } from "@/wab/shared/core/components";
@@ -37,7 +29,6 @@ import { isTplComponent } from "@/wab/shared/core/tpls";
 import { LENGTH_PERCENTAGE_UNITS, NUMBER_UNITS } from "@/wab/shared/css/types";
 import { standardSides } from "@/wab/shared/geom";
 import { ContainerType } from "@/wab/shared/layoututils";
-import { produce } from "immer";
 import { observer } from "mobx-react";
 import React from "react";
 
@@ -77,7 +68,7 @@ export const PositioningPanelSection = observer(
       const isAuto = h.getIsAuto();
       const parentContainerType = h.getParentContainerType();
       const parentIsFlex = ["flex-row", "flex-column"].includes(
-        parentContainerType || ""
+        parentContainerType || "",
       );
       const parentIsFree = parentContainerType === "free";
 
@@ -215,23 +206,8 @@ export const PositioningPanelSection = observer(
         </>
       );
     }
-  }
+  },
 );
-
-function MiniLabel({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className={"MiniLabel"}>
-      <div className={"MiniLabel__label"}>{label}</div>
-      <div className={"MiniLabel__content"}>{children}</div>
-    </div>
-  );
-}
 
 const AutoChildSettings = observer(function AutoChildSettings(props: {
   expsProvider: ExpsProvider;
@@ -242,7 +218,7 @@ const AutoChildSettings = observer(function AutoChildSettings(props: {
   const parentExp = expsProvider.getTargetDeepLayoutParentRsh();
   const flexDir = maybe(
     parentExp,
-    (exp) => exp.get("flex-direction").split("-")[0]
+    (exp) => exp.get("flex-direction").split("-")[0],
   );
 
   const isSet = isStylePropSet(expsProvider);
@@ -269,7 +245,7 @@ const AutoChildSettings = observer(function AutoChildSettings(props: {
       )}
       {props.renderMaybeCollapsibleRows?.([
         ["flex-row", "flex-column", "content-layout"].includes(
-          parentContainerType || ""
+          parentContainerType || "",
         )
           ? {
               collapsible: !isSet("order") && !isSet("z-index"),
@@ -421,86 +397,6 @@ const FixedChildSettings = observer(function FixedChildSettings({
   );
 });
 
-const GridChildSettings = observer(function GridChildSettings(props: {
-  expsProvider: ExpsProvider;
-}) {
-  const { expsProvider } = props;
-  const sc = expsProvider.studioCtx;
-  const exp = () => expsProvider.mergedExp();
-
-  const area = parseGridChildAreaCss({
-    gridRow: exp().get("grid-row"),
-    gridColumn: exp().get("grid-column"),
-  });
-
-  const renderPlacement = (
-    label: string,
-    axis: Axis,
-    startEnd: keyof TrackRange
-  ) => {
-    return (
-      <div className={"panel-col-3"}>
-        <MiniLabel label={label}>
-          <DimTokenSpinner
-            value={"" + area[axis][startEnd]}
-            onChange={async (val) =>
-              sc.changeUnsafe(() =>
-                exp().merge(
-                  showGridChildCss({
-                    id: "",
-                    area: produce(area, (draft) => {
-                      draft[axis][startEnd] = val ? +val : 0;
-                    }),
-                  })
-                )
-              )
-            }
-            allowedUnits={NUMBER_UNITS}
-            allowFunctions={false}
-          />
-        </MiniLabel>
-      </div>
-    );
-  };
-
-  return (
-    <>
-      <LabeledStyleItemRow
-        label={"Placement"}
-        styleName={["grid-row", "grid-column"]}
-        labelSize="small"
-      >
-        <div>
-          <div className={"panel-row"}>
-            {renderPlacement("Row Start", "rows", "start")}
-            {renderPlacement("Row End", "rows", "end")}
-            {renderPlacement("Col Start", "cols", "start")}
-            {renderPlacement("Col End", "cols", "end")}
-          </div>
-        </div>
-      </LabeledStyleItemRow>
-
-      <AlignItemsControls
-        label="Justify"
-        expsProvider={expsProvider}
-        prop="justify-self"
-        dir="column"
-        includeAuto={true}
-        isFlex={false}
-      />
-
-      <AlignItemsControls
-        label="Align"
-        expsProvider={expsProvider}
-        prop="align-self"
-        dir="row"
-        includeAuto={true}
-        isFlex={false}
-      />
-    </>
-  );
-});
-
 const StickyChildSettings = observer(function StickyChildSettings({
   expsProvider,
   renderMaybeCollapsibleRows,
@@ -513,7 +409,7 @@ const StickyChildSettings = observer(function StickyChildSettings({
   const parentExp = expsProvider.getTargetDeepLayoutParentRsh();
   const flexDir = maybe(
     parentExp,
-    (exp) => exp.get("flex-direction").split("-")[0]
+    (exp) => exp.get("flex-direction").split("-")[0],
   );
 
   return (

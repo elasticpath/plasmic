@@ -1,4 +1,5 @@
 import { Lookup, pathSelector } from "@/wab/commons/path-selector";
+import { getSlotArgs } from "@/wab/shared/SlotUtils";
 import { TplMgr } from "@/wab/shared/TplMgr";
 import { Bundler, addrKey } from "@/wab/shared/bundler";
 import { toVarName } from "@/wab/shared/codegen/util";
@@ -58,21 +59,21 @@ import {
   StyleTokenOverride,
   Variant,
   VariantGroup,
+  isKnownTplComponent,
+  isKnownTplNode,
+  isKnownVirtualRenderExpr,
 } from "@/wab/shared/model/classes";
 import { meta } from "@/wab/shared/model/classes-metas";
 import {
   Class,
   Field,
+  areModelsEqual,
   isWeakRefField,
-  withoutUids,
 } from "@/wab/shared/model/model-meta";
 import {
   NodeCtx,
-  NodeFieldCtx,
   areSameInstType,
   assertSameInstType,
-  createNodeCtx,
-  nextCtx,
   walkModelTree,
 } from "@/wab/shared/model/model-tree-util";
 import {
@@ -95,9 +96,7 @@ import {
   set,
   uniq,
   uniqBy,
-  zip,
 } from "lodash";
-import isEqual from "lodash/isEqual";
 
 // site-diffs has circular dependencies
 // keeping these imports last seems to make sure everything works properly
@@ -109,6 +108,10 @@ import {
   fixVirtualSlotArgs,
   inferUpdatedComponents,
 } from "@/wab/shared/site-diffs/merge-components";
+import {
+  fixDuplicatedCodeLibraries,
+  fixDuplicatedCustomFunctions,
+} from "@/wab/shared/site-diffs/merge-custom-functions";
 import { fixProjectDependencies } from "@/wab/shared/site-diffs/merge-deps";
 import { fixDuplicatedRegisteredTokens } from "@/wab/shared/site-diffs/merge-tokens";
 import {
@@ -220,7 +223,7 @@ function valueChanged(
   bundler: Bundler,
   fieldMeta: FieldConflictDescriptorMeta,
   fieldInfoForArrayKey: FieldInfo | undefined,
-  deep: boolean
+  deep: boolean,
 ): boolean {
   if (isPrimitive(v1) || isPrimitive(v2)) {
     return v1 !== v2;
@@ -268,7 +271,7 @@ function valueChanged(
             // We don't need to forward `fieldInfoForArrayKey` as it must only be used
             // at the top level of array fields (not arrays inside objects etc)
             undefined,
-            deep
+            deep,
           );
         })
       );
@@ -276,7 +279,7 @@ function valueChanged(
     return (
       filteredV1.length !== filteredV2.length ||
       filteredV1.some((v, i) =>
-        valueChanged(v, filteredV2[i], bundler, fieldMeta, undefined, deep)
+        valueChanged(v, filteredV2[i], bundler, fieldMeta, undefined, deep),
       )
     );
   } else if (isLiteralObject(v1)) {
@@ -287,7 +290,7 @@ function valueChanged(
     return keys.some(
       (k) =>
         !(k in v2) ||
-        valueChanged(v1[k], v2[k], bundler, fieldMeta, undefined, deep)
+        valueChanged(v1[k], v2[k], bundler, fieldMeta, undefined, deep),
     );
   } else if (instUtil.isObjInst(v1)) {
     const cls = instUtil.getInstClass(v1);
@@ -311,7 +314,7 @@ function valueChanged(
               bundler,
               nextFieldMeta,
               undefined,
-              !isWeakRefField(field)
+              !isWeakRefField(field),
             )
           ) {
             return true;
@@ -333,7 +336,7 @@ export function getArrayKey(bundler: Bundler, v: any, ctx: FieldInfo) {
       isPrimitive(v) ||
       isLiteralObject(v) ||
       Array.isArray(v),
-    `Can only compute a merge key in ${ctx.cls.name}.${ctx.field.name} for an ObjInst, a primitive value or a literal object, but got: ${v}`
+    `Can only compute a merge key in ${ctx.cls.name}.${ctx.field.name} for an ObjInst, a primitive value or a literal object, but got: ${v}`,
   );
   if (isLiteralObject(v)) {
     return `{${Object.entries(v)
@@ -355,7 +358,7 @@ function getScalarKey(k: any, bundler: Bundler, ctx: FieldInfo) {
     return getArrayKey(bundler, k, ctx);
   } else {
     unexpected(
-      `When computing merge key for ${ctx.cls.name}.${ctx.field.name}, merge key must be a scalar, ObjInst, or an array of such`
+      `When computing merge key for ${ctx.cls.name}.${ctx.field.name}, merge key must be a scalar, ObjInst, or an array of such`,
     );
   }
 }
@@ -368,7 +371,7 @@ interface FieldInfo {
 export function deriveKeyFunc(
   fm: FieldConflictDescriptorMeta,
   bundler: Bundler,
-  ctx: FieldInfo
+  ctx: FieldInfo,
 ) {
   return function getKey(x: any) {
     if (
@@ -401,7 +404,7 @@ function cloneContents(value: any, bundler: Bundler, siteUuid: string) {
       return v.map((val) => rec(val, isWeakRef));
     } else if (isLiteralObject(v)) {
       return Object.fromEntries(
-        Object.entries(v).map(([key, val]) => [key, rec(val, isWeakRef)])
+        Object.entries(v).map(([key, val]) => [key, rec(val, isWeakRef)]),
       );
     } else if (instUtil.isObjInst(v)) {
       if (isWeakRef) {
@@ -414,10 +417,10 @@ function cloneContents(value: any, bundler: Bundler, siteUuid: string) {
           Object.entries(
             pick(
               v,
-              instUtil.allInstFields(v).map((f) => f.name)
-            )
-          )
-        )
+              instUtil.allInstFields(v).map((f) => f.name),
+            ),
+          ),
+        ),
       );
       inst2clone.set(v, cloned);
       instUtil.allInstFields(v).forEach((f) => {
@@ -440,14 +443,14 @@ function handleUpdatedValue<T>(
   fieldMeta: FieldConflictDescriptorMeta,
   updatedValue: T,
   parentInst: ObjInst,
-  bundler: Bundler
+  bundler: Bundler,
 ): T {
   if (shouldCloneContents(fieldMeta, updatedValue)) {
     // Whenever a field marked as "contents" changes, we deep clone its values.
     return cloneContents(
       updatedValue,
       bundler,
-      bundler.addrOfUnsafe(parentInst).uuid
+      bundler.addrOfUnsafe(parentInst).uuid,
     );
   }
   if (
@@ -458,7 +461,7 @@ function handleUpdatedValue<T>(
     return fieldMeta.handleUpdatedValues(
       updatedValue as any,
       parentInst,
-      bundler
+      bundler,
     ) as any as T;
   }
   return updatedValue;
@@ -466,16 +469,16 @@ function handleUpdatedValue<T>(
 
 // Returns Map<leftPath, UpdateData>
 export function getInstUpdates(
-  origCtx: NodeCtx,
-  updatedCtx: NodeCtx,
+  origCtx: NodeCtx<ObjInst>,
+  updatedCtx: NodeCtx<ObjInst>,
   bundler: Bundler,
-  updates = new Map<string, UpdateData>()
+  updates = new Map<string, UpdateData>(),
 ): Map<string, UpdateData> {
-  const { node: origInst, path: origPath } = origCtx;
-  const { node: updatedInst, path: updatedPath } = updatedCtx;
+  const { node: origInst } = origCtx;
+  const { node: updatedInst } = updatedCtx;
 
   const cls = instUtil.getInstClass(
-    ensure(origInst ?? updatedInst, "Either side must exist")
+    ensure(origInst ?? updatedInst, "Either side must exist"),
   );
   if (origInst && updatedInst) {
     assertSameInstType(origInst, updatedInst);
@@ -491,29 +494,29 @@ export function getInstUpdates(
         const ys = updatedVal ?? [];
         assert(
           Array.isArray(xs) && Array.isArray(ys),
-          `Both left and right values should be arrays`
+          `Both left and right values should be arrays`,
         );
         assert(
           xs.length === ys.length,
-          "Arrays should have passed valueChanged equality test by this point"
+          "Arrays should have passed valueChanged equality test by this point",
         );
         const getKey = deriveKeyFunc(fieldMeta, bundler, { field, cls });
         return xs.forEach((v, i) =>
           rec(
-            nextCtx(_origCtx, `${i}`, getKey(v)),
-            nextCtx(_updatedCtx, `${i}`, getKey(v))
-          )
+            _origCtx.child(`${i}`, getKey(v)),
+            _updatedCtx.child(`${i}`, getKey(v)),
+          ),
         );
       } else if (isLiteralObject(origVal) || isLiteralObject(updatedVal)) {
         const xs = origVal ?? {};
         const ys = updatedVal ?? {};
         assert(
           isLiteralObject(xs) && isLiteralObject(ys),
-          `Both left and right values should be objects`
+          `Both left and right values should be objects`,
         );
         const keys = uniq([...Object.keys(xs), ...Object.keys(ys)]);
         return keys.forEach((k) =>
-          rec(nextCtx(_origCtx, k), nextCtx(_updatedCtx, k))
+          rec(_origCtx.child(k), _updatedCtx.child(k)),
         );
       } else if (
         instUtil.isObjInst(origVal) ||
@@ -527,8 +530,8 @@ export function getInstUpdates(
       }
     };
     const fieldMeta = modelConflictsMeta[cls.name][field.name];
-    const origFieldCtx = nextCtx(origCtx, field.name);
-    const updatedFieldCtx = nextCtx(updatedCtx, field.name);
+    const origFieldCtx = origCtx.child(field.name);
+    const updatedFieldCtx = updatedCtx.child(field.name);
     const origValue = origFieldCtx.node;
     const updatedValue = updatedFieldCtx.node;
     if (
@@ -545,34 +548,22 @@ export function getInstUpdates(
         bundler,
         fieldMeta,
         { cls, field },
-        false
+        false,
       )
     ) {
-      updates.set(
-        JSON.stringify(
-          zip(origFieldCtx.path, origFieldCtx.keyPath ?? []).map(
-            ([a, b]) => b ?? a
-          )
-        ),
-        {
-          field,
-          fieldConflictMeta: fieldMeta,
-          updatedInst,
-          origInst,
-          updatedFieldValue:
-            updatedValue && updatedInst
-              ? handleUpdatedValue(
-                  fieldMeta,
-                  updatedValue,
-                  updatedInst,
-                  bundler
-                )
-              : updatedValue,
-          origFieldValue: origValue,
-          origPath: origPath,
-          updatedPath,
-        }
-      );
+      updates.set(JSON.stringify(origFieldCtx.keyedPath()), {
+        field,
+        fieldConflictMeta: fieldMeta,
+        updatedInst,
+        origInst,
+        updatedFieldValue:
+          updatedValue && updatedInst
+            ? handleUpdatedValue(fieldMeta, updatedValue, updatedInst, bundler)
+            : updatedValue,
+        origFieldValue: origValue,
+        origPath: origCtx.path(),
+        updatedPath: updatedCtx.path(),
+      });
       if (
         !isWeakRefField(field) &&
         (Array.isArray(origValue) || Array.isArray(updatedValue)) &&
@@ -584,7 +575,7 @@ export function getInstUpdates(
         const updatedMap = xKeyBy(updatedValue ?? [], getKey);
         const allKeys = xUnion(
           new Set(origMap.keys()),
-          new Set(updatedMap.keys())
+          new Set(updatedMap.keys()),
         );
         for (const key of allKeys) {
           const origChild = origMap.get(key);
@@ -598,8 +589,8 @@ export function getInstUpdates(
                 !swallow(() => fieldMeta?.excludeFromMerge?.(updatedChild))))
           ) {
             rec(
-              nextCtx(origFieldCtx, `${origIndex}`, key),
-              nextCtx(updatedFieldCtx, `${updatedIndex}`, key)
+              origFieldCtx.child(`${origIndex}`, key),
+              updatedFieldCtx.child(`${updatedIndex}`, key),
             );
           }
         }
@@ -611,7 +602,7 @@ export function getInstUpdates(
         const updatedMap = xKeyBy(updatedValue ?? [], getKey);
         const allKeys = xUnion(
           new Set(origMap.keys()),
-          new Set(updatedMap.keys())
+          new Set(updatedMap.keys()),
         );
         for (const key of allKeys) {
           const origChild = origMap.get(key);
@@ -624,8 +615,8 @@ export function getInstUpdates(
               !swallow(() => fieldMeta?.excludeFromMerge?.(updatedChild)))
           ) {
             rec(
-              nextCtx(origFieldCtx, `${origIndex}`, key),
-              nextCtx(updatedFieldCtx, `${updatedIndex}`, key)
+              origFieldCtx.child(`${origIndex}`, key),
+              updatedFieldCtx.child(`${updatedIndex}`, key),
             );
           }
         }
@@ -643,7 +634,7 @@ export function cloneFieldValueToMergedSite(
   v: any,
   branch: Site,
   mergedSite: Site,
-  bundler: Bundler
+  bundler: Bundler,
 ): any {
   const cloneValue = (_v: any) =>
     cloneFieldValueToMergedSite(field, _v, branch, mergedSite, bundler);
@@ -653,7 +644,7 @@ export function cloneFieldValueToMergedSite(
     return v.map((val) => cloneValue(val));
   } else if (isLiteralObject(v)) {
     return Object.fromEntries(
-      Object.entries(v).map(([key, val]) => [key, cloneValue(val)])
+      Object.entries(v).map(([key, val]) => [key, cloneValue(val)]),
     );
   } else if (instUtil.isObjInst(v)) {
     return cloneObjInstToMergedSite(v, branch, mergedSite, bundler);
@@ -662,11 +653,25 @@ export function cloneFieldValueToMergedSite(
   }
 }
 
+export function cloneContentsToMergedSite<T extends ObjInst>(
+  value: T,
+  branch: Site,
+  mergedSite: Site,
+  bundler: Bundler,
+): T {
+  return cloneObjInstToMergedSite(
+    cloneContents(value, bundler, bundler.addrOfUnsafe(branch).uuid),
+    branch,
+    mergedSite,
+    bundler,
+  );
+}
+
 export function cloneObjInstToMergedSite<T extends ObjInst>(
   inst: T,
   branch: Site,
   mergedSite: Site,
-  bundler: Bundler
+  bundler: Bundler,
 ): T {
   const branchBundleId = bundler.addrOfUnsafe(branch).uuid;
   const mergedBundleId = bundler.addrOfUnsafe(mergedSite).uuid;
@@ -684,7 +689,7 @@ export function cloneObjInstToMergedSite<T extends ObjInst>(
     const clsNameInMergedSite = instUtil.getInstClassName(maybeExistingObj);
     assert(
       clsNameInMergedSite === clsName,
-      `Failed to clone instance ${clsName}: iid ${iid} is ${clsNameInMergedSite} in the merged site`
+      `Failed to clone instance ${clsName}: iid ${iid} is ${clsNameInMergedSite} in the merged site`,
     );
     return maybeExistingObj as T;
   }
@@ -696,10 +701,10 @@ export function cloneObjInstToMergedSite<T extends ObjInst>(
       Object.entries(
         pick(
           inst,
-          instUtil.allInstFields(inst).map((f) => f.name)
-        )
-      )
-    )
+          instUtil.allInstFields(inst).map((f) => f.name),
+        ),
+      ),
+    ),
   );
   const cloneAddr = { uuid: mergedBundleId, iid };
   bundler._uid2addr.set(clone.uid, cloneAddr);
@@ -711,7 +716,7 @@ export function cloneObjInstToMergedSite<T extends ObjInst>(
       inst[field.name],
       branch,
       mergedSite,
-      bundler
+      bundler,
     );
   });
 
@@ -722,7 +727,7 @@ export function cloneObjInstToMergedSite<T extends ObjInst>(
 export function generateIidForInst(
   inst: ObjInst,
   bundler: Bundler,
-  uuid: string // Site uuid
+  uuid: string, // Site uuid
 ) {
   assert(!bundler.addrOf(inst), () => `Instance already has iid`);
   const newAddr = {
@@ -735,7 +740,7 @@ export function generateIidForInst(
 
 export type Grouping<
   ThePath extends string[],
-  T extends ObjInst = Lookup<ThePath>
+  T extends ObjInst = Lookup<ThePath>,
 > = {
   group: string;
   pathPattern: ThePath;
@@ -888,7 +893,7 @@ export const conflictGroupings = sortBy(
       label: () => "custom fonts",
     }),
   ],
-  (grouping) => -grouping.pathPattern.length
+  (grouping) => -grouping.pathPattern.length,
 );
 
 export interface DirectConflictPickMap {
@@ -904,10 +909,10 @@ function visitSpecialHandlers({
   picks,
   recorder,
 }: {
-  ancestorCtx: NodeCtx;
-  leftCtx: NodeCtx;
-  rightCtx: NodeCtx;
-  mergedCtx: NodeCtx;
+  ancestorCtx: NodeCtx<ObjInst>;
+  leftCtx: NodeCtx<ObjInst>;
+  rightCtx: NodeCtx<ObjInst>;
+  mergedCtx: NodeCtx<ObjInst>;
   bundler: Bundler;
   picks: DirectConflictPickMap | undefined;
   recorder: ChangeRecorder;
@@ -918,7 +923,7 @@ function visitSpecialHandlers({
     rightCtx,
     mergedCtx,
   ].map((ctx) =>
-    ensure(ctx.node, "visitSpecialHandlers expects all nodes to exist")
+    ensure(ctx.node, "visitSpecialHandlers expects all nodes to exist"),
   );
 
   const cls = instUtil.getInstClass(ancestor);
@@ -928,10 +933,10 @@ function visitSpecialHandlers({
 
   const rec = (
     field: Field,
-    ancFieldCtx: NodeFieldCtx,
-    leftFieldCtx: NodeFieldCtx,
-    rightFieldCtx: NodeFieldCtx,
-    mergedFieldCtx: NodeFieldCtx
+    ancFieldCtx: NodeCtx,
+    leftFieldCtx: NodeCtx,
+    rightFieldCtx: NodeCtx,
+    mergedFieldCtx: NodeCtx,
   ) => {
     const fieldInfo = { field, cls };
     // They must all be arrays; if any are nil, then no conflicts!
@@ -945,30 +950,26 @@ function visitSpecialHandlers({
         const key = getArrayKey(bundler, v, fieldInfo);
         rec(
           field,
-          nextCtx(
-            ancFieldCtx,
+          ancFieldCtx.child(
             `${(ancFieldCtx.node as any[]).findIndex(
-              (val) => getArrayKey(bundler, val, fieldInfo) === key
-            )}`
+              (val) => getArrayKey(bundler, val, fieldInfo) === key,
+            )}`,
           ),
-          nextCtx(
-            leftFieldCtx,
+          leftFieldCtx.child(
             `${(leftFieldCtx.node as any[]).findIndex(
-              (val) => getArrayKey(bundler, val, fieldInfo) === key
-            )}`
+              (val) => getArrayKey(bundler, val, fieldInfo) === key,
+            )}`,
           ),
-          nextCtx(
-            rightFieldCtx,
+          rightFieldCtx.child(
             `${(rightFieldCtx.node as any[]).findIndex(
-              (val) => getArrayKey(bundler, val, fieldInfo) === key
-            )}`
+              (val) => getArrayKey(bundler, val, fieldInfo) === key,
+            )}`,
           ),
-          nextCtx(
-            mergedFieldCtx,
+          mergedFieldCtx.child(
             `${(mergedFieldCtx.node as any[]).findIndex(
-              (val) => getArrayKey(bundler, val, fieldInfo) === key
-            )}`
-          )
+              (val) => getArrayKey(bundler, val, fieldInfo) === key,
+            )}`,
+          ),
         );
       });
     } else if (
@@ -977,17 +978,22 @@ function visitSpecialHandlers({
       isLiteralObject(rightFieldCtx.node) &&
       isLiteralObject(mergedFieldCtx.node)
     ) {
-      [...Object.keys(ancFieldCtx)].forEach((key) =>
+      [...Object.keys(ancFieldCtx.node)].forEach((key) =>
         rec(
           field,
-          nextCtx(ancFieldCtx, key),
-          nextCtx(leftFieldCtx, key),
-          nextCtx(rightFieldCtx, key),
-          nextCtx(mergedFieldCtx, key)
-        )
+          ancFieldCtx.child(key),
+          leftFieldCtx.child(key),
+          rightFieldCtx.child(key),
+          mergedFieldCtx.child(key),
+        ),
       );
     } else if (
-      areSameInstType(ancFieldCtx, leftFieldCtx, rightFieldCtx, mergedFieldCtx)
+      areSameInstType(
+        ancFieldCtx.node,
+        leftFieldCtx.node,
+        rightFieldCtx.node,
+        mergedFieldCtx.node,
+      )
     ) {
       conflicts.push(
         ...visitSpecialHandlers({
@@ -998,7 +1004,7 @@ function visitSpecialHandlers({
           bundler,
           picks,
           recorder,
-        })
+        }),
       );
     }
   };
@@ -1018,16 +1024,16 @@ function visitSpecialHandlers({
           mergedCtx,
           bundler,
           picks,
-          recorder
-        )
+          recorder,
+        ),
       );
     } else if (!isWeakRefField(field)) {
       rec(
         field,
-        nextCtx(ancestorCtx, field.name),
-        nextCtx(leftCtx, field.name),
-        nextCtx(rightCtx, field.name),
-        nextCtx(mergedCtx, field.name)
+        ancestorCtx.child(field.name),
+        leftCtx.child(field.name),
+        rightCtx.child(field.name),
+        mergedCtx.child(field.name),
       );
     }
   }
@@ -1047,7 +1053,7 @@ export function* matchAllGroupings(path: string[]) {
       grouping.pathPattern.length === 0 ||
       (grouping.pathPattern.length <= path.length &&
         strictZip(key, grouping.pathPattern).every(
-          ([part, pattern]) => part === pattern || pattern === "_"
+          ([part, pattern]) => part === pattern || pattern === "_",
         ))
     ) {
       yield { grouping, key };
@@ -1065,10 +1071,10 @@ export function getDirectConflicts({
   picks,
   filterConflict,
 }: {
-  ancestorCtx: NodeCtx;
-  leftCtx: NodeCtx;
-  rightCtx: NodeCtx;
-  mergedCtx: NodeCtx;
+  ancestorCtx: NodeCtx<ObjInst>;
+  leftCtx: NodeCtx<ObjInst>;
+  rightCtx: NodeCtx<ObjInst>;
+  mergedCtx: NodeCtx<ObjInst>;
   bundler: Bundler;
   recorder: ChangeRecorder;
   picks: DirectConflictPickMap | undefined;
@@ -1096,14 +1102,14 @@ export function getDirectConflicts({
         return JSON.stringify(result);
       } else {
         throw new Error(
-          "Reported a change that is not captured by anything in conflictGroupings"
+          "Reported a change that is not captured by anything in conflictGroupings",
         );
       }
     });
     return new Map(
       Object.entries(object).map(([groupName, entries]) =>
-        tuple(groupName, new Map(entries))
-      )
+        tuple(groupName, new Map(entries)),
+      ),
     );
   }
 
@@ -1124,17 +1130,17 @@ export function getDirectConflicts({
     const bothUpdates = intersectionBy(
       [...leftUpdates.entries()],
       [...rightUpdates.entries()],
-      ([pathStr]) => pathStr
+      ([pathStr]) => pathStr,
     );
     const leftOnlyUpdates = differenceBy(
       [...leftUpdates.entries()],
       bothUpdates,
-      ([pathStr]) => pathStr
+      ([pathStr]) => pathStr,
     );
     const rightOnlyUpdates = differenceBy(
       [...rightUpdates.entries()],
       bothUpdates,
-      ([pathStr]) => pathStr
+      ([pathStr]) => pathStr,
     );
 
     // Doesn't matter which left/right update we use, we just need a reference to the root object for this grouping in each side.
@@ -1165,7 +1171,7 @@ export function getDirectConflicts({
 
         const rightUpdate = ensure(
           rightUpdates.get(pathStr),
-          "We are in bothUpdates, so both left and right must exist"
+          "We are in bothUpdates, so both left and right must exist",
         );
         const {
           field: rightField,
@@ -1175,18 +1181,18 @@ export function getDirectConflicts({
 
         assert(
           field === rightField,
-          `Fields didn't match: ${field.name} and ${rightField.name} for path ${pathStr}`
+          `Fields didn't match: ${field.name} and ${rightField.name} for path ${pathStr}`,
         );
 
         const mergedInst = ancInst
           ? ensure(
               getMergedInst(ancInst),
-              "Ancestor site ObjInst is missing its matching ObjInst in merged site"
+              "Ancestor site ObjInst is missing its matching ObjInst in merged site",
             )
           : undefined;
 
         const maybeCls = maybe(leftInst || rightInst, (inst) =>
-          instUtil.tryGetInstClass(inst)
+          instUtil.tryGetInstClass(inst),
         );
         if (
           valueChanged(
@@ -1198,7 +1204,7 @@ export function getDirectConflicts({
               field,
               cls: maybeCls,
             },
-            true
+            true,
           )
         ) {
           // Changes with different values to the same field
@@ -1209,7 +1215,7 @@ export function getDirectConflicts({
                 mergedInst[field.name] = cloneFieldValue(
                   field,
                   leftVal,
-                  leftCtx.site
+                  leftCtx.site,
                 );
               }
               break;
@@ -1227,7 +1233,7 @@ export function getDirectConflicts({
               ) {
                 const cls = ensure(
                   maybeCls,
-                  `One of left or right inst must exist for field ${field.name}`
+                  `One of left or right inst must exist for field ${field.name}`,
                 );
                 const getKey = deriveKeyFunc(fieldMeta, bundler, {
                   field,
@@ -1251,15 +1257,15 @@ export function getDirectConflicts({
                 function mergeArrays(left: any[], right: any[]): any[] {
                   const [leftTaken, [nextLeftElt, ...leftRem]] = spanWhile(
                     left,
-                    (v) => !ancSet.has(getKey(v))
+                    (v) => !ancSet.has(getKey(v)),
                   );
                   const [rightTaken, [nextRightElt, ...rightRem]] = spanWhile(
                     right,
-                    (v) => !ancSet.has(getKey(v))
+                    (v) => !ancSet.has(getKey(v)),
                   );
                   assert(
                     getKey(nextLeftElt) === getKey(nextRightElt),
-                    "We should have filtered out any elements that were removed in either branch, but we encountered an element that was inherited from the ancestor that was missing in one of the branches."
+                    "We should have filtered out any elements that were removed in either branch, but we encountered an element that was inherited from the ancestor that was missing in one of the branches.",
                   );
                   return [
                     ...leftTaken,
@@ -1297,13 +1303,13 @@ export function getDirectConflicts({
                     .filter((k) => commonMembers.has(k));
                   hasConflict = !arrayEq(
                     orderedCommonLeftKeys,
-                    orderedCommonRightKeys
+                    orderedCommonRightKeys,
                   );
                   if (!hasConflict) {
                     if (mergedInst) {
                       mergedInst[field.name] = uniqBy(
                         mergeArrays(leftClean, rightClean),
-                        getKey
+                        getKey,
                       );
                     }
                   }
@@ -1315,7 +1321,7 @@ export function getDirectConflicts({
                     // merged = left + newright - delright
                     mergedInst[field.name] = uniqBy(
                       [...leftClean, ...rightClean],
-                      getKey
+                      getKey,
                     );
                   }
                 }
@@ -1329,17 +1335,17 @@ export function getDirectConflicts({
                 const commonKeys = [...xIntersect(leftKeys, rightKeys)];
                 const leftKeysExclusive = difference(
                   [...leftKeys],
-                  [...rightKeys]
+                  [...rightKeys],
                 );
                 const rightKeysExclusive = difference(
                   [...rightKeys],
-                  [...leftKeys]
+                  [...leftKeys],
                 );
 
                 const createObjFromKeys = (
                   site: Site,
                   obj: {},
-                  keys: any[]
+                  keys: any[],
                 ) => {
                   return keys.reduce((currObj, _key) => {
                     const clonedVal = cloneFieldValue(field, obj[_key], site);
@@ -1357,22 +1363,22 @@ export function getDirectConflicts({
                 const leftValExclusive = createObjFromKeys(
                   leftCtx.site,
                   leftVal,
-                  leftKeysExclusive
+                  leftKeysExclusive,
                 );
                 const rightValExclusive = createObjFromKeys(
                   rightCtx.site,
                   rightVal,
-                  rightKeysExclusive
+                  rightKeysExclusive,
                 );
                 const leftValCommon = createObjFromKeys(
                   leftCtx.site,
                   leftVal,
-                  commonKeys
+                  commonKeys,
                 );
                 const rightValCommon = createObjFromKeys(
                   rightCtx.site,
                   rightVal,
-                  commonKeys
+                  commonKeys,
                 );
                 const leftMergedVal = {
                   ...leftValExclusive,
@@ -1394,7 +1400,7 @@ export function getDirectConflicts({
                     bundler,
                     fieldMeta,
                     undefined,
-                    true
+                    true,
                   )
                 ) {
                   hasConflict = true;
@@ -1433,32 +1439,29 @@ export function getDirectConflicts({
                   const side = ensure(
                     picks[pathStr],
                     `Could not find the corresponding pick with pathStr ${pathStr}, got resolutions for: ${JSON.stringify(
-                      Object.keys(picks)
-                    )}`
+                      Object.keys(picks),
+                    )}`,
                   );
                   // `pathStr` contains the path in the merged site, which
                   // might be different than the path in the merged site if it's
                   // a change deeper in a subtree that moved
                   const fullPath = JSON.parse(pathStr).slice(0, -1);
-                  const ancestorPathPrefix = zip(
-                    ancestorCtx.path,
-                    ancestorCtx.keyPath ?? []
-                  ).map(([a, b]) => b ?? a);
+                  const ancestorPathPrefix = ancestorCtx.keyedPath();
                   assert(
                     fullPath.length >= ancestorPathPrefix.length &&
                       JSON.stringify(
-                        fullPath.slice(0, ancestorPathPrefix.length)
+                        fullPath.slice(0, ancestorPathPrefix.length),
                       ) === JSON.stringify(ancestorPathPrefix),
-                    "pathStr doesn't start with the path in ancestorCtx"
+                    "pathStr doesn't start with the path in ancestorCtx",
                   );
                   const _mergedInst = keyPathGet(
                     ensure(mergedCtx.node, "merged node should exist"),
                     fullPath.slice(ancestorPathPrefix.length),
-                    bundler
+                    bundler,
                   );
                   assert(
                     _mergedInst,
-                    "couldn't get the updated instance in the merged site"
+                    "couldn't get the updated instance in the merged site",
                   );
                   if (_mergedInst) {
                     _mergedInst[field.name] =
@@ -1466,12 +1469,12 @@ export function getDirectConflicts({
                         ? cloneFieldValue(
                             field,
                             leftUpdate.updatedFieldValue,
-                            leftCtx.site
+                            leftCtx.site,
                           )
                         : cloneFieldValue(
                             field,
                             rightUpdate.updatedFieldValue,
-                            rightCtx.site
+                            rightCtx.site,
                           );
                   }
                 } else {
@@ -1490,7 +1493,7 @@ export function getDirectConflicts({
           mergedInst[field.name] = cloneFieldValue(
             field,
             leftVal,
-            leftCtx.site
+            leftCtx.site,
           );
         }
       });
@@ -1501,7 +1504,7 @@ export function getDirectConflicts({
 
     function handleOneSidedUpdates(
       oneSidedUpdates: typeof leftOnlyUpdates,
-      sourceSite: Site
+      sourceSite: Site,
     ) {
       for (const [_pathStr, sideUpdate] of oneSidedUpdates) {
         const {
@@ -1515,7 +1518,7 @@ export function getDirectConflicts({
           ? ensure(
               getMergedInst(ancInst),
               "Ancestor site ObjInst is missing its matching ObjInst in merged site. IID " +
-                bundler.addrOf(ancInst)
+                bundler.addrOf(ancInst),
             )
           : undefined;
 
@@ -1530,7 +1533,7 @@ export function getDirectConflicts({
           mergedInst[field.name] = cloneFieldValue(
             field,
             updatedFieldValue,
-            sourceSite
+            sourceSite,
           );
         }
       }
@@ -1549,7 +1552,7 @@ export function getDirectConflicts({
       bundler,
       picks,
       recorder,
-    })
+    }),
   );
 
   return conflicts.filter((c) => filterConflictWrapper(c));
@@ -1563,21 +1566,21 @@ type SeenNamesMap = Map<string, Map<string, Map<string, string>>>;
 function getOrSetSeen(
   seenMap: SeenNamesMap,
   instIid: string,
-  fieldName: string
+  fieldName: string,
 ) {
   if (!seenMap.has(instIid)) {
     seenMap.set(instIid, new Map());
   }
   const instSeen = ensure(
     seenMap.get(instIid),
-    "seenMap must have instIid (it was just set)"
+    "seenMap must have instIid (it was just set)",
   );
   if (!instSeen.has(fieldName)) {
     instSeen.set(fieldName, new Map());
   }
   return ensure(
     instSeen.get(fieldName),
-    "instSeen must have fieldName (it was just set)"
+    "instSeen must have fieldName (it was just set)",
   );
 }
 
@@ -1585,10 +1588,10 @@ function walkAndFixNames(
   site: Site,
   bundler: Bundler,
   seenMap: SeenNamesMap,
-  isDeletedInst: (inst: ObjInst) => boolean
+  isDeletedInst: (inst: ObjInst) => boolean,
 ) {
   const autoReconciliations: AutoReconciliation[] = [];
-  const walked = walkModelTree(createNodeCtx(site));
+  const walked = walkModelTree(NodeCtx.root(site));
   for (const inst of walked) {
     const cls = instUtil.getInstClass(inst);
     for (const field of meta.allFields(cls)) {
@@ -1601,7 +1604,7 @@ function walkAndFixNames(
           .filter((v: any) =>
             fieldMeta.excludeFromRename
               ? !fieldMeta.excludeFromRename(v, inst)
-              : true
+              : true,
           )
           .filter((v: any) => !isDeletedInst(v));
         const nameKey = fieldMeta.nameKey.split(".");
@@ -1609,7 +1612,7 @@ function walkAndFixNames(
         const seen = getOrSetSeen(
           seenMap,
           bundler.addrOfUnsafe(inst).iid,
-          field.name
+          field.name,
         );
         for (const child of value) {
           const name = pathGet(child, nameKey);
@@ -1641,7 +1644,7 @@ function walkAndFixNames(
           Object.values(newNames).every((v) => v === 0 || v === 1),
           `All names should be unique, but aren't for ${cls.name}.${
             field.name
-          }: ${JSON.stringify(newNames)}`
+          }: ${JSON.stringify(newNames)}`,
         );
       }
     }
@@ -1653,18 +1656,18 @@ function preFixNames(
   a: Site,
   b: Site,
   bundler: Bundler,
-  isDeletedInst: (inst: ObjInst) => boolean
+  isDeletedInst: (inst: ObjInst) => boolean,
 ) {
   const allSeen: SeenNamesMap = new Map();
   const autoReconciliations: AutoReconciliation[] = [];
   mobx.runInAction(() => {
     autoReconciliations.push(
-      ...walkAndFixNames(a, bundler, allSeen, isDeletedInst)
+      ...walkAndFixNames(a, bundler, allSeen, isDeletedInst),
     );
   });
   mobx.runInAction(() => {
     autoReconciliations.push(
-      ...walkAndFixNames(b, bundler, allSeen, isDeletedInst)
+      ...walkAndFixNames(b, bundler, allSeen, isDeletedInst),
     );
   });
   return autoReconciliations;
@@ -1680,13 +1683,13 @@ function preFixTplNames(
   b: Site,
   ancestor: Site,
   bundler: Bundler,
-  isDeletedInst: (inst: ObjInst) => boolean
+  isDeletedInst: (inst: ObjInst) => boolean,
 ) {
   const autoReconciliations: AutoReconciliation[] = [];
 
   const getNodesAndNames = (
     component: classes.Component,
-    ancestorNodes: Record<string, TplNamable> = {}
+    ancestorNodes: Record<string, TplNamable> = {},
   ): FlattenedTplNodes => {
     const nodes = flattenTpls(component.tplTree).filter(
       (node): node is TplNamable => {
@@ -1704,12 +1707,12 @@ function preFixTplNames(
         }
 
         return node.name !== ancestorNodes[iid].name;
-      }
+      },
     );
     const params = component.params.filter((param) => !isDeletedInst(param));
     return {
       nodes: Object.fromEntries(
-        nodes.map((node) => [bundler.addrOfUnsafe(node).iid, node])
+        nodes.map((node) => [bundler.addrOfUnsafe(node).iid, node]),
       ),
       names: withoutNils([
         ...nodes.filter(isTplNamable).map((node) => node.name),
@@ -1721,7 +1724,7 @@ function preFixTplNames(
   const fixSelfTplNames = (
     selfComponent: classes.Component,
     selfTree: FlattenedTplNodes,
-    otherTree: FlattenedTplNodes
+    otherTree: FlattenedTplNodes,
   ) => {
     for (const [iid, tpl] of Object.entries(selfTree.nodes)) {
       if (!isTplNamable(tpl) || !tpl.name) {
@@ -1741,7 +1744,7 @@ function preFixTplNames(
         tpl,
         uniqueName([...selfTree.names, ...otherTree.names], oldName, {
           normalize: toVarName,
-        })
+        }),
       );
       const newName = tpl.name;
       selfTree.names.push(newName);
@@ -1760,7 +1763,6 @@ function preFixTplNames(
   };
 
   const aTplMgr = new TplMgr({ site: a });
-  const bTplMgr = new TplMgr({ site: b });
   const ancestorComponents: Record<number, classes.Component> = {};
   for (const component of ancestor.components) {
     ancestorComponents[bundler.addrOfUnsafe(component).iid] = component;
@@ -1777,7 +1779,7 @@ function preFixTplNames(
     // If the component exist in both branches, it should exist in the ancestor too
     const ancestorComponent = ensure(
       ancestorComponents[componentIid],
-      "Ancestor component must exist"
+      "Ancestor component must exist",
     );
     const aComponent = aComponents[componentIid];
     const ancestorFlattened = getNodesAndNames(ancestorComponent);
@@ -1794,7 +1796,7 @@ function preFixTplNames(
 export function keyPathGet(
   inst: ObjInst,
   keyPath: string[],
-  bundler: Bundler
+  bundler: Bundler,
 ): any {
   if (keyPath.length === 0) {
     return inst;
@@ -1835,8 +1837,6 @@ export function keyPathGet(
   }
 }
 
-export type DirectConflictPick = DirectConflict & { side: BranchSide };
-
 function runMergeFnAndApplyFixes(
   ancestor: Site,
   a: Site,
@@ -1844,7 +1844,7 @@ function runMergeFnAndApplyFixes(
   mergedSite: Site,
   fn: () => void,
   bundler: Bundler,
-  recorder: ChangeRecorder
+  recorder: ChangeRecorder,
 ): { autoReconciliations: AutoReconciliation[] } {
   const autoReconciliations: AutoReconciliation[] = [];
 
@@ -1854,7 +1854,7 @@ function runMergeFnAndApplyFixes(
     ancestor,
     a,
     b,
-    bundler
+    bundler,
   );
   const isDeletedInst = (inst: ObjInst) =>
     iidsToBeDeleted.has(bundler.addrOfUnsafe(inst).iid);
@@ -1874,7 +1874,7 @@ function runMergeFnAndApplyFixes(
   // Similar to the previous case, the name of a element is used to create expr instances referent to
   // implicit states, so we update it prior to the merge to avoid duplicated names.
   autoReconciliations.push(
-    ...preFixTplNames(a, b, ancestor, bundler, isDeletedInst)
+    ...preFixTplNames(a, b, ancestor, bundler, isDeletedInst),
   );
 
   mobx.runInAction(() => {
@@ -1884,6 +1884,10 @@ function runMergeFnAndApplyFixes(
       fixDuplicatedCodeComponents(mergedSite);
 
       fixDuplicatedRegisteredTokens(mergedSite);
+
+      fixDuplicatedCustomFunctions(mergedSite);
+
+      fixDuplicatedCodeLibraries(mergedSite);
 
       fixSwappedTplComponents(ancestor, a, b, mergedSite);
 
@@ -1899,14 +1903,16 @@ function runMergeFnAndApplyFixes(
           [...recorder.getToBeDeletedInsts().keys()],
           {
             includeTplNodesAndExprs: true,
-          }
-        )
+          },
+        ),
       );
 
       fixProjectDependencies(ancestor, a, b, mergedSite, bundler);
 
+      fixDefaultContentNames(mergedSite);
+
       autoReconciliations.push(
-        ...walkAndFixNames(mergedSite, bundler, new Map(), isDeletedInst)
+        ...walkAndFixNames(mergedSite, bundler, new Map(), isDeletedInst),
       );
 
       autoReconciliations.push(...fixPagePaths(mergedSite));
@@ -1916,7 +1922,7 @@ function runMergeFnAndApplyFixes(
   });
 
   const fixAutoReconciliationsInsts = (
-    arr: AutoReconciliation[]
+    arr: AutoReconciliation[],
   ): AutoReconciliation[] => {
     const mergedSiteUuid = bundler.addrOfUnsafe(mergedSite).uuid;
     const getMergedInst = (inst: ObjInst) => {
@@ -1925,21 +1931,56 @@ function runMergeFnAndApplyFixes(
         iid: bundler.addrOfUnsafe(inst).iid,
       });
     };
-    return arr.map((r) => {
+    const mergedTpls = new Set(
+      mergedSite.components.flatMap((c) => flattenTpls(c.tplTree)),
+    );
+    return arr.flatMap((r): AutoReconciliation[] => {
       if (r.violation === "duplicate-page-path") {
-        return r;
+        return [r];
       }
-      return {
-        ...r,
-        mergedInst: getMergedInst(r.mergedInst) ?? r.mergedInst,
-        mergedParent: getMergedInst(r.mergedParent) ?? r.mergedParent,
-      };
+      const mergedInst = getMergedInst(r.mergedInst) ?? r.mergedInst;
+      if (isKnownTplNode(mergedInst) && !mergedTpls.has(mergedInst)) {
+        // The dependency upgrade can rebuild default slot contents, so a
+        // node renamed on a branch may not be in the merged site.
+        return [];
+      }
+
+      return [
+        {
+          ...r,
+          mergedInst,
+          mergedParent: getMergedInst(r.mergedParent) ?? r.mergedParent,
+        },
+      ];
     });
   };
 
   return {
     autoReconciliations: fixAutoReconciliationsInsts(autoReconciliations),
   };
+}
+
+function fixDefaultContentNames(mergedSite: Site) {
+  const tplMgr = new TplMgr({ site: mergedSite });
+  for (const component of mergedSite.components) {
+    for (const tpl of flattenTpls(component.tplTree)) {
+      if (!isKnownTplComponent(tpl)) {
+        continue;
+      }
+      for (const arg of getSlotArgs(tpl)) {
+        if (!isKnownVirtualRenderExpr(arg.expr)) {
+          continue;
+        }
+        for (const child of arg.expr.tpl) {
+          for (const node of flattenTpls(child)) {
+            if (isTplNamable(node) && node.name) {
+              tplMgr.renameTpl(component, node, node.name, child);
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 /**
@@ -1951,7 +1992,7 @@ function runMergeFnAndApplyFixes(
 function fixDuplicatedContentFields(
   mergedSite: Site,
   recorder: ChangeRecorder,
-  bundler: Bundler
+  bundler: Bundler,
 ) {
   const siteUuid = bundler.addrOfUnsafe(mergedSite).uuid;
   const dfs = (node: ObjInst) => {
@@ -2029,18 +2070,18 @@ export function tryMerge(
   b: Site,
   mergedSite: Site,
   bundler: Bundler,
-  picks: DirectConflictPickMap | undefined
+  picks: DirectConflictPickMap | undefined,
 ): MergeStep {
   assert(
-    isEqual(withoutUids(ancestor), withoutUids(mergedSite)),
-    "Initial merged site must be identical to ancestor site"
+    areModelsEqual(ancestor, mergedSite),
+    "Initial merged site must be identical to ancestor site",
   );
 
   const updatedComponentsUuids = inferUpdatedComponents(ancestor, a, b);
   const unchangedComponentsUuids = new Set(
     ancestor.components
       .filter((c) => !updatedComponentsUuids.has(c.uuid))
-      .map((c) => c.uuid)
+      .map((c) => c.uuid),
   );
 
   const mergedSiteUuid = bundler.addrOfUnsafe(mergedSite).uuid;
@@ -2053,10 +2094,7 @@ export function tryMerge(
   });
 
   const recorder = new ChangeRecorder({
-    inst: mergedSite,
-    _instUtil: instUtil,
-    excludeFields: [meta.getFieldByName("ProjectDependency", "site")],
-    excludeClasses: [],
+    site: mergedSite,
     isExternalRef: (obj) =>
       !!maybe(bundler.addrOf(obj), (addr) => addr.uuid !== mergedSiteUuid),
     visitNodeListener: (obj) => {
@@ -2065,24 +2103,13 @@ export function tryMerge(
           (branch) =>
             maybe(
               bundler.addrOf(obj),
-              (addr) => addr.uuid !== bundler.addrOfUnsafe(branch).uuid
-            ) ?? true
+              (addr) => addr.uuid !== bundler.addrOfUnsafe(branch).uuid,
+            ) ?? true,
         ),
-        `Re-used the same inst from a different branch`
+        `Re-used the same inst from a different branch`,
       );
     },
-    // We skip observing the tplTree field of components, since we will only want to observe the ones that were updated.
-    // This is the same setup used in the studio.
-    skipInitialObserveFields: [meta.getFieldByName("Component", "tplTree")],
-    incremental: true,
   });
-
-  // Observe the components that were updated, since we need to track them for tree operations.
-  recorder.ensureObservedComponents(
-    mergedSite.components.filter((component) =>
-      updatedComponentsUuids.has(component.uuid)
-    )
-  );
 
   const { autoReconciliations } = runMergeFnAndApplyFixes(
     ancestor,
@@ -2091,17 +2118,17 @@ export function tryMerge(
     mergedSite,
     () => {
       directConflicts = getDirectConflicts({
-        ancestorCtx: createNodeCtx(ancestor),
-        leftCtx: createNodeCtx(a),
-        rightCtx: createNodeCtx(b),
-        mergedCtx: createNodeCtx(mergedSite),
+        ancestorCtx: NodeCtx.root(ancestor),
+        leftCtx: NodeCtx.root(a),
+        rightCtx: NodeCtx.root(b),
+        mergedCtx: NodeCtx.root(mergedSite),
         bundler,
         recorder,
         picks,
       });
     },
     bundler,
-    recorder
+    recorder,
   );
 
   recorder.dispose();
@@ -2113,13 +2140,13 @@ export function tryMerge(
   if (directConflicts.length > 0) {
     // Consolidate the multiple redundant leftRootPath into a single one
     const genericDirectConflicts = directConflicts.filter(
-      (c) => c.conflictType === "generic"
+      (c) => c.conflictType === "generic",
     ) as GenericDirectConflict[];
     const specialDirectConflicts = directConflicts.filter(
-      (c) => c.conflictType === "special"
+      (c) => c.conflictType === "special",
     ) as SpecialDirectConflict[];
     const directGrouped = xGroupBy(genericDirectConflicts, (c) =>
-      JSON.stringify(c.leftRootPath)
+      JSON.stringify(c.leftRootPath),
     );
     directConflicts = [
       ...[...directGrouped.entries()].map(([_leftRootPath, conflicts]) => {
@@ -2134,10 +2161,10 @@ export function tryMerge(
       status: "needs-resolution",
       autoReconciliations: autoReconciliations,
       specialDirectConflicts: directConflicts.filter(
-        (c) => c.conflictType === "special"
+        (c) => c.conflictType === "special",
       ),
       genericDirectConflicts: directConflicts.filter(
-        (c) => c.conflictType === "generic"
+        (c) => c.conflictType === "generic",
       ),
       invariantErrors: [],
       mergedSite,
@@ -2155,20 +2182,20 @@ function computeIidsToBeDeletedInMerge(
   ancestor: Site,
   left: Site,
   right: Site,
-  bundler: Bundler
+  bundler: Bundler,
 ) {
-  const ancestorIids = walkModelTree(createNodeCtx(ancestor)).map(
-    (inst) => bundler.addrOfUnsafe(inst).iid
+  const ancestorIids = walkModelTree(NodeCtx.root(ancestor)).map(
+    (inst) => bundler.addrOfUnsafe(inst).iid,
   );
   const leftIids = new Set(
-    walkModelTree(createNodeCtx(left)).map(
-      (inst) => bundler.addrOfUnsafe(inst).iid
-    )
+    walkModelTree(NodeCtx.root(left)).map(
+      (inst) => bundler.addrOfUnsafe(inst).iid,
+    ),
   );
   const rightIids = new Set(
-    walkModelTree(createNodeCtx(right)).map(
-      (inst) => bundler.addrOfUnsafe(inst).iid
-    )
+    walkModelTree(NodeCtx.root(right)).map(
+      (inst) => bundler.addrOfUnsafe(inst).iid,
+    ),
   );
   return new Set(
     ancestorIids.filter((iid) => {
@@ -2176,6 +2203,6 @@ function computeIidsToBeDeletedInMerge(
       // in that side, this is the default behavior of the merge and is going to be shown in the UI
       // to the user, so that the deletion can be confirmed.
       return !leftIids.has(iid) || !rightIids.has(iid);
-    })
+    }),
   );
 }

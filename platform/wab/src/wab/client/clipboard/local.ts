@@ -59,6 +59,14 @@ export function isStyleClip(x: any): x is StyleClip {
   return x && !Array.isArray(x) && x.type === "style";
 }
 
+export function isEmptyStyleClip(clip: StyleClip): boolean {
+  return (
+    Object.keys(clip.cssProps).length === 0 &&
+    !clip.mixinUuids?.length &&
+    !clip.animations?.length
+  );
+}
+
 export function isTplClip(x: Clippable): x is TplClip {
   return !Array.isArray(x) && x.type === "tpl";
 }
@@ -118,7 +126,7 @@ export class LocalClipboard {
   paste() {
     const contents = ensure(
       this._contents,
-      "Cannot paste if there is no contents in the clipboard"
+      "Cannot paste if there is no contents in the clipboard",
     );
     return cloneClip(contents);
   }
@@ -153,7 +161,7 @@ export type LocalClipboardData = { action: LocalClipboardAction };
  */
 export async function pasteLocal(
   clip: Clippable,
-  { studioCtx, cursorClientPt, insertRelLoc }: PasteArgs
+  { studioCtx, cursorClientPt, insertRelLoc }: PasteArgs,
 ): Promise<PasteResult> {
   if (isFrameClip(clip)) {
     return {
@@ -161,7 +169,7 @@ export async function pasteLocal(
       success: unwrap(
         await studioCtx.change(() => {
           return ok(studioCtx.siteOps().pasteFrameClip(clip));
-        })
+        }),
       ),
     };
   }
@@ -189,7 +197,7 @@ export async function pasteLocal(
           });
           return ok(pastedTpls.length > 0);
         }
-      })
+      }),
     ),
   };
 }

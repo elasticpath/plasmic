@@ -9,7 +9,6 @@ import {
 } from "@/wab/client/plasmic/plasmic_kit_data_binding/PlasmicDataQueryCodeEditorLayout";
 import { useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { getEnvForPlasmicQueries } from "@/wab/shared/core/custom-functions";
-import { DEVFLAGS } from "@/wab/shared/devflags";
 import {
   transformDataTokensInCode,
   transformDataTokensToDisplay,
@@ -17,11 +16,10 @@ import {
 import { HTMLElementRefOf } from "@plasmicapp/react-web";
 import * as React from "react";
 
-export interface DataQueryCodeEditorLayoutProps
-  extends Omit<
-    DefaultDataQueryCodeEditorLayoutProps,
-    "copilot" | "codeEditor" | "env"
-  > {
+export interface DataQueryCodeEditorLayoutProps extends Omit<
+  DefaultDataQueryCodeEditorLayoutProps,
+  "copilot" | "codeEditor" | "env"
+> {
   data: Record<string, any>;
   defaultValue: string;
   onChange: (val: string) => void;
@@ -31,13 +29,13 @@ export interface DataQueryCodeEditorLayoutProps
 
 function DataQueryCodeEditorLayout_(
   props: DataQueryCodeEditorLayoutProps,
-  ref: HTMLElementRefOf<"div">
+  ref: HTMLElementRefOf<"div">,
 ) {
   const { data, defaultValue, onChange, schema, context, ...rest } = props;
   const studioCtx = useStudioCtx();
   const editorRef = React.useRef<FullCodeEditor>(null);
   const viewCtx = studioCtx.focusedViewCtx();
-  const showCopilot = DEVFLAGS.showCopilot && !!viewCtx;
+  const showCopilot = studioCtx.codeCopilotEnabled() && !!viewCtx;
 
   // Convert stored flattened format ($dataTokens_projId_name) to editor display format
   // ($dataTokens.name) If the code is not parseable, fall back to the raw value.
@@ -47,7 +45,7 @@ function DataQueryCodeEditorLayout_(
         return transformDataTokensToDisplay(
           defaultValue,
           viewCtx.site,
-          studioCtx.siteInfo.id
+          studioCtx.siteInfo.id,
         );
       } catch {
         return defaultValue;
@@ -58,10 +56,35 @@ function DataQueryCodeEditorLayout_(
 
   const [currentValue, setCurrentValue] = React.useState(displayValue);
   const [codeEditorKey, setCodeEditorKey] = React.useState(0);
+  const justCommitted = React.useRef<string>();
+
+  // Storing the code normalizes its formatting, so adopting the value we just
+  // committed would rewrite what the user typed. Everything else, such as a data
+  // token rename, is a real change to show.
+  React.useEffect(() => {
+    const isOwnCommit = justCommitted.current === defaultValue;
+    justCommitted.current = undefined;
+    if (!isOwnCommit) {
+      setCurrentValue(displayValue);
+    }
+  }, [defaultValue, displayValue]);
+
+  const commitValue = React.useCallback(
+    (val: string) => {
+      setCurrentValue(val);
+      const transformed = viewCtx
+        ? transformDataTokensInCode(val, viewCtx.site, studioCtx.siteInfo.id)
+            .code
+        : val;
+      justCommitted.current = transformed;
+      onChange(transformed);
+    },
+    [onChange, studioCtx.siteInfo.id, viewCtx],
+  );
 
   const completionData = React.useMemo(
     () => getEnvForPlasmicQueries(cleanDataForPreview(data)),
-    [data]
+    [data],
   );
 
   return (
@@ -75,8 +98,7 @@ function DataQueryCodeEditorLayout_(
           currentValue,
           context,
           onUpdate: (v: string) => {
-            setCurrentValue(v);
-            onChange(v);
+            commitValue(v);
             setCodeEditorKey((k) => k + 1);
           },
         },
@@ -87,19 +109,9 @@ function DataQueryCodeEditorLayout_(
           key={codeEditorKey}
           hideLineNumbers={true}
           language="javascript"
-          defaultValue={displayValue}
+          defaultValue={currentValue}
           data={completionData}
-          onChange={(val: string) => {
-            setCurrentValue(val);
-            const transformed = viewCtx
-              ? transformDataTokensInCode(
-                  val,
-                  viewCtx.site,
-                  studioCtx.siteInfo.id
-                ).code
-              : val;
-            onChange(transformed);
-          }}
+          onChange={commitValue}
           enableMinimap={false}
           hideGlobalSuggestions={true}
           folding={false}

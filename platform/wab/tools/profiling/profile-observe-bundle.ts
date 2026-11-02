@@ -4,8 +4,7 @@ import { ChangeRecorder } from "../../src/wab/observable-model";
 import { Bundler } from "../../src/wab/shared/bundler";
 import { maybe, spawn } from "../../src/wab/shared/common";
 import { instUtil } from "../../src/wab/shared/model/InstUtil";
-import { Site } from "../../src/wab/shared/model/classes";
-import { meta } from "../../src/wab/shared/model/classes-metas";
+import { ProjectDependency, Site } from "../../src/wab/shared/model/classes";
 
 const prettyTime = (interval: number) => `${interval.toFixed(2)}ms`;
 const prettyMemory = (mem: number) => `${(mem / 1024 / 1024).toFixed(2)}MB`;
@@ -39,7 +38,7 @@ async function main() {
   console.log("STARTING", `${prettyMemory(process.memoryUsage().heapUsed)}`);
 
   const bundles = measured("Parsing", () =>
-    JSON.parse(fs.readFileSync(bundleFile).toString())
+    JSON.parse(fs.readFileSync(bundleFile).toString()),
   );
 
   const bundler = new Bundler();
@@ -61,10 +60,10 @@ async function main() {
       new ChangeRecorder(
         site!,
         instUtil,
-        [meta.getFieldByName("ProjectDependency", "site")],
+        [ProjectDependency.$field_site],
         [],
-        (obj) => !!maybe(bundler.addrOf(obj), (addr) => addr.uuid !== siteUuid)
-      )
+        (obj) => !!maybe(bundler.addrOf(obj), (addr) => addr.uuid !== siteUuid),
+      ),
   );
 }
 

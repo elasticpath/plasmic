@@ -1,9 +1,9 @@
-import { DEVFLAGS } from "@/wab/shared/devflags";
 import { AddItemKey, WrapItemKey } from "@/wab/shared/add-item-keys";
 import {
   CONTENT_LAYOUT,
   CONTENT_LAYOUT_FULL_BLEED,
 } from "@/wab/shared/core/style-props";
+import { DEVFLAGS } from "@/wab/shared/devflags";
 import { RuleSet } from "@/wab/shared/model/classes";
 import { camelCase, isEmpty, mapKeys } from "lodash";
 
@@ -39,7 +39,7 @@ function ruleSetToStyles(rs: RuleSet) {
 }
 
 function makeDefaultStylesByItem(
-  prefs: AddItemPrefs | undefined
+  prefs: AddItemPrefs | undefined,
 ): Partial<Record<AddItemKey | WrapItemKey, any>> {
   const maybeStyles = (key: AddItemKey, defaults: Record<string, string>) => {
     if (prefs?.[key]) {
@@ -161,7 +161,7 @@ function makeDefaultStylesByItem(
 
 export const getSimplifiedStyles = (
   itemKey: AddItemKey | WrapItemKey,
-  prefs: AddItemPrefs | undefined
+  prefs: AddItemPrefs | undefined,
 ) => {
   if (!DEVFLAGS.simplifiedLayout) {
     return {};
@@ -171,7 +171,7 @@ export const getSimplifiedStyles = (
 
 export function getDefaultStyles(
   itemKey: AddItemKey | WrapItemKey,
-  prefs: AddItemPrefs | undefined
+  prefs: AddItemPrefs | undefined,
 ) {
   return makeDefaultStylesByItem(prefs)[itemKey] || {};
 }

@@ -18,11 +18,7 @@ import {
   DefaultViewAsButtonProps,
   PlasmicViewAsButton,
 } from "@/wab/client/plasmic/plasmic_kit_top_bar/PlasmicViewAsButton";
-import {
-  StudioAppUser,
-  isUserProjectEditor,
-  useStudioCtx,
-} from "@/wab/client/studio-ctx/StudioCtx";
+import { StudioAppUser, useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { trackEvent } from "@/wab/client/tracking";
 import { ApiAppUser } from "@/wab/shared/ApiSchema";
 import { DATA_SOURCE_OPERATION_LOWER } from "@/wab/shared/Labels";
@@ -30,6 +26,7 @@ import { Bundle, FastBundler } from "@/wab/shared/bundler";
 import { ifEmpty, spawn } from "@/wab/shared/common";
 import { isValidCurrentUserPropsExpr } from "@/wab/shared/core/exprs";
 import { DataSourceOpExpr } from "@/wab/shared/model/classes";
+import { isUserProjectEditor } from "@/wab/shared/perms";
 import { Menu, notification } from "antd";
 import { observer } from "mobx-react";
 import * as React from "react";
@@ -63,7 +60,7 @@ function _ViewAsButton(props: ViewAsButtonProps) {
   const isEditor = isUserProjectEditor(
     appCtx.selfInfo,
     studioCtx.siteInfo,
-    studioCtx.siteInfo.perms
+    studioCtx.siteInfo.perms,
   );
 
   const [search, setSearch] = useState("");
@@ -144,8 +141,8 @@ function _ViewAsButton(props: ViewAsButtonProps) {
                 appUsers.appUsers
                   .filter((u) =>
                     (u.email ?? u.externalId ?? "").includes(
-                      search.trim().toLowerCase()
-                    )
+                      search.trim().toLowerCase(),
+                    ),
                   )
                   .slice(0, maxListedUsers)
                   .map((user) => {
@@ -163,7 +160,7 @@ function _ViewAsButton(props: ViewAsButtonProps) {
                   }),
                 () => (
                   <Menu.Item disabled>User not found</Menu.Item>
-                )
+                ),
               )}
             </Menu.ItemGroup>
           )}
@@ -204,7 +201,7 @@ export function AdvancedAppAuthMenuItems() {
   const appId = studioCtx.siteInfo.id;
   const { roles } = useAppRoles(appCtx, appId);
   const dataSourceModal = useDataSourceOpExprBottomModal(
-    "current-user-properties"
+    "current-user-properties",
   );
   const {
     config: appCurrentUserOpConfig,
@@ -257,7 +254,7 @@ export function AdvancedAppAuthMenuItems() {
               dataSourceModal.open({
                 title: `Configure user properties ${DATA_SOURCE_OPERATION_LOWER}`,
                 value: getDataSourceOpExprFromBundle(
-                  appCurrentUserOpConfig.userPropsBundledOp
+                  appCurrentUserOpConfig.userPropsBundledOp,
                 ),
                 onSave: (newExpr) => {
                   spawn(handleSave(newExpr));
@@ -306,7 +303,7 @@ export function AdvancedAppAuthMenuItems() {
                     userPropsBundledOp: null,
                     userPropsDataSourceId: null,
                   },
-                }
+                },
               );
             }}
           >
@@ -320,10 +317,10 @@ export function AdvancedAppAuthMenuItems() {
 
 function getBundledFromDataSourceOpExpr(
   expr: DataSourceOpExpr,
-  appCtx: AppCtx
+  appCtx: AppCtx,
 ) {
   return JSON.stringify(
-    appCtx.bundler.bundle(expr, "currentUserOpExpr", appCtx.lastBundleVersion)
+    appCtx.bundler.bundle(expr, "currentUserOpExpr", appCtx.lastBundleVersion),
   );
 }
 

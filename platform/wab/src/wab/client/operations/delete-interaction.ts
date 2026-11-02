@@ -5,12 +5,13 @@ import {
   isEventHandlerKeyForAttr,
   isEventHandlerKeyForParam,
 } from "@/wab/shared/core/tpls";
+import { GenericError } from "@/wab/shared/error-handling";
 import { Interaction, TplNode } from "@/wab/shared/model/classes";
 import { isInteractionResultUsedInExpr } from "@/wab/shared/refactoring";
-import { remove } from "lodash";
+import { omit } from "lodash";
 import { Result, err, ok } from "neverthrow";
 
-export type DeleteInteractionResult = Result<void, string>;
+export type DeleteInteractionResult = Result<void, GenericError>;
 
 /**
  * Delete an interaction step from an element's event handler. Errors if a
@@ -31,31 +32,35 @@ export function deleteInteraction(opts: {
     !isEventHandlerKeyForAttr(eventHandlerKey) &&
     !isEventHandlerKeyForParam(eventHandlerKey)
   ) {
-    return err(
-      `Interaction "${interaction.interactionName}" belongs to a nested code-component handler, which is not supported by this operation.`
-    );
+    return err({
+      message: `Interaction "${interaction.interactionName}" belongs to a nested code-component handler, which is not supported by this operation.`,
+    });
   }
 
   const referencing = eventHandler.interactions.find(
     (sibling) =>
       sibling !== interaction &&
       findExprsInInteraction(sibling).some((expr) =>
-        isInteractionResultUsedInExpr(interaction, expr)
-      )
+        isInteractionResultUsedInExpr(interaction, expr),
+      ),
   );
   if (referencing) {
-    return err(
-      `Interaction "${interaction.interactionName}" cannot be deleted: step "${referencing.interactionName}" reads its result via $steps.`
-    );
+    return err({
+      message: `Interaction "${interaction.interactionName}" cannot be deleted: step "${referencing.interactionName}" reads its result via $steps.`,
+    });
   }
 
-  remove(eventHandler.interactions, (it) => it === interaction);
+  eventHandler.interactions = eventHandler.interactions.filter(
+    (it) => it !== interaction,
+  );
   if (eventHandler.interactions.length === 0) {
     const baseVs = ensureBaseVariantSetting(tpl);
     if (isEventHandlerKeyForAttr(eventHandlerKey)) {
-      delete baseVs.attrs[eventHandlerKey.attr];
+      baseVs.attrs = omit(baseVs.attrs, eventHandlerKey.attr);
     } else {
-      remove(baseVs.args, (arg) => arg.param === eventHandlerKey.param);
+      baseVs.args = baseVs.args.filter(
+        (arg) => arg.param !== eventHandlerKey.param,
+      );
     }
   }
   return ok(undefined);

@@ -60,7 +60,7 @@ async function initPagesBranch(octokit: Octokit, ref: GithubRef) {
  */
 export async function setupGithubPages(
   ref: GithubRef,
-  domain: string
+  domain: string,
 ): Promise<Result<void, SetupGithubPagesError>> {
   const { installationId, owner, repo, branch } = ref;
 
@@ -100,7 +100,7 @@ export async function setupGithubPages(
 
 export async function tryUpdateCachedCname(
   mgr: DbMgr,
-  projectRepository: ProjectRepository
+  projectRepository: ProjectRepository,
 ) {
   const { installationId, repository } = projectRepository;
   const [owner, repo] = repository.split("/");
@@ -118,7 +118,7 @@ export async function tryUpdateCachedCname(
           repo,
           ref: "gh-pages",
           path: "CNAME",
-        }
+        },
       );
       if ("content" in data) {
         return Buffer.from(data.content, "base64").toString("ascii");
@@ -126,11 +126,19 @@ export async function tryUpdateCachedCname(
         unexpected();
       }
     },
+<<<<<<< HEAD
     catch: async (err) => {
       captureException(err, {
         message:
           "Could not read CNAME. May be removed, or Pages points to a different branch. Not an error; this is best-effort.",
       });
+=======
+    catch: async (e) => {
+      Sentry.captureException(
+        "Could not read CNAME. May be removed, or Pages points to a different branch. Not an error; this is best-effort. Failure was:",
+        e,
+      );
+>>>>>>> upstream/master
     },
     else: async (cname) => {
       await mgr.updateProjectRepository({

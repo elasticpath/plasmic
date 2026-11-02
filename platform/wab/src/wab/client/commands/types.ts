@@ -9,7 +9,6 @@ export type Prompt<T, Config extends object = {}> = {
 } & Config;
 
 export type StringPrompt = Prompt<string, { placeholder?: string }>;
-export type NumberPrompt = Prompt<number, { placeholder?: string }>;
 export type BooleanPrompt = Prompt<boolean, { placeholder?: string }>;
 export type ChoicePrompt<T> = Prompt<
   T,
@@ -20,23 +19,18 @@ export type ChoicePrompt<T> = Prompt<
 >;
 
 export function stringPrompt(
-  config: Omit<StringPrompt, "_type" | "_valueTypeMarker">
+  config: Omit<StringPrompt, "_type" | "_valueTypeMarker">,
 ): StringPrompt {
   return { _valueTypeMarker: "", _type: "text", ...config };
 }
-export function numberPrompt(
-  config: Omit<NumberPrompt, "_type" | "_valueTypeMarker">
-): NumberPrompt {
-  return { _valueTypeMarker: 0, _type: "number", ...config };
-}
 export function booleanPrompt(
-  config: Omit<BooleanPrompt, "_type" | "_valueTypeMarker">
+  config: Omit<BooleanPrompt, "_type" | "_valueTypeMarker">,
 ): BooleanPrompt {
   return { _valueTypeMarker: false, _type: "boolean", ...config };
 }
 
 export function choicePrompt<T>(
-  config: Omit<ChoicePrompt<T>, "_type" | "_valueTypeMarker">
+  config: Omit<ChoicePrompt<T>, "_type" | "_valueTypeMarker">,
 ): ChoicePrompt<T> {
   return {
     _valueTypeMarker: undefined as unknown as T,
@@ -62,27 +56,17 @@ export interface Command<
   Args = unknown,
   Context = unknown,
   T = void,
-  E = never
+  E = never,
 > {
   meta: (
     context: Context & {
       studioCtx: StudioCtx;
-    }
+    },
   ) => CommandMeta<Args>;
   context: ContextFunc<Context>;
   execute: (
     studioCtx: StudioCtx,
     args: Args,
-    context: Context
+    context: Context,
   ) => Promise<Result<T, E>>;
 }
-
-// type-utils
-export const isStringPrompt = (p: Prompt<any>): p is StringPrompt =>
-  p._type === "text";
-export const isNumberPrompt = (p: Prompt<any>): p is NumberPrompt =>
-  p._type === "number";
-export const isBooleanPrompt = (p: Prompt<any>): p is BooleanPrompt =>
-  p._type === "boolean";
-export const isChoicePrompt = <T>(p: Prompt<T>): p is ChoicePrompt<T> =>
-  p._type === "choice";

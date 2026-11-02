@@ -1,11 +1,13 @@
 import { getArenaFrames } from "@/wab/shared/Arenas";
+import { isBaseVariant } from "@/wab/shared/Variants";
+import { isReadonlyArray, tryArrayWithout } from "@/wab/shared/collections";
 import {
   ensure,
   findIndexes,
+  isSubList,
   mkShortId,
   notNil,
   removeAtIndexes,
-  tryRemove,
   tuple,
 } from "@/wab/shared/common";
 import {
@@ -22,6 +24,7 @@ import {
   isTplImage,
 } from "@/wab/shared/core/tpls";
 import { joinCssValues, splitCssValue } from "@/wab/shared/css/parse";
+import { isDynamicValue } from "@/wab/shared/dynamic-bindings";
 import {
   ArenaFrame,
   Arg,
@@ -47,6 +50,7 @@ export function cloneImageAsset(asset: ImageAsset) {
     width: asset.width,
     height: asset.height,
     aspectRatio: asset.aspectRatio,
+    description: asset.description,
   });
 }
 
@@ -57,6 +61,7 @@ export function mkImageAsset(opts: {
   width?: number;
   height?: number;
   aspectRatio?: number;
+  description?: string;
 }) {
   return new ImageAsset({
     uuid: mkShortId(),
@@ -66,7 +71,27 @@ export function mkImageAsset(opts: {
     width: opts.width ?? null,
     height: opts.height ?? null,
     aspectRatio: opts.aspectRatio ?? null,
+    description: opts.description ?? null,
   });
+}
+
+/** Returns an img's default alt per variant setting, from its image's description. */
+export function getImageAssetAlts(vsettings: ReadonlyArray<VariantSetting>) {
+  const altCombos = vsettings
+    .filter((vs) => "alt" in vs.attrs)
+    .map((vs) => vs.variants);
+
+  const alts = new Map<VariantSetting, string>();
+  for (const vs of vsettings) {
+    const src = vs.attrs["src"];
+    const hasAlt = altCombos.some(
+      (combo) => isBaseVariant(combo) || isSubList(vs.variants, combo),
+    );
+    if (src && !hasAlt) {
+      alts.set(vs, (isKnownImageAssetRef(src) && src.asset.description) || "");
+    }
+  }
+  return [...alts.values()].some((alt) => alt) ? alts : undefined;
 }
 
 interface ImageAssetUsageByParam {
@@ -118,7 +143,7 @@ export type ImageAssetUsage =
   | ImageAssetUsageByPageMeta;
 export function extractImageAssetUsages(
   site: Site,
-  asset: ImageAsset
+  asset: ImageAsset,
 ): [ImageAssetUsage[], ImageAssetUsageSummary] {
   const usages: ImageAssetUsage[] = [];
   const usingComponents = new Set<Component>();
@@ -241,8 +266,8 @@ export function extractImageAssetUsages(
   const usingFrames = [...usingComponents].filter(isFrameComponent).map((c) =>
     ensure(
       arenaFrames.find((frame) => frame.container.component === c),
-      `ArenaFrame not found for component ${c.name}`
-    )
+      `ArenaFrame not found for component ${c.name}`,
+    ),
   );
 
   return tuple(usages, {
@@ -255,17 +280,17 @@ export function extractImageAssetUsages(
 
 export function removeImageAssetUsage(
   asset: ImageAsset,
-  usage: ImageAssetUsage
+  usage: ImageAssetUsage,
 ) {
   if (usage.type === "tpl-image") {
     const attr = usage.tpl.tag === "img" ? "src" : "outerHTML";
-    delete usage.vs.attrs[attr];
+    usage.vs.attrs = L.omit(usage.vs.attrs, attr);
   } else if (usage.type === "page-meta") {
     usage.pageMeta.openGraphImage = null;
   } else if (usage.type === "component-param") {
     usage.param.defaultExpr = null;
   } else if (usage.type === "component-arg") {
-    tryRemove(usage.vs.args, usage.arg);
+    usage.vs.args = tryArrayWithout(usage.vs.args, usage.arg);
   } else {
     const cssRef = mkImageAssetRef(asset);
     const rs = usage.type === "tpl-rs" ? usage.vs.rs : usage.mixin.rs;
@@ -275,9 +300,12 @@ export function removeImageAssetUsage(
       const indexes = findIndexes(vals, (v) => v.includes(cssRef));
       removeAtIndexes(vals, indexes);
       if (vals.length === 0) {
-        rs.values["background"] = "none";
+        rs.values = { ...rs.values, background: "none" };
       } else {
-        rs.values["background"] = joinCssValues("background", vals);
+        rs.values = {
+          ...rs.values,
+          background: joinCssValues("background", vals),
+        };
       }
     }
   }
@@ -288,13 +316,15 @@ const RE_ASSETREF_ALL = new RegExp(RE_ASSETREF, "g");
 
 export function tryParseImageAssetRef(
   ref: string,
-  assets: ImageAsset[] | Record<string, ImageAsset>
+  assets: ReadonlyArray<ImageAsset> | Readonly<Record<string, ImageAsset>>,
 ) {
   const m = ref.match(RE_ASSETREF);
   if (!m) {
     return undefined;
   }
-  return L.isArray(assets) ? assets.find((t) => t.uuid === m[1]) : assets[m[1]];
+  return isReadonlyArray<ImageAsset>(assets)
+    ? assets.find((t) => t.uuid === m[1])
+    : assets[m[1]];
 }
 
 export function mkImageAssetRef(asset: ImageAsset) {
@@ -309,9 +339,15 @@ export function hasAssetRefs(str: string) {
   return !!str.match(RE_ASSETREF_ALL);
 }
 
+export function isImageAssetRefString(value: unknown): value is string {
+  return (
+    typeof value === "string" && !isDynamicValue(value) && hasAssetRefs(value)
+  );
+}
+
 export const resolveAllAssetRefs = (
   str: string,
-  assets: ImageAsset[] | Map<string, ImageAsset>
+  assets: ImageAsset[] | Map<string, ImageAsset>,
 ) => {
   const finder = Array.isArray(assets)
     ? (assetId: string) => assets.find((t) => t.uuid === assetId)
@@ -332,7 +368,7 @@ export function extractAllAssetRefs(str: string) {
 
 export function replaceAllAssetRefs(
   str: string,
-  getVal: (assetId: string) => string | undefined
+  getVal: (assetId: string) => string | undefined,
 ) {
   return str.replace(RE_ASSETREF_ALL, (sub, assetId) => {
     const replace = getVal(assetId);
@@ -350,7 +386,7 @@ export function getTagAttrForImageAsset(type: ImageAssetType) {
 
 export function getTagAttrForTplImage(tpl: TplImageTag) {
   return getTagAttrForImageAsset(
-    tpl.tag === "svg" ? ImageAssetType.Icon : ImageAssetType.Picture
+    tpl.tag === "svg" ? ImageAssetType.Icon : ImageAssetType.Picture,
   );
 }
 
@@ -365,7 +401,7 @@ export function getOnlyAssetRef(tpl: TplImageTag) {
         }
         return undefined;
       })
-      .filter(notNil)
+      .filter(notNil),
   );
   if (assetRefs.length === 1) {
     return assetRefs[0];

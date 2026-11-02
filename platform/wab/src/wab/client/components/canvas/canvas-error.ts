@@ -2,7 +2,6 @@ import {
   getEnvId,
   RenderingCtx,
 } from "@/wab/client/components/canvas/canvas-rendering";
-import { handleError } from "@/wab/client/ErrorNotifications";
 import { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
 import {
   classNameProp,
@@ -13,14 +12,13 @@ import {
 import { getExportedComponentName } from "@/wab/shared/codegen/react-p/serialize-utils";
 import { getComponentDisplayName } from "@/wab/shared/core/components";
 import { summarizeTpl } from "@/wab/shared/core/tpls";
+import { ownedComputedFn } from "@/wab/shared/mobx-util";
 import {
   Component,
   isKnownComponent,
   TplNode,
 } from "@/wab/shared/model/classes";
 import { isPlasmicUndefinedDataErrorPromise } from "@plasmicapp/data-sources";
-import { debounce } from "lodash";
-import { computedFn } from "mobx-utils";
 import type React from "react";
 
 export interface CanvasErrorBoundaryProps {
@@ -34,8 +32,9 @@ interface CanvasErrorBoundaryState {
   error?: Error | null;
 }
 
-export const mkCanvasErrorBoundary = computedFn(
-  (react: typeof React, viewCtx: ViewCtx) => {
+export const mkCanvasErrorBoundary = ownedComputedFn(
+  // Owned by the ViewCtx rather than React, so it's released with the ViewCtx
+  (viewCtx: ViewCtx, react: typeof React) => {
     const ReactComponent = react.Component;
     return class CanvasErrorBoundary extends ReactComponent<
       CanvasErrorBoundaryProps,
@@ -114,7 +113,7 @@ export const mkCanvasErrorBoundary = computedFn(
               const errorElement = deriveOffendingElement(this.state.error);
               if (errorElement) {
                 return `Error in ${getExportedComponentName(
-                  nodeOrComponent
+                  nodeOrComponent,
                 )} when rendering ${errorElement}:`;
               } else {
                 return `Error in ${getExportedComponentName(nodeOrComponent)}:`;
@@ -138,7 +137,6 @@ export const mkCanvasErrorBoundary = computedFn(
       }
     };
   },
-  { keepAlive: true }
 );
 
 interface CanvasErrorDisplayProps {
@@ -160,7 +158,7 @@ export function withErrorDisplayFallback<T>(
   fn: () => T,
   opts: {
     hasLoadingBoundary: boolean;
-  }
+  },
 ) {
   try {
     return fn();
@@ -191,39 +189,36 @@ export function withErrorDisplayFallback<T>(
   }
 }
 
-const mkCanvasErrorDisplay = computedFn(
-  (react: typeof React) => {
-    const ReactComponent = react.Component;
-    return class CanvasErrorDisplay extends ReactComponent<CanvasErrorDisplayProps> {
-      render() {
-        const { ctx, title, error } = this.props;
+const mkCanvasErrorDisplay = ownedComputedFn((react: typeof React) => {
+  const ReactComponent = react.Component;
+  return class CanvasErrorDisplay extends ReactComponent<CanvasErrorDisplayProps> {
+    render() {
+      const { ctx, title, error } = this.props;
 
-        const valKey = ctx.valKey;
-        const ownerKey = ctx.ownerKey;
-        const envId = getEnvId(ctx);
+      const valKey = ctx.valKey;
+      const ownerKey = ctx.ownerKey;
+      const envId = getEnvId(ctx);
 
-        const r = react.createElement;
-        return r(
+      const r = react.createElement;
+      return r(
+        "div",
+        {
+          className: "__wab_error-display",
+          [valKeyProp]: valKey,
+          [dataCanvasEnvsProp]: envId,
+          [valOwnerProp]: ownerKey,
+          [classNameProp]: "__wab_error-display",
+        },
+        r(
           "div",
-          {
-            className: "__wab_error-display",
-            [valKeyProp]: valKey,
-            [dataCanvasEnvsProp]: envId,
-            [valOwnerProp]: ownerKey,
-            [classNameProp]: "__wab_error-display",
-          },
-          r(
-            "div",
-            { className: "__wab_error-display__inner" },
-            r("div", { className: "__wab_error-display__heading" }, title),
-            r("div", { className: "__wab_error-display__code" }, `${error}`)
-          )
-        );
-      }
-    };
-  },
-  { keepAlive: true }
-);
+          { className: "__wab_error-display__inner" },
+          r("div", { className: "__wab_error-display__heading" }, title),
+          r("div", { className: "__wab_error-display__code" }, `${error}`),
+        ),
+      );
+    }
+  };
+});
 
 function deriveOffendingElement(error: Error | null | undefined) {
   if (!error) {
@@ -232,6 +227,3 @@ function deriveOffendingElement(error: Error | null | undefined) {
   const match = error.stack?.match(/at (\w+)/);
   return match?.[1] ?? undefined;
 }
-
-// Only for detecting errors in e2e tests
-const handleCanvasError = debounce(handleError, 500, { leading: true });

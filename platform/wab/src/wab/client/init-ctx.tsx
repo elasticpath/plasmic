@@ -20,7 +20,6 @@ import { getProjectFlags } from "@/wab/shared/devflags";
 import { instUtil } from "@/wab/shared/model/InstUtil";
 import { ProjectDependency } from "@/wab/shared/model/classes";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
 import { fixPageHrefsToLocal } from "@/wab/shared/utils/split-site-utils";
 import { notification } from "antd";
 import * as React from "react";
@@ -28,7 +27,7 @@ import * as React from "react";
 export async function loadSiteDbCtx(
   appCtx: AppCtx,
   onRefreshUi: () => void,
-  siteId: ProjectId
+  siteId: ProjectId,
 ) {
   const baseApi = appCtx.api;
   const { bundler } = appCtx;
@@ -65,7 +64,7 @@ export async function loadSiteDbCtx(
       } else if (appCtx.selfInfo.waitingEmailVerification) {
         // User is not verified
         await appCtx.history.replace(
-          getEmaiLVerificationRouteWithContinuation()
+          getEmaiLVerificationRouteWithContinuation(),
         );
         return asyncNever();
       }
@@ -85,16 +84,15 @@ export async function loadSiteDbCtx(
     bundler,
     siteInfo.id,
     bundle,
-    depPkgs
+    depPkgs,
   );
   appCtx.appConfig = getProjectFlags(site, appCtx.appConfig);
   spawn(checkDepPkgHosts(appCtx, siteInfo, depPkgVersions));
 
-  // Enable data queries after RSC release if any components already use them.
+  // Enable data queries if any components already use them.
   // Occurs after applyPlasmicUserDevFlagOverrides, so skip if already enabled
   if (!appCtx.appConfig.enableDataQueries) {
-    appCtx.appConfig.enableDataQueries =
-      !appCtx.appConfig.rscRelease || !!findAllDataSourceOpExpr(site).length;
+    appCtx.appConfig.enableDataQueries = !!findAllDataSourceOpExpr(site).length;
   }
 
   (window as any).dbg.site = site;
@@ -128,19 +126,19 @@ export async function loadSiteDbCtx(
 export async function checkDepPkgHosts(
   appCtx: AppCtx,
   siteInfo: SiteInfo,
-  deps: ProjectDependency[]
+  deps: ProjectDependency[],
 ) {
   const pkgMetas = await Promise.all(
-    deps.map((dep) => appCtx.api.getPkgVersionMeta(dep.pkgId, dep.version))
+    deps.map((dep) => appCtx.api.getPkgVersionMeta(dep.pkgId, dep.version)),
   );
   for (const pkgVersion of pkgMetas) {
     if (
       pkgVersion.pkg.hostUrl &&
       ![siteInfo.hostUrl, appCtx.appConfig.defaultHostUrl].includes(
-        pkgVersion.pkg.hostUrl
+        pkgVersion.pkg.hostUrl,
       )
     ) {
-      notification.warn({
+      notification.warning({
         message: "This project imports from a project hosted by another app",
         description: (
           <p>
@@ -148,7 +146,7 @@ export async function checkDepPkgHosts(
             imports components from{" "}
             <a
               target="_blank"
-              href={fillRoute(APP_ROUTES.project, {
+              href={APP_ROUTES.project.fill({
                 projectId: pkgVersion.pkg.pkg?.projectId,
               })}
             >

@@ -14,7 +14,7 @@ import type {
   Variant,
   VariantGroup,
 } from "@/wab/shared/model/classes";
-import { ok } from "neverthrow";
+import { Result, err, ok } from "neverthrow";
 
 export interface UsageSummary {
   components?: Component[];
@@ -41,34 +41,33 @@ export interface ResourceWithUsage<R extends DeletableResource> {
   usageCount: number;
 }
 
-export interface DeleteResourcesResult<R extends DeletableResource> {
-  deletedResources: R[];
-  messages: string[];
-  errors?: string[];
+export interface DeleteResourcesError {
+  /** One entry per resource that could not be deleted. */
+  errors: string[];
   /** True when the user dismissed the confirmation dialog without deleting. */
   cancelled?: boolean;
 }
 
+export type DeleteResourcesResult<R extends DeletableResource> = Result<
+  { deletedResources: R[]; messages: string[] },
+  DeleteResourcesError
+>;
+
+export type DeleteBehaviour =
+  "confirm-if-referenced" | "delete-if-referenced" | "error-if-referenced";
+
+export interface DeleteResourcesOpts {
+  behaviour?: DeleteBehaviour;
+}
 /**
- * Generic resource deletion utility that handles changeObserved coordination,
- * optional confirmation dialogs, and structured error/success reporting.
- *
- * @param behaviour Deletion behavior:
- *   - "confirm-if-referenced" - show confirmation dialog if there are usages (for UI, default)
- *   - "delete-if-referenced" - delete even if referenced, no dialog (for copilot tools)
- *   - "error-if-referenced" - return error if referenced, don't delete (for copilot blocks)
+ * Generic resource deletion utility that handles optional confirmation
+ * dialogs, and structured error/success reporting.
  */
 export async function deleteResourcesWithUsages<R extends DeletableResource>(
   studioCtx: StudioCtx,
   resourcesWithUsage: ResourceWithUsage<R>[],
   onDelete: (resource: R) => void,
-  opts: {
-    behaviour?:
-      | "confirm-if-referenced"
-      | "delete-if-referenced"
-      | "error-if-referenced";
-    deleteLabel: string;
-  }
+  opts: DeleteResourcesOpts & { deleteLabel: string },
 ): Promise<DeleteResourcesResult<R>> {
   const messages: string[] = [];
   const errors: string[] = [];
@@ -79,7 +78,7 @@ export async function deleteResourcesWithUsages<R extends DeletableResource>(
 
   // Filter resources with usages for confirmation dialog
   const resourcesWithUsages = resourcesWithUsage.filter(
-    ({ usageCount }) => usageCount > 0
+    ({ usageCount }) => usageCount > 0,
   );
 
   // Handle "error-if-referenced" mode
@@ -100,10 +99,10 @@ export async function deleteResourcesWithUsages<R extends DeletableResource>(
       errors.push(
         `Cannot delete "${getDeletableResourceLabel(resource)}" (uuid: ${
           resource.uuid
-        }): still referenced in ${locations}.`
+        }): still referenced in ${locations}.`,
       );
     }
-    return { deletedResources: [], messages, errors };
+    return err({ errors });
   }
 
   // Handle confirmation dialog when there are usages
@@ -113,45 +112,33 @@ export async function deleteResourcesWithUsages<R extends DeletableResource>(
       resourcesWithUsages.map(({ resource, usageSummary }) => ({
         element: resource,
         summary: usageSummary,
-      }))
+      })),
     );
     if (!confirmed) {
       errors.push(`Deletion of ${deleteLabel} was cancelled.`);
-      return { deletedResources: [], messages, errors, cancelled: true };
+      return err({ errors, cancelled: true });
     }
   }
 
   // Delete all resources that were passed in
   if (resourcesWithUsage.length > 0) {
-    const affectedComponentsSet = new Set(
-      resourcesWithUsage.flatMap(({ usageSummary }) => [
-        ...(usageSummary.components ?? []),
-        ...(usageSummary.frames ?? []).map((f) => f.container.component),
-      ])
-    );
-    const affectedComponents = Array.from(affectedComponentsSet);
-
-    await studioCtx.changeObserved<never, void>(
-      () => affectedComponents,
-      () => {
-        for (const { resource } of resourcesWithUsage) {
-          onDelete(resource);
-          messages.push(
-            `Deleted ${deleteLabel} "${getDeletableResourceLabel(
-              resource
-            )}" (uuid: ${resource.uuid}).`
-          );
-        }
-        return ok();
+    await studioCtx.change<never, void>(() => {
+      for (const { resource } of resourcesWithUsage) {
+        onDelete(resource);
+        messages.push(
+          `Deleted ${deleteLabel} "${getDeletableResourceLabel(
+            resource,
+          )}" (uuid: ${resource.uuid}).`,
+        );
       }
-    );
+      return ok();
+    });
   }
 
-  return {
+  return ok({
     deletedResources: resourcesWithUsage.map(({ resource }) => resource),
     messages,
-    errors,
-  };
+  });
 }
 
 function getDeletableResourceLabel(resource: DeletableResource) {

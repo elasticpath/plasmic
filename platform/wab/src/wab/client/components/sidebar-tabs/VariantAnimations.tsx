@@ -20,8 +20,8 @@ import React from "react";
 interface VariantAnimationsRenderProps {
   addAnimationLayer: () => void;
   animationsList: React.ReactNode | null;
-  animations: Animation[];
-  playAnimations: (animations: Animation[]) => void;
+  animations: ReadonlyArray<Animation>;
+  playAnimations: (animations: ReadonlyArray<Animation>) => void;
   stopAnimations: () => void;
   isAnimationPlaying: boolean;
   previewAnimationButton: React.ReactNode | null;
@@ -35,7 +35,7 @@ interface VariantAnimationsProps {
 }
 
 export const VariantAnimations = observer(function VariantAnimations(
-  props: VariantAnimationsProps
+  props: VariantAnimationsProps,
 ) {
   const { variants, tpl, viewCtx, children } = props;
   const { newAnimation, onAnimationAdded } = useNewAnimationContext();

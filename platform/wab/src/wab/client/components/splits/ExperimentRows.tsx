@@ -1,13 +1,13 @@
 import PlasmicExperimentRow from "@/wab/client/plasmic/plasmic_kit_optimize/PlasmicExperimentRow";
 import PlasmicExperimentRows from "@/wab/client/plasmic/plasmic_kit_optimize/PlasmicExperimentRows";
-import { Split } from "@/wab/shared/model/classes";
 import { SplitType } from "@/wab/shared/core/splits";
+import { Split } from "@/wab/shared/model/classes";
 import { Menu } from "antd";
 import { observer } from "mobx-react";
 import * as React from "react";
 
 export const ExperimentRows = observer(function ExperimentRows(props: {
-  splits: Split[];
+  splits: ReadonlyArray<Split>;
   type: SplitType;
   onClick: (_: Split) => void;
   onDelete?: (_: Split) => void;

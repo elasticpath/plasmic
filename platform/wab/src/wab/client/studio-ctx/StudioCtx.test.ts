@@ -1,21 +1,70 @@
+import { mockDeepAuto } from "@/wab/__testonly__/mock";
+import { fakeStudioCtx } from "@/wab/client/__testonly__/fake-init-ctx";
+import { createStyleTokensTool } from "@/wab/client/copilot/enterprise/tools/createStyleTokens";
+import { deleteStyleTokensTool } from "@/wab/client/copilot/enterprise/tools/deleteStyleTokens";
+import { navigateTool } from "@/wab/client/copilot/enterprise/tools/navigate";
+import { StudioCtx, aiStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
+import { ViewportCtx } from "@/wab/client/studio-ctx/ViewportCtx";
 import { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
-import { fakeStudioCtx } from "@/wab/client/test/fake-init-ctx";
 import {
+  ApiFeatureTier,
   ApiTeam,
   FeatureTierId,
-  StripeCustomerId,
   TeamId,
+  UserId,
 } from "@/wab/shared/ApiSchema";
 import { getArenaFrames } from "@/wab/shared/Arenas";
+import { UserError } from "@/wab/shared/UserError";
+import { generateSiteFromBundle } from "@/wab/shared/__testonly__/site-tests-utils";
 import { Bundle } from "@/wab/shared/bundler";
 import { withoutNils } from "@/wab/shared/common";
+import { AiIdentity } from "@/wab/shared/copilot/copilot-tool-types";
+import { ComponentType } from "@/wab/shared/core/components";
 import { getDedicatedArena } from "@/wab/shared/core/sites";
-import { DEVFLAGS } from "@/wab/shared/devflags";
-import { generateSiteFromBundle } from "@/wab/shared/tests/site-tests-utils";
+import { DEVFLAGS, DevFlagsType } from "@/wab/shared/devflags";
+import {
+  UiConfig,
+  isStudioMcpEnabled,
+  mergeUiConfigs,
+} from "@/wab/shared/ui-config-utils";
+import { ok } from "neverthrow";
 
 import _bundle from "@/wab/shared/web-exporter/bundles/starter-project-desktop-first.json";
 
 const TEAM_ID = "team123" as TeamId;
+
+describe("model change queue failures", () => {
+  it("change rejects, rolls back, and continues processing after a thrown error", async () => {
+    const { studioCtx } = fakeStudioCtx();
+    try {
+      const component = await studioCtx.changeUnsafe(() =>
+        studioCtx.addComponent("Original", {
+          type: ComponentType.Plain,
+          noSwitchArena: true,
+        }),
+      );
+      const failure = new Error("change failed");
+      const change = () => {
+        component.name = "Rolled back";
+        throw failure;
+      };
+      const failed = studioCtx.change(change);
+      await expect(failed).rejects.toBe(failure);
+      expect(component.name).toBe("Original");
+
+      await expect(
+        studioCtx.change(() => {
+          component.name = "Recovered";
+          return ok("done");
+        }),
+      ).resolves.toEqual(ok("done"));
+      expect(component.name).toBe("Recovered");
+      expect(studioCtx.hasPendingModelChanges()).toBe(false);
+    } finally {
+      studioCtx.dispose();
+    }
+  }, 5000);
+});
 
 function mockTeam(overrides: Partial<ApiTeam>): ApiTeam {
   return {
@@ -27,47 +76,135 @@ function mockTeam(overrides: Partial<ApiTeam>): ApiTeam {
   } as ApiTeam;
 }
 
-describe("uiCopilotEnabled", () => {
-  it("returns falsy with no team", () => {
-    const { studioCtx } = fakeStudioCtx();
-    expect(studioCtx.uiCopilotEnabled()).toBeFalsy();
-  });
-
-  it("returns truthy when enableUiCopilot devflag is true", () => {
-    const { studioCtx } = fakeStudioCtx({
-      devFlagOverrides: { enableUiCopilot: true },
-    });
-    expect(studioCtx.uiCopilotEnabled()).toBeTruthy();
-  });
-
-  it("returns truthy for a paid team", () => {
-    const team = mockTeam({
-      featureTierId: "tier123" as FeatureTierId,
-      stripeCustomerId: "cus_123" as StripeCustomerId,
-    });
-    const { studioCtx } = fakeStudioCtx({
+describe("chatCopilotEnabled", () => {
+  function setup(team: ApiTeam) {
+    return fakeStudioCtx({
       teams: [team],
       siteInfo: { teamId: TEAM_ID },
+      devFlagOverrides: { enableChatCopilot: true },
     });
-    expect(studioCtx.uiCopilotEnabled()).toBeTruthy();
+  }
+
+  it("inherits an enterprise tier without a child Stripe customer", () => {
+    const { studioCtx } = setup(
+      mockTeam({
+        parentTeamId: "parent" as TeamId,
+        featureTier: { id: "enterprise" as FeatureTierId } as ApiFeatureTier,
+      }),
+    );
+    expect(studioCtx.chatCopilotEnabled()).toBe(true);
   });
 
-  it("returns truthy for a team on trial", () => {
-    const team = mockTeam({ onTrial: true });
-    const { studioCtx } = fakeStudioCtx({
-      teams: [team],
-      siteInfo: { teamId: TEAM_ID },
-    });
-    expect(studioCtx.uiCopilotEnabled()).toBeTruthy();
+  it("allows paid plans but rejects trials and free teams", () => {
+    expect(
+      setup(
+        mockTeam({ featureTierId: "paid" as FeatureTierId }),
+      ).studioCtx.chatCopilotEnabled(),
+    ).toBe(true);
+    expect(
+      setup(
+        mockTeam({ featureTierId: "paid" as FeatureTierId, onTrial: true }),
+      ).studioCtx.chatCopilotEnabled(),
+    ).toBe(false);
+    expect(setup(mockTeam({})).studioCtx.chatCopilotEnabled()).toBe(false);
+    expect(
+      setup(
+        mockTeam({ featureTierId: DEVFLAGS.freeTier.id }),
+      ).studioCtx.chatCopilotEnabled(),
+    ).toBe(false);
   });
 
-  it("returns falsy for a free team with no trial", () => {
-    const team = mockTeam({});
-    const { studioCtx } = fakeStudioCtx({
-      teams: [team],
-      siteInfo: { teamId: TEAM_ID },
-    });
-    expect(studioCtx.uiCopilotEnabled()).toBeFalsy();
+  it.each(["viewer", "commenter", "content", "editor"] as const)(
+    "checks project access for %s",
+    (accessLevel) => {
+      const { studioCtx, appCtx } = setup(
+        mockTeam({ featureTierId: "paid" as FeatureTierId }),
+      );
+      const userId = "customer" as UserId;
+      appCtx.selfInfo = {
+        id: userId,
+        email: "customer@example.com",
+      } as NonNullable<typeof appCtx.selfInfo>;
+      studioCtx.siteInfo.createdById = "owner" as UserId;
+      studioCtx.siteInfo.perms = [
+        {
+          projectId: studioCtx.siteInfo.id,
+          userId,
+          accessLevel,
+        } as (typeof studioCtx.siteInfo.perms)[number],
+      ];
+      expect(studioCtx.chatCopilotEnabled()).toBe(
+        accessLevel === "content" || accessLevel === "editor",
+      );
+    },
+  );
+});
+
+describe("AI features in UI config", () => {
+  function setup(
+    uiConfig: UiConfig | null,
+    devFlagOverrides: Partial<DevFlagsType> = {},
+  ) {
+    return fakeStudioCtx({
+      teams: [mockTeam({ featureTierId: "paid" as FeatureTierId })],
+      siteInfo: { teamId: TEAM_ID, uiConfig },
+      devFlagOverrides: {
+        enableChatCopilot: true,
+        enableQueryMigrationCopilot: true,
+        showCopilot: true,
+        ...devFlagOverrides,
+      },
+    }).studioCtx;
+  }
+
+  it("enables everything by default", () => {
+    for (const uiConfig of [null, {}, { chatCopilot: true }]) {
+      const studioCtx = setup(uiConfig);
+      expect(studioCtx.chatCopilotEnabled()).toBe(true);
+      expect(studioCtx.queryMigrationCopilotEnabled()).toBe(true);
+      expect(studioCtx.codeCopilotEnabled()).toBe(true);
+    }
+  });
+
+  it("chatCopilot disables chat and query migration copilots", () => {
+    const studioCtx = setup({ chatCopilot: false });
+    expect(studioCtx.chatCopilotEnabled()).toBe(false);
+    expect(studioCtx.queryMigrationCopilotEnabled()).toBe(false);
+    expect(studioCtx.codeCopilotEnabled()).toBe(true);
+  });
+
+  it("codeCopilot disables only the code copilot", () => {
+    const studioCtx = setup({ codeCopilot: false });
+    expect(studioCtx.chatCopilotEnabled()).toBe(true);
+    expect(studioCtx.queryMigrationCopilotEnabled()).toBe(true);
+    expect(studioCtx.codeCopilotEnabled()).toBe(false);
+  });
+
+  it("devflags disable features even if the UI config enables them", () => {
+    const uiConfig = { chatCopilot: true, codeCopilot: true };
+    expect(
+      setup(uiConfig, { enableChatCopilot: false }).chatCopilotEnabled(),
+    ).toBe(false);
+    expect(
+      setup(uiConfig, {
+        enableQueryMigrationCopilot: false,
+      }).queryMigrationCopilotEnabled(),
+    ).toBe(false);
+    expect(setup(uiConfig, { showCopilot: false }).codeCopilotEnabled()).toBe(
+      false,
+    );
+  });
+
+  it("lets later configs override earlier ones", () => {
+    const merged = mergeUiConfigs(
+      { chatCopilot: false, codeCopilot: false, studioMcp: false },
+      { chatCopilot: true },
+    );
+    expect(merged.chatCopilot).toBe(true);
+    expect(merged.codeCopilot).toBe(false);
+    expect(merged.studioMcp).toBe(false);
+    expect(isStudioMcpEnabled(merged)).toBe(false);
+    expect(isStudioMcpEnabled({})).toBe(true);
   });
 });
 
@@ -81,7 +218,7 @@ describe("background arenas", () => {
       devFlagOverrides: { noObserve: true },
     });
     const arenas = withoutNils(
-      site.components.map((c) => getDedicatedArena(site, c))
+      site.components.map((c) => getDedicatedArena(site, c)),
     );
     return { studioCtx, arenas };
   }
@@ -104,7 +241,7 @@ describe("background arenas", () => {
     isDisposed = false;
     constructor(
       readonly component: unknown,
-      private readonly frame?: unknown
+      private readonly frame?: unknown,
     ) {}
     arenaFrame() {
       return this.frame;
@@ -129,13 +266,13 @@ describe("background arenas", () => {
     const arena = getDedicatedArena(site, comp)!;
     const fakeVc = new FakeViewCtx(
       comp,
-      getArenaFrames(arena)[0]
+      getArenaFrames(arena)[0],
     ) as unknown as ViewCtx;
     studioCtx.viewCtxs.push(fakeVc);
 
     const received = await studioCtx.withBackgroundViewCtxForComponent(
       comp,
-      async (vc) => vc
+      async (vc) => vc,
     );
     expect(received).toBe(fakeVc);
   });
@@ -170,11 +307,11 @@ describe("background arenas", () => {
     const { studioCtx, arenas } = setup();
     const [userArena, bgArena] = arenas;
     const bgComp = site.components.find(
-      (c) => getDedicatedArena(site, c) === bgArena
+      (c) => getDedicatedArena(site, c) === bgArena,
     )!;
     const fakeVc = new FakeViewCtx(
       bgComp,
-      getArenaFrames(bgArena)[0]
+      getArenaFrames(bgArena)[0],
     ) as unknown as ViewCtx;
     studioCtx.viewCtxs.push(fakeVc);
 
@@ -206,4 +343,164 @@ describe("background arenas", () => {
       DEVFLAGS.liveArenas = savedLiveArenas;
     }
   });
+});
+
+describe("aiStudioCtx", () => {
+  const chat: AiIdentity = {
+    client: "plasmic-ai",
+    model: "claude-sonnet-5",
+    outputFormat: "json",
+  };
+  const mcp: AiIdentity = {
+    client: "claude-code",
+    model: "claude-opus-5-5",
+    outputFormat: "xml",
+  };
+
+  const brandColor = {
+    tokens: [{ name: "Brand", type: "Color" as const, value: "#0a84ff" }],
+  };
+
+  function spyOnChangeOptions(studioCtx: StudioCtx) {
+    // Nothing reads a change's identity in our codebase yet,
+    // so we are just checking the opts each change starts with
+    // to ensure the aiStudioCtx overrides are working correctly.
+    const change = vi.spyOn(studioCtx, "_change");
+    return () => change.mock.calls.map(([, opts]) => opts);
+  }
+
+  describe("adds the AI's identity and the description", () => {
+    it("to changes the tool starts", async () => {
+      const { studioCtx } = fakeStudioCtx();
+      const changeOptions = spyOnChangeOptions(studioCtx);
+
+      await createStyleTokensTool.execute(
+        aiStudioCtx(studioCtx, mcp, "Create Style Tokens"),
+        brandColor,
+      );
+
+      expect(changeOptions()).toEqual([
+        { identity: mcp, description: "Create Style Tokens" },
+      ]);
+    });
+
+    it("to changes SiteOps starts for the tool", async () => {
+      const { studioCtx } = fakeStudioCtx();
+      await createStyleTokensTool.execute(studioCtx, brandColor);
+      const token = studioCtx.site.styleTokens.find((t) => t.name === "Brand")!;
+      const changeOptions = spyOnChangeOptions(studioCtx);
+
+      // The tool deletes through studioCtx.siteOps(), outside any change of its own.
+      await deleteStyleTokensTool.execute(
+        aiStudioCtx(studioCtx, mcp, "Delete Style Tokens"),
+        { tokenUuids: [token.uuid] },
+      );
+
+      expect(changeOptions()).toEqual([
+        { identity: mcp, description: "Delete Style Tokens" },
+      ]);
+    });
+
+    it("to changes StudioCtx methods start for the tool", async () => {
+      const { studioCtx } = fakeStudioCtx();
+      // Leaving an arena snapshots its viewport.
+      studioCtx.viewportCtx = mockDeepAuto<ViewportCtx>();
+      const pricing = studioCtx.addComponent("Pricing", {
+        type: ComponentType.Page,
+        noSwitchArena: true,
+      });
+      studioCtx.addComponent("Home", { type: ComponentType.Page });
+      const changeOptions = spyOnChangeOptions(studioCtx);
+
+      // getViewCtxForComponent switches the arena with its own this.change().
+      await navigateTool.execute(aiStudioCtx(studioCtx, mcp, "Navigate"), {
+        componentUuid: pricing.uuid,
+      });
+
+      // Switching arenas also changes the URL, and Studio reacts to the new URL
+      // with changes of its own (not the tool's), so we only check the first one.
+      expect(changeOptions()[0]).toEqual({
+        identity: mcp,
+        description: "Navigate",
+      });
+    });
+  });
+
+  it("keeps each tool call's identity when calls overlap", async () => {
+    const { studioCtx } = fakeStudioCtx();
+    const changeOptions = spyOnChangeOptions(studioCtx);
+    const chatCtx = aiStudioCtx(studioCtx, chat, "Insert HTML");
+    const mcpCtx = aiStudioCtx(studioCtx, mcp, "Change Element");
+
+    // The MCP tool's change lands between two of the chat tool's changes.
+    await Promise.all([
+      chatCtx.change(() => ok()),
+      mcpCtx.change(() => ok()),
+      chatCtx.change(() => ok()),
+    ]);
+
+    expect(changeOptions()).toEqual([
+      { identity: chat, description: "Insert HTML" },
+      { identity: mcp, description: "Change Element" },
+      { identity: chat, description: "Insert HTML" },
+    ]);
+  });
+
+  it("leaves changes made through the plain StudioCtx to the user", async () => {
+    const { studioCtx } = fakeStudioCtx();
+    const changeOptions = spyOnChangeOptions(studioCtx);
+    const chatCtx = aiStudioCtx(studioCtx, chat, "Insert HTML");
+
+    // The user's change lands between two of the tool's changes.
+    await Promise.all([
+      chatCtx.change(() => ok()),
+      studioCtx.change(() => ok()),
+      chatCtx.change(() => ok()),
+    ]);
+
+    expect(changeOptions()).toEqual([
+      { identity: chat, description: "Insert HTML" },
+      {},
+      { identity: chat, description: "Insert HTML" },
+    ]);
+  });
+});
+
+describe("fetchHostPageHtml", () => {
+  it("retries with the trailing slash toggled", async () => {
+    const fetchMock = vi
+      .spyOn(window, "fetch")
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce({ text: async () => "host html" } as Response);
+    const { studioCtx } = fakeStudioCtx();
+    await expect(studioCtx.fetchHostPageHtml()).resolves.toBe("host html");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const urls = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(urls[0].endsWith("/") ? urls[0].slice(0, -1) : urls[0] + "/").toBe(
+      urls[1],
+    );
+  });
+
+  it("shows a UserError when both attempts fail with network errors", async () => {
+    vi.spyOn(window, "fetch").mockRejectedValue(
+      new TypeError("Failed to fetch"),
+    );
+    const { studioCtx } = fakeStudioCtx();
+    await expect(studioCtx.fetchHostPageHtml()).rejects.toBeInstanceOf(
+      UserError,
+    );
+  });
+
+  it.each([true, false])(
+    "preserves unexpected errors (first attempt: %s)",
+    async (first) => {
+      const unexpected = new Error("unexpected failure");
+      const network = new TypeError("Failed to fetch");
+      vi.spyOn(window, "fetch")
+        .mockRejectedValueOnce(first ? unexpected : network)
+        .mockRejectedValueOnce(first ? network : unexpected);
+      const { studioCtx } = fakeStudioCtx();
+      await expect(studioCtx.fetchHostPageHtml()).rejects.toBe(unexpected);
+    },
+  );
 });

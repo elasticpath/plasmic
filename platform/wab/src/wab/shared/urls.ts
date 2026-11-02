@@ -2,22 +2,6 @@ import { ensure, ensureTruthy } from "@/wab/shared/common";
 import L from "lodash";
 import urljoin from "url-join";
 
-export const baseDomain = () => {
-  const loc = window?.location;
-  if (loc) {
-    const url = new URL(loc.toString());
-    url.hash = "";
-    url.search = "";
-    // Despite we set pathname to "", toString still yields the ending "/".
-    url.pathname = "";
-    const fullUrl = url.toString();
-    return fullUrl.endsWith("/")
-      ? fullUrl.slice(0, fullUrl.length - 1)
-      : fullUrl;
-  }
-  return "http://localhost:3003";
-};
-
 export const userContentDomain = (siteInstSubdomain) =>
   `http://${siteInstSubdomain}.vcap.me:3003`;
 
@@ -107,7 +91,7 @@ export function getDataUrl() {
 export function extractProjectIdFromUrlOrId(rawProjectUrlOrId: string) {
   const trimmedUrlOrId = rawProjectUrlOrId.trim();
   const match = new RegExp(
-    `^${L.escapeRegExp(`${getPublicUrl()}/projects/`)}([\\w_-]+)`
+    `^${L.escapeRegExp(`${getPublicUrl()}/projects/`)}([\\w_-]+)`,
   ).exec(trimmedUrlOrId);
 
   const projectId = match?.[1] ?? trimmedUrlOrId;
@@ -117,7 +101,7 @@ export function extractProjectIdFromUrlOrId(rawProjectUrlOrId: string) {
 export function createProjectUrl(
   host: string,
   projectId: string,
-  branchName?: string
+  branchName?: string,
 ) {
   return `${host}/projects/${projectId}${
     branchName ? `?branch=${encodeURIComponent(branchName)}` : ""
@@ -141,6 +125,6 @@ function maybeGetPlasmicStudioOrigin(): string | undefined {
   const params = new URLSearchParams(hash.replace(/^#/, "?"));
   return ensure(
     params.get("origin"),
-    "Missing origin hash param in host frame"
+    "Missing origin hash param in host frame",
   );
 }

@@ -7,7 +7,6 @@ import {
   InvalidArgsSummary,
 } from "@/wab/client/components/widgets/InvalidArgs";
 import { Modal } from "@/wab/client/components/widgets/Modal";
-import { observer } from "@/wab/client/utils/mobx-client-util";
 import { ServerQueryOp } from "@/wab/shared/codegen/react-p/server-queries/utils";
 import { StatefulQueryState } from "@/wab/shared/core/custom-functions";
 import { ExprCtx } from "@/wab/shared/core/exprs";
@@ -23,6 +22,7 @@ import {
 } from "@/wab/shared/model/classes";
 import { smartHumanize } from "@/wab/shared/strs";
 import { Tooltip } from "antd";
+import { observer } from "mobx-react";
 import * as React from "react";
 
 export const CustomFunctionExprPreview = observer(
@@ -37,7 +37,7 @@ export const CustomFunctionExprPreview = observer(
       return null;
     }
     return <CustomFunctionExprPreviewInner {...props} env={props.env} />;
-  }
+  },
 );
 
 const CustomFunctionExprPreviewInner = observer(
@@ -65,7 +65,7 @@ const CustomFunctionExprPreviewInner = observer(
       return null;
     }
     return <QueryResultPreview queryState={queryState} title={title} />;
-  }
+  },
 );
 
 /**
@@ -201,5 +201,5 @@ export const ServerQueryOpSummary = observer(
           : "Custom code"}
       </div>
     );
-  }
+  },
 );

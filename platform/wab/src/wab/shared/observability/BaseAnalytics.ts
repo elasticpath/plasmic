@@ -1,8 +1,5 @@
 import type { TrackOptions } from "@/wab/shared/observability/Analytics";
-import {
-  mergeProperties,
-  Properties,
-} from "@/wab/shared/observability/Properties";
+import { mergeProperties, Properties } from "@plasmic-shared/observability";
 
 /**
  * For implementing a stateful Analytics implementation that keeps track of the
@@ -34,7 +31,7 @@ export abstract class BaseAnalytics {
   track(
     eventName: string,
     eventProperties?: Properties,
-    opts?: TrackOptions
+    opts?: TrackOptions,
   ): void {
     const sampleThreshold = opts?.sampleThreshold;
     if (sampleThreshold === undefined || Math.random() < sampleThreshold) {
@@ -51,14 +48,14 @@ export abstract class BaseAnalytics {
             ? {
                 _sampleThreshold: sampleThreshold,
               }
-            : undefined
-        )
+            : undefined,
+        ),
       );
     }
   }
 
   protected abstract doTrack(
     eventName: string,
-    eventProperties?: Properties
+    eventProperties?: Properties,
   ): void;
 }

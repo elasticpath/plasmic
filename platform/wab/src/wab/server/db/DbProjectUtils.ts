@@ -16,7 +16,6 @@ import {
 } from "@/wab/shared/bundler";
 import { spawn, spawnWrapper } from "@/wab/shared/common";
 import fs from "fs";
-import fetch from "node-fetch";
 import path from "path";
 import yargs from "yargs";
 
@@ -56,7 +55,7 @@ export async function main() {
               "Marks published PkgVersion as prefilled (doesn't actuall prefill)",
           });
       },
-      spawnWrapper(uploadProject)
+      spawnWrapper(uploadProject),
     )
     .command<Parameters<typeof prefillProjects>[0]>(
       "prefill",
@@ -69,7 +68,7 @@ export async function main() {
           type: "array",
         });
       },
-      spawnWrapper(prefillProjects)
+      spawnWrapper(prefillProjects),
     )
     .command<Parameters<typeof pruneProjectBundle>[0]>(
       "prune-bundle",
@@ -81,7 +80,7 @@ export async function main() {
           type: "array",
         });
       },
-      spawnWrapper(pruneProjectBundle)
+      spawnWrapper(pruneProjectBundle),
     )
     .command<Parameters<typeof upgradeHostlessDeps>[0]>(
       "upgrade-hostless-deps",
@@ -93,7 +92,7 @@ export async function main() {
           type: "string",
         });
       },
-      spawnWrapper(upgradeHostlessDeps)
+      spawnWrapper(upgradeHostlessDeps),
     )
     .demandCommand()
     .help("h")
@@ -111,9 +110,9 @@ async function uploadProject(
     name: string;
     publish?: boolean;
     prefilled?: boolean;
-  }
+  },
 ) {
-  logger().debug("Uploading project", opts);
+  logger.debug("Uploading project", opts);
   const con = await createDbConnection(opts.dburi);
   await con.transaction(async (em) => {
     const filePath = path.resolve(opts.file);
@@ -131,17 +130,17 @@ async function uploadProject(
       await mgr.updateProject({ id: project.id, name: opts.name });
     }
 
-    logger().debug(`Project ID: ${project.id}`);
-    logger().debug(`Project Token: ${project.projectApiToken}`);
+    logger.debug(`Project ID: ${project.id}`);
+    logger.debug(`Project Token: ${project.projectApiToken}`);
 
     if (opts.publish) {
       const { pkgVersion } = await mgr.publishProject(
         project.id,
         "1.0.0",
         [],
-        ""
+        "",
       );
-      logger().debug("Published project");
+      logger.debug("Published project");
       if (opts.prefilled) {
         await mgr.updatePkgVersion(
           pkgVersion.pkgId,
@@ -149,7 +148,7 @@ async function uploadProject(
           pkgVersion.branchId,
           {
             isPrefilled: true,
-          }
+          },
         );
       }
     }
@@ -159,7 +158,7 @@ async function uploadProject(
 async function prefillProjects(
   opts: CommonArgs & {
     project: string[];
-  }
+  },
 ) {
   const con = await createDbConnection(opts.dburi);
   await con.transaction(async (em) => {
@@ -178,7 +177,7 @@ async function prefillProjects(
         `http://codegen-origin.plasmic.app/api/v1/loader/code/prefill/${pkgVersion.id}`,
         {
           method: "POST",
-        }
+        },
       );
 
       if (res.status !== 200) {
@@ -191,14 +190,14 @@ async function prefillProjects(
 async function pruneProjectBundle(
   opts: CommonArgs & {
     project: string[];
-  }
+  },
 ) {
   const con = await createDbConnection(opts.dburi);
   await con.transaction(async (em) => {
     const mgr = new DbMgr(em, SUPER_USER);
     for (const project of opts.project) {
       const rev = await mgr.getLatestProjectRev(project);
-      logger().info(`Pruning ${project} [${rev.revision}]`);
+      logger.info(`Pruning ${project} [${rev.revision}]`);
       const bundle = JSON.parse(rev.data) as Bundle;
       removeUnreachableNodesFromBundle(bundle);
       await mgr.updateProjectRev({
@@ -214,7 +213,7 @@ async function pruneProjectBundle(
 async function upgradeHostlessDeps(
   opts: CommonArgs & {
     project: string;
-  }
+  },
 ) {
   await ensureDbConnections(opts.dburi);
   const con = await getDefaultConnection();
@@ -223,7 +222,7 @@ async function upgradeHostlessDeps(
     await upgradeReferencedHostlessDeps(mgr, opts.project as ProjectId);
   });
 
-  logger().info("All done!");
+  logger.info("All done!");
 }
 
 if (require.main === module) {

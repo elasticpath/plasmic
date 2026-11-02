@@ -4,7 +4,6 @@ import { CanvasCtx } from "@/wab/client/components/canvas/canvas-ctx";
 import "@/wab/client/components/canvas/slate";
 import { ViewOps } from "@/wab/client/components/canvas/view-ops";
 import { makeClientPinManager } from "@/wab/client/components/variants/ClientPinManager";
-import { makeVariantsController } from "@/wab/client/components/variants/VariantsController";
 import { DevCliSvrEvaluator } from "@/wab/client/cseval";
 import { WithDbCtx } from "@/wab/client/db";
 import { Fiber } from "@/wab/client/react-global-hook/fiber";
@@ -12,7 +11,7 @@ import {
   getMostRecentFiberVersion,
   globalHookCtx,
 } from "@/wab/client/react-global-hook/globalHook";
-import { mkFrameValKeyToContextDataKey } from "@/wab/client/react-global-hook/utils";
+import { FrameState } from "@/wab/client/react-global-hook/types";
 import { requestIdleCallbackAsync } from "@/wab/client/requestidlecallback";
 import {
   FreestyleState,
@@ -22,9 +21,9 @@ import {
 } from "@/wab/client/studio-ctx/StudioCtx";
 import { ViewportCtx } from "@/wab/client/studio-ctx/ViewportCtx";
 import { ComponentCtx } from "@/wab/client/studio-ctx/component-ctx";
-import { getRenderState } from "@/wab/client/studio-ctx/renderState";
 import { trackEvent } from "@/wab/client/tracking";
 import { ViewStateSnapshot } from "@/wab/client/undo-log";
+import { mkTokenRef } from "@/wab/commons/StyleToken";
 import { drainQueue } from "@/wab/commons/asyncutil";
 import { safeCallbackify } from "@/wab/commons/control";
 import { getArenaFrames } from "@/wab/shared/Arenas";
@@ -32,6 +31,7 @@ import { RSH } from "@/wab/shared/RuleSetHelpers";
 import { getAncestorSlotArg } from "@/wab/shared/SlotUtils";
 import { $$$ } from "@/wab/shared/TplQuery";
 import { VariantTplMgr } from "@/wab/shared/VariantTplMgr";
+import { VariantedStylesHelper } from "@/wab/shared/VariantedStylesHelper";
 import { isBaseVariant } from "@/wab/shared/Variants";
 import { FastBundler } from "@/wab/shared/bundler";
 import {
@@ -69,22 +69,21 @@ import { getRawCode } from "@/wab/shared/core/exprs";
 import { metaSvc } from "@/wab/shared/core/metas";
 import { customFunctionId } from "@/wab/shared/core/query-ids";
 import { SQ, Selectable } from "@/wab/shared/core/selection";
-import { makeTokenRefResolver } from "@/wab/shared/core/site-style-tokens";
+import {
+  makeTokenRefResolver,
+  makeTokenValueResolver,
+} from "@/wab/shared/core/site-style-tokens";
 import { isTplAttachedToSite } from "@/wab/shared/core/sites";
 import { SlotSelection, isSlotSelection } from "@/wab/shared/core/slots";
-import {
-  StateVariableType,
-  getStateOnChangePropName,
-  getStateValuePropName,
-  getStateVarName,
-} from "@/wab/shared/core/states";
+import { getStateVarName } from "@/wab/shared/core/states";
+import { makeStyleExprClassName } from "@/wab/shared/core/styles";
+import { toFinalToken } from "@/wab/shared/core/tokens";
 import * as Tpls from "@/wab/shared/core/tpls";
 import { RawTextLike } from "@/wab/shared/core/tpls";
 import {
   ComponentEvalContext,
   ValComponent,
   ValNode,
-  ValTag,
   ValTextTag,
   bestValForTpl,
 } from "@/wab/shared/core/val-nodes";
@@ -95,9 +94,9 @@ import {
   tplFromSelectable,
 } from "@/wab/shared/core/vals";
 import { isDraggableSize } from "@/wab/shared/css-size";
-import { DEVFLAGS } from "@/wab/shared/devflags";
-import { CanvasEnv, evalCodeWithEnv } from "@/wab/shared/eval";
+import { CanvasEnv, tryEvalExpr } from "@/wab/shared/eval";
 import { Pt, rectsIntersect } from "@/wab/shared/geom";
+import { disposeOwnedComputedFns } from "@/wab/shared/mobx-util";
 import {
   ArenaFrame,
   Component,
@@ -107,19 +106,21 @@ import {
   RawText,
   RichText,
   State,
+  StyleExpr,
+  StyleTokenRef,
   TplComponent,
   TplNode,
-  TplSlot,
   TplTag,
   Variant,
   VariantSetting,
+  isKnownColorPropType,
+  isKnownStyleExpr,
   isKnownTplComponent,
 } from "@/wab/shared/model/classes";
 import { isTplResizable } from "@/wab/shared/sizingutils";
 import {
   generateStateOnChangeProp,
   generateStateValueProp,
-  useDollarState,
 } from "@plasmicapp/react-web";
 import asynclib from "async";
 import $ from "jquery";
@@ -271,7 +272,7 @@ export class ViewCtx extends WithDbCtx {
     null,
     {
       name: "ViewCtx.hoveredSelectable",
-    }
+    },
   );
   hoveredSelectable() {
     return this._hoveredSelectable.get();
@@ -305,7 +306,7 @@ export class ViewCtx extends WithDbCtx {
     null,
     {
       name: "ViewCtx.measureToolDomElt",
-    }
+    },
   );
   $measureToolDomElt() {
     return this._$measureToolDomElt.get();
@@ -320,42 +321,20 @@ export class ViewCtx extends WithDbCtx {
     return this._arenaFrame;
   }
 
-  arenaFrameRoot() {
-    return this.arenaFrame().container.component.tplTree;
-  }
-
-  private _codeComponentValKeyToContextData = observable.map<string, any>(
-    undefined,
-    {
-      deep: false,
-    }
-  );
-
   getContextData(val: ValComponent) {
     if (!isCodeComponent(val.tpl.component)) {
       return null;
     }
-    if (!this._codeComponentValKeyToContextData.has(val.key)) {
-      this._codeComponentValKeyToContextData.set(val.key, null);
-    }
-    return this._codeComponentValKeyToContextData.get(val.key);
-  }
-
-  getContextDataByValKey(valKey: string) {
-    return this._codeComponentValKeyToContextData.get(valKey);
+    return this.frameState.contextData.get(val.key) ?? null;
   }
 
   createSetContextDataFn = computedFn((valKey: string) => {
     return (value: any) => {
-      const oldValue = this._codeComponentValKeyToContextData.get(valKey);
+      const oldValue = this.frameState.contextData.get(valKey);
       if (isEqual(oldValue, value)) {
         return;
       }
-      globalHookCtx.frameValKeyToContextData.set(
-        mkFrameValKeyToContextDataKey(this.arenaFrame().uid, valKey),
-        value
-      );
-      this._codeComponentValKeyToContextData.set(valKey, value);
+      this.frameState.contextData.set(valKey, value);
     };
   });
 
@@ -376,7 +355,7 @@ export class ViewCtx extends WithDbCtx {
   // dnd state
   private _dndTentativeInsertion = observable.box<InsertionSpec | undefined>(
     undefined,
-    { name: "ViewCtx.dndTentativeInsertion" }
+    { name: "ViewCtx.dndTentativeInsertion" },
   );
   getDndTentativeInsertion() {
     return this._dndTentativeInsertion.get();
@@ -387,17 +366,6 @@ export class ViewCtx extends WithDbCtx {
 
   refreshFetchedDataFromPlasmicQuery(invalidateKey?: string) {
     this.canvasCtx.refreshFetchedDataFromPlasmicQuery(invalidateKey);
-  }
-
-  private _dndDraggedNode = observable.box<ValTag | ValComponent | undefined>(
-    undefined,
-    { name: "ViewCtx.dndDraggedNode" }
-  );
-  getDndDraggedNode() {
-    this._dndDraggedNode.get();
-  }
-  setDndDraggedNode(node?: ValTag | ValComponent) {
-    this._dndDraggedNode.set(node);
   }
 
   // focusedTpl: TplNode | null;
@@ -452,7 +420,7 @@ export class ViewCtx extends WithDbCtx {
     {
       name: "ViewCtx.focusedTplAncestorsThroughComponents",
       equals: comparer.structural,
-    }
+    },
   );
 
   private _autoOpenedUuid = observable.box<string | undefined>();
@@ -499,7 +467,7 @@ export class ViewCtx extends WithDbCtx {
 
   maybeClearAutoOpenedContentOnSelectionChange(
     previousSelection: Selectable | null,
-    newSelection: Selectable | null
+    newSelection: Selectable | null,
   ) {
     // The if block below handles Auto-opening of hidden element on next selection only after its visibility style has changed.
     if (!this.autoOpenedUuid) {
@@ -547,7 +515,7 @@ export class ViewCtx extends WithDbCtx {
       .find((tplOrSlotSel) =>
         isSlotSelection(tplOrSlotSel)
           ? tplOrSlotSel.slotParam.uuid === this.autoOpenedUuid
-          : tplOrSlotSel.uuid === this.autoOpenedUuid
+          : tplOrSlotSel.uuid === this.autoOpenedUuid,
       );
 
     // When we find an ancestor that matches the autoOpenedUuid:
@@ -632,8 +600,9 @@ export class ViewCtx extends WithDbCtx {
   }
 
   _viewState: { viewingCode?: boolean };
-  canvasCtx: CanvasCtx;
-  viewOps: ViewOps;
+  readonly canvasCtx: CanvasCtx;
+  readonly frameState: FrameState;
+  readonly viewOps: ViewOps;
   _componentStackFrames = observable.array<ComponentVariantFrame>([]);
 
   getViewOps() {
@@ -674,9 +643,11 @@ export class ViewCtx extends WithDbCtx {
       canvasCtx: this.canvasCtx,
       arenaFrame: this._arenaFrame,
     } = args);
+    this.frameState = this.canvasCtx.frameState;
     this.viewOps = new ViewOps({ viewCtx: this });
     this.csEvaluator = new DevCliSvrEvaluator({
       viewCtx: this,
+      frameState: this.frameState,
     });
     this._componentStackFrames.replace([
       new RootComponentVariantFrame(this.arenaFrame()),
@@ -706,7 +677,7 @@ export class ViewCtx extends WithDbCtx {
         },
         {
           fireImmediately: true,
-        }
+        },
       ),
       mobx.reaction(
         () => this._focusedTpls,
@@ -715,20 +686,8 @@ export class ViewCtx extends WithDbCtx {
           // unless the new selection is the new pasted node, but in that case
           // the "paste" method sets this flag after selecting the new node
           this.enforcePastingAsSibling = false;
-
-          if (DEVFLAGS.ephemeralRecording && this._focusedTpls) {
-            const vcontroller = makeVariantsController(this.studioCtx);
-            if (
-              vcontroller &&
-              !isBaseVariant(vcontroller.getTargetedVariants())
-            ) {
-              this.change(() =>
-                vcontroller.onToggleTargetingOfActiveVariants()
-              );
-            }
-          }
-        }
-      )
+        },
+      ),
     );
   }
 
@@ -737,19 +696,16 @@ export class ViewCtx extends WithDbCtx {
   /**
    * Disposes any mobx observers, and try to cut as many cyclic dependencies
    * as possible.
-   *
-   * TODO: it seems a disposed ViewCtx never really gets released from memory.
-   * Still yet to figure out why; at last check, requestIdleCallback may be
-   * holding on to an instance somehow?
    */
   dispose() {
     this.disposals.forEach((d) => d());
     this._highlightParamsDispose?.();
     this._editingTextResizeObserver?.disconnect();
     this.canvasObservers.forEach(
-      (reaction) => !reaction.isDisposed && reaction.dispose()
+      (reaction) => !reaction.isDisposed && reaction.dispose(),
     );
     this.canvasCtx.dispose();
+    disposeOwnedComputedFns(this);
     this.csEvaluator?.dispose();
     (this.csEvaluator as any) = null;
     this._isDisposed = true;
@@ -788,7 +744,7 @@ export class ViewCtx extends WithDbCtx {
 
   valComponentStack() {
     const currentValComponent = maybe(this.currentComponentCtx(), (cc) =>
-      cc.valComponent()
+      cc.valComponent(),
     );
     const owners =
       maybe(currentValComponent, (vc) => this.parentComponents(vc)) || [];
@@ -815,9 +771,11 @@ export class ViewCtx extends WithDbCtx {
       this.setEditingTextContext(null);
 
       // While rich-text editing, the focus will be on the frame. We reset
-      // it to document.body when done.
-      if (document.activeElement && document.activeElement !== document.body) {
-        (document.activeElement as HTMLElement).blur();
+      // it to document.body when done. This runs async (queued change), so
+      // only blur frames — the user may have already focused e.g. a side
+      // pane input, and we must not steal its focus.
+      if (document.activeElement instanceof HTMLIFrameElement) {
+        document.activeElement.blur();
       }
     });
   }
@@ -829,10 +787,12 @@ export class ViewCtx extends WithDbCtx {
   private setViewCtxFocusByTpl(
     x: TplNode | null,
     anchorCloneKey = this.focusedCloneKey(),
-    opts: { appendToMultiSelection?: boolean; noRestoreRightTab?: boolean } = {}
+    opts: {
+      appendToMultiSelection?: boolean;
+      noRestoreRightTab?: boolean;
+    } = {},
   ) {
-    opts.appendToMultiSelection =
-      this.appCtx.appConfig.multiSelect && !!opts.appendToMultiSelection;
+    opts.appendToMultiSelection = !!opts.appendToMultiSelection;
 
     mobx.runInAction(() => {
       if (x != null) {
@@ -895,7 +855,7 @@ export class ViewCtx extends WithDbCtx {
     opts: {
       anchorCloneKey?: string;
       ignoreFocusedCloneKey?: boolean;
-    }
+    },
   ) => {
     const valNodes = this.maybeTpl2ValsInContext(tpl, opts);
     const valNode = valNodes.length > 0 ? valNodes[0] : null;
@@ -903,7 +863,7 @@ export class ViewCtx extends WithDbCtx {
       valNode,
       valNode
         ? this.renderState.sel2dom(valNode, this.canvasCtx, opts.anchorCloneKey)
-        : null
+        : null,
     );
   };
 
@@ -913,7 +873,7 @@ export class ViewCtx extends WithDbCtx {
       allowAnyContext?: boolean;
       anchorCloneKey?: string;
       ignoreFocusedCloneKey?: boolean;
-    }
+    },
   ) {
     if (!this.valState().maybeValSysRoot()) {
       return [];
@@ -922,7 +882,7 @@ export class ViewCtx extends WithDbCtx {
       this.renderState.tpl2bestVal(
         x,
         opts?.anchorCloneKey ??
-          (!opts?.ignoreFocusedCloneKey ? this.focusedCloneKey() : undefined)
+          (!opts?.ignoreFocusedCloneKey ? this.focusedCloneKey() : undefined),
       ),
     ]);
     if (!vals) {
@@ -938,13 +898,7 @@ export class ViewCtx extends WithDbCtx {
   }
 
   get renderState() {
-    // dispose() nulls out csEvaluator to break cyclic references, but lingering mobx
-    // reactions and deferred canvas callbacks can still read renderState while a frame is
-    // being torn down (e.g. tpl-tree remap on a rich-text save). RenderState lives in a
-    // frame-keyed registry independent of csEvaluator, so fall back to it.
-    return (
-      this.csEvaluator?.renderState ?? getRenderState(this.arenaFrame().uid)
-    );
+    return this.frameState.renderState;
   }
 
   /**
@@ -956,7 +910,7 @@ export class ViewCtx extends WithDbCtx {
   setStudioFocusByTpl(
     x: TplNode | null,
     anchorCloneKey = this.focusedCloneKey(),
-    opts: { appendToMultiSelection?: boolean } = {}
+    opts: { appendToMultiSelection?: boolean } = {},
   ) {
     this.popDrillForTpl(x);
     this.setViewCtxFocusByTpl(x, anchorCloneKey, opts);
@@ -975,18 +929,18 @@ export class ViewCtx extends WithDbCtx {
       valFrames.find((f) => f.tpl.component === c),
       () =>
         `popDrillForTpl ${Tpls.summarizeTpl(
-          x
+          x,
         )}: There must be a component frame for owning component ${
           c.name
         }; current frames: [${valFrames
           .map((f) => f.tpl.component.name)
-          .join(",")}]`
+          .join(",")}]`,
     );
     if (targetValFrame === valFrames[0]) {
       this.setCurrentComponentCtx(null);
     } else {
       this.setCurrentComponentCtx(
-        new ComponentCtx({ valComponent: targetValFrame })
+        new ComponentCtx({ valComponent: targetValFrame }),
       );
     }
   }
@@ -1017,7 +971,7 @@ export class ViewCtx extends WithDbCtx {
       this._editingTextResizeObserver = new ResizeObserver(
         ([{ target }]: ResizeObserverEntry[]) => {
           this.canvasCtx.updateCanvasOverlay(target.getBoundingClientRect());
-        }
+        },
       );
 
       this.renderState.val2dom(x.val, this.canvasCtx).forEach((domElt) => {
@@ -1031,7 +985,7 @@ export class ViewCtx extends WithDbCtx {
 
   selectableToCloneKeys(
     val: Selectable | null | undefined,
-    anchorCloneKey = this.focusedCloneKey()
+    anchorCloneKey = this.focusedCloneKey(),
   ) {
     if (val) {
       return this.renderState.sel2CloneKeys(val, anchorCloneKey);
@@ -1041,7 +995,7 @@ export class ViewCtx extends WithDbCtx {
 
   computeFocus(
     val: Selectable | null | undefined,
-    anchorCloneKey: string | undefined = this.focusedCloneKey()
+    anchorCloneKey: string | undefined = this.focusedCloneKey(),
   ) {
     if (!val) {
       return {
@@ -1054,7 +1008,7 @@ export class ViewCtx extends WithDbCtx {
     if (val instanceof SlotSelection && val.tpl != null && val.val == null) {
       const maybeValComponent = maybe(
         this.renderState.tpl2bestVal(val.getTpl(), anchorCloneKey),
-        (v) => ensureInstance(v, ValComponent)
+        (v) => ensureInstance(v, ValComponent),
       );
       if (maybeValComponent) {
         val = val.withVal(maybeValComponent);
@@ -1067,7 +1021,7 @@ export class ViewCtx extends WithDbCtx {
     // It's possible for val to exist but to render as an empty React
     // component that has no real DOM element (e.g. Overlay).
     const $focusedDom = maybes(val)((v) =>
-      this.renderState.sel2dom(v, this.canvasCtx, anchorCloneKey)
+      this.renderState.sel2dom(v, this.canvasCtx, anchorCloneKey),
     )((x) => $(ensureArray(x)) as JQuery)();
     const focusedCloneKey =
       val && isValSelectable(val) ? this.sel2cloneKey(val) : undefined;
@@ -1083,7 +1037,7 @@ export class ViewCtx extends WithDbCtx {
   setStudioFocusBySelectable(
     val: Selectable | null | undefined,
     anchorCloneKey = this.focusedCloneKey(),
-    opts: { appendToMultiSelection?: boolean } = {}
+    opts: { appendToMultiSelection?: boolean } = {},
   ) {
     this.popDrillForTpl(val ? tplFromSelectable(val) : null);
     this.setViewCtxFocusBySelectable(val, anchorCloneKey, opts);
@@ -1100,7 +1054,7 @@ export class ViewCtx extends WithDbCtx {
   restoreViewState(view: ViewStateSnapshot) {
     assert(
       view.focusedFrame === this.arenaFrame(),
-      () => `Should only restore view state of focused frame`
+      () => `Should only restore view state of focused frame`,
     );
 
     this.restoreCurrentComponentCtxAndStack(
@@ -1108,8 +1062,8 @@ export class ViewCtx extends WithDbCtx {
       ensure(
         view.vcComponentStack,
         () =>
-          `View must have component stack if view included a focused view ctx`
-      )
+          `View must have component stack if view included a focused view ctx`,
+      ),
     );
     if (!view.focusedOnFrame) {
       if (
@@ -1118,7 +1072,7 @@ export class ViewCtx extends WithDbCtx {
       ) {
         this.setViewCtxFocusBySelectable(
           view.focusedSelectable,
-          view.vcFocusedCloneKey
+          view.vcFocusedCloneKey,
         );
       } else if (
         view.nextFocusedTpl &&
@@ -1152,7 +1106,7 @@ export class ViewCtx extends WithDbCtx {
     }
 
     const newStackFrames = this.componentStackFrames().filter((f) =>
-      isTplAttachedToSite(this.site, f.tplComponent)
+      isTplAttachedToSite(this.site, f.tplComponent),
     );
     if (newStackFrames.length !== this.componentStackFrames().length) {
       this._componentStackFrames.replace(newStackFrames);
@@ -1161,7 +1115,7 @@ export class ViewCtx extends WithDbCtx {
 
   setViewCtxHoverBySelectable(
     val: Selectable | null | undefined,
-    anchorCloneKey?: string
+    anchorCloneKey?: string,
   ) {
     this.setHoveredSelectable(val);
     const { focusedDom } = this.computeFocus(val, anchorCloneKey);
@@ -1171,10 +1125,12 @@ export class ViewCtx extends WithDbCtx {
   private setViewCtxFocusBySelectable(
     val: Selectable | null | undefined,
     anchorCloneKey?: string,
-    opts: { appendToMultiSelection?: boolean; noRestoreRightTab?: boolean } = {}
+    opts: {
+      appendToMultiSelection?: boolean;
+      noRestoreRightTab?: boolean;
+    } = {},
   ) {
-    opts.appendToMultiSelection =
-      this.appCtx.appConfig.multiSelect && !!opts.appendToMultiSelection;
+    opts.appendToMultiSelection = !!opts.appendToMultiSelection;
 
     mobx.runInAction(() => {
       const {
@@ -1275,10 +1231,15 @@ export class ViewCtx extends WithDbCtx {
   private async syncInternal(optss: ViewCtxSyncArgs[]) {
     const opts = this.mergeEvalArgs(optss);
     const doEval = async () => {
+      if (this._isDisposed) {
+        // The queue may still hold syncs scheduled before disposal.
+        // csEvaluator is gone by now, so there's nothing left to evaluate.
+        return;
+      }
       console.log(
         `${this.tplMgr().describeArenaFrame(this.arenaFrame())}: Eval ${
           opts.asap ? "sync" : "async"
-        } styles=${opts.styles} eval=${opts.eval}`
+        } styles=${opts.styles} eval=${opts.eval}`,
       );
       if (opts.styles) {
         this.studioCtx.styleMgrBcast.upsertStyleSheets(this);
@@ -1303,7 +1264,7 @@ export class ViewCtx extends WithDbCtx {
                 },
                 {
                   noUndoRecord: true,
-                }
+                },
               );
             }
             resolve();
@@ -1337,7 +1298,7 @@ export class ViewCtx extends WithDbCtx {
 
   // eslint-disable-next-line @typescript-eslint/no-misused-promises
   private syncQueue = asynclib.cargo(
-    safeCallbackify(async (args: ViewCtxSyncArgs[]) => this.syncInternal(args))
+    safeCallbackify(async (args: ViewCtxSyncArgs[]) => this.syncInternal(args)),
   );
 
   scheduleSync(opts: ViewCtxSyncArgs) {
@@ -1380,7 +1341,7 @@ export class ViewCtx extends WithDbCtx {
     opts?: {
       forDataRepCollection?: boolean;
       keep$StateRef?: boolean;
-    }
+    },
   ) => {
     const closestEnv = computed(
       () => {
@@ -1426,7 +1387,7 @@ export class ViewCtx extends WithDbCtx {
           ) {
             return ensure(
               val.slotCanvasEnvs.get(ancestorTpl.arg.param),
-              () => `Already checked`
+              () => `Already checked`,
             );
           }
         }
@@ -1438,7 +1399,7 @@ export class ViewCtx extends WithDbCtx {
       },
       {
         name: "closestTplEnv",
-      }
+      },
     ).get();
 
     if (!closestEnv) {
@@ -1459,14 +1420,14 @@ export class ViewCtx extends WithDbCtx {
         swallow(() => this.canvasCtx.Sub.reactWeb.is$StateProxy(value))
           ? L.cloneDeep(value)
           : value,
-      ])
+      ]),
     ) as CanvasEnv;
     return plainCanvasEnv;
   };
 
   getComponentEvalContext(
     tpl: TplTag | TplComponent,
-    param?: Param
+    param?: Param,
   ): ComponentEvalContext {
     const linkedProps = isKnownTplComponent(tpl)
       ? getLinkedCodeProps(tpl.component)
@@ -1487,7 +1448,10 @@ export class ViewCtx extends WithDbCtx {
       };
     }
     return {
-      componentPropValues: {},
+      componentPropValues:
+        isKnownTplComponent(tpl) && isKnownTplComponent(actualTpl)
+          ? evalUnrenderedCodeProps(this, tpl, actualTpl)
+          : {},
       invalidArgs: [],
       ccContextData: undefined,
     };
@@ -1501,8 +1465,8 @@ export class ViewCtx extends WithDbCtx {
         // `is$StateProxy` calls `isValtioProxy` which might try to read
         // Plasmic proxy from `mkUndefinedDataProxy` which would throw
         // `PlasmicUndefinedDataError`, so we swallow it here
-        swallow(() => this.canvasCtx.Sub.reactWeb.is$StateProxy(val))
-      )
+        swallow(() => this.canvasCtx.Sub.reactWeb.is$StateProxy(val)),
+      ),
     );
   }
 
@@ -1535,7 +1499,7 @@ export class ViewCtx extends WithDbCtx {
     const statePath = getStateVarName(state).split(".");
     return this.canvasCtx.Sub.reactWeb.getCurrentInitialValue(
       $state,
-      statePath
+      statePath,
     );
   }
 
@@ -1543,6 +1507,15 @@ export class ViewCtx extends WithDbCtx {
     const $state = this.get$StateInEnv();
     const statePath = getStateVarName(state).split(".");
     return this.canvasCtx.Sub.reactWeb.resetToInitialValue($state, statePath);
+  }
+
+  hasUnstableStateInitializer(state: State) {
+    return (
+      this.canvasCtx.Sub.reactWeb.hasUnstableStateInitializer?.(
+        this.get$StateInEnv(),
+        getStateVarName(state).split("."),
+      ) ?? false
+    );
   }
 
   /**
@@ -1613,7 +1586,7 @@ export class ViewCtx extends WithDbCtx {
               ? slotSelection.val != null
                 ? slotSelection.val.tpl
                 : undefined
-              : slotSelection.tpl
+              : slotSelection.tpl,
           )
           .elseUnsafe(() => head(this._focusedTpls)) ?? null
       );
@@ -1636,7 +1609,7 @@ export class ViewCtx extends WithDbCtx {
 
   isOutOfContext(tpl: TplNode) {
     const spotlightComponent = maybe(this.currentComponentCtx(), (ctx) =>
-      ctx.component()
+      ctx.component(),
     );
     return (
       !!spotlightComponent &&
@@ -1671,18 +1644,18 @@ export class ViewCtx extends WithDbCtx {
     //
     if (ctx) {
       const existingIndex = this._componentStackFrames.findIndex(
-        (f) => f.tplComponent === ctx.tplComponent()
+        (f) => f.tplComponent === ctx.tplComponent(),
       );
       if (existingIndex >= 0) {
         // We're going up the stack
         this._componentStackFrames.replace(
-          this._componentStackFrames.slice(0, existingIndex + 1)
+          this._componentStackFrames.slice(0, existingIndex + 1),
         );
         this.setViewCtxHoverBySelectable(null);
       } else {
         // We're adding a new component to the stack
         this._componentStackFrames.push(
-          new TransientComponentVariantFrame(ctx.tplComponent())
+          new TransientComponentVariantFrame(ctx.tplComponent()),
         );
       }
     } else {
@@ -1693,7 +1666,7 @@ export class ViewCtx extends WithDbCtx {
   }
   restoreCurrentComponentCtxAndStack(
     ctx: ComponentCtx | undefined,
-    stack: ComponentVariantFrame[]
+    stack: ComponentVariantFrame[],
   ) {
     this.setCurrentComponentCtxQuietly(ctx || null);
 
@@ -1741,7 +1714,7 @@ export class ViewCtx extends WithDbCtx {
       // current component context
       (this.showDefaultSlotContents() &&
         this.componentStackFrames().some(
-          (f) => f.tplComponent === tplComponent
+          (f) => f.tplComponent === tplComponent,
         ))
     );
   }
@@ -1758,7 +1731,7 @@ export class ViewCtx extends WithDbCtx {
       // current component context
       (this.showDefaultSlotContents() &&
         this.componentStackFrames().some(
-          (f) => f.tplComponent.component === component
+          (f) => f.tplComponent.component === component,
         ))
     );
   }
@@ -1779,9 +1752,6 @@ export class ViewCtx extends WithDbCtx {
   // Misc view state
   viewState() {
     return this._viewState;
-  }
-  setViewState(viewState: any) {
-    this._viewState = viewState;
   }
   stopUnlogged() {
     this.studioCtx.stopUnlogged();
@@ -1844,17 +1814,6 @@ export class ViewCtx extends WithDbCtx {
     return this.variantTplMgr().effectiveVariantSetting(tpl);
   }
 
-  currentVariantSettingForFocus() {
-    const tpl = ensureInstance(
-      this.focusedTpl(true),
-      TplTag,
-      TplComponent,
-      TplSlot
-    );
-    const vs = this.currentVariantSetting(tpl);
-    return vs;
-  }
-
   private strictComponent() {
     return ensure(this.component, `Expected component to exist`);
   }
@@ -1915,7 +1874,7 @@ export class ViewCtx extends WithDbCtx {
     newTpl: TplNode,
     useParentAsAnchor = false,
     initialFocusedSelectable = this.focusedSelectable(),
-    preserveCloneKey?: boolean
+    preserveCloneKey?: boolean,
   ) {
     if (Tpls.isTplVariantable(newTpl)) {
       // need this since style-tab rely on the current VariantSetting to exist.
@@ -1964,7 +1923,7 @@ export class ViewCtx extends WithDbCtx {
 
     const initialValNode = ensureInstance(
       asVal(initialFocusedSelectable),
-      ValNode
+      ValNode,
     );
     const initialSq = SQ(initialValNode, this.valState()).fullstack();
     const frameNum = initialSq.frameNum();
@@ -2000,7 +1959,7 @@ export class ViewCtx extends WithDbCtx {
                 .fullstack()
                 .firstChild()
                 .tryGet(),
-              cloneKey
+              cloneKey,
             );
             fixUndoViewState();
           }
@@ -2021,7 +1980,7 @@ export class ViewCtx extends WithDbCtx {
             frameNum,
             this.valState(),
             initialSel,
-            this.tplUserRoot()
+            this.tplUserRoot(),
           );
           // It's possible that bestVal returns undefined because of a inconsistency in valNodes caused by fake nodes created
           // by globalHook, since the fake nodes are linked in the tree only for properly detecting the owner (valOwner) of
@@ -2062,13 +2021,13 @@ export class ViewCtx extends WithDbCtx {
   selectFromSelectionId(selectableKey?: string) {
     if (this.hasValState) {
       this.setStudioFocusBySelectable(
-        this.getSelectableFromSelectionId(selectableKey)
+        this.getSelectableFromSelectionId(selectableKey),
       );
       return;
     }
     this.postEval(() => {
       this.setStudioFocusBySelectable(
-        this.getSelectableFromSelectionId(selectableKey)
+        this.getSelectableFromSelectionId(selectableKey),
       );
     });
   }
@@ -2089,7 +2048,7 @@ export class ViewCtx extends WithDbCtx {
         return undefined;
       }
       const param = valComp.tpl.component.params.find(
-        (p) => p.uuid === paramUuid
+        (p) => p.uuid === paramUuid,
       );
       if (!param) {
         return undefined;
@@ -2115,7 +2074,7 @@ export class ViewCtx extends WithDbCtx {
 
     const newDoms = this.computeFocus(
       this.focusedSelectable(),
-      this.focusedCloneKey()
+      this.focusedCloneKey(),
     ).focusedDom;
     const focusedDomElt = this.focusedDomElt();
     if (
@@ -2137,20 +2096,6 @@ export class ViewCtx extends WithDbCtx {
         f();
       }
     });
-  }
-
-  private _dndMgr: any;
-  _unsafeDndMgr() {
-    return this._dndMgr;
-  }
-  _unsafeSetDndMgr(dndMgr: any) {
-    this._dndMgr = dndMgr;
-  }
-
-  bundleAllForTransport() {
-    const allBundle = this.studioCtx.bundleSite() as any;
-    allBundle.siteId = this.siteInfo.id;
-    return allBundle;
   }
 
   eltFinder = (val: ValNode) => {
@@ -2178,7 +2123,7 @@ export class ViewCtx extends WithDbCtx {
       this.site,
       this.tplMgr(),
       this.globalFrame,
-      this.getCanvasEnvForTpl
+      this.getCanvasEnvForTpl,
     );
   }
 
@@ -2192,7 +2137,7 @@ export class ViewCtx extends WithDbCtx {
   updateCtxPostChange() {
     // Helper function that tries to return the new ValNode with the argument key
     const getMatchingValInUpdatedTree = <T extends ValNode>(
-      valNode: T
+      valNode: T,
     ): T | undefined => {
       return this.renderState.tryGetUpdatedVal(valNode);
     };
@@ -2206,7 +2151,7 @@ export class ViewCtx extends WithDbCtx {
     if (curCompCtx != null) {
       // This may set the context to null if the ValComponent no longer exists.
       const newValComponent = getMatchingValInUpdatedTree(
-        curCompCtx.valComponent()
+        curCompCtx.valComponent(),
       );
       if (newValComponent) {
         if (curCompCtx.valComponent() !== newValComponent) {
@@ -2318,7 +2263,7 @@ export class ViewCtx extends WithDbCtx {
             val: newVal,
             targetVs: this._editingTextContext.get()?.targetVs!,
             draftText: maybe(newVal.text, (text) =>
-              ensureInstance(text, RawText, RawTextLike)
+              ensureInstance(text, RawText, RawTextLike),
             ),
             run: undefined,
             editor: undefined,
@@ -2337,7 +2282,7 @@ export class ViewCtx extends WithDbCtx {
   getSpotlightAndVariantsInfo(): SpotlightAndVariantsInfo {
     const lastComponentFrame = ensure(
       L.last(this.componentStackFrames()),
-      () => `Must be at least one component stack frame in spotlight mode`
+      () => `Must be at least one component stack frame in spotlight mode`,
     );
     return {
       componentStackFrameLength: this.componentStackFrames().length,
@@ -2348,10 +2293,14 @@ export class ViewCtx extends WithDbCtx {
         ...lastComponentFrame.getPlainPins(),
         ...this.arenaFrame().pinnedGlobalVariants,
         ...Object.fromEntries(
-          lastComponentFrame.getTargetVariants().map((v) => tuple(v.uuid, true))
+          lastComponentFrame
+            .getTargetVariants()
+            .map((v) => tuple(v.uuid, true)),
         ),
         ...Object.fromEntries(
-          this.arenaFrame().targetGlobalVariants.map((v) => tuple(v.uuid, true))
+          this.arenaFrame().targetGlobalVariants.map((v) =>
+            tuple(v.uuid, true),
+          ),
         ),
       },
       focusedSelectable: this.focusedSelectable() ?? undefined,
@@ -2368,7 +2317,7 @@ export class ViewCtx extends WithDbCtx {
 
   focusedTplsOrSlotSelections() {
     return this._focusedSelectables.map((sel, i) =>
-      sel instanceof SlotSelection ? sel : this._focusedTpls[i]
+      sel instanceof SlotSelection ? sel : this._focusedTpls[i],
     );
   }
 
@@ -2385,7 +2334,7 @@ export class ViewCtx extends WithDbCtx {
 
     const visibleScalerBox = this.viewportCtx.visibleScalerBox();
     const frameScalerRect = this.studioCtx.getArenaFrameScalerRect(
-      this.arenaFrame()
+      this.arenaFrame(),
     );
     return frameScalerRect
       ? rectsIntersect(visibleScalerBox.rect(), frameScalerRect)
@@ -2430,14 +2379,14 @@ export class ViewCtx extends WithDbCtx {
               allCustomFunctions(this.site)
                 .map(({ customFunction }) => customFunction)
                 .filter((f) => !!f.namespace),
-              (f) => f.namespace
-            )
+              (f) => f.namespace,
+            ),
           ),
         ].map((functionOrGroup) =>
           !Array.isArray(functionOrGroup)
             ? maybe(
                 getFunctionImplementation(functionOrGroup),
-                (impl) => [functionOrGroup.importName, impl] as const
+                (impl) => [functionOrGroup.importName, impl] as const,
               )
             : ([
                 functionOrGroup[0].namespace!,
@@ -2446,32 +2395,33 @@ export class ViewCtx extends WithDbCtx {
                     functionOrGroup.map((customFunction) =>
                       maybe(
                         getFunctionImplementation(customFunction),
-                        (impl) => [customFunction.importName, impl] as const
-                      )
-                    )
-                  )
+                        (impl) => [customFunction.importName, impl] as const,
+                      ),
+                    ),
+                  ),
                 ),
-              ] as const)
+              ] as const),
         ),
         ...this.canvasCtx
           .getRegisteredLibraries()
           .map((lib) => [lib.meta.jsIdentifier, lib.lib] as const),
-      ])
+      ]),
     );
   }
 
   // Fiber Related methods
 
   dom2val<T extends object = HTMLElement>(
-    $dom: JQuery<T>
+    $dom: JQuery<T>,
   ): Selectable | undefined {
     return this.dom2focusObj($dom);
   }
   dom2tpl<T extends object = HTMLElement>($dom: JQuery<T>) {
     return ensure(this.dom2val($dom), "Couldn't find ValNode from DOM").tpl;
   }
+
   dom2focusObj<T extends object = HTMLElement>(
-    $dom: /*TWZ*/ JQuery<T>
+    $dom: /*TWZ*/ JQuery<T>,
   ): ValNode | SlotSelection | undefined {
     for (const elt of $dom.toArray()) {
       // React attaches the fiber node associated to the DOM node it renders
@@ -2480,7 +2430,7 @@ export class ViewCtx extends WithDbCtx {
       const key = Object.keys(elt).find(
         (k) =>
           k.startsWith("__reactInternalInstance$") ||
-          k.startsWith("__reactFiber$")
+          k.startsWith("__reactFiber$"),
       );
       if (!key) {
         continue;
@@ -2516,7 +2466,7 @@ export class ViewCtx extends WithDbCtx {
   }
 
   private fiberNodeToPlasmicData(
-    fiber: Fiber
+    fiber: Fiber,
   ): ValNode | SlotSelection | undefined {
     let initialNode = true;
     // The ValNode might be passed to the enclosing component that rendered
@@ -2552,39 +2502,6 @@ export class ViewCtx extends WithDbCtx {
       initialNode = false;
     }
     return undefined;
-  }
-
-  use$StateForRoot() {
-    const component = this.currentComponent();
-    const canvasEnv = this.getCanvasEnvForTpl(component.tplTree);
-    const stateSpecs = component.states.map((state) => ({
-      path: getStateVarName(state),
-      type: state.accessType as "private" | "readonly" | "writable",
-      ...(state.param.defaultExpr
-        ? {
-            initFunc: evalCodeWithEnv(
-              `($props, $state, $ctx) => (${getRawCode(
-                state.param.defaultExpr,
-                {
-                  projectFlags: this.projectFlags(),
-                  component,
-                  inStudio: true,
-                }
-              )})`,
-              {},
-              this.canvasCtx.win()
-            ),
-          }
-        : {}),
-      ...(state.accessType !== "private"
-        ? { onChangeProp: getStateOnChangePropName(state) }
-        : {}),
-      ...(state.accessType === "writable"
-        ? { valueProp: getStateValuePropName(state) }
-        : {}),
-      variableType: state.variableType as StateVariableType,
-    }));
-    return useDollarState(stateSpecs, canvasEnv?.$props ?? {});
   }
 }
 
@@ -2648,7 +2565,7 @@ export abstract class ViewComponentBase<P = {}, S = {}> extends React.Component<
   component() {
     return ensure(
       this.maybeComponent(),
-      () => `ViewCtx always associated with a Component`
+      () => `ViewCtx always associated with a Component`,
     );
   }
   maybeComponent() {
@@ -2686,12 +2603,12 @@ export abstract class ViewComponentBase<P = {}, S = {}> extends React.Component<
   selectNewTpl(
     newTpl: TplNode,
     useParentAsAnchor = false,
-    initialFocusedSelectable = this.viewCtx().focusedSelectable()
+    initialFocusedSelectable = this.viewCtx().focusedSelectable(),
   ) {
     return this.viewCtx().selectNewTpl(
       newTpl,
       useParentAsAnchor,
-      initialFocusedSelectable
+      initialFocusedSelectable,
     );
   }
 
@@ -2700,20 +2617,11 @@ export abstract class ViewComponentBase<P = {}, S = {}> extends React.Component<
   }
 }
 
-export class ViewComponent<
-  P extends ViewComponentProps = ViewComponentProps,
-  S = {}
-> extends ViewComponentBase<P, S> {
-  viewCtx() {
-    return this.props.viewCtx;
-  }
-}
-
 export function ensureBaseRs(
   viewCtx: ViewCtx,
   tpl: TplTag | TplComponent,
   props: CSSProperties = {},
-  text: RichText | undefined = undefined
+  text: RichText | undefined = undefined,
 ) {
   const vs = viewCtx.variantTplMgr().ensureBaseVariantSetting(tpl);
   if (L.size(props) > 0 || !!text) {
@@ -2729,7 +2637,7 @@ export function ensureVariantRs(
   viewCtx: ViewCtx,
   tpl: TplTag | TplComponent,
   variant: Variant,
-  props: CSSProperties = {}
+  props: CSSProperties = {},
 ) {
   const vs = viewCtx.variantTplMgr().ensureVariantSetting(tpl, [variant]);
   if (L.size(props) > 0) {
@@ -2740,13 +2648,79 @@ export function ensureVariantRs(
 
 export function getSetOfPinnedVariantsForViewCtx(
   viewCtx: ViewCtx,
-  bundler: FastBundler
+  bundler: FastBundler,
 ) {
   return sortBy(
     [
       ...viewCtx.currentComponentStackFrame().getPinnedVariants().keys(),
       ...viewCtx.globalFrame.getPinnedVariants().keys(),
     ],
-    (v) => bundler.addrOf(v)?.iid
+    (v) => bundler.addrOf(v)?.iid,
   );
 }
+
+// Unrendered tpls (e.g. Show is false) have no props, so evaluate the model args instead;
+// linked props read the wrapper's args. Memoized because every prop row calls this.
+const evalUnrenderedCodeProps = computedFn(
+  (viewCtx: ViewCtx, tpl: TplComponent, actualTpl: TplComponent) => {
+    const componentPropValues: Record<string, any> = {};
+    const owner = $$$(tpl).tryGetOwningComponent();
+    if (
+      !isCodeComponent(actualTpl.component) ||
+      // VariantTplMgr throws for owners without a frame in this ctx
+      (owner &&
+        !viewCtx.componentStackFrames().some((f) => f.component === owner))
+    ) {
+      return componentPropValues;
+    }
+    const linkedProps = getLinkedCodeProps(tpl.component);
+    const effectiveVs = viewCtx.effectiveCurrentVariantSetting(tpl);
+    const env = viewCtx.getCanvasEnvForTpl(tpl) ?? {};
+    const exprCtx = {
+      projectFlags: viewCtx.projectFlags(),
+      component: viewCtx.currentComponent(),
+      inStudio: true,
+    };
+    for (const prop of tpl.component.params) {
+      const [propTpl, targetProp] = linkedProps.get(prop.variable.name) ?? [
+        tpl,
+        prop,
+      ];
+      const expr =
+        effectiveVs.args.find((arg) => arg.param === prop)?.expr ??
+        prop.defaultExpr;
+      if (propTpl !== actualTpl || !expr) {
+        continue;
+      }
+      componentPropValues[targetProp.variable.name] = switchType(expr)
+        .when(StyleExpr, () =>
+          effectiveVs.variantSettings
+            .map((vs) => vs.args.find((arg) => arg.param === prop)?.expr)
+            .filter(isKnownStyleExpr)
+            .map(makeStyleExprClassName)
+            .join(" "),
+        )
+        .when(StyleTokenRef, ({ token }) =>
+          isKnownColorPropType(prop.type) && prop.type.noDeref
+            ? mkTokenRef(token)
+            : makeTokenValueResolver(viewCtx.site)(
+                toFinalToken(token, viewCtx.site),
+                new VariantedStylesHelper(viewCtx.site, [
+                  ...viewCtx.variantTplMgr().getActivatedVariantsForNode(tpl),
+                ]),
+              ),
+        )
+        .elseUnsafe(
+          () =>
+            swallow(() =>
+              tryEvalExpr(
+                getRawCode(expr, exprCtx),
+                env,
+                viewCtx.canvasCtx.win(),
+              ),
+            )?.val,
+        );
+    }
+    return componentPropValues;
+  },
+);

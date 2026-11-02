@@ -16,10 +16,13 @@ import {
 } from "@/wab/client/plasmic/plasmic_kit_variants/PlasmicVariantSection";
 import { StudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
-import { isStyleOrCodeComponentVariant } from "@/wab/shared/Variants";
+import {
+  VariantCombo,
+  isStyleOrCodeComponentVariant,
+} from "@/wab/shared/Variants";
 import { spawn } from "@/wab/shared/common";
 import { isTplCodeComponent } from "@/wab/shared/core/tpls";
-import { Component, Variant } from "@/wab/shared/model/classes";
+import { Component } from "@/wab/shared/model/classes";
 import { observer } from "mobx-react";
 import { ok } from "neverthrow";
 import * as React from "react";
@@ -37,7 +40,7 @@ interface VariantSectionProps extends DefaultVariantSectionProps {
 }
 
 const VariantSection = observer(function VariantSection(
-  props: VariantSectionProps
+  props: VariantSectionProps,
 ) {
   const {
     menu,
@@ -78,7 +81,7 @@ const VariantSection = observer(function VariantSection(
           ? {
               onClick: onAddNewVariant,
               tooltip: isEmpty
-                ? emptyAddButtonTooltip ?? props.emptyAddButtonText
+                ? (emptyAddButtonTooltip ?? props.emptyAddButtonText)
                 : props.emptyAddButtonText,
               "data-test-class": "add-variant-button",
               "data-event": "variantspanel-section-add-variant-to-group",
@@ -115,7 +118,7 @@ export function makeReadOnlySection(opts: {
   icon: React.ReactNode;
   title: React.ReactNode;
   onClickSettings?: () => void;
-  variants: Variant[];
+  variants: VariantCombo;
   key: string;
   showIcon?: boolean;
   component?: Component;
@@ -160,7 +163,7 @@ export function makeReadOnlySection(opts: {
                           .tplMgr()
                           .copyToVariant(component, variant, toVariant);
                         return ok();
-                      })
+                      }),
                     ),
                 })
               : undefined
@@ -172,7 +175,7 @@ export function makeReadOnlySection(opts: {
             canChangeVariants || vcontroller.canToggleTargeting(variant)
               ? (target) =>
                   studioCtx.changeUnsafe(() =>
-                    vcontroller.onTargetVariant(variant, target)
+                    vcontroller.onTargetVariant(variant, target),
                   )
               : undefined
           }
@@ -180,7 +183,7 @@ export function makeReadOnlySection(opts: {
             canChangeVariants
               ? () =>
                   studioCtx.changeUnsafe(() =>
-                    vcontroller.onToggleVariant(variant)
+                    vcontroller.onToggleVariant(variant),
                   )
               : undefined
           }
@@ -190,7 +193,7 @@ export function makeReadOnlySection(opts: {
                 isCodeComponent={isTplCodeComponent(component?.tplTree)}
                 selectors={styleOrCodeComponentVariantToSelectors(
                   variant,
-                  studioCtx.site
+                  studioCtx.site,
                 )}
               />
             ) : (

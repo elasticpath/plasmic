@@ -1,6 +1,5 @@
 import { logger } from "@/wab/server/observability";
 import type * as express from "express";
-import { Profile } from "passport";
 import { _StrategyOptionsBase } from "passport-google-oauth20";
 import {
   StrategyOptions,
@@ -15,7 +14,7 @@ export type KnownProvider = "okta";
 
 export type StrategyOptionsCallback = (
   err: Error | null,
-  options: Partial<OAuth2Config> & { provider: KnownProvider }
+  options: Partial<OAuth2Config> & { provider: KnownProvider },
 ) => void;
 
 export type OAuth2Config = _StrategyOptionsBase;
@@ -23,7 +22,7 @@ export type OAuth2Config = _StrategyOptionsBase;
 export interface MultiOAuth2StrategyConfigBase {
   getOAuth2Options(
     req: express.Request,
-    callback: StrategyOptionsCallback
+    callback: StrategyOptionsCallback,
   ): void;
 }
 
@@ -37,43 +36,29 @@ export type MultiOAuth2StrategyConfig =
   | MultiOAuth2StrategyConfigWithRequest
   | MultiOAuth2StrategyConfigWithoutRequest;
 
-export type VerifiedCallback = (
-  err: Error | null,
-  user?: Record<string, unknown>,
-  info?: Record<string, unknown>
-) => void;
-
-export type VerifyWithRequest = (
-  req: express.Request,
-  profile: Profile | null,
-  done: VerifiedCallback
-) => void;
-
-export type VerifyWithoutRequest = (
-  profile: Profile | null,
-  done: VerifiedCallback
-) => void;
-
 export class MultiOAuth2Strategy extends AbstractStrategy {
   constructor(
     opts: MultiOAuth2StrategyConfigWithRequest,
-    verify: VerifyFunctionWithRequest
+    verify: VerifyFunctionWithRequest,
   );
   constructor(
     opts: MultiOAuth2StrategyConfigWithoutRequest,
-    verify: VerifyFunction
+    verify: VerifyFunction,
   );
-  constructor(private opts: MultiOAuth2StrategyConfig, private verify: any) {
+  constructor(
+    private opts: MultiOAuth2StrategyConfig,
+    private verify: any,
+  ) {
     super();
   }
 
   authenticate(
     req: express.Request,
-    options?: MultiOAuth2StrategyConfig
+    options?: MultiOAuth2StrategyConfig,
   ): void {
     this.opts.getOAuth2Options(req, (err, res) => {
       if (err) {
-        logger().error("ERROR", err);
+        logger.error("ERROR", err);
         throw err;
       }
       const fullOptions = {

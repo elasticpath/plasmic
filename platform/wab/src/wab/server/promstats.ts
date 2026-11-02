@@ -91,7 +91,7 @@ export function incHttpRequestCount(opts: {
 }
 
 export function getTemplatedEndpointFromExpressRoutePath(
-  routePath: unknown
+  routePath: unknown,
 ): string {
   const raw = typeof routePath === "string" ? routePath : routePath?.toString();
   if (!raw) {
@@ -167,7 +167,7 @@ new Gauge({
 });
 
 export function trackPostgresPool(app: string) {
-  const pgPoolTotal = new Gauge({
+  new Gauge({
     name: `pg_pool_total`,
     labelNames: ["pool", "app"],
     help: `Number of total connections in client pool`,
@@ -179,7 +179,7 @@ export function trackPostgresPool(app: string) {
     },
   });
 
-  const pgPoolIdle = new Gauge({
+  new Gauge({
     name: `pg_pool_idle`,
     labelNames: ["pool", "app"],
     help: `Number of idle connections in client pool`,
@@ -191,7 +191,7 @@ export function trackPostgresPool(app: string) {
     },
   });
 
-  const pgWaiting = new Gauge({
+  new Gauge({
     name: `pg_pool_waiting`,
     labelNames: ["pool", "app"],
     help: `Number of waiting requests for client pool`,

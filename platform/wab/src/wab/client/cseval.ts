@@ -8,11 +8,7 @@ import {
   ClientPinManager,
   makeVariantEvalState,
 } from "@/wab/client/components/variants/ClientPinManager";
-import { globalHookCtx } from "@/wab/client/react-global-hook/globalHook";
-import {
-  getRenderState,
-  RenderState,
-} from "@/wab/client/studio-ctx/renderState";
+import { FrameState } from "@/wab/client/react-global-hook/types";
 import { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
 import { ContextFactory } from "@/wab/shared/code-components/context-factory";
 import {
@@ -48,15 +44,15 @@ function getActivatedVariants(
   compFrame: ComponentVariantFrame,
   globalFrame: GlobalVariantFrame,
   evalState?: Map<Variant, boolean>,
-  focusedTpl?: TplNode | null
+  focusedTpl?: TplNode | null,
 ) {
   const pinManager = new ClientPinManager(
     compFrame,
     globalFrame,
-    evalState ?? new Map()
+    evalState ?? new Map(),
   );
   const activeMap = new Map(
-    variants.map((v) => tuple(v, pinManager.isActive(v)))
+    variants.map((v) => tuple(v, pinManager.isActive(v))),
   );
   const activeVariants = [...activeMap.entries()]
     .filter(([_v, active]) => !!active)
@@ -64,7 +60,7 @@ function getActivatedVariants(
   for (const implicitVariant of getImplicitlyActivatedStyleVariants(
     variants,
     new Set(activeVariants),
-    focusedTpl
+    focusedTpl,
   )) {
     activeMap.set(implicitVariant, true);
   }
@@ -75,7 +71,6 @@ export abstract class BaseCliSvrEvaluator {
   _viewCtx: ViewCtx;
   private _postEvalTasks: (() => any)[] = [];
   private _contextFactory: ContextFactory;
-  private _renderState: RenderState;
 
   private _renderCount = observable.box(0);
   private incrementRenderCount() {
@@ -93,21 +88,19 @@ export abstract class BaseCliSvrEvaluator {
     return this._isFirstRenderComplete.get();
   }
 
-  constructor({ viewCtx }: { viewCtx: ViewCtx }) {
+  constructor({
+    viewCtx,
+    frameState,
+  }: {
+    viewCtx: ViewCtx;
+    frameState: FrameState;
+  }) {
     this._viewCtx = viewCtx;
 
     this._contextFactory = new ContextFactory(viewCtx.site);
 
-    if (!globalHookCtx.frameUidToValRoot.has(viewCtx.arenaFrame().uid)) {
-      globalHookCtx.frameUidToValRoot.set(viewCtx.arenaFrame().uid, null);
-    }
-
-    this._renderState = getRenderState(this._viewCtx.arenaFrame().uid);
-
     this.valRootDispose = autorun(() => {
-      this.valRoot = globalHookCtx.frameUidToValRoot.get(
-        viewCtx.arenaFrame().uid
-      );
+      this.valRoot = frameState.valRoot.get();
       // New Val Tree - we might need to rerender the aartboard to get
       // the updated component stack
       defer(() => !viewCtx.isDisposed && viewCtx.flushRerenderQueue());
@@ -122,16 +115,12 @@ export abstract class BaseCliSvrEvaluator {
                 }
                 return ok();
               },
-              { noUndoRecord: true }
-            )
+              { noUndoRecord: true },
+            ),
           );
         }
       });
     });
-  }
-
-  get renderState() {
-    return this._renderState;
   }
 
   private valRootDispose: () => void;
@@ -164,7 +153,6 @@ export abstract class BaseCliSvrEvaluator {
   }
 
   dispose() {
-    this.renderState.dispose();
     this.valRootDispose();
     (this._viewCtx as any) = null;
   }
@@ -186,6 +174,22 @@ export abstract class BaseCliSvrEvaluator {
     });
   }
 
+  getGlobalContextTpl(contextName: string) {
+    // Global contexts wrap the system root. Use their rendered tpl clones,
+    // since the settings nodes in site.globalContexts aren't in renderState.
+    let root: ValNode | null | undefined = this.valRoot;
+    while (
+      root instanceof ValComponent &&
+      isContextCodeComponent(root.tpl.component)
+    ) {
+      if (root.tpl.component.name === contextName) {
+        return root.tpl;
+      }
+      root = root.contents?.[0];
+    }
+    return undefined;
+  }
+
   private renderRoot() {
     const vc = this.viewCtx();
     const sub = vc.canvasCtx.Sub;
@@ -200,7 +204,7 @@ export abstract class BaseCliSvrEvaluator {
           const tplRootWithContexts = wrapWithContext(
             tpl,
             vc.site.globalContexts,
-            this._contextFactory
+            this._contextFactory,
           );
 
           let reactRoot = useRenderedFrameRoot(vc, tplRootWithContexts);
@@ -217,14 +221,14 @@ export abstract class BaseCliSvrEvaluator {
               reactRoot = sub.React.createElement(
                 sub.PageParamsProvider,
                 pageParamsProviderProps,
-                reactRoot
+                reactRoot,
               );
             }
           }
           return reactRoot;
         },
         `renderRoot`,
-        forceUpdate
+        forceUpdate,
       );
     });
   }
@@ -263,9 +267,9 @@ export function buildViewCtxPinMaps(vc: ViewCtx) {
         `${tpl.uuid}.${
           ensure(
             tpl.component.params.find((p) => p.variable.name === "children"),
-            () => `Global contexts must have a param named "children"`
+            () => `Global contexts must have a param named "children"`,
           ).uuid
-        }`
+        }`,
     ),
   ].join(".");
   const pinMap: PinMap = new Map(
@@ -276,7 +280,7 @@ export function buildViewCtxPinMaps(vc: ViewCtx) {
     // which always has the key of "".
     strictZip(
       vc.componentStackFrames(),
-      vc.valState().maybeValSysRoot() ? vc.valComponentStack() : [null]
+      vc.valState().maybeValSysRoot() ? vc.valComponentStack() : [null],
     ).flatMap(([frame, owner]) => {
       const ownerKey = !owner
         ? `${rootKey}.${frame.tplComponent.uuid}`
@@ -291,24 +295,24 @@ export function buildViewCtxPinMaps(vc: ViewCtx) {
         frame,
         vc.globalFrame,
         evalState,
-        vc.focusedTpl()
+        vc.focusedTpl(),
       );
       return [tuple(ownerKey, xOmitNils(compPins))];
-    })
+    }),
   );
   const pinManager = new ClientPinManager(
     vc.componentStackFrames()[0],
     vc.globalFrame,
-    new Map()
+    new Map(),
   );
   const globalPins = undefinedToDefault(
     new Map(
       allGlobalVariants(vc.site, {
         includeDeps: "direct",
         excludeInactiveScreenVariants: true,
-      }).map((v) => tuple(v, pinManager.isActive(v)))
+      }).map((v) => tuple(v, pinManager.isActive(v))),
     ),
-    false
+    false,
   );
 
   return { globalPins, pinMap };

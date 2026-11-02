@@ -1,10 +1,6 @@
-import {
-  ensureDbConnections,
-  getDefaultConnection,
-} from "@/wab/server/db/DbCon";
-import { DbMgr, SUPER_USER } from "@/wab/server/db/DbMgr";
-import { TraceCarrier, withSpan } from "@/wab/server/util/apm-util";
-import { ensureDevFlags } from "@/wab/server/workers/worker-utils";
+import { DbMgr } from "@/wab/server/db/DbMgr";
+import { withSpan } from "@/wab/server/observability";
+import { getWorkerDbMgr } from "@/wab/server/workers/worker-utils";
 import { ProjectId } from "@/wab/shared/ApiSchema";
 import { Bundler } from "@/wab/shared/bundler";
 import {
@@ -12,6 +8,7 @@ import {
   genLocalizationStringsForProject,
 } from "@/wab/shared/localization";
 import { context, propagation } from "@opentelemetry/api";
+import type { TraceCarrier } from "@plasmic-shared/observability";
 import { ConnectionOptions } from "typeorm";
 
 interface LocalizationStringsOpts {
@@ -24,48 +21,29 @@ interface LocalizationStringsOpts {
 
 export async function workerLocalizationStrings(
   opts: LocalizationStringsOpts,
-  traceCarrier?: TraceCarrier
+  traceCarrier?: TraceCarrier,
 ) {
   const ctx = traceCarrier
     ? propagation.extract(context.active(), traceCarrier)
     : context.active();
 
-  return await context.with(ctx, async () => {
-    await ensureDbConnections(opts.connectionOptions);
-    const connection = await withSpan(
-      "worker-localization-db-connect",
-      async () => {
-        return await getDefaultConnection();
-      }
-    );
-    try {
-      return await withSpan("worker-localization-db-transaction", async () => {
-        return await connection.transaction(async () => {
-          // Note that we are assuming SUPER_USER, so any permission
-          // checks should've already happened before this worker is
-          // invoked.
-          const mgr = new DbMgr(connection.createEntityManager(), SUPER_USER);
-          await ensureDevFlags(mgr);
-          return await doGenLocalizationStringsForProject(mgr, opts);
-        });
-      });
-    } finally {
-      if (connection.isConnected) {
-        await connection.close();
-      }
-    }
-  });
+  return await context.with(ctx, () =>
+    withSpan("worker-localization", async () => {
+      const mgr = await getWorkerDbMgr(opts.connectionOptions);
+      return await doGenLocalizationStringsForProject(mgr, opts);
+    }),
+  );
 }
 
 async function doGenLocalizationStringsForProject(
   mgr: DbMgr,
-  { projectId, maybeVersion, keyScheme, tagPrefix }: LocalizationStringsOpts
+  { projectId, maybeVersion, keyScheme, tagPrefix }: LocalizationStringsOpts,
 ): Promise<Record<string, string>> {
   const bundler = new Bundler();
   const { site } = await mgr.tryGetPkgVersionByProjectVersionOrTag(
     bundler,
     projectId,
-    maybeVersion
+    maybeVersion,
   );
   return genLocalizationStringsForProject(projectId, site, {
     keyScheme,

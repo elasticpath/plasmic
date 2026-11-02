@@ -2,7 +2,6 @@ import { AppCtx } from "@/wab/client/app-ctx";
 import { ConnectOAuthButton } from "@/wab/client/components/auth/ConnectOAuth";
 import styles from "@/wab/client/components/auth/ConnectOAuth.module.scss";
 import { reactPrompt } from "@/wab/client/components/quick-modals";
-import { SectionSeparator } from "@/wab/client/components/sidebar/sidebar-helpers";
 import { ListBox, ListBoxItem } from "@/wab/client/components/widgets";
 import Button from "@/wab/client/components/widgets/Button";
 import { Modal } from "@/wab/client/components/widgets/Modal";
@@ -32,9 +31,7 @@ import {
 import { POSTGRES_META } from "@/wab/shared/data-sources-meta/postgres-meta";
 import { DATA_SOURCE_CAP, DATA_SOURCE_LOWER } from "@/wab/shared/Labels";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
 import { Alert, Form, FormInstance, Input, notification } from "antd";
-import { jsonrepair } from "jsonrepair";
 import { isEqual, noop } from "lodash";
 import React from "react";
 import useSWR, { useSWRConfig } from "swr";
@@ -167,7 +164,7 @@ export function DataSourceModal({
     return list;
   }, []);
   const [selectedDataSourceType, setSelectedDataSourceType] = React.useState(
-    editingDataSource !== "new" ? editingDataSource.source : dataSourceType
+    editingDataSource !== "new" ? editingDataSource.source : dataSourceType,
   );
   const [showAliasMessage, setShowAliasMessage] =
     React.useState<React.ReactNode>(null);
@@ -189,7 +186,7 @@ export function DataSourceModal({
     () => (hasOauthIntegration ? INTEGRATION_KEY : undefined),
     async () => {
       return await api.listAuthIntegrations();
-    }
+    },
   );
 
   const isValidValuesData = React.useCallback(
@@ -201,14 +198,14 @@ export function DataSourceModal({
         (editingDataSource !== "new" ||
           Object.entries(sourceMeta.credentials).every(
             ([key, fieldMeta]) =>
-              !fieldMeta.required || !!values.credentials[key]
+              !fieldMeta.required || !!values.credentials[key],
           )) &&
         Object.entries(sourceMeta.settings).every(
-          ([key, fieldMeta]) => !fieldMeta.required || !!values.settings[key]
+          ([key, fieldMeta]) => !fieldMeta.required || !!values.settings[key],
         )
       );
     },
-    [sourceMeta, editingDataSource]
+    [sourceMeta, editingDataSource],
   );
 
   const testDataSourceConnection = React.useCallback(
@@ -250,7 +247,7 @@ export function DataSourceModal({
         if (!connectionTest.result.connected) {
           if (connectionTest.result.error?.includes("SSL")) {
             const connectionOptions = JSON.parse(
-              values.settings.connectionOptions ?? "{}"
+              values.settings.connectionOptions ?? "{}",
             );
             if (
               connectionOptions.ssl === true &&
@@ -271,7 +268,7 @@ export function DataSourceModal({
                   }),
                 },
               });
-              notification.warn({
+              notification.warning({
                 message: "Connection failed",
                 description:
                   "SSL is not enabled for this connection. Add ssl:true and sslmode:require to connection options and try again.",
@@ -302,7 +299,7 @@ export function DataSourceModal({
         return { result: { connected: false } };
       }
     },
-    [form, appCtx, successfulConnections, isValidValuesData]
+    [form, appCtx, successfulConnections, isValidValuesData],
   );
 
   return (
@@ -361,7 +358,7 @@ export function DataSourceModal({
             const connectionTest = await testDataSourceConnection(
               editingDataSource !== "new"
                 ? editingDataSource.workspaceId
-                : workspaceId
+                : workspaceId,
             );
 
             if (!connectionTest.result.connected) {
@@ -380,7 +377,7 @@ export function DataSourceModal({
                   editingDataSource.id,
                   {
                     ...values,
-                  }
+                  },
                 );
               }
               await onUpdate(dataSource);
@@ -410,7 +407,7 @@ export function DataSourceModal({
               : {})}
             onChange={(id) => {
               const metaOrAlias = dataSourceMetasOrAliases.find(
-                (item) => item.id === id
+                (item) => item.id === id,
               );
               if (!metaOrAlias) {
                 return;
@@ -419,7 +416,7 @@ export function DataSourceModal({
               if (isDataSourceAlias(metaOrAlias)) {
                 form.setFieldValue("source", metaOrAlias.aliasFor.id);
                 setSelectedDataSourceType(
-                  metaOrAlias.aliasFor.id as DataSourceType
+                  metaOrAlias.aliasFor.id as DataSourceType,
                 );
                 setShowAliasMessage(metaOrAlias.message);
               } else {
@@ -436,7 +433,7 @@ export function DataSourceModal({
                 return (
                   !readOpsOnly ||
                   getDataSourceMeta(
-                    isDataSourceAlias(s) ? s.aliasFor.id : s.id
+                    isDataSourceAlias(s) ? s.aliasFor.id : s.id,
                   ).ops.some((op) => op.type === "read")
                 );
               })
@@ -488,7 +485,7 @@ export function DataSourceModal({
             />
           </Form.Item>
         )}
-        {sourceMeta && <SectionSeparator className="mb-xlg" />}
+        {sourceMeta && <div className="SectionSeparator mb-xlg" />}
         {sourceMeta && sourceMeta.id === "postgres" && (
           <PostgresConnectionStringImportButton
             form={form}
@@ -576,45 +573,10 @@ function CredentialsAndSettingsSection(props: {
   const { mutate } = useSWRConfig();
   const api = useApi();
 
-  const trySaveJson = (val: string) => {
-    const strSizeLimit = 500 * 1024; // 500KB
-    if (val.length > strSizeLimit) {
-      notification.error({
-        message: "Value is too long",
-        description: "Please provide a value up to 500KB characters long",
-      });
-      return;
-    }
-
-    try {
-      val = jsonrepair(val);
-    } catch {}
-
-    if (val[0] !== "{") {
-      notification.warn({
-        message: "Invalid JSON object",
-        description: "Only JSON objects (wrapped in {}) are supported.",
-      });
-      return;
-    }
-
-    try {
-      const jsonObj = JSON.parse(val);
-      form.setFieldsValue({
-        credentials: { credentials: jsonObj },
-      });
-    } catch (err) {
-      notification.warn({
-        message: "Invalid JSON",
-        description: `${err}`,
-      });
-    }
-  };
-
   const renderFormItem = (
     key: string,
     settingMeta: SettingFieldMeta,
-    type: "credentials" | "settings"
+    type: "credentials" | "settings",
   ) => {
     return (
       <Form.Item
@@ -628,8 +590,8 @@ function CredentialsAndSettingsSection(props: {
             ? integrationList?.providers.find((p) => p.name === sourceMeta.id)
                 ?.id
             : settingMeta.default
-            ? coerceArgValueToString(settingMeta.default, settingMeta)
-            : undefined
+              ? coerceArgValueToString(settingMeta.default, settingMeta)
+              : undefined
         }
         hidden={settingMeta.hidden}
       >
@@ -638,10 +600,10 @@ function CredentialsAndSettingsSection(props: {
             provider={sourceMeta.id}
             onSuccess={async () => {
               const data = (await mutate(
-                INTEGRATION_KEY
+                INTEGRATION_KEY,
               )) as ListAuthIntegrationsResponse;
               const integration = data.providers.find(
-                (p) => p.name === sourceMeta.id
+                (p) => p.name === sourceMeta.id,
               );
               const { credentials } = form.getFieldsValue();
               credentials[key] = integration?.id;
@@ -654,7 +616,7 @@ function CredentialsAndSettingsSection(props: {
             disabled={isDisabled}
           >
             {integrationList?.providers.find(
-              (provider) => provider.name === sourceMeta.id
+              (provider) => provider.name === sourceMeta.id,
             )
               ? "Edit integration"
               : undefined}
@@ -676,7 +638,7 @@ function CredentialsAndSettingsSection(props: {
             onChange={async (cmsId) => {
               const db = ensure(
                 await api.getCmsDatabase(cmsId as CmsDatabaseId),
-                "Couldn't find CMS database by cmsId"
+                "Couldn't find CMS database by cmsId",
               );
               const secretToken = db.secretToken;
               form.setFieldsValue({
@@ -732,12 +694,12 @@ function CredentialsAndSettingsSection(props: {
         ...Object.entries(sourceMeta.credentials).map(
           ([key, settingMeta]) =>
             () =>
-              renderFormItem(key, settingMeta, "credentials")
+              renderFormItem(key, settingMeta, "credentials"),
         ),
         ...Object.entries(sourceMeta.settings).map(
           ([key, settingMeta]) =>
             () =>
-              renderFormItem(key, settingMeta, "settings")
+              renderFormItem(key, settingMeta, "settings"),
         ),
       ];
 
@@ -777,7 +739,7 @@ function AirtableSignInButton(props: {
       onStart={onStart}
       onSuccess={onSuccess}
       onFailure={onFailure}
-      url={fillRoute(APP_ROUTES.airtableAuth, {})}
+      url={APP_ROUTES.airtableAuth.fill({})}
       waitingChildren={"Signing into airtable..."}
       disabled={disabled}
     >
@@ -794,13 +756,13 @@ function GoogleSheetsSignInButton(props: {
   disabled?: boolean;
 }) {
   // Must adhere to Google branding guidelines
-  const { onStart, onSuccess, onFailure, children, disabled } = props;
+  const { onStart, onSuccess, onFailure, disabled } = props;
   return (
     <ConnectOAuthButton
       onStart={onStart}
       onSuccess={onSuccess}
       onFailure={onFailure}
-      url={fillRoute(APP_ROUTES.googleSheetsAuth, {})}
+      url={APP_ROUTES.googleSheetsAuth.fill({})}
       waitingChildren={"Connect to Google"}
       disabled={disabled}
       style={{
@@ -856,7 +818,7 @@ function PlasmicCmsSelect(props: {
     CMS_DATABASES_KEY + workspaceId,
     async () => {
       return await api.listCmsDatabasesForWorkspace(workspaceId);
-    }
+    },
   );
 
   return (
@@ -915,7 +877,7 @@ function PostgresConnectionStringImportButton(props: {
                         key in sourceMeta.credentials ||
                         key in sourceMeta.settings ||
                         ["database"].includes(key)
-                      )
+                      ),
                   )
                   .reduce((acum, [key, value]) => {
                     const stringValue = JSON.stringify(value);
@@ -923,7 +885,7 @@ function PostgresConnectionStringImportButton(props: {
                       acum[key] = stringValue;
                     }
                     return acum;
-                  }, {})
+                  }, {}),
               ),
             },
           });
@@ -948,7 +910,7 @@ function StringDictEditor(props: {
       ([key, val]) => ({
         key,
         value: typeof val === "object" ? JSON.stringify(val) : (val as string),
-      })
+      }),
     );
   };
   const [currentValues, setCurrentValues] = React.useState<
@@ -957,8 +919,8 @@ function StringDictEditor(props: {
     value !== undefined
       ? parseValue(value)
       : defaultValue !== undefined
-      ? parseValue(defaultValue)
-      : []
+        ? parseValue(defaultValue)
+        : [],
   );
 
   React.useEffect(() => {

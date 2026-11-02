@@ -1,3 +1,4 @@
+import { SiteGenHelper } from "@/wab/shared/codegen/codegen-helpers";
 import { makeComponentAliases } from "@/wab/shared/codegen/react-p";
 import {
   makeGlobalVariantComboChecker,
@@ -42,7 +43,8 @@ export function makeGlobalContextBundle(
   imports: {
     projectModuleBundle: ProjectModuleBundle | undefined;
   },
-  opts: Partial<ExportOpts>
+  opts: Partial<ExportOpts>,
+  siteGenHelper?: SiteGenHelper,
 ) {
   if (site.globalContexts.length === 0) {
     return undefined;
@@ -56,13 +58,13 @@ export function makeGlobalContextBundle(
     opts as any,
     false,
     false,
-    aliases
+    aliases,
   );
   const componentSubstitutionCalls = opts.useComponentSubstitutionApi
     ? generateSubstituteComponentCalls(
         referencedComponents,
         opts as any,
-        aliases
+        aliases,
       )
     : [];
 
@@ -72,7 +74,7 @@ export function makeGlobalContextBundle(
            Omit<React.ComponentProps<typeof ${componentName}>, "children">>;`;
   });
   const overridePropNames = referencedComponents.map((c) =>
-    makeGlobalContextPropName(c, aliases)
+    makeGlobalContextPropName(c, aliases),
   );
 
   const variantChecker = makeGlobalVariantComboChecker(site);
@@ -102,14 +104,18 @@ export function makeGlobalContextBundle(
         param.exportType !== ParamExportType.ToolsOnly
       ) {
         if (isKnownDefaultStylesPropType(param.type)) {
-          const conditionals = buildConditionalDefaultStylesPropArg(site);
+          const conditionals = buildConditionalDefaultStylesPropArg(
+            site,
+            siteGenHelper?.allStyleTokensAndOverridesDict(),
+            siteGenHelper?.makeTokenRefResolver(),
+          );
           serializedExpr = joinVariantVals(
             conditionals.map(([expr, combo]) => [
               getRawCode(expr, exprCtx),
               combo,
             ]),
             variantChecker,
-            "undefined"
+            "undefined",
           ).value;
         } else if (maybeArg) {
           if (
@@ -119,7 +125,11 @@ export function makeGlobalContextBundle(
           ) {
             const conditionals = buildConditionalDerefTokenValueArg(
               site,
-              toFinalToken(maybeArg.expr.token, site)
+              siteGenHelper?.allStyleTokensAndOverridesDict()[
+                maybeArg.expr.token.uuid
+              ] ?? toFinalToken(maybeArg.expr.token, site),
+              siteGenHelper?.allStyleTokensAndOverridesDict(),
+              siteGenHelper?.makeTokenValueResolver(),
             );
             serializedExpr = joinVariantVals(
               conditionals.map(([expr, combo]) => [
@@ -127,7 +137,7 @@ export function makeGlobalContextBundle(
                 combo,
               ]),
               variantChecker,
-              "undefined"
+              "undefined",
             ).value;
           } else {
             serializedExpr = getRawCode(maybeArg.expr, exprCtx);
@@ -156,13 +166,13 @@ export function makeGlobalContextBundle(
   }
 
   const usedGlobalVariantGroups = new Set(
-    [...variantChecker.checked].map((v) => v.parent!)
+    [...variantChecker.checked].map((v) => v.parent!),
   );
   const reactWebImports =
     usedGlobalVariantGroups.size > 0
       ? `
     import { hasVariant, ensureGlobalVariants } from "${getReactWebPackageName(
-      opts
+      opts,
     )}";`
       : "";
   const importGlobalVariantGroups = [...usedGlobalVariantGroups]
@@ -200,7 +210,7 @@ export function makeGlobalContextBundle(
 
       ${serializeGlobalVariantValues(
         usedGlobalVariantGroups,
-        imports.projectModuleBundle
+        imports.projectModuleBundle,
       )}
       return (${content})
     }

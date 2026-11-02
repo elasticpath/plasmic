@@ -11,16 +11,17 @@ import {
   DefaultCmsEntriesListProps,
   PlasmicCmsEntriesList,
 } from "@/wab/client/plasmic/plasmic_kit_cms/PlasmicCmsEntriesList";
+import { useHistory } from "@/wab/client/route/HistoryProvider";
+import { useMatchedRoute } from "@/wab/client/route/useMatchedRoute";
 import { ApiCmseRow, CmsDatabaseId, CmsTableId } from "@/wab/shared/ApiSchema";
+import { ensure } from "@/wab/shared/common";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
 import { naturalSort } from "@/wab/shared/sort";
 import { HTMLElementRefOf } from "@plasmicapp/react-web";
 import { Dropdown, Menu } from "antd";
 import fastStringify from "fast-stringify";
 import { debounce } from "lodash";
 import * as React from "react";
-import { useHistory, useRouteMatch } from "react-router";
 
 interface SortConfig {
   key: string;
@@ -34,7 +35,7 @@ const LAST_CREATED_SORT: SortConfig = {
   sortFn: (rows) =>
     [...rows].sort(
       (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     ),
 };
 
@@ -44,7 +45,7 @@ const FIRST_CREATED_SORT: SortConfig = {
   sortFn: (rows) =>
     [...rows].sort(
       (a, b) =>
-        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
     ),
 };
 
@@ -54,7 +55,7 @@ const LAST_UPDATED_SORT: SortConfig = {
   sortFn: (rows) =>
     [...rows].sort(
       (a, b) =>
-        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
     ),
 };
 
@@ -64,7 +65,7 @@ const FIRST_UPDATED_SORT: SortConfig = {
   sortFn: (rows) =>
     [...rows].sort(
       (a, b) =>
-        new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()
+        new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime(),
     ),
 };
 
@@ -95,16 +96,19 @@ export interface CmsEntriesListProps extends DefaultCmsEntriesListProps {
 
 function CmsEntriesList_(
   props: CmsEntriesListProps,
-  ref: HTMLElementRefOf<"div">
+  ref: HTMLElementRefOf<"div">,
 ) {
   const { rows, ...rest } = props;
   const api = useApi();
   const history = useHistory();
-  const match = useRouteMatch<{
-    databaseId: CmsDatabaseId;
-    tableId: CmsTableId;
-  }>();
-  const { databaseId, tableId } = match.params;
+  const match = ensure(
+    useMatchedRoute<{
+      databaseId: CmsDatabaseId;
+      tableId: CmsTableId;
+    }>(),
+    "CmsEntriesList must be rendered within a matched route",
+  );
+  const { databaseId, tableId } = match.pathParams;
   const table = useCmsTable(databaseId, tableId);
   const mutateTableRows = useMutateTableRows();
   const [query, setQuery] = React.useState("");
@@ -120,7 +124,7 @@ function CmsEntriesList_(
     const normQuery = debouncedQuery.toLowerCase();
     const filtered = hasQuery
       ? rows?.filter((row) =>
-          fastStringify(Object.values(row)).toLowerCase().includes(normQuery)
+          fastStringify(Object.values(row)).toLowerCase().includes(normQuery),
         )
       : rows;
 
@@ -131,7 +135,7 @@ function CmsEntriesList_(
     debounce((q: string) => {
       setDebouncedQuery(q);
     }, 300),
-    [setDebouncedQuery]
+    [setDebouncedQuery],
   );
 
   if (!rows || !table) {
@@ -188,11 +192,11 @@ function CmsEntriesList_(
           });
           await mutateTableRows(tableId);
           history.push(
-            fillRoute(APP_ROUTES.cmsEntry, {
+            APP_ROUTES.cmsEntry.fill({
               databaseId,
               tableId,
               rowId: row.id,
-            })
+            }),
           );
         },
       }}

@@ -343,6 +343,8 @@ ImageAsset
   # Aspect ratio is multiplied by ASPECT_RATIO_SCALE_FACTOR so become integer.
   # It's only used by picture SVGs.
   aspectRatio: Number?
+  # Short description of what's in the image.
+  description: String?
 TplNode
   @Const uuid: String
   @WeakRef parent: TplNode?
@@ -634,6 +636,8 @@ Expr
     params: Map[String, TemplatedString | CustomCode | ObjectPath | VarRef]
     query: Map[String, TemplatedString | CustomCode | ObjectPath | VarRef]
     fragment: TemplatedString? | CustomCode? | ObjectPath? | VarRef?
+    # URI encode params and queries?
+    encode: Bool
   VariantsRef
     @WeakRef variants: [Variant]
   ObjectPath

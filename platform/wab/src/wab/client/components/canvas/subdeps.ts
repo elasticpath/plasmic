@@ -22,6 +22,7 @@ import type * as jsxRuntime from "react/jsx-runtime";
 import type ResizeObserver from "resize-observer-polyfill";
 import type * as slate from "slate";
 import type * as slateDom from "slate-dom";
+import type * as slateHistory from "slate-history";
 import type * as slateReact from "slate-react";
 import type { SetOptional } from "type-fest";
 
@@ -64,10 +65,11 @@ interface CanvasPkgs {
   GenericErrorBoundary: React.ComponentType<{ className?: string }>;
   slate: typeof slate;
   slateDom: typeof slateDom;
+  slateHistory: typeof slateHistory;
   slateReact: typeof slateReact;
   localElement?: typeof Element;
   createModal: (
-    props: Pick<ModalProps, InternalModalProps>
+    props: Pick<ModalProps, InternalModalProps>,
   ) => (restProps: Omit<ModalProps, InternalModalProps>) => JSX.Element;
   createThumbnail: (
     element: HTMLElement,
@@ -77,7 +79,7 @@ interface CanvasPkgs {
       quality?: number;
       filter?: (elem: HTMLElement) => boolean;
       includeQueryParams?: boolean;
-    }
+    },
   ) => Promise<string>;
 }
 

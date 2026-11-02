@@ -30,11 +30,11 @@ interface Secrets {
   };
   encryptionKey?: string;
   dataSourceOperationEncryptionKey?: string;
+  resendApiKey?: string;
   smtpAuth?: {
     user: string;
     pass: string;
   };
-  intercomToken?: string;
   openaiApiKey?: string;
   anthropicApiKey?: string;
   github?: {
@@ -65,10 +65,6 @@ interface Secrets {
     password: string;
     database?: string;
   };
-  dynamodb?: {
-    accessKeyId: string;
-    secretAccessKey: string;
-  };
 }
 
 export function getEncryptionKey() {
@@ -87,12 +83,13 @@ export function getGoogleClientSecret() {
   return loadSecrets().google?.clientSecret ?? "fake";
 }
 
-export function getSmtpAuth() {
-  return loadSecrets().smtpAuth;
+export function getResendApiKey() {
+  return process.env.RESEND_API_KEY || loadSecrets().resendApiKey;
 }
 
-export function getIntercomToken() {
-  return loadSecrets().intercomToken;
+export function getSmtpAuth() {
+  const { EMAIL_SMTP_USER: user, EMAIL_SMTP_PASSWORD: pass } = process.env;
+  return user && pass ? { user, pass } : loadSecrets().smtpAuth;
 }
 
 export function getGithubSecrets() {
@@ -126,7 +123,7 @@ export function getAnthropicApiKey() {
 export function getDiscourseConnectSecret() {
   return ensure(
     loadSecrets().discourse?.discourseConnectSecret,
-    "DiscourseConnect secret required"
+    "DiscourseConnect secret required",
   );
 }
 
@@ -142,22 +139,14 @@ export function getClickhouseSecrets() {
   return loadSecrets().clickhouse;
 }
 
-export function getDynamoDbSecrets() {
-  return loadSecrets().dynamodb;
-}
-
 export function loadSecrets(): Secrets {
-  const path = getSecretsFile();
-  if (!fs.existsSync(path)) {
+  const path =
+    process.env.PLASMIC_SECRETS_FILE || `${os.homedir()}/.plasmic/secrets.json`;
+  try {
+    return uncheckedCast<Secrets>(
+      JSON.parse(fs.readFileSync(path, { encoding: "utf8" })),
+    );
+  } catch {
     return {};
   }
-  return uncheckedCast<Secrets>(
-    JSON.parse(fs.readFileSync(path, { encoding: "utf8" }))
-  );
-}
-
-function getSecretsFile() {
-  return (
-    process.env.PLASMIC_SECRETS_FILE || `${os.homedir()}/.plasmic/secrets.json`
-  );
 }
