@@ -814,6 +814,47 @@ describe("reading account order history", () => {
     expect(fetchUrls.some((url) => url.includes("evil.example"))).toBe(false);
   });
 
+  it("filters ownership on every page, not only the first", async () => {
+    const auth = buildAuth();
+    store.accounts = [ACCOUNTS[0]];
+    const cookies = await signedIn(auth);
+    orderReplies = [
+      { status: 200, body: orderPage(100, NORTH, 103) },
+      {
+        status: 200,
+        body: {
+          data: [
+            ownedOrder("order-100", NORTH),
+            ownedOrder("order-foreign", SOUTH),
+            ownedOrder("order-guest", NORTH, { relationships: undefined }),
+          ],
+          meta: { results: { total: 103 } },
+        },
+      },
+    ];
+    orderCalls = [];
+
+    const { res, body } = await readOrders(auth, cookies);
+    expect(res.status).toBe(200);
+    expect(orderCalls.map((call) => call.offset)).toEqual(["0", "100"]);
+    expect(body.orders).toHaveLength(101);
+    expect(body.total).toBe(101);
+    expect(body.total).not.toBe(103);
+    const ids = body.orders.map((order: { id: string }) => order.id);
+    expect(ids).toContain("order-0");
+    expect(ids).toContain("order-99");
+    expect(ids).toContain("order-100");
+    expect(ids).not.toContain("order-foreign");
+    expect(ids).not.toContain("order-guest");
+    const text = JSON.stringify(body);
+    expect(text).not.toContain(SOUTH);
+    expect(text).not.toContain("order-foreign");
+    expect(text).not.toContain("order-guest");
+    expect(text).not.toContain("not-the-owner");
+    expect(text).not.toContain("cust-secret");
+    expectNoSecrets(body);
+  });
+
   it("keeps reading a short page when the result total says more remain", async () => {
     const auth = buildAuth();
     store.accounts = [ACCOUNTS[0]];

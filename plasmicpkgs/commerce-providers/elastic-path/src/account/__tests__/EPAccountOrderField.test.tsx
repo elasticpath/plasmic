@@ -79,6 +79,14 @@ describe("EPAccountOrderField", () => {
     ).toBe(id);
   });
 
+  it("renders a blank order number when that property is absent", () => {
+    mockUseSelector.mockReturnValue({ id: "order-1", status: "complete" });
+    const { container } = render(<EPAccountOrderField field="order_number" />);
+    expect(
+      container.querySelector("[data-ep-account-order-field]")?.textContent
+    ).toBe("");
+  });
+
   it("renders a blank total when the price was omitted", () => {
     mockUseSelector.mockReturnValue({ id: "order-1", order_number: "1001" });
     const { container } = render(<EPAccountOrderField field="total" />);

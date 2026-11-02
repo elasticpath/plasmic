@@ -222,8 +222,10 @@ is an `EpAccountOrder` summary: `id`, and `order_number`, `status`, `payment`,
 the number of orders kept. A row is kept only when
 `relationships.account.data.id` is the selected organisation. With no
 organisation selected it answers `no_selected_account` and does not call
-Elastic Path. A rejection is `account_orders_read_failed`. An unfinished page
-walk fails instead of returning a short history.
+Elastic Path. A rejection is `account_orders_read_failed`. A page walk the reader can
+tell is unfinished or inconsistent fails instead of returning a short
+history. Orders created or removed between offset pages can still be
+duplicated or omitted without detection.
 
 `EP Account Orders Provider`, `EP Account Order List`, and `EP Account Order
 Field` display that result. The provider sits inside EP Account Provider,

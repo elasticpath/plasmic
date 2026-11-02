@@ -231,6 +231,9 @@ export async function readAccountOrders(input: {
   let rawRowsReceived = 0;
   let seenTotal: number | undefined;
 
+  // Offset pages are separate reads, not one snapshot. A create or delete
+  // between them can duplicate or skip a row without a detectable mismatch.
+  // A total that disagrees with the rows in hand still fails the read.
   for (let page = 0; page < ACCOUNT_ORDER_MAX_PAGES; page++) {
     const { rows, meta } = await loadAccountOrderPage({
       client,
