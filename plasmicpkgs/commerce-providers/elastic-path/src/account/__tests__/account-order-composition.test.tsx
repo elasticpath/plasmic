@@ -41,8 +41,18 @@ import type { AccountContext } from "../types";
 
 const { EPAccountOrdersProvider } = require("../EPAccountOrdersProvider");
 const { EPAccountOrderList } = require("../EPAccountOrderList");
-const { EPAccountOrderField } = require("../EPAccountOrderField");
 const { DataProvider } = require("@plasmicapp/host");
+
+function OrderBinding() {
+  const { useSelector } = require("@plasmicapp/host");
+  const order = useSelector("currentAccountOrder") as EpAccountOrder | undefined;
+  if (!order) return null;
+  return (
+    <span>
+      {order.order_number ?? ""}|{order.total?.formatted ?? ""}
+    </span>
+  );
+}
 
 const full: EpAccountOrder = {
   id: "order-full",
@@ -89,26 +99,19 @@ describe("account order composition", () => {
     mockUsePlasmicCanvasContext.mockReturnValue(false);
   });
 
-  it("renders each order through List and Field, including a missing total", async () => {
+  it("renders each order from the row context, including a missing total", async () => {
     mockAccountOrders.mockResolvedValue({ orders: [full, sparse], total: 2 });
     render(
       <Tree>
-        <EPAccountOrderField field="order_number" />
-        <EPAccountOrderField field="total" />
+        <OrderBinding />
       </Tree>
     );
 
-    await waitFor(() => expect(screen.getByText("1001")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("1001|$49.99")).toBeTruthy());
     const items = screen.getAllByRole("listitem");
     expect(items).toHaveLength(2);
-    expect(items[0].textContent).toContain("1001");
-    expect(items[0].textContent).toContain("$49.99");
-    expect(items[1].textContent).toContain("1002");
-    const secondTotal = items[1].querySelectorAll(
-      "[data-ep-account-order-field]"
-    )[1];
-    expect(secondTotal?.textContent).toBe("");
-    expect(items[0].textContent).not.toContain("1002");
+    expect(items[0].textContent).toBe("1001|$49.99");
+    expect(items[1].textContent).toBe("1002|");
     expect(screen.getByTestId("sibling")).toBeTruthy();
     expect(mockAccountOrders.mock.calls[0]).toEqual([]);
   });
@@ -117,7 +120,7 @@ describe("account order composition", () => {
     mockAccountOrders.mockResolvedValue({ orders: [], total: 0 });
     render(
       <Tree>
-        <EPAccountOrderField field="order_number" />
+        <OrderBinding />
       </Tree>
     );
     await waitFor(() => expect(screen.queryByRole("list")).toBeNull());

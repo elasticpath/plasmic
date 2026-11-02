@@ -79,6 +79,42 @@ describe("EPAccountOrderList", () => {
     mockUsePlasmicCanvasContext.mockReturnValue(false);
   });
 
+  it("exposes a different order on each row, including a missing price", () => {
+    const priced: EpAccountOrder = {
+      id: "order-priced",
+      status: "complete",
+      payment: "paid",
+      created_at: "2024-03-01T12:00:00Z",
+      total: {
+        amount: 100,
+        currency: "USD",
+        formatted: "$1.00",
+        float_price: 1,
+      },
+    };
+    const bare: EpAccountOrder = { id: "order-bare" };
+    function RowBinding() {
+      const { useSelector } = require("@plasmicapp/host");
+      const order = useSelector("currentAccountOrder") as EpAccountOrder;
+      const index = useSelector("currentAccountOrderIndex") as number;
+      return (
+        <span>
+          {index}:{order.id}|{order.status ?? ""}|{order.payment ?? ""}|
+          {order.created_at ?? ""}|{order.total?.formatted ?? ""}
+        </span>
+      );
+    }
+    render(
+      <History history={ready([priced, bare])}>
+        <RowBinding />
+      </History>
+    );
+    expect(screen.getAllByRole("listitem").map((item) => item.textContent)).toEqual([
+      "0:order-priced|complete|paid|2024-03-01T12:00:00Z|$1.00",
+      "1:order-bare||||",
+    ]);
+  });
+
   it("repeats children for a ready history and isolates each row", () => {
     render(
       <History history={ready([orderA, orderB])}>
@@ -149,12 +185,11 @@ describe("EPAccountOrderList", () => {
       );
       expect(epAccountOrderListMeta.providesData).toBe(true);
       expect(epAccountOrderListMeta.refActions).toBeUndefined();
-      const fields = (
-        epAccountOrderListMeta.props as any
-      ).children.defaultValue[0].children.map(
-        (child: { props: { field: string } }) => child.props.field
+      const slot = (epAccountOrderListMeta.props as any).children.defaultValue;
+      expect(slot).toEqual({ type: "text", value: "Order" });
+      expect(JSON.stringify(epAccountOrderListMeta)).not.toContain(
+        "plasmic-commerce-ep-account-order-field"
       );
-      expect(fields).toEqual(["id", "status", "created_at", "total"]);
     });
 
     it("registers the component with its meta", () => {

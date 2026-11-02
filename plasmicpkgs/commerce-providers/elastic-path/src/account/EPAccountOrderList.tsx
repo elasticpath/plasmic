@@ -25,37 +25,14 @@ export const epAccountOrderListMeta: CodeComponentMeta<EPAccountOrderListProps> 
     name: "plasmic-commerce-ep-account-order-list",
     displayName: "EP Account Order List",
     description:
-      "Repeats children for each order. Each row provides currentAccountOrder and currentAccountOrderIndex. Renders no rows while orders are loading, empty, or failed. Place inside an EP Account Orders Provider.",
+      "Repeats children for each order. Each row provides currentAccountOrder and currentAccountOrderIndex. Bind a Text element to $ctx.currentAccountOrder.id, status, payment, shipping, created_at, order_number, or total?.formatted. Renders no rows while orders are loading, empty, or failed. Place inside an EP Account Orders Provider.",
     props: {
       children: {
         type: "slot",
-        defaultValue: [
-          {
-            type: "vbox",
-            children: [
-              {
-                type: "component",
-                name: "plasmic-commerce-ep-account-order-field",
-                props: { field: "id" },
-              },
-              {
-                type: "component",
-                name: "plasmic-commerce-ep-account-order-field",
-                props: { field: "status" },
-              },
-              {
-                type: "component",
-                name: "plasmic-commerce-ep-account-order-field",
-                props: { field: "created_at" },
-              },
-              {
-                type: "component",
-                name: "plasmic-commerce-ep-account-order-field",
-                props: { field: "total" },
-              },
-            ],
-          },
-        ],
+        defaultValue: {
+          type: "text",
+          value: "Order",
+        },
       },
     },
     importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",

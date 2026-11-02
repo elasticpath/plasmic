@@ -72,9 +72,6 @@ export type AccountMember = {
 };
 
 // @public (undocumented)
-export type AccountOrderFieldName = "id" | "order_number" | "status" | "payment" | "shipping" | "created_at" | "total";
-
-// @public (undocumented)
 export type AccountOrderHistoryContext = {
     status: AccountOrderHistoryStatus;
     orders: EpAccountOrder[];
@@ -750,12 +747,6 @@ export interface EpAccountOrder {
     // (undocumented)
     total?: EpFormattedPrice;
 }
-
-// @public (undocumented)
-export function EPAccountOrderField(props: EPAccountOrderFieldProps): React_2.JSX.Element | null;
-
-// @public (undocumented)
-export const epAccountOrderFieldMeta: CodeComponentMeta<EPAccountOrderFieldProps>;
 
 // @public (undocumented)
 export function EPAccountOrderList(props: EPAccountOrderListProps): React_2.JSX.Element | null;
@@ -2008,9 +1999,6 @@ export function registerEPAccountGate(loader?: Registerable, customMeta?: CodeCo
 
 // @public (undocumented)
 export function registerEPAccountLoginFormProvider(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountLoginFormProviderProps>): void;
-
-// @public (undocumented)
-export function registerEPAccountOrderField(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountOrderFieldProps>): void;
 
 // @public (undocumented)
 export function registerEPAccountOrderList(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountOrderListProps>): void;

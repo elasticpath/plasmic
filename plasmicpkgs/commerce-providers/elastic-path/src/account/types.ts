@@ -132,12 +132,3 @@ export type AccountOrderPreviewState =
   | "error"
   | "noSelectedAccount"
   | "lapsed";
-
-export type AccountOrderFieldName =
-  | "id"
-  | "order_number"
-  | "status"
-  | "payment"
-  | "shipping"
-  | "created_at"
-  | "total";

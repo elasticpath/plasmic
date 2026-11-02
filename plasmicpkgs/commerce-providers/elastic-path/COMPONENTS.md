@@ -752,5 +752,5 @@ Lookup table for Plasmic dynamic value bindings (`$ctx.xxx`).
 | `billingToggleData` | EPBillingAddressToggle | `isSameAsShipping` |
 | `promoCodeData` | EPPromoCodeInput | `code`, `state`, `formattedDiscount`, `errorMessage` |
 | `accountOrders` | EPAccountOrdersProvider | `status` (`loading` \| `ready` \| `empty` \| `error`), `orders`, `total`, `error` |
-| `currentAccountOrder` | EPAccountOrderList | `id`, `order_number`, `status`, `payment`, `shipping`, `created_at`, `total.formatted`. The order field can display `id` (the default) or `order_number` |
+| `currentAccountOrder` | EPAccountOrderList | `id`, `order_number`, `status`, `payment`, `shipping`, `created_at`, `total?.formatted`. Bind a Text element to these paths |
 | `currentAccountOrderIndex` | EPAccountOrderList | `number` |

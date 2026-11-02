@@ -62,7 +62,6 @@ const {
   epAccountOrdersProviderMeta,
 } = require("../EPAccountOrdersProvider");
 const { EPAccountOrderList } = require("../EPAccountOrderList");
-const { EPAccountOrderField } = require("../EPAccountOrderField");
 const { EPAccountAddressProvider, epAccountAddressProviderMeta } = require("../EPAccountAddressProvider");
 const { epAccountProviderMeta } = require("../EPAccountProvider");
 
@@ -208,9 +207,14 @@ describe("EPAccountOrdersProvider", () => {
 
   it("clears rows while the same account reloads and does not read again when it returns", async () => {
     mockAccountOrders.mockResolvedValue({ orders: [orderA], total: 1 });
+    function OrderNumber() {
+      const { useSelector } = require("@plasmicapp/host");
+      const order = useSelector("currentAccountOrder") as EpAccountOrder | undefined;
+      return <span>{order?.order_number}</span>;
+    }
     const rows = (
       <EPAccountOrderList>
-        <EPAccountOrderField field="order_number" />
+        <OrderNumber />
       </EPAccountOrderList>
     );
     const { rerender } = render(

@@ -227,16 +227,16 @@ tell is unfinished or inconsistent fails instead of returning a short
 history. Orders created or removed between offset pages can still be
 duplicated or omitted without detection.
 
-`EP Account Orders Provider`, `EP Account Order List`, and `EP Account Order
-Field` display that result. The provider sits inside EP Account Provider,
-calls `identity.accountOrders()` with no arguments when an organisation is
-selected, and publishes `$ctx.accountOrders` (`status`, `orders`, `total`,
-`error`). It does not take an account id, token, filter, or page, and it has
-no reload action and no ref actions. `EP Account Order Field` can display
-`id`, `order_number`, `status`, `payment`, `shipping`, `created_at`, and
-`total`. A new field defaults to `id`, shown unchanged. `order_number`
-remains optional, and `$ctx.currentAccountOrder.id` stays available for a
-detail link. A selected account with rows is `ready`;
+`EP Account Orders Provider` and `EP Account Order List` display that result.
+The provider sits inside EP Account Provider, calls `identity.accountOrders()`
+with no arguments when an organisation is selected, and publishes
+`$ctx.accountOrders` (`status`, `orders`, `total`, `error`). It does not take
+an account id, token, filter, or page, and it has no reload action and no ref
+actions. The list repeats its children and publishes `$ctx.currentAccountOrder`
+on each row. Bind ordinary text to `id`, `status`, `payment`, `created_at`,
+or `total?.formatted`. A missing value is empty, and
+`$ctx.currentAccountOrder.id` stays available for a detail link. A selected
+account with rows is `ready`;
 an empty result is `empty`. No selected organisation is `no_selected_account`,
 a lapsed organisation is `account_lapsed`, and no account member is
 `no_account_member`. Studio Preview State is canvas only.
