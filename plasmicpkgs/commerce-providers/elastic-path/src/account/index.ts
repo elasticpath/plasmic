@@ -60,6 +60,11 @@ export {
   epAccountAddressFieldMeta,
 } from "./EPAccountAddressField";
 export {
+  EPAccountAddressDetailProvider,
+  registerEPAccountAddressDetailProvider,
+  epAccountAddressDetailProviderMeta,
+} from "./EPAccountAddressDetailProvider";
+export {
   EPAccountAddressFormProvider,
   registerEPAccountAddressFormProvider,
   epAccountAddressFormProviderMeta,
@@ -96,6 +101,8 @@ export type {
   AccountAddressBookStatus,
   AccountAddressBookError,
   AccountAddressBookContext,
+  AccountAddressDetailData,
+  AccountAddressDetailStatus,
   AccountAddressPreviewState,
   AccountAddressFieldName,
   AccountOrderHistoryStatus,

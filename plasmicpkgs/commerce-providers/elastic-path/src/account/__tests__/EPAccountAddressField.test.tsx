@@ -108,7 +108,7 @@ describe("EPAccountAddressField", () => {
         "@elasticpath/plasmic-ep-commerce-elastic-path"
       );
       expect(epAccountAddressFieldMeta.parentComponentName).toBe(
-        "plasmic-commerce-ep-account-address-list"
+        "plasmic-commerce-ep-account-address-provider"
       );
       expect(epAccountAddressFieldMeta.providesData).toBeUndefined();
       expect(epAccountAddressFieldMeta.refActions).toBeUndefined();
