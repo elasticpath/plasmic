@@ -49,7 +49,7 @@ function OrderBinding() {
   if (!order) return null;
   return (
     <span>
-      {order.order_number ?? ""}|{order.total?.formatted ?? ""}
+      {order.order_number ?? ""}|{order.meta?.display_price?.with_tax?.formatted ?? ""}
     </span>
   );
 }
@@ -60,12 +60,16 @@ const full: EpAccountOrder = {
   status: "complete",
   payment: "paid",
   shipping: "fulfilled",
-  created_at: "2024-03-01T12:00:00Z",
-  total: {
-    amount: 4999,
-    currency: "USD",
-    formatted: "$49.99",
-    float_price: 49.99,
+  meta: {
+    timestamps: { created_at: "2024-03-01T12:00:00Z" },
+    display_price: {
+      with_tax: {
+        amount: 4999,
+        currency: "USD",
+        formatted: "$49.99",
+        float_price: 49.99,
+      },
+    },
   },
 };
 

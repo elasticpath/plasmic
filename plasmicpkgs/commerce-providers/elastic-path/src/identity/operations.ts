@@ -90,15 +90,24 @@ export type EpAccountOrderPayment =
 /** `OrderResponse.shipping` values this package will display. */
 export type EpAccountOrderShipping = "unfulfilled" | "fulfilled";
 
-/** One order of the selected organisation. Only summary fields are present. */
+/**
+ * One order of the selected organisation. Only approved summary paths are
+ * present, nested where Elastic Path nests them.
+ */
 export interface EpAccountOrder {
   id: string;
   order_number?: string;
   status?: EpAccountOrderStatus;
   payment?: EpAccountOrderPayment;
   shipping?: EpAccountOrderShipping;
-  created_at?: string;
-  total?: FormattedPrice;
+  meta?: {
+    timestamps?: {
+      created_at?: string;
+    };
+    display_price?: {
+      with_tax?: FormattedPrice;
+    };
+  };
 }
 
 /** The selected organisation's order history. `total` is `orders.length`. */

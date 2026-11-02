@@ -68,12 +68,20 @@ const { epAccountProviderMeta } = require("../EPAccountProvider");
 const orderA: EpAccountOrder = {
   id: "order-a",
   order_number: "1001",
-  total: { amount: 1000, currency: "USD", formatted: "$10.00", float_price: 10 },
+  meta: {
+    display_price: {
+      with_tax: { amount: 1000, currency: "USD", formatted: "$10.00", float_price: 10 },
+    },
+  },
 };
 const orderB: EpAccountOrder = {
   id: "order-b",
   order_number: "1002",
-  total: { amount: 2000, currency: "USD", formatted: "$20.00", float_price: 20 },
+  meta: {
+    display_price: {
+      with_tax: { amount: 2000, currency: "USD", formatted: "$20.00", float_price: 20 },
+    },
+  },
 };
 
 function deferred<T>() {

@@ -167,13 +167,13 @@ An order whose `relationships.account.data.id` is the selected organisation.
 Account order history is that organisation's orders, not only the ones the
 current member placed, and not a guest order that came back under the same
 token. The browser asks with an empty body. The server chooses the account,
-the filter, and the pages. The result is a display summary, not an Elastic
-Path order document: `created_at` and `total` are copied out of
-`meta.timestamps` and `meta.display_price.with_tax` so a Text binding can read
-them, and the rest of the order resource stays on the server. Orders come from
-the store-wide order collection, so a row is kept only when that account
-relationship matches. A saved address is read from the organisation's own
-address path, which is already account-scoped.
+the filter, and the pages. The result is a sanitized summary that keeps the
+approved Elastic Path paths, not a raw order document: `created_at` stays at
+`meta.timestamps.created_at` and the taxed price stays at
+`meta.display_price.with_tax`. Everything else in the order resource stays on
+the server. Orders come from the store-wide order collection, so a row is kept
+only when that account relationship matches. A saved address is read from the
+organisation's own address path, which is already account-scoped.
 _Avoid_: customer order, order detail (a single order is a separate read)
 
 **Account roster**:

@@ -84,12 +84,16 @@ describe("EPAccountOrderList", () => {
       id: "order-priced",
       status: "complete",
       payment: "paid",
-      created_at: "2024-03-01T12:00:00Z",
-      total: {
-        amount: 100,
-        currency: "USD",
-        formatted: "$1.00",
-        float_price: 1,
+      meta: {
+        timestamps: { created_at: "2024-03-01T12:00:00Z" },
+        display_price: {
+          with_tax: {
+            amount: 100,
+            currency: "USD",
+            formatted: "$1.00",
+            float_price: 1,
+          },
+        },
       },
     };
     const bare: EpAccountOrder = { id: "order-bare" };
@@ -100,7 +104,7 @@ describe("EPAccountOrderList", () => {
       return (
         <span>
           {index}:{order.id}|{order.status ?? ""}|{order.payment ?? ""}|
-          {order.created_at ?? ""}|{order.total?.formatted ?? ""}
+          {order.meta?.timestamps?.created_at ?? ""}|{order.meta?.display_price?.with_tax?.formatted ?? ""}
         </span>
       );
     }

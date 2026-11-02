@@ -25,7 +25,7 @@ export const epAccountOrderListMeta: CodeComponentMeta<EPAccountOrderListProps> 
     name: "plasmic-commerce-ep-account-order-list",
     displayName: "EP Account Order List",
     description:
-      "Repeats children for each order. Each row provides currentAccountOrder and currentAccountOrderIndex. Bind a Text element to $ctx.currentAccountOrder.id, status, payment, shipping, created_at, order_number, or total?.formatted. Renders no rows while orders are loading, empty, or failed. Place inside an EP Account Orders Provider.",
+      "Repeats children for each order. Each row provides currentAccountOrder and currentAccountOrderIndex. Bind a Text element to $ctx.currentAccountOrder.id, status, payment, shipping, order_number, meta.timestamps.created_at, or meta.display_price.with_tax.formatted. Renders no rows while orders are loading, empty, or failed. Place inside an EP Account Orders Provider.",
     props: {
       children: {
         type: "slot",

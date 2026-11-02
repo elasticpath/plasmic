@@ -2,7 +2,7 @@
 import { getCustomerOrders } from "@epcc-sdk/sdks-shopper";
 import type { EpAccountOrder, EpAccountOrderResult } from "../../identity/operations";
 import { buildFixedTokenEpClient } from "../../ep-server-functions/fixed-token-ep-client";
-import { toDecimal } from "../../utils/price";
+import { toDecimal, type FormattedPrice } from "../../utils/price";
 import { ACCOUNT_PAGE_LIMIT_MAX } from "./account-tokens";
 import { EP_ACCOUNT_TOKEN_HEADER } from "./envelope";
 
@@ -85,7 +85,7 @@ function enumValue<T extends string>(
     : undefined;
 }
 
-function orderTotal(meta: unknown): EpAccountOrder["total"] | undefined {
+function withTaxPrice(meta: unknown): FormattedPrice | undefined {
   if (!meta || typeof meta !== "object") return undefined;
   const display = (meta as { display_price?: unknown }).display_price;
   if (!display || typeof display !== "object") return undefined;
@@ -149,9 +149,13 @@ export function toAccountOrder(
   );
   if (shipping) order.shipping = shipping;
   const created = createdAt(record.meta);
-  if (created) order.created_at = created;
-  const total = orderTotal(record.meta);
-  if (total) order.total = total;
+  const withTax = withTaxPrice(record.meta);
+  if (created || withTax) {
+    const summary: NonNullable<EpAccountOrder["meta"]> = {};
+    if (created) summary.timestamps = { created_at: created };
+    if (withTax) summary.display_price = { with_tax: withTax };
+    order.meta = summary;
+  }
   return order;
 }
 

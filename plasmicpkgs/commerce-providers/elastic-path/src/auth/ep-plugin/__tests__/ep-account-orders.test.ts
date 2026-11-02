@@ -623,12 +623,16 @@ describe("reading account order history", () => {
           status: "complete",
           payment: "paid",
           shipping: "fulfilled",
-          created_at: "2024-01-02T03:04:05Z",
-          total: {
-            amount: 2500,
-            currency: "USD",
-            formatted: "$25.00",
-            float_price: 25,
+          meta: {
+            timestamps: { created_at: "2024-01-02T03:04:05Z" },
+            display_price: {
+              with_tax: {
+                amount: 2500,
+                currency: "USD",
+                formatted: "$25.00",
+                float_price: 25,
+              },
+            },
           },
         },
       ],
@@ -724,10 +728,129 @@ describe("reading account order history", () => {
     expect(unknown.payment).toBeUndefined();
     expect(unknown.shipping).toBeUndefined();
     expect(unknown.order_number).toBeUndefined();
-    expect(unknown.total).toBeUndefined();
-    expect(unknown.created_at).toBe("2024-05-01T00:00:00Z");
+    expect(unknown.meta?.display_price).toBeUndefined();
+    expect(unknown.meta?.timestamps?.created_at).toBe("2024-05-01T00:00:00Z");
+    expect(unknown).not.toHaveProperty("total");
+    expect(unknown).not.toHaveProperty("created_at");
     expectNoSecrets(body);
     expect(JSON.stringify(body)).not.toContain(SOUTH);
+  });
+
+  it("keeps approved Elastic Path paths and omits the rest of meta", () => {
+    const order = toAccountOrder(
+      ownedOrder("shaped", NORTH, {
+        status: "shipped",
+        payment: "void",
+        shipping: "partial",
+        meta: {
+          timestamps: {
+            created_at: "2024-06-01T00:00:00Z",
+            updated_at: "secret-updated",
+          },
+          is_manual: true,
+          display_price: {
+            with_tax: {
+              amount: 2500,
+              currency: "USD",
+              formatted: "$25.00",
+              float_price: 1,
+              includes_tax: true,
+            },
+            without_tax: { amount: 2000, currency: "USD", formatted: "$20.00" },
+            tax: { amount: 500, currency: "USD", formatted: "$5.00" },
+          },
+        },
+      }),
+      NORTH
+    );
+    expect(order).toEqual({
+      id: "shaped",
+      order_number: "N-shaped",
+      meta: {
+        timestamps: { created_at: "2024-06-01T00:00:00Z" },
+        display_price: {
+          with_tax: {
+            amount: 2500,
+            currency: "USD",
+            formatted: "$25.00",
+            float_price: 25,
+          },
+        },
+      },
+    });
+    expect(order).not.toHaveProperty("created_at");
+    expect(order).not.toHaveProperty("total");
+    const serialized = JSON.stringify(order);
+    expect(serialized).not.toContain("secret-updated");
+    expect(serialized).not.toContain("is_manual");
+    expect(serialized).not.toContain("without_tax");
+    expect(serialized).not.toContain("$20.00");
+    expect(serialized).not.toContain("includes_tax");
+
+    const timestampOnly = toAccountOrder(
+      ownedOrder("timestamp-only", NORTH, {
+        meta: {
+          timestamps: { created_at: "2024-06-02T00:00:00Z" },
+          is_manual: true,
+          display_price: {
+            with_tax: { amount: 100, currency: "USD" },
+            without_tax: { amount: 1, currency: "USD", formatted: "$0.01" },
+          },
+        },
+      }),
+      NORTH
+    );
+    expect(timestampOnly?.meta).toEqual({
+      timestamps: { created_at: "2024-06-02T00:00:00Z" },
+    });
+    expect(timestampOnly?.meta?.display_price).toBeUndefined();
+
+    const priceOnly = toAccountOrder(
+      ownedOrder("price-only", NORTH, {
+        meta: {
+          timestamps: { updated_at: "secret-updated" },
+          display_price: {
+            with_tax: {
+              amount: 100,
+              currency: "JPY",
+              formatted: "¥100",
+              float_price: 1,
+            },
+            without_tax: { amount: 80, currency: "JPY", formatted: "¥80" },
+          },
+        },
+      }),
+      NORTH
+    );
+    expect(priceOnly?.meta).toEqual({
+      display_price: {
+        with_tax: {
+          amount: 100,
+          currency: "JPY",
+          formatted: "¥100",
+          float_price: 100,
+        },
+      },
+    });
+    expect(priceOnly?.meta?.timestamps).toBeUndefined();
+
+    const bare = toAccountOrder(
+      {
+        id: "bare",
+        relationships: { account: { data: { id: NORTH } } },
+        created_at: "top-level-must-not-count",
+        total: { amount: 1, currency: "USD", formatted: "$0.01" },
+        meta: {
+          is_manual: true,
+          display_price: {
+            without_tax: { amount: 1, currency: "USD", formatted: "$0.01" },
+          },
+        },
+      },
+      NORTH
+    );
+    expect(bare).toEqual({ id: "bare" });
+    expect(bare).not.toHaveProperty("meta");
   });
 
   it("computes float_price from the currency exponent and ignores the upstream decimal", () => {
@@ -776,9 +899,11 @@ describe("reading account order history", () => {
       }),
       NORTH
     );
-    expect(usd?.total?.float_price).toBe(25);
-    expect(jpy?.total?.float_price).toBe(2500);
-    expect(kwd?.total?.float_price).toBe(2.5);
+    expect(usd?.meta?.display_price?.with_tax?.float_price).toBe(25);
+    expect(jpy?.meta?.display_price?.with_tax?.float_price).toBe(2500);
+    expect(kwd?.meta?.display_price?.with_tax?.float_price).toBe(2.5);
+    expect(usd).not.toHaveProperty("total");
+    expect(usd).not.toHaveProperty("created_at");
     expect(
       toAccountOrder(
         {

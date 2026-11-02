@@ -728,12 +728,16 @@ export const MOCK_ACCOUNT_ORDERS: EpAccountOrder[] = [
     status: "complete",
     payment: "paid",
     shipping: "fulfilled",
-    created_at: "2024-03-01T12:00:00Z",
-    total: {
-      amount: 4999,
-      currency: "USD",
-      formatted: "$49.99",
-      float_price: 49.99,
+    meta: {
+      timestamps: { created_at: "2024-03-01T12:00:00Z" },
+      display_price: {
+        with_tax: {
+          amount: 4999,
+          currency: "USD",
+          formatted: "$49.99",
+          float_price: 49.99,
+        },
+      },
     },
   },
   {
@@ -742,12 +746,16 @@ export const MOCK_ACCOUNT_ORDERS: EpAccountOrder[] = [
     status: "processing",
     payment: "authorized",
     shipping: "unfulfilled",
-    created_at: "2024-04-02T09:30:00Z",
-    total: {
-      amount: 1200,
-      currency: "USD",
-      formatted: "$12.00",
-      float_price: 12,
+    meta: {
+      timestamps: { created_at: "2024-04-02T09:30:00Z" },
+      display_price: {
+        with_tax: {
+          amount: 1200,
+          currency: "USD",
+          formatted: "$12.00",
+          float_price: 12,
+        },
+      },
     },
   },
 ];

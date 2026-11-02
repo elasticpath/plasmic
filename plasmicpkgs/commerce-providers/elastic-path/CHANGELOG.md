@@ -218,17 +218,18 @@ history of the selected organisation. The body must be empty. The server uses
 that organisation's account-management token, the implicit shopper token, and
 its own account filter and pages. It returns `{ orders, total }`. Each order
 is an `EpAccountOrder` summary: `id`, and `order_number`, `status`, `payment`,
-`shipping`, `created_at`, and `total` when those values are usable. `total` is
-the number of orders kept. A row is kept only when
-`relationships.account.data.id` is the selected organisation. With no
-organisation selected it answers `no_selected_account` and does not call
-Elastic Path. A rejection is `account_orders_read_failed` with HTTP 502; the
-upstream status and body are not returned. A session account id that is not a
-canonical UUID fails the same way and does not call Elastic Path. An order
-`total` is the existing `FormattedPrice`. A page walk the reader can
-tell is unfinished or inconsistent fails instead of returning a short
-history. Orders created or removed between offset pages can still be
-duplicated or omitted without detection.
+and `shipping` when those values are usable. A usable creation time stays at
+`meta.timestamps.created_at`, and a usable taxed price stays at
+`meta.display_price.with_tax` as the existing `FormattedPrice`. `meta` is
+omitted when neither is usable. `total` on the result is the number of orders
+kept. A row is kept only when `relationships.account.data.id` is the selected
+organisation. With no organisation selected it answers `no_selected_account`
+and does not call Elastic Path. A rejection is `account_orders_read_failed`
+with HTTP 502; the upstream status and body are not returned. A session
+account id that is not a canonical UUID fails the same way and does not call
+Elastic Path. A page walk the reader can tell is unfinished or inconsistent
+fails instead of returning a short history. Orders created or removed between
+offset pages can still be duplicated or omitted without detection.
 
 `EP Account Orders Provider` and `EP Account Order List` display that result.
 The provider sits inside EP Account Provider, calls `identity.accountOrders()`
@@ -236,8 +237,9 @@ with no arguments when an organisation is selected, and publishes
 `$ctx.accountOrders` (`status`, `orders`, `total`, `error`). It does not take
 an account id, token, filter, or page, and it has no reload action and no ref
 actions. The list repeats its children and publishes `$ctx.currentAccountOrder`
-on each row. Bind ordinary text to `id`, `status`, `payment`, `created_at`,
-or `total?.formatted`. A missing value is empty, and
+on each row. Bind ordinary text to `id`, `status`, `payment`,
+`meta.timestamps.created_at`, or `meta.display_price.with_tax.formatted`. A
+missing value is empty, and
 `$ctx.currentAccountOrder.id` stays available for a detail link. A selected
 account with rows is `ready`;
 an empty result is `empty`. No selected organisation is `no_selected_account`,

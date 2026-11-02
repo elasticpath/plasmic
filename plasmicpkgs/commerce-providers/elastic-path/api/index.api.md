@@ -733,9 +733,16 @@ export type EpAccountMemberUpdateRequest = {
 // @public
 export interface EpAccountOrder {
     // (undocumented)
-    created_at?: string;
-    // (undocumented)
     id: string;
+    // (undocumented)
+    meta?: {
+        timestamps?: {
+            created_at?: string;
+        };
+        display_price?: {
+            with_tax?: FormattedPrice;
+        };
+    };
     // (undocumented)
     order_number?: string;
     // (undocumented)
@@ -744,8 +751,6 @@ export interface EpAccountOrder {
     shipping?: EpAccountOrderShipping;
     // (undocumented)
     status?: EpAccountOrderStatus;
-    // (undocumented)
-    total?: FormattedPrice;
 }
 
 // @public (undocumented)
