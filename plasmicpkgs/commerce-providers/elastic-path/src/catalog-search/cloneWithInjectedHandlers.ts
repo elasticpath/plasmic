@@ -23,9 +23,17 @@ export function cloneWithInjectedHandlers(
 ): React.ReactNode {
   if (!React.isValidElement(child)) return child;
 
+  const existing = (child.props ?? {}) as Record<string, unknown>;
+  if (typeof existing.children === "function") {
+    const render = existing.children as (...args: unknown[]) => React.ReactNode;
+    return React.cloneElement(child, {
+      children: (...args: unknown[]) =>
+        cloneWithInjectedHandlers(render(...args), options),
+    } as Partial<unknown> & React.Attributes);
+  }
+
   const { injected, compose = [] } = options;
   const composeSet = new Set(compose);
-  const existing = (child.props ?? {}) as Record<string, unknown>;
 
   const merged: Record<string, unknown> = {};
   for (const key of Object.keys(injected)) {

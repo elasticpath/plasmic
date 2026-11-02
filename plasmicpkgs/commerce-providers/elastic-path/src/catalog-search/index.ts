@@ -48,6 +48,10 @@ export {
   EPSearchAutocompleteList,
   registerEPSearchAutocompleteList,
 } from "./EPSearchAutocompleteList";
+export {
+  EPSearchTypeahead,
+  registerEPSearchTypeahead,
+} from "./EPSearchTypeahead";
 
 export type {
   CatalogSearchData,
@@ -65,4 +69,6 @@ export type {
   AutocompleteCollection,
   AutocompleteSuggestionItem,
   CurrentSuggestion,
+  SearchTypeaheadData,
+  SearchTypeaheadStatus,
 } from "./design-time-data";
