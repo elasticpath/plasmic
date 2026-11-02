@@ -7,6 +7,7 @@ export type {
   EpAccountAddress,
   EpAccountAddressCreateRequest,
   EpAccountAddressDeleteRequest,
+  EpAccountAddressUpdateRequest,
   EpAccountAddressResult,
   EpAccountLoginRequest,
   EpAccountLoginResult,

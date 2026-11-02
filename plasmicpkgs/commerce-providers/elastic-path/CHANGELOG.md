@@ -293,6 +293,33 @@ address is not deleted until that delete and its address-book read
 settle. The list, field, and form do not
 grow a delete action, and the provider still has no reload action.
 
+`identity.updateAccountAddress({ id, ...changedFields })` updates one saved
+address of the selected organisation through `POST /ep/account/addresses/update`.
+The browser may send `id` and changed values for the thirteen address fields.
+An explicit empty string is kept, because Elastic Path clears that field. The
+server trims `id`, rejects a missing or blank id, an unknown field, `type`, or
+a body with no changed field, and sets `type: "address"` itself. It sends only
+the changed fields. Omitted fields stay stored. It uses that organisation's
+account-management token and the implicit shopper token. Success is Elastic
+Path `200` and returns one `EpAccountAddress`. A rejection is
+`account_address_update_failed`. An Elastic Path 400 uses the first
+`errors[].detail`, or `errors[].title` when detail is absent. A 404 keeps the
+generic update message.
+
+`EP Account Address Detail Provider` publishes one address from the loaded
+book as `$ctx.currentAccountAddress`, and `$ctx.accountAddressDetailData`
+(`loading`, `ready`, `not-found`, or `error`). It takes an address id and does not
+call Elastic Path. A deleted address stays `ready` until the refreshed book
+drops that row, then becomes `not-found` and stops publishing the address.
+Edit submit does nothing once that address is gone. `EP Account Address Form Provider` accepts `mode`. `create`
+is unchanged. `edit` shows the current saved address and submits only the
+mounted fields whose values differ from that address, then the address
+provider reads the book again. A same-address refresh does not reseed the
+form. A different address id starts a new edit session, including a return
+to an address whose earlier update is still in flight. That earlier result
+does not change the new session. The canvas does not
+update a saved address.
+
 The Elastic Path Provider's **Add item to cart** global action takes an
 optional **Location** after **Quantity**. On a multi-location store, a product
 stocked only at named locations was refused with `insufficient_stock`

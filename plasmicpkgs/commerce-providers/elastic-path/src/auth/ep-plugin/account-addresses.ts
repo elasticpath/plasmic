@@ -9,6 +9,7 @@ import {
   deleteV2AccountAddress,
   getV2AccountAddresses,
   postV2AccountAddress,
+  putV2AccountAddress,
 } from "@epcc-sdk/sdks-shopper";
 import { COUNTRIES } from "../../checkout/composable/countries";
 import type { EpAccountAddress } from "../../identity/operations";
@@ -42,6 +43,8 @@ const CREATE_UNREACHABLE = "Elastic Path was unreachable.";
 const CREATE_REJECTED = "Elastic Path rejected the account-address create.";
 const DELETE_UNREACHABLE = "Elastic Path was unreachable.";
 const DELETE_REJECTED = "Elastic Path rejected the account-address delete.";
+const UPDATE_UNREACHABLE = "Elastic Path was unreachable.";
+const UPDATE_REJECTED = "Elastic Path rejected the account-address update.";
 const COUNTRY_CODES = new Set(COUNTRIES.map((country) => country.code));
 
 type AddressField = (typeof ADDRESS_FIELDS)[number];
@@ -63,6 +66,16 @@ export class AccountAddressCreateError extends Error {
   constructor(status: number, message: string) {
     super(message);
     this.name = "AccountAddressCreateError";
+    this.status = status;
+  }
+}
+
+export class AccountAddressUpdateError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "AccountAddressUpdateError";
     this.status = status;
   }
 }
@@ -232,18 +245,21 @@ function validationText(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function validationMessage(error: unknown): string {
+function validationMessage(
+  error: unknown,
+  fallback = CREATE_REJECTED
+): string {
   const errors =
     error && typeof error === "object"
       ? (error as { errors?: unknown }).errors
       : undefined;
   const first = Array.isArray(errors) ? errors[0] : undefined;
-  if (!first || typeof first !== "object") return CREATE_REJECTED;
+  if (!first || typeof first !== "object") return fallback;
   const record = first as { detail?: unknown; title?: unknown };
   return (
     validationText(record.detail) ??
     validationText(record.title) ??
-    CREATE_REJECTED
+    fallback
   );
 }
 
@@ -269,6 +285,121 @@ export function parseAccountAddressDeleteBody(
     return { ok: false, message: "id must not be empty." };
   }
   return { ok: true, id };
+}
+
+export function parseAccountAddressUpdateBody(
+  body: unknown
+):
+  | { ok: true; id: string; address: AddressInput }
+  | { ok: false; message: string } {
+  if (body == null || typeof body !== "object" || Array.isArray(body)) {
+    return { ok: false, message: "Body must be an object." };
+  }
+  const record = body as Record<string, unknown>;
+  const allowed = new Set<string>(["id", ...ADDRESS_FIELDS]);
+  for (const key of Object.keys(record)) {
+    if (!allowed.has(key)) {
+      return {
+        ok: false,
+        message: "Body may include only an address id and address fields.",
+      };
+    }
+  }
+  if (!("id" in record)) {
+    return { ok: false, message: "Body must include an address id." };
+  }
+  if (typeof record.id !== "string") {
+    return { ok: false, message: "id must be a string." };
+  }
+  const id = record.id.trim();
+  if (!id) {
+    return { ok: false, message: "id must not be empty." };
+  }
+
+  const address: AddressInput = {};
+  for (const field of ADDRESS_FIELDS) {
+    if (!(field in record)) continue;
+    const value = record[field];
+    if (typeof value !== "string") {
+      return { ok: false, message: `${field} must be a string.` };
+    }
+    const trimmed = value.trim();
+    if (field === "country") {
+      if (!trimmed) {
+        address.country = "";
+        continue;
+      }
+      const code = trimmed.toUpperCase();
+      if (!COUNTRY_CODES.has(code)) {
+        return {
+          ok: false,
+          message: "country must be a two-letter country code.",
+        };
+      }
+      address.country = code;
+      continue;
+    }
+    address[field] = trimmed;
+  }
+  if (Object.keys(address).length === 0) {
+    return { ok: false, message: "Body must include an address field." };
+  }
+  return { ok: true, id, address };
+}
+
+export async function updateAccountAddress(input: {
+  host: string;
+  clientId: string;
+  implicitToken: string;
+  accountId: string;
+  accountToken: string;
+  id: string;
+  address: AddressInput;
+}): Promise<EpAccountAddress> {
+  const client = buildFixedTokenEpClient({
+    host: input.host,
+    clientId: input.clientId,
+    token: input.implicitToken,
+  });
+  let result: Awaited<ReturnType<typeof putV2AccountAddress>>;
+  try {
+    result = await putV2AccountAddress({
+      client,
+      path: {
+        accountID: input.accountId,
+        addressID: input.id,
+      },
+      headers: { [EP_ACCOUNT_TOKEN_HEADER]: input.accountToken },
+      body: {
+        data: {
+          type: "address",
+          ...input.address,
+        },
+      },
+    });
+  } catch {
+    throw new AccountAddressUpdateError(502, UPDATE_UNREACHABLE);
+  }
+
+  if (!result.response) {
+    throw new AccountAddressUpdateError(502, UPDATE_UNREACHABLE);
+  }
+  if (result.response.status !== 200) {
+    const status = result.response.status;
+    throw new AccountAddressUpdateError(
+      status >= 400 && status <= 599 ? status : 502,
+      status === 400
+        ? validationMessage(result.error, UPDATE_REJECTED)
+        : UPDATE_REJECTED
+    );
+  }
+
+  const row = (result.data as { data?: unknown } | undefined)?.data;
+  const address = toAccountAddress(row, input.accountId);
+  if (!address) {
+    throw new AccountAddressUpdateError(502, UPDATE_REJECTED);
+  }
+  return address;
 }
 
 export async function deleteAccountAddress(input: {

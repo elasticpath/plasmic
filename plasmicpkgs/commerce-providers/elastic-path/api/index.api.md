@@ -33,6 +33,15 @@ export type AccountAddressBookError = {
 export type AccountAddressBookStatus = "loading" | "ready" | "empty" | "error";
 
 // @public (undocumented)
+export type AccountAddressDetailData = {
+    status: AccountAddressDetailStatus;
+    error: AccountAddressBookError | null;
+};
+
+// @public
+export type AccountAddressDetailStatus = "loading" | "ready" | "not-found" | "error";
+
+// @public (undocumented)
 export type AccountAddressFieldName = "name" | "first_name" | "last_name" | "company_name" | "phone_number" | "instructions" | "line_1" | "line_2" | "city" | "county" | "region" | "postcode" | "country";
 
 // @public (undocumented)
@@ -559,6 +568,12 @@ export interface EpAccountAddressDeleteRequest {
 }
 
 // @public (undocumented)
+export function EPAccountAddressDetailProvider(props: EPAccountAddressDetailProviderProps): React_2.JSX.Element;
+
+// @public (undocumented)
+export const epAccountAddressDetailProviderMeta: CodeComponentMeta<EPAccountAddressDetailProviderProps>;
+
+// @public (undocumented)
 export function EPAccountAddressField(props: EPAccountAddressFieldProps): React_2.JSX.Element | null;
 
 // @public (undocumented)
@@ -600,6 +615,38 @@ export interface EpAccountAddressResult {
     addresses: EpAccountAddress[];
     // (undocumented)
     total: number;
+}
+
+// @public
+export interface EpAccountAddressUpdateRequest {
+    // (undocumented)
+    city?: string;
+    // (undocumented)
+    company_name?: string;
+    // (undocumented)
+    country?: string;
+    // (undocumented)
+    county?: string;
+    // (undocumented)
+    first_name?: string;
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    instructions?: string;
+    // (undocumented)
+    last_name?: string;
+    // (undocumented)
+    line_1?: string;
+    // (undocumented)
+    line_2?: string;
+    // (undocumented)
+    name?: string;
+    // (undocumented)
+    phone_number?: string;
+    // (undocumented)
+    postcode?: string;
+    // (undocumented)
+    region?: string;
 }
 
 // @public (undocumented)
@@ -1215,6 +1262,11 @@ export interface EpIdentityOperations {
     signInAnonymously: {
         request: void;
         response: EpSessionEnvelope;
+    };
+    // (undocumented)
+    updateAccountAddress: {
+        request: EpAccountAddressUpdateRequest;
+        response: EpAccountAddress;
     };
     // (undocumented)
     updateMember: {
@@ -1833,6 +1885,9 @@ export function registerAll(loader?: Registerable): void;
 
 // @public (undocumented)
 export function registerCommerceProvider(loader?: Registerable, customCommerceProviderMeta?: any): void;
+
+// @public (undocumented)
+export function registerEPAccountAddressDetailProvider(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountAddressDetailProviderProps>): void;
 
 // @public (undocumented)
 export function registerEPAccountAddressField(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountAddressFieldProps>): void;

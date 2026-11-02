@@ -316,6 +316,55 @@ describe("EPAccountAddressFormProvider", () => {
     });
   });
 
+  it("does not seed create mode from the current saved address", async () => {
+    const ref = React.createRef<FormActions>();
+    const { DataProvider } = require("@plasmicapp/host");
+    render(
+      <DataProvider
+        name="currentAccountAddress"
+        data={{
+          id: "addr-saved",
+          first_name: "Ada",
+          last_name: "Lovelace",
+          line_1: "1 Strand",
+          city: "London",
+          county: "Greater London",
+          postcode: "WC2N",
+          country: "GB",
+          name: "Work",
+        }}
+      >
+        <EPAccountAddressFormProvider ref={ref}>
+          <EPAccountAddressFormField name="first_name" required />
+          <EPAccountAddressFormField name="last_name" required />
+          <EPAccountAddressFormField name="line_1" required />
+          <EPAccountAddressFormField name="city" />
+          <EPAccountAddressFormField name="county" required />
+          <EPAccountAddressFormField name="postcode" required />
+          <EPAccountAddressFormField name="country" required />
+          <EPAccountAddressFormField name="name" />
+        </EPAccountAddressFormProvider>
+      </DataProvider>
+    );
+    expect((screen.getByLabelText("First name *") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("City") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Country *") as HTMLSelectElement).value).toBe("");
+    expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("");
+    fillRequired();
+    await act(async () => {
+      await ref.current!.submit();
+    });
+    expect(mockCreateAccountAddress).toHaveBeenCalledTimes(1);
+    expect(mockCreateAccountAddress).toHaveBeenCalledWith({
+      first_name: "Zain",
+      last_name: "Test",
+      line_1: "123 A",
+      county: "Lahore",
+      postcode: "54000",
+      country: "PK",
+    });
+  });
+
   it("does not block submit when County is configured optional", async () => {
     const ref = React.createRef<FormActions>();
     render(
@@ -763,7 +812,12 @@ describe("EPAccountAddressFormProvider", () => {
       expect(epAccountAddressFormProviderMeta.providesData).toBe(true);
       expect(Object.keys(epAccountAddressFormProviderMeta.props ?? {})).toEqual([
         "children",
+        "mode",
+        "previewState",
       ]);
+      expect((epAccountAddressFormProviderMeta.props as any).mode.defaultValue).toBe(
+        "create"
+      );
       expect(
         Object.keys(epAccountAddressFormProviderMeta.refActions ?? {})
       ).toEqual(["submit"]);

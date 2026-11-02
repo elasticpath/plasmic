@@ -23,7 +23,7 @@ export const epAccountAddressFieldMeta: CodeComponentMeta<EPAccountAddressFieldP
     name: "plasmic-commerce-ep-account-address-field",
     displayName: "EP Account Address Field",
     description:
-      "Displays one field of the current saved address. Place inside an EP Account Address List. A missing value is blank. The address id is not a display choice.",
+      "Displays one field of the current saved address. Place inside an EP Account Address List or an EP Account Address Detail Provider. A missing value is blank. The address id is not a display choice.",
     props: {
       field: {
         type: "choice",
@@ -48,7 +48,7 @@ export const epAccountAddressFieldMeta: CodeComponentMeta<EPAccountAddressFieldP
     },
     importPath: "@elasticpath/plasmic-ep-commerce-elastic-path",
     importName: "EPAccountAddressField",
-    parentComponentName: "plasmic-commerce-ep-account-address-list",
+    parentComponentName: "plasmic-commerce-ep-account-address-provider",
   };
 
 function addressFieldValue(
