@@ -1,11 +1,11 @@
 import { DomActions, ViewportCtx } from "@/wab/client/studio-ctx/ViewportCtx";
-import { ComponentType } from "@/wab/shared/core/components";
-import { Box, Pt } from "@/wab/shared/geom";
 import { TplMgr } from "@/wab/shared/TplMgr";
+import { ComponentType } from "@/wab/shared/core/components";
 import { createSite, getDedicatedArena } from "@/wab/shared/core/sites";
-import { mock, MockProxy } from "jest-mock-extended";
+import { Box, Pt } from "@/wab/shared/geom";
+import { MockProxy, mock } from "vitest-mock-extended";
 
-jest.useFakeTimers();
+vi.useFakeTimers();
 
 const site = createSite();
 const tplMgr = new TplMgr({ site });
@@ -33,7 +33,7 @@ describe("ViewportCtx", () => {
     });
   });
   afterEach(() => {
-    jest.runAllTimers();
+    vi.runAllTimers();
     expect(ctx.isTransforming()).toBe(false);
   });
 
@@ -74,7 +74,7 @@ describe("ViewportCtx", () => {
     expect(dom.updateCanvasPadding).toHaveBeenCalledWith(new Pt(950, 475));
 
     ctx.setClipperBox(
-      Box.fromRect({ left: 10, top: 20, width: 200, height: 800 })
+      Box.fromRect({ left: 10, top: 20, width: 200, height: 800 }),
     );
     expect(ctx.canvasPadding()).toEqual(new Pt(190, 760));
     expect(dom.updateCanvasPadding).toHaveBeenCalledWith(new Pt(190, 760));
@@ -119,7 +119,7 @@ describe("ViewportCtx", () => {
     expect(dom.scrollBy).toHaveBeenCalledWith(new Pt(10, 20), false);
     expect(ctx.isTransforming()).toBe(true);
     expect(ctx.scroll()).toEqual(new Pt(0, 0));
-    jest.runAllTimers();
+    vi.runAllTimers();
     expect(ctx.scroll()).toEqual(new Pt(10, 20));
 
     ctx.scrollBy(new Pt(-5, -1), {
@@ -128,7 +128,7 @@ describe("ViewportCtx", () => {
     expect(dom.scrollBy).toHaveBeenCalledWith(new Pt(-5, -1), true);
     expect(ctx.isTransforming()).toBe(true);
     expect(ctx.scroll()).toEqual(new Pt(10, 20));
-    jest.runAllTimers();
+    vi.runAllTimers();
     expect(ctx.scroll()).toEqual(new Pt(5, 19));
   });
   test("scrollTo updates DOM and receives setScroll callback", () => {
@@ -149,7 +149,7 @@ describe("ViewportCtx", () => {
     expect(dom.scrollTo).toHaveBeenCalledWith(new Pt(10, 20), false);
     expect(ctx.isTransforming()).toBe(true);
     expect(ctx.scroll()).toEqual(new Pt(0, 0));
-    jest.runAllTimers();
+    vi.runAllTimers();
     expect(ctx.scroll()).toEqual(new Pt(10, 20));
 
     ctx.scrollTo(new Pt(30, 10), {
@@ -158,7 +158,7 @@ describe("ViewportCtx", () => {
     expect(dom.scrollTo).toHaveBeenCalledWith(new Pt(30, 10), true);
     expect(ctx.isTransforming()).toBe(true);
     expect(ctx.scroll()).toEqual(new Pt(10, 20));
-    jest.runAllTimers();
+    vi.runAllTimers();
     expect(ctx.scroll()).toEqual(new Pt(30, 10));
   });
   test("scaleAtFixedPt does math and updates DOM", () => {
@@ -214,7 +214,7 @@ describe("ViewportCtx", () => {
     expect(dom.scaleTo).toHaveBeenCalledWith(2, false);
     // scroll = (100,10) + (500,400) - (350,210) + (250,200)*2
     expect(dom.scrollTo).toHaveBeenCalledWith(new Pt(750, 600), false);
-    jest.resetAllMocks();
+    vi.resetAllMocks();
 
     // sanity check scaleAtMidPt(2) == scaleAtFixedPt(2, (250,200), (350,210))
     // DOM should not be called again
@@ -242,7 +242,7 @@ describe("ViewportCtx", () => {
       Box.fromRect({ left: 0, top: 0, width: 400, height: 300 }),
       {
         minPadding: 50,
-      }
+      },
     );
     expect(ctx.scale()).toEqual(1);
     expect(dom.updateArenaSize).toHaveBeenCalledWith(new Pt(400, 300));
@@ -267,31 +267,31 @@ describe("ViewportCtx", () => {
     ctx.scaleAtMidPt(0.5);
     ctx.setScroll(new Pt(0, 0));
     expect(ctx.visibleScalerBox()).toEqual(
-      Box.fromRect({ left: -2000, top: -1000, width: 2000, height: 1000 })
+      Box.fromRect({ left: -2000, top: -1000, width: 2000, height: 1000 }),
     );
     ctx.setScroll(new Pt(1000, 500));
     expect(ctx.visibleScalerBox()).toEqual(
-      Box.fromRect({ left: 0, top: 0, width: 2000, height: 1000 })
+      Box.fromRect({ left: 0, top: 0, width: 2000, height: 1000 }),
     );
 
     ctx.scaleAtMidPt(1);
     ctx.setScroll(new Pt(0, 0));
     expect(ctx.visibleScalerBox()).toEqual(
-      Box.fromRect({ left: -1000, top: -500, width: 1000, height: 500 })
+      Box.fromRect({ left: -1000, top: -500, width: 1000, height: 500 }),
     );
     ctx.setScroll(new Pt(1000, 500));
     expect(ctx.visibleScalerBox()).toEqual(
-      Box.fromRect({ left: 0, top: 0, width: 1000, height: 500 })
+      Box.fromRect({ left: 0, top: 0, width: 1000, height: 500 }),
     );
 
     ctx.scaleAtMidPt(2);
     ctx.setScroll(new Pt(0, 0));
     expect(ctx.visibleScalerBox()).toEqual(
-      Box.fromRect({ left: -500, top: -250, width: 500, height: 250 })
+      Box.fromRect({ left: -500, top: -250, width: 500, height: 250 }),
     );
     ctx.setScroll(new Pt(1000, 500));
     expect(ctx.visibleScalerBox()).toEqual(
-      Box.fromRect({ left: 0, top: 0, width: 500, height: 250 })
+      Box.fromRect({ left: 0, top: 0, width: 500, height: 250 }),
     );
   });
   test("client/scaler conversions", () => {

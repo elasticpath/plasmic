@@ -1,6 +1,5 @@
 import { BadRequestError } from "@/wab/shared/ApiErrors/errors";
 import { ZapierDataSource } from "@/wab/shared/data-sources-meta/zapier-meta";
-import fetch from "node-fetch";
 
 export function makeZapierFetcher(source: ZapierDataSource) {
   return new ZapierFetcher(source);
@@ -18,9 +17,9 @@ export class ZapierFetcher {
           opts.body === undefined
             ? undefined
             : typeof opts.body === "object"
-            ? JSON.stringify(opts.body)
-            : opts.body,
-      }
+              ? JSON.stringify(opts.body)
+              : opts.body,
+      },
     );
     return await res.json();
   }
@@ -41,7 +40,7 @@ export class ZapierFetcher {
         searchParams = new URLSearchParams(search);
       } catch {
         throw new BadRequestError(
-          `Unexpected valid URLSearchParams, but got: ${search}`
+          `Unexpected valid URLSearchParams, but got: ${search}`,
         );
       }
       Array.from(searchParams.entries()).forEach(([k, v]) => {

@@ -7,7 +7,7 @@ import {
   updateAutoDerivedFrameHeight,
 } from "@/wab/shared/Arenas";
 import { usedGlobalVariantGroups } from "@/wab/shared/cached-selectors";
-import { arrayInsert, arrayRemove } from "@/wab/shared/collections";
+import { arrayInsertAt } from "@/wab/shared/collections";
 import {
   ensure,
   ensureArrayOfInstances,
@@ -46,9 +46,9 @@ import {
   isScreenVariant,
   isScreenVariantGroup,
   makeVariantName,
+  VariantCombo,
 } from "@/wab/shared/Variants";
 import { orderBy } from "lodash";
-import type { IObservableArray } from "mobx";
 
 export function mkPageArena({
   component,
@@ -68,7 +68,7 @@ export function mkPageArena({
 
 function makeDefaultPageArenaMatrix(site: Site, component: Component) {
   const globalGroups = usedGlobalVariantGroups(site, component).filter(
-    (g) => !isScreenVariantGroup(g)
+    (g) => !isScreenVariantGroup(g),
   );
 
   const variants = [
@@ -85,7 +85,7 @@ export function makePageArenaFrame(
   component: Component,
   variants: Variant[],
   width: number,
-  height: number
+  height: number,
 ) {
   const [globals, locals] = partitions(variants, [isGlobalVariant]);
   const frame = mkArenaFrame({
@@ -99,10 +99,10 @@ export function makePageArenaFrame(
     pinnedVariants: Object.fromEntries(
       locals
         .filter((local) => !isBaseVariant(local))
-        .map((local) => [local.uuid, true])
+        .map((local) => [local.uuid, true]),
     ),
     pinnedGlobalVariants: Object.fromEntries(
-      globals.map((global) => [global.uuid, true])
+      globals.map((global) => [global.uuid, true]),
     ),
     viewMode: FrameViewMode.Stretch,
   });
@@ -121,7 +121,7 @@ function makeFrameRow(site: Site, component: Component, variant: Variant) {
         component,
         [variant],
         size.width,
-        size.height
+        size.height,
       );
       return new ArenaFrameCell({
         cellKey: undefined,
@@ -133,48 +133,42 @@ function makeFrameRow(site: Site, component: Component, variant: Variant) {
 
 export function removeManagedFramesFromPageArenaForVariants(
   arena: PageArena,
-  variants: Variant[]
+  variants: VariantCombo,
 ) {
   // We only do this for managed artboards (arena.matrix.rows).
   // For custom artboards, we will just stop targeting / pinning
   // the removed variant, as we do for all artboards
-  for (const row of [...arena.matrix.rows]) {
-    if (row.rowKey && variants.includes(row.rowKey as any)) {
-      arrayRemove(arena.matrix.rows, row);
-    }
-  }
+  arena.matrix.rows = arena.matrix.rows.filter(
+    (row) => !(row.rowKey && variants.includes(row.rowKey as any)),
+  );
   for (const row of arena.customMatrix.rows) {
-    for (const cell of [...row.cols]) {
-      if (
-        ensureArrayOfInstances(ensureCellKey(cell), Variant).some((v) =>
-          variants.includes(v)
-        )
-      ) {
-        arrayRemove(row.cols, cell);
-      }
-    }
+    row.cols = row.cols.filter(
+      (cell) =>
+        !ensureArrayOfInstances(ensureCellKey(cell), Variant).some((v) =>
+          variants.includes(v),
+        ),
+    );
   }
 }
 
 export function removeManagedFramesFromPageArenaForVariantGroup(
   arena: PageArena,
-  group: VariantGroup
+  group: VariantGroup,
 ) {
-  for (const row of [...arena.matrix.rows]) {
-    if (
-      row.rowKey &&
-      isKnownVariant(row.rowKey) &&
-      group.variants.includes(row.rowKey)
-    ) {
-      arrayRemove(arena.matrix.rows, row);
-    }
-  }
+  arena.matrix.rows = arena.matrix.rows.filter(
+    (row) =>
+      !(
+        row.rowKey &&
+        isKnownVariant(row.rowKey) &&
+        group.variants.includes(row.rowKey)
+      ),
+  );
 }
 
 export function syncPageArenaFrameSize(
   site: Site,
   arena: PageArena,
-  anchor: ArenaFrame
+  anchor: ArenaFrame,
 ) {
   const index = getFrameColumnIndex(arena, anchor);
   if (index < 0) {
@@ -211,7 +205,7 @@ function getRowForVariant(arena: PageArena, variant: Variant) {
 export function ensureManagedRowForVariantInPageArena(
   site: Site,
   arena: PageArena,
-  variant: Variant
+  variant: Variant,
 ) {
   if (isScreenVariant(variant)) {
     // We don't create managed rows for screen variants
@@ -233,16 +227,16 @@ export function ensureManagedRowForVariantInPageArena(
     }),
   ];
   const currentVariantIndexes = arena.matrix.rows.map((r) =>
-    allVariants.indexOf(ensureKnownVariant(r.rowKey))
+    allVariants.indexOf(ensureKnownVariant(r.rowKey)),
   );
   const newVariantIndex = allVariants.indexOf(variant);
   const insertionIndex = currentVariantIndexes.findIndex(
-    (i) => i > newVariantIndex
+    (i) => i > newVariantIndex,
   );
   if (insertionIndex >= 0) {
-    arena.matrix.rows.splice(insertionIndex, 0, row);
+    arena.matrix.rows = arrayInsertAt(arena.matrix.rows, row, insertionIndex);
   } else {
-    arena.matrix.rows.push(row);
+    arena.matrix.rows = [...arena.matrix.rows, row];
   }
 
   return row;
@@ -260,17 +254,17 @@ export function addScreenSizeToPageArenas({
   const responsiveStrategy = getResponsiveStrategy(site);
   const firstPageArena = ensure(
     site.pageArenas[0],
-    () => `Project has no Page Arenas`
+    () => `Project has no Page Arenas`,
   );
   const firstPageArenaRow = ensure(
     firstPageArena.matrix.rows[0],
-    () => `PageArena has no ArenaFrameRow`
+    () => `PageArena has no ArenaFrameRow`,
   );
 
   const preliminaryInsertionIndex = firstPageArenaRow?.cols.findIndex((it) =>
     responsiveStrategy === ResponsiveStrategy.desktopFirst
       ? it.frame.width <= width
-      : it.frame.width >= width
+      : it.frame.width >= width,
   );
 
   const insertionIndex =
@@ -285,18 +279,18 @@ export function addScreenSizeToPageArenas({
         pageArena.component,
         [ensureKnownVariant(arenaRow.rowKey)],
         width,
-        height
+        height,
       );
 
-      arrayInsert(
+      arenaRow.cols = arrayInsertAt(
         arenaRow.cols,
         new ArenaFrameCell({
           frame: newArenaFrame,
           cellKey: undefined,
         }),
-        insertionIndex
+        insertionIndex,
       );
-    })
+    }),
   );
 
   return insertionIndex;
@@ -312,7 +306,7 @@ export function reorderPageArenaCols(site: Site) {
 
   site.pageArenas.forEach((arena) => {
     arena.matrix.rows.forEach((arenaRow) => {
-      const originalCols = arenaRow.cols as IObservableArray;
+      const originalCols = arenaRow.cols;
 
       const orderedCols = orderBy(originalCols, (it) => it.frame.width, [
         direction,
@@ -326,7 +320,7 @@ export function reorderPageArenaCols(site: Site) {
           : new ArenaFrameCell({
               frame: it.frame,
               cellKey: undefined,
-            })
+            }),
       );
 
       originalCols.forEach((it, i) => {
@@ -335,7 +329,7 @@ export function reorderPageArenaCols(site: Site) {
         }
       });
 
-      originalCols.replace(orderedCols);
+      arenaRow.cols = orderedCols;
     });
   });
 

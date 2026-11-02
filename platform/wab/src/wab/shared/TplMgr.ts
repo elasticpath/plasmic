@@ -54,7 +54,6 @@ import {
   isStandaloneVariantGroup,
   isStyleOrCodeComponentVariant,
   isStyleVariant,
-  isVariantSettingEmpty,
   mkBaseVariant,
   mkComponentVariantGroup,
   mkGlobalVariantGroup,
@@ -67,22 +66,25 @@ import {
   flattenComponent,
 } from "@/wab/shared/cached-selectors";
 import { toClassName, toVarName } from "@/wab/shared/codegen/util";
-import { arrayRemove, arrayReversed } from "@/wab/shared/collections";
+import {
+  arrayRemove,
+  arrayRemoveAt,
+  arrayReversed,
+  arrayWithout,
+  tryArrayWithout,
+} from "@/wab/shared/collections";
 import {
   assert,
   check,
   ensure,
   ensureArray,
   ensureArrayOfInstances,
-  isSubList,
   leftZip,
   maybe,
   maybeInstance,
   mkShortId,
-  remove,
-  removeWhere,
   strictFind,
-  tryRemove,
+  tuple,
   uniqueName,
   withoutNils,
   xDifference,
@@ -109,7 +111,6 @@ import {
   cloneComponentServerQuery,
   clonePageMeta,
   cloneVariant,
-  extractParamsFromPagePath,
   findStateForParam,
   getComponentDisplayName,
   getComponentForVariantGroup,
@@ -119,6 +120,7 @@ import {
   isContextCodeComponent,
   isFrameComponent,
   isPageComponent,
+  isPlainComponent,
   mkComponent,
   mkPageMeta,
   mkVariantGroupArgExpr,
@@ -140,6 +142,7 @@ import {
 } from "@/wab/shared/core/project-deps";
 import { serverQueryId } from "@/wab/shared/core/query-ids";
 import {
+  allComponents,
   ensureScreenVariantsOrderOnMatrices,
   getAllSiteFrames,
   getComponentArena,
@@ -190,7 +193,6 @@ import {
   isTplComponent,
   isTplNamable,
   isTplSlot,
-  isTplTag,
   isTplTagOrComponent,
   isTplTextBlock,
   isTplVariantable,
@@ -211,7 +213,6 @@ import {
   parseExpr,
 } from "@/wab/shared/eval/expression-parser";
 import { Pt, Rect, findSpaceForRectSweepRight } from "@/wab/shared/geom";
-import { ensureComponentsObserved } from "@/wab/shared/mobx-util";
 import { instUtil } from "@/wab/shared/model/InstUtil";
 import {
   Animation,
@@ -233,7 +234,6 @@ import {
   Param,
   ProjectDependency,
   Site,
-  Split,
   State,
   StyleToken,
   Theme,
@@ -244,16 +244,17 @@ import {
   Variant,
   VariantGroup,
   VariantSetting,
-  VariantedRuleSet,
   VariantedValue,
   VariantsRef,
   ensureKnownEventHandler,
+  ensureKnownGlobalVariantGroup,
   ensureKnownVariantGroup,
   isKnownArenaFrame,
   isKnownComponent,
   isKnownEventHandler,
   isKnownImageAsset,
   isKnownMixin,
+  isKnownRenderExpr,
   isKnownStyleToken,
   isKnownTheme,
   isKnownTplNode,
@@ -277,6 +278,7 @@ import { FrameSize } from "@/wab/shared/responsiveness";
 import { setPageSizeType } from "@/wab/shared/sizingutils";
 import { removeSvgIds } from "@/wab/shared/svg-utils";
 import { makeComponentSwapper } from "@/wab/shared/swap-components";
+import { extractParamsFromPagePath } from "@/wab/shared/utils/url-utils";
 import {
   TplVisibility,
   getVariantSettingVisibility,
@@ -284,7 +286,7 @@ import {
   isInvisible,
   setTplVisibility,
 } from "@/wab/shared/visibility-utils";
-import L, { isString, memoize, pickBy, uniqBy } from "lodash";
+import L, { isString, omit, omitBy, partition, pickBy, uniqBy } from "lodash";
 import flatten from "lodash/flatten";
 import has from "lodash/has";
 import kebabCase from "lodash/kebabCase";
@@ -299,7 +301,7 @@ export const DEFAULT_MARGIN_FOR_NEW_FRAMES = 80;
 
 export function ensureBaseVariant(comp: Component) {
   if (comp.variants.length === 0) {
-    comp.variants.push(mkBaseVariant());
+    comp.variants = [...comp.variants, mkBaseVariant()];
   }
   return comp.variants[0];
 }
@@ -312,7 +314,7 @@ export interface VariantGroupMultiUpdateFailure {
 export const getTplComponentArg = (
   tpl: TplComponent,
   vs: VariantSetting,
-  argVar: Var
+  argVar: Var,
 ) => {
   return vs.args.find((arg) => arg.param.variable === argVar);
 };
@@ -321,7 +323,7 @@ export const setTplComponentArg = (
   tpl: TplComponent,
   vs: VariantSetting,
   argVar: Var,
-  expr: Expr
+  expr: Expr,
 ) => {
   let arg = getTplComponentArg(tpl, vs, argVar);
   if (arg) {
@@ -331,7 +333,7 @@ export const setTplComponentArg = (
       param: strictFind(tpl.component.params, (p) => p.variable === argVar),
       expr,
     });
-    vs.args.push(arg);
+    vs.args = [...vs.args, arg];
   }
 };
 
@@ -339,14 +341,14 @@ export const unsetTplComponentArg = (tpl: TplComponent, argVar: Var) => {
   tpl.vsettings.forEach((vs) => {
     const idx = vs.args.findIndex((arg) => arg.param.variable === argVar);
     if (idx !== -1) {
-      vs.args.splice(idx, 1);
+      vs.args = arrayRemoveAt(vs.args, idx);
     }
   });
 };
 
 export const unsetTplVariantableAttr = (tpl: TplNode, attr: string) => {
   tpl.vsettings.forEach((vs) => {
-    delete vs.attrs[attr];
+    vs.attrs = omit(vs.attrs, attr);
   });
 };
 
@@ -377,7 +379,7 @@ export function uniquePagePath(path: string, existingPaths: string[]): string {
 
   // Compare paths with the path parameter names masked out.
   const [normalizedPath, ...normalizedPaths] = [path, ...existingPaths].map(
-    (p) => normalize(p)
+    (p) => normalize(p),
   );
 
   if (normalizedPaths.includes(normalizedPath)) {
@@ -400,13 +402,13 @@ export function uniquePagePath(path: string, existingPaths: string[]): string {
         (substr, prefix, lastStaticSegment, lastDynamicSegments) => {
           const first = uniqueName(
             existingPaths.map((p) =>
-              p.replace(/(.*?)((\/\[[^\]]*\])*)$/, "$1")
+              p.replace(/(.*?)((\/\[[^\]]*\])*)$/, "$1"),
             ),
             prefix + "/" + lastStaticSegment,
-            { separator: "-", normalize }
+            { separator: "-", normalize },
           );
           return `${first}${lastDynamicSegments}`;
-        }
+        },
       );
     }
     return uniquePagePath(path, existingPaths);
@@ -422,7 +424,7 @@ export function uniquePagePath(path: string, existingPaths: string[]): string {
 export class TplMgr {
   constructor(private readonly args: { site: Site }) {}
 
-  private site() {
+  site() {
     return this.args.site;
   }
 
@@ -449,19 +451,17 @@ export class TplMgr {
               site: this.site(),
               component: c,
             }
-          : undefined
+          : undefined,
       );
     }
-
-    // yield* findVariantSettingsUnderComponents(this.site().components, ordered ? {site: this._site} : undefined);
   }
 
   findComponentContainingBaseVariant(variant: Variant) {
     return ensure(
       this.site().components.find(
-        (component) => getBaseVariant(component) === variant
+        (component) => getBaseVariant(component) === variant,
       ),
-      "Expected to find a component with the given base variant"
+      "Expected to find a component with the given base variant",
     );
   }
 
@@ -473,7 +473,7 @@ export class TplMgr {
   filterAllNodes(filter: (node: TplNode) => boolean): TplNode[];
   filterAllNodes(filter: (node: TplNode) => boolean): TplNode[] {
     return flatten(
-      this.site().components.map((c) => flattenComponent(c).filter(filter))
+      this.site().components.map((c) => flattenComponent(c).filter(filter)),
     );
   }
 
@@ -494,9 +494,9 @@ export class TplMgr {
       ([vs, tpl]) => {
         // All variants combo with the removed variants involved are removed.
         if (vs.variants.find((v) => toRemove.has(v))) {
-          remove(tpl.vsettings, vs);
+          tpl.vsettings = arrayWithout(tpl.vsettings, vs);
         }
-      }
+      },
     );
   }
 
@@ -513,7 +513,7 @@ export class TplMgr {
               tpl,
               vs,
               arg.param.variable,
-              mkVariantGroupArgExpr(without(r.variants, ...toRemove))
+              mkVariantGroupArgExpr(without(r.variants, ...toRemove)),
             );
           } else if (r.variants.length > 0 && toRemove.has(r.variants[0])) {
             this.delArg(tpl, vs, arg.param.variable);
@@ -525,7 +525,7 @@ export class TplMgr {
 
   tryRemoveVariant(
     variant: Variant | Variant[],
-    component: Component | undefined
+    component: Component | undefined,
   ) {
     assert(!isBaseVariant(variant), "Base variant can not be removed");
 
@@ -538,17 +538,17 @@ export class TplMgr {
     if (component && isStandaloneVariant(variants[0])) {
       const group = ensure(
         variants[0].parent,
-        "Standalone variant must have parent (group)"
+        "Standalone variant must have parent (group)",
       );
       const state = ensure(
         findStateForParam(component, group.param),
-        "Variant group param must correspond to state"
+        "Variant group param must correspond to state",
       );
       assert(
         findExprsInComponent(component).filter(({ expr }) =>
-          isStateUsedInExpr(state, expr)
+          isStateUsedInExpr(state, expr),
         ).length === 0,
-        "Cannot delete variant group: being used by dynamic expressions"
+        "Cannot delete variant group: being used by dynamic expressions",
       );
       return removeVariantGroup(this.site(), component, group);
     }
@@ -568,7 +568,7 @@ export class TplMgr {
     } else {
       assert(
         variants.every((v) => isGlobalVariant(v)),
-        "Expected all variants to be global variants"
+        "Expected all variants to be global variants",
       );
     }
 
@@ -579,80 +579,77 @@ export class TplMgr {
 
     // The last thing we do is detach the variants from their parent groups
     // This is to ensure that we are able to use the parent in the previous
-    // steps
-    for (const v of variants) {
-      if (isStyleOrCodeComponentVariant(v)) {
-        tryRemove(
-          ensure(component, "Expected component to be not null").variants,
-          v
-        );
-      } else {
-        const group = ensureKnownVariantGroup(v.parent);
-        remove(group.variants, v);
-      }
+    // steps. Each owner's variants are assigned once.
+    const removed = new Set<Variant>(variants);
+    const [styleVariants, groupedVariants] = partition(
+      variants,
+      isStyleOrCodeComponentVariant,
+    );
+    if (styleVariants.length > 0) {
+      const comp = ensure(component, "Expected component to be not null");
+      comp.variants = comp.variants.filter((v) => !removed.has(v));
+    }
+    for (const group of new Set(
+      groupedVariants.map((v) => ensureKnownVariantGroup(v.parent)),
+    )) {
+      group.variants = group.variants.filter((v) => !removed.has(v));
     }
 
     ensureScreenVariantsOrderOnMatrices(this.site());
   }
 
   tryRemoveVariantFromVariantedRuleSets(variants: Variant[]) {
-    const removeFromVariantedRs = (variantedRuleSets: VariantedRuleSet[]) => {
-      removeWhere(variantedRuleSets, (variantedRs) =>
-        variants.some((variant) => variantedRs.variants.includes(variant))
+    const removeFromVariantedRs = (mixin: Mixin) => {
+      mixin.variantedRs = mixin.variantedRs.filter(
+        (variantedRs) =>
+          !variants.some((variant) => variantedRs.variants.includes(variant)),
       );
     };
     this.site().mixins.forEach((mixin) => {
-      removeFromVariantedRs(mixin.variantedRs);
+      removeFromVariantedRs(mixin);
     });
     this.site().themes.forEach((theme) => {
-      removeFromVariantedRs(theme.defaultStyle.variantedRs);
+      removeFromVariantedRs(theme.defaultStyle);
       theme.styles.forEach((style) => {
-        removeFromVariantedRs(style.style.variantedRs);
+        removeFromVariantedRs(style.style);
       });
     });
   }
 
   tryRemoveVariantFromVariantedValue(variants: Variant[]) {
-    const removeFromVariantedValue = (variantedValues: VariantedValue[]) => {
-      removeWhere(variantedValues, (variantedValue) =>
-        variants.some((variant) => variantedValue.variants.includes(variant))
+    const removeFromVariantedValue = (owner: {
+      variantedValues: ReadonlyArray<VariantedValue>;
+    }) => {
+      owner.variantedValues = owner.variantedValues.filter(
+        (variantedValue) =>
+          !variants.some((variant) =>
+            variantedValue.variants.includes(variant),
+          ),
       );
     };
     this.site().styleTokens.forEach((styleToken) => {
-      removeFromVariantedValue(styleToken.variantedValues);
+      removeFromVariantedValue(styleToken);
     });
     this.site().styleTokenOverrides.forEach((styleTokenOverride) => {
-      removeFromVariantedValue(styleTokenOverride.variantedValues);
-    });
-  }
-
-  findReferencingTplsWithNonEmptySetting(tpl: TplNode, variants: Variant[]) {
-    return flattenTpls(tpl).filter((_tpl) => {
-      if (!isTplVariantable(_tpl)) {
-        return false;
-      }
-
-      return _tpl.vsettings.some(
-        (vs) => isSubList(vs.variants, variants) && !isVariantSettingEmpty(vs)
-      );
+      removeFromVariantedValue(styleTokenOverride);
     });
   }
 
   createVariant(
     component: Component,
     group: ComponentVariantGroup,
-    name?: string
+    name?: string,
   ) {
     assert(
       component.variantGroups.includes(group),
-      "Given variant group should exist in component"
+      "Given variant group should exist in component",
     );
     name = this.getUniqueVariantName(group, name);
     const variant = mkVariant({
       name,
       parent: group,
     });
-    group.variants.push(variant);
+    group.variants = [...group.variants, variant];
 
     if (isPageComponent(component)) {
       const arena = getPageArena(this.site(), component);
@@ -665,7 +662,7 @@ export class TplMgr {
         ensureManagedFrameForVariantInComponentArena(
           this.site(),
           arena,
-          variant
+          variant,
         );
       }
     }
@@ -674,7 +671,7 @@ export class TplMgr {
 
   createStyleVariant(
     component: Component,
-    selectors: string[] = []
+    selectors: string[] = [],
   ): [Variant, boolean] {
     // Guard against duplicate variants
     const sortedKey = JSON.stringify([...selectors].sort());
@@ -682,7 +679,7 @@ export class TplMgr {
       (v) =>
         isStyleVariant(v) &&
         !isPrivateStyleVariant(v) &&
-        JSON.stringify([...(v.selectors ?? [])].sort()) === sortedKey
+        JSON.stringify([...(v.selectors ?? [])].sort()) === sortedKey,
     );
     if (existingVariant) {
       return [existingVariant, false];
@@ -691,7 +688,7 @@ export class TplMgr {
       name: "",
       selectors,
     });
-    component.variants.push(variant);
+    component.variants = [...component.variants, variant];
 
     const arena = getComponentArena(this.site(), component);
     if (arena) {
@@ -703,14 +700,14 @@ export class TplMgr {
   createCodeComponentVariant(
     component: Component,
     codeComponentName: string,
-    codeComponentVariantKeys: string[] = []
+    codeComponentVariantKeys: string[] = [],
   ) {
     const variant = mkVariant({
       name: "",
       codeComponentName,
       codeComponentVariantKeys,
     });
-    component.variants.push(variant);
+    component.variants = [...component.variants, variant];
 
     const arena = getComponentArena(this.site(), component);
     if (arena) {
@@ -722,14 +719,14 @@ export class TplMgr {
   createPrivateStyleVariant(
     component: Component,
     tpl: TplNode,
-    selectors: string[] = []
+    selectors: string[] = [],
   ) {
     const variant = mkVariant({
       name: "",
       forTpl: tpl,
       selectors,
     });
-    component.variants.push(variant);
+    component.variants = [...component.variants, variant];
     return variant;
   }
 
@@ -763,7 +760,7 @@ export class TplMgr {
       this.getUniqueParamName(component, genOnChangeParamName(paramName)),
       {
         privateState: true,
-      }
+      },
     );
 
     const group = mkComponentVariantGroup({
@@ -782,9 +779,9 @@ export class TplMgr {
       variantGroup: group,
     });
 
-    component.states.push(linkedState);
-    component.variantGroups.push(group);
-    component.params.push(param, onChangeParam);
+    component.states = [...component.states, linkedState];
+    component.variantGroups = [...component.variantGroups, group];
+    component.params = [...component.params, param, onChangeParam];
 
     const arena = getComponentArena(this.site(), component);
     if (arena) {
@@ -796,7 +793,7 @@ export class TplMgr {
 
   createGlobalVariantGroup(name?: string) {
     name = this.getUniqueGlobalVariantGroupName(
-      name ?? `Unnamed Global ${VARIANT_GROUP_CAP}`
+      name ?? `Unnamed Global ${VARIANT_GROUP_CAP}`,
     );
     const param = mkParam({
       name,
@@ -808,7 +805,8 @@ export class TplMgr {
       variants: [],
       type: VariantGroupType.GlobalUserDefined,
     });
-    this.site().globalVariantGroups.push(group);
+    const site = this.site();
+    site.globalVariantGroups = [...site.globalVariantGroups, group];
     return group;
   }
 
@@ -823,7 +821,7 @@ export class TplMgr {
     }
     const screenVariantGroup = ensure(
       site.activeScreenVariantGroup,
-      "Expected site to have an active screen variant group"
+      "Expected site to have an active screen variant group",
     );
 
     const variant = this.createGlobalVariant(screenVariantGroup, name, {
@@ -841,10 +839,10 @@ export class TplMgr {
     assert(
       !site.activeScreenVariantGroup &&
         !site.globalVariantGroups.some((g) => isScreenVariantGroup(g)),
-      "Expected site to not have screen variant groups"
+      "Expected site to not have screen variant groups",
     );
     const group = mkScreenVariantGroup();
-    site.globalVariantGroups.push(group);
+    site.globalVariantGroups = [...site.globalVariantGroups, group];
     site.activeScreenVariantGroup = group;
     return group;
   }
@@ -856,11 +854,11 @@ export class TplMgr {
       // We add media query already when creating a variant so that screen variants
       // have a mediaQuery as soon as created
       mediaQuery: string | undefined | null;
-    }
+    },
   ) {
     assert(
       isGlobalVariantGroup(group),
-      "Expected given variant group to be global"
+      "Expected given variant group to be global",
     );
     name = this.getUniqueVariantName(group, name);
     const variant = mkVariant({
@@ -868,13 +866,13 @@ export class TplMgr {
       parent: group,
       ...(extra || {}),
     });
-    group.variants.push(variant);
+    group.variants = [...group.variants, variant];
 
     for (const arena of this.site().componentArenas) {
       maybeEnsureManagedFrameForGlobalVariantInComponentArena(
         this.site(),
         arena,
-        variant
+        variant,
       );
     }
 
@@ -887,7 +885,11 @@ export class TplMgr {
     // reference
     this.tryRemoveVariant([...group.variants], undefined);
     removeVariantGroupFromArenas(this.site(), group, undefined);
-    remove(this.site().globalVariantGroups, group);
+    const site = this.site();
+    site.globalVariantGroups = arrayWithout(
+      site.globalVariantGroups,
+      ensureKnownGlobalVariantGroup(group),
+    );
     removeVariantGroupFromSplits(this.site(), group);
   }
 
@@ -897,7 +899,7 @@ export class TplMgr {
 
   updateVariantGroupMulti(
     group: VariantGroup,
-    multi: boolean
+    multi: boolean,
   ): VariantGroupMultiUpdateFailure | undefined {
     if (group.multi === multi) {
       return;
@@ -943,16 +945,20 @@ export class TplMgr {
     // If no longer multi, then our frame pins only at most one variant in this group
     if (!multi) {
       const allVariants = allVariantsInGroup(group);
+      const withoutExtraPins = (pinMap: Readonly<Record<string, boolean>>) => {
+        const pinned = allVariants.filter((v) => has(pinMap, v.uuid));
+        return pinned.length > 1
+          ? omit(
+              pinMap,
+              pinned.slice(1).map((v) => v.uuid),
+            )
+          : pinMap;
+      };
       for (const frame of getAllSiteFrames(this.site())) {
-        for (const pinMap of [
-          frame.pinnedVariants,
+        frame.pinnedVariants = withoutExtraPins(frame.pinnedVariants);
+        frame.pinnedGlobalVariants = withoutExtraPins(
           frame.pinnedGlobalVariants,
-        ]) {
-          const pinned = allVariants.filter((v) => has(pinMap, v.uuid));
-          if (pinned.length > 1) {
-            pinned.slice(1).forEach((v) => delete pinMap[v.uuid]);
-          }
-        }
+        );
       }
     }
 
@@ -962,7 +968,7 @@ export class TplMgr {
   updateScreenVariantQuery(variant: Variant, query: string) {
     assert(
       isScreenVariant(variant),
-      "Expected given variant to be a screen variant"
+      "Expected given variant to be a screen variant",
     );
     variant.mediaQuery = query;
     for (const arena of getSiteArenas(this.site())) {
@@ -985,18 +991,18 @@ export class TplMgr {
         for (const vs of [...tpl.vsettings]) {
           if (
             vs.variants.some(
-              (v) => isScreenVariant(v) && v.parent !== activeGroup
+              (v) => isScreenVariant(v) && v.parent !== activeGroup,
             )
           ) {
             if (!activeGroup) {
-              arrayRemove(tpl.vsettings, vs);
+              tpl.vsettings = arrayWithout(tpl.vsettings, vs);
             } else {
               const mapped = vs.variants.map((v) => {
                 if (isScreenVariant(v) && v.parent !== activeGroup) {
                   // A foreign screen variant! Map to the active
                   // screen variant group
                   return activeGroup.variants.find((activeV) =>
-                    areEquivalentScreenVariants(v, activeV)
+                    areEquivalentScreenVariants(v, activeV),
                   );
                 } else {
                   // Keep all other variants
@@ -1006,7 +1012,7 @@ export class TplMgr {
               if (mapped.some((v) => !v)) {
                 // Some foreign screen variants failed to be mapped;
                 // can't do anything about that, so just remove them.
-                arrayRemove(tpl.vsettings, vs);
+                tpl.vsettings = arrayWithout(tpl.vsettings, vs);
               } else {
                 vs.variants = mapped as Variant[];
               }
@@ -1054,7 +1060,8 @@ export class TplMgr {
   }
 
   tryDelArg(tpl: TplComponent, vs: VariantSetting, argVar: Var) {
-    return removeWhere(vs.args, (arg) => arg.param.variable === argVar);
+    vs.args = vs.args.filter((arg) => arg.param.variable !== argVar);
+    return vs.args;
   }
 
   setArg(tpl: TplComponent, vs: VariantSetting, argVar: Var, expr: Expr) {
@@ -1081,13 +1088,13 @@ export class TplMgr {
       width?: number;
       height?: number;
       insertPt: Pt;
-    }
+    },
   ) {
     const { top, left } = this.computeFrameInsertLoc(
       arena,
       width,
       height,
-      insertPt
+      insertPt,
     );
 
     const arenaFrame = mkArenaFrame({
@@ -1103,13 +1110,14 @@ export class TplMgr {
 
     // Pin matching screen variants.
     const [gvs] = getPartitionedScreenVariants(this.site(), width);
-    gvs.forEach((gv) => {
-      arenaFrame.pinnedGlobalVariants[gv.uuid] = true;
-    });
+    arenaFrame.pinnedGlobalVariants = {
+      ...arenaFrame.pinnedGlobalVariants,
+      ...Object.fromEntries(gvs.map((gv) => [gv.uuid, true])),
+    };
 
     ensureVariantSetting(arenaFrame.container, [this.site().globalVariant]);
 
-    arena.children.push(arenaFrame);
+    arena.children = [...arena.children, arenaFrame];
     normalizeMixedArenaFrames(arena);
     return arenaFrame;
   }
@@ -1118,17 +1126,17 @@ export class TplMgr {
     arena: Arena,
     width: number,
     height: number,
-    insertPt: Pt
+    insertPt: Pt,
   ) {
     const frames = ensureArrayOfInstances(arena.children, ArenaFrame).filter(
-      (f) => f.top != null && f.left != null
+      (f) => f.top != null && f.left != null,
     );
     const padding = DEFAULT_MARGIN_FOR_NEW_FRAMES;
     const { top, left } = findSpaceForRectSweepRight(
       width + padding,
       height,
       insertPt,
-      frames as Rect[]
+      frames as Rect[],
     );
     return { top, left: left + padding };
   }
@@ -1142,21 +1150,21 @@ export class TplMgr {
       arena,
       frame.width,
       getFrameHeight(frame),
-      insertPt
+      insertPt,
     );
     frame.top = top;
     frame.left = left;
-    arena.children.push(frame);
+    arena.children = [...arena.children, frame];
     normalizeMixedArenaFrames(arena);
   }
 
   removeExistingArenaFrame(
     arena: Arena | ComponentArena,
     frame: ArenaFrame,
-    opts: { pruneUnnamedComponent: boolean } = { pruneUnnamedComponent: true }
+    opts: { pruneUnnamedComponent: boolean } = { pruneUnnamedComponent: true },
   ) {
     if (isMixedArena(arena)) {
-      arrayRemove(arena.children, frame);
+      arena.children = arrayWithout(arena.children, frame);
       normalizeMixedArenaFrames(arena);
       const component = frame.container.component;
       if (opts.pruneUnnamedComponent && isFrameComponent(component)) {
@@ -1172,7 +1180,7 @@ export class TplMgr {
       } else {
         assert(
           isCustomComponentFrame(arena, frame),
-          "Should remove variant frames by removing variants"
+          "Should remove variant frames by removing variants",
         );
         removeCustomComponentFrame(arena, frame);
       }
@@ -1180,10 +1188,10 @@ export class TplMgr {
   }
 
   addArena(name?: string) {
-    const arenas = this.site().arenas;
+    const site = this.site();
     const arenaName = this.getUniqueArenaName(name);
     const arena = mkMixedArena(arenaName);
-    arenas.push(arena);
+    site.arenas = [...site.arenas, arena];
     return arena;
   }
 
@@ -1193,7 +1201,8 @@ export class TplMgr {
   }
 
   removeArena(arena: Arena) {
-    remove(this.site().arenas, arena);
+    const site = this.site();
+    site.arenas = arrayWithout(site.arenas, arena);
 
     // Also remove all the unnamed components in the arena
     for (const frame of getArenaFrames(arena)) {
@@ -1214,7 +1223,7 @@ export class TplMgr {
     comps: Component[],
     opts?: {
       convertPageHrefToCode?: boolean;
-    }
+    },
   ) {
     for (const comp of comps) {
       if (isPageComponent(comp)) {
@@ -1224,7 +1233,8 @@ export class TplMgr {
         removeReferencingTypeInstances(this.site(), comp);
 
         if (comp.superComp) {
-          remove(comp.superComp.subComps, comp);
+          const superComp = comp.superComp;
+          superComp.subComps = arrayWithout(superComp.subComps, comp);
           comp.superComp = null;
         }
 
@@ -1235,29 +1245,33 @@ export class TplMgr {
       // Assert that no component outside of `comps` references this component
       const referencingComps = getReferencingComponents(
         this.site(),
-        comp
+        comp,
       ).filter((c) => !comps.includes(c));
       assert(
         referencingComps.length === 0,
         `Cannot delete ${getComponentDisplayName(
-          comp
+          comp,
         )} because it is still referenced by ${referencingComps.map((c) =>
-          getComponentDisplayName(c)
-        )}`
+          getComponentDisplayName(c),
+        )}`,
       );
-      remove(this.site().components, comp);
+      const site = this.site();
+      site.components = arrayWithout(site.components, comp);
+      if (isContextCodeComponent(comp)) {
+        this.detachGlobalContext(comp);
+      }
 
       // Remove dedicated arenas and focused frame arenas
-      removeWhere(this.site().componentArenas, (it) => it.component === comp);
-      removeWhere(this.site().pageArenas, (it) => it.component === comp);
+      site.componentArenas = site.componentArenas.filter(
+        (it) => it.component !== comp,
+      );
+      site.pageArenas = site.pageArenas.filter((it) => it.component !== comp);
 
       // Remove frames in mixed arenas for this component
-      for (const arena of this.site().arenas) {
-        for (const frame of [...getArenaFrames(arena)]) {
-          if (frame.container.component === comp) {
-            arrayRemove(arena.children, frame);
-          }
-        }
+      for (const arena of site.arenas) {
+        arena.children = arena.children.filter(
+          (frame) => frame.container.component !== comp,
+        );
       }
 
       this.removeComponentFromDefaultComponents(comp);
@@ -1278,39 +1292,40 @@ export class TplMgr {
     const removedQueriesSet = new Set(removedQueriesArray);
     const queryInvalidationExprs = findQueryInvalidationExprWithRefs(
       this.site(),
-      removedQueriesArray
+      removedQueriesArray,
     );
     queryInvalidationExprs.forEach(({ expr }) => {
       expr.invalidationQueries = expr.invalidationQueries.filter(
-        (key) => isString(key) || !removedQueriesSet.has(key.ref.uuid)
+        (key) => isString(key) || !removedQueriesSet.has(key.ref.uuid),
       );
     });
   }
 
   removeComponentFromDefaultComponents(component: Component) {
-    Object.entries(this.site().defaultComponents).forEach(([kind, c]) => {
-      if (c == component) {
-        delete this.site().defaultComponents[kind];
-      }
-    });
+    const site = this.site();
+    site.defaultComponents = omitBy(
+      site.defaultComponents,
+      (c) => c == component,
+    );
   }
 
   addComponentToDefaultComponents(component: Component, kind: string) {
-    if (!this.site().defaultComponents[kind]) {
-      this.site().defaultComponents[kind] = component;
+    const site = this.site();
+    if (!site.defaultComponents[kind]) {
+      site.defaultComponents = { ...site.defaultComponents, [kind]: component };
     }
   }
 
   removeComponentQuery(component: Component, query: ComponentDataQuery) {
-    arrayRemove(component.dataQueries, query);
+    component.dataQueries = arrayWithout(component.dataQueries, query);
     this.clearReferencesToRemovedQueries(query.uuid);
   }
 
   removeComponentServerQuery(
     component: Component,
-    query: ComponentServerQuery
+    query: ComponentServerQuery,
   ) {
-    arrayRemove(component.serverQueries, query);
+    component.serverQueries = arrayWithout(component.serverQueries, query);
     this.fixReferencesToRemovedServerQueries([query]);
   }
 
@@ -1320,10 +1335,10 @@ export class TplMgr {
    * query with the same invalidation id (if any).
    */
   private fixReferencesToRemovedServerQueries(
-    removedQueries: ComponentServerQuery[]
+    removedQueries: ComponentServerQuery[],
   ) {
     const survivingQueries = this.site().components.flatMap(
-      (c) => c.serverQueries
+      (c) => c.serverQueries,
     );
     const removedUuidToReplacement = new Map(
       withoutNils(
@@ -1335,13 +1350,13 @@ export class TplMgr {
           return replacement
             ? ([removed.uuid, replacement] as const)
             : undefined;
-        })
-      )
+        }),
+      ),
     );
     const removedUuids = new Set(removedQueries.map((q) => q.uuid));
     const queryInvalidationExprs = findQueryInvalidationExprWithRefs(
       this.site(),
-      [...removedUuids]
+      [...removedUuids],
     );
     queryInvalidationExprs.forEach(({ expr }) => {
       expr.invalidationQueries = withoutNils(
@@ -1355,7 +1370,7 @@ export class TplMgr {
           }
           key.ref = replacement;
           return key;
-        })
+        }),
       );
     });
   }
@@ -1382,7 +1397,7 @@ export class TplMgr {
         .arenas.filter((a) => !arenaToExclude || a !== arenaToExclude)
         .map((a) => a.name),
       name || ARENA_CAP,
-      { separator: " " }
+      { separator: " " },
     );
   }
 
@@ -1412,20 +1427,20 @@ export class TplMgr {
           rootTpl?: never;
           styles?: CSSProperties;
         }
-    ) = { type: ComponentType.Frame }
+    ) = { type: ComponentType.Frame },
   ) {
     let useFreeRoot = false;
     // Scratch artboards default to free root container for now.
     if (name === "") {
       assert(
         type === ComponentType.Frame,
-        "Expect unnamed component to be an artboard"
+        "Expect unnamed component to be an artboard",
       );
       useFreeRoot = true;
     } else {
       assert(
         type !== ComponentType.Frame,
-        "Expected named component to not be an artboard"
+        "Expected named component to not be an artboard",
       );
     }
 
@@ -1444,7 +1459,7 @@ export class TplMgr {
       ensureVariantSetting(root, [baseVariant]);
     } else {
       const baseVs = mkVariantSetting({ variants: [baseVariant] });
-      root.vsettings.push(baseVs);
+      root.vsettings = [...root.vsettings, baseVs];
       const rsh = RSH(baseVs.rs, root);
 
       if (useFreeRoot) {
@@ -1458,7 +1473,10 @@ export class TplMgr {
       if (type === ComponentType.Page) {
         rsh.set("width", "stretch");
         rsh.set("height", "stretch");
-        if (DEVFLAGS.pageLayout) {
+        // Content layout relies on the sizing defaults simplifiedLayout adds
+        // to inserted elements; without them, text inserted into a page
+        // collapses to zero width.
+        if (DEVFLAGS.simplifiedLayout) {
           rsh.merge(CONTENT_LAYOUT_INITIALS);
         }
       } else if (type === ComponentType.Frame) {
@@ -1478,7 +1496,7 @@ export class TplMgr {
       component.pageMeta = mkPageMeta({
         ...pageMeta,
         path: this.getUniquePagePath(
-          this.nameToPath(pageMeta?.path ?? validName)
+          this.nameToPath(pageMeta?.path ?? validName),
         ),
         roleId: this.site().defaultPageRoleId,
       });
@@ -1497,12 +1515,13 @@ export class TplMgr {
   attachComponent(
     component: Component,
     originalComponent?: Component,
-    originalComponentSite?: Site
+    originalComponentSite?: Site,
   ) {
     // First track all the sub components
     for (const comp of [component, ...getSubComponents(component)]) {
-      if (!this.site().components.includes(comp)) {
-        this.site().components.push(comp);
+      const site = this.site();
+      if (!site.components.includes(comp)) {
+        site.components = [...site.components, comp];
       }
 
       trackComponentSite(comp, this.site());
@@ -1514,18 +1533,84 @@ export class TplMgr {
       [component, ...getSubComponents(component)],
       originalComponent
         ? [originalComponent, ...getSubComponents(originalComponent)]
-        : []
+        : [],
     )) {
       this.ensureDedicatedArena(comp, originalComp, originalComponentSite);
     }
 
-    ensureComponentsObserved([component]);
-
     if (isContextCodeComponent(component)) {
-      this.site().globalContexts.push(
-        mkTplComponent(component, this.site().globalVariant)
-      );
+      this.attachGlobalContext(component);
     }
+  }
+
+  /**
+   * Points the site's global context entry for `component`'s name at
+   * `component`, adding an entry if there is none. The site keeps one entry per
+   * context name, so if the entry currently points at a dependency's context
+   * with the same name (copied in when the dependency was imported), the site's
+   * own context takes it over and keeps the args whose params still exist.
+   */
+  private attachGlobalContext(component: Component) {
+    const site = this.site();
+    const existing = site.globalContexts.find(
+      (tpl) => tpl.component.name === component.name,
+    );
+    if (!existing) {
+      site.globalContexts = [
+        ...site.globalContexts,
+        mkTplComponent(component, site.globalVariant),
+      ];
+    } else if (existing.component !== component) {
+      this.retargetGlobalContextTpl(existing, component);
+    }
+  }
+
+  /**
+   * Removes the site's global context entry for `component`. If a dependency
+   * still provides a context with the same name, the entry is pointed back at
+   * the dependency's context instead, keeping the args whose params still
+   * exist.
+   */
+  private detachGlobalContext(component: Component) {
+    const site = this.site();
+    const tpl = site.globalContexts.find((it) => it.component === component);
+    if (!tpl) {
+      return;
+    }
+    const depComponent = allComponents(site, { includeDeps: "all" }).find(
+      (c) =>
+        c !== component &&
+        c.name === component.name &&
+        isContextCodeComponent(c),
+    );
+    if (depComponent) {
+      this.retargetGlobalContextTpl(tpl, depComponent);
+    } else {
+      site.globalContexts = arrayWithout(site.globalContexts, tpl);
+    }
+  }
+
+  /**
+   * Points a global context tpl at `toComp`, matching args to params by name
+   * and dropping args that have no matching param.
+   */
+  private retargetGlobalContextTpl(tpl: TplComponent, toComp: Component) {
+    for (const vs of tpl.vsettings) {
+      for (const arg of [...vs.args]) {
+        const toParam = toComp.params.find(
+          (p) => p.variable.name === arg.param.variable.name,
+        );
+        if (toParam) {
+          arg.param = toParam;
+        } else {
+          if (isKnownRenderExpr(arg.expr)) {
+            $$$(arg.expr.tpl).remove({ deep: true });
+          }
+          vs.args = arrayWithout(vs.args, arg);
+        }
+      }
+    }
+    tpl.component = toComp;
   }
 
   cloneComponent(component: Component, name: string, attachComponent: boolean) {
@@ -1536,7 +1621,7 @@ export class TplMgr {
       // Page meta
       const meta = ensure(
         component.pageMeta,
-        "Expected page component to have page meta"
+        "Expected page component to have page meta",
       );
       const newPageMeta = clonePageMeta(meta);
       newPageMeta.path = this.getUniquePagePath(meta.path);
@@ -1557,30 +1642,30 @@ export class TplMgr {
     plumeSite: Site | undefined,
     componentId: string,
     name: string,
-    attachComponent: boolean
+    attachComponent: boolean,
   ) {
     assert(plumeSite, `Could not load Plume site`);
     const plumeComponent = plumeSite.components.find(
-      (c) => c.uuid === componentId
+      (c) => c.uuid === componentId,
     );
     assert(
       plumeComponent,
-      `Could not find Plume component named ${componentId}`
+      `Could not find Plume component named ${componentId}`,
     );
 
     const { component } = cloneComponent(
       plumeComponent,
-      this.getUniqueComponentName(name)
+      this.getUniqueComponentName(name),
     );
     fixImageAssetRefsForClonedTemplateComponent(
       this,
       component,
-      plumeSite.imageAssets
+      plumeSite.imageAssets,
     );
 
     assert(
       plumeComponent.plumeInfo,
-      "Missing plume info in a plume component!!!"
+      "Missing plume info in a plume component!!!",
     );
 
     if (attachComponent) {
@@ -1589,9 +1674,13 @@ export class TplMgr {
       const plugin = getPlumeEditorPlugin(component);
       plugin?.onComponentCreated?.(this.site(), plumeSite, component);
 
-      if (!this.site().defaultComponents[plumeComponent.plumeInfo.type]) {
-        this.site().defaultComponents[plumeComponent.plumeInfo.type] =
-          component;
+      const site = this.site();
+      const kind = plumeComponent.plumeInfo.type;
+      if (!site.defaultComponents[kind]) {
+        site.defaultComponents = {
+          ...site.defaultComponents,
+          [kind]: component,
+        };
       }
     }
     return component;
@@ -1620,7 +1709,7 @@ export class TplMgr {
   private ensureDedicatedArena(
     component: Component,
     originalComponent?: Component,
-    originalComponentSite?: Site
+    originalComponentSite?: Site,
   ) {
     if (isFrameComponent(component) || isCodeComponent(component)) {
       // No dedicated arenas for scratch and code components
@@ -1632,7 +1721,7 @@ export class TplMgr {
         component,
         site: this.site(),
       });
-      this.site().pageArenas.push(pageArena);
+      this.site().pageArenas = [...this.site().pageArenas, pageArena];
       return pageArena;
     } else {
       const componentArenaSite = originalComponentSite || this.site();
@@ -1640,11 +1729,11 @@ export class TplMgr {
         ? [
             componentArenaSite,
             ...walkDependencyTree(componentArenaSite, "all").map(
-              (dep) => dep.site
+              (dep) => dep.site,
             ),
           ]
             .flatMap((site) =>
-              site.componentArenas.map((arena) => ({ site, arena }))
+              site.componentArenas.map((arena) => ({ site, arena })),
             )
             .find(({ arena }) => arena.component === originalComponent)
         : undefined;
@@ -1655,11 +1744,14 @@ export class TplMgr {
           originalComponent && originalComponentArenaAndSite
             ? deriveDefaultFrameSize(
                 originalComponentArenaAndSite.site,
-                originalComponent
+                originalComponent,
               )
             : undefined,
       });
-      this.site().componentArenas.push(componentArena);
+      this.site().componentArenas = [
+        ...this.site().componentArenas,
+        componentArena,
+      ];
       return componentArena;
     }
   }
@@ -1700,7 +1792,10 @@ export class TplMgr {
 
     const existingComponentArena = getComponentArena(this.site(), component);
     if (existingComponentArena) {
-      arrayRemove(this.site().componentArenas, existingComponentArena);
+      this.site().componentArenas = arrayWithout(
+        this.site().componentArenas,
+        existingComponentArena,
+      );
     }
 
     /// Turn all public states into private states
@@ -1720,7 +1815,10 @@ export class TplMgr {
 
     const existingPageArena = getPageArena(this.site(), component);
     if (existingPageArena) {
-      arrayRemove(this.site().pageArenas, existingPageArena);
+      this.site().pageArenas = arrayWithout(
+        this.site().pageArenas,
+        existingPageArena,
+      );
     }
 
     this.ensureDedicatedArena(component);
@@ -1755,7 +1853,7 @@ export class TplMgr {
     assert(path.startsWith("/"), "Expected page path to start with /");
     const pageMeta = ensure(
       page.pageMeta,
-      "Page component is expected to have pageMeta"
+      "Page component is expected to have pageMeta",
     );
 
     function cleanup() {
@@ -1791,35 +1889,12 @@ export class TplMgr {
 
     pageMeta.path = this.getUniquePagePath(path, page);
 
-    const newParams = extractParamsFromPagePath(pageMeta.path);
-    for (const existingParam of Object.keys(pageMeta.params)) {
-      if (!newParams.includes(existingParam)) {
-        delete pageMeta.params[existingParam];
-      }
-    }
-    for (const param of newParams) {
-      if (!pageMeta.params[param]) {
-        pageMeta.params[param] = "value";
-      }
-    }
-  }
-
-  clonePage(page: Component, name: string, attachComponent: boolean) {
-    const res = cloneComponent(page, name);
-    const meta = ensure(
-      page.pageMeta,
-      "Expected page component to have page meta"
+    pageMeta.params = Object.fromEntries(
+      extractParamsFromPagePath(pageMeta.path).map((param) => [
+        param,
+        pageMeta.params[param] || "value",
+      ]),
     );
-
-    const newPageMeta = clonePageMeta(meta);
-    newPageMeta.path = this.getUniquePagePath(meta.path);
-    res.component.pageMeta = newPageMeta;
-
-    if (attachComponent) {
-      this.attachComponent(res.component);
-    }
-
-    return res;
   }
 
   /**
@@ -1829,13 +1904,18 @@ export class TplMgr {
    * - "ComponentName" -> "/component-name"
    * - "Parent Title/New Page" -> "/parent-title/new-page"
    * - "/valid-uri" -> "/valid-uri"
+   * - "/plans/[id]" -> "/plans/[id]"
    */
   nameToPath(name: string): string {
-    return "/" + trim(name, "/").split("/").map(kebabCase).join("/");
-  }
-
-  tryGetPageByPath(path: string): PageComponent | undefined {
-    return this.getPageComponents().find((p) => p.pageMeta.path === path);
+    return (
+      "/" +
+      trim(name, "/")
+        .split("/")
+        .map((segment) =>
+          /^\[.*\]$/.test(segment) ? segment : kebabCase(segment),
+        )
+        .join("/")
+    );
   }
 
   getPageComponents() {
@@ -1856,6 +1936,7 @@ export class TplMgr {
     return uniquePagePath(path, existingPaths);
   }
 
+  /** Used by playwright tests via `vc.tplMgr().debugDumpTree(...)`. */
   debugDumpTree(tpl: TplNode) {
     const indent = (amt: number, text: string) => `${repeat("  ", amt)}${text}`;
     const lines: string[] = [];
@@ -1889,7 +1970,7 @@ export class TplMgr {
         forTheme: false,
         variantedRs: [],
       });
-    this.site().mixins.push(mixin);
+    this.site().mixins = [...this.site().mixins, mixin];
     if (name) {
       this.renameMixin(mixin, name);
     }
@@ -1898,11 +1979,11 @@ export class TplMgr {
 
   removeMixin(mixin: Mixin) {
     this.site().components.forEach((c) =>
-      [...findVariantSettingsUnderTpl(c.tplTree)].forEach(([vs]) =>
-        tryRemove(vs.rs.mixins, mixin)
-      )
+      [...findVariantSettingsUnderTpl(c.tplTree)].forEach(([vs]) => {
+        vs.rs.mixins = tryArrayWithout(vs.rs.mixins, mixin);
+      }),
     );
-    arrayRemove(this.site().mixins, mixin);
+    this.site().mixins = arrayWithout(this.site().mixins, mixin);
   }
 
   renameMixin(mixin: Mixin, name: string) {
@@ -1916,7 +1997,7 @@ export class TplMgr {
   duplicateMixin(mixin: Mixin) {
     const newMixin = cloneMixin(mixin);
     newMixin.name = this.getUniqueMixinName(mixin.name);
-    this.site().mixins.push(newMixin);
+    this.site().mixins = [...this.site().mixins, newMixin];
     return newMixin;
   }
 
@@ -1930,11 +2011,11 @@ export class TplMgr {
 
   duplicateComponentServerQuery(
     component: Component,
-    query: ComponentServerQuery
+    query: ComponentServerQuery,
   ) {
     const cloned = cloneComponentServerQuery(query);
     cloned.name = this.getUniqueServerQueryName(component, query.name);
-    component.serverQueries.push(cloned);
+    component.serverQueries = [...component.serverQueries, cloned];
     return cloned;
   }
 
@@ -1946,10 +2027,10 @@ export class TplMgr {
   copyServerQueryWithDependencies(
     targetComponent: Component,
     sourceComponent: Component,
-    query: ComponentServerQuery
+    query: ComponentServerQuery,
   ) {
     const targetQueryNames = new Set(
-      targetComponent.serverQueries.map((q) => toVarName(q.name))
+      targetComponent.serverQueries.map((q) => toVarName(q.name)),
     );
 
     const toCopy: ComponentServerQuery[] = [];
@@ -1969,7 +2050,7 @@ export class TplMgr {
 
         for (const refName of info.usedDollarVarKeys.$q) {
           const depQuery = sourceComponent.serverQueries.find(
-            (sq) => toVarName(sq.name) === refName
+            (sq) => toVarName(sq.name) === refName,
           );
           if (depQuery && !targetQueryNames.has(toVarName(depQuery.name))) {
             collectDependencies(depQuery);
@@ -2015,25 +2096,14 @@ export class TplMgr {
         keyframes: [],
       });
 
-    this.site().animationSequences.push(newSequence);
+    this.site().animationSequences = [
+      ...this.site().animationSequences,
+      newSequence,
+    ];
     if (name) {
       this.renameAnimationSequence(newSequence, name);
     }
     return newSequence;
-  }
-
-  removeAnimationSequence(sequence: AnimationSequence) {
-    // Remove sequence from all RuleSets that reference it
-    this.site().components.forEach((c) =>
-      [...findVariantSettingsUnderTpl(c.tplTree)].forEach(([vs]) => {
-        if (vs.rs.animations) {
-          vs.rs.animations = vs.rs.animations.filter(
-            (anim) => anim.sequence !== sequence
-          );
-        }
-      })
-    );
-    arrayRemove(this.site().animationSequences, sequence);
   }
 
   renameAnimationSequence(sequence: AnimationSequence, name: string) {
@@ -2047,13 +2117,16 @@ export class TplMgr {
   duplicateAnimationSequence(sequence: AnimationSequence) {
     const newSequence = cloneAnimationSequence(sequence);
     newSequence.name = this.getUniqueAnimationSequenceName(sequence.name);
-    this.site().animationSequences.push(newSequence);
+    this.site().animationSequences = [
+      ...this.site().animationSequences,
+      newSequence,
+    ];
     return newSequence;
   }
 
   getUniqueAnimationSequenceName(name?: string) {
     const existingNames = (this.site().animationSequences || []).map(
-      (s) => s.name
+      (s) => s.name,
     );
     return uniqueName(existingNames, name || "Unnamed Animation", {
       separator: " ",
@@ -2068,12 +2141,9 @@ export class TplMgr {
     timingFunction: string = "ease",
     iterationCount: string = "1",
     direction:
-      | "normal"
-      | "reverse"
-      | "alternate"
-      | "alternate-reverse" = "normal",
+      "normal" | "reverse" | "alternate" | "alternate-reverse" = "normal",
     fillMode: "none" | "forwards" | "backwards" | "both" = "none",
-    playState: "paused" | "running" = "running"
+    playState: "paused" | "running" = "running",
   ) {
     return new Animation({
       sequence,
@@ -2102,7 +2172,7 @@ export class TplMgr {
       isRegistered: false,
       regKey: undefined,
     });
-    this.site().styleTokens.push(token);
+    this.site().styleTokens = [...this.site().styleTokens, token];
     return token;
   }
 
@@ -2121,9 +2191,10 @@ export class TplMgr {
     width?: number;
     height?: number;
     aspectRatio?: number;
+    description?: string;
   }) {
     const existing = this.site().imageAssets.find(
-      (asset) => asset.dataUri === opts.dataUri && asset.type === opts.type
+      (asset) => asset.dataUri === opts.dataUri && asset.type === opts.type,
     );
     if (existing) {
       return existing;
@@ -2131,15 +2202,16 @@ export class TplMgr {
 
     const asset = mkImageAsset({
       name: this.getUniqueImageAssetName(
-        opts.name || (opts.type === ImageAssetType.Icon ? "icon" : "image")
+        opts.name || (opts.type === ImageAssetType.Icon ? "icon" : "image"),
       ),
       type: opts.type,
       dataUri: opts.dataUri,
       width: opts.width,
       height: opts.height,
       aspectRatio: opts.aspectRatio,
+      description: opts.description,
     });
-    this.site().imageAssets.push(asset);
+    this.site().imageAssets = [...this.site().imageAssets, asset];
     return asset;
   }
 
@@ -2156,6 +2228,7 @@ export class TplMgr {
       width: image.width,
       height: image.height,
       aspectRatio: image.scaledRoundedAspectRatio,
+      description: opts.description,
     });
 
     return { asset, iconColor: opts.iconColor };
@@ -2164,7 +2237,7 @@ export class TplMgr {
   private findExistingImageAsset(dataUri: string, type: ImageAssetType) {
     if (type === ImageAssetType.Picture) {
       return this.site().imageAssets.find(
-        (asset) => asset.type === type && asset.dataUri === dataUri
+        (asset) => asset.type === type && asset.dataUri === dataUri,
       );
     } else {
       // To match SVGs, we do so in an ID-agnostic way.  That's because SVGs can
@@ -2215,7 +2288,7 @@ export class TplMgr {
     for (const usage of usages) {
       removeImageAssetUsage(asset, usage);
     }
-    arrayRemove(this.site().imageAssets, asset);
+    this.site().imageAssets = arrayWithout(this.site().imageAssets, asset);
   }
 
   renameVariant(variant: Variant, name?: string) {
@@ -2234,7 +2307,7 @@ export class TplMgr {
         .map((v) => v.name)
         .concat(["Base", ...reservedVariableNames]),
       name || `Unnamed ${VARIANT_OPTION_LOWER}`,
-      { separator: " ", normalize: toVarName }
+      { separator: " ", normalize: toVarName },
     );
   }
 
@@ -2244,7 +2317,7 @@ export class TplMgr {
     if (group.type === VariantGroupType.Component) {
       const component = ensure(
         getComponentForVariantGroup(this.site(), group),
-        "Expected some component to contain the given variant group"
+        "Expected some component to contain the given variant group",
       );
       this.renameParam(component, group.param, name || "Unnamed Group");
     } else {
@@ -2264,7 +2337,7 @@ export class TplMgr {
         .map((vg) => vg.param.variable.name)
         .concat(reservedVariableNames),
       name || "Unnamed Group",
-      { normalize: toVarName }
+      { normalize: toVarName },
     );
   }
 
@@ -2281,18 +2354,18 @@ export class TplMgr {
   getUniqueExplicitStateName(
     component: Component,
     name?: string,
-    exclude?: State
+    exclude?: State,
   ) {
     return this.getUniqueParamName(
       component,
       name || "Unnamed State",
-      exclude?.param
+      exclude?.param,
     );
   }
 
   renameParam(component: Component, param: Param, name: string) {
     const maybeState = component.states.find(
-      (s) => s.param === param && !s.tplNode
+      (s) => s.param === param && !s.tplNode,
     );
 
     const newName = maybeState
@@ -2304,13 +2377,13 @@ export class TplMgr {
       const newOnChangeParamName = this.getUniqueExplicitStateName(
         component,
         genOnChangeParamName(newName),
-        maybeState
+        maybeState,
       );
       renameParamAndFixExprs(
         this.site(),
         component,
         maybeState.onChangeParam,
-        newOnChangeParamName
+        newOnChangeParamName,
       );
     }
   }
@@ -2326,7 +2399,7 @@ export class TplMgr {
     component: Component,
     tpl: TplNamable,
     name: string | null,
-    tplTreeToFixExprs?: TplNode
+    tplTreeToFixExprs?: TplNode,
   ): string | null {
     const newName = name?.trim()
       ? this.getUniqueTplName(component, name, tpl)
@@ -2366,7 +2439,7 @@ export class TplMgr {
   getExistingTplAndParamNames(
     component: Component,
     nodeToExclude?: TplNamable,
-    paramToExclude?: Param
+    paramToExclude?: Param,
   ) {
     return [
       ...this.getExistingTplNames(component, nodeToExclude),
@@ -2376,19 +2449,19 @@ export class TplMgr {
 
   getExistingTplNames(
     component: Component,
-    nodeToExclude?: TplNamable
+    nodeToExclude?: TplNamable,
   ): string[] {
     return withoutNils(
       flattenTpls(component.tplTree)
         .filter(isTplNamable)
         .filter((n) => n !== nodeToExclude)
-        .map((n) => n.name)
+        .map((n) => n.name),
     );
   }
 
   getExistingParamNames(
     component: Component,
-    paramToExclude?: Param
+    paramToExclude?: Param,
   ): string[] {
     return component.params
       .filter((p) => p !== paramToExclude)
@@ -2398,7 +2471,7 @@ export class TplMgr {
   getUniqueTplName(
     component: Component,
     name: string,
-    nodeToExclude?: TplNamable
+    nodeToExclude?: TplNamable,
   ) {
     const existingNames = [
       ...this.getExistingTplAndParamNames(component, nodeToExclude),
@@ -2416,7 +2489,7 @@ export class TplMgr {
     const newToken = cloneToken(token);
     newToken.name = this.getUniqueStyleTokenName(token.name);
     newToken.isRegistered = false;
-    this.site().styleTokens.push(newToken);
+    this.site().styleTokens = [...this.site().styleTokens, newToken];
     return newToken;
   }
 
@@ -2440,7 +2513,7 @@ export class TplMgr {
       isRegistered: false,
       regKey: undefined,
     });
-    this.site().dataTokens.push(token);
+    this.site().dataTokens = [...this.site().dataTokens, token];
     return token;
   }
 
@@ -2459,7 +2532,7 @@ export class TplMgr {
     const newToken = cloneToken(token);
     newToken.name = this.getUniqueDataTokenName(token.name);
     newToken.isRegistered = false;
-    this.site().dataTokens.push(newToken);
+    this.site().dataTokens = [...this.site().dataTokens, newToken];
     return newToken;
   }
 
@@ -2477,10 +2550,10 @@ export class TplMgr {
    * @param reorderedChildren Can be an incomplete subset of tpl.children.
    * reorderedChildren will end up first, before the rest of tpl.children.
    */
-  reorderChildren(tpl: TplTag, reorderedChildren: TplNode[]) {
+  reorderChildren(tpl: TplTag, reorderedChildren: ReadonlyArray<TplNode>) {
     assert(
       xDifference(reorderedChildren, tpl.children).size === 0,
-      "Reordered children should contain the same nodes as tpl.children"
+      "Reordered children should contain the same nodes as tpl.children",
     );
     tpl.children = uniq([...reorderedChildren, ...tpl.children]);
   }
@@ -2490,11 +2563,13 @@ export class TplMgr {
    * TplComponent to the containing component's props
    */
   canLinkToProp(tpl: TplTag | TplComponent) {
-    // Cannot do so if tpl is defaultContents of a slot!
-    if ($$$(tpl).ancestors().toArrayOfTplNodes().find(isTplSlot)) {
-      return false;
-    }
-    return true;
+    const ownerComponent = $$$(tpl).tryGetOwningComponent();
+    return (
+      !!ownerComponent &&
+      isPlainComponent(ownerComponent) &&
+      // Cannot do so if tpl is defaultContents of a slot!
+      !$$$(tpl).ancestors().toArrayOfTplNodes().find(isTplSlot)
+    );
   }
 
   canExtractComponent(tpl: TplNode) {
@@ -2513,7 +2588,7 @@ export class TplMgr {
       const res = this.cloneComponent(
         frame.container.component,
         "",
-        attachComponent
+        attachComponent,
       );
 
       // We can just re-create the TplComponent instead of trying to preserve
@@ -2521,7 +2596,7 @@ export class TplMgr {
       // and so couldn't be modified in any interesting way anyway.
       newFrame.container = mkTplComponent(
         res.component,
-        this.site().globalVariant
+        this.site().globalVariant,
       );
 
       // Fix up any other references to component variants in the frame.
@@ -2530,21 +2605,21 @@ export class TplMgr {
       newFrame.targetVariants = newFrame.targetVariants.map((v) =>
         ensure(
           res.oldToNewVariant.get(v),
-          "Expected oldToNewVariant map to contain variant"
-        )
+          "Expected oldToNewVariant map to contain variant",
+        ),
       );
       const oldVariantsByUuid = keyBy(
         allComponentVariants(frame.container.component),
-        (v) => v.uuid
+        (v) => v.uuid,
       );
-      for (const [key, val] of Object.entries(newFrame.pinnedVariants)) {
-        delete newFrame.pinnedVariants[key];
-        const prevVariant = oldVariantsByUuid[key];
-        const newVariant = res.oldToNewVariant.get(prevVariant);
-        if (newVariant) {
-          newFrame.pinnedVariants[newVariant.uuid] = val;
-        }
-      }
+      newFrame.pinnedVariants = Object.fromEntries(
+        withoutNils(
+          Object.entries(newFrame.pinnedVariants).map(([key, val]) => {
+            const newVariant = res.oldToNewVariant.get(oldVariantsByUuid[key]);
+            return newVariant ? tuple(newVariant.uuid, val) : undefined;
+          }),
+        ),
+      );
     }
     ensureVariantSetting(newFrame.container, [this.site().globalVariant]);
     return newFrame;
@@ -2554,7 +2629,7 @@ export class TplMgr {
     mixin: Mixin,
     styleNames: string[],
     fromExp: IRuleSetHelpersX,
-    keepProps?: string[]
+    keepProps?: string[],
   ) {
     const mixinExp = new RuleSetHelpers(mixin.rs, "div");
     extractStyles(styleNames, fromExp, mixinExp, keepProps);
@@ -2565,7 +2640,7 @@ export class TplMgr {
     variant: Variant,
     styleNames: string[],
     fromExp: IRuleSetHelpersX,
-    keepProps?: string[]
+    keepProps?: string[],
   ) {
     const vs = ensureVariantSetting(tpl, [variant]);
     const targetExp = RSH(vs.rs, tpl);
@@ -2575,11 +2650,11 @@ export class TplMgr {
   moveVariant(component: Component, variant: Variant, newGroup: VariantGroup) {
     assert(
       newGroup.type === VariantGroupType.Component,
-      "Expected new variant group type to be VariantGroupType.Component"
+      "Expected new variant group type to be VariantGroupType.Component",
     );
     assert(
       component.variantGroups.includes(newGroup),
-      "Expected new variant group to be from given component"
+      "Expected new variant group to be from given component",
     );
     if (variant.parent === newGroup) {
       return;
@@ -2587,14 +2662,14 @@ export class TplMgr {
     const oldParent = variant.parent;
     variant.selectors = undefined;
     variant.parent = newGroup;
-    newGroup.variants.push(variant);
+    newGroup.variants = [...newGroup.variants, variant];
 
     // Make sure the name is unique in the new group
     this.renameVariant(variant, variant.name);
 
     if (oldParent) {
       // This is a normal non-style variant
-      arrayRemove(oldParent.variants, variant);
+      oldParent.variants = arrayWithout(oldParent.variants, variant);
 
       // Fix all existing references to this variant through TplComponent.args
       // to the new VariantGroup
@@ -2610,14 +2685,14 @@ export class TplMgr {
                 // to this variant, which is no longer a child of the oldParent!  Remove it
                 // from this TplComponent's arg...
                 const validVariants = arg.expr.variants.filter(
-                  (v) => v !== variant
+                  (v) => v !== variant,
                 );
                 if (validVariants.length > 0) {
                   this.setArg(
                     tpl,
                     vs,
                     oldParent.param.variable,
-                    mkVariantGroupArgExpr(validVariants)
+                    mkVariantGroupArgExpr(validVariants),
                   );
                 } else {
                   this.delArg(tpl, vs, oldParent.param.variable);
@@ -2628,7 +2703,7 @@ export class TplMgr {
                 const newArg = vs.args.find((x) => x.param === newGroup.param);
                 const newExistingVal = maybeInstance(
                   maybe(newArg, (x) => x.expr),
-                  VariantsRef
+                  VariantsRef,
                 );
                 const newVal = newGroup.multi
                   ? [
@@ -2640,7 +2715,7 @@ export class TplMgr {
                   tpl,
                   vs,
                   newGroup.param.variable,
-                  mkVariantGroupArgExpr(newVal)
+                  mkVariantGroupArgExpr(newVal),
                 );
               }
             }
@@ -2653,7 +2728,7 @@ export class TplMgr {
         component,
         variant,
         oldParent,
-        newGroup
+        newGroup,
       );
     }
   }
@@ -2662,14 +2737,15 @@ export class TplMgr {
     assert(!isBaseVariant(variant), "Can't clone base variant");
     const newVariant = cloneVariant(variant);
     if (variant.parent) {
-      variant.parent.variants.push(newVariant);
+      const parent = variant.parent;
+      parent.variants = [...parent.variants, newVariant];
       this.renameVariant(newVariant, newVariant.name);
     } else {
       assert(
         isStyleOrCodeComponentVariant(variant),
-        "Variant with no parent is expected to be a registered variant"
+        "Variant with no parent is expected to be a registered variant",
       );
-      component.variants.push(newVariant);
+      component.variants = [...component.variants, newVariant];
     }
 
     this.copyToVariant(component, variant, newVariant);
@@ -2685,8 +2761,8 @@ export class TplMgr {
       optionsType: isStandaloneVariantGroup(variantGroup)
         ? VariantOptionsType.standalone
         : variantGroup.multi
-        ? VariantOptionsType.multiChoice
-        : VariantOptionsType.singleChoice,
+          ? VariantOptionsType.multiChoice
+          : VariantOptionsType.singleChoice,
       name: newName,
     });
 
@@ -2694,8 +2770,8 @@ export class TplMgr {
       this.copyToVariant(
         component,
         variantGroup.variants[index],
-        newVariantGroup.variants[index]
-      )
+        newVariantGroup.variants[index],
+      ),
     );
 
     return newVariantGroup;
@@ -2704,7 +2780,7 @@ export class TplMgr {
   copyToVariant(
     component: Component,
     fromVariant: Variant,
-    toVariant: Variant
+    toVariant: Variant,
   ) {
     for (const [vs, tpl] of findVariantSettingsUnderTpl(component.tplTree)) {
       if (!vs.variants.includes(fromVariant)) {
@@ -2715,7 +2791,7 @@ export class TplMgr {
         component,
         vs.variants
           .filter((v) => v !== toVariant)
-          .map((v) => (v === fromVariant ? toVariant : v))
+          .map((v) => (v === fromVariant ? toVariant : v)),
       );
 
       const newVs = cloneVariantSetting(vs);
@@ -2733,8 +2809,8 @@ export class TplMgr {
         existingVs.args = arrayReversed(
           uniqBy(
             arrayReversed([...existingVs.args, ...newVs.args]),
-            (arg) => arg.param.variable.name
-          )
+            (arg) => arg.param.variable.name,
+          ),
         );
         existingVs.attrs = { ...existingVs.attrs, ...newVs.attrs };
         if (newVs.text || !isBaseVariant(toVariant)) {
@@ -2770,7 +2846,7 @@ export class TplMgr {
           toExp.set(prop, fromExp.get(prop));
         }
       } else {
-        tpl.vsettings.push(newVs);
+        tpl.vsettings = [...tpl.vsettings, newVs];
       }
     }
     for (const tpl of flattenTpls(component.tplTree)) {
@@ -2786,7 +2862,7 @@ export class TplMgr {
   }
 
   isOwnedBySite(
-    thing: Component | Mixin | StyleToken | Theme | ImageAsset | TplNode
+    thing: Component | Mixin | StyleToken | Theme | ImageAsset | TplNode,
   ) {
     if (isKnownComponent(thing)) {
       return this.site().components.includes(thing);
@@ -2807,7 +2883,7 @@ export class TplMgr {
   }
 
   findProjectDepOwner(
-    thing: Component | Mixin | StyleToken | Theme | ImageAsset
+    thing: Component | Mixin | StyleToken | Theme | ImageAsset,
   ): ProjectDependency | null {
     for (const dep of this.site().projectDependencies) {
       if (
@@ -2829,7 +2905,7 @@ export class TplMgr {
       return {
         oldDep: ensure(
           site.projectDependencies.find((dep) => dep.pkgId === targetDep.pkgId),
-          "Expected project dependencies to contain given targetDep"
+          "Expected project dependencies to contain given targetDep",
         ),
         newDep: targetDep,
       };
@@ -2843,7 +2919,7 @@ export class TplMgr {
 
   ensureScreenVariantsForFrames() {
     getSiteArenas(this.site()).forEach((arena) =>
-      ensureActivatedScreenVariantsForArena(this.site(), arena)
+      ensureActivatedScreenVariantsForArena(this.site(), arena),
     );
   }
 
@@ -2880,12 +2956,8 @@ export class TplMgr {
     status: SplitStatus;
   }) {
     const split = mkGlobalVariantSplit(opts);
-    this.site().splits.push(split);
+    this.site().splits = [...this.site().splits, split];
     return split;
-  }
-
-  removeSplit(split: Split) {
-    remove(this.site().splits, split);
   }
 
   /**
@@ -2916,7 +2988,7 @@ export class TplMgr {
         let mayNeedTextOverrides = false;
 
         const nonBaseVss = tpl.vsettings.filter(
-          (vs) => !isBaseVariant(vs.variants)
+          (vs) => !isBaseVariant(vs.variants),
         );
 
         for (const vs of nonBaseVss) {
@@ -2938,7 +3010,7 @@ export class TplMgr {
           vs.rs.values = pickBy(
             vs.rs.values,
             (rule) =>
-              !(rule in mayNeedStyleOverrides) || mayNeedStyleOverrides[rule]
+              !(rule in mayNeedStyleOverrides) || mayNeedStyleOverrides[rule],
           );
 
           if (vs.text && !mayNeedTextOverrides) {
@@ -2973,7 +3045,7 @@ export class TplMgr {
         const visibleVss = tpl.vsettings.filter(
           (vs) =>
             hasVisibilitySetting(vs) &&
-            !isInvisible(getVariantSettingVisibility(vs))
+            !isInvisible(getVariantSettingVisibility(vs)),
         );
 
         // If base is invisible and some of the screen or style variants have a visible
@@ -2988,7 +3060,7 @@ export class TplMgr {
         const invisibleVss = tpl.vsettings.filter(
           (vs) =>
             hasVisibilitySetting(vs) &&
-            isInvisible(getVariantSettingVisibility(vs))
+            isInvisible(getVariantSettingVisibility(vs)),
         );
 
         invisibleVss.forEach((vs) => {
@@ -3022,64 +3094,12 @@ export class TplMgr {
     };
   }
 
-  findNestedLinks() {
-    const result: {
-      component: Component;
-      baseLink: TplNode;
-      tpl: TplNode;
-    }[] = [];
-
-    const isTplWithLink = (tpl: TplNode) =>
-      (isTplTag(tpl) && tpl.tag === "a") ||
-      (isTplComponent(tpl) && componentHasLink(tpl.component));
-
-    const componentHasLink = memoize((component: Component) =>
-      flattenTpls(component.tplTree).some(isTplWithLink)
-    );
-
-    const walkNestedLink = (component: Component, baseLink: TplNode) =>
-      walkTpls(baseLink, {
-        pre(tpl) {
-          if (tpl !== baseLink && isTplWithLink(tpl)) {
-            result.push({ component, baseLink, tpl });
-          }
-          return true;
-        },
-      });
-    this.site().components.forEach((c) => {
-      walkTpls(c.tplTree, {
-        pre(tpl) {
-          if (isTplTag(tpl) && tpl.tag === "a") {
-            walkNestedLink(c, tpl);
-            return false;
-          }
-          return true;
-        },
-      });
-    });
-    return result;
-  }
-
-  fixDuplicateTplIds() {
-    for (const component of this.site().components) {
-      const seen = new Map<string, TplNode>();
-      for (const tpl of flattenComponent(component)) {
-        if (seen.has(tpl.uuid)) {
-          const prev = seen.get(tpl.uuid)!;
-          console.log("Found existing tpl uuid", { component, prev, tpl });
-          (tpl as any).uuid = mkShortId();
-        }
-        seen.set(tpl.uuid, tpl);
-      }
-    }
-  }
-
   findInteractionByUuid(interactionUuid: string) {
     for (const component of this.site().components) {
       for (const tpl of flattenTpls(component.tplTree)) {
         for (const { eventHandlerKey, expr } of getAllEventHandlersForTpl(
           component,
-          tpl
+          tpl,
         )) {
           const interactions = isKnownEventHandler(expr)
             ? expr.interactions
@@ -3104,7 +3124,7 @@ export class TplMgr {
 
 export function addEmptyQuery(
   component: Component,
-  queryName: string = "query"
+  queryName: string = "query",
 ) {
   const query = new ComponentDataQuery({
     uuid: mkShortId(),
@@ -3114,11 +3134,11 @@ export function addEmptyQuery(
         queryName,
         {
           normalize: toVarName,
-        }
-      )
+        },
+      ),
     ),
     op: undefined,
   });
-  component.dataQueries.push(query);
+  component.dataQueries = [...component.dataQueries, query];
   return query;
 }

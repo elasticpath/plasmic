@@ -17,8 +17,6 @@ import * as React from "react";
 function ReactionsPopover(props: { commentId: CommentId }) {
   const { commentId } = props;
   const studioCtx = useStudioCtx();
-  const appCtx = studioCtx.appCtx;
-  const api = appCtx.api;
 
   const commentsCtx = studioCtx.commentsCtx;
   const [showPicker, setShowPicker] = React.useState(false);
@@ -72,7 +70,6 @@ export function ReactionsByEmoji(props: {
 
   const studioCtx = useStudioCtx();
   const appCtx = studioCtx.appCtx;
-  const api = appCtx.api;
 
   const commentsCtx = studioCtx.commentsCtx;
 
@@ -80,7 +77,7 @@ export function ReactionsByEmoji(props: {
     <>
       {Object.entries(reactionsByEmoji).map(([emojiName, reactions]) => {
         const currentUsersReaction = reactions.find(
-          (r) => r.createdById === appCtx.selfInfo?.id
+          (r) => r.createdById === appCtx.selfInfo?.id,
         );
         return (
           <Tooltip
@@ -92,9 +89,9 @@ export function ReactionsByEmoji(props: {
                     commentsCtx
                       .computedData()
                       .usersMap.get(ensure(r.createdById, "")),
-                    ""
-                  )
-                )
+                    "",
+                  ),
+                ),
               )
               .join(", ")}
           >
@@ -106,7 +103,7 @@ export function ReactionsByEmoji(props: {
                 e.stopPropagation();
                 if (currentUsersReaction) {
                   commentsCtx.removeReactionFromComment(
-                    currentUsersReaction.id
+                    currentUsersReaction.id,
                   );
                 } else {
                   commentsCtx.addReactionToComment(commentId, {

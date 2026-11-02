@@ -13,7 +13,7 @@ import {
   makeSizeAwareExpProxy,
 } from "@/wab/shared/sizingutils";
 import { VariantedStylesHelper } from "@/wab/shared/VariantedStylesHelper";
-import L, { memoize } from "lodash";
+import { memoize, omit } from "lodash";
 import { CSSProperties } from "react";
 
 /** Helper for handling rulesets. */
@@ -45,7 +45,10 @@ export type ReadonlyIRuleSetHelpersX = Pick<
 >;
 
 export class RuleSetHelpers implements IRuleSetHelpersX {
-  constructor(private readonly _rs: RuleSet, public readonly _forTag: string) {}
+  constructor(
+    private readonly _rs: RuleSet,
+    public readonly _forTag: string,
+  ) {}
 
   rs = () => this._rs;
 
@@ -70,7 +73,7 @@ export class RuleSetHelpers implements IRuleSetHelpersX {
   }
 
   clear(prop: string) {
-    delete this._rs.values[css.normProp(prop)];
+    this._rs.values = omit(this._rs.values, css.normProp(prop));
   }
 
   clearAll(props: string[]) {
@@ -93,8 +96,10 @@ export class RuleSetHelpers implements IRuleSetHelpersX {
 
   set(prop: /*TWZ*/ string, val: /*TWZ*/ string) {
     assert(val != null && val !== "", `val cannot be ${val}`);
-    this._rs.values[css.normProp(prop)] =
-      typeof val === "string" ? val : "" + val;
+    this._rs.values = {
+      ...this._rs.values,
+      [css.normProp(prop)]: typeof val === "string" ? val : "" + val,
+    };
   }
 }
 
@@ -102,12 +107,8 @@ export const getCssDefault = memoize(
   function (prop: string, tag: string | undefined) {
     return css.getCssInitial(css.normProp(prop), undefined);
   },
-  (prop, tag) => prop + tag
+  (prop, tag) => prop + tag,
 );
-
-export function setDefaults(exp: IRuleSetHelpersX, defaults: CSSProperties) {
-  exp.merge(L.pickBy(defaults, (val, prop) => !exp.has(prop)));
-}
 
 export function RSH(rs: RuleSet, tpl: TplNode) {
   const forTag = isKnownTplTag(tpl) ? tpl.tag : "div";
@@ -116,12 +117,12 @@ export function RSH(rs: RuleSet, tpl: TplNode) {
 
 export function readonlyRSH(
   rs: DeepReadonly<RuleSet>,
-  tpl: TplNode
+  tpl: TplNode,
 ): ReadonlyIRuleSetHelpersX {
   const forTag = isKnownTplTag(tpl) ? tpl.tag : "div";
   return makeReadonlySizeAwareExpProxy(
     new RuleSetHelpers(rs as RuleSet, forTag),
-    tpl
+    tpl,
   );
 }
 
@@ -133,7 +134,7 @@ export function extractStyles(
   styleProps: string[],
   fromExp: IRuleSetHelpersX,
   targetExp: IRuleSetHelpersX,
-  keepProps?: string[]
+  keepProps?: string[],
 ) {
   for (const sn of styleProps) {
     if (fromExp.has(sn)) {
@@ -149,7 +150,7 @@ export class VariantedRuleSetHelpers extends RuleSetHelpers {
   constructor(
     private readonly mixin: Mixin,
     _forTag: string,
-    private readonly vsh: VariantedStylesHelper
+    private readonly vsh: VariantedStylesHelper,
   ) {
     super(vsh.getActiveVariantedRuleSet(mixin), _forTag);
   }

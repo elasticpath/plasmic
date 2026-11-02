@@ -8,6 +8,7 @@ import {
   traverseUpdates,
 } from "@/wab/client/react-global-hook/traverseFiber";
 import {
+  FrameState,
   GlobalHook,
   GlobalHookCtx,
   SlotArgsData,
@@ -26,7 +27,7 @@ import {
   tryGetSlotPlaceholderKey,
   tryGetValKey,
 } from "@/wab/client/react-global-hook/utils";
-import { getRenderState } from "@/wab/client/studio-ctx/renderState";
+import { createRenderState } from "@/wab/client/studio-ctx/renderState";
 import {
   MAKE_EMPTY_OBJECT,
   arrayEq,
@@ -53,8 +54,7 @@ import { isString, omit } from "lodash";
 import { observable, runInAction } from "mobx";
 
 const officialHook = (window as any).__REACT_DEVTOOLS_GLOBAL_HOOK__ as
-  | GlobalHook
-  | undefined;
+  GlobalHook | undefined;
 
 let commitCount = 1;
 const fiberToCommitCount = new WeakMap<Fiber, number>();
@@ -120,11 +120,10 @@ if (officialHook) {
     fiberToSlotPlaceholderKeys: new WeakMap(),
     uuidToTplNode: new Map(),
     valKeyToOwnerKey: new Map(),
-    frameUidToValRoot: observable.map({}, { deep: false }),
-    frameUidToRenderState: new Map(),
     envIdToEnvs: new Map(),
     fullKeyToEnvId: new Map(),
-    frameValKeyToContextData: new Map(),
+    frames: new Map(),
+    createFrameState: (frame) => createFrameState(officialHook, frame),
     dispose: () => {
       // clear the custom functions
       for (const [key, value] of Object.entries(officialHookProps)) {
@@ -136,10 +135,19 @@ if (officialHook) {
     },
   };
 
+  const getFrameState = (frameUid: number) =>
+    ensure(
+      officialHook.plasmic.frames.get(frameUid),
+      () => `Canvas frame ${frameUid} has no state`,
+    );
+
   const deleteValInFiber = (node: Fiber) => {
     const maybeVal = fiberToNonCachedVal.get(node);
     if (maybeVal) {
-      getRenderState(maybeVal.frameUid).unregisterVal(maybeVal);
+      // Nothing to unregister from if the frame was already closed
+      officialHook.plasmic.frames
+        .get(maybeVal.frameUid)
+        ?.renderState.unregisterVal(maybeVal);
     }
     officialHook.plasmic.fiberToVal.delete(node);
     fiberToNonCachedVal.delete(node);
@@ -149,11 +157,13 @@ if (officialHook) {
     const placeholderData =
       officialHook.plasmic.fiberToSlotPlaceholderKeys.get(node);
     if (placeholderData != null) {
-      getRenderState(placeholderData.frameUid).unregisterSlotPlaceholder(
-        placeholderData.key,
-        placeholderData.fullKey,
-        node
-      );
+      officialHook.plasmic.frames
+        .get(placeholderData.frameUid)
+        ?.renderState.unregisterSlotPlaceholder(
+          placeholderData.key,
+          placeholderData.fullKey,
+          node,
+        );
     }
     officialHook.plasmic.fiberToSlotPlaceholderKeys.delete(node);
   };
@@ -170,7 +180,7 @@ if (officialHook) {
   const mergeValsInSubtree = (node: Fiber) => {
     const nodeChildren = fiberChildren(node);
     const valsInSubtree = nodeChildren.flatMap(
-      (child) => fiberToValSubtrees.get(child) ?? []
+      (child) => fiberToValSubtrees.get(child) ?? [],
     );
 
     const mergeArgsInSubtree = () => {
@@ -181,7 +191,7 @@ if (officialHook) {
       } else {
         return (
           structuralMerge(
-            nodeChildren.map((n) => fiberToSlotArgsInSubtree.get(n) ?? {})
+            nodeChildren.map((n) => fiberToSlotArgsInSubtree.get(n) ?? {}),
           ) ?? {}
         );
       }
@@ -197,7 +207,7 @@ if (officialHook) {
           .map((n) => fiberToSlotCanvasEnvInSubtree.get(n))
           .filter(
             (v): v is Record<string, SlotCanvasEnv> =>
-              !!v && Object.keys(v).length > 0
+              !!v && Object.keys(v).length > 0,
           );
         if (infos.length === 0) {
           return {};
@@ -221,7 +231,7 @@ if (officialHook) {
         }
         return (
           structuralMerge(
-            nodeChildren.map((n) => fiberToSlotCanvasEnvInSubtree.get(n) ?? {})
+            nodeChildren.map((n) => fiberToSlotCanvasEnvInSubtree.get(n) ?? {}),
           ) ?? {}
         );
       }
@@ -369,12 +379,12 @@ if (officialHook) {
           const updateArgValCount = (
             valCompKey: string,
             paramId: string,
-            valKey: string
+            valKey: string,
           ) => {
             const args = withDefaultFunc(
               valCompToArgToValKeyToCount,
               valCompKey,
-              MAKE_EMPTY_OBJECT
+              MAKE_EMPTY_OBJECT,
             );
             const vals = withDefaultFunc(args, paramId, MAKE_EMPTY_OBJECT);
             const count = withDefault(vals, valKey, 0);
@@ -445,7 +455,7 @@ if (officialHook) {
                 return updateArgValCount(
                   slotTplCompKey,
                   slotParamUuid,
-                  valKey ?? "placeholder"
+                  valKey ?? "placeholder",
                 );
               }
 
@@ -475,12 +485,12 @@ if (officialHook) {
 
                 function deriveValOwner(ownerKey: string) {
                   const ownerCandidates = valStack.filter(
-                    ({ val }) => val.key === ownerKey
+                    ({ val }) => val.key === ownerKey,
                   );
                   if (ownerCandidates.length > 0) {
                     return ensureInstance(
                       last(ownerCandidates).val,
-                      ValComponent
+                      ValComponent,
                     );
                   }
 
@@ -496,7 +506,7 @@ if (officialHook) {
 
                   const ownerTplNode = ensure(
                     officialHook?.plasmic.uuidToTplNode.get(ownerUuid)?.deref(),
-                    () => `Couldn't find TplNode from uuid ${ownerUuid}`
+                    () => `Couldn't find TplNode from uuid ${ownerUuid}`,
                   );
 
                   // We derive the valOwner first, since deriving the valOwner may mutate the valStack
@@ -515,7 +525,7 @@ if (officialHook) {
                         // inside the rendering-ctx, but since this is an unexpected scenario, we're just going
                         // to use a stable value
                         FAKE_NODE_CHILD_PARAM,
-                        ownerKey
+                        ownerKey,
                       )
                     : 0;
 
@@ -528,7 +538,8 @@ if (officialHook) {
 
                   const fakeNodeFullKey = computeFullKey(ownerKey);
 
-                  const renderState = getRenderState(currentFrameUid);
+                  const renderState =
+                    getFrameState(currentFrameUid).renderState;
 
                   // Since we will be creating a fake node, we don't want this node to be registered in the renderState
                   // along with any real nodes. So we will clean up everything for the full key of the fake node.
@@ -577,7 +588,7 @@ if (officialHook) {
                 const tplUuid = last(instanceKey.split("."));
                 const tplNode = ensure(
                   officialHook.plasmic.uuidToTplNode.get(tplUuid)?.deref(),
-                  () => `Couldn't find TplNode from uuid ${tplUuid}`
+                  () => `Couldn't find TplNode from uuid ${tplUuid}`,
                 );
 
                 const valNode = createValNode({
@@ -591,10 +602,10 @@ if (officialHook) {
                   frameUid: currentFrameUid,
                 });
 
-                const cachedValNode = ensure(
-                  getRenderState(valNode.frameUid).registerVal(valNode),
-                  () => `Should have at least one val node to merge`
-                );
+                const cachedValNode =
+                  getFrameState(currentFrameUid).renderState.registerVal(
+                    valNode,
+                  );
                 fiberToNonCachedVal.set(node, valNode);
                 officialHook.plasmic.fiberToVal.set(node, cachedValNode);
                 valStack.push({ node, val: cachedValNode });
@@ -612,8 +623,8 @@ if (officialHook) {
                   isString(tplCompKey) && isString(paramUuid),
                   () =>
                     `Couldn't parse slot placeholder key: ${JSON.stringify(
-                      slotPlaceholderKey
-                    )}`
+                      slotPlaceholderKey,
+                    )}`,
                 );
                 const tplCompFullKey = computeFullKey(tplCompKey);
                 const slotPlaceholderFullkey = `${tplCompFullKey}~${paramUuid}[${
@@ -625,11 +636,12 @@ if (officialHook) {
                   key: slotPlaceholderKey,
                   toSlotSelection: () => {
                     if (frameUid) {
-                      const valComp =
-                        getRenderState(frameUid).fullKey2val(tplCompFullKey);
+                      const valComp = officialHook.plasmic.frames
+                        .get(frameUid)
+                        ?.renderState.fullKey2val(tplCompFullKey);
                       if (valComp && valComp instanceof ValComponent) {
                         const param = valComp.tpl.component.params.find(
-                          (p) => p.uuid === paramUuid
+                          (p) => p.uuid === paramUuid,
                         );
                         if (param) {
                           return new SlotSelection({
@@ -642,10 +654,12 @@ if (officialHook) {
                     return undefined;
                   },
                 });
-                getRenderState(currentFrameUid).registerSlotPlaceholder(
+                getFrameState(
+                  currentFrameUid,
+                ).renderState.registerSlotPlaceholder(
                   slotPlaceholderKey,
                   slotPlaceholderFullkey,
-                  node
+                  node,
                 );
               }
             } catch (err) {
@@ -722,15 +736,15 @@ if (officialHook) {
               last(instanceKeyStack).valKey === instanceKey,
               () =>
                 `Expected "instanceKey" ${instanceKey} to match the last element of "instanceKeyStack", but got ${JSON.stringify(
-                  instanceKeyStack
-                )}`
+                  instanceKeyStack,
+                )}`,
             );
 
             instanceKeyStack.pop();
 
             assert(
               valStack.length === 0 || !last(valStack).isFake,
-              "The last val node in valStack should be a real one"
+              "The last val node in valStack should be a real one",
             );
 
             if (valStack.length > 0 && last(valStack).node === node) {
@@ -743,7 +757,7 @@ if (officialHook) {
 
                 assert(
                   instanceKeyStack.length > 0 && last(instanceKeyStack).isFake,
-                  "While popping fake nodes, instanceKeyStack should have a respective fake node"
+                  "While popping fake nodes, instanceKeyStack should have a respective fake node",
                 );
                 instanceKeyStack.pop();
               }
@@ -752,12 +766,12 @@ if (officialHook) {
             const cachedVal = ensure(
               officialHook.plasmic.fiberToVal.get(node),
               () =>
-                `Fiber with valKey ${valKey} should have a corresopnding ValNode`
+                `Fiber with valKey ${valKey} should have a corresopnding ValNode`,
             );
             const nonCachedVal = ensure(
               fiberToNonCachedVal.get(node),
               () =>
-                `Fiber with valKey ${valKey} should have a corresponding nonCachedVal node`
+                `Fiber with valKey ${valKey} should have a corresponding nonCachedVal node`,
             );
 
             /**
@@ -766,17 +780,18 @@ if (officialHook) {
              * versions of the Val Nodes, since the cached version is only a
              * merge of the non-cached versions.
              */
-            const renderState = getRenderState(cachedVal.frameUid);
+            const frameState = getFrameState(cachedVal.frameUid);
+            const renderState = frameState.renderState;
             try {
               valsInSubtree.forEach(({ nonCached }) => {
                 nonCached.parent = cachedVal;
-                renderState.recomputeCachedVal(nonCached.fullKey);
+                renderState.invalidateCachedVal(nonCached.fullKey);
               });
               switchTypeUnsafe(cachedVal)
                 .when(ValComponent, (valComp: ValComponent) => {
                   const nonCachedComp = ensureInstance(
                     nonCachedVal,
-                    ValComponent
+                    ValComponent,
                   ) as UpdateableVal<ValComponent>;
                   const contents = valsInSubtree.map(({ cached }) => cached);
                   if (
@@ -794,12 +809,12 @@ if (officialHook) {
                   if (argsData) {
                     Object.entries(argsData).forEach(([uuid, vs]) => {
                       const p = valComp.tpl.component.params.find(
-                        (param) => param.uuid === uuid
+                        (param) => param.uuid === uuid,
                       );
                       if (p) {
                         nonCachedComp.slotArgs.set(
                           p,
-                          vs.map(({ cached }) => cached)
+                          vs.map(({ cached }) => cached),
                         );
                         vs.map(({ nonCached }) => nonCached).forEach((v) => {
                           v.slotInfo = new SlotInfo(
@@ -809,12 +824,12 @@ if (officialHook) {
                             // the tpl.component is a PlasmicComponent may not be enough, since the user can re-expose the slot
                             // of a code component through a Plasmic component.
                             !isCodeComponent(valComp.tpl.component) &&
-                            isValSlot(v.parent)
+                              isValSlot(v.parent)
                               ? ensureInstance(v.parent, ValSlot)
                               : undefined,
-                            valComp
+                            valComp,
                           );
-                          renderState.recomputeCachedVal(v.fullKey);
+                          renderState.invalidateCachedVal(v.fullKey);
                         });
                       }
                     });
@@ -829,12 +844,12 @@ if (officialHook) {
                     Object.entries(slotCanvasEnvs).forEach(
                       ([uuid, slotEnv]) => {
                         const p = valComp.tpl.component.params.find(
-                          (param) => param.uuid === uuid
+                          (param) => param.uuid === uuid,
                         );
                         if (p) {
                           nonCachedComp.slotCanvasEnvs.set(p, slotEnv);
                         }
-                      }
+                      },
                     );
                   }
                   // Do not use omit as it performs a deep clone for plain objects
@@ -844,23 +859,23 @@ if (officialHook) {
                 .when(ValTag, () => {
                   const nonCachedTag = ensureInstance(
                     nonCachedVal,
-                    ValTag
+                    ValTag,
                   ) as UpdateableVal<ValTag>;
                   nonCachedTag.children = valsInSubtree.map(
-                    ({ cached }) => cached
+                    ({ cached }) => cached,
                   );
                 })
                 .when(ValSlot, () => {
                   const nonCachedSlot = ensureInstance(
                     nonCachedVal,
-                    ValSlot
+                    ValSlot,
                   ) as UpdateableVal<ValSlot>;
                   nonCachedSlot.contents = valsInSubtree.map(
-                    ({ cached }) => cached
+                    ({ cached }) => cached,
                   );
                 })
                 .result();
-              renderState.recomputeCachedVal(cachedVal.fullKey);
+              renderState.invalidateCachedVal(cachedVal.fullKey);
 
               // Time to propagate these new val nodes upwards! First, the
               // fiberToValSubtrees. This is so its parent fiber will see that this
@@ -892,17 +907,12 @@ if (officialHook) {
 
               // Finally, if this node is the root node corresponding to a frame,
               // set it as the frame ValRoot
-              const maybeFrameUid = tryGetFrameUid(node);
               if (
-                maybeFrameUid &&
-                cachedVal !==
-                  officialHook.plasmic.frameUidToValRoot.get(maybeFrameUid)
+                tryGetFrameUid(node) &&
+                cachedVal !== frameState.valRoot.get()
               ) {
                 // Root Node
-                officialHook.plasmic.frameUidToValRoot.set(
-                  maybeFrameUid,
-                  ensureInstance(cachedVal, ValComponent)
-                );
+                frameState.valRoot.set(ensureInstance(cachedVal, ValComponent));
               }
             } catch (err) {
               // Fail to process canvas data - clean up this node so the
@@ -926,7 +936,7 @@ if (officialHook) {
             const argsInSubtree = fiberToSlotArgsInSubtree.get(node);
             if (argsInSubtree) {
               for (const [valCompId, argsData] of Object.entries(
-                argsInSubtree
+                argsInSubtree,
               )) {
                 for (const [paramId, vals] of Object.entries(argsData)) {
                   for (const val of vals) {
@@ -943,44 +953,57 @@ if (officialHook) {
             rootNode.alternate.memoizedState.element != null;
 
           runInAction(() => {
-            if (!knownRoots.has(fiberRoot) || !wasMounted) {
-              // New tree, traverse it entirely
-              knownRoots.add(fiberRoot);
-              traverseTree(rootNode, enterNodeSubtree, leaveNodeSubtree, false);
-            } else {
-              if (rootNode.alternate) {
-                traverseUpdates(
-                  rootNode,
-                  rootNode.alternate,
-                  enterNodeSubtree,
-                  leaveNodeSubtree,
-                  rmNode,
-                  enterUnchangedNode
-                );
-              } else {
-                // New tree
+            try {
+              if (!knownRoots.has(fiberRoot) || !wasMounted) {
+                // New tree, traverse it entirely
+                knownRoots.add(fiberRoot);
                 traverseTree(
                   rootNode,
                   enterNodeSubtree,
                   leaveNodeSubtree,
-                  false
+                  false,
                 );
+              } else {
+                if (rootNode.alternate) {
+                  traverseUpdates(
+                    rootNode,
+                    rootNode.alternate,
+                    enterNodeSubtree,
+                    leaveNodeSubtree,
+                    rmNode,
+                    enterUnchangedNode,
+                  );
+                } else {
+                  // New tree
+                  traverseTree(
+                    rootNode,
+                    enterNodeSubtree,
+                    leaveNodeSubtree,
+                    false,
+                  );
+                }
+              }
+            } finally {
+              // Recompute the cached vals touched by this commit (including
+              // unmounts reported just before it) before reactions run.
+              for (const frame of officialHook.plasmic.frames.values()) {
+                frame.renderState.flushStaleVals();
               }
             }
           });
           assert(
             ancestorKeys.size === 0,
             () =>
-              "`ancestorUids` should be empty at the end of the tree traversal"
+              "`ancestorUids` should be empty at the end of the tree traversal",
           );
           assert(
             instanceKeyStack.length === 0,
             () =>
-              "`instanceKeyStack` should be empty at the end of the tree traversal"
+              "`instanceKeyStack` should be empty at the end of the tree traversal",
           );
           assert(
             valStack.length === 0,
-            () => "`valStack` should be empty at the end of the tree traversal"
+            () => "`valStack` should be empty at the end of the tree traversal",
           );
           // Disable this assertion while we don't handle linking slot args from
           // "logic" components to the component's parent (when the "logic"
@@ -1003,7 +1026,7 @@ if (officialHook) {
       officialHookProps.onCommitFiberRoot?.(
         rendererID,
         fiberRoot,
-        ...otherArgs
+        ...otherArgs,
       );
     },
   };
@@ -1016,15 +1039,54 @@ if (officialHook) {
   }
 }
 
+function createFrameState(
+  hook: GlobalHook | undefined,
+  { uid, objectPrototype }: { uid: number; objectPrototype: object },
+): FrameState {
+  const frames = (hook?.plasmic ?? globalHookCtx).frames;
+  let isDisposed = false;
+  const state: FrameState = {
+    uid,
+    renderState: createRenderState(uid),
+    valRoot: observable.box(null, { deep: false }),
+    contextData: observable.map<string, any>(undefined, { deep: false }),
+    dispose: () => {
+      if (isDisposed) {
+        return;
+      }
+      isDisposed = true;
+
+      // A recreated frame with the same uid may have replaced this state
+      const isCurrent = frames.get(uid) === state;
+      if (isCurrent) {
+        frames.delete(uid);
+      }
+
+      if (hook?.renderers) {
+        for (const [id, renderer] of [...hook.renderers]) {
+          if (renderer && Object.getPrototypeOf(renderer) === objectPrototype) {
+            hook.renderers.delete(id);
+          }
+        }
+      }
+
+      state.renderState.dispose({ detachCachedValNodes: isCurrent });
+      state.contextData.clear();
+      state.valRoot.set(null);
+    },
+  };
+  frames.set(uid, state);
+  return state;
+}
+
 export const globalHookCtx: GlobalHookCtx = officialHook?.plasmic ?? {
   uuidToTplNode: new Map(),
   valKeyToOwnerKey: new Map(),
   fiberToVal: new WeakMap(),
   fiberToSlotPlaceholderKeys: new WeakMap(),
-  frameUidToValRoot: new Map(),
-  frameUidToRenderState: new Map(),
   envIdToEnvs: new Map(),
   fullKeyToEnvId: new Map(),
-  frameValKeyToContextData: new Map(),
+  frames: new Map(),
+  createFrameState: (frame) => createFrameState(undefined, frame),
   dispose: () => {},
 };

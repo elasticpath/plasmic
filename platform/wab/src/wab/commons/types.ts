@@ -1,4 +1,4 @@
-import type { Opaque, Primitive } from "type-fest";
+import type { Opaque } from "type-fest";
 
 /**
  * Falsy (from utility-types)
@@ -70,32 +70,31 @@ export type JoinList<K, P> = K extends string | number
 export type Paths<T, D extends number = 3> = [D] extends [never]
   ? never
   : T extends object
-  ? {
-      [K in keyof T]-?: K extends string | number
-        ? `${K}` | (Paths<T[K], Prev[D]> extends infer R ? Join<K, R> : never)
-        : never;
-    }[keyof T]
-  : "";
+    ? {
+        [K in keyof T]-?: K extends string | number
+          ? `${K}` | (Paths<T[K], Prev[D]> extends infer R ? Join<K, R> : never)
+          : never;
+      }[keyof T]
+    : "";
 
 export type PathsList<T, D extends number = 3> = [D] extends [never]
   ? never
   : T extends object
-  ? {
-      [K in keyof T]-?: K extends string | number
-        ?
-            | [K]
+    ? {
+        [K in keyof T]-?: K extends string | number
+          ? | [K]
             | (PathsList<T[K], Prev[D]> extends infer R
                 ? JoinList<K, R>
                 : never)
-        : never;
-    }[keyof T]
-  : [];
+          : never;
+      }[keyof T]
+    : [];
 
 export type Leaves<T, D extends number = 3> = [D] extends [never]
   ? never
   : T extends object
-  ? { [K in keyof T]-?: Join<K, Leaves<T[K], Prev[D]>> }[keyof T]
-  : "";
+    ? { [K in keyof T]-?: Join<K, Leaves<T[K], Prev[D]>> }[keyof T]
+    : "";
 
 export type DropFirst<T extends unknown[]> = T extends [any, ...infer U]
   ? U
@@ -125,42 +124,3 @@ export type OmitByValue<T, ValueType> = Pick<
   T,
   { [Key in keyof T]-?: T[Key] extends ValueType ? never : Key }[keyof T]
 >;
-
-/**
- * Overrides all values satisfying Condition with Override in T.
- *
- * Based on implementation of type-fest.ReadonlyDeep.
- */
-export type ConditionalOverrideDeep<T, Condition, Override> =
-  T extends Condition
-    ? Override
-    : T extends Primitive | void | Date | RegExp
-    ? T
-    : // Identify tuples to avoid converting them to arrays inadvertently; special case `readonly [...never[]]`, as it emerges undesirably from recursive invocations of ReadonlyDeep below.
-    T extends [] | [...never[]]
-    ? []
-    : T extends [infer U, ...infer V]
-    ? [
-        ConditionalOverrideDeep<U, Condition, Override>,
-        ...ConditionalOverrideDeepArray<V, Condition, Override>
-      ]
-    : T extends [...infer U, infer V]
-    ? [
-        ...ConditionalOverrideDeepArray<U, Condition, Override>,
-        ConditionalOverrideDeep<V, Condition, Override>
-      ]
-    : T extends Array<infer ItemType>
-    ? Array<ConditionalOverrideDeep<ItemType, Condition, Override>>
-    : T extends object
-    ? {
-        [KeyType in keyof T]: ConditionalOverrideDeep<
-          T[KeyType],
-          Condition,
-          Override
-        >;
-      }
-    : unknown;
-
-type ConditionalOverrideDeepArray<T, Condition, Override> = T extends Condition
-  ? Override[]
-  : T[];

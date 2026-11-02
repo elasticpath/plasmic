@@ -7,12 +7,16 @@ import { siteCCVariantsToInfos } from "@/wab/shared/cached-selectors";
 import { isTplRootWithCodeComponentVariants } from "@/wab/shared/code-components/variants";
 import { toVarName } from "@/wab/shared/codegen/util";
 import {
+  arrayMoveIndex,
+  arrayRemoveAt,
+  isReadonlyArray,
+} from "@/wab/shared/collections";
+import {
   arrayEqIgnoreOrder,
   assert,
   ensure,
   mapify,
   mkShortId,
-  moveIndex,
   tuple,
   xAddAll,
 } from "@/wab/shared/common";
@@ -61,7 +65,7 @@ import { typeFactory } from "@/wab/shared/model/model-util";
 import { ResponsiveStrategy } from "@/wab/shared/responsiveness";
 import { ChoiceObject } from "@plasmicapp/host";
 import { arrayContains } from "class-validator";
-import L, { orderBy, uniqBy } from "lodash";
+import L, { orderBy, toString, uniqBy } from "lodash";
 import type { OverrideProperties, SetNonNullable } from "type-fest";
 
 export const BASE_VARIANT_NAME = "base";
@@ -73,7 +77,7 @@ export enum VariantGroupType {
   GlobalUserDefined = "global-user-defined",
 }
 
-export type VariantCombo = Variant[];
+export type VariantCombo = ReadonlyArray<Variant>;
 
 export function mkVariant({
   name,
@@ -92,7 +96,7 @@ export function mkVariant({
   description?: string | null;
   forTpl?: TplNode | null;
   codeComponentName?: string | null;
-  codeComponentVariantKeys?: string[] | null;
+  codeComponentVariantKeys?: ReadonlyArray<string> | null;
 }) {
   return new Variant({
     uuid: mkShortId(),
@@ -112,7 +116,7 @@ export function mkBaseVariant() {
 }
 
 export function isBaseVariant(variants: Variant | VariantCombo) {
-  if (Array.isArray(variants)) {
+  if (isReadonlyArray<Variant>(variants)) {
     return variants.length === 1 && variants[0].name === BASE_VARIANT_NAME;
   }
   return variants.name === BASE_VARIANT_NAME;
@@ -130,7 +134,7 @@ export function canHaveStyleOrCodeComponentVariant(component: Component) {
  * - multi-select group → `multiChoice` over the variant names
  */
 export function variantGroupToLinkedPropType(
-  group: VariantGroup
+  group: VariantGroup,
 ): Param["type"] {
   if (isStandaloneVariantGroup(group)) {
     return typeFactory.bool();
@@ -144,13 +148,13 @@ export function variantGroupToLinkedPropType(
 /** Whether the outer `param` is link-compatible with the inner variant `group`. */
 export function isParamCompatibleWithVariantGroup(
   param: Param,
-  group: VariantGroup
+  group: VariantGroup,
 ): boolean {
   return isLinkCompatible(variantGroupToLinkedPropType(group), param.type);
 }
 
 function variantGroupToChoiceObjects(
-  group: VariantGroup
+  group: VariantGroup,
 ): ChoiceObject<string>[] {
   return group.variants.map((v) => ({
     label: v.name,
@@ -159,7 +163,7 @@ function variantGroupToChoiceObjects(
 }
 
 export function isStandaloneVariantGroup(
-  group: VariantGroup | undefined | null
+  group: VariantGroup | undefined | null,
 ): boolean {
   return !!(
     group &&
@@ -167,6 +171,39 @@ export function isStandaloneVariantGroup(
     group.variants.length === 1 &&
     group.param.variable.name === group.variants[0].name
   );
+}
+
+/** Human-readable list of the values a variant group's state accepts. */
+export function getExpectedValuesForVariantGroup(group: VariantGroup) {
+  return isStandaloneVariantGroup(group)
+    ? `true, false, "${toVarName(group.variants[0].name)}"`
+    : group.variants.map((v) => `"${toVarName(v.name)}"`).join(", ");
+}
+
+export function resolveVariantGroupValue(
+  group: VariantGroup,
+  value: unknown,
+): { variants: Variant[]; unknownValues: unknown[] } {
+  const variants: Variant[] = [];
+  const unknownValues: unknown[] = [];
+  const tryToAddByName = (name: unknown) => {
+    const variant = group.variants.find(
+      (v) => toVarName(v.name) === toVarName(toString(name)),
+    );
+    if (variant) {
+      variants.push(variant);
+    } else {
+      unknownValues.push(name);
+    }
+  };
+  if (typeof value === "string") {
+    tryToAddByName(value);
+  } else if (Array.isArray(value)) {
+    value.forEach((el) => tryToAddByName(el));
+  } else if (value && isStandaloneVariantGroup(group)) {
+    variants.push(group.variants[0]);
+  }
+  return { variants, unknownValues };
 }
 
 export function isStandaloneVariant(variant: Variant) {
@@ -186,9 +223,9 @@ export function mkVariantSetting({
   dataRep,
   text,
 }: {
-  variants: Variant[];
-  args?: Array<Arg>;
-  attrs?: Record<string, Expr>;
+  variants: VariantCombo;
+  args?: ReadonlyArray<Arg>;
+  attrs?: Readonly<Record<string, Expr>>;
   styles?: Record<string, string>;
   dataCond?: CustomCode | ObjectPath;
   dataRep?: Rep;
@@ -203,7 +240,7 @@ export function mkVariantSetting({
         ? {
             values: { ...styles },
           }
-        : {}
+        : {},
     ),
     dataCond,
     dataRep,
@@ -290,7 +327,7 @@ export type StyleOrCodeComponentVariant = CodeComponentVariant | StyleVariant;
 
 const hasInteractiveSelector = (key) =>
   ["hover", "focus", "press", "active"].some((keyword) =>
-    key.toLowerCase().includes(keyword)
+    key.toLowerCase().includes(keyword),
   );
 
 export function isStyleVariant(variant: Variant): variant is StyleVariant {
@@ -298,7 +335,7 @@ export function isStyleVariant(variant: Variant): variant is StyleVariant {
 }
 
 export function isMaybeInteractiveStyleVariant(
-  variant: Variant
+  variant: Variant,
 ): variant is StyleVariant {
   return (
     isStyleVariant(variant) && variant.selectors.some(hasInteractiveSelector)
@@ -306,19 +343,19 @@ export function isMaybeInteractiveStyleVariant(
 }
 
 export function isCodeComponentVariant(
-  variant: Variant
+  variant: Variant,
 ): variant is CodeComponentVariant {
   return !!variant.codeComponentName && !!variant.codeComponentVariantKeys;
 }
 
 export function isStyleOrCodeComponentVariant(
-  variant: Variant
+  variant: Variant,
 ): variant is StyleOrCodeComponentVariant {
   return isStyleVariant(variant) || isCodeComponentVariant(variant);
 }
 
 export function isMaybeInteractiveStyleOrCodeComponentVariant(
-  variant: Variant
+  variant: Variant,
 ): variant is StyleOrCodeComponentVariant {
   return (
     isMaybeInteractiveStyleVariant(variant) ||
@@ -327,7 +364,7 @@ export function isMaybeInteractiveStyleOrCodeComponentVariant(
 }
 
 export function isMaybeInteractiveCodeComponentVariant(
-  variant: Variant
+  variant: Variant,
 ): variant is CodeComponentVariant {
   return (
     isCodeComponentVariant(variant) &&
@@ -336,7 +373,7 @@ export function isMaybeInteractiveCodeComponentVariant(
 }
 
 export function getStyleOrCodeComponentVariantIdentifierName(
-  variant: StyleOrCodeComponentVariant
+  variant: StyleOrCodeComponentVariant,
 ) {
   if (isCodeComponentVariant(variant)) {
     return "codeComponentVariantKeys";
@@ -356,13 +393,13 @@ export function tryGetPrivateStyleVariant(variantCombo: VariantCombo) {
 }
 
 export function isComponentStyleVariant(
-  variant: Variant
+  variant: Variant,
 ): variant is ComponentStyleVariant {
   return isStyleVariant(variant) && !isPrivateStyleVariant(variant);
 }
 
 export function isPrivateStyleVariant(
-  variant: Variant
+  variant: Variant,
 ): variant is PrivateStyleVariant {
   return isStyleVariant(variant) && !!variant.forTpl;
 }
@@ -375,7 +412,7 @@ export function isGlobalVariant(variant: Variant) {
 }
 
 export function isGlobalVariantGroup(
-  group: VariantGroup
+  group: VariantGroup,
 ): group is GlobalVariantGroup {
   return group.type !== VariantGroupType.Component;
 }
@@ -386,7 +423,7 @@ export function isGlobalVariantGroup(
  * - localVariants: Component-level variants (non-global, non-private)
  * - globalVariants: Site-level variants (screen variants, user-defined globals)
  */
-export function partitionVariantsByScope(variants: Variant[]) {
+export function partitionVariantsByScope(variants: VariantCombo) {
   const privateStyleVariants = variants.filter(isPrivateStyleVariant);
   const nonPrivateVariants = variants.filter((v) => !isPrivateStyleVariant(v));
   const globalVariants = nonPrivateVariants.filter(isGlobalVariant);
@@ -416,12 +453,44 @@ export function isScreenVariant(variant: Variant) {
   return !!variant.parent && isScreenVariantGroup(variant.parent);
 }
 
-export function hasScreenVariant(variantCombo: Variant[]) {
+export function hasScreenVariant(variantCombo: VariantCombo) {
   return variantCombo.some((v) => isScreenVariant(v));
 }
 
-export function hasNonScreenGlobalVariant(variantCombo: Variant[]) {
-  return variantCombo.some((v) => !isScreenVariant(v));
+/**
+ * Styles under these combos would be unreachable: CSS gets one media query
+ * per rule, and single-choice variants are never active together.
+ */
+export function validateGlobalVariantCombo(
+  variants: VariantCombo,
+): { ok: true } | { ok: false; error: string } {
+  const screenVariants = [...new Set(variants)].filter((v) =>
+    isScreenVariant(v),
+  );
+  if (screenVariants.length > 1) {
+    return {
+      ok: false,
+      error: `At most one screen breakpoint can be targeted per varianted style (got ${screenVariants
+        .map((v) => `"${v.name}"`)
+        .join(", ")}).`,
+    };
+  }
+  const seenByGroup = new Map<VariantGroup, Variant>();
+  for (const variant of variants) {
+    const group = variant.parent;
+    if (!group || group.multi || isStandaloneVariantGroup(group)) {
+      continue;
+    }
+    const prev = seenByGroup.get(group);
+    if (prev && prev !== variant) {
+      return {
+        ok: false,
+        error: `Variants "${prev.name}" and "${variant.name}" are from the same single-choice group and cannot be combined in one variant target.`,
+      };
+    }
+    seenByGroup.set(group, variant);
+  }
+  return { ok: true };
 }
 
 export function getPartitionedScreenVariants(site: Site, width: number) {
@@ -451,13 +520,13 @@ export function getPartitionedScreenVariants(site: Site, width: number) {
 
 export function areEquivalentScreenVariants(
   variant1: Variant,
-  variant2: Variant
+  variant2: Variant,
 ) {
   const spec1 = parseScreenSpec(
-    ensure(variant1.mediaQuery, "Must be a screen variant")
+    ensure(variant1.mediaQuery, "Must be a screen variant"),
   );
   const spec2 = parseScreenSpec(
-    ensure(variant2.mediaQuery, "Must be a screen variant")
+    ensure(variant2.mediaQuery, "Must be a screen variant"),
   );
 
   return (
@@ -468,13 +537,13 @@ export function areEquivalentScreenVariants(
 
 export function getPartitionedScreenVariantsByTargetVariant(
   site: Site,
-  targetVariant: Variant
+  targetVariant: Variant,
 ) {
   const screenVariants = L.without(
     allGlobalVariantGroups(site, { includeDeps: "direct" })
       .filter(isScreenVariantGroup)
       .flatMap((g) => g.variants),
-    targetVariant
+    targetVariant,
   );
 
   if (!targetVariant.mediaQuery) {
@@ -563,14 +632,14 @@ export function getOrderedScreenVariantSpecs(site: Site, group: VariantGroup) {
         variantSpecs,
         (it) =>
           isMobileFirst ? it.screenSpec.minWidth : it.screenSpec.maxWidth,
-        [isMobileFirst ? "asc" : "desc"]
+        [isMobileFirst ? "asc" : "desc"],
       );
 }
 
 export function getPrivateStyleVariantsForTag(
   component: Component,
   tpl: TplTag,
-  selectors?: string[]
+  selectors?: string[],
 ): PrivateStyleVariant[] {
   const variants = component.variants
     .filter(isPrivateStyleVariant)
@@ -591,7 +660,7 @@ export function findOrCreatePrivateStyleVariant(
   component: Component,
   tpl: TplTag,
   cssSelector: string,
-  createVariant: (selectors: string[]) => Variant
+  createVariant: (selectors: string[]) => Variant,
 ): Variant {
   const existing = getPrivateStyleVariantsForTag(component, tpl, [
     cssSelector,
@@ -612,7 +681,7 @@ export function findOrCreatePrivateStyleVariant(
  */
 export function isPseudoElementVariantForTpl(
   variant: Variant,
-  isComponentRoot: boolean
+  isComponentRoot: boolean,
 ) {
   return (
     (isPrivateStyleVariant(variant) || isComponentRoot) &&
@@ -634,7 +703,7 @@ export function isPseudoElementVariant(variant: Variant) {
  */
 export function isDisabledPseudoSelectorVariantForTpl(
   variant: Variant,
-  isComponentRoot: boolean
+  isComponentRoot: boolean,
 ) {
   return (
     (isPrivateStyleVariant(variant) || isComponentRoot) &&
@@ -656,7 +725,7 @@ export function isDisabledPseudoSelectorVariant(variant: Variant) {
  */
 export function variantHasPrivatePseudoElementSelector(
   variant: Variant,
-  selector?: string
+  selector?: string,
 ) {
   return (
     isPrivateStyleVariant(variant) &&
@@ -727,13 +796,13 @@ function isVariantSettingClean(vs: VariantSetting) {
 }
 
 export function isVariantSettingEmptyExcludingDefaultIgnorableStyles(
-  vs: VariantSetting
+  vs: VariantSetting,
 ) {
   if (!isBaseVariant(vs.variants)) {
     return isVariantSettingEmpty(vs);
   }
   const filteredValuesCount = Object.entries(vs.rs.values).filter(
-    ([key, value]) => !isDefaultIgnorableStyleValue(key, value)
+    ([key, value]) => !isDefaultIgnorableStyleValue(key, value),
   ).length;
 
   return filteredValuesCount === 0 && isVariantSettingClean(vs);
@@ -755,7 +824,7 @@ export function clearVariantSetting(vs: VariantSetting) {
  * Returns Set of VariantGroups that the argument set of Variants belong to
  */
 export function getReferencedVariantGroups(
-  variants: Iterable<Variant>
+  variants: Iterable<Variant>,
 ): Set<VariantGroup> {
   const vgs = new Set<VariantGroup>();
   for (const variant of variants) {
@@ -766,7 +835,7 @@ export function getReferencedVariantGroups(
   return vgs;
 }
 
-export function tryGetVariantSetting(tpl: TplNode, v: Variant[]) {
+export function tryGetVariantSetting(tpl: TplNode, v: VariantCombo) {
   if (v.length === 0) {
     return tryGetBaseVariantSetting(tpl);
   } else {
@@ -776,7 +845,7 @@ export function tryGetVariantSetting(tpl: TplNode, v: Variant[]) {
 
 export function addingBaseToTplWithExistingBase(
   tpl: TplNode,
-  variants: Variant[] | Variant
+  variants: VariantCombo | Variant,
 ) {
   return (
     tpl.vsettings.length > 0 &&
@@ -789,7 +858,7 @@ export function allVariantsInGroup(vg: VariantGroup) {
   return [...vg.variants];
 }
 
-export function ensureVariantSetting(tpl: TplNode, variants: Variant[]) {
+export function ensureVariantSetting(tpl: TplNode, variants: VariantCombo) {
   let vs = tryGetVariantSetting(tpl, variants);
   const rootTpl = $$$(tpl).root().maybeOneTpl();
   if (rootTpl) {
@@ -799,9 +868,9 @@ export function ensureVariantSetting(tpl: TplNode, variants: Variant[]) {
     vs = mkVariantSetting({ variants });
     assert(
       !addingBaseToTplWithExistingBase(tpl, variants),
-      "Cannot add base vs to tpl that already has base vs"
+      "Cannot add base vs to tpl that already has base vs",
     );
-    tpl.vsettings.push(vs);
+    tpl.vsettings = [...tpl.vsettings, vs];
   }
   return vs;
 }
@@ -841,7 +910,7 @@ export function isBaseRuleVariant(variant: Variant) {
 export function ensureBaseRuleVariantSetting(
   tpl: TplNode,
   variantCombo: VariantCombo,
-  rootTpl: TplNode
+  rootTpl: TplNode,
 ) {
   if (variantCombo.some((v) => !isBaseRuleVariant(v))) {
     // If there's any variant that's not a "base rule" variant, then we need to
@@ -861,8 +930,8 @@ export function ensureBaseRuleVariantSetting(
     ensureVariantSetting(
       rootTpl,
       variantCombo.filter(
-        (v) => !isStyleOrCodeComponentVariant(v) && !isScreenVariant(v)
-      )
+        (v) => !isStyleOrCodeComponentVariant(v) && !isScreenVariant(v),
+      ),
     );
   }
 }
@@ -913,7 +982,7 @@ export function isValidComboForToken(combo: VariantCombo) {
 export function getImplicitlyActivatedStyleVariants(
   variants: Variant[],
   activeVariants: Set<Variant>,
-  tpl: TplNode | undefined | null
+  tpl: TplNode | undefined | null,
 ) {
   const activeRootSelectors = new Set<string>();
   const activePrivateSelectors = new Set<string>();
@@ -972,7 +1041,7 @@ export function getAllVariantsForTpl({
         ...component.variants.filter(isCodeComponentVariant),
         ...component.variants.filter((v) => isComponentStyleVariant(v)),
         ...component.variants.filter(
-          (v) => tpl && isPrivateStyleVariant(v) && v.forTpl === tpl
+          (v) => tpl && isPrivateStyleVariant(v) && v.forTpl === tpl,
         ),
         ...component.variantGroups.flatMap((group) => group.variants),
         ...(includeSuperVariants && component.superComp
@@ -984,7 +1053,7 @@ export function getAllVariantsForTpl({
     ...componentVariants,
     ...site.globalVariantGroups.flatMap((group) => group.variants),
     ...site.projectDependencies.flatMap((dep) =>
-      dep.site.globalVariantGroups.flatMap((group) => group.variants)
+      dep.site.globalVariantGroups.flatMap((group) => group.variants),
     ),
   ];
 }
@@ -1019,10 +1088,10 @@ export function getDisplayVariants({
   if (includeAllPrivateStyleVariantsForFocusedTag && focusedTag) {
     const privateStyleVariantsForTpl = getPrivateStyleVariantsForTag(
       frame.container.component,
-      focusedTag
+      focusedTag,
     );
     const inactivePrivateVariants = privateStyleVariantsForTpl.filter(
-      (v) => !displayVariants.includes(v)
+      (v) => !displayVariants.includes(v),
     );
     displayVariants.push(...inactivePrivateVariants);
   }
@@ -1050,7 +1119,7 @@ export function isFrameWithVariantCombo({
 
 export function getStyleOrCodeComponentVariantDisplayNames(
   variant: StyleOrCodeComponentVariant,
-  site?: Site
+  site?: Site,
 ) {
   if (isCodeComponentVariant(variant)) {
     const info = site && siteCCVariantsToInfos(site).get(variant);
@@ -1060,7 +1129,7 @@ export function getStyleOrCodeComponentVariantDisplayNames(
   }
   if (isStyleVariant(variant)) {
     return variant.selectors.map(
-      (sel) => getPseudoSelector(sel)?.displayName ?? sel
+      (sel) => getPseudoSelector(sel)?.displayName ?? sel,
     );
   }
   return [];
@@ -1068,7 +1137,7 @@ export function getStyleOrCodeComponentVariantDisplayNames(
 
 export function makeStyleOrCodeComponentVariantName(
   variant: StyleOrCodeComponentVariant,
-  site?: Site
+  site?: Site,
 ) {
   return getStyleOrCodeComponentVariantDisplayNames(variant, site).join(", ");
 }
@@ -1090,7 +1159,7 @@ export function makeVariantName({
   if (useGroupNameForSplits && site && isVariantUsedInSplits(site, variant)) {
     return ensure(
       getVariantGroupName(variant),
-      "Split variants must have a parent"
+      "Split variants must have a parent",
     );
   }
 
@@ -1103,10 +1172,10 @@ export function makeVariantName({
           .filter(Boolean)
           .join(": ")
       : isStyleOrCodeComponentVariant(variant)
-      ? makeStyleOrCodeComponentVariantName(variant, site)
-      : superComp
-      ? `${getNamespacedComponentName(superComp)} • ${variant.name}`
-      : variant.name) || "UnnamedVariant"
+        ? makeStyleOrCodeComponentVariantName(variant, site)
+        : superComp
+          ? `${getNamespacedComponentName(superComp)} • ${variant.name}`
+          : variant.name) || "UnnamedVariant"
   );
 }
 
@@ -1117,7 +1186,7 @@ export function isActiveVariantSetting(site: Site, vs: VariantSetting) {
   // For now, a VariantSetting is inactive if it includes a screen variant
   // that is not the active screen variant group for the site
   return vs.variants.every(
-    (v) => !isScreenVariant(v) || v.parent === site.activeScreenVariantGroup
+    (v) => !isScreenVariant(v) || v.parent === site.activeScreenVariantGroup,
   );
 }
 
@@ -1132,7 +1201,11 @@ export function moveVariantGroup({
   fromIndex: number;
   toIndex: number;
 }) {
-  moveIndex(component.variantGroups, fromIndex, toIndex);
+  component.variantGroups = arrayMoveIndex(
+    component.variantGroups,
+    fromIndex,
+    toIndex,
+  );
   ensureComponentArenaRowsOrder(site, component);
 }
 
@@ -1149,14 +1222,18 @@ export function moveVariant({
   fromIndex: number;
   toIndex: number;
 }) {
-  moveIndex(variantGroup.variants, fromIndex, toIndex);
+  variantGroup.variants = arrayMoveIndex(
+    variantGroup.variants,
+    fromIndex,
+    toIndex,
+  );
   ensureComponentArenaColsOrder(site, component, variantGroup);
 }
 
-export function removeTplVariantSettings(tpl: TplNode, v: Variant[]) {
+export function removeTplVariantSettings(tpl: TplNode, v: VariantCombo) {
   const i = tpl.vsettings.findIndex((vs) => arrayEqIgnoreOrder(vs.variants, v));
   if (i !== -1) {
-    tpl.vsettings.splice(i, 1);
+    tpl.vsettings = arrayRemoveAt(tpl.vsettings, i);
   }
 }
 
@@ -1166,14 +1243,14 @@ export function removeTplVariantSettingsContaining(tpl: TplNode, v: Variant[]) {
 
 export function getActiveVariantSettings(
   tpl: TplNode,
-  activeVariants: Variant[] | Set<Variant>
+  activeVariants: Variant[] | Set<Variant>,
 ) {
   const isActive = Array.isArray(activeVariants)
     ? (v: Variant) => activeVariants.includes(v)
     : (v: Variant) => activeVariants.has(v);
 
   return tpl.vsettings.filter((vs) =>
-    vs.variants.every((v) => isBaseVariant(v) || isActive(v))
+    vs.variants.every((v) => isBaseVariant(v) || isActive(v)),
   );
 }
 
@@ -1209,7 +1286,7 @@ export function toVariantComboKey(variantCombo: VariantCombo) {
 
 export function findDuplicateComponentVariant(
   component: Component,
-  editingVariant: Variant
+  editingVariant: Variant,
 ) {
   return component.variants
     .filter((v) => v !== editingVariant)
@@ -1224,7 +1301,7 @@ export function getVariantLabel(site: Site, variant: Variant): string {
   if (isVariantUsedInSplits(site, variant)) {
     return ensure(
       getVariantGroupName(variant),
-      "Split variant must have a parent"
+      "Split variant must have a parent",
     );
   } else {
     return variant.name;

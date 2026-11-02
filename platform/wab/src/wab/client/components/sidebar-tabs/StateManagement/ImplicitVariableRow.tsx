@@ -4,7 +4,7 @@ import { ValuePreview } from "@/wab/client/components/sidebar-tabs/data-tab";
 import LabeledListItem from "@/wab/client/components/widgets/LabeledListItem";
 import { DefaultVariableRowProps } from "@/wab/client/plasmic/plasmic_kit_state_management/PlasmicVariableRow";
 import { StudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
-import { mkModelUiId } from "@/wab/client/studio-ctx/ui/studio-ui-ids";
+import { mkComponentScopedUiId } from "@/wab/client/studio-ctx/ui/studio-ui-ids";
 import { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
 import { assert } from "@/wab/shared/common";
 import { isPageComponent } from "@/wab/shared/core/components";
@@ -24,7 +24,7 @@ export interface ImplicitVariableRowProps extends DefaultVariableRowProps {
 const ImplicitVariableRow = observer(
   React.forwardRef(function (
     props: ImplicitVariableRowProps,
-    ref: HTMLElementRefOf<"div">
+    ref: HTMLElementRefOf<"div">,
   ) {
     const { component, state, sc, viewCtx, ...rest } = props;
     const {
@@ -38,7 +38,7 @@ const ImplicitVariableRow = observer(
     return (
       <WithContextMenu overlay={menu} onClick={(e) => e.stopPropagation()}>
         <LabeledListItem
-          uiId={mkModelUiId(state.param)}
+          uiId={mkComponentScopedUiId(state.param, component.uuid)}
           data-test-id={getStateVarName(state)}
           data-test-type="implicit-variable-row"
           nesting="simple"
@@ -71,6 +71,6 @@ const ImplicitVariableRow = observer(
         {modals}
       </WithContextMenu>
     );
-  })
+  }),
 );
 export default ImplicitVariableRow;

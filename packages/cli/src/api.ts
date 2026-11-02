@@ -1,4 +1,6 @@
-import axios, { AxiosError } from "axios";
+import axiosBase, { AxiosError } from "axios";
+import http from "http";
+import https from "https";
 import socketio from "socket.io-client";
 import { logger } from "./deps";
 import {
@@ -13,6 +15,14 @@ import {
 } from "./utils/config-utils";
 import { HandledError } from "./utils/error";
 import { Metadata } from "./utils/get-context";
+
+// On Node >= 19 the default agent keeps sockets alive, so installs that outlast server
+// idle timeout leave a dead pooled socket behind and the next request fails with
+// "socket hang up". A fresh connection each time is cheaper than that failure mode.
+const axios = axiosBase.create({
+  httpAgent: new http.Agent({ keepAlive: false }),
+  httpsAgent: new https.Agent({ keepAlive: false }),
+});
 
 export class AppServerError extends Error {
   constructor(message: string) {
@@ -238,7 +248,7 @@ export class PlasmicApi {
   async genStyleConfig(styleOpts?: StyleConfig): Promise<StyleConfigResponse> {
     const result = await this.post(
       `${this.apiHost}/api/v1/code/style-config`,
-      styleOpts
+      styleOpts,
     );
     return result.data as StyleConfigResponse;
   }
@@ -260,14 +270,14 @@ export class PlasmicApi {
       componentIdOrNames: readonly string[] | undefined;
       projectApiToken?: string;
     }[],
-    recursive?: boolean
+    recursive?: boolean,
   ): Promise<VersionResolution> {
     const resp: any = await this.post(
       `${this.apiHost}/api/v1/code/resolve-sync`,
       {
         projects,
         recursive,
-      }
+      },
     );
     const versionResolution = resp.data as VersionResolution;
     return { ...versionResolution };
@@ -281,7 +291,7 @@ export class PlasmicApi {
 
   async requiredPackages(): Promise<RequiredPackages> {
     const resp = await this.post(
-      `${this.apiHost}/api/v1/code/required-packages`
+      `${this.apiHost}/api/v1/code/required-packages`,
     );
     return { ...resp.data } as RequiredPackages;
   }
@@ -289,7 +299,7 @@ export class PlasmicApi {
   async latestCodegenVersion(): Promise<string> {
     if (!this.codegenVersion) {
       const resp = await this.post(
-        `${this.apiHost}/api/v1/code/latest-codegen-version`
+        `${this.apiHost}/api/v1/code/latest-codegen-version`,
       );
       this.codegenVersion = resp.data as string;
     }
@@ -331,13 +341,13 @@ export class PlasmicApi {
       indirect: boolean;
       wrapPagesWithGlobalContexts: boolean;
       metadata?: Metadata;
-    }
+    },
   ): Promise<ProjectBundle> {
     const result = await this.post(
       `${this.apiHost}/api/v1/projects/${projectId}/code/components?branchName=${branchName}`,
       {
         ...opts,
-      }
+      },
     );
     return result.data as ProjectBundle;
   }
@@ -365,20 +375,20 @@ export class PlasmicApi {
       indirect: boolean;
       wrapPagesWithGlobalContexts: boolean;
       metadata?: Metadata;
-    }
+    },
   ): Promise<ProjectBundle> {
     const result = await this.post(
       `${this.apiHost}/api/v1/projects/${projectId}/code/components?branchName=${branchName}&export=true`,
       {
         ...opts,
-      }
+      },
     );
     return result.data as ProjectBundle;
   }
 
   async projectMeta(projectId: string) {
     const result = await this.post(
-      `${this.apiHost}/api/v1/projects/${projectId}/code/meta`
+      `${this.apiHost}/api/v1/projects/${projectId}/code/meta`,
     );
     return result.data as ProjectMetaInfo;
   }
@@ -389,7 +399,7 @@ export class PlasmicApi {
     keyScheme: "content" | "hash" | "path",
     tagPrefix: string | undefined,
     projectIdsAndTokens: ProjectIdAndToken[],
-    excludeDeps: boolean | undefined
+    excludeDeps: boolean | undefined,
   ) {
     const params = new URLSearchParams(
       [
@@ -399,7 +409,7 @@ export class PlasmicApi {
         ...projects.map((p) => ["projectId", p]),
         tagPrefix ? ["tagPrefix", tagPrefix] : undefined,
         excludeDeps ? ["excludeDeps", "true"] : undefined,
-      ].filter((x): x is [string, string] => !!x)
+      ].filter((x): x is [string, string] => !!x),
     );
     const result = await this.get(
       `${this.apiHost}/api/v1/localization/gen-texts?${params.toString()}`,
@@ -408,10 +418,10 @@ export class PlasmicApi {
         "x-plasmic-api-project-tokens": projectIdsAndTokens
           .map(
             ({ projectId, projectApiToken }) =>
-              `${projectId}:${projectApiToken}`
+              `${projectId}:${projectApiToken}`,
           )
           .join(","),
-      }
+      },
     );
     return result.data as string;
   }
@@ -438,7 +448,7 @@ export class PlasmicApi {
         { projectIdsAndTokens: this.projectIdsAndTokens, ...data },
         {
           headers: this.makeHeaders(),
-        }
+        },
       );
     } catch (e) {
       const error = e as AxiosError<any>;
@@ -446,6 +456,12 @@ export class PlasmicApi {
 
       if (rethrowAppError) {
         throw new AppServerError(errorMsg);
+      }
+
+      if (error.isAxiosError && !error.response) {
+        throw new HandledError(
+          `Unable to reach Plasmic at ${this.studioHost}: ${error.message}`,
+        );
       }
 
       if (!errorMsg) {
@@ -468,6 +484,12 @@ export class PlasmicApi {
 
       if (rethrowAppError) {
         throw new AppServerError(errorMsg);
+      }
+
+      if (error.isAxiosError && !error.response) {
+        throw new HandledError(
+          `Unable to reach Plasmic at ${this.studioHost}: ${error.message}`,
+        );
       }
 
       if (!errorMsg) {
@@ -504,7 +526,7 @@ export class PlasmicApi {
 
     if (this.auth.basicAuthUser && this.auth.basicAuthPassword) {
       const authString = Buffer.from(
-        `${this.auth.basicAuthUser}:${this.auth.basicAuthPassword}`
+        `${this.auth.basicAuthUser}:${this.auth.basicAuthPassword}`,
       ).toString("base64");
       headers["Authorization"] = `Basic ${authString}`;
     }

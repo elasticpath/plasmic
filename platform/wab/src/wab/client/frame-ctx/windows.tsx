@@ -50,7 +50,7 @@ export function checkRootSubHostVersion() {
   ) {
     // TODO: Detect if the user is using loader-nextjs, loader-gatsby,
     // loader-react or codegen to display a more directed message.
-    notification.warn({
+    notification.warning({
       message: "Unsupported host app detected",
       description: (
         <>
@@ -69,8 +69,8 @@ export async function initRootCanvasPkgs() {
     await withTimeout(
       getCanvasPkgs(),
       "Couldn't get canvasPkgs.",
-      3 * 60 * 1000
-    )
+      3 * 60 * 1000,
+    ),
   );
   rootSub = {
     ...rootSub,

@@ -3,9 +3,6 @@ import { notification } from "antd";
 import L from "lodash";
 import React, { ReactNode } from "react";
 
-export const READ_ONLY_EXPLANATION =
-  "Someone else has edited the project, so you are now viewing a stale read-only version.";
-
 export const FORBIDDEN_EXPLANATION =
   "You do not have permissions to edit this project.";
 
@@ -30,29 +27,6 @@ export function showForbiddenError() {
   });
 }
 
-export function showReloadNotice() {
-  const key = L.uniqueId();
-  notification.info({
-    key,
-    message: "Info",
-    description: (
-      <span>
-        {RELOAD_EXPLANATION}{" "}
-        <a
-          onClick={() => {
-            notification.close(key);
-            reload();
-          }}
-        >
-          Reload project
-        </a>{" "}
-        to edit.
-      </span>
-    ),
-    duration: 0,
-  });
-}
-
 export function showReloadError() {
   const key = L.uniqueId();
   notification.error({
@@ -63,7 +37,7 @@ export function showReloadError() {
         Changes could not be saved. {RELOAD_EXPLANATION}{" "}
         <a
           onClick={() => {
-            notification.close(key);
+            notification.destroy(key);
             reload();
           }}
         >
@@ -91,7 +65,7 @@ export function toast(
   opts: {
     key?: string;
     duration?: number;
-  } = {}
+  } = {},
 ) {
   return notification.open({
     key: opts.key ?? common.mkShortId(),

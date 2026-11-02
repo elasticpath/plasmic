@@ -1,18 +1,22 @@
-import { ensure, remove } from "@/wab/shared/common";
-import { extractReferencedParam, isRealCodeExpr } from "@/wab/shared/core/exprs";
 import { UnbundledMigrationFn } from "@/wab/server/db/BundleMigrator";
 import {
   BundleMigrationType,
   unbundleSite,
 } from "@/wab/server/db/bundle-migration-utils";
 import { Bundler } from "@/wab/shared/bundler";
+import { ensure } from "@/wab/shared/common";
 import {
+  extractReferencedParam,
+  isRealCodeExpr,
+} from "@/wab/shared/core/exprs";
+import { flattenTpls, isAttrEventHandler } from "@/wab/shared/core/tpls";
+import {
+  Arg,
   Expr,
   isKnownEventHandler,
   isKnownFunctionType,
   isKnownVarRef,
 } from "@/wab/shared/model/classes";
-import { flattenTpls, isAttrEventHandler } from "@/wab/shared/core/tpls";
 
 export const migrate: UnbundledMigrationFn = async (bundle, db, entity) => {
   const bundler = new Bundler();
@@ -20,7 +24,7 @@ export const migrate: UnbundledMigrationFn = async (bundle, db, entity) => {
     bundler,
     bundle,
     db,
-    entity
+    entity,
   );
 
   const isExprValidForEventHandler = (expr: Expr | null | undefined) =>
@@ -36,23 +40,25 @@ export const migrate: UnbundledMigrationFn = async (bundle, db, entity) => {
           if (isAttrEventHandler(attr) && isKnownVarRef(expr)) {
             const param = ensure(
               extractReferencedParam(component, expr),
-              `param not found for var ref: ${expr.variable.name}`
+              `param not found for var ref: ${expr.variable.name}`,
             );
             if (!isExprValidForEventHandler(param.defaultExpr)) {
               param.defaultExpr = null;
             }
           }
         }
-        for (const arg of [...vs.args]) {
+        const invalidArgs = new Set<Arg>();
+        for (const arg of vs.args) {
           if (isKnownFunctionType(arg.param.type)) {
             if (!isExprValidForEventHandler(arg.param.defaultExpr)) {
               arg.param.defaultExpr = null;
             }
             if (!isExprValidForEventHandler(arg.expr)) {
-              remove(vs.args, arg);
+              invalidArgs.add(arg);
             }
           }
         }
+        vs.args = vs.args.filter((arg) => !invalidArgs.has(arg));
       }
     }
   }
@@ -60,7 +66,7 @@ export const migrate: UnbundledMigrationFn = async (bundle, db, entity) => {
   const newBundle = bundler.bundle(
     siteOrProjectDep,
     entity.id,
-    "100-remove-event-handler-default-expr"
+    "100-remove-event-handler-default-expr",
   );
   Object.assign(bundle, newBundle);
 };

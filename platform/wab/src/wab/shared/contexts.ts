@@ -1,22 +1,19 @@
+import { getTplComponentArg, setTplComponentArg } from "@/wab/shared/TplMgr";
+import { $$$ } from "@/wab/shared/TplQuery";
+import { ensureBaseVariantSetting } from "@/wab/shared/Variants";
+import { ContextFactory } from "@/wab/shared/code-components/context-factory";
 import { arrayEq, assert, ensure } from "@/wab/shared/common";
 import {
-  ContextFactory,
-  observeRelevantFields,
-} from "@/wab/shared/code-components/context-factory";
-import {
-  Arg,
-  isKnownRenderExpr,
   RenderExpr,
   TplComponent,
   TplNode,
+  isKnownRenderExpr,
 } from "@/wab/shared/model/classes";
-import { getSlotArgs } from "@/wab/shared/SlotUtils";
-import { $$$ } from "@/wab/shared/TplQuery";
 
 export function wrapWithContext(
   root: TplComponent,
-  contexts: TplComponent[],
-  contextFactory: ContextFactory
+  contexts: ReadonlyArray<TplComponent>,
+  contextFactory: ContextFactory,
 ): TplNode {
   const persistentContexts = contexts.map((c) => contextFactory.cached(c));
 
@@ -26,21 +23,15 @@ export function wrapWithContext(
     if (idx === 0) {
       return;
     }
-    const child = $$$(persistentContexts[idx - 1]).getSlotArg("children");
+    const parent = persistentContexts[idx - 1];
+    const child = $$$(parent).getSlotArg("children");
     if (child) {
       assert(isKnownRenderExpr(child.expr), `only tpl can be in children arg`);
-      if (!arrayEq(child.expr.tpl, [cur])) {
-        $$$(persistentContexts[idx - 1]).setSlotArg(
-          "children",
-          new RenderExpr({ tpl: [cur] })
-        );
+      if (arrayEq(child.expr.tpl, [cur])) {
+        return;
       }
-    } else {
-      $$$(persistentContexts[idx - 1]).setSlotArg(
-        "children",
-        new RenderExpr({ tpl: [cur] })
-      );
     }
+    $$$(parent).setSlotArg("children", new RenderExpr({ tpl: [cur] }));
   });
 
   // Manually add the root as the child of the last global context
@@ -49,28 +40,24 @@ export function wrapWithContext(
     const lastIndex = persistentContexts.length - 1;
     const param = ensure(
       persistentContexts[lastIndex].component.params.find(
-        (p) => p.variable.name === "children"
+        (p) => p.variable.name === "children",
       ),
-      `global contexts must have a children param`
+      `global contexts must have a children param`,
     );
-    const maybeArg = getSlotArgs(persistentContexts[lastIndex]).find(
-      (arg) => arg.param === param
-    );
-
-    const arg =
-      maybeArg != null ? maybeArg : new Arg({ param, expr: null as any });
-    if (!isKnownRenderExpr(arg.expr) || !arrayEq(arg.expr.tpl, [root])) {
-      arg.expr = new RenderExpr({ tpl: [root] });
-      if (!maybeArg) {
-        persistentContexts[lastIndex].vsettings[0].args.push(arg);
-      }
-    }
-
-    // We make sure all the relevant fields of the cached contexts are observed.
-    // We do it here because we have just created some new args by doing all
-    // this context wrapping.
-    for (const c of persistentContexts) {
-      observeRelevantFields(c);
+    const lastContext = persistentContexts[lastIndex];
+    const baseVs = ensureBaseVariantSetting(lastContext);
+    const arg = getTplComponentArg(lastContext, baseVs, param.variable);
+    if (
+      !arg ||
+      !isKnownRenderExpr(arg.expr) ||
+      !arrayEq(arg.expr.tpl, [root])
+    ) {
+      setTplComponentArg(
+        lastContext,
+        baseVs,
+        param.variable,
+        new RenderExpr({ tpl: [root] }),
+      );
     }
 
     return persistentContexts[0];

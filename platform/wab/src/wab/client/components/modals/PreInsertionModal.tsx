@@ -1,23 +1,24 @@
+import { AntdConfigProvider } from "@/wab/client/antd-theme";
 import { InnerPropEditorRow } from "@/wab/client/components/sidebar-tabs/PropEditorRow";
+import { Modal } from "@/wab/client/components/widgets/Modal";
 import {
   StudioCtx,
   providesStudioCtx,
 } from "@/wab/client/studio-ctx/StudioCtx";
-import { hackyCast } from "@/wab/shared/common";
-import { tryExtractJson } from "@/wab/shared/core/exprs";
 import {
   StudioPropType,
   isPlainObjectPropType,
   maybePropTypeToDisplayName,
 } from "@/wab/shared/code-components/code-components";
+import { hackyCast } from "@/wab/shared/common";
+import { tryExtractJson } from "@/wab/shared/core/exprs";
 import { Component, Expr } from "@/wab/shared/model/classes";
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { Modal } from "@/wab/client/components/widgets/Modal";
 
 export async function getPreInsertionProps(
   studioCtx: StudioCtx,
-  component: Component
+  component: Component,
 ): Promise<Record<string, Expr> | undefined> {
   return new Promise((resolve) => {
     const handleModalClose = (data: Record<string, Expr> | undefined) => {
@@ -30,11 +31,13 @@ export async function getPreInsertionProps(
     const modalElement = document.createElement("div");
     const root = createRoot(modalElement);
     root.render(
-      <PreInsertionModal
-        onClose={handleModalClose}
-        studioCtx={studioCtx}
-        component={component}
-      />
+      <AntdConfigProvider>
+        <PreInsertionModal
+          onClose={handleModalClose}
+          studioCtx={studioCtx}
+          component={component}
+        />
+      </AntdConfigProvider>,
     );
   });
 }
@@ -52,7 +55,7 @@ export const PreInsertionModal = (props: PreInsertionModalProps) => {
 
   const meta = React.useMemo(
     () => studioCtx.getCodeComponentMeta(component),
-    [component]
+    [component],
   );
 
   const onClose = React.useCallback(
@@ -60,7 +63,7 @@ export const PreInsertionModal = (props: PreInsertionModalProps) => {
       setIsOpen(false);
       props.onClose(data);
     },
-    [setIsOpen, props.onClose]
+    [setIsOpen, props.onClose],
   );
 
   return (
@@ -78,7 +81,7 @@ export const PreInsertionModal = (props: PreInsertionModalProps) => {
               Object.entries(args).map(([arg, expr]) => [
                 arg,
                 tryExtractJson(expr),
-              ])
+              ]),
             );
             // TODO: we don't allow dynamic values in the pre-insertion stage
             if (
@@ -115,7 +118,7 @@ export const PreInsertionModal = (props: PreInsertionModalProps) => {
               />
             );
           })}
-        </div>
+        </div>,
       )}
     </Modal>
   );

@@ -1,5 +1,5 @@
-import StartersSection from "@/wab/client/components/StartersSection";
 import StarterGroup from "@/wab/client/components/StarterGroup";
+import StartersSection from "@/wab/client/components/StartersSection";
 import { BareModal } from "@/wab/client/components/studio/BareModal";
 import { Tab, Tabs } from "@/wab/client/components/widgets";
 import {
@@ -17,6 +17,7 @@ import * as React from "react";
 
 interface NewProjectModalProps extends DefaultNewProjectModalProps {
   onCancel: () => void;
+  /** Workspace to create the project in; the playground when omitted. */
   workspaceId?: WorkspaceId;
 }
 
@@ -24,7 +25,7 @@ function NewProjectModalBody(props: Pick<NewProjectModalProps, "workspaceId">) {
   const appCtx = useAppCtx();
   const { workspaceId } = props;
   const [currentTab, setCurrentTab] = React.useState<"website" | "app">(
-    "website"
+    "website",
   );
   return (
     <>
@@ -107,6 +108,7 @@ const NewProjectModal = observer(function NewProjectModal({
     if (!projectsData || !workspaceId) {
       return { workspaceStarters: [], orgStarters: [] };
     }
+<<<<<<< HEAD
     const teamId = projectsData.projects.find(
       (p) => p.workspaceId === workspaceId
     )?.teamId;
@@ -121,6 +123,11 @@ const NewProjectModal = observer(function NewProjectModal({
           )
         : [],
     };
+=======
+    return projectsData.projects.filter(
+      (project) => project.workspaceId === workspaceId && project.isUserStarter,
+    );
+>>>>>>> upstream/master
   }, [projectsData, workspaceId]);
 
   return (

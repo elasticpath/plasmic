@@ -40,7 +40,7 @@ function hasDynamicMetadata(pageMeta: PageMeta | null | undefined): boolean {
 
 function getOgImageLink(
   ctx: SerializerBaseContext,
-  image: PageMeta["openGraphImage"]
+  image: PageMeta["openGraphImage"],
 ): string | undefined {
   if (!image) {
     return undefined;
@@ -62,7 +62,7 @@ function getOgImageLink(
 
     assert(
       imageLink && imageLink.startsWith("http"),
-      "The open graph image must be a valid, fully qualified URL."
+      "The open graph image must be a valid, fully qualified URL.",
     );
 
     return imageLink;
@@ -108,14 +108,14 @@ function serializeMetaTags(props: {
     .map((metaKey) =>
       metaKey === "title"
         ? `<title key="title">{${serializedKey}}</title>`
-        : `<meta key="${metaKey}" property="${metaKey}" content={${serializedKey}} />`
+        : `<meta key="${metaKey}" property="${metaKey}" content={${serializedKey}} />`,
     )
     .join("\n");
 }
 
 export function renderPageHead(
   ctx: SerializerBaseContext,
-  page: Component
+  page: Component,
 ): string {
   const isNextJs = isPlatformNextJs(ctx);
   const title = page.pageMeta?.title;
@@ -180,7 +180,7 @@ export function renderPageHead(
 
 export function serializeTanStackHead(
   ctx: SerializerBaseContext,
-  page: Component
+  page: Component,
 ) {
   const title = page.pageMeta?.title;
   const description = page.pageMeta?.description;
@@ -196,7 +196,7 @@ export function serializeTanStackHead(
     metaEntries.push(
       `{ name: "twitter:card", content: ${
         ogImageSrc ? `"summary_large_image"` : `"summary"`
-      } }`
+      } }`,
     );
 
     if (title) {
@@ -204,30 +204,30 @@ export function serializeTanStackHead(
       metaEntries.push(
         `{ key: "title", title: ${titleKey} }`,
         `{ key: "og:title", property: "og:title", content: ${titleKey} }`,
-        `{ key: "twitter:title", name: "twitter:title", content: ${titleKey} }`
+        `{ key: "twitter:title", name: "twitter:title", content: ${titleKey} }`,
       );
     }
 
     if (description) {
       const descriptionKey = serializePageMetadataKey(
         componentName,
-        "description"
+        "description",
       );
       metaEntries.push(
         `{ key: "description", name: "description", content: ${descriptionKey} }`,
         `{ key: "og:description", property: "og:description", content: ${descriptionKey} }`,
-        `{ key: "twitter:description", name: "twitter:description", content: ${descriptionKey} }`
+        `{ key: "twitter:description", name: "twitter:description", content: ${descriptionKey} }`,
       );
     }
 
     if (ogImageSrc) {
       const ogImageSrcKey = serializePageMetadataKey(
         componentName,
-        "ogImageSrc"
+        "ogImageSrc",
       );
       metaEntries.push(
         `{ key: "og:image", property: "og:image", content: ${ogImageSrcKey} }`,
-        `{ key: "twitter:image", name: "twitter:image", content: ${ogImageSrcKey} }`
+        `{ key: "twitter:image", name: "twitter:image", content: ${ogImageSrcKey} }`,
       );
     }
 
@@ -252,7 +252,7 @@ export function serializeTanStackHead(
 }
 
 export function makePageMetadataOutput(
-  ctx: SerializerBaseContext
+  ctx: SerializerBaseContext,
 ): PageMetadata | undefined {
   const pageMeta = ctx.component.pageMeta;
   if (!pageMeta) {
@@ -273,7 +273,7 @@ export function makePageMetadataOutput(
  */
 function serializeMetadataValue(
   ctx: SerializerBaseContext,
-  value: string | any | null | undefined
+  value: string | any | null | undefined,
 ): string | undefined {
   if (!value) {
     return undefined;
@@ -290,7 +290,7 @@ function serializeMetadataValue(
 }
 
 function flattenMetadataValueToString(
-  value: string | any | null | undefined
+  value: string | any | null | undefined,
 ): string {
   if (!value) {
     return "";
@@ -306,7 +306,7 @@ function flattenMetadataValueToString(
 
 function getOgImageValue(
   ctx: SerializerBaseContext,
-  metaImage: string | Expr | ImageAssetRef | null | undefined
+  metaImage: string | Expr | ImageAssetRef | null | undefined,
 ): string | undefined {
   if (!metaImage) {
     return undefined;
@@ -320,7 +320,7 @@ function getOgImageValue(
       const imageLink = ctx.s3ImageLinks[asset.uuid] || asset.dataUri;
       assert(
         imageLink && imageLink.startsWith("http"),
-        "The open graph image must be a valid, fully qualified URL."
+        "The open graph image must be a valid, fully qualified URL.",
       );
       return JSON.stringify(imageLink);
     }
@@ -356,7 +356,7 @@ function wrapQueriesWithLoadingProxy($q: any): any {
 }
 
 export function serializeGenerateDynamicMetadataFunction(
-  ctx: SerializerBaseContext
+  ctx: SerializerBaseContext,
 ) {
   const pageMeta = ctx.component.pageMeta;
   const metaFunction = `
@@ -403,7 +403,7 @@ type PlasmicPageMetadata = {
 
 function serializeDynamicMetadataObject(
   ctx: SerializerBaseContext,
-  pageMeta: PageMeta
+  pageMeta: PageMeta,
 ) {
   // Serialize metadata field values
   const titleValue = serializeMetadataValue(ctx, pageMeta.title);

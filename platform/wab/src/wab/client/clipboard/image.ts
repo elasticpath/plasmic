@@ -9,10 +9,12 @@ import { ok } from "neverthrow";
 
 export async function pasteImage(
   image: ResizableImage,
-  { studioCtx, cursorClientPt, insertRelLoc }: PasteArgs
+  { studioCtx, cursorClientPt, insertRelLoc }: PasteArgs,
 ): Promise<PasteResult> {
   const { imageResult, opts } = await studioCtx.app.withSpinner(
-    maybeUploadImage(studioCtx.appCtx, image, undefined, undefined)
+    maybeUploadImage(studioCtx.appCtx, image, undefined, undefined, {
+      autoDescribe: true,
+    }),
   );
   if (!imageResult || !opts) {
     return {
@@ -35,10 +37,10 @@ export async function pasteImage(
             node,
             cursorClientPt,
             undefined,
-            insertRelLoc
-          )
+            insertRelLoc,
+          ),
         );
-      })
+      }),
     ),
   };
 }

@@ -12,7 +12,7 @@ export const migrate: UnbundledMigrationFn = async (bundle, db, entity) => {
     bundler,
     bundle,
     db,
-    entity
+    entity,
   );
 
   for (const component of site.components) {
@@ -24,7 +24,7 @@ export const migrate: UnbundledMigrationFn = async (bundle, db, entity) => {
           variantGroup: vg,
           onChangeParam: undefined as any,
         });
-        component.states.push(state);
+        component.states = [...component.states, state];
         (vg as any).linkedState = state;
       } else {
         (vg.linkedState as any).param = vg.param;
@@ -36,7 +36,7 @@ export const migrate: UnbundledMigrationFn = async (bundle, db, entity) => {
   const newBundle = bundler.bundle(
     siteOrProjectDep,
     entity.id,
-    "79-variant-group-states"
+    "79-variant-group-states",
   );
   Object.assign(bundle, newBundle);
 };

@@ -1,5 +1,5 @@
 import { MenuBuilder } from "@/wab/client/components/menu-builder";
-import { resolvedBackgroundImageCss } from "@/wab/client/components/sidebar-tabs/background-section";
+import { resolvedBackgroundImageCss } from "@/wab/client/components/sidebar-tabs/background-utils";
 import {
   TplNodeIconWrapper,
   createNodeIcon,
@@ -50,7 +50,7 @@ import {
   unclearableBaseStyleProps,
 } from "@/wab/shared/Variants";
 import { computedProjectFlags } from "@/wab/shared/cached-selectors";
-import { arrayRemove } from "@/wab/shared/collections";
+import { arrayWithout } from "@/wab/shared/collections";
 import { cx, ensure, ensureArray, spawn, swallow } from "@/wab/shared/common";
 import { BackgroundLayer, NoneBackground } from "@/wab/shared/core/bg-styles";
 import {
@@ -63,14 +63,15 @@ import {
   siteFinalStyleTokensAllDeps,
 } from "@/wab/shared/core/site-style-tokens";
 import {
-  BASE_THEMEABLE_TAG,
   getDefaultStyleTag,
   sourceMatchThemeStyle,
 } from "@/wab/shared/core/styles";
 import {
+  clearText,
   isTplComponent,
   isTplNamable,
   isTplTag,
+  removeTextOverride,
   summarizeTplNamable,
   tryGetTplOwnerComponent,
 } from "@/wab/shared/core/tpls";
@@ -85,9 +86,9 @@ import {
   isTargetOverwritten,
 } from "@/wab/shared/defined-indicator";
 import { getEffectiveVariantSetting } from "@/wab/shared/effective-variant-setting";
+import { BASE_THEMABLE_TAG } from "@/wab/shared/html";
 import {
   Expr,
-  RawText,
   Site,
   TplNode,
   Variant,
@@ -114,16 +115,16 @@ export const variantComboName = (combo: VariantCombo) => {
     if (isPrivateStyleVariant(variant)) {
       return `element:${ensure(
         variant.selectors,
-        "style variants have selectors"
+        "style variants have selectors",
       ).join(", ")}`;
     } else if (isStyleVariant(variant)) {
       return `${ensure(variant.selectors, "style variants have selectors").join(
-        ", "
+        ", ",
       )}`;
     } else if (isCodeComponentVariant(variant)) {
       return `${ensure(
         variant.codeComponentVariantKeys,
-        "code component variants have keys"
+        "code component variants have keys",
       ).join(", ")}`;
     } else if (isBaseVariant(variant)) {
       return "Base";
@@ -139,7 +140,7 @@ export function getStylePropValue(
   site: Site,
   prop: string | undefined,
   value: string,
-  vsh?: VariantedStylesHelper
+  vsh?: VariantedStylesHelper,
 ) {
   vsh = vsh ?? new VariantedStylesHelper();
 
@@ -153,7 +154,7 @@ export function getStylePropValue(
     }
 
     const parsedBgImg: BackgroundLayer | null = swallow(() =>
-      parseCss(val, { startRule: "backgroundLayer" })
+      parseCss(val, { startRule: "backgroundLayer" }),
     );
 
     // We also check isNaN because sometimes numbers get interpreted
@@ -173,7 +174,7 @@ export function getStylePropValue(
             parsedBgImg.image,
             clientTokenResolver,
             site,
-            vsh
+            vsh,
           ),
         }}
       />
@@ -205,7 +206,7 @@ export function getStylePropValue(
   } else {
     return joinReactNodes(
       values.map((v) => renderValue(v)),
-      ", "
+      ", ",
     );
   }
 }
@@ -247,7 +248,7 @@ export const SourceValue = observer(function SourceValue(props: {
           <div>
             <EditMixinButton
               mixin={source.theme.defaultStyle}
-              themeTag={BASE_THEMEABLE_TAG}
+              themeTag={BASE_THEMABLE_TAG}
               className="defined-indicator__edit-button code flex flex-vcenter"
               onShowPopup={onShowPopup}
             >
@@ -255,7 +256,7 @@ export const SourceValue = observer(function SourceValue(props: {
                 clientTokenResolver,
                 site,
                 source.prop,
-                source.value
+                source.value,
               )}
             </EditMixinButton>
           </div>
@@ -269,7 +270,7 @@ export const SourceValue = observer(function SourceValue(props: {
             clientTokenResolver,
             site,
             source.prop,
-            source.value
+            source.value,
           )}
         </div>
       );
@@ -278,7 +279,7 @@ export const SourceValue = observer(function SourceValue(props: {
     if (site.themes.includes(source.theme)) {
       const themeStyle = ensure(
         source.theme.styles.find((s) => sourceMatchThemeStyle(s, source)),
-        "Theme must exist"
+        "Theme must exist",
       );
       return (
         <Tooltip title={`Edit default ${source.selector} style`}>
@@ -293,7 +294,7 @@ export const SourceValue = observer(function SourceValue(props: {
                 clientTokenResolver,
                 site,
                 source.prop,
-                source.value
+                source.value,
               )}
             </EditMixinButton>
           </div>
@@ -306,7 +307,7 @@ export const SourceValue = observer(function SourceValue(props: {
             clientTokenResolver,
             site,
             source.prop,
-            source.value
+            source.value,
           )}
         </div>
       );
@@ -327,7 +328,7 @@ export const SourceValue = observer(function SourceValue(props: {
                 clientTokenResolver,
                 site,
                 source.prop,
-                source.value
+                source.value,
               )}
             </EditMixinButton>
           </div>
@@ -343,7 +344,7 @@ export const SourceValue = observer(function SourceValue(props: {
             clientTokenResolver,
             site,
             source.prop,
-            source.value
+            source.value,
           )}
         </div>
       );
@@ -351,16 +352,16 @@ export const SourceValue = observer(function SourceValue(props: {
   } else if (source.type === "arg") {
     const param = ensure(
       source.component.params.find((p) => source.value.param === p),
-      "param must exist"
+      "param must exist",
     );
     const vg = source.component.variantGroups.find(
-      (_vg) => _vg.param === param
+      (_vg) => _vg.param === param,
     );
     if (vg) {
       const selectedVariantIds = ensureArray(tryExtractLit(source.value.expr));
       if (selectedVariantIds.length > 0) {
         const variants = vg.variants.filter((v) =>
-          selectedVariantIds.includes(v.uuid)
+          selectedVariantIds.includes(v.uuid),
         );
         return (
           <Tooltip title={variants.map((v) => v.name).join(", ")}>
@@ -423,8 +424,8 @@ export const SourceValue = observer(function SourceValue(props: {
               studioCtx.setStudioFocusOnTpl(
                 owningComponent,
                 source.parentTpl,
-                source.activeVariants
-              )
+                source.activeVariants,
+              ),
             );
           }
         }}
@@ -433,7 +434,7 @@ export const SourceValue = observer(function SourceValue(props: {
           clientTokenResolver,
           site,
           source.prop,
-          source.value
+          source.value,
         )}
       </div>
     );
@@ -463,7 +464,7 @@ export const SourceValue = observer(function SourceValue(props: {
       clientTokenResolver,
       site,
       source.prop,
-      display
+      display,
     );
     if (source.isDerived) {
       return <>{rendered} (derived)</>;
@@ -483,11 +484,11 @@ const VariantSourceStack = observer(function VariantSourceStack(props: {
   const studioCtx = useStudioCtx();
 
   const renderParentTplSourceIcon = (
-    source: ParentTplStyleSource | SlotSource
+    source: ParentTplStyleSource | SlotSource,
   ) => {
     const effectiveVs = getEffectiveVariantSetting(
       source.parentTpl,
-      source.activeVariants
+      source.activeVariants,
     );
     const nodeIcon = createNodeIcon(source.parentTpl, effectiveVs);
 
@@ -508,42 +509,42 @@ const VariantSourceStack = observer(function VariantSourceStack(props: {
           source.type === "theme"
             ? source.theme.defaultStyle.name
             : source.type === "themeTag"
-            ? `Default "${source.selector}"`
-            : source.type === "slot"
-            ? `${SLOT_CAP} "${source.param.variable.name}" in ${
-                source.tplComponent
-                  ? getComponentDisplayName(source.tplComponent.component)
-                  : "this component"
-              }`
-            : source.type === "parentTplStyle"
-            ? (() => {
-                const effectiveVs = getEffectiveVariantSetting(
-                  source.parentTpl,
-                  source.activeVariants
-                );
+              ? `Default "${source.selector}"`
+              : source.type === "slot"
+                ? `${SLOT_CAP} "${source.param.variable.name}" in ${
+                    source.tplComponent
+                      ? getComponentDisplayName(source.tplComponent.component)
+                      : "this component"
+                  }`
+                : source.type === "parentTplStyle"
+                  ? (() => {
+                      const effectiveVs = getEffectiveVariantSetting(
+                        source.parentTpl,
+                        source.activeVariants,
+                      );
 
-                // Get the tpl name
-                const tplName = isTplNamable(source.parentTpl)
-                  ? `${summarizeTplNamable(
-                      source.parentTpl,
-                      effectiveVs.rsh()
-                    )} `
-                  : "";
+                      // Get the tpl name
+                      const tplName = isTplNamable(source.parentTpl)
+                        ? `${summarizeTplNamable(
+                            source.parentTpl,
+                            effectiveVs.rsh(),
+                          )} `
+                        : "";
 
-                const parts = [`${tplName}`];
+                      const parts = [`${tplName}`];
 
-                // Add component info if present
-                if (source.tplComponent) {
-                  parts.push(
-                    `in ${getComponentDisplayName(
-                      source.tplComponent.component
-                    )}`
-                  );
-                }
+                      // Add component info if present
+                      if (source.tplComponent) {
+                        parts.push(
+                          `in ${getComponentDisplayName(
+                            source.tplComponent.component,
+                          )}`,
+                        );
+                      }
 
-                return parts.join(" ");
-              })()
-            : variantComboName(source.combo);
+                      return parts.join(" ");
+                    })()
+                  : variantComboName(source.combo);
         return (
           <SourceRow
             key={i}
@@ -565,8 +566,8 @@ const VariantSourceStack = observer(function VariantSourceStack(props: {
               source === targetSource
                 ? "target"
                 : i !== stack.length - 1
-                ? "overwritten"
-                : undefined
+                  ? "overwritten"
+                  : undefined
             }
           >
             <SourceValue
@@ -622,7 +623,7 @@ export function SourceRow(props: {
 }
 
 export function mergedIndicatorSource(
-  indicators: DefinedIndicatorType[]
+  indicators: DefinedIndicatorType[],
 ): DefinedIndicatorType["source"] {
   indicators = indicators.filter((x) => x.source !== "none");
   if (indicators.length === 0) {
@@ -670,7 +671,7 @@ const PopoverContent = observer(function PopoverContent(props: {
               clientTokenResolver,
               studioCtx.site,
               type.prop,
-              type.value
+              type.value,
             )}
           </div>
         </div>
@@ -785,24 +786,25 @@ function DefinedIndicator_(props: {
     return null;
   }
   const indicatorType = types.some(
-    (_t) => _t.source === "set" || _t.source === "setNonVariable"
+    (_t) => _t.source === "set" || _t.source === "setNonVariable",
   )
     ? "set"
     : types.some((_t) => _t.source === "derived")
-    ? "derived"
-    : types.some((_t) => _t.source === "mixin")
-    ? "mixin"
-    : types.some(
-        (_t) => _t.source === "otherVariants" && !_t.targetHasHighestPriority
-      )
-    ? "overwritten"
-    : types.some((_t) => _t.source === "otherVariants")
-    ? "otherVariants"
-    : types.some((_t) => _t.source === "theme")
-    ? "theme"
-    : types.some((_t) => _t.source === "parentTplStyle")
-    ? "parentTplStyle"
-    : undefined;
+      ? "derived"
+      : types.some((_t) => _t.source === "mixin")
+        ? "mixin"
+        : types.some(
+              (_t) =>
+                _t.source === "otherVariants" && !_t.targetHasHighestPriority,
+            )
+          ? "overwritten"
+          : types.some((_t) => _t.source === "otherVariants")
+            ? "otherVariants"
+            : types.some((_t) => _t.source === "theme")
+              ? "theme"
+              : types.some((_t) => _t.source === "parentTplStyle")
+                ? "parentTplStyle"
+                : undefined;
   return (
     <Popover
       overlayClassName="defined-indicator__popover group"
@@ -879,7 +881,7 @@ export const VariantSettingPopoverTitle = observer(
             }
           >
             Reset all settings
-          </Menu.Item>
+          </Menu.Item>,
         );
       });
       return builder.build({
@@ -894,7 +896,7 @@ export const VariantSettingPopoverTitle = observer(
         </div>
       </div>
     );
-  }
+  },
 );
 
 export const VariantSettingPopoverContent = observer(
@@ -935,12 +937,10 @@ export const VariantSettingPopoverContent = observer(
             title="Text"
             type="target"
             onClear={() =>
-              viewCtx.change(
-                () =>
-                  (vs.text = new RawText({
-                    text: "",
-                    markers: [],
-                  }))
+              viewCtx.change(() =>
+                isBaseVariant(vs.variants)
+                  ? clearText(tpl, vs)
+                  : removeTextOverride(tpl, vs),
               )
             }
           >
@@ -951,8 +951,8 @@ export const VariantSettingPopoverContent = observer(
                 value: isKnownRawText(vs.text)
                   ? vs.text.text
                   : isKnownExprText(vs.text) && isKnownCustomCode(vs.text.expr)
-                  ? vs.text.expr.code
-                  : "(unknown)",
+                    ? vs.text.expr.code
+                    : "(unknown)",
                 combo: vs.variants,
               }}
               editable={false}
@@ -968,7 +968,11 @@ export const VariantSettingPopoverContent = observer(
                   key={attr}
                   title={getLabelForAttr(attr)}
                   type="target"
-                  onClear={() => viewCtx.change(() => delete vs.attrs[attr])}
+                  onClear={() =>
+                    viewCtx.change(() => {
+                      vs.attrs = L.omit(vs.attrs, attr);
+                    })
+                  }
                 >
                   <SourceValue
                     site={site}
@@ -981,7 +985,7 @@ export const VariantSettingPopoverContent = observer(
                     editable={false}
                   />
                 </SourceRow>
-              )
+              ),
           )}
         {isTplComponent(tpl) &&
           vs.args.map((arg) => (
@@ -989,7 +993,11 @@ export const VariantSettingPopoverContent = observer(
               key={arg.uid}
               title={arg.param.variable.name}
               type="target"
-              onClear={() => viewCtx.change(() => arrayRemove(vs.args, arg))}
+              onClear={() =>
+                viewCtx.change(() => {
+                  vs.args = arrayWithout(vs.args, arg);
+                })
+              }
             >
               <SourceValue
                 site={site}
@@ -1056,7 +1064,7 @@ export const VariantSettingPopoverContent = observer(
           .filter(
             (prop) =>
               !isBaseVariant(vs.variants) ||
-              !isDefaultIgnorableStyleValue(prop, exp.get(prop))
+              !isDefaultIgnorableStyleValue(prop, exp.get(prop)),
           )
           .map((prop) => (
             <SourceRow
@@ -1084,7 +1092,7 @@ export const VariantSettingPopoverContent = observer(
           ))}
       </>
     );
-  }
+  },
 );
 
 function getLabelForAttr(attr: string) {

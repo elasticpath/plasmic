@@ -46,7 +46,7 @@ export function ensureViewCtxOrThrowUserError(studioCtx: StudioCtx): ViewCtx {
   } else {
     throw new UserError(
       "Cannot paste item",
-      `You must have an ${FRAME_CAP} in focus in order to paste.`
+      `You must have an ${FRAME_CAP} in focus in order to paste.`,
     );
   }
 }
@@ -82,13 +82,19 @@ export function writeClipboardPlasmicData(data: string) {
     navigator.clipboard.write &&
     typeof ClipboardItem !== "undefined"
   ) {
+    const onWriteError = (e: unknown) => {
+      console.warn("Failed to write to system clipboard", e);
+      // Mirroring the in-memory clipboard is best-effort when permission is denied.
+      if (!(e instanceof DOMException && e.name === "NotAllowedError")) {
+        Sentry.captureException(e);
+      }
+    };
     try {
       const blob = new Blob([data], { type: PLASMIC_CLIPBOARD_FORMAT });
       const item = new ClipboardItem({ [PLASMIC_CLIPBOARD_FORMAT]: blob });
-      spawn(navigator.clipboard.write([item]));
+      spawn(navigator.clipboard.write([item]).catch(onWriteError));
     } catch (e) {
-      console.warn("Failed to write to system clipboard", e);
-      Sentry.captureException(e);
+      onWriteError(e);
     }
   }
 }

@@ -17,11 +17,11 @@ export async function main() {
     .option(
       "--bundle-checks",
       "Check the stamped version in the bundles (default)",
-      true
+      true,
     )
     .option(
       "--no-bundle-checks",
-      "Do not check the stamped version in the bundles"
+      "Do not check the stamped version in the bundles",
     )
     .parse(process.argv)
     .opts();
@@ -31,17 +31,16 @@ export async function main() {
   const migrationName = opts.migrationName;
   const checkBundles = !!opts.bundleChecks;
 
-  logger().info(
-    `Reverting migration ${migrationName} (checkBundles: ${checkBundles})`
+  logger.info(
+    `Reverting migration ${migrationName} (checkBundles: ${checkBundles})`,
   );
 
   await con.transaction(async (em) => {
     const db = new DbMgr(em, SUPER_USER);
 
-    const entityIds = await db.getEntityIdsFromBundleBackupsByMigration(
-      migrationName
-    );
-    logger().info(`${entityIds.length} bundles to revert`);
+    const entityIds =
+      await db.getEntityIdsFromBundleBackupsByMigration(migrationName);
+    logger.info(`${entityIds.length} bundles to revert`);
 
     for (const entityId of entityIds) {
       const entity =
@@ -49,12 +48,12 @@ export async function main() {
           ? await db.getLatestProjectRev(entityId.projectId)
           : await db.getPkgVersionById(entityId.pkgVersionId);
 
-      logger().info(
+      logger.info(
         `Reverting ${entity.constructor.name} ${entity.id}${
           entity instanceof ProjectRevision
             ? ` (projectId ${entity.projectId})`
             : ""
-        }...`
+        }...`,
       );
 
       const currentBundle = parseBundle(entity);
@@ -64,8 +63,8 @@ export async function main() {
       if (checkBundles && currentVersion !== migrationName) {
         // If the bundle has already been reverted, don't overwrite it with the backup
         // again to avoid unnecessary data loss.
-        logger().info(
-          `Skipping ${entity.constructor.name} ${entity.id} because it's current version is ${currentVersion}`
+        logger.info(
+          `Skipping ${entity.constructor.name} ${entity.id} because it's current version is ${currentVersion}`,
         );
         continue;
       }
@@ -74,12 +73,12 @@ export async function main() {
       await db.saveBundleBackupForEntity(
         migrationName + "--reverted",
         entity,
-        JSON.stringify(currentBundle)
+        JSON.stringify(currentBundle),
       );
 
       const backupBundle = ensure(
         await db.getBundleBackupForEntity(entity, migrationName),
-        () => "Couldn't find bundle backup for entity " + entity.id
+        () => "Couldn't find bundle backup for entity " + entity.id,
       );
       const newBundle = parseBundle(backupBundle);
       const newVersion = newBundle.version || "0-new-version";
@@ -95,7 +94,7 @@ export async function main() {
             newBundle.map[newBundle.root].__type === "ProjectDependency",
           () =>
             "Expected ProjectDependency, but got: " +
-            newBundle.map[newBundle.root].__type
+            newBundle.map[newBundle.root].__type,
         );
         await db.updatePkgVersion(
           entity.pkgId,
@@ -103,14 +102,14 @@ export async function main() {
           entity.branchId,
           {
             model: JSON.stringify(newBundle),
-          }
+          },
         );
       } else {
         assert(
           isEmptyBundle(newBundle as any) ||
             newBundle.map[newBundle.root].__type === "Site",
           () =>
-            "Expected Site, but got: " + newBundle.map[newBundle.root].__type
+            "Expected Site, but got: " + newBundle.map[newBundle.root].__type,
         );
         await db.updateProjectRev({
           projectId: entity.projectId,
@@ -120,8 +119,8 @@ export async function main() {
         });
       }
 
-      logger().info(
-        `Reverted ${entity.constructor.name} ${entity.id} from version ${currentVersion} to ${newVersion}`
+      logger.info(
+        `Reverted ${entity.constructor.name} ${entity.id} from version ${currentVersion} to ${newVersion}`,
       );
     }
   });
@@ -130,8 +129,8 @@ export async function main() {
 if (require.main === module) {
   spawn(
     main().catch((error) => {
-      logger().error("Found an error reverting the migration.", error);
+      logger.error("Found an error reverting the migration.", error);
       process.exit(1);
-    })
+    }),
   );
 }

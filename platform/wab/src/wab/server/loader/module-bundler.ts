@@ -4,8 +4,7 @@ import {
   uploadErrorFiles,
 } from "@/wab/server/loader/error-handler";
 import { makeGlobalContextsProviderFileName } from "@/wab/server/loader/module-writer";
-import { logger } from "@/wab/server/observability";
-import { withSpan } from "@/wab/server/util/apm-util";
+import { logger, withSpan } from "@/wab/server/observability";
 import {
   CachedCodegenOutputBundle,
   ComponentReference,
@@ -22,7 +21,12 @@ import {
   PageMetadata,
 } from "@/wab/shared/codegen/types";
 import { ensure, notNil, withoutNils } from "@/wab/shared/common";
-import esbuild, { Plugin as EsbuildPlugin, Metafile } from "esbuild";
+import type { AssetModule, CodeModule } from "@/wab/shared/live-frame-types";
+import esbuild, {
+  BuildResult,
+  Plugin as EsbuildPlugin,
+  Metafile,
+} from "esbuild";
 import { promises as fs } from "fs";
 import { glob } from "glob";
 import { flatMap, kebabCase, sortBy } from "lodash";
@@ -36,6 +40,8 @@ import {
   nextModulesPlugin,
 } from "@/wab/server/loader/next-modules";
 import { splitEpCommerceImportsPlugin } from "@/wab/server/loader/ep-commerce-imports";
+
+export type { AssetModule, CodeModule };
 
 export interface ComponentMeta {
   id: string;
@@ -101,19 +107,6 @@ export interface LoaderBundleOutput {
   disableRootLoadingBoundaryByDefault: boolean;
 }
 
-export interface CodeModule {
-  fileName: string;
-  code: string;
-  imports: string[];
-  type: "code";
-}
-
-export interface AssetModule {
-  fileName: string;
-  source: string;
-  type: "asset";
-}
-
 type BundleOpts = {
   platform: "react" | "nextjs" | "gatsby" | "tanstack";
   mode: "production" | "development";
@@ -129,7 +122,7 @@ async function bundleModulesEsbuild(
   dir: string,
   codegenOutputs: CachedCodegenOutputBundle[],
   componentDeps: Record<string, string[]>,
-  opts: BundleOpts
+  opts: BundleOpts,
 ) {
   // First we build the javascript, which we need to build separately for browser
   // and for node (if so requested).
@@ -146,6 +139,7 @@ async function bundleModulesEsbuild(
     // is esm, so we first build as esm, and then we convert esm to cjs
     const outDirEsm = path.join(dir, `dist-esbuild-esm-${target}`);
     const outRes = await esbuild.build({
+      logLevel: "silent",
       // entryPoints are the files that we may want to load explicitly via loader.
       entryPoints: [
         "root-provider.tsx",
@@ -155,7 +149,7 @@ async function bundleModulesEsbuild(
             // We don't consider code component as entry points as we consider that the user
             // will import them directly from the code component, and not from the loader
             .filter((c) => !c.isCode)
-            .map((c) => componentEntrypoint(c))
+            .map((c) => componentEntrypoint(c)),
         ),
         // Each style tokens provider file
         ...codegenOutputs
@@ -164,20 +158,20 @@ async function bundleModulesEsbuild(
           .map((bundle) => bundle.fileName),
         // Each global variant context file
         ...codegenOutputs.flatMap((o) =>
-          o.globalVariants.map((g) => g.contextFileName)
+          o.globalVariants.map((g) => g.contextFileName),
         ),
         // The global contexts provider
         ...codegenOutputs.flatMap((o) =>
           o.projectConfig.globalContextBundle
             ? makeGlobalContextsProviderFileName(o.projectConfig.projectId)
-            : []
+            : [],
         ),
         ...codegenOutputs.flatMap((o) =>
           withoutNils(
             o.components.map(
-              (c) => c.rscMetadata?.serverQueriesExecFunc?.fileName
-            )
-          )
+              (c) => c.rscMetadata?.serverQueriesExecFunc?.fileName,
+            ),
+          ),
         ),
         ...codegenOutputs.flatMap((o) =>
           withoutNils(
@@ -213,7 +207,17 @@ async function bundleModulesEsbuild(
       // to know what files to load in the loader, and we only know them
       // by the file names without the content hash.
       entryNames: "[name]",
-      preserveSymlinks: true,
+      // Resolve symlinks like Node does (its default). The codegen dir's
+      // node_modules is a symlink into ../loader-bundle-env/node_modules,
+      // which under pnpm contains only symlinks into the workspace's .pnpm
+      // store, holding just loader-bundle-env's *direct* deps at the top
+      // level. Transitive imports (e.g. classnames from react-web) only
+      // resolve if esbuild follows those symlinks into the store, where each
+      // package's own deps sit alongside it. Under the old flat yarn layout
+      // every transitive dep was hoisted to the top level, so this was
+      // preserveSymlinks: true from 2022 until the pnpm migration without
+      // observable difference.
+      preserveSymlinks: false,
       plugins: withoutNils([
         externalizeCssUrlsPlugin,
         fixAntdPathPlugin,
@@ -251,7 +255,7 @@ async function bundleModulesEsbuild(
               return {
                 contents: text.replace(
                   /FormContext, FormItemStatusContext, NoStyleItemContext/,
-                  "FormContext, NoStyleItemContext"
+                  "FormContext, NoStyleItemContext",
                 ),
               };
             });
@@ -279,13 +283,13 @@ async function bundleModulesEsbuild(
                   "node_modules",
                   "plasmic-internal-noop-func",
                   "dist",
-                  args.kind === "require-call" ? "index.js" : "index.esm.js"
+                  args.kind === "require-call" ? "index.js" : "index.esm.js",
                 );
                 return {
                   path: newPath,
                   external: false,
                 };
-              }
+              },
             );
           },
         },
@@ -321,7 +325,7 @@ async function bundleModulesEsbuild(
                           "node_modules",
                           "resize-observer-polyfill",
                           "dist",
-                          "ResizeObserver.js"
+                          "ResizeObserver.js",
                         ),
                         external: false,
                       };
@@ -332,12 +336,12 @@ async function bundleModulesEsbuild(
                       // importing from esm builds as well...
                       const pkgDir = await findPkgDir(
                         args.resolveDir,
-                        "@emotion/hash"
+                        "@emotion/hash",
                       );
                       if (pkgDir) {
                         const pkgJson = await getPkgJson(pkgDir);
                         const cjs = path.resolve(
-                          path.join(pkgDir, pkgJson.main)
+                          path.join(pkgDir, pkgJson.main),
                         );
                         return {
                           path: cjs,
@@ -347,7 +351,7 @@ async function bundleModulesEsbuild(
                       return undefined;
                     }
                     return undefined;
-                  }
+                  },
                 );
               },
             }
@@ -368,13 +372,13 @@ async function bundleModulesEsbuild(
                   "node_modules",
                   "ant-design-pro-form-stub",
                   "dist",
-                  args.kind === "require-call" ? "index.js" : "index.esm.js"
+                  args.kind === "require-call" ? "index.js" : "index.esm.js",
                 );
                 return {
                   path: newPath,
                   external: false,
                 };
-              }
+              },
             );
           },
         },
@@ -383,7 +387,8 @@ async function bundleModulesEsbuild(
 
     // Next, we just convert all the esm modules into cjs
     const outDir = path.join(dir, `dist-esbuild-${target}`);
-    await esbuild.build({
+    const cjsRes = await esbuild.build({
+      logLevel: "silent",
       entryPoints: glob.sync(path.join(outDirEsm, "*.js")),
       outdir: outDir,
       format: "cjs",
@@ -397,6 +402,7 @@ async function bundleModulesEsbuild(
     });
 
     metafiles[target] = outRes.metafile;
+    reportEsbuildWarnings(`${target} bundle`, [outRes, cjsRes]);
   }
 
   // Next we build the css, which is really just a minification pass, as we don't
@@ -405,7 +411,8 @@ async function bundleModulesEsbuild(
   // dist-esbuild-browser):
   const browserOutDir = path.join(dir, `dist-esbuild-browser`);
   // First, all the component css
-  await esbuild.build({
+  const cssRes = await esbuild.build({
+    logLevel: "silent",
     entryPoints: glob.sync(path.join(dir, "css__*.css")),
     minify: true,
     outdir: browserOutDir,
@@ -421,7 +428,8 @@ async function bundleModulesEsbuild(
   // Next, the "common" / shared css like default react-web styles, project defaults,
   // etc. These are imported by css-entrypoint.tsx, so doing this will combine the
   // referenced css
-  await esbuild.build({
+  const cssEntrypointRes = await esbuild.build({
+    logLevel: "silent",
     entryPoints: [path.join(dir, "css-entrypoint.tsx")],
     minify: true,
     outdir: browserOutDir,
@@ -444,20 +452,21 @@ async function bundleModulesEsbuild(
                   "node_modules",
                   "slick-carousel-theme",
                   "slick",
-                  "slick-theme.css"
+                  "slick-theme.css",
                 ),
               };
-            }
+            },
           );
         },
       },
     ],
   });
+  reportEsbuildWarnings("css", [cssRes, cssEntrypointRes]);
   // We rename the output css file from the last step to entrypoint.css, which is what
   // loader expects
   await fs.rename(
     path.join(browserOutDir, "css-entrypoint.css"),
-    path.join(browserOutDir, "entrypoint.css")
+    path.join(browserOutDir, "entrypoint.css"),
   );
 
   // Create the css modules by reading them back out from disk
@@ -485,14 +494,17 @@ async function bundleModulesEsbuild(
 
     const buildJsModule = async (
       file: string,
-      fileMeta: Metafile["outputs"][string]
+      fileMeta: Metafile["outputs"][string],
     ) => {
       const origContent = (
         await fs.readFile(
           path.join(
             dir,
-            file.replace(`dist-esbuild-esm-${target}`, `dist-esbuild-${target}`)
-          )
+            file.replace(
+              `dist-esbuild-esm-${target}`,
+              `dist-esbuild-${target}`,
+            ),
+          ),
         )
       ).toString();
       // the esbuild cjs output expects `module` to be in the namespace, and it writes
@@ -527,7 +539,7 @@ Object.assign(exports,module.exports);
         .filter(([file]) => file.endsWith(".js"))
         .map(async ([file, fileMeta]) => {
           return await buildJsModule(file, fileMeta);
-        })
+        }),
     );
     modules.push(...jsModules);
     modules.push(...cssModules);
@@ -548,7 +560,7 @@ Object.assign(exports,module.exports);
     modules,
     codegenOutputs,
     componentDeps,
-    opts
+    opts,
   );
 
   return output;
@@ -559,7 +571,7 @@ export async function bundleModules(
   codegenOutputs: CachedCodegenOutputBundle[],
   componentDeps: Record<string, string[]>,
   componentRefs: ComponentReference[],
-  opts: BundleOpts
+  opts: BundleOpts,
 ): Promise<LoaderBundleOutput> {
   // esbuild only supports loaderVersion >= 7; the compponent
   // and global variant substitution API is necessary to ensure
@@ -568,6 +580,7 @@ export async function bundleModules(
     throw new LoaderDeprecatedVersionError();
   }
 
+<<<<<<< HEAD
   return withSpan(
     "loader-bundle-esbuild",
     async () => {
@@ -609,6 +622,41 @@ export async function bundleModules(
       loader_version: opts.loaderVersion,
       browser_only: opts.browserOnly,
       mode: opts.mode,
+=======
+  return withSpan("loader-bundle-esbuild", async () => {
+    try {
+      return await bundleModulesEsbuild(
+        dir,
+        codegenOutputs,
+        componentDeps,
+        opts,
+      );
+    } catch (err) {
+      const bundleErrorStr: string = err.toString();
+      logger.error(
+        `Error bundling with esbuild: ${bundleErrorStr}: ${err.stack}`,
+      );
+      try {
+        const errPrefix = await uploadErrorFiles(err, dir);
+        logger.error(`Errors uploaded: ${errPrefix}`);
+      } catch (err2) {
+        logger.error(`Error uploading error files: ${err2.toString()}`);
+      }
+
+      const transformedBundleErrorStr = transformBundlerErrors(
+        bundleErrorStr,
+        componentRefs,
+      );
+
+      if (transformedBundleErrorStr) {
+        logger.error(`transformedError: ${transformedBundleErrorStr}`);
+        throw new LoaderBundlingError(transformedBundleErrorStr);
+      }
+
+      await checkEsbuildFatalError(bundleErrorStr);
+
+      throw new Error(`Error bundling with esbuild: ${bundleErrorStr}`);
+>>>>>>> upstream/master
     }
   );
 }
@@ -672,15 +720,15 @@ function makeLoaderBundleOutput(
   },
   codegenOutputs: CachedCodegenOutputBundle[],
   componentDeps: Record<string, string[]>,
-  opts: BundleOpts
+  opts: BundleOpts,
 ) {
   function makeComponentMeta(
     codegenOutput: CachedCodegenOutputBundle,
-    compOutput: ComponentExportOutput
+    compOutput: ComponentExportOutput,
   ) {
     const skeletonFile = compOutput.skeletonModuleFileName.replace(
       ".tsx",
-      ".js"
+      ".js",
     );
     const renderFile = compOutput.renderModuleFileName.replace(".tsx", ".js");
     const entry = componentEntrypoint(compOutput).replace(".tsx", ".js");
@@ -704,7 +752,7 @@ function makeLoaderBundleOutput(
       serverQueriesExecFuncFileName:
         compOutput.rscMetadata?.serverQueriesExecFunc?.fileName.replace(
           ".tsx",
-          ".js"
+          ".js",
         ),
       generateMetadataFuncFileName:
         compOutput.rscMetadata?.generateMetadataFunc?.fileName.replace(
@@ -722,9 +770,9 @@ function makeLoaderBundleOutput(
     external: [...deriveExternals(opts)].sort(),
     components: sortBy(
       codegenOutputs.flatMap((o) =>
-        o.components.map((comp): ComponentMeta => makeComponentMeta(o, comp))
+        o.components.map((comp): ComponentMeta => makeComponentMeta(o, comp)),
       ),
-      (x) => x.id
+      (x) => x.id,
     ),
     globalGroups: sortBy(
       codegenOutputs.flatMap((o) =>
@@ -735,12 +783,12 @@ function makeLoaderBundleOutput(
           contextFile: group.contextFileName.replace(".tsx", ".js"),
           type: group.type,
           useName: `use${group.name}`,
-        }))
+        })),
       ),
-      (x) => x.id
+      (x) => x.id,
     ),
     activeSplits: flatMap(
-      withoutNils(codegenOutputs.map((out) => out.activeSplits))
+      withoutNils(codegenOutputs.map((out) => out.activeSplits)),
     ),
     projects: sortBy(
       codegenOutputs.map((o) => ({
@@ -754,15 +802,15 @@ function makeLoaderBundleOutput(
         styleTokensProviderFileName:
           o.projectConfig.styleTokensProviderBundle?.fileName.replace(
             ".tsx",
-            ".js"
+            ".js",
           ) ?? "",
         globalContextsProviderFileName: o.projectConfig.globalContextBundle
           ? makeGlobalContextsProviderFileName(
-              o.projectConfig.projectId
+              o.projectConfig.projectId,
             ).replace(".tsx", ".js")
           : "",
       })),
-      (x) => x.id
+      (x) => x.id,
     ),
     // Populated in `upsertS3CacheEntry` call
     bundleKey: null,
@@ -774,7 +822,7 @@ function makeLoaderBundleOutput(
 
 function makeFontMetas(usages: FontUsage[]) {
   const googleUsages = usages.filter(
-    (usage) => usage.fontType === "google-font"
+    (usage) => usage.fontType === "google-font",
   );
   if (googleUsages.length > 0) {
     return [
@@ -806,6 +854,16 @@ async function getPkgJson(dir: string) {
   } catch {
     return undefined;
   }
+}
+
+function reportEsbuildWarnings(step: string, results: BuildResult[]) {
+  const warnings = results.flatMap((result) => result.warnings);
+  if (warnings.length === 0) {
+    return;
+  }
+  logger.warn(`esbuild reported ${warnings.length} warning(s) in ${step}`, {
+    warnings: warnings.slice(0, 5).map((w) => `${w.id}: ${w.text}`),
+  });
 }
 
 /**
@@ -907,7 +965,7 @@ const fixAntdPathPlugin: EsbuildPlugin = {
           contents = contents.replace(line, fixedImports.join("\n"));
         }
         return { contents, loader: "js" };
-      }
+      },
     );
   },
 };

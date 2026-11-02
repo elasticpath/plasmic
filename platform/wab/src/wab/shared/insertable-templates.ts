@@ -40,7 +40,7 @@ import { assertSiteInvariants } from "@/wab/shared/site-invariants";
 
 export function cloneInsertableTemplateArena(
   site: Site,
-  info: InsertableTemplateArenaExtraInfo
+  info: InsertableTemplateArenaExtraInfo,
 ) {
   const { arena } = info;
   const tplMgr = new TplMgr({ site });
@@ -54,7 +54,7 @@ export function cloneInsertableTemplateArena(
         ...info,
         component: c.container.component,
       },
-      undefined
+      undefined,
     );
 
     const newVariants = [
@@ -63,7 +63,8 @@ export function cloneInsertableTemplateArena(
     ];
 
     newFonts = new Set([...newFonts, ...seenFonts]);
-    newArena.children.push(
+    newArena.children = [
+      ...newArena.children,
       mkArenaFrame({
         site,
         name: c.name,
@@ -75,14 +76,14 @@ export function cloneInsertableTemplateArena(
         viewMode: FrameViewMode[c.viewMode],
         targetVariants: withoutNils(
           c.targetVariants.map((v) =>
-            newVariants.find((nv) => nv.name === v.name)
-          )
+            newVariants.find((nv) => nv.name === v.name),
+          ),
         ),
         pinnedVariants: {},
         targetGlobalVariants: [],
         pinnedGlobalVariants: {},
-      })
-    );
+      }),
+    ];
   });
 
   return { arena: newArena, seenFonts: newFonts };
@@ -100,7 +101,7 @@ export function cloneInsertableTemplateComponent(
   site: Site,
   info: InsertableTemplateComponentExtraInfo,
   plumeSite: Site | undefined,
-  opts?: CloneOpts
+  opts?: CloneOpts,
 ) {
   const seenFonts = new Set<string>();
 
@@ -114,14 +115,14 @@ export function cloneInsertableTemplateComponent(
     targetTokens,
     info.resolution.token,
     info.screenVariant,
-    (font) => seenFonts.add(font)
+    (font) => seenFonts.add(font),
   );
 
   const componentImporter = mkInsertableComponentImporter(
     site,
     info,
     plumeSite,
-    tokenImporter
+    tokenImporter,
   );
 
   return {
@@ -133,11 +134,11 @@ export function cloneInsertableTemplateComponent(
 function getUnownedTreeCloneUtils(
   site: Site,
   info: InsertableTemplateComponentExtraInfo,
-  plumeSite: Site | undefined
+  plumeSite: Site | undefined,
 ) {
   const { getNewImageAsset, tplAssetFixer } = makeImageAssetFixer(
     site,
-    siteToAllImageAssetsDict(info.site)
+    siteToAllImageAssetsDict(info.site),
   );
 
   const sourceTokens = siteFinalStyleTokensAllDeps(info.site);
@@ -153,14 +154,14 @@ function getUnownedTreeCloneUtils(
     targetTokens,
     info.resolution.token,
     info.screenVariant,
-    (font) => seenFonts.add(font)
+    (font) => seenFonts.add(font),
   );
 
   const componentImporter = mkInsertableComponentImporter(
     site,
     info,
     plumeSite,
-    tokenImporter
+    tokenImporter,
   );
 
   const tplAnimationsFixer = makeTplAnimationsFixer(site);
@@ -185,7 +186,7 @@ export function cloneInsertableTemplate(
   info: InsertableTemplateComponentExtraInfo,
   targetBaseVariant: Variant,
   plumeSite: Site | undefined,
-  ownerComponent: Component
+  ownerComponent: Component,
 ) {
   const {
     component: sourceComp,
@@ -251,7 +252,7 @@ export function cloneInsertableTemplate(
       fixTextTplStyles: textTplStyleFixer,
       getNewImageAsset,
     },
-    getInvalidComponentNames(sourceComp, false)
+    getInvalidComponentNames(sourceComp, false),
   );
 
   // Import the remaining components that were not inlined.
@@ -259,7 +260,7 @@ export function cloneInsertableTemplate(
     ctx.targetSite,
     newTplTree,
     ownerComponent,
-    componentImporter
+    componentImporter,
   );
 
   assertValidInsertable(newTplTree, allowedComponentUuids);
@@ -276,8 +277,8 @@ export function cloneCopyState(
   adaptTplNodeForPaste: (
     tpl: TplNode,
     component: Component,
-    activeVariants: VariantCombo
-  ) => void
+    activeVariants: VariantCombo,
+  ) => void,
 ) {
   const {
     getNewImageAsset,
@@ -308,13 +309,13 @@ export function cloneCopyState(
     const activeVariants = withoutNils(
       reference.activeVariantsUuids.map((uuid) => {
         const componentVariant = componentVariants.find(
-          (variant) => variant.uuid === uuid
+          (variant) => variant.uuid === uuid,
         );
         if (componentVariant) {
           return componentVariant;
         }
         return globalVariants.find((variant) => variant.uuid === uuid);
-      })
+      }),
     );
 
     const _tplTree = componentTpls.find((tpl) => tpl.uuid === reference.uuid);
@@ -346,7 +347,7 @@ export function cloneCopyState(
           fixTextTplStyles: textTplStyleFixer,
           getNewImageAsset,
         },
-        invalidNames
+        invalidNames,
       );
 
       // The order actually matters for importing components, the fixes in the tree assume

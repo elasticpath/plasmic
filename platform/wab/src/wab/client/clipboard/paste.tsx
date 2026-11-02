@@ -54,7 +54,7 @@ export async function paste({
 
 async function pasteRouter(
   clipboard: ReadableClipboard,
-  args: PasteArgs
+  args: PasteArgs,
 ): Promise<boolean> {
   const { studioCtx } = args;
 
@@ -107,7 +107,7 @@ async function pasteRouter(
       }
     }
 
-    const image = await clipboard.getImage(studioCtx.appCtx);
+    const image = await clipboard.getImage();
     if (image) {
       const imageResult = await pasteImage(image, args);
       if (imageResult.handled) {
@@ -128,7 +128,7 @@ async function pasteRouter(
       }
     }
 
-    notification.warn({
+    notification.warning({
       message: "Nothing to paste - the clipboard is empty",
     });
     return false;
@@ -143,7 +143,7 @@ async function pasteRouter(
 
 function shouldPerformCrossTabCopy(
   sc: StudioCtx,
-  copyState: CopyState
+  copyState: CopyState,
 ): boolean {
   // If we are dealing with a different project, then we can only
   // perform a cross-tab copy

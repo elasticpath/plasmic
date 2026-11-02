@@ -770,7 +770,11 @@
         }
       },
       "deps": [],
+<<<<<<< HEAD
       "version": "259-repoint-ep-commerce-bindings"
+=======
+      "version": "259-add-image-asset-description"
+>>>>>>> upstream/master
     }
   ],
   [
@@ -2214,7 +2218,11 @@
         "tkbX31iChEAr": { "text": ["quill-state"], "__type": "TemplatedString" }
       },
       "deps": ["b911462e-59ce-455d-b8d3-0d84f50a35dd"],
+<<<<<<< HEAD
       "version": "259-repoint-ep-commerce-bindings"
+=======
+      "version": "259-add-image-asset-description"
+>>>>>>> upstream/master
     }
   ]
 ]

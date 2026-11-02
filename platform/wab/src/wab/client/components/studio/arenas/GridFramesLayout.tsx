@@ -102,19 +102,15 @@ function ArenaGridRowLabel_(props: {
   const minRowHeight = switchType(props.arena)
     .when(ComponentArena, (arena) =>
       maybe(arena.matrix.rows[0]?.cols[0]?.frame, (frame) =>
-        getFrameHeight(frame)
-      )
+        getFrameHeight(frame),
+      ),
     )
     .when(PageArena, (arena) =>
-      Math.min.call(
-        null,
+      Math.min(
         ...arena.matrix.rows.map((row) =>
-          Math.max.call(
-            null,
-            ...row.cols.map((col) => getFrameHeight(col.frame))
-          )
-        )
-      )
+          Math.max(...row.cols.map((col) => getFrameHeight(col.frame))),
+        ),
+      ),
     )
     .elseUnsafe(() => 300);
 
@@ -124,7 +120,7 @@ function ArenaGridRowLabel_(props: {
       style={{
         transform: `scale(${Math.min(
           1 / studioCtx.zoom,
-          minRowHeight / 27 /* label line-height */
+          (minRowHeight ?? Infinity) / 27 /* label line-height */,
         )})`,
         ...style,
       }}

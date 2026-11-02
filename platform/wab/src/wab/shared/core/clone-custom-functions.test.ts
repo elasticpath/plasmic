@@ -48,7 +48,12 @@ function makeFixture() {
     ],
   });
   const handler = new EventHandler({ interactions: [] });
+<<<<<<< HEAD
   handler.interactions.push(
+=======
+  handler.interactions = [
+    ...handler.interactions,
+>>>>>>> upstream/master
     new Interaction({
       uuid: mkShortId(),
       interactionName: "Call clone probe",
@@ -57,8 +62,13 @@ function makeFixture() {
       condExpr: null,
       parent: handler,
       args: [new NameArg({ name: "customFunctionOp", expr: op })],
+<<<<<<< HEAD
     })
   );
+=======
+    }),
+  ];
+>>>>>>> upstream/master
   const component = mkComponent({
     name: "Clone probe",
     type: ComponentType.Plain,
@@ -71,8 +81,13 @@ function makeFixture() {
 function getCall(component: Component) {
   return ensureKnownCustomFunctionExpr(
     findExprsInNode(component.tplTree).find(({ expr }) =>
+<<<<<<< HEAD
       isKnownCustomFunctionExpr(expr)
     )?.expr
+=======
+      isKnownCustomFunctionExpr(expr),
+    )?.expr,
+>>>>>>> upstream/master
   );
 }
 
@@ -104,7 +119,11 @@ test.each([false, true])(
         uuid: mkShortId(),
         site: createSite({ customFunctions: [func] }),
       });
+<<<<<<< HEAD
       site.projectDependencies.push(dep);
+=======
+      site.projectDependencies = [...site.projectDependencies, dep];
+>>>>>>> upstream/master
       bundler.bundle(dep, "dependency", "1");
     }
     bundler.bundle(site, "source", "1");
@@ -118,9 +137,15 @@ test.each([false, true])(
     expect(op.func).toBe(func);
     expect(op.args[0].argType).toBe(func.params[0]);
     expect(bundler.bundle(cloned, "clone", "1").deps).toEqual(
+<<<<<<< HEAD
       imported ? ["dependency"] : []
     );
   }
+=======
+      imported ? ["dependency"] : [],
+    );
+  },
+>>>>>>> upstream/master
 );
 
 test("component duplication still remaps arguments belonging to component props", () => {
@@ -131,7 +156,11 @@ test("component duplication still remaps arguments belonging to component props"
     paramType: "prop",
     type: typeFactory.func(argType),
   });
+<<<<<<< HEAD
   component.params.push(param);
+=======
+  component.params = [...component.params, param];
+>>>>>>> upstream/master
   // A separate function argument in the same interaction exercises both owners.
   const ownedArg = new FunctionArg({
     uuid: mkShortId(),

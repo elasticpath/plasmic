@@ -1,15 +1,15 @@
 import { WithContextMenu } from "@/wab/client/components/ContextMenu";
 import ContextMenuIndicator from "@/wab/client/components/ContextMenuIndicator/ContextMenuIndicator";
-import {
-  CreateNewMenuItemContent,
-  MenuBuilder,
-} from "@/wab/client/components/menu-builder";
+import { MenuBuilder } from "@/wab/client/components/menu-builder";
+import { ComponentPropModal } from "@/wab/client/components/modals/ComponentPropModal";
 import { DataPickerEditor } from "@/wab/client/components/sidebar-tabs/ComponentProps/DataPickerEditor";
-import {
-  FallbackEditor,
-  promptForParamName,
-} from "@/wab/client/components/sidebar-tabs/ComponentPropsSection";
+import { FallbackEditor } from "@/wab/client/components/sidebar-tabs/ComponentPropsSection";
 import { ContentPanelSection } from "@/wab/client/components/sidebar-tabs/image-content-section";
+import {
+  LinkToPropMenuItem,
+  LinkedPropIndicator,
+  UnlinkFromPropMenuItem,
+} from "@/wab/client/components/sidebar-tabs/linked-prop-utils";
 import {
   LabeledItemRow,
   LabeledStyleColorItemRow,
@@ -20,10 +20,16 @@ import {
   StylePanelSection,
   TplExpsProvider,
 } from "@/wab/client/components/style-controls/StyleComponent";
-import { StudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
+import { isCodeComponentSlot } from "@/wab/shared/SlotUtils";
+import { unsetTplVariantableAttr } from "@/wab/shared/TplMgr";
+import { $$$ } from "@/wab/shared/TplQuery";
+import { ensureVariantSetting, isGlobalVariant } from "@/wab/shared/Variants";
 import { assert, ensureInstance } from "@/wab/shared/common";
-import { getRealParams } from "@/wab/shared/core/components";
+import {
+  getComponentDisplayName,
+  getRealParams,
+} from "@/wab/shared/core/components";
 import {
   clone,
   codeLit,
@@ -32,45 +38,41 @@ import {
   extractValueSavedFromDataPicker,
   isFallbackSet,
   isRealCodeExpr,
+  tryExtractJson,
   tryExtractLit,
 } from "@/wab/shared/core/exprs";
 import { ImageAssetType } from "@/wab/shared/core/image-asset-type";
 import { getTagAttrForImageAsset } from "@/wab/shared/core/image-assets";
-import { mkParam } from "@/wab/shared/core/lang";
 import { typographyCssProps } from "@/wab/shared/core/style-props";
 import { getTplComponentsInSite } from "@/wab/shared/core/tpls";
 import {
-  computeDefinedIndicator,
   DefinedIndicatorType,
+  computeDefinedIndicator,
 } from "@/wab/shared/defined-indicator";
 import {
   Component,
   CustomCode,
-  ensureKnownTplTag,
   Expr,
   ImageAsset,
   ImageAssetRef,
+  ObjectPath,
+  Param,
+  TplSlot,
+  TplTag,
+  VarRef,
+  VariantSetting,
+  ensureKnownTplTag,
   isKnownCustomCode,
   isKnownImageAsset,
   isKnownImageAssetRef,
   isKnownObjectPath,
   isKnownVarRef,
-  ObjectPath,
-  TplSlot,
-  TplTag,
-  Var,
-  VariantSetting,
-  VarRef,
 } from "@/wab/shared/model/classes";
 import { isImageType, typeFactory } from "@/wab/shared/model/model-util";
-import { isCodeComponentSlot } from "@/wab/shared/SlotUtils";
-import { unsetTplVariantableAttr } from "@/wab/shared/TplMgr";
-import { $$$ } from "@/wab/shared/TplQuery";
-import { ensureVariantSetting, isGlobalVariant } from "@/wab/shared/Variants";
-import { Alert, Menu, Tooltip } from "antd";
+import { Alert, Menu } from "antd";
+import { omit } from "lodash";
 import { observer } from "mobx-react";
 import React from "react";
-import { FaLink } from "react-icons/fa";
 
 export const ImageSection = observer(function ImageSection(props: {
   expsProvider: TplExpsProvider;
@@ -88,37 +90,33 @@ export const ImageSection = observer(function ImageSection(props: {
 
   const isIcon = tpl.tag === "svg";
   const attr = getTagAttrForImageAsset(
-    isIcon ? ImageAssetType.Icon : ImageAssetType.Picture
+    isIcon ? ImageAssetType.Icon : ImageAssetType.Picture,
   );
   const attrSource = effectiveVs.getAttrSource(attr);
   const definedIndicator = computeDefinedIndicator(
     viewCtx.site,
     viewCtx.currentComponent(),
     attrSource,
-    vtm.getTargetIndicatorComboForNode(tpl)
+    vtm.getTargetIndicatorComboForNode(tpl),
   );
 
   const hasTypoStyles = typographyCssProps.some((p) =>
-    expsProvider.maybeTargetExp()?.has(p)
+    expsProvider.maybeTargetExp()?.has(p),
   );
 
   const expr = effectiveVs.attrs[attr];
-  let variable: Var | undefined = undefined;
 
   const [isDataPickerVisible, setIsDataPickerVisible] =
     React.useState<boolean>(false);
   const [showFallback, setShowFallback] = React.useState<boolean>(
-    isFallbackSet(expr)
+    isFallbackSet(expr),
   );
+  const [newParamModalVisible, setNewParamModalVisible] =
+    React.useState<boolean>(false);
 
-  if (isKnownVarRef(expr)) {
-    variable = expr.variable;
-  }
-
-  const asset =
-    !variable && isKnownImageAssetRef(expr)
-      ? expr.asset
-      : (isKnownCustomCode(expr) || isKnownObjectPath(expr)) &&
+  const asset = isKnownImageAssetRef(expr)
+    ? expr.asset
+    : (isKnownCustomCode(expr) || isKnownObjectPath(expr)) &&
         isKnownImageAssetRef(expr.fallback)
       ? expr.fallback.asset
       : undefined;
@@ -128,6 +126,12 @@ export const ImageSection = observer(function ImageSection(props: {
   }
 
   const ownerComponent = $$$(tpl).owningComponent();
+  const referencedParam = extractReferencedParam(ownerComponent, expr);
+
+  const baseImageExpr = baseVs?.attrs[attr];
+  const suggestedDefaultExpr = isStaticImageExpr(baseImageExpr)
+    ? clone(baseImageExpr)
+    : undefined;
 
   const switchToDynamic = () => {
     const newExpr = isKnownCustomCode(expr)
@@ -141,7 +145,7 @@ export const ImageSection = observer(function ImageSection(props: {
         });
     viewCtx.change(() => {
       if (targetVs) {
-        targetVs.attrs[attr] = newExpr;
+        targetVs.attrs = { ...targetVs.attrs, [attr]: newExpr };
       }
     });
     setShowFallback(true);
@@ -158,13 +162,14 @@ export const ImageSection = observer(function ImageSection(props: {
     baseVs,
     targetVs,
     ownerComponent,
-    variable,
+    referencedParam,
     viewCtx,
     attr,
     definedIndicator,
     expr,
     fallback: { showFallback, setShowFallback },
     switchToDynamic,
+    onCreateNewProp: () => setNewParamModalVisible(true),
   });
   const isDynamicExpression = isRealCodeExpr(expr);
   const shouldShowSizeProps = isDynamicExpression || isKnownCustomCode(expr);
@@ -172,54 +177,25 @@ export const ImageSection = observer(function ImageSection(props: {
   return (
     <StylePanelSection
       expsProvider={expsProvider}
-      title={
-        isIcon ? (
-          "Icon"
-        ) : (
-          <>
-            <span>Image{variable && " slot"}</span>
-            {variable && (
-              <span
-                className="labeled-item__text"
-                style={{ marginLeft: "5px" }}
-              >
-                <Tooltip
-                  title={
-                    <>
-                      <p>
-                        Linked to{" "}
-                        <code>
-                          {ownerComponent.name}.{variable.name}
-                        </code>
-                      </p>
-                      <p>
-                        With a <b>image slot</b> you can override this image in
-                        the component props section, you can also set a default
-                        image for components that don't set it.
-                      </p>
-                    </>
-                  }
-                >
-                  <FaLink />
-                </Tooltip>
-              </span>
-            )}
-          </>
-        )
-      }
+      title={isIcon ? "Icon" : "Image"}
       styleProps={isIcon ? ["color"] : ["object-fit", "object-position"]}
     >
-      {variable ? (
+      {referencedParam ? (
         <WithContextMenu
           overlay={imageMenu}
           className="panel-row style-wrapper"
         >
           <DefinedIndicator type={definedIndicator} label="Image" />
-          <DefaultVariableImagePicker
-            studioCtx={studioCtx}
-            ownerComponent={ownerComponent}
-            expr={expr}
-          />
+          <ContextMenuIndicator
+            menu={imageMenu}
+            showDynamicValueButton={false}
+            className="fill-width"
+          >
+            <LinkedPropIndicator
+              ownerComponent={ownerComponent}
+              referencedParam={referencedParam}
+            />
+          </ContextMenuIndicator>
         </WithContextMenu>
       ) : isDynamicExpression ? (
         <div className="panel-row flex-col">
@@ -251,18 +227,18 @@ export const ImageSection = observer(function ImageSection(props: {
                     const codeExpr = ensureInstance(
                       expr,
                       ObjectPath,
-                      CustomCode
+                      CustomCode,
                     );
                     const fallbackExpr = codeExpr.fallback
                       ? clone(codeExpr.fallback)
                       : undefined;
                     const newExpr = createExprForDataPickerValue(
                       val,
-                      fallbackExpr
+                      fallbackExpr,
                     );
                     viewCtx.change(() => {
                       if (targetVs) {
-                        targetVs.attrs[attr] = newExpr;
+                        targetVs.attrs = { ...targetVs.attrs, [attr]: newExpr };
                       }
                     });
                   }}
@@ -274,9 +250,12 @@ export const ImageSection = observer(function ImageSection(props: {
                             isKnownObjectPath(expr)) &&
                           expr.fallback
                         ) {
-                          targetVs.attrs[attr] = expr.fallback;
+                          targetVs.attrs = {
+                            ...targetVs.attrs,
+                            [attr]: expr.fallback,
+                          };
                         } else {
-                          delete targetVs.attrs[attr];
+                          targetVs.attrs = omit(targetVs.attrs, attr);
                         }
                       }
                     });
@@ -301,10 +280,10 @@ export const ImageSection = observer(function ImageSection(props: {
                   const newExpr = ensureInstance(
                     clonedExpr,
                     ObjectPath,
-                    CustomCode
+                    CustomCode,
                   );
                   newExpr.fallback = undefined;
-                  targetVs.attrs[attr] = newExpr;
+                  targetVs.attrs = { ...targetVs.attrs, [attr]: newExpr };
                 })
               }
             >
@@ -322,7 +301,7 @@ export const ImageSection = observer(function ImageSection(props: {
                     const newExpr = ensureInstance(
                       clonedExpr,
                       ObjectPath,
-                      CustomCode
+                      CustomCode,
                     );
                     if (isKnownImageAsset(picked)) {
                       newExpr.fallback = new ImageAssetRef({
@@ -332,7 +311,7 @@ export const ImageSection = observer(function ImageSection(props: {
                       assert(!isIcon, "Unexpected instance of image asset");
                       newExpr.fallback = codeLit(picked);
                     }
-                    targetVs.attrs[attr] = newExpr;
+                    targetVs.attrs = { ...targetVs.attrs, [attr]: newExpr };
                   })
                 }
                 keepOpen={false}
@@ -367,10 +346,16 @@ export const ImageSection = observer(function ImageSection(props: {
               onPicked={(picked) =>
                 studioCtx.changeUnsafe(() => {
                   if (isKnownImageAsset(picked)) {
-                    targetVs.attrs[attr] = new ImageAssetRef({ asset: picked });
+                    targetVs.attrs = {
+                      ...targetVs.attrs,
+                      [attr]: new ImageAssetRef({ asset: picked }),
+                    };
                   } else {
                     assert(!isIcon, "Unexpected instance of image asset");
-                    targetVs.attrs[attr] = codeLit(picked);
+                    targetVs.attrs = {
+                      ...targetVs.attrs,
+                      [attr]: codeLit(picked),
+                    };
                   }
                 })
               }
@@ -396,7 +381,7 @@ export const ImageSection = observer(function ImageSection(props: {
                   <a
                     onClick={() =>
                       viewCtx.change(() =>
-                        viewCtx.setStudioFocusByTpl(ancestorSlot)
+                        viewCtx.setStudioFocusByTpl(ancestorSlot),
                       )
                     }
                   >
@@ -414,8 +399,8 @@ export const ImageSection = observer(function ImageSection(props: {
                               .getViewOps()
                               .transferTextStyleToSlot(
                                 tpl as TplTag,
-                                ancestorSlot
-                              )
+                                ancestorSlot,
+                              ),
                           )
                         }
                       >
@@ -439,53 +424,98 @@ export const ImageSection = observer(function ImageSection(props: {
           />
         </>
       )}
+      {newParamModalVisible && baseVs && (
+        <ComponentPropModal
+          studioCtx={studioCtx}
+          component={ownerComponent}
+          visible={newParamModalVisible}
+          suggestedName={tpl.name ? `${tpl.name} / Image` : "Image"}
+          suggestedDefaultExpr={suggestedDefaultExpr}
+          type={typeFactory.img()}
+          onFinish={(newParam) => {
+            setNewParamModalVisible(false);
+            if (!newParam) {
+              return;
+            }
+            viewCtx.change(() =>
+              linkImageAttrToParam(
+                { tpl, attr, baseVs, ownerComponent, viewCtx },
+                new VarRef({ variable: newParam.variable }),
+              ),
+            );
+          }}
+        />
+      )}
     </StylePanelSection>
   );
 });
 
-const DefaultVariableImagePicker = observer(
-  function DefaultVariableImagePicker({
-    studioCtx,
-    expr,
+function linkImageAttrToParam(
+  {
+    tpl,
+    attr,
+    baseVs,
     ownerComponent,
+    viewCtx,
   }: {
-    studioCtx: StudioCtx;
-    expr: Expr;
+    tpl: TplTag;
+    attr: string;
+    baseVs: VariantSetting;
     ownerComponent: Component;
-  }) {
-    const referencedParam = extractReferencedParam(ownerComponent, expr);
-    const defaultParamLit = isKnownImageAssetRef(referencedParam?.defaultExpr)
-      ? referencedParam?.defaultExpr.asset
-      : referencedParam?.defaultExpr
-      ? (tryExtractLit(referencedParam.defaultExpr) as ImageAsset | string)
-      : undefined;
-    return (
-      <ImageAssetPreviewAndPicker
-        className="flex-fill flex-col"
-        studioCtx={studioCtx}
-        value={defaultParamLit}
-        onPicked={(picked) =>
-          studioCtx.changeUnsafe(() => {
-            if (isKnownImageAsset(picked)) {
-              referencedParam!.defaultExpr = new ImageAssetRef({
-                asset: picked,
-              });
-            } else {
-              referencedParam!.defaultExpr = codeLit(picked);
-            }
-          })
-        }
-        keepOpen={true}
-        type={ImageAssetType.Picture}
-      />
-    );
-  }
-);
+    viewCtx: ViewCtx;
+  },
+  varRef: VarRef,
+) {
+  const globalVariantSettings = tpl.vsettings.filter(
+    (vs) => vs.variants.every((v) => isGlobalVariant(v)) && !!vs.attrs[attr],
+  );
 
-export function makeImageMenu({
+  const param = extractReferencedParam(ownerComponent, varRef);
+  if (param && globalVariantSettings.length > 0) {
+    const compInstances = getTplComponentsInSite(
+      viewCtx.studioCtx.site,
+      ownerComponent,
+    );
+    const vtm = viewCtx.variantTplMgr();
+    compInstances.forEach((instTpl) => {
+      globalVariantSettings.forEach((vs) => {
+        vtm.setArgUnderVariantSetting(
+          instTpl,
+          param.variable,
+          new ImageAssetRef({
+            asset: (vs.attrs[attr] as ImageAssetRef).asset,
+          }),
+          ensureVariantSetting(instTpl, vs.variants),
+        );
+      });
+    });
+  }
+
+  unsetTplVariantableAttr(tpl, attr);
+  baseVs.attrs = { ...baseVs.attrs, [attr]: varRef };
+}
+
+/**
+ * An image asset ref or a non-empty literal URL string, as opposed to a
+ * dynamic expression or an unset value.
+ */
+function isStaticImageExpr(
+  expr: Expr | null | undefined,
+): expr is ImageAssetRef | CustomCode {
+  if (isKnownImageAssetRef(expr)) {
+    return true;
+  }
+  return (
+    isKnownCustomCode(expr) &&
+    !isRealCodeExpr(expr) &&
+    tryExtractJson(expr) !== undefined
+  );
+}
+
+function makeImageMenu({
   tpl,
   isIcon,
-  variable,
+  referencedParam,
   baseVs,
   targetVs,
   attr,
@@ -495,10 +525,11 @@ export function makeImageMenu({
   expr,
   fallback,
   switchToDynamic,
+  onCreateNewProp,
 }: {
   tpl: TplTag;
   isIcon: boolean;
-  variable?: Var;
+  referencedParam?: Param;
   baseVs?: VariantSetting;
   targetVs?: VariantSetting;
   attr: string;
@@ -506,14 +537,13 @@ export function makeImageMenu({
   viewCtx: ViewCtx;
   definedIndicator: DefinedIndicatorType;
   switchToDynamic?: () => void;
+  onCreateNewProp: () => void;
   expr: Expr;
   fallback:
     | { showFallback: boolean; setShowFallback: (val: boolean) => void }
     | undefined;
 }) {
   const builder = new MenuBuilder();
-  const referencedParam = extractReferencedParam(ownerComponent, expr);
-  const hasLink = !!variable;
   const isCustomCode = isRealCodeExpr(expr);
   if (!isIcon && baseVs) {
     builder.genSection(undefined, (push) => {
@@ -528,112 +558,50 @@ export function makeImageMenu({
           >
             <span>
               Unset default value for{" "}
-              <code>
-                {ownerComponent.name}.{variable!.name}
-              </code>
+              <strong>
+                {getComponentDisplayName(ownerComponent)}.
+                {referencedParam.variable.name}
+              </strong>
             </span>
-          </Menu.Item>
+          </Menu.Item>,
         );
       }
-      if (hasLink) {
+      if (referencedParam) {
         push(
-          <Menu.Item
-            onClick={() =>
+          <UnlinkFromPropMenuItem
+            ownerComponent={ownerComponent}
+            referencedParam={referencedParam}
+            onUnlink={() =>
               viewCtx.change(() => {
-                const defaultValue = referencedParam?.defaultExpr;
-                if (isKnownImageAssetRef(defaultValue)) {
-                  baseVs.attrs[attr] = new ImageAssetRef(defaultValue);
+                const defaultValue = referencedParam.defaultExpr;
+                if (isStaticImageExpr(defaultValue)) {
+                  baseVs.attrs = {
+                    ...baseVs.attrs,
+                    [attr]: clone(defaultValue),
+                  };
                 } else {
-                  delete baseVs.attrs[attr];
+                  baseVs.attrs = omit(baseVs.attrs, attr);
                 }
               })
             }
-          >
-            <span>
-              Unlink from component prop{" "}
-              <code>
-                {ownerComponent.name}.{variable!.name}
-              </code>
-            </span>
-          </Menu.Item>
+          />,
         );
       } else if (viewCtx.tplMgr().canLinkToProp(tpl)) {
-        const updateAttr = (varRef: VarRef) => {
-          const baseValue = baseVs.attrs[attr];
-
-          const globalVariantSettings = tpl.vsettings.filter(
-            (vs) =>
-              vs.variants.every((v) => isGlobalVariant(v)) && !!vs.attrs[attr]
-          );
-
-          const param = extractReferencedParam(ownerComponent, varRef);
-          if (param && globalVariantSettings.length > 0) {
-            const compInstances = getTplComponentsInSite(
-              viewCtx.studioCtx.site,
-              ownerComponent
-            );
-            const vtm = viewCtx.variantTplMgr();
-            compInstances.forEach((instTpl) => {
-              globalVariantSettings.forEach((vs) => {
-                vtm.setArgUnderVariantSetting(
-                  instTpl,
-                  param.variable,
-                  new ImageAssetRef(vs.attrs[attr] as ImageAssetRef),
-                  ensureVariantSetting(instTpl, vs.variants)
-                );
-              });
-            });
-          }
-
-          unsetTplVariantableAttr(tpl, attr);
-          baseVs.attrs[attr] = varRef;
-
-          if (param && baseValue && isImageType(param.type)) {
-            param.defaultExpr = clone(baseValue);
-          }
-        };
         push(
-          <Menu.SubMenu title={<span>Allow external access</span>}>
-            {getRealParams(ownerComponent)
-              .filter((p) => p.type.name === "img")
-              .map((param) => (
-                <Menu.Item
-                  onClick={() =>
-                    viewCtx.change(() => {
-                      updateAttr(
-                        new VarRef({
-                          variable: param.variable,
-                        })
-                      );
-                    })
-                  }
-                >
-                  <code>{param.variable.name}</code>
-                </Menu.Item>
-              ))}
-            <Menu.Item
-              onClick={async () => {
-                const paramName = await promptForParamName(
-                  viewCtx.tplMgr(),
-                  ownerComponent
-                );
-                if (!paramName) {
-                  return;
-                }
-                viewCtx.change(() => {
-                  const newParam = mkParam({
-                    name: paramName,
-                    type: typeFactory["img"](),
-                    paramType: "prop",
-                  });
-                  ownerComponent.params.push(newParam);
-                  updateAttr(new VarRef({ variable: newParam.variable }));
-                });
-              }}
-            >
-              <CreateNewMenuItemContent entity="prop" />
-            </Menu.Item>
-          </Menu.SubMenu>
+          <LinkToPropMenuItem
+            availableParams={getRealParams(ownerComponent).filter((p) =>
+              isImageType(p.type),
+            )}
+            onLinkExisting={(param) =>
+              viewCtx.change(() =>
+                linkImageAttrToParam(
+                  { tpl, attr, baseVs, ownerComponent, viewCtx },
+                  new VarRef({ variable: param.variable }),
+                ),
+              )
+            }
+            onCreateNew={onCreateNewProp}
+          />,
         );
       }
       if (!referencedParam && !isCustomCode && switchToDynamic) {
@@ -645,7 +613,7 @@ export function makeImageMenu({
             }}
           >
             Use dynamic value
-          </Menu.Item>
+          </Menu.Item>,
         );
       }
 
@@ -657,7 +625,7 @@ export function makeImageMenu({
               onClick={() => fallback?.setShowFallback(true)}
             >
               Change fallback value
-            </Menu.Item>
+            </Menu.Item>,
           );
         }
         push(
@@ -670,36 +638,39 @@ export function makeImageMenu({
                     (isKnownCustomCode(expr) || isKnownObjectPath(expr)) &&
                     expr.fallback
                   ) {
-                    targetVs.attrs[attr] = expr.fallback;
+                    targetVs.attrs = {
+                      ...targetVs.attrs,
+                      [attr]: expr.fallback,
+                    };
                   } else {
-                    delete targetVs.attrs[attr];
+                    targetVs.attrs = omit(targetVs.attrs, attr);
                   }
                 }
               });
             }}
           >
             Remove dynamic value
-          </Menu.Item>
+          </Menu.Item>,
         );
       }
     });
   }
 
   builder.genSection(undefined, (push) => {
-    if (definedIndicator.source === "set" && !variable) {
+    if (definedIndicator.source === "set" && !referencedParam) {
       push(
         <Menu.Item
           key="unset"
           onClick={() =>
             viewCtx.change(() => {
               if (targetVs) {
-                delete targetVs.attrs[attr];
+                targetVs.attrs = omit(targetVs.attrs, attr);
               }
             })
           }
         >
           Unset image
-        </Menu.Item>
+        </Menu.Item>,
       );
     }
   });
@@ -722,5 +693,5 @@ const _ImageSectionForCodeComponent = (props: {
 );
 
 export const ImageSectionForCodeComponent = observer(
-  _ImageSectionForCodeComponent
+  _ImageSectionForCodeComponent,
 );

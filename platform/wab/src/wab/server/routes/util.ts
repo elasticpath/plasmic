@@ -14,7 +14,11 @@ import {
   ForbiddenError,
   UnauthorizedError,
 } from "@/wab/shared/ApiErrors/errors";
-import { CmsIdAndToken, ProjectIdAndToken } from "@/wab/shared/ApiSchema";
+import {
+  CmsIdAndToken,
+  MayTriggerPaywall,
+  ProjectIdAndToken,
+} from "@/wab/shared/ApiSchema";
 import { omitNils } from "@/wab/shared/common";
 import { AppRouter } from "@ts-rest/core";
 import { createExpressEndpoints } from "@ts-rest/express";
@@ -50,13 +54,9 @@ export type CompatRequest = Omit<
   "query" | "setTimeout" | keyof Readable
 >;
 
-export function hasUser(req: CompatRequest) {
-  return !!req.user;
-}
-
 export function getUser(
   req: CompatRequest,
-  opts?: { allowUnverifiedEmail: boolean }
+  opts?: { allowUnverifiedEmail: boolean },
 ) {
   if (!req.user) {
     throw new UnauthorizedError();
@@ -69,7 +69,7 @@ export function getUser(
 
 export function userDbMgr(
   req: CompatRequest,
-  opts?: { allowUnverifiedEmail: boolean }
+  opts?: { allowUnverifiedEmail: boolean },
 ) {
   const isSpy = req.cookies["plasmic-spy"] === "true";
   let dbMgr = new DbMgr(
@@ -77,21 +77,21 @@ export function userDbMgr(
     req.user
       ? normalActor(getUser(req, opts).id, isSpy)
       : req.apiTeam
-      ? teamActor(req.apiTeam.id)
-      : ANON_USER,
+        ? teamActor(req.apiTeam.id)
+        : ANON_USER,
     {
       projectIdsAndTokens:
         (req.body.projectIdsAndTokens as ProjectIdAndToken[] | undefined) ??
         parseProjectIdsAndTokensHeader(
-          req.headers["x-plasmic-api-project-tokens"]
+          req.headers["x-plasmic-api-project-tokens"],
         ),
       teamApiToken: req.body.teamApiToken ?? req.headers["x-plasmic-api-token"],
       temporaryTeamApiToken:
         req.body.sessionToken ?? req.headers["x-plasmic-api-session-token"],
       cmsIdsAndTokens: parseCmsIdsAndTokensHeader(
-        req.headers["x-plasmic-api-cms-tokens"]
+        req.headers["x-plasmic-api-cms-tokens"],
       ),
-    }
+    },
   );
   if (req.timingStore) {
     dbMgr = timingDbMgr(dbMgr);
@@ -111,7 +111,7 @@ export function parseProjectIdsAndTokensHeader(value: any) {
       const [projectId, projectApiToken] = val.split(":");
       if (!projectId || !projectApiToken) {
         throw new BadRequestError(
-          `Invalid values for x-plasmic-api-project-tokens header`
+          `Invalid values for x-plasmic-api-project-tokens header`,
         );
       }
       return {
@@ -135,7 +135,7 @@ export function parseCmsIdsAndTokensHeader(value: any) {
       const [databaseId, token] = val.split(":");
       if (!databaseId || !token) {
         throw new BadRequestError(
-          `Invalid values for x-plasmic-api-cms-tokens header`
+          `Invalid values for x-plasmic-api-cms-tokens header`,
         );
       }
       return {
@@ -185,8 +185,30 @@ export function parseMetadata(m?: any) {
   }
 }
 
-export function parseQueryParams(req: Request) {
-  return L.mapValues(req.query, (v) => JSON.parse(v as string));
+export function parseQueryParams(req: Pick<Request, "query">) {
+  return L.mapValues(req.query, (_v, key) => parseJsonQueryParam(req, key));
+}
+
+/**
+ * Parses a single JSON-encoded query parameter, throwing a BadRequestError
+ * (400) if it's not a string or not valid JSON.
+ */
+export function parseJsonQueryParam(
+  req: Pick<Request, "query">,
+  key: string,
+): any {
+  const v = req.query[key];
+  if (typeof v !== "string") {
+    throw new BadRequestError(`Query parameter ${key} must be a JSON string`);
+  }
+  try {
+    return JSON.parse(v);
+  } catch (err) {
+    if (err instanceof SyntaxError) {
+      throw new BadRequestError(`Query parameter ${key} must be valid JSON`);
+    }
+    throw err;
+  }
 }
 
 /**
@@ -221,7 +243,7 @@ export function adminOnly(req: Request, _res: Response, next: NextFunction) {
 export function adminOrDevelopmentEnvOnly(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   if (process.env.NODE_ENV !== "production") {
     next();
@@ -249,13 +271,12 @@ function isTransactionRollback<T>(x: unknown): x is TransactionRollback<T> {
 }
 
 export type TransactionEnd<TCommit, TRollback> =
-  | TransactionCommit<TCommit>
-  | TransactionRollback<TRollback>;
+  TransactionCommit<TCommit> | TransactionRollback<TRollback>;
 
 export function commitTransaction(): TransactionCommit<undefined>;
 export function commitTransaction<T>(data: T): TransactionCommit<T>;
 export function commitTransaction<T>(
-  data?: T
+  data?: T,
 ): TransactionCommit<T | undefined> {
   return {
     type: "commit",
@@ -266,7 +287,7 @@ export function commitTransaction<T>(
 export function rollbackTransaction(): TransactionRollback<undefined>;
 export function rollbackTransaction<T>(data: T): TransactionRollback<T>;
 export function rollbackTransaction<T>(
-  data?: T
+  data?: T,
 ): TransactionRollback<T | undefined> {
   return {
     type: "rollback",
@@ -282,19 +303,19 @@ export function rollbackTransaction<T>(
  */
 export async function startTransaction<TCommit>(
   req: Request,
-  f: (txMgr: EntityManager) => Promise<TransactionCommit<TCommit>>
+  f: (txMgr: EntityManager) => Promise<TransactionCommit<TCommit>>,
 ): Promise<TransactionCommit<TCommit>>;
 export async function startTransaction<TRollback>(
   req: Request,
-  f: (txMgr: EntityManager) => Promise<TransactionRollback<TRollback>>
+  f: (txMgr: EntityManager) => Promise<TransactionRollback<TRollback>>,
 ): Promise<TransactionRollback<TRollback>>;
 export async function startTransaction<TCommit, TRollback>(
   req: Request,
-  f: (txMgr: EntityManager) => Promise<TransactionEnd<TCommit, TRollback>>
+  f: (txMgr: EntityManager) => Promise<TransactionEnd<TCommit, TRollback>>,
 ): Promise<TransactionEnd<TCommit, TRollback>>;
 export async function startTransaction<TCommit, TRollback>(
   req: Request,
-  f: (txMgr: EntityManager) => Promise<TransactionEnd<TCommit, TRollback>>
+  f: (txMgr: EntityManager) => Promise<TransactionEnd<TCommit, TRollback>>,
 ): Promise<TransactionEnd<TCommit, TRollback>> {
   // PostgreSQL does NOT support nested transactions.
   // We shouldn't either, but we fake it for now since we have so many existing
@@ -352,7 +373,7 @@ export async function startTransaction<TCommit, TRollback>(
  * @deprecated use {@link startTransaction} to manually wrap queries
  */
 export function withNext(
-  f: (req: Request, res: Response, next: NextFunction) => Promise<void> | void
+  f: (req: Request, res: Response, next: NextFunction) => Promise<void> | void,
 ) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -370,7 +391,10 @@ export function createTsRestEndpoints<TRouter extends AppRouter>(
   contract: TRouter,
   server: RouterImplementation<TRouter>,
   app: IRouter,
-  options?: Omit<TsRestExpressOptions<TRouter>, "requestValidationErrorHandler">
+  options?: Omit<
+    TsRestExpressOptions<TRouter>,
+    "requestValidationErrorHandler"
+  >,
 ): void {
   createExpressEndpoints(contract, server, app, {
     // Convert to BadRequestError, let our error middleware handle this
@@ -399,4 +423,8 @@ export function createTsRestEndpoints<TRouter extends AppRouter>(
     },
     ...options,
   });
+}
+
+export function passPaywall<T>(response: T): MayTriggerPaywall<T> {
+  return { paywall: "pass", response };
 }

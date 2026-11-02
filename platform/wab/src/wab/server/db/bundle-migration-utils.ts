@@ -32,7 +32,7 @@ export async function unbundleSite(
   bundler: Bundler,
   bundle: UnsafeBundle,
   db: MigrationDbMgr,
-  entity: PkgVersion | ProjectRevision
+  entity: PkgVersion | ProjectRevision,
 ) {
   const deps = await loadDepPackages(db, bundle);
 
@@ -43,7 +43,7 @@ export async function unbundleSite(
   const siteOrProjectDep = ensureInstance(
     bundler.unbundle(bundle, entity.id),
     Site,
-    ProjectDependency
+    ProjectDependency,
   );
   (siteOrProjectDep as any).__bundleId = entity.id;
   const site = isKnownSite(siteOrProjectDep)
@@ -54,7 +54,7 @@ export async function unbundleSite(
 
 export async function bundleHasStaleHostlessDeps(
   bundle: UnsafeBundle,
-  db: MigrationDbMgr
+  db: MigrationDbMgr,
 ) {
   if (process.env["DEV_BUNDLE_MIGRATION"]) {
     // For dev bundle migrations, we handle hostless upgrades specially
@@ -66,7 +66,7 @@ export async function bundleHasStaleHostlessDeps(
   }
   const { versionIdToLatestVersion, latestVersions } = hostlessData;
   const versionsToUpdate = bundle.deps.filter(
-    (dep) => versionIdToLatestVersion.has(dep) && !latestVersions.has(dep)
+    (dep) => versionIdToLatestVersion.has(dep) && !latestVersions.has(dep),
   );
   return versionsToUpdate.length > 0;
 }
@@ -74,7 +74,7 @@ export async function bundleHasStaleHostlessDeps(
 export async function upgradeHostlessProject(
   bundle: UnsafeBundle,
   entity: PkgVersion | ProjectRevision,
-  db: MigrationDbMgr
+  db: MigrationDbMgr,
 ) {
   if (process.env["DEV_BUNDLE_MIGRATION"]) {
     // For dev bundle migrations, we handle hostless upgrades specially
@@ -86,7 +86,7 @@ export async function upgradeHostlessProject(
   }
   const { versionIdToLatestVersion, latestVersions } = hostlessData;
   const versionsToUpdate = bundle.deps.filter(
-    (dep) => versionIdToLatestVersion.has(dep) && !latestVersions.has(dep)
+    (dep) => versionIdToLatestVersion.has(dep) && !latestVersions.has(dep),
   );
   if (versionsToUpdate.length === 0) {
     return;
@@ -96,7 +96,7 @@ export async function upgradeHostlessProject(
     bundler,
     bundle,
     db,
-    entity
+    entity,
   );
 
   for (const component of site.components) {
@@ -110,13 +110,13 @@ export async function upgradeHostlessProject(
       versionsToUpdate.map(async (dep) => {
         const latestPkgVersion = ensure(
           versionIdToLatestVersion.get(dep),
-          () => "Expected to find latest version for " + dep
+          () => "Expected to find latest version for " + dep,
         );
         const pkgId = latestPkgVersion.pkgId;
         const oldDep = ensure(
           site.projectDependencies.find((d) => d.pkgId === pkgId),
           () =>
-            `Expected to find project dependency (pkgId: ${pkgId}, dep: ${dep})`
+            `Expected to find project dependency (pkgId: ${pkgId}, dep: ${dep})`,
         );
         const newDep = ensureKnownProjectDependency(
           (
@@ -124,13 +124,13 @@ export async function upgradeHostlessProject(
               bundler,
               await getMigratedBundle(latestPkgVersion),
               db,
-              latestPkgVersion
+              latestPkgVersion,
             )
-          ).siteOrProjectDep
+          ).siteOrProjectDep,
         );
         return { oldDep, newDep };
-      })
-    )
+      }),
+    ),
   );
 
   Object.assign(
@@ -138,8 +138,8 @@ export async function upgradeHostlessProject(
     bundler.bundle(
       siteOrProjectDep,
       entity.id,
-      bundle.version || "0-new-version"
-    )
+      bundle.version || "0-new-version",
+    ),
   );
 
   // Comment this for now to avoid big time spikes in the server.
@@ -158,29 +158,29 @@ export async function upgradeHostlessProject(
 
   assert(
     !bundle.deps.some(
-      (dep) => versionIdToLatestVersion.has(dep) && !latestVersions.has(dep)
+      (dep) => versionIdToLatestVersion.has(dep) && !latestVersions.has(dep),
     ),
-    () => "Expected to have fixed all deps"
+    () => "Expected to have fixed all deps",
   );
 }
 
 export const getHostlessData = (() => {
   const fn = async (db: MigrationDbMgr) => {
-    logger().info("Refreshing hostless data");
+    logger.info("Refreshing hostless data");
     await ensureDevFlags(db);
     if (!(db instanceof DbMgr)) {
-      logger().info("No real DbMgr - nothing to do");
+      logger.info("No real DbMgr - nothing to do");
       return undefined;
     }
     const workspaceId = DEVFLAGS.hostLessWorkspaceId;
     if (!workspaceId) {
-      logger().info("No hostless workspace - nothing to upgrade");
+      logger.info("No hostless workspace - nothing to upgrade");
       return undefined;
     }
     const hostlessProjects = await db.getProjectsByWorkspaces([workspaceId]);
     assert(
       hostlessProjects.length > 0,
-      () => "No projects found for workspace " + workspaceId
+      () => "No projects found for workspace " + workspaceId,
     );
     const versionIdToLatestVersion = new Map<string, PkgVersion>();
     const latestVersions = new Set<string>();
@@ -196,10 +196,10 @@ export const getHostlessData = (() => {
         const latestVersion = await db.getPkgVersion(pkg.id);
         const allVersions = await db.listPkgVersions(pkg.id);
         allVersions.forEach((v) =>
-          versionIdToLatestVersion.set(v.id, latestVersion)
+          versionIdToLatestVersion.set(v.id, latestVersion),
         );
         latestVersions.add(latestVersion.id);
-      })
+      }),
     );
     return {
       versionIdToLatestVersion,
@@ -265,7 +265,7 @@ export type BundleMigrationType = "bundled" | "unbundled";
 export async function upgradeHostlessProjectForDev(
   bundle: UnsafeBundle,
   entity: PkgVersion | ProjectRevision,
-  db: MigrationDbMgr
+  db: MigrationDbMgr,
 ) {
   const bundler = new Bundler();
 
@@ -273,7 +273,7 @@ export async function upgradeHostlessProjectForDev(
     bundler,
     bundle,
     db,
-    entity
+    entity,
   );
 
   if (isHostLessPackage(site)) {
@@ -290,11 +290,11 @@ export async function upgradeHostlessProjectForDev(
     const newBundle = bundler.bundle(
       siteOrProjectDep,
       entity.id,
-      bundle.version || "0-new-version"
+      bundle.version || "0-new-version",
     );
     newBundle.map[newBundle.root].version = newVersion;
-    logger().info(
-      `Publishing new version of ${pkgVersion.pkgId}: ${pkgVersion.version} => ${newVersion}`
+    logger.info(
+      `Publishing new version of ${pkgVersion.pkgId}: ${pkgVersion.version} => ${newVersion}`,
     );
     const newPkgVersion = await db.insertPkgVersion(
       pkgVersion.pkgId,
@@ -302,11 +302,9 @@ export async function upgradeHostlessProjectForDev(
       JSON.stringify(newBundle),
       [],
       "",
-      0
+      0,
     );
-    logger().info(
-      `New PkgVersion: ${newPkgVersion.id}@${newPkgVersion.version}`
-    );
+    logger.info(`New PkgVersion: ${newPkgVersion.id}@${newPkgVersion.version}`);
 
     // That's it; we don't need to touch `bundle`, as that `bundle` will retain the
     // same hostless metadata as the previous pkg version, and stamped with the new
@@ -320,7 +318,7 @@ export async function upgradeHostlessProjectForDev(
       if (isHostLessPackage(dep.site)) {
         const pkgVersions = await db.listPkgVersions(dep.pkgId, {});
         const newPkgVersion = pkgVersions.find((v) =>
-          semver.gt(v.version, dep.version)
+          semver.gt(v.version, dep.version),
         );
         if (newPkgVersion) {
           const newDep = ensureKnownProjectDependency(
@@ -329,22 +327,22 @@ export async function upgradeHostlessProjectForDev(
                 bundler,
                 JSON.parse(newPkgVersion.model),
                 db,
-                newPkgVersion
+                newPkgVersion,
               )
-            ).siteOrProjectDep
+            ).siteOrProjectDep,
           );
           updatedDeps.push({ oldDep: dep, newDep });
         }
       }
     }
     if (updatedDeps.length > 0) {
-      logger().info(
+      logger.info(
         `\tUpgrading project deps for ${entity.id}: ${updatedDeps
           .map(
             ({ oldDep, newDep }) =>
-              `${oldDep.pkgId}: ${oldDep.version} => ${newDep.version}`
+              `${oldDep.pkgId}: ${oldDep.version} => ${newDep.version}`,
           )
-          .join("; ")}; current deps: ${bundle.deps.join(", ")}`
+          .join("; ")}; current deps: ${bundle.deps.join(", ")}`,
       );
       for (const component of site.components) {
         trackComponentRoot(component);
@@ -354,9 +352,9 @@ export async function upgradeHostlessProjectForDev(
       const newBundle = bundler.bundle(
         siteOrProjectDep,
         entity.id,
-        bundle.version || "0-new-version"
+        bundle.version || "0-new-version",
       );
-      logger().info(`New deps for ${entity.id}: ${newBundle.deps.join(", ")}`);
+      logger.info(`New deps for ${entity.id}: ${newBundle.deps.join(", ")}`);
       Object.assign(bundle, newBundle);
     }
   }

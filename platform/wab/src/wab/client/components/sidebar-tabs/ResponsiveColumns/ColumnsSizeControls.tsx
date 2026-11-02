@@ -29,7 +29,7 @@ import React from "react";
 
 interface ColumnSizeDragState {
   index: number;
-  cols: number[];
+  cols: ReadonlyArray<number>;
 }
 
 export const ColumnsSizeControls = observer(
@@ -87,14 +87,14 @@ export const ColumnsSizeControls = observer(
         </div>
       </FullRow>
     );
-  }
+  },
 );
 
 export const ColumnSizeControlDraggables = observer(
   function ColumnSizeControlDraggables(props: {
     tpl: TplColumnsTag;
     viewCtx: ViewCtx;
-    sizes: number[];
+    sizes: ReadonlyArray<number>;
     dragState: ColumnSizeDragState | undefined;
     width: number;
     zoom: number;
@@ -122,7 +122,7 @@ export const ColumnSizeControlDraggables = observer(
       siteFinalStyleTokensAllDeps(site),
       allMixins(site, { includeDeps: "all" }),
       allImageAssets(site, { includeDeps: "all" }),
-      site.activeTheme
+      site.activeTheme,
     );
 
     const colGap = resolver.tryResolveTokenOrMixinRef(colGapRaw);
@@ -130,7 +130,7 @@ export const ColumnSizeControlDraggables = observer(
     const areaWidth = `(100% - ${sizes.length - 1} * ${colGapInZoom})`;
 
     const [mouseOver, setMouseOver] = React.useState<number | undefined>(
-      undefined
+      undefined,
     );
 
     return (
@@ -158,7 +158,7 @@ export const ColumnSizeControlDraggables = observer(
                       dragState.cols,
                       dragState.index,
                       delta,
-                      width
+                      width,
                     );
                     if (!isEqual(newCols, sizes)) {
                       spawn(
@@ -168,10 +168,10 @@ export const ColumnSizeControlDraggables = observer(
                             {
                               colsSizes: newCols,
                             },
-                            viewCtx.variantTplMgr()
+                            viewCtx.variantTplMgr(),
                           );
                           return ok();
-                        })
+                        }),
                       );
                     }
                   }
@@ -230,7 +230,7 @@ export const ColumnSizeControlDraggables = observer(
         )}
       </>
     );
-  }
+  },
 );
 
 export const BeamLine = (props: {

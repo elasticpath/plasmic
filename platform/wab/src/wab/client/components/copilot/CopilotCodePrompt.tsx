@@ -2,7 +2,6 @@ import { CopilotPromptDialog } from "@/wab/client/components/copilot/CopilotProm
 import { dataPickerShouldHideKey } from "@/wab/client/components/sidebar-tabs/DataBinding/DataPickerUtil";
 import PlasmicCopilotCodePrompt from "@/wab/client/plasmic/plasmic_kit_data_binding/PlasmicCopilotCodePrompt";
 import { useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
-import { CopilotResponseData } from "@/wab/shared/ApiSchema";
 import {
   ensure,
   isPrimitive,
@@ -52,7 +51,7 @@ export const CopilotCodePrompt = observer(function CopilotCodePrompt({
         },
         wrap: (elt) => (
           <>
-            <Tooltip title={"Open Copilot"} mouseEnterDelay={0.5}>
+            <Tooltip title={"Open Plasmic AI"} mouseEnterDelay={0.5}>
               {elt}
             </Tooltip>
             <CopilotPromptDialog<string>
@@ -63,41 +62,30 @@ export const CopilotCodePrompt = observer(function CopilotCodePrompt({
               type={type}
               maxLength={500}
               onCopilotSubmit={async ({ prompt }) => {
-                const result = await studioCtx.appCtx.api
-                  .queryCopilot({
-                    ...(type === "sql"
-                      ? {
-                          type: "code-sql",
-                          schema: ensure(
-                            dataSourceSchema,
-                            () => `Missing schema`
-                          ),
-                          currentCode: processCurrentCode(currentValue),
-                          data: processData(data),
-                        }
-                      : {
-                          type: "code",
-                          context,
-                          currentCode: processCurrentCode(currentValue),
-                          data: processData(data),
-                        }),
-                    projectId: studioCtx.siteInfo.id,
-                    goal: prompt,
-                    ...(studioCtx.appCtx.appConfig.copilotClaude
-                      ? { useClaude: true }
-                      : {}),
-                  })
-                  .then((x) => {
-                    const res: CopilotResponseData = JSON.parse(x.response);
-                    return res;
-                  });
-
-                const response =
-                  result.data.choices[0]?.message?.content ?? undefined;
+                const result = await studioCtx.appCtx.api.queryCopilot({
+                  ...(type === "sql"
+                    ? {
+                        type: "code-sql",
+                        schema: ensure(
+                          dataSourceSchema,
+                          () => `Missing schema`,
+                        ),
+                        currentCode: processCurrentCode(currentValue),
+                        data: processData(data),
+                      }
+                    : {
+                        type: "code",
+                        context,
+                        currentCode: processCurrentCode(currentValue),
+                        data: processData(data),
+                      }),
+                  projectId: studioCtx.siteInfo.id,
+                  goal: prompt,
+                });
 
                 return {
-                  response,
-                  displayMessage: response,
+                  response: result.response,
+                  displayMessage: result.response,
                   copilotInteractionId: result.copilotInteractionId,
                   data,
                   currentValue,
@@ -135,7 +123,7 @@ function processData(data: Record<string, any>) {
       }
       if (Array.isArray(v)) {
         return (v.length > 3 ? [...v.slice(0, 3), "... (long array"] : v).map(
-          (val, i) => rec(val, depth + 1, [...path, i])
+          (val, i) => rec(val, depth + 1, [...path, i]),
         );
       } else {
         return Object.fromEntries(
@@ -147,10 +135,10 @@ function processData(data: Record<string, any>) {
                   showAdvancedFields: true,
                 })
                   ? null
-                  : ([key, rec(v[key], depth + 1, [...path, key])] as const)
-              )
-            )
-          ).slice(0, 50)
+                  : ([key, rec(v[key], depth + 1, [...path, key])] as const),
+              ),
+            ),
+          ).slice(0, 50),
         );
       }
     };

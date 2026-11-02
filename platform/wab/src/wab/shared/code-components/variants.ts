@@ -1,5 +1,5 @@
 import { TplMgr } from "@/wab/shared/TplMgr";
-import { VariantCombo, isCodeComponentVariant } from "@/wab/shared/Variants";
+import { isCodeComponentVariant } from "@/wab/shared/Variants";
 import { CodeComponent, isCodeComponent } from "@/wab/shared/core/components";
 import {
   TplCodeComponent,
@@ -20,16 +20,12 @@ export type VariantMetas = CodeComponentMeta["variants"];
 
 export function getVariantMeta(
   variantsMetas: VariantMetas,
-  key: string
+  key: string,
 ): CodeComponentVariantMeta | null {
   if (key in variantsMetas) {
     return variantsMetas[key];
   }
   return null;
-}
-
-export function hasCodeComponentVariants(variantCombo: VariantCombo) {
-  return variantCombo.some(isCodeComponentVariant);
 }
 
 export function isCodeComponentWithVariants(component: Component) {
@@ -39,7 +35,7 @@ export function isCodeComponentWithVariants(component: Component) {
 }
 
 export function isTplRootWithCodeComponentVariants(
-  tpl: TplNode
+  tpl: TplNode,
 ): tpl is TplCodeComponent {
   return (
     isTplComponent(tpl) &&
@@ -50,7 +46,7 @@ export function isTplRootWithCodeComponentVariants(
 
 export function getCodeComponentVariantMeta(
   component: CodeComponent,
-  key: string
+  key: string,
 ): CodeComponentVariantMeta | null {
   const metas = component.codeComponentMeta.variants;
   return getVariantMeta(metas, key);
@@ -58,18 +54,18 @@ export function getCodeComponentVariantMeta(
 
 export function getTplCodeComponentVariantMeta(
   tpl: TplCodeComponent,
-  key: string
+  key: string,
 ): CodeComponentVariantMeta | null {
   return getCodeComponentVariantMeta(tpl.component, key);
 }
 
 export function getInvalidCodeComponentVariantsInComponent(
-  component: Component
+  component: Component,
 ) {
   // We won't check if the component is a code component here, because it may be the
   // case that we removed the code component or swapped it with another component
   const codeComponentVariants = component.variants.filter(
-    isCodeComponentVariant
+    isCodeComponentVariant,
   );
   const unregistredKeys = new Set<string>();
   const invalidVariants: Variant[] = [];
@@ -80,7 +76,7 @@ export function getInvalidCodeComponentVariantsInComponent(
 
   codeComponentVariants.forEach((v) => {
     const missingKeys = v.codeComponentVariantKeys.filter(
-      (key) => !getVariantMeta(variantMeta, key)
+      (key) => !getVariantMeta(variantMeta, key),
     );
     if (missingKeys.length > 0) {
       invalidVariants.push(v);
@@ -96,7 +92,7 @@ export function getInvalidCodeComponentVariantsInComponent(
 
 export function ensureOnlyValidCodeComponentVariantsInComponent(
   site: Site,
-  component: Component
+  component: Component,
 ) {
   const tplMgr = new TplMgr({ site });
   const { invalidVariants } =

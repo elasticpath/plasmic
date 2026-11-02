@@ -1,14 +1,14 @@
 import { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
-import { ensure, mergeMaps, partitions, xpickBy } from "@/wab/shared/common";
 import { PinManager, PinState, PinStateManager } from "@/wab/shared/PinManager";
 import { isGlobalVariant } from "@/wab/shared/Variants";
 import { toVarName } from "@/wab/shared/codegen/util";
+import { ensure, mergeMaps, partitions, xpickBy } from "@/wab/shared/common";
 import {
   ComponentVariantFrame,
   GlobalVariantFrame,
 } from "@/wab/shared/component-frame";
-import { Variant } from "@/wab/shared/model/classes";
 import { ValComponent } from "@/wab/shared/core/val-nodes";
+import { Variant } from "@/wab/shared/model/classes";
 import L from "lodash";
 import { computed } from "mobx";
 
@@ -21,7 +21,7 @@ export function makeClientPinManager(viewCtx: ViewCtx) {
   return new ClientPinManager(
     compFrame,
     globalFrame,
-    makeCurrentVariantEvalState(viewCtx)
+    makeCurrentVariantEvalState(viewCtx),
   );
 }
 
@@ -29,7 +29,7 @@ export function makeCurrentVariantEvalState(viewCtx: ViewCtx) {
   if (viewCtx.valState().maybeValSysRoot()) {
     const valComponent = ensure(
       L.last(viewCtx.valComponentStack()),
-      () => `There is at least one ValComponent on the stack`
+      () => `There is at least one ValComponent on the stack`,
     );
     return makeVariantEvalState(viewCtx, valComponent);
   } else {
@@ -46,12 +46,17 @@ export function makeVariantEvalState(vc: ViewCtx, valComponent: ValComponent) {
   // could refer to the activated variants via $props.
 
   const map = new Map<Variant, boolean>();
+  const props = valComponent.fibers[0]?.memoizedProps;
+
+  // Props may not be available if the ValComponent was detached from its frame.
+  if (!props) {
+    return map;
+  }
+
   for (const group of component.variantGroups) {
     const groupName = toVarName(group.param.variable.name);
     const variantsObj = {
-      [groupName]:
-        valComponent.fibers[0].memoizedProps?.variants?.[groupName] ??
-        valComponent.fibers[0].memoizedProps?.[groupName],
+      [groupName]: props.variants?.[groupName] ?? props[groupName],
     };
     for (const variant of group.variants) {
       map.set(
@@ -59,8 +64,8 @@ export function makeVariantEvalState(vc: ViewCtx, valComponent: ValComponent) {
         vc.canvasCtx.Sub.reactWeb.hasVariant(
           variantsObj,
           groupName,
-          toVarName(variant.name)
-        )
+          toVarName(variant.name),
+        ),
       );
     }
   }
@@ -70,7 +75,7 @@ export function makeVariantEvalState(vc: ViewCtx, valComponent: ValComponent) {
 function applyPinStateToVariantFrames(
   state: PinState,
   componentFrame: ComponentVariantFrame,
-  globalFrame: GlobalVariantFrame
+  globalFrame: GlobalVariantFrame,
 ) {
   const [locals, globals] = partitions(state.targetVariants, [
     (v) => !isGlobalVariant(v),
@@ -80,12 +85,12 @@ function applyPinStateToVariantFrames(
 
   const localPins = xpickBy(
     state.pinnedVariants,
-    (pin, variant) => !isGlobalVariant(variant)
+    (pin, variant) => !isGlobalVariant(variant),
   );
   componentFrame.setPinnedVariants(localPins);
 
   const globalPins = xpickBy(state.pinnedVariants, (pin, variant) =>
-    isGlobalVariant(variant)
+    isGlobalVariant(variant),
   );
   globalFrame.setPinnedVariants(globalPins);
 }
@@ -99,7 +104,7 @@ export function makeEmptyPinState(): PinState {
 
 function extractPinStateFromVariantFrames(
   componentFrame: ComponentVariantFrame,
-  globalFrame: GlobalVariantFrame
+  globalFrame: GlobalVariantFrame,
 ): PinState {
   return {
     targetVariants: [
@@ -108,7 +113,7 @@ function extractPinStateFromVariantFrames(
     ],
     pinnedVariants: mergeMaps(
       componentFrame.getPinnedVariants(),
-      globalFrame.getPinnedVariants()
+      globalFrame.getPinnedVariants(),
     ),
   };
 }
@@ -117,14 +122,14 @@ export class ClientPinManager extends PinManager {
   constructor(
     private componentFrame: ComponentVariantFrame,
     private globalFrame: GlobalVariantFrame,
-    evalState: Map<Variant, boolean>
+    evalState: Map<Variant, boolean>,
   ) {
     super(
       new PinStateManager(
         globalFrame.site,
         componentFrame.tplComponent.component,
-        evalState
-      )
+        evalState,
+      ),
     );
   }
 
@@ -135,7 +140,7 @@ export class ClientPinManager extends PinManager {
   private _curState = computed(() => {
     return extractPinStateFromVariantFrames(
       this.componentFrame,
-      this.globalFrame
+      this.globalFrame,
     );
   });
 

@@ -1,4 +1,3 @@
-import { AppCtx } from "@/wab/client/app-ctx";
 import ListItem from "@/wab/client/components/ListItem";
 import { MenuBuilder } from "@/wab/client/components/menu-builder";
 import { FindReferencesModal } from "@/wab/client/components/sidebar/FindReferencesModal";
@@ -9,6 +8,7 @@ import { SidebarModal } from "@/wab/client/components/sidebar/SidebarModal";
 import {
   ItemOrGroup,
   VirtualGroupedList,
+  VirtualGroupedListHandle,
 } from "@/wab/client/components/sidebar/VirtualGroupedList";
 import { useDepFilterButton } from "@/wab/client/components/sidebar/left-panel-utils";
 import { DraggableInsertable } from "@/wab/client/components/studio/add-drawer/DraggableInsertable";
@@ -30,18 +30,24 @@ import {
   ResizableImage,
   downloadImageAsset,
   maybeUploadImage,
-  readAndSanitizeFileAsImage,
 } from "@/wab/client/dom-utils";
 import ImageBlockIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__ImageBlock";
 import PlasmicLeftImagesPanel from "@/wab/client/plasmic/plasmic_kit/PlasmicLeftImagesPanel";
 import { StudioCtx, useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
+import {
+  UiActionsOverlay,
+  useModelUiActionHandler,
+} from "@/wab/client/studio-ctx/ui/studio-ui-actions";
+import { mkSiteScopedUiId } from "@/wab/client/studio-ctx/ui/studio-ui-ids";
 import { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
 import { ImageUploadResponse } from "@/wab/shared/ApiSchema";
 import { ensure } from "@/wab/shared/common";
 import { ImageAssetType } from "@/wab/shared/core/image-asset-type";
 import { extractImageAssetUsages } from "@/wab/shared/core/image-assets";
-import { isHostLessPackage } from "@/wab/shared/core/sites";
-import { imageDataUriToBlob } from "@/wab/shared/data-urls";
+import {
+  isHostLessPackage,
+  tryGetImageAssetByUuid,
+} from "@/wab/shared/core/sites";
 import { DEVFLAGS } from "@/wab/shared/devflags";
 import { ImageAsset, ProjectDependency } from "@/wab/shared/model/classes";
 import { naturalSort } from "@/wab/shared/sort";
@@ -64,7 +70,7 @@ export const ImageAssetsPanel = observer(function ImageAssetsPanel() {
   const { filterDeps, filterProps } = useDepFilterButton({
     studioCtx,
     deps: studioCtx.site.projectDependencies.filter(
-      (dep) => dep.site.imageAssets.length > 0
+      (dep) => dep.site.imageAssets.length > 0,
     ),
   });
 
@@ -74,11 +80,11 @@ export const ImageAssetsPanel = observer(function ImageAssetsPanel() {
   const matcher = new Matcher(query);
 
   const [editAsset, setEditAsset] = React.useState<ImageAsset | undefined>(
-    undefined
+    undefined,
   );
 
   const [justAdded, setJustAdded] = React.useState<ImageAsset | undefined>(
-    undefined
+    undefined,
   );
 
   const [findReferenceAsset, setFindReferenceAsset] = React.useState<
@@ -90,6 +96,31 @@ export const ImageAssetsPanel = observer(function ImageAssetsPanel() {
       [ImageAssetType.Icon]: true,
       [ImageAssetType.Picture]: true,
     });
+
+  const listRefs = {
+    [ImageAssetType.Icon]: React.useRef<VirtualGroupedListHandle>(null),
+    [ImageAssetType.Picture]: React.useRef<VirtualGroupedListHandle>(null),
+  };
+  const pendingScrollAsset = React.useRef<ImageAsset | undefined>(undefined);
+  const scrollToPendingAsset = () => {
+    const asset = pendingScrollAsset.current;
+    if (asset && listRefs[asset.type].current) {
+      pendingScrollAsset.current = undefined;
+      listRefs[asset.type].current?.scrollTo(asset.uuid);
+    }
+  };
+  useModelUiActionHandler("ImageAsset", (uuid) => {
+    const asset = tryGetImageAssetByUuid(studioCtx.site, uuid, {
+      includeDeps: "direct",
+    });
+    if (!asset) {
+      return;
+    }
+    pendingScrollAsset.current = asset;
+    setIsImageAssetTypeExpanded((state) => ({ ...state, [asset.type]: true }));
+    scrollToPendingAsset();
+  });
+  React.useEffect(scrollToPendingAsset, [isImageAssetTypeExpanded]);
 
   const addAsset = async (type: ImageAssetType) => {
     return studioCtx.changeUnsafe(() => {
@@ -124,11 +155,11 @@ export const ImageAssetsPanel = observer(function ImageAssetsPanel() {
 
     const editableAssets = new Set(studioCtx.site.imageAssets);
 
-    const makeAssetsItems = (assets: ImageAsset[]) => {
-      assets = assets.filter(
+    const makeAssetsItems = (allAssets: ReadonlyArray<ImageAsset>) => {
+      let assets = allAssets.filter(
         (asset) =>
           asset.type === type &&
-          (matcher.matches(asset.name) || justAdded === asset)
+          (matcher.matches(asset.name) || justAdded === asset),
       );
       assets = naturalSort(assets, (asset) => asset.name);
       return assets.map((asset) => ({
@@ -140,10 +171,10 @@ export const ImageAssetsPanel = observer(function ImageAssetsPanel() {
 
     const makeDepsItems = (deps: ProjectDependency[]) => {
       deps = deps.filter(
-        (dep) => filterDeps.length === 0 || filterDeps.includes(dep)
+        (dep) => filterDeps.length === 0 || filterDeps.includes(dep),
       );
       deps = naturalSort(deps, (dep) =>
-        studioCtx.projectDependencyManager.getNiceDepName(dep)
+        studioCtx.projectDependencyManager.getNiceDepName(dep),
       );
       return deps.map((dep) => ({
         type: "group" as const,
@@ -160,18 +191,18 @@ export const ImageAssetsPanel = observer(function ImageAssetsPanel() {
         : []),
       ...makeDepsItems(
         studioCtx.site.projectDependencies.filter(
-          (d) => !isHostLessPackage(d.site)
-        )
+          (d) => !isHostLessPackage(d.site),
+        ),
       ),
       ...makeDepsItems(
         studioCtx.site.projectDependencies.filter((d) =>
-          isHostLessPackage(d.site)
-        )
+          isHostLessPackage(d.site),
+        ),
       ),
     ];
 
     const selectableAssets = makeAssetsItems(studioCtx.site.imageAssets).map(
-      (asset) => asset.key
+      (asset) => asset.key,
     );
 
     return (
@@ -186,10 +217,11 @@ export const ImageAssetsPanel = observer(function ImageAssetsPanel() {
           const result = await studioCtx
             .siteOps()
             .tryDeleteImageAssets(selectedAssets);
-          return result.deletedResources.length > 0;
+          return result.isOk() && result.value.deletedResources.length > 0;
         }}
       >
         <VirtualGroupedList
+          handleRef={listRefs[type]}
           items={items}
           renderItem={(asset) => (
             <ImageAssetControl
@@ -207,7 +239,7 @@ export const ImageAssetsPanel = observer(function ImageAssetsPanel() {
           itemHeight={32}
           renderGroupHeader={(dep) =>
             `Imported from "${studioCtx.projectDependencyManager.getNiceDepName(
-              dep
+              dep,
             )}"`
           }
           headerHeight={50}
@@ -240,7 +272,7 @@ export const ImageAssetsPanel = observer(function ImageAssetsPanel() {
             ? {
                 children: imageAssetsSection(
                   ImageAssetType.Icon,
-                  canWriteIcons
+                  canWriteIcons,
                 ),
               }
             : { render: () => null }
@@ -266,7 +298,7 @@ export const ImageAssetsPanel = observer(function ImageAssetsPanel() {
             ? {
                 children: imageAssetsSection(
                   ImageAssetType.Picture,
-                  canWriteImages
+                  canWriteImages,
                 ),
               }
             : { render: () => null }
@@ -348,13 +380,13 @@ const ImageAssetControl = observer(function ImageAssetControl(props: {
       push(
         <Menu.Item key="references" onClick={onFindReferences}>
           Find all references
-        </Menu.Item>
+        </Menu.Item>,
       );
       if (asset.dataUri) {
         push(
           <Menu.Item key="download" onClick={() => downloadImageAsset(asset)}>
             Download image
-          </Menu.Item>
+          </Menu.Item>,
         );
       }
       if (editable) {
@@ -367,7 +399,7 @@ const ImageAssetControl = observer(function ImageAssetControl(props: {
               }
             >
               Start bulk selection
-            </Menu.Item>
+            </Menu.Item>,
           );
           push(
             <Menu.Item
@@ -375,7 +407,7 @@ const ImageAssetControl = observer(function ImageAssetControl(props: {
               onClick={() => studioCtx.siteOps().tryDeleteImageAssets([asset])}
             >
               Delete
-            </Menu.Item>
+            </Menu.Item>,
           );
         }
       }
@@ -434,6 +466,7 @@ const ImageAssetControl = observer(function ImageAssetControl(props: {
       >
         {matcher.boldSnippets(asset.name)}
       </ListItem>
+      <UiActionsOverlay uiId={mkSiteScopedUiId(asset)} />
     </DraggableInsertable>
   );
 });
@@ -455,15 +488,18 @@ export const ImageAssetSidebarPopup = observer(
             studioCtx.appCtx,
             image,
             asset.type as ImageAssetType,
-            file
+            file,
+            { autoDescribe: true },
           );
-        })()
+        })(),
       );
       if (!imageResult || !opts) {
         return;
       }
       return studioCtx.change(() => {
-        studioCtx.siteOps().updateImageAsset(asset, imageResult);
+        studioCtx
+          .siteOps()
+          .updateImageAsset(asset, imageResult, opts.description);
         if (
           file &&
           (asset.name.startsWith("image") || asset.name.startsWith("icon"))
@@ -488,7 +524,7 @@ export const ImageAssetSidebarPopup = observer(
               disabled={!editable}
               onValueChange={(name) =>
                 studioCtx.changeUnsafe(() =>
-                  studioCtx.tplMgr().renameImageAsset(asset, name)
+                  studioCtx.tplMgr().renameImageAsset(asset, name),
                 )
               }
               placeholder={"(unnamed asset)"}
@@ -525,11 +561,7 @@ export const ImageAssetSidebarPopup = observer(
             <div className="panel-content dimfg flex-col">
               <div className="mb-sm">Upload a new image</div>
               <ImageUploader
-                accept={
-                  asset.type === ImageAssetType.Picture
-                    ? ".gif,.jpg,.jpeg,.png,.avif,.tif,.svg"
-                    : ".svg"
-                }
+                accept={asset.type === ImageAssetType.Picture ? "image" : "svg"}
                 onUploaded={handleUploaded}
               />
 
@@ -540,55 +572,8 @@ export const ImageAssetSidebarPopup = observer(
         </div>
       </SidebarModal>
     );
-  }
+  },
 );
-
-export const IMAGE_ACCEPT = ".gif,.jpg,.jpeg,.png,.avif,.tif,.svg,.webp";
-export async function promptFileUpload(
-  appCtx: AppCtx,
-  opts?: {
-    accept?: string;
-  }
-) {
-  return new Promise<ImageUploadResponse | undefined>((resolve, reject) => {
-    const input = document.createElement("input");
-    input.setAttribute("type", "file");
-    input.setAttribute("accept", opts?.accept ?? IMAGE_ACCEPT);
-    input.classList.add("display-none");
-    document.body.appendChild(input);
-    const cleanup = () => {
-      document.body.removeChild(input);
-    };
-    input.addEventListener("change", async () => {
-      if (input.files && input.files[0]) {
-        try {
-          const image = await readAndSanitizeFileAsImage(
-            appCtx,
-            input.files[0]
-          );
-          if (!image) {
-            reject(new Error("Invalid image"));
-          } else {
-            const blob = imageDataUriToBlob(image.url);
-            const uploaded = await appCtx.api.uploadImageFile({
-              imageFile: blob,
-            });
-            resolve(uploaded);
-          }
-        } catch (err) {
-          reject(err);
-        } finally {
-          cleanup();
-        }
-      }
-    });
-    input.addEventListener("cancel", () => {
-      resolve(undefined);
-      cleanup();
-    });
-    input.click();
-  });
-}
 
 export function getCmsImageUrl(uploaded: ImageUploadResponse) {
   const imgId = ensure(last(uploaded.dataUri.split("/")), "Expected imgId");

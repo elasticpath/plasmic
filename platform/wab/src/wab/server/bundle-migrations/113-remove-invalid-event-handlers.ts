@@ -1,27 +1,31 @@
-import { ensure } from "@/wab/shared/common";
-import { getAllComponentsInTopologicalOrder } from "@/wab/shared/core/components";
-import { extractReferencedParam, isRealCodeExpr } from "@/wab/shared/core/exprs";
 import { UnbundledMigrationFn } from "@/wab/server/db/BundleMigrator";
 import {
   BundleMigrationType,
   unbundleSite,
 } from "@/wab/server/db/bundle-migration-utils";
 import { Bundler } from "@/wab/shared/bundler";
+import { ensure } from "@/wab/shared/common";
+import { getAllComponentsInTopologicalOrder } from "@/wab/shared/core/components";
 import {
+  extractReferencedParam,
+  isRealCodeExpr,
+} from "@/wab/shared/core/exprs";
+import { flattenTpls, isAttrEventHandler } from "@/wab/shared/core/tpls";
+import {
+  Arg,
   Expr,
   isKnownEventHandler,
   isKnownFunctionType,
   isKnownVarRef,
 } from "@/wab/shared/model/classes";
-import { flattenTpls, isAttrEventHandler } from "@/wab/shared/core/tpls";
-import { remove } from "lodash";
+import { omit } from "lodash";
 export const migrate: UnbundledMigrationFn = async (bundle, db, entity) => {
   const bundler = new Bundler();
   const { site, siteOrProjectDep } = await unbundleSite(
     bundler,
     bundle,
     db,
-    entity
+    entity,
   );
 
   const isExprValidForEventHandler = (expr: Expr | null | undefined) =>
@@ -33,39 +37,43 @@ export const migrate: UnbundledMigrationFn = async (bundle, db, entity) => {
   for (const component of getAllComponentsInTopologicalOrder(site)) {
     for (const tpl of flattenTpls(component.tplTree)) {
       for (const vs of tpl.vsettings) {
-        for (const [attr, expr] of [...Object.entries(vs.attrs)]) {
+        const invalidAttrs: string[] = [];
+        for (const [attr, expr] of Object.entries(vs.attrs)) {
           if (!isAttrEventHandler(attr)) {
             continue;
           }
           if (isKnownVarRef(expr)) {
             const param = ensure(
               extractReferencedParam(component, expr),
-              `param not found for var ref: ${expr.variable.name}`
+              `param not found for var ref: ${expr.variable.name}`,
             );
             if (!isExprValidForEventHandler(param.defaultExpr)) {
               param.defaultExpr = null;
             }
           }
           if (!isExprValidForEventHandler(expr)) {
-            delete vs.attrs[attr];
+            invalidAttrs.push(attr);
           }
         }
-        for (const arg of [...vs.args]) {
+        vs.attrs = omit(vs.attrs, invalidAttrs);
+        const invalidArgs = new Set<Arg>();
+        for (const arg of vs.args) {
           if (isKnownFunctionType(arg.param.type)) {
             if (isKnownVarRef(arg.expr)) {
               const param = ensure(
                 extractReferencedParam(component, arg.expr),
-                `param not found for var ref: ${arg.expr.variable.name}`
+                `param not found for var ref: ${arg.expr.variable.name}`,
               );
               if (!isExprValidForEventHandler(param.defaultExpr)) {
                 param.defaultExpr = null;
               }
             }
             if (!isExprValidForEventHandler(arg.expr)) {
-              remove(vs.args, arg);
+              invalidArgs.add(arg);
             }
           }
         }
+        vs.args = vs.args.filter((arg) => !invalidArgs.has(arg));
       }
     }
   }
@@ -73,7 +81,7 @@ export const migrate: UnbundledMigrationFn = async (bundle, db, entity) => {
   const newBundle = bundler.bundle(
     siteOrProjectDep,
     entity.id,
-    "113-remove-invalid-event-handlers"
+    "113-remove-invalid-event-handlers",
   );
   Object.assign(bundle, newBundle);
 };

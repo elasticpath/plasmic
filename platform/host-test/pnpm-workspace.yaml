@@ -1,0 +1,13 @@
+# Own pnpm root, so `pnpm install` here does not walk up to
+# platform/pnpm-workspace.yaml and install the wab workspace instead.
+packages: []
+
+minimumReleaseAge: 2880
+minimumReleaseAgeExclude:
+  - "@plasmicapp/*"
+  - "@plasmicpkgs/*"
+
+allowBuilds:
+  # Native addon (eslint-config-next's resolver); needs its postinstall to link
+  # the platform binary.
+  unrs-resolver: true

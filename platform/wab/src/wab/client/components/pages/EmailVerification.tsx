@@ -5,11 +5,11 @@ import { LinkButton } from "@/wab/client/components/widgets";
 import { Icon } from "@/wab/client/components/widgets/Icon";
 import { useAppCtx } from "@/wab/client/contexts/AppContexts";
 import MarkFullColorIcon from "@/wab/client/plasmic/plasmic_kit_design_system/PlasmicIcon__MarkFullColor";
+import { CaptchaError } from "@/wab/shared/ApiErrors/errors";
 import { ApiUser, ConfirmEmailResponse } from "@/wab/shared/ApiSchema";
 import { spawn } from "@/wab/shared/common";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
-import { Button, notification, Spin, Tooltip } from "antd";
+import { Button, Spin, Tooltip, notification } from "antd";
 import * as React from "react";
 
 interface EmailVerificationProps {
@@ -24,22 +24,22 @@ export function useEmailVerification(selfInfo: ApiUser) {
   const nextPath =
     continueToPath && isPlasmicPath(continueToPath)
       ? continueToPath
-      : fillRoute(APP_ROUTES.orgCreation, {});
+      : APP_ROUTES.orgCreation.fill({});
 
   const token = new URL(location.href).searchParams.get("token") ?? "";
 
   const [mode, setMode] = React.useState<string>(
-    token ? "loading" : "email-sent"
+    token ? "loading" : "email-sent",
   );
 
   React.useEffect(() => {
     if (token) {
       spawn(
         Promise.resolve(
-          nonAuthCtx.api.confirmEmail({ email: selfInfo.email, token })
+          nonAuthCtx.api.confirmEmail({ email: selfInfo.email, token }),
         ).then((response: ConfirmEmailResponse) => {
           setMode(response.status ? "valid-token" : "invalid-token");
-        })
+        }),
       );
     }
   }, [selfInfo.email, token, nonAuthCtx]);
@@ -151,16 +151,30 @@ export function EmailVerification(props: EmailVerificationProps) {
                 No email in your inbox or spam folder? Let’s
                 <LinkButton
                   onClick={async () => {
-                    showEmailSentNotification();
-                    if (!selfInfo.isFake) {
-                      await nonAuthCtx.api.sendEmailVerification({
-                        email: selfInfo.email,
-                        nextPath,
-                      });
-                    } else {
-                      await nonAuthCtx.api.forgotPassword({
-                        email: selfInfo.email,
-                      });
+                    try {
+                      if (!selfInfo.isFake) {
+                        await nonAuthCtx.api.sendEmailVerification({
+                          email: selfInfo.email,
+                          nextPath,
+                        });
+                      } else {
+                        await nonAuthCtx.api.forgotPassword({
+                          email: selfInfo.email,
+                        });
+                      }
+                      showEmailSentNotification();
+                    } catch (err) {
+                      if (err instanceof CaptchaError) {
+                        notification.error({
+                          message:
+                            "Browser verification failed. Please try again. Contact us if you are human and this issue persists.",
+                        });
+                      } else {
+                        notification.error({
+                          message: "Failed to send email. Please try again.",
+                        });
+                        throw err;
+                      }
                     }
                   }}
                 >

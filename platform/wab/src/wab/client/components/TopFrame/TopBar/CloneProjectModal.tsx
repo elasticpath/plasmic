@@ -4,7 +4,6 @@ import { useAppCtx } from "@/wab/client/contexts/AppContexts";
 import { ApiProject, MainBranchId } from "@/wab/shared/ApiSchema";
 import { assert, spawn } from "@/wab/shared/common";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
 import { observer } from "mobx-react";
 import { useEffect } from "react";
 
@@ -30,7 +29,7 @@ export const CloneProjectModal = observer(function ProjectNameModal({
             null,
             false,
             "Duplicate",
-            project.name
+            project.name,
           );
           if (!response) {
             await setShowCloneProjectModal(false);
@@ -47,14 +46,14 @@ export const CloneProjectModal = observer(function ProjectNameModal({
               parsedLocation.branchName !== MainBranchId
                 ? { branchName: parsedLocation.branchName }
                 : {}),
-            })
+            }),
           );
           window.open(
-            fillRoute(APP_ROUTES.project, { projectId: newProjectId }),
-            "_blank"
+            APP_ROUTES.project.fill({ projectId: newProjectId }),
+            "_blank",
           );
         }
-      })()
+      })(),
     );
   }, [showCloneProjectModal]);
 
