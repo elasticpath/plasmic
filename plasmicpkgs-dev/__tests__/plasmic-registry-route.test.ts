@@ -18,12 +18,13 @@ const { mockGetFullRegistry } = vi.hoisted(() => ({
   mockGetFullRegistry: vi.fn(),
 }));
 
-// Mock the side-effect import (component registration)
-vi.mock("../plasmic-register", () => ({}));
+vi.mock("../plasmic-init", () => ({ PLASMIC: {} }));
+vi.mock("../plasmic-register", () => ({ registerAllPackages: vi.fn() }));
 
 // Mock the registry module
 vi.mock("@elasticpath/plasmic-mcp-registry", () => ({
   getFullRegistry: mockGetFullRegistry,
+  withRegistryCapture: (plasmic: unknown) => plasmic,
 }));
 
 // Import the route handler AFTER mocks are set up

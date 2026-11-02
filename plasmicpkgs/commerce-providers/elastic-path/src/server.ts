@@ -110,6 +110,7 @@ export type {
   EpLocaleAndCurrencyResolver,
   EpPluginOptions,
   EpDesignRoutes,
+  EpDesignStore,
   EpProviderBundleConfig,
   EpProxyRoutes,
   EpResolveConfig,

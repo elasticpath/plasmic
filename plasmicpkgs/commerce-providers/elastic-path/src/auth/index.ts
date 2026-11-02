@@ -40,7 +40,10 @@ export { createEpAuthRoutes } from "./ep-plugin/auth-routes";
 export { createEpProxyRoutes } from "./ep-plugin/proxy-routes";
 export type { EpProxyRoutes } from "./ep-plugin/proxy-routes";
 export { createEpDesignRoutes } from "./ep-plugin/design-routes";
-export type { EpDesignRoutes } from "./ep-plugin/design-routes";
+export type {
+  EpDesignRoutes,
+  EpDesignStore,
+} from "./ep-plugin/design-routes";
 export {
   enforceOriginGate,
   isTrustedOrigin,

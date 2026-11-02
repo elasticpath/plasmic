@@ -50,6 +50,14 @@ auth instance it is being passed into. Any other caller of
 default, so a missed list is a type error. The extractor keeps using the list to
 tell the EP Provider apart from another commerce provider's global context.
 
+**The session-free design route uses the same list.**
+`createEpDesignRoutes({ resolveConfig, hostAllowlist })` has no auth instance,
+so it resolves the list itself through the same `resolveHostAllowlist`: the
+defaults, its `hostAllowlist` option and `EP_HOST_ALLOWLIST`. It has no
+operator `host` to fall back to, so a rejected host fails the request. An app
+host that mounts both this route and `createEpAuth` must pass the same
+`hostAllowlist` to each, or set it once in `EP_HOST_ALLOWLIST`.
+
 **`createEpAuth`'s own `host` is not checked.** It comes from the operator's
 environment, not from the bundle, and it is where a rejected host falls back to.
 
