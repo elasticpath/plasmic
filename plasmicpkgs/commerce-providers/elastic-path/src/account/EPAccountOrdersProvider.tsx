@@ -190,27 +190,32 @@ export function EPAccountOrdersProvider(props: EPAccountOrdersProviderProps) {
   const account = useSelector("account") as AccountContext | undefined;
   const identity = useEpIdentity();
   const requestId = useRef(0);
-  const heldKeyRef = useRef<string | null>(null);
+  const [selectionKey, setSelectionKey] = useState<string | null>(null);
   const [committed, setCommitted] = useState<CommittedHistory | null>(null);
   const [inflight, setInflight] = useState<InflightRequest | null>(null);
   const commitHistory = useCallback((next: CommittedHistory) => {
     setCommitted(next);
   }, []);
 
-  if (!account) {
-    heldKeyRef.current = "no-account-member";
-  } else if (!account.isLoading) {
-    heldKeyRef.current = settledAccountKey(account);
+  const settledKey = !account
+    ? "no-account-member"
+    : account.isLoading
+      ? null
+      : settledAccountKey(account);
+  let visibleCommit = committed;
+  if (!inEditor && settledKey != null && settledKey !== selectionKey) {
+    setSelectionKey(settledKey);
+    setCommitted(null);
+    visibleCommit = null;
   }
-  const effectKey = heldKeyRef.current;
   const renderKey = renderAccountKey(account);
 
   useEffect(() => {
     if (inEditor) return;
-    if (effectKey == null) return;
+    if (selectionKey == null) return;
 
     const id = ++requestId.current;
-    const key = effectKey;
+    const key = selectionKey;
 
     if (!key.startsWith("selected:")) {
       setInflight(null);
@@ -250,16 +255,16 @@ export function EPAccountOrdersProvider(props: EPAccountOrdersProviderProps) {
       cancelled = true;
       requestId.current += 1;
     };
-  }, [inEditor, effectKey, identity, commitHistory]);
+  }, [inEditor, selectionKey, identity, commitHistory]);
 
   const awaitingCurrentRequest =
     inflight != null &&
     inflight.key === renderKey &&
-    committed?.requestId !== inflight.requestId;
+    visibleCommit?.requestId !== inflight.requestId;
   const history = inEditor
     ? previewHistory(preview)
-    : committed?.key === renderKey && !awaitingCurrentRequest
-      ? committed.history
+    : visibleCommit?.key === renderKey && !awaitingCurrentRequest
+      ? visibleCommit.history
       : LOADING_HISTORY;
 
   return (

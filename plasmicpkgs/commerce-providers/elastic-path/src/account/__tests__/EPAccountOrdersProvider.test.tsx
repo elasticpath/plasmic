@@ -253,6 +253,61 @@ describe("EPAccountOrdersProvider", () => {
     expect(published().orders.map((order) => order.id)).toEqual(["order-a"]);
   });
 
+  it("does not publish A's previous history on the render that selects A again", async () => {
+    const requests: Array<ReturnType<typeof deferred<EpAccountOrderResult>>> = [];
+    mockAccountOrders.mockImplementation(() => {
+      const next = deferred<EpAccountOrderResult>();
+      requests.push(next);
+      return next.promise;
+    });
+    const frames: Array<{ status: string; ids: string[] }> = [];
+    function RecordFrames() {
+      const { useSelector } = require("@plasmicapp/host");
+      const history = useSelector("accountOrders") as AccountOrderHistoryContext;
+      frames.push({
+        status: history.status,
+        ids: history.orders.map((order) => order.id),
+      });
+      return null;
+    }
+    const { rerender } = render(
+      <Harness account={selected("acct-a")}>
+        <RecordFrames />
+      </Harness>
+    );
+    await waitFor(() => expect(requests).toHaveLength(1));
+    await act(async () => {
+      requests[0].resolve({ orders: [orderA], total: 1 });
+    });
+    await waitFor(() => expect(published().status).toBe("ready"));
+
+    const beforeB = frames.length;
+    rerender(
+      <Harness account={selected("acct-b")}>
+        <RecordFrames />
+      </Harness>
+    );
+    expect(requests).toHaveLength(2);
+    expect(frames.slice(beforeB).some((frame) => frame.ids.includes("order-a"))).toBe(
+      false
+    );
+
+    const beforeReturn = frames.length;
+    rerender(
+      <Harness account={selected("acct-a")}>
+        <RecordFrames />
+      </Harness>
+    );
+    const returned = frames.slice(beforeReturn);
+    expect(requests).toHaveLength(3);
+    expect(returned.length).toBeGreaterThan(0);
+    expect(returned[0]).toEqual({ status: "loading", ids: [] });
+    expect(returned.some((frame) => frame.status === "ready")).toBe(false);
+    expect(returned.some((frame) => frame.ids.includes("order-a"))).toBe(false);
+    expect(published().status).toBe("loading");
+    expect(published().orders).toEqual([]);
+  });
+
   it("stays loading when A is selected again before the new read commits", async () => {
     const requests: Array<ReturnType<typeof deferred<EpAccountOrderResult>>> = [];
     mockAccountOrders.mockImplementation(() => {
