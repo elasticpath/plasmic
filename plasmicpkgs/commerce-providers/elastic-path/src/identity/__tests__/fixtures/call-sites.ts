@@ -38,6 +38,83 @@ identity.accountAddresses();
 // @ts-expect-error the server chooses the account; the browser sends nothing
 identity.accountAddresses({ accountId: "acct-1" });
 
+identity.accountOrders();
+// @ts-expect-error the server chooses the account; the browser sends nothing
+identity.accountOrders({ accountId: "acct-1" });
+// @ts-expect-error the server chooses the order; the browser sends nothing
+identity.accountOrders({ orderId: "order-1" });
+// @ts-expect-error tokens stay on the server
+identity.accountOrders({ token: "secret" });
+// @ts-expect-error account tokens stay on the server
+identity.accountOrders({ accountToken: "secret" });
+// @ts-expect-error filters stay on the server
+identity.accountOrders({ filter: "eq(account_id,acct-1)" });
+// @ts-expect-error pagination stays on the server
+identity.accountOrders({ limit: 10, offset: 20 });
+// @ts-expect-error sort stays on the server
+identity.accountOrders({ sort: "created_at" });
+// @ts-expect-error include stays on the server
+identity.accountOrders({ include: "items" });
+// @ts-expect-error SDK options stay on the server
+identity.accountOrders({ client: {} });
+
+identity.createAccountAddress({ line_1: "1 High Street", country: "GB" });
+// @ts-expect-error the address object is required
+identity.createAccountAddress();
+// @ts-expect-error the server chooses the account
+identity.createAccountAddress({ accountId: "acct-1", line_1: "1 High Street" });
+// @ts-expect-error the server chooses the address id
+identity.createAccountAddress({ id: "addr-1", line_1: "1 High Street" });
+// @ts-expect-error the server sets the address type
+identity.createAccountAddress({ type: "address", line_1: "1 High Street" });
+// @ts-expect-error tokens stay on the server
+identity.createAccountAddress({ token: "secret", line_1: "1 High Street" });
+// @ts-expect-error account tokens stay on the server
+identity.createAccountAddress({ accountToken: "secret", line_1: "1 High Street" });
+// @ts-expect-error filters stay on the server
+identity.createAccountAddress({ filter: "eq(country,GB)", line_1: "1 High Street" });
+// @ts-expect-error line 3 is not a saved-address field
+identity.createAccountAddress({ line_3: "Floor 2", line_1: "1 High Street" });
+// @ts-expect-error relationships stay on the server
+identity.createAccountAddress({ relationships: {}, line_1: "1 High Street" });
+
+identity.deleteAccountAddress({ id: "addr-1" });
+// @ts-expect-error the address id is required
+identity.deleteAccountAddress();
+// @ts-expect-error the server chooses the account
+identity.deleteAccountAddress({ id: "addr-1", accountId: "acct-1" });
+// @ts-expect-error tokens stay on the server
+identity.deleteAccountAddress({ id: "addr-1", token: "secret" });
+// @ts-expect-error account tokens stay on the server
+identity.deleteAccountAddress({ id: "addr-1", accountToken: "secret" });
+// @ts-expect-error the account path stays on the server
+identity.deleteAccountAddress({ id: "addr-1", path: "/v2/accounts/acct-1/addresses/addr-1" });
+// @ts-expect-error SDK options stay on the server
+identity.deleteAccountAddress({ id: "addr-1", client: {} });
+
+identity.updateAccountAddress({ id: "addr-1", city: "Manchester" });
+identity.updateAccountAddress({ id: "addr-1", phone_number: "" });
+// @ts-expect-error the address id is required
+identity.updateAccountAddress({ city: "Manchester" });
+// @ts-expect-error the server chooses the account
+identity.updateAccountAddress({ id: "addr-1", accountId: "acct-1", city: "Manchester" });
+// @ts-expect-error tokens stay on the server
+identity.updateAccountAddress({ id: "addr-1", token: "secret", city: "Manchester" });
+// @ts-expect-error account tokens stay on the server
+identity.updateAccountAddress({ id: "addr-1", accountToken: "secret", city: "Manchester" });
+// @ts-expect-error the account path stays on the server
+identity.updateAccountAddress({ id: "addr-1", path: "/v2/accounts/acct-1/addresses/addr-1", city: "Manchester" });
+// @ts-expect-error the server sets the address type
+identity.updateAccountAddress({ id: "addr-1", type: "address", city: "Manchester" });
+// @ts-expect-error SDK options stay on the server
+identity.updateAccountAddress({ id: "addr-1", client: {}, city: "Manchester" });
+// @ts-expect-error filters stay on the server
+identity.updateAccountAddress({ id: "addr-1", filter: "eq(country,GB)", city: "Manchester" });
+// @ts-expect-error line 3 is not a saved-address field
+identity.updateAccountAddress({ id: "addr-1", line_3: "Floor 2", city: "Manchester" });
+// @ts-expect-error relationships stay on the server
+identity.updateAccountAddress({ id: "addr-1", relationships: {}, city: "Manchester" });
+
 identity.updateMember({ name: "Ada Lovelace" });
 identity.updateMember({ email: "ada@example.com" });
 // @ts-expect-error the server chooses the member; the browser sends no id

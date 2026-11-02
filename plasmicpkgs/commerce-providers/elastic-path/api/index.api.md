@@ -16,6 +16,38 @@ import registerComponent from '@plasmicapp/host/registerComponent';
 import registerGlobalContext from '@plasmicapp/host/registerGlobalContext';
 
 // @public (undocumented)
+export type AccountAddressBookContext = {
+    status: AccountAddressBookStatus;
+    addresses: EpAccountAddress[];
+    total: number;
+    error: AccountAddressBookError | null;
+};
+
+// @public (undocumented)
+export type AccountAddressBookError = {
+    code: string;
+    message: string;
+};
+
+// @public
+export type AccountAddressBookStatus = "loading" | "ready" | "empty" | "error";
+
+// @public (undocumented)
+export type AccountAddressDetailData = {
+    status: AccountAddressDetailStatus;
+    error: AccountAddressBookError | null;
+};
+
+// @public
+export type AccountAddressDetailStatus = "loading" | "ready" | "not-found" | "error";
+
+// @public (undocumented)
+export type AccountAddressFieldName = "name" | "first_name" | "last_name" | "company_name" | "phone_number" | "instructions" | "line_1" | "line_2" | "city" | "county" | "region" | "postcode" | "country";
+
+// @public (undocumented)
+export type AccountAddressPreviewState = "auto" | "withAddresses" | "empty" | "loading" | "error" | "noSelectedAccount" | "lapsed";
+
+// @public (undocumented)
 export type AccountContext = {
     state: AccountState;
     accountMember: AccountMember | null;
@@ -38,6 +70,26 @@ export type AccountMember = {
     name?: string;
     email?: string;
 };
+
+// @public (undocumented)
+export type AccountOrderHistoryContext = {
+    status: AccountOrderHistoryStatus;
+    orders: EpAccountOrder[];
+    total: number;
+    error: AccountOrderHistoryError | null;
+};
+
+// @public (undocumented)
+export type AccountOrderHistoryError = {
+    code: string;
+    message: string;
+};
+
+// @public
+export type AccountOrderHistoryStatus = "loading" | "ready" | "empty" | "error";
+
+// @public (undocumented)
+export type AccountOrderPreviewState = "auto" | "withOrders" | "empty" | "loading" | "error" | "noSelectedAccount" | "lapsed";
 
 // @public (undocumented)
 export type AccountPreviewState = "auto" | AccountState;
@@ -500,11 +552,121 @@ export interface EpAccountAddress {
 }
 
 // @public
+export interface EpAccountAddressCreateRequest {
+    // (undocumented)
+    city?: string;
+    // (undocumented)
+    company_name?: string;
+    // (undocumented)
+    country?: string;
+    // (undocumented)
+    county?: string;
+    // (undocumented)
+    first_name?: string;
+    // (undocumented)
+    instructions?: string;
+    // (undocumented)
+    last_name?: string;
+    // (undocumented)
+    line_1?: string;
+    // (undocumented)
+    line_2?: string;
+    // (undocumented)
+    name?: string;
+    // (undocumented)
+    phone_number?: string;
+    // (undocumented)
+    postcode?: string;
+    // (undocumented)
+    region?: string;
+}
+
+// @public
+export interface EpAccountAddressDeleteRequest {
+    // (undocumented)
+    id: string;
+}
+
+// @public (undocumented)
+export function EPAccountAddressDetailProvider(props: EPAccountAddressDetailProviderProps): React_2.JSX.Element;
+
+// @public (undocumented)
+export const epAccountAddressDetailProviderMeta: CodeComponentMeta<EPAccountAddressDetailProviderProps>;
+
+// @public (undocumented)
+export function EPAccountAddressField(props: EPAccountAddressFieldProps): React_2.JSX.Element | null;
+
+// @public (undocumented)
+export const epAccountAddressFieldMeta: CodeComponentMeta<EPAccountAddressFieldProps>;
+
+// @public (undocumented)
+export function EPAccountAddressFormField(props: EPAccountAddressFormFieldProps): React_2.JSX.Element | null;
+
+// @public (undocumented)
+export const epAccountAddressFormFieldMeta: CodeComponentMeta<EPAccountAddressFormFieldProps>;
+
+// @public (undocumented)
+export const EPAccountAddressFormProvider: React_2.ForwardRefExoticComponent<EPAccountAddressFormProviderProps & React_2.RefAttributes<EPAccountAddressFormProviderActions>>;
+
+// @public (undocumented)
+export const epAccountAddressFormProviderMeta: CodeComponentMeta<EPAccountAddressFormProviderProps>;
+
+// @public (undocumented)
+export function EPAccountAddressList(props: EPAccountAddressListProps): React_2.JSX.Element | null;
+
+// @public (undocumented)
+export const epAccountAddressListMeta: CodeComponentMeta<EPAccountAddressListProps>;
+
+// @public (undocumented)
+export const EPAccountAddressProvider: React_2.ForwardRefExoticComponent<EPAccountAddressProviderProps & React_2.RefAttributes<EPAccountAddressProviderActions>>;
+
+// @public (undocumented)
+export interface EPAccountAddressProviderActions {
+    // (undocumented)
+    delete(addressId: string): Promise<void>;
+}
+
+// @public (undocumented)
+export const epAccountAddressProviderMeta: CodeComponentMeta<EPAccountAddressProviderProps>;
+
+// @public
 export interface EpAccountAddressResult {
     // (undocumented)
     addresses: EpAccountAddress[];
     // (undocumented)
     total: number;
+}
+
+// @public
+export interface EpAccountAddressUpdateRequest {
+    // (undocumented)
+    city?: string;
+    // (undocumented)
+    company_name?: string;
+    // (undocumented)
+    country?: string;
+    // (undocumented)
+    county?: string;
+    // (undocumented)
+    first_name?: string;
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    instructions?: string;
+    // (undocumented)
+    last_name?: string;
+    // (undocumented)
+    line_1?: string;
+    // (undocumented)
+    line_2?: string;
+    // (undocumented)
+    name?: string;
+    // (undocumented)
+    phone_number?: string;
+    // (undocumented)
+    postcode?: string;
+    // (undocumented)
+    region?: string;
 }
 
 // @public (undocumented)
@@ -567,6 +729,58 @@ export type EpAccountMemberUpdateRequest = {
     email: string;
     name?: string;
 };
+
+// @public
+export interface EpAccountOrder {
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    meta?: {
+        timestamps?: {
+            created_at?: string;
+        };
+        display_price?: {
+            with_tax?: FormattedPrice;
+        };
+    };
+    // (undocumented)
+    order_number?: string;
+    // (undocumented)
+    payment?: EpAccountOrderPayment;
+    // (undocumented)
+    shipping?: EpAccountOrderShipping;
+    // (undocumented)
+    status?: EpAccountOrderStatus;
+}
+
+// @public (undocumented)
+export function EPAccountOrderList(props: EPAccountOrderListProps): React_2.JSX.Element | null;
+
+// @public (undocumented)
+export const epAccountOrderListMeta: CodeComponentMeta<EPAccountOrderListProps>;
+
+// @public
+export type EpAccountOrderPayment = "authorized" | "paid" | "unpaid" | "refunded" | "partially_paid" | "partially_authorized";
+
+// @public
+export interface EpAccountOrderResult {
+    // (undocumented)
+    orders: EpAccountOrder[];
+    // (undocumented)
+    total: number;
+}
+
+// @public
+export type EpAccountOrderShipping = "unfulfilled" | "fulfilled";
+
+// @public (undocumented)
+export function EPAccountOrdersProvider(props: EPAccountOrdersProviderProps): React_2.JSX.Element;
+
+// @public (undocumented)
+export const epAccountOrdersProviderMeta: CodeComponentMeta<EPAccountOrdersProviderProps>;
+
+// @public
+export type EpAccountOrderStatus = "complete" | "incomplete" | "cancelled" | "processing";
 
 // @public (undocumented)
 export function EPAccountProfileField(props: EPAccountProfileFieldProps): React_2.JSX.Element | null;
@@ -1060,6 +1274,23 @@ export interface EpIdentityOperations {
         response: EpAccountAddressResult;
     };
     // (undocumented)
+    accountOrders: {
+        request: void;
+        response: EpAccountOrderResult;
+    };
+    // (undocumented)
+    createAccountAddress: {
+        request: EpAccountAddressCreateRequest;
+        response: EpAccountAddress;
+    };
+    // (undocumented)
+    deleteAccountAddress: {
+        request: EpAccountAddressDeleteRequest;
+        response: {
+            id: string;
+        };
+    };
+    // (undocumented)
     getSession: {
         request: void;
         response: EpSessionEnvelope | null;
@@ -1108,6 +1339,11 @@ export interface EpIdentityOperations {
     signInAnonymously: {
         request: void;
         response: EpSessionEnvelope;
+    };
+    // (undocumented)
+    updateAccountAddress: {
+        request: EpAccountAddressUpdateRequest;
+        response: EpAccountAddress;
     };
     // (undocumented)
     updateMember: {
@@ -1731,6 +1967,24 @@ export function registerAll(loader?: Registerable): void;
 export function registerCommerceProvider(loader?: Registerable, customCommerceProviderMeta?: any): void;
 
 // @public (undocumented)
+export function registerEPAccountAddressDetailProvider(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountAddressDetailProviderProps>): void;
+
+// @public (undocumented)
+export function registerEPAccountAddressField(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountAddressFieldProps>): void;
+
+// @public (undocumented)
+export function registerEPAccountAddressFormField(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountAddressFormFieldProps>): void;
+
+// @public (undocumented)
+export function registerEPAccountAddressFormProvider(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountAddressFormProviderProps>): void;
+
+// @public (undocumented)
+export function registerEPAccountAddressList(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountAddressListProps>): void;
+
+// @public (undocumented)
+export function registerEPAccountAddressProvider(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountAddressProviderProps>): void;
+
+// @public (undocumented)
 export function registerEPAccountField(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountFieldProps>): void;
 
 // @public (undocumented)
@@ -1741,6 +1995,12 @@ export function registerEPAccountGate(loader?: Registerable, customMeta?: CodeCo
 
 // @public (undocumented)
 export function registerEPAccountLoginFormProvider(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountLoginFormProviderProps>): void;
+
+// @public (undocumented)
+export function registerEPAccountOrderList(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountOrderListProps>): void;
+
+// @public (undocumented)
+export function registerEPAccountOrdersProvider(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountOrdersProviderProps>): void;
 
 // @public (undocumented)
 export function registerEPAccountProfileField(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountProfileFieldProps>): void;

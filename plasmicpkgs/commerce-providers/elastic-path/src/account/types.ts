@@ -1,3 +1,5 @@
+import type { EpAccountAddress, EpAccountOrder } from "../identity/operations";
+
 /**
  * Studio-facing account identity published as `$ctx.account`.
  *
@@ -55,3 +57,78 @@ export type AccountFieldName =
   | "selectedAccount.id"
   | "lapsedAccount.name"
   | "lapsedAccount.id";
+
+/** `$ctx.accountAddresses.status`. */
+export type AccountAddressBookStatus = "loading" | "ready" | "empty" | "error";
+
+export type AccountAddressBookError = {
+  code: string;
+  message: string;
+};
+
+export type AccountAddressBookContext = {
+  status: AccountAddressBookStatus;
+  addresses: EpAccountAddress[];
+  total: number;
+  error: AccountAddressBookError | null;
+};
+
+/** `$ctx.accountAddressDetailData.status`. Derived from the loaded address book. */
+export type AccountAddressDetailStatus =
+  | "loading"
+  | "ready"
+  | "not-found"
+  | "error";
+
+export type AccountAddressDetailData = {
+  status: AccountAddressDetailStatus;
+  error: AccountAddressBookError | null;
+};
+
+export type AccountAddressPreviewState =
+  | "auto"
+  | "withAddresses"
+  | "empty"
+  | "loading"
+  | "error"
+  | "noSelectedAccount"
+  | "lapsed";
+
+export type AccountAddressFieldName =
+  | "name"
+  | "first_name"
+  | "last_name"
+  | "company_name"
+  | "phone_number"
+  | "instructions"
+  | "line_1"
+  | "line_2"
+  | "city"
+  | "county"
+  | "region"
+  | "postcode"
+  | "country";
+
+/** `$ctx.accountOrders.status`. */
+export type AccountOrderHistoryStatus = "loading" | "ready" | "empty" | "error";
+
+export type AccountOrderHistoryError = {
+  code: string;
+  message: string;
+};
+
+export type AccountOrderHistoryContext = {
+  status: AccountOrderHistoryStatus;
+  orders: EpAccountOrder[];
+  total: number;
+  error: AccountOrderHistoryError | null;
+};
+
+export type AccountOrderPreviewState =
+  | "auto"
+  | "withOrders"
+  | "empty"
+  | "loading"
+  | "error"
+  | "noSelectedAccount"
+  | "lapsed";

@@ -17,6 +17,7 @@ import type {
   StockLocationData,
   ProductStockSummary,
 } from "../stock/StockContext";
+import type { EpAccountAddress, EpAccountOrder } from "../identity/operations";
 import type {
   AccountContext,
   AccountMember,
@@ -719,3 +720,73 @@ export const MOCK_ACCOUNT_BY_PREVIEW_STATE: Record<AccountState, AccountContext>
   selected: MOCK_ACCOUNT_SELECTED,
   lapsed: MOCK_ACCOUNT_LAPSED,
 };
+
+export const MOCK_ACCOUNT_ORDERS: EpAccountOrder[] = [
+  {
+    id: "sample-order-1",
+    order_number: "1001",
+    status: "complete",
+    payment: "paid",
+    shipping: "fulfilled",
+    meta: {
+      timestamps: { created_at: "2024-03-01T12:00:00Z" },
+      display_price: {
+        with_tax: {
+          amount: 4999,
+          currency: "USD",
+          formatted: "$49.99",
+          float_price: 49.99,
+        },
+      },
+    },
+  },
+  {
+    id: "sample-order-2",
+    order_number: "1002",
+    status: "processing",
+    payment: "authorized",
+    shipping: "unfulfilled",
+    meta: {
+      timestamps: { created_at: "2024-04-02T09:30:00Z" },
+      display_price: {
+        with_tax: {
+          amount: 1200,
+          currency: "USD",
+          formatted: "$12.00",
+          float_price: 12,
+        },
+      },
+    },
+  },
+];
+
+export const MOCK_ACCOUNT_ADDRESSES: EpAccountAddress[] = [
+  {
+    id: "sample-address-1",
+    name: "Sample Office",
+    first_name: "Ada",
+    last_name: "Lovelace",
+    company_name: "Sample Company A",
+    phone_number: "020 7946 0000",
+    instructions: "Reception desk",
+    line_1: "1 Sample Street",
+    line_2: "Floor 2",
+    city: "London",
+    county: "Greater London",
+    region: "England",
+    postcode: "SW1A 1AA",
+    country: "GB",
+  },
+  {
+    id: "sample-address-2",
+    name: "Sample Warehouse",
+    first_name: "Grace",
+    last_name: "Hopper",
+    phone_number: "0161 496 0000",
+    line_1: "9 Fixture Road",
+    city: "Manchester",
+    region: "England",
+    postcode: "M1 1AE",
+    country: "GB",
+  },
+];

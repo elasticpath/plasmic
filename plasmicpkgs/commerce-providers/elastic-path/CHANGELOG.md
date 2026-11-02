@@ -242,6 +242,146 @@ token, and returns `{ addresses, total }`. Each address is an
 answers `no_selected_account` and does not call Elastic Path. A rejection is
 `account_addresses_read_failed`.
 
+`identity.accountOrders()` and `POST /ep/account/orders` read the order
+history of the selected organisation. The body must be empty. The server uses
+that organisation's account-management token, the implicit shopper token, and
+its own account filter and pages. It returns `{ orders, total }`. Each order
+is an `EpAccountOrder` summary: `id`, and `order_number`, `status`, `payment`,
+and `shipping` when those values are usable. A usable creation time stays at
+`meta.timestamps.created_at`, and a usable taxed price stays at
+`meta.display_price.with_tax` as the existing `FormattedPrice`. `meta` is
+omitted when neither is usable. `total` on the result is the number of orders
+kept. A row is kept only when `relationships.account.data.id` is the selected
+organisation. With no organisation selected it answers `no_selected_account`
+and does not call Elastic Path. A rejection is `account_orders_read_failed`
+with HTTP 502; the upstream status and body are not returned. A session
+account id that is not a canonical UUID fails the same way and does not call
+Elastic Path. A page walk the reader can tell is unfinished or inconsistent
+fails instead of returning a short history. Orders created or removed between
+offset pages can still be duplicated or omitted without detection.
+
+`EP Account Orders Provider` and `EP Account Order List` display that result.
+The provider sits inside EP Account Provider, calls `identity.accountOrders()`
+with no arguments when an organisation is selected, and publishes
+`$ctx.accountOrders` (`status`, `orders`, `total`, `error`). It does not take
+an account id, token, filter, or page, and it has no reload action and no ref
+actions. The list repeats its children and publishes `$ctx.currentAccountOrder`
+on each row. Bind ordinary text to `id`, `status`, `payment`,
+`meta.timestamps.created_at`, or `meta.display_price.with_tax.formatted`. A
+missing value is empty, and
+`$ctx.currentAccountOrder.id` stays available for a detail link. A selected
+account with rows is `ready`;
+an empty result is `empty`. No selected organisation is `no_selected_account`,
+a lapsed organisation is `account_lapsed`, and no account member is
+`no_account_member`. Studio Preview State is canvas only.
+
+`EP Account Address Provider`, `EP Account Address List`, and `EP Account
+Address Field` display that result. The provider sits inside EP Account
+Provider, calls `identity.accountAddresses()` with no arguments when an
+organisation is selected, and publishes `$ctx.accountAddresses` (`status`,
+`addresses`, `total`, `error`). It does not take an account id, token,
+filter, or path, and it has no reload action. A selected account with rows
+is `ready`; an empty result is `empty`. No selected organisation is
+`no_selected_account`, a lapsed organisation is `account_lapsed`, and no
+account member is `no_account_member`. Those three do not call the read.
+`addresses` is empty unless `status` is `ready`. While the account
+provider is loading, including a logout or a reload of the same
+organisation, the list is cleared and the read is not repeated. If that
+reload settles on the same selected organisation, the committed book is
+shown again without another read. An account switch clears the previous
+rows on that render and reads the new organisation. The list repeats its
+children for each ready address and publishes `$ctx.currentAccountAddress`
+and `$ctx.currentAccountAddressIndex` on that row. The field displays one
+contract field; a missing value is blank, and `id` is not a field choice.
+Preview State is Studio only. `auto` shows two sample addresses, and the
+canvas does not call `identity.accountAddresses()`.
+
+`identity.createAccountAddress({ ...fields })` creates one saved address
+for the selected organisation through `POST /ep/account/addresses/create`.
+The browser may send only the thirteen address strings. The server trims
+them, rejects a blank string, an unknown field, or an empty body, and sets
+`type: "address"` itself. A `country` value is uppercased and must be an
+ISO alpha-2 code from the checkout country list. It uses that
+organisation's account-management token and the implicit shopper token.
+With no organisation selected it answers `no_selected_account` and does
+not call Elastic Path. Success returns one `EpAccountAddress`. A
+rejection is `account_address_create_failed`. An Elastic Path 400 uses
+the first `errors[].detail`, or `errors[].title` when detail is absent.
+A 404, a 5xx, or a response that cannot be sanitized keeps a fixed
+message.
+
+`EP Account Address Form Provider` and `EP Account Address Form Field`
+submit that operation. The form sits inside EP Account Address Provider,
+publishes `$ctx.accountAddressFormData` (`status`, `error`, `isSubmitting`),
+and does not publish the field values. The default composition is first
+name, last name, line 1, city, county, postcode, and country, with
+Required on for each except city. Required is a per-field Studio
+setting. Submit checks only the mounted fields that have it on. Two
+fields for the same address property share one value, and that value is
+required when any mounted copy has Required on. Each copy has its own
+input id. Name stays available as a field choice. A store that changes
+its mandatory address settings is still enforced by Elastic Path. After
+a successful create the address provider reads the book again and keeps
+the current rows until that read commits. If the create succeeds and the
+read fails, the form stays `submitted` and says the address was created
+but the list could not be refreshed. The canvas submit does nothing.
+
+`identity.deleteAccountAddress({ id })` deletes one saved address of the
+selected organisation through `POST /ep/account/addresses/delete`. The
+browser may send only `id`. The server trims it and rejects a missing,
+non-string, or blank id, or any other field, before calling Elastic Path.
+It uses that organisation's account-management token and the implicit
+shopper token. With no organisation selected it answers
+`no_selected_account` and does not call Elastic Path. Success is Elastic
+Path `204` only, and the package returns `{ id }`. A `200`, a `404`, or
+any other status is `account_address_delete_failed` with a fixed message.
+An address id from another organisation is still deleted only under the
+selected account.
+
+`EP Account Address Provider` deletes one saved address through
+`delete(addressId)`. A normal Studio button inside an address-list row
+calls that action with `$ctx.currentAccountAddress.id`. The canvas action
+does nothing. The provider trims the id and sends
+`identity.deleteAccountAddress({ id })`, then reads the book again and
+keeps the current rows until that read commits. Each row publishes
+`$ctx.accountAddressDeleteData` for its own id. Only the address being
+deleted has `status: "deleting"`; every row's `isDeleting` is true until
+that delete and its address-book read finish, so every Delete button bound
+to `isDeleting` is disabled for the cycle. Other rows stay `idle` and do
+not show that row's error. If the delete succeeds and the read fails, that row
+stays `deleted` and says the address was deleted but the list could not be
+refreshed. A further `delete` of that id does not send another request. Another
+address is not deleted until that delete and its address-book read
+settle. The list, field, and form do not
+grow a delete action, and the provider still has no reload action.
+
+`identity.updateAccountAddress({ id, ...changedFields })` updates one saved
+address of the selected organisation through `POST /ep/account/addresses/update`.
+The browser may send `id` and changed values for the thirteen address fields.
+An explicit empty string is kept, because Elastic Path clears that field. The
+server trims `id`, rejects a missing or blank id, an unknown field, `type`, or
+a body with no changed field, and sets `type: "address"` itself. It sends only
+the changed fields. Omitted fields stay stored. It uses that organisation's
+account-management token and the implicit shopper token. Success is Elastic
+Path `200` and returns one `EpAccountAddress`. A rejection is
+`account_address_update_failed`. An Elastic Path 400 uses the first
+`errors[].detail`, or `errors[].title` when detail is absent. A 404 keeps the
+generic update message.
+
+`EP Account Address Detail Provider` publishes one address from the loaded
+book as `$ctx.currentAccountAddress`, and `$ctx.accountAddressDetailData`
+(`loading`, `ready`, `not-found`, or `error`). It takes an address id and does not
+call Elastic Path. A deleted address stays `ready` until the refreshed book
+drops that row, then becomes `not-found` and stops publishing the address.
+Edit submit does nothing once that address is gone. `EP Account Address Form Provider` accepts `mode`. `create`
+is unchanged. `edit` shows the current saved address and submits only the
+mounted fields whose values differ from that address, then the address
+provider reads the book again. A same-address refresh does not reseed the
+form. A different address id starts a new edit session, including a return
+to an address whose earlier update is still in flight. That earlier result
+does not change the new session. The canvas does not
+update a saved address.
+
 The Elastic Path Provider's **Add item to cart** global action takes an
 optional **Location** after **Quantity**. On a multi-location store, a product
 stocked only at named locations was refused with `insufficient_stock`

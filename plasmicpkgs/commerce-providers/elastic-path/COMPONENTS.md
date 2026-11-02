@@ -803,3 +803,6 @@ Lookup table for Plasmic dynamic value bindings (`$ctx.xxx`).
 | `promoCodeData` | EPPromoCodeInput | `code`, `state`, `formattedDiscount`, `errorMessage` |
 | `searchTypeaheadData` | EPSearchTypeahead | `query`, `status`, `isOpen`, `hitCount`, `searchPageUrl` |
 | `currentProduct`, `currentHit`, `currentProductIndex` | EPSearchTypeahead | each hit, the same as EP Search Hits publishes |
+| `accountOrders` | EPAccountOrdersProvider | `status` (`loading` \| `ready` \| `empty` \| `error`), `orders`, `total`, `error` |
+| `currentAccountOrder` | EPAccountOrderList | `id`, `order_number`, `status`, `payment`, `shipping`, `meta.timestamps.created_at`, `meta.display_price.with_tax.formatted`. Bind a Text element to these paths |
+| `currentAccountOrderIndex` | EPAccountOrderList | `number` |
