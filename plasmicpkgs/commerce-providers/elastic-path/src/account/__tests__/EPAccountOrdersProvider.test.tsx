@@ -233,6 +233,75 @@ describe("EPAccountOrdersProvider", () => {
     expect(mockAccountOrders).toHaveBeenCalledTimes(1);
   });
 
+  it("does not refetch when the same selected account is republished", async () => {
+    mockAccountOrders.mockResolvedValue({ orders: [orderA], total: 1 });
+    const { rerender } = render(<Harness account={selected("acct-a")} />);
+    await waitFor(() => expect(published().status).toBe("ready"));
+    rerender(<Harness account={selected("acct-a", { selectedAccount: { id: "acct-a", name: "Renamed" } })} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockAccountOrders).toHaveBeenCalledTimes(1);
+    expect(published().orders.map((order) => order.id)).toEqual(["order-a"]);
+  });
+
+  it("stays loading when A is selected again before the new read commits", async () => {
+    const requests: Array<ReturnType<typeof deferred<EpAccountOrderResult>>> = [];
+    mockAccountOrders.mockImplementation(() => {
+      const next = deferred<EpAccountOrderResult>();
+      requests.push(next);
+      return next.promise;
+    });
+    const { rerender, unmount } = render(<Harness account={selected("acct-a")} />);
+    await waitFor(() => expect(requests).toHaveLength(1));
+    await act(async () => {
+      requests[0].resolve({ orders: [orderA], total: 1 });
+    });
+    await waitFor(() => expect(published().orders.map((order) => order.id)).toEqual(["order-a"]));
+
+    rerender(<Harness account={selected("acct-b")} />);
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(published().status).toBe("loading");
+    expect(published().orders).toEqual([]);
+
+    rerender(<Harness account={selected("acct-a")} />);
+    await waitFor(() => expect(requests).toHaveLength(3));
+    expect(published().status).toBe("loading");
+    expect(published().orders).toEqual([]);
+
+    await act(async () => {
+      requests[1].resolve({ orders: [orderB], total: 1 });
+      requests[0].resolve({ orders: [{ ...orderA, order_number: "stale" }], total: 1 });
+    });
+    expect(published().status).toBe("loading");
+    expect(published().orders).toEqual([]);
+
+    await act(async () => {
+      requests[2].resolve({ orders: [{ ...orderA, order_number: "fresh" }], total: 1 });
+    });
+    await waitFor(() => expect(published().status).toBe("ready"));
+    expect(published().orders.map((order) => order.order_number)).toEqual(["fresh"]);
+
+    unmount();
+    await act(async () => {
+      requests[2].resolve({ orders: [{ ...orderA, order_number: "after-unmount" }], total: 1 });
+    });
+  });
+
+  it("does not publish an unexpected exception message", async () => {
+    mockAccountOrders.mockRejectedValue(
+      new Error("session token sk_live_SECRET at /internal/account-orders.ts")
+    );
+    render(<Harness account={selected("acct-a")} />);
+    await waitFor(() => expect(published().status).toBe("error"));
+    expect(published().error).toEqual({
+      code: "account_orders_read_failed",
+      message: "Elastic Path was unreachable.",
+    });
+    expect(JSON.stringify(published())).not.toContain("sk_live_SECRET");
+    expect(JSON.stringify(published())).not.toContain("account-orders.ts");
+  });
+
   it("ignores an in-flight response for A after B has been requested", async () => {
     const requests: Array<ReturnType<typeof deferred<EpAccountOrderResult>>> = [];
     mockAccountOrders.mockImplementation(() => {

@@ -26,6 +26,7 @@ const NO_SELECTED = "No organisation is selected.";
 const LAPSED =
   "The account credential ran out and cannot be re-minted. Sign in again.";
 const READ_FAILED = "Elastic Path rejected the account-order read.";
+const UNREACHABLE = "Elastic Path was unreachable.";
 
 const LOADING_HISTORY: AccountOrderHistoryContext = {
   status: "loading",
@@ -118,10 +119,11 @@ function historyFromResult(
 }
 
 function readFailureHistory(err: unknown): AccountOrderHistoryContext {
-  const code = epIdentityErrorCode(err) ?? "account_orders_read_failed";
-  const message =
-    err instanceof Error && err.message ? err.message : READ_FAILED;
-  return errorHistory(code, message);
+  const code = epIdentityErrorCode(err);
+  if (code && err instanceof Error && err.message) {
+    return errorHistory(code, err.message);
+  }
+  return errorHistory("account_orders_read_failed", UNREACHABLE);
 }
 
 interface EPAccountOrdersProviderProps {
@@ -132,7 +134,13 @@ interface EPAccountOrdersProviderProps {
 
 type CommittedHistory = {
   key: string;
+  requestId: number;
   history: AccountOrderHistoryContext;
+};
+
+type InflightRequest = {
+  key: string;
+  requestId: number;
 };
 
 export const epAccountOrdersProviderMeta: CodeComponentMeta<EPAccountOrdersProviderProps> =
@@ -184,6 +192,7 @@ export function EPAccountOrdersProvider(props: EPAccountOrdersProviderProps) {
   const requestId = useRef(0);
   const heldKeyRef = useRef<string | null>(null);
   const [committed, setCommitted] = useState<CommittedHistory | null>(null);
+  const [inflight, setInflight] = useState<InflightRequest | null>(null);
   const commitHistory = useCallback((next: CommittedHistory) => {
     setCommitted(next);
   }, []);
@@ -204,21 +213,37 @@ export function EPAccountOrdersProvider(props: EPAccountOrdersProviderProps) {
     const key = effectKey;
 
     if (!key.startsWith("selected:")) {
-      commitHistory({ key, history: errorHistoryForKey(key) });
+      setInflight(null);
+      commitHistory({
+        key,
+        requestId: id,
+        history: errorHistoryForKey(key),
+      });
       return () => {
         requestId.current += 1;
       };
     }
 
+    setInflight({ key, requestId: id });
     let cancelled = false;
     identity.accountOrders().then(
       (result) => {
         if (cancelled || id !== requestId.current) return;
-        commitHistory({ key, history: historyFromResult(result) });
+        setInflight(null);
+        commitHistory({
+          key,
+          requestId: id,
+          history: historyFromResult(result),
+        });
       },
       (err: unknown) => {
         if (cancelled || id !== requestId.current) return;
-        commitHistory({ key, history: readFailureHistory(err) });
+        setInflight(null);
+        commitHistory({
+          key,
+          requestId: id,
+          history: readFailureHistory(err),
+        });
       }
     );
     return () => {
@@ -227,9 +252,13 @@ export function EPAccountOrdersProvider(props: EPAccountOrdersProviderProps) {
     };
   }, [inEditor, effectKey, identity, commitHistory]);
 
+  const awaitingCurrentRequest =
+    inflight != null &&
+    inflight.key === renderKey &&
+    committed?.requestId !== inflight.requestId;
   const history = inEditor
     ? previewHistory(preview)
-    : committed?.key === renderKey
+    : committed?.key === renderKey && !awaitingCurrentRequest
       ? committed.history
       : LOADING_HISTORY;
 
