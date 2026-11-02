@@ -1236,7 +1236,7 @@ export const EPCustomerInfoFields: React_2.ForwardRefExoticComponent<EPCustomerI
 // @public (undocumented)
 export const epCustomerInfoFieldsMeta: CodeComponentMeta<EPCustomerInfoFieldsProps>;
 
-// @public
+// @public (undocumented)
 export interface EpFormattedPrice {
     // (undocumented)
     amount: number;
