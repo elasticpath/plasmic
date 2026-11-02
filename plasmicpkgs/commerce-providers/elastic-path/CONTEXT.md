@@ -162,6 +162,14 @@ The organisation the account member is currently acting for, chosen from the
 accounts their membership grants. Determines account scope on every Elastic
 Path call. Auto-selected only when the member belongs to exactly one.
 
+**Account order**:
+An order whose `relationships.account.data.id` is the selected organisation.
+Account order history is that organisation's orders, not only the ones the
+current member placed, and not a guest order that came back under the same
+token. The browser asks with an empty body. The server chooses the account,
+the filter, and the pages.
+_Avoid_: customer order, order detail (a single order is a separate read)
+
 **Account roster**:
 The member's accounts as `{id, name}`, derived from the token response,
 paginated, never carrying tokens to the browser. Distinct from the token list

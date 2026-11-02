@@ -1,4 +1,4 @@
-import type { EpAccountAddress } from "../identity/operations";
+import type { EpAccountAddress, EpAccountOrder } from "../identity/operations";
 
 /**
  * Studio-facing account identity published as `$ctx.account`.
@@ -96,3 +96,36 @@ export type AccountAddressFieldName =
   | "region"
   | "postcode"
   | "country";
+
+/** `$ctx.accountOrders.status`. */
+export type AccountOrderHistoryStatus = "loading" | "ready" | "empty" | "error";
+
+export type AccountOrderHistoryError = {
+  code: string;
+  message: string;
+};
+
+export type AccountOrderHistoryContext = {
+  status: AccountOrderHistoryStatus;
+  orders: EpAccountOrder[];
+  total: number;
+  error: AccountOrderHistoryError | null;
+};
+
+export type AccountOrderPreviewState =
+  | "auto"
+  | "withOrders"
+  | "empty"
+  | "loading"
+  | "error"
+  | "noSelectedAccount"
+  | "lapsed";
+
+export type AccountOrderFieldName =
+  | "id"
+  | "order_number"
+  | "status"
+  | "payment"
+  | "shipping"
+  | "created_at"
+  | "total";

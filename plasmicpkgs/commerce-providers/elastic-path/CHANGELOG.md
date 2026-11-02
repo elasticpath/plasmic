@@ -213,6 +213,32 @@ token, and returns `{ addresses, total }`. Each address is an
 answers `no_selected_account` and does not call Elastic Path. A rejection is
 `account_addresses_read_failed`.
 
+`identity.accountOrders()` and `POST /ep/account/orders` read the order
+history of the selected organisation. The body must be empty. The server uses
+that organisation's account-management token, the implicit shopper token, and
+its own account filter and pages. It returns `{ orders, total }`. Each order
+is an `EpAccountOrder` summary: `id`, and `order_number`, `status`, `payment`,
+`shipping`, `created_at`, and `total` when those values are usable. `total` is
+the number of orders kept. A row is kept only when
+`relationships.account.data.id` is the selected organisation. With no
+organisation selected it answers `no_selected_account` and does not call
+Elastic Path. A rejection is `account_orders_read_failed`. An unfinished page
+walk fails instead of returning a short history.
+
+`EP Account Orders Provider`, `EP Account Order List`, and `EP Account Order
+Field` display that result. The provider sits inside EP Account Provider,
+calls `identity.accountOrders()` with no arguments when an organisation is
+selected, and publishes `$ctx.accountOrders` (`status`, `orders`, `total`,
+`error`). It does not take an account id, token, filter, or page, and it has
+no reload action and no ref actions. `EP Account Order Field` can display
+`id`, `order_number`, `status`, `payment`, `shipping`, `created_at`, and
+`total`. A new field defaults to `id`, shown unchanged. `order_number`
+remains optional, and `$ctx.currentAccountOrder.id` stays available for a
+detail link. A selected account with rows is `ready`;
+an empty result is `empty`. No selected organisation is `no_selected_account`,
+a lapsed organisation is `account_lapsed`, and no account member is
+`no_account_member`. Studio Preview State is canvas only.
+
 `EP Account Address Provider`, `EP Account Address List`, and `EP Account
 Address Field` display that result. The provider sits inside EP Account
 Provider, calls `identity.accountAddresses()` with no arguments when an
