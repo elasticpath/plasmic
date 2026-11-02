@@ -72,6 +72,26 @@ export type AccountMember = {
 };
 
 // @public (undocumented)
+export type AccountOrderHistoryContext = {
+    status: AccountOrderHistoryStatus;
+    orders: EpAccountOrder[];
+    total: number;
+    error: AccountOrderHistoryError | null;
+};
+
+// @public (undocumented)
+export type AccountOrderHistoryError = {
+    code: string;
+    message: string;
+};
+
+// @public
+export type AccountOrderHistoryStatus = "loading" | "ready" | "empty" | "error";
+
+// @public (undocumented)
+export type AccountOrderPreviewState = "auto" | "withOrders" | "empty" | "loading" | "error" | "noSelectedAccount" | "lapsed";
+
+// @public (undocumented)
 export type AccountPreviewState = "auto" | AccountState;
 
 // @public (undocumented)
@@ -710,6 +730,58 @@ export type EpAccountMemberUpdateRequest = {
     name?: string;
 };
 
+// @public
+export interface EpAccountOrder {
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    meta?: {
+        timestamps?: {
+            created_at?: string;
+        };
+        display_price?: {
+            with_tax?: FormattedPrice;
+        };
+    };
+    // (undocumented)
+    order_number?: string;
+    // (undocumented)
+    payment?: EpAccountOrderPayment;
+    // (undocumented)
+    shipping?: EpAccountOrderShipping;
+    // (undocumented)
+    status?: EpAccountOrderStatus;
+}
+
+// @public (undocumented)
+export function EPAccountOrderList(props: EPAccountOrderListProps): React_2.JSX.Element | null;
+
+// @public (undocumented)
+export const epAccountOrderListMeta: CodeComponentMeta<EPAccountOrderListProps>;
+
+// @public
+export type EpAccountOrderPayment = "authorized" | "paid" | "unpaid" | "refunded" | "partially_paid" | "partially_authorized";
+
+// @public
+export interface EpAccountOrderResult {
+    // (undocumented)
+    orders: EpAccountOrder[];
+    // (undocumented)
+    total: number;
+}
+
+// @public
+export type EpAccountOrderShipping = "unfulfilled" | "fulfilled";
+
+// @public (undocumented)
+export function EPAccountOrdersProvider(props: EPAccountOrdersProviderProps): React_2.JSX.Element;
+
+// @public (undocumented)
+export const epAccountOrdersProviderMeta: CodeComponentMeta<EPAccountOrdersProviderProps>;
+
+// @public
+export type EpAccountOrderStatus = "complete" | "incomplete" | "cancelled" | "processing";
+
 // @public (undocumented)
 export function EPAccountProfileField(props: EPAccountProfileFieldProps): React_2.JSX.Element | null;
 
@@ -1200,6 +1272,11 @@ export interface EpIdentityOperations {
     accountAddresses: {
         request: void;
         response: EpAccountAddressResult;
+    };
+    // (undocumented)
+    accountOrders: {
+        request: void;
+        response: EpAccountOrderResult;
     };
     // (undocumented)
     createAccountAddress: {
@@ -1915,6 +1992,12 @@ export function registerEPAccountGate(loader?: Registerable, customMeta?: CodeCo
 
 // @public (undocumented)
 export function registerEPAccountLoginFormProvider(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountLoginFormProviderProps>): void;
+
+// @public (undocumented)
+export function registerEPAccountOrderList(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountOrderListProps>): void;
+
+// @public (undocumented)
+export function registerEPAccountOrdersProvider(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountOrdersProviderProps>): void;
 
 // @public (undocumented)
 export function registerEPAccountProfileField(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountProfileFieldProps>): void;

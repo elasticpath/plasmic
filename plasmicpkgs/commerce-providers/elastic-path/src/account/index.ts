@@ -74,6 +74,16 @@ export {
   registerEPAccountAddressFormField,
   epAccountAddressFormFieldMeta,
 } from "./EPAccountAddressFormField";
+export {
+  EPAccountOrdersProvider,
+  registerEPAccountOrdersProvider,
+  epAccountOrdersProviderMeta,
+} from "./EPAccountOrdersProvider";
+export {
+  EPAccountOrderList,
+  registerEPAccountOrderList,
+  epAccountOrderListMeta,
+} from "./EPAccountOrderList";
 export type {
   AccountContext,
   AccountState,
@@ -90,4 +100,8 @@ export type {
   AccountAddressDetailStatus,
   AccountAddressPreviewState,
   AccountAddressFieldName,
+  AccountOrderHistoryStatus,
+  AccountOrderHistoryError,
+  AccountOrderHistoryContext,
+  AccountOrderPreviewState,
 } from "./types";

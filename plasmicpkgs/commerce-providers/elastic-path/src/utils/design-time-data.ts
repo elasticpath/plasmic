@@ -17,7 +17,7 @@ import type {
   StockLocationData,
   ProductStockSummary,
 } from "../stock/StockContext";
-import type { EpAccountAddress } from "../identity/operations";
+import type { EpAccountAddress, EpAccountOrder } from "../identity/operations";
 import type {
   AccountContext,
   AccountMember,
@@ -720,6 +720,45 @@ export const MOCK_ACCOUNT_BY_PREVIEW_STATE: Record<AccountState, AccountContext>
   selected: MOCK_ACCOUNT_SELECTED,
   lapsed: MOCK_ACCOUNT_LAPSED,
 };
+
+export const MOCK_ACCOUNT_ORDERS: EpAccountOrder[] = [
+  {
+    id: "sample-order-1",
+    order_number: "1001",
+    status: "complete",
+    payment: "paid",
+    shipping: "fulfilled",
+    meta: {
+      timestamps: { created_at: "2024-03-01T12:00:00Z" },
+      display_price: {
+        with_tax: {
+          amount: 4999,
+          currency: "USD",
+          formatted: "$49.99",
+          float_price: 49.99,
+        },
+      },
+    },
+  },
+  {
+    id: "sample-order-2",
+    order_number: "1002",
+    status: "processing",
+    payment: "authorized",
+    shipping: "unfulfilled",
+    meta: {
+      timestamps: { created_at: "2024-04-02T09:30:00Z" },
+      display_price: {
+        with_tax: {
+          amount: 1200,
+          currency: "USD",
+          formatted: "$12.00",
+          float_price: 12,
+        },
+      },
+    },
+  },
+];
 
 export const MOCK_ACCOUNT_ADDRESSES: EpAccountAddress[] = [
   {

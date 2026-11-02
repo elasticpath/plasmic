@@ -38,6 +38,26 @@ identity.accountAddresses();
 // @ts-expect-error the server chooses the account; the browser sends nothing
 identity.accountAddresses({ accountId: "acct-1" });
 
+identity.accountOrders();
+// @ts-expect-error the server chooses the account; the browser sends nothing
+identity.accountOrders({ accountId: "acct-1" });
+// @ts-expect-error the server chooses the order; the browser sends nothing
+identity.accountOrders({ orderId: "order-1" });
+// @ts-expect-error tokens stay on the server
+identity.accountOrders({ token: "secret" });
+// @ts-expect-error account tokens stay on the server
+identity.accountOrders({ accountToken: "secret" });
+// @ts-expect-error filters stay on the server
+identity.accountOrders({ filter: "eq(account_id,acct-1)" });
+// @ts-expect-error pagination stays on the server
+identity.accountOrders({ limit: 10, offset: 20 });
+// @ts-expect-error sort stays on the server
+identity.accountOrders({ sort: "created_at" });
+// @ts-expect-error include stays on the server
+identity.accountOrders({ include: "items" });
+// @ts-expect-error SDK options stay on the server
+identity.accountOrders({ client: {} });
+
 identity.createAccountAddress({ line_1: "1 High Street", country: "GB" });
 // @ts-expect-error the address object is required
 identity.createAccountAddress();

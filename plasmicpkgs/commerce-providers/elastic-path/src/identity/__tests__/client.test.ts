@@ -54,6 +54,7 @@ describe("createEpIdentityClient", () => {
     await client.logout();
     await client.member();
     await client.accountAddresses();
+    await client.accountOrders();
     await client.createAccountAddress({ line_1: "1 High Street" });
     await client.deleteAccountAddress({ id: "addr-1" });
     await client.updateAccountAddress({ id: "addr-1", city: "Manchester" });
@@ -71,6 +72,7 @@ describe("createEpIdentityClient", () => {
       "/api/ep/ep/account/logout",
       "/api/ep/ep/account/member",
       "/api/ep/ep/account/addresses",
+      "/api/ep/ep/account/orders",
       "/api/ep/ep/account/addresses/create",
       "/api/ep/ep/account/addresses/delete",
       "/api/ep/ep/account/addresses/update",
@@ -167,6 +169,21 @@ describe("createEpIdentityClient", () => {
     expect(JSON.parse(stub.calls[0].init.body as string)).toEqual({
       id: "addr-1",
     });
+    expect(stub.calls[0].init.credentials).toBe("include");
+  });
+
+  it("asks for account orders with an empty body", async () => {
+    const stub = fetchStub(() => json({ orders: [], total: 0 }));
+    const client = createEpIdentityClient({ fetch: stub.fetch });
+
+    await expect(client.accountOrders()).resolves.toEqual({
+      orders: [],
+      total: 0,
+    });
+
+    expect(stub.calls[0].init.method).toBe("POST");
+    expect(stub.calls[0].url).toBe("/api/ep/ep/account/orders");
+    expect(JSON.parse(stub.calls[0].init.body as string)).toEqual({});
     expect(stub.calls[0].init.credentials).toBe("include");
   });
 

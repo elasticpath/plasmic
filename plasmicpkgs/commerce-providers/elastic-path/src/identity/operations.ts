@@ -1,3 +1,4 @@
+import type { FormattedPrice } from "../utils/price";
 import type { EpAccountSummary, EpSessionEnvelope } from "./session-shape";
 
 export interface EpAccountLoginRequest {
@@ -70,6 +71,51 @@ export interface EpAccountAddressResult {
   total: number;
 }
 
+/** `OrderResponse.status` values this package will display. */
+export type EpAccountOrderStatus =
+  | "complete"
+  | "incomplete"
+  | "cancelled"
+  | "processing";
+
+/** `OrderResponse.payment` values this package will display. */
+export type EpAccountOrderPayment =
+  | "authorized"
+  | "paid"
+  | "unpaid"
+  | "refunded"
+  | "partially_paid"
+  | "partially_authorized";
+
+/** `OrderResponse.shipping` values this package will display. */
+export type EpAccountOrderShipping = "unfulfilled" | "fulfilled";
+
+/**
+ * One order of the selected organisation. Only approved summary paths are
+ * present, nested where Elastic Path nests them.
+ */
+export interface EpAccountOrder {
+  id: string;
+  order_number?: string;
+  status?: EpAccountOrderStatus;
+  payment?: EpAccountOrderPayment;
+  shipping?: EpAccountOrderShipping;
+  meta?: {
+    timestamps?: {
+      created_at?: string;
+    };
+    display_price?: {
+      with_tax?: FormattedPrice;
+    };
+  };
+}
+
+/** The selected organisation's order history. `total` is `orders.length`. */
+export interface EpAccountOrderResult {
+  orders: EpAccountOrder[];
+  total: number;
+}
+
 /** The saved address to delete. The server trims `id` and chooses the account. */
 export interface EpAccountAddressDeleteRequest {
   id: string;
@@ -135,6 +181,7 @@ export interface EpIdentityOperations {
   logout: { request: void; response: EpSessionEnvelope };
   member: { request: void; response: EpAccountMemberResult };
   accountAddresses: { request: void; response: EpAccountAddressResult };
+  accountOrders: { request: void; response: EpAccountOrderResult };
   createAccountAddress: {
     request: EpAccountAddressCreateRequest;
     response: EpAccountAddress;
@@ -178,6 +225,7 @@ export const EP_IDENTITY_ROUTES: {
   logout: { path: "/ep/account/logout", method: "POST" },
   member: { path: "/ep/account/member", method: "POST" },
   accountAddresses: { path: "/ep/account/addresses", method: "POST" },
+  accountOrders: { path: "/ep/account/orders", method: "POST" },
   createAccountAddress: {
     path: "/ep/account/addresses/create",
     method: "POST",

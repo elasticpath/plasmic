@@ -751,3 +751,6 @@ Lookup table for Plasmic dynamic value bindings (`$ctx.xxx`).
 | `currentCheckoutItemIndex` | EPCheckoutCartItemList | `number` |
 | `billingToggleData` | EPBillingAddressToggle | `isSameAsShipping` |
 | `promoCodeData` | EPPromoCodeInput | `code`, `state`, `formattedDiscount`, `errorMessage` |
+| `accountOrders` | EPAccountOrdersProvider | `status` (`loading` \| `ready` \| `empty` \| `error`), `orders`, `total`, `error` |
+| `currentAccountOrder` | EPAccountOrderList | `id`, `order_number`, `status`, `payment`, `shipping`, `meta.timestamps.created_at`, `meta.display_price.with_tax.formatted`. Bind a Text element to these paths |
+| `currentAccountOrderIndex` | EPAccountOrderList | `number` |
