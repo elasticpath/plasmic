@@ -13,6 +13,7 @@ import {
 } from "@plasmicapp/loader-react";
 import React from "react";
 import ReactDOMServer from "react-dom/server";
+import { PageParams } from "./page-params";
 
 export async function genLoaderHtmlBundle(opts: {
   projectId: string;
@@ -24,6 +25,9 @@ export async function genLoaderHtmlBundle(opts: {
   prepass?: boolean;
   componentProps?: any;
   globalVariants?: GlobalVariantSpec[];
+  pageRoute?: string;
+  pageParams?: PageParams;
+  pageQuery?: PageParams;
 }) {
   const {
     projectId,
@@ -35,6 +39,9 @@ export async function genLoaderHtmlBundle(opts: {
     componentProps,
     globalVariants,
     prepass,
+    pageRoute,
+    pageParams,
+    pageQuery,
   } = opts;
 
   // Set the data host for data source operations during SSR prepass.
@@ -71,7 +78,9 @@ export async function genLoaderHtmlBundle(opts: {
           prefetchedData: data,
           componentProps,
           globalVariants,
-        }
+          pageParams,
+          pageQuery,
+        } as any // Type assertion needed - npm package types don't include pageParams/pageQuery
       )
     : undefined;
 
@@ -83,7 +92,9 @@ export async function genLoaderHtmlBundle(opts: {
       componentProps,
       globalVariants,
       prefetchedQueryData,
-    }
+      pageParams,
+      pageQuery,
+    } as any // Type assertion needed - npm package types don't include pageParams/pageQuery
   );
 
   const outerElement = React.createElement(
@@ -103,6 +114,13 @@ export async function genLoaderHtmlBundle(opts: {
         hydrate && embedHydrate && prepass
           ? JSON.stringify(prefetchedQueryData || {})
           : "",
+      "data-plasmic-page-route": hydrate ? pageRoute || "" : "",
+      "data-plasmic-page-params": hydrate
+        ? JSON.stringify(pageParams || {})
+        : "",
+      "data-plasmic-page-query": hydrate
+        ? JSON.stringify(pageQuery || {})
+        : "",
       dangerouslySetInnerHTML: { __html: innerHtml },
     }),
     hydrate &&
