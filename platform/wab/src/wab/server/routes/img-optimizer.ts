@@ -1,8 +1,9 @@
 import { logger } from "@/wab/server/observability";
 import { md5 } from "@/wab/server/util/hash";
+import { makeS3Client } from "@/wab/server/util/s3-util";
 import { BadRequestError, NotFoundError } from "@/wab/shared/ApiErrors/errors";
 import { isSVG } from "@/wab/shared/svg-utils";
-import S3 from "aws-sdk/clients/s3";
+import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { Request, Response } from "express-serve-static-core";
 import sharp from "sharp";
 import { URL } from "url";
@@ -21,13 +22,6 @@ const ASSET_KEY_PATTERN = /^[a-f0-9]{32}\.[a-zA-Z0-9]+$/;
 // cache key from each spawning independent S3 fetches and Sharp jobs.
 const inFlightRequests = new Map<string, Promise<{ buffer: Buffer; contentType: string }>>();
 
-const s3Config: S3.Types.ClientConfiguration = {
-  endpoint: process.env.S3_ENDPOINT,
-  // Use path-style URLs only for LocalStack (when endpoint contains localhost)
-  ...(process.env.S3_ENDPOINT?.includes("localhost") && { s3ForcePathStyle: true }),
-};
-const s3 = new S3(s3Config);
-
 function generateCacheKey(params: OptimizeParams): string {
   const keyData = {
     assetKey: params.assetKey,
@@ -42,22 +36,22 @@ function generateCacheKey(params: OptimizeParams): string {
 
 async function getCachedImage(cacheKey: string): Promise<{ buffer: Buffer; contentType: string } | null> {
   try {
-    const response = await s3
-      .getObject({
+    const response = await makeS3Client().send(
+      new GetObjectCommand({
         Bucket: siteAssetsBucket,
         Key: cacheKey,
       })
-      .promise();
+    );
 
     if (response.Body) {
       return {
-        buffer: response.Body as Buffer,
+        buffer: Buffer.from(await response.Body.transformToByteArray()),
         contentType: response.ContentType || "image/jpeg",
       };
     }
     return null;
   } catch (error) {
-    if (error.code !== "NoSuchKey" && error.code !== "NotFound") {
+    if (error.name !== "NoSuchKey" && error.name !== "NotFound") {
       logger().error("[IMG-OPTIMIZER] S3 cache lookup failed", { err: error });
     }
     return null;
@@ -68,9 +62,9 @@ async function uploadOptimizedImage(
   cacheKey: string,
   buffer: Buffer,
   contentType: string
-): Promise<string> {
-  const { Location } = await s3
-    .upload({
+): Promise<void> {
+  await makeS3Client().send(
+    new PutObjectCommand({
       Bucket: siteAssetsBucket,
       Key: cacheKey,
       Body: buffer,
@@ -80,9 +74,7 @@ async function uploadOptimizedImage(
       // Set expiration for automatic cleanup
       Expires: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
     })
-    .promise();
-
-  return Location;
+  );
 }
 
 interface OptimizeParams {
@@ -168,30 +160,34 @@ function extractS3Key(url: string): string | null {
 
 async function fetchSourceImage(assetKey: string): Promise<Buffer> {
   try {
-    const result = await s3
-      .getObject({
+    const result = await makeS3Client().send(
+      new GetObjectCommand({
         Bucket: siteAssetsBucket,
         Key: assetKey,
       })
-      .promise();
+    );
+    // Read the body before validating: an unread body holds its socket open.
+    const body = result.Body
+      ? Buffer.from(await result.Body.transformToByteArray())
+      : undefined;
 
-    if (!result.Body || !result.ContentType?.startsWith("image/")) {
+    if (!body || !result.ContentType?.startsWith("image/")) {
       throw new BadRequestError("Object is not a valid image");
     }
 
     if (
       result.ContentType.startsWith("image/svg") ||
       assetKey.toLowerCase().endsWith(".svg") ||
-      isSVG(result.Body as Buffer)
+      isSVG(body)
     ) {
       throw new BadRequestError(
         "SVG images are not supported by the image optimizer"
       );
     }
 
-    return result.Body as Buffer;
+    return body;
   } catch (error) {
-    if (error.code === "NoSuchKey" || error.code === "NotFound") {
+    if (error.name === "NoSuchKey" || error.name === "NotFound") {
       throw new NotFoundError("Image not found in storage");
     }
     throw error;

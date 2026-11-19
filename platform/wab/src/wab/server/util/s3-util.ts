@@ -1,16 +1,16 @@
 import { logger } from "@/wab/server/observability";
 import {
-  getS3Client,
+  getS3ObjectString,
+  makeS3Client,
   _testonly,
   tryGetS3CacheEntry,
 } from "@/wab/server/util/ep-s3-cache";
 import { withTiming } from "@/wab/server/util/server-timing";
 import { withSpan } from "@/wab/server/util/apm-util";
-import { ensureInstance } from "@/wab/shared/common";
-import S3 from "aws-sdk/clients/s3";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
 import path from "path";
 
-export { tryGetS3CacheEntry, _testonly };
+export { makeS3Client, tryGetS3CacheEntry, _testonly };
 
 export async function upsertS3CacheEntry<T>(opts: {
   bucket: string;
@@ -20,14 +20,13 @@ export async function upsertS3CacheEntry<T>(opts: {
   deserialize: (str: string) => T;
 }): Promise<{ data: T; cacheHit: boolean }> {
   const { bucket, key, compute: f, serialize, deserialize } = opts;
-  const s3 = getS3Client();
+  const s3 = makeS3Client();
   const shortKey = key.split("/").slice(-1)[0].slice(0, 24);
 
   try {
-    const obj = await withTiming(`s3-get-${shortKey}`, () =>
-      s3.getObject({ Bucket: bucket, Key: key }).promise()
+    const serialized = await withTiming(`s3-get-${shortKey}`, () =>
+      getS3ObjectString(bucket, key)
     );
-    const serialized = ensureInstance(obj.Body, Buffer).toString("utf8");
     logger().info(`S3 cache hit for ${bucket} ${key}`, {
       s3CacheResult: "hit",
       bucket,
@@ -38,7 +37,7 @@ export async function upsertS3CacheEntry<T>(opts: {
     );
     return { data, cacheHit: true };
   } catch (err) {
-    if (err.code === "TimeoutError") {
+    if (err.name === "TimeoutError") {
       throw err;
     }
     logger().info(`S3 cache miss for ${bucket} ${key}; computing`, {
@@ -52,7 +51,9 @@ export async function upsertS3CacheEntry<T>(opts: {
     const serialized = serialize(content);
     try {
       await withTiming(`s3-put-${shortKey}`, () =>
-        s3.putObject({ Bucket: bucket, Key: key, Body: serialized }).promise()
+        s3.send(
+          new PutObjectCommand({ Bucket: bucket, Key: key, Body: serialized })
+        )
       );
     } catch (e) {
       if (process.env.NODE_ENV === "production") {
@@ -70,16 +71,16 @@ export async function uploadFilesToS3(opts: {
   files: Record<string, string>;
 }) {
   const { bucket, key, files } = opts;
-  const s3 = getS3Client();
+  const s3 = makeS3Client();
   await Promise.all(
     Object.entries(files).map(async ([file, content]) => {
-      await s3
-        .putObject({
+      await s3.send(
+        new PutObjectCommand({
           Bucket: bucket,
           Key: path.join(key, file),
           Body: content,
         })
-        .promise();
+      );
     })
   );
 }

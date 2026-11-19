@@ -1,6 +1,9 @@
 import { _testonly, tryGetS3CacheEntry } from "@/wab/server/util/ep-s3-cache";
 
-jest.mock("aws-sdk/clients/s3");
+jest.mock("@aws-sdk/client-s3", () => ({
+  S3Client: jest.fn(),
+  GetObjectCommand: jest.fn(),
+}));
 jest.mock("@/wab/server/observability", () => ({
   logger: () => ({ info: jest.fn(), error: jest.fn() }),
 }));
@@ -8,25 +11,29 @@ jest.mock("@/wab/server/util/server-timing", () => ({
   withTiming: (_name: string, fn: () => unknown) => fn(),
 }));
 
-import S3 from "aws-sdk/clients/s3";
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+
+/** v3 bodies are streams, exposing transformToString rather than a Buffer. */
+function mkBody(content: string) {
+  return { transformToString: async () => content };
+}
 
 describe("tryGetS3CacheEntry", () => {
   const s3Instance = {
-    getObject: jest.fn(),
+    send: jest.fn(),
   };
 
   beforeEach(() => {
     // resetMocks:true wipes mock implementations before each test; re-establish
-    // the S3 constructor mock and reset the singleton so getS3Client() creates
+    // the S3 constructor mock and reset the singleton so makeS3Client() creates
     // a fresh instance using the current mock.
     _testonly.resetS3Client();
-    (S3 as unknown as jest.Mock).mockImplementation(() => s3Instance);
+    (S3Client as unknown as jest.Mock).mockImplementation(() => s3Instance);
   });
 
   it("returns deserialized value on cache hit", async () => {
-    s3Instance.getObject.mockReturnValue({
-      promise: () =>
-        Promise.resolve({ Body: Buffer.from(JSON.stringify({ result: 42 })) }),
+    s3Instance.send.mockResolvedValue({
+      Body: mkBody(JSON.stringify({ result: 42 })),
     });
 
     const result = await tryGetS3CacheEntry({
@@ -36,17 +43,15 @@ describe("tryGetS3CacheEntry", () => {
     });
 
     expect(result).toEqual({ result: 42 });
-    expect(s3Instance.getObject).toHaveBeenCalledWith({
+    expect(GetObjectCommand).toHaveBeenCalledWith({
       Bucket: "my-bucket",
       Key: "some/key",
     });
   });
 
   it("returns null on NoSuchKey", async () => {
-    const err = Object.assign(new Error("NoSuchKey"), { code: "NoSuchKey" });
-    s3Instance.getObject.mockReturnValue({
-      promise: () => Promise.reject(err),
-    });
+    const err = Object.assign(new Error("NoSuchKey"), { name: "NoSuchKey" });
+    s3Instance.send.mockRejectedValue(err);
 
     const result = await tryGetS3CacheEntry({
       bucket: "my-bucket",
@@ -58,9 +63,7 @@ describe("tryGetS3CacheEntry", () => {
   });
 
   it("returns null on unexpected S3 errors rather than throwing", async () => {
-    s3Instance.getObject.mockReturnValue({
-      promise: () => Promise.reject(new Error("connection refused")),
-    });
+    s3Instance.send.mockRejectedValue(new Error("connection refused"));
 
     const result = await tryGetS3CacheEntry({
       bucket: "my-bucket",
@@ -72,10 +75,7 @@ describe("tryGetS3CacheEntry", () => {
   });
 
   it("returns null when deserialization throws", async () => {
-    s3Instance.getObject.mockReturnValue({
-      promise: () =>
-        Promise.resolve({ Body: Buffer.from("not valid json {") }),
-    });
+    s3Instance.send.mockResolvedValue({ Body: mkBody("not valid json {") });
 
     const result = await tryGetS3CacheEntry({
       bucket: "my-bucket",
@@ -88,11 +88,9 @@ describe("tryGetS3CacheEntry", () => {
 
   it("re-throws TimeoutError rather than returning null", async () => {
     const err = Object.assign(new Error("Request timed out"), {
-      code: "TimeoutError",
+      name: "TimeoutError",
     });
-    s3Instance.getObject.mockReturnValue({
-      promise: () => Promise.reject(err),
-    });
+    s3Instance.send.mockRejectedValue(err);
 
     await expect(
       tryGetS3CacheEntry({

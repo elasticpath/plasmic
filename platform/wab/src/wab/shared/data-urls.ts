@@ -21,14 +21,15 @@ export const parseDataUrl: (dataUrl: string) => ParseDataUrlResult =
 export const SVG_MEDIA_TYPE = "image/svg+xml";
 
 export function asDataUrl(
-  content: string | Buffer,
+  content: string | Uint8Array,
   mediaType: string,
   encoding?: BufferEncoding
 ) {
-  return `data:${mediaType};base64,${(Buffer.isBuffer(content)
-    ? content
-    : Buffer.from(content, encoding)
-  ).toString("base64")}`;
+  const buffer =
+    typeof content === "string"
+      ? Buffer.from(content, encoding)
+      : Buffer.from(content);
+  return `data:${mediaType};base64,${buffer.toString("base64")}`;
 }
 
 export function asSvgDataUrl(xml: string) {

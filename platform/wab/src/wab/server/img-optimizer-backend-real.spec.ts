@@ -3,14 +3,30 @@ process.env.SITE_ASSETS_BUCKET = "test-bucket";
 process.env.SITE_ASSETS_BASE_URL = "https://test-assets.example.com/";
 process.env.S3_ENDPOINT = "https://s3.amazonaws.com";
 
-jest.mock("aws-sdk/clients/s3");
+// Plain classes, not jest.fn(), so resetMocks leaves the client working. v3
+// sends every operation through `send(command)`, routed here by command class.
+jest.mock("@aws-sdk/client-s3", () => {
+  class GetObjectCommand {
+    constructor(readonly input: unknown) {}
+  }
+  class PutObjectCommand {
+    constructor(readonly input: unknown) {}
+  }
+  class S3Client {
+    send(command: GetObjectCommand | PutObjectCommand) {
+      return command instanceof GetObjectCommand
+        ? mockS3.getObject(command.input)
+        : mockS3.putObject(command.input);
+    }
+  }
+  return { GetObjectCommand, PutObjectCommand, S3Client };
+});
 jest.mock("sharp");
 
 import { Config } from "@/wab/server/config";
 import { closeDbConnections, ensureDbConnections } from "@/wab/server/db/DbCon";
 import { ExpressSession } from "@/wab/server/entities/Entities";
 import { PinoLogger } from "@/wab/server/observability/PinoLogger";
-import S3 from "aws-sdk/clients/s3";
 import http from "http";
 import { AddressInfo } from "net";
 import { Client } from "pg";
@@ -33,17 +49,20 @@ const SVG_AFTER_LONG_PREAMBLE = Buffer.concat([
 
 type S3Object = { Body: Buffer; ContentType: string };
 
-const s3 = { getObject: jest.fn(), upload: jest.fn() };
+const mockS3 = { getObject: jest.fn(), putObject: jest.fn() };
 
 function stubGetObject(objects: Map<string, S3Object>) {
-  s3.getObject.mockImplementation(({ Key }: { Key: string }) => ({
-    promise: () =>
-      objects.has(Key)
-        ? Promise.resolve(objects.get(Key))
-        : Promise.reject(
-            Object.assign(new Error("NoSuchKey"), { code: "NoSuchKey" })
-          ),
-  }));
+  mockS3.getObject.mockImplementation(async ({ Key }: { Key: string }) => {
+    const object = objects.get(Key);
+    if (!object) {
+      throw Object.assign(new Error("NoSuchKey"), { name: "NoSuchKey" });
+    }
+    // v3 bodies are streams, exposing transformToByteArray rather than a Buffer.
+    return {
+      Body: { transformToByteArray: async () => new Uint8Array(object.Body) },
+      ContentType: object.ContentType,
+    };
+  });
 }
 
 function stubS3AndSharp() {
@@ -51,8 +70,8 @@ function stubS3AndSharp() {
     [ASSET_KEY, { Body: ORIGINAL_BYTES, ContentType: "image/jpeg" }],
   ]);
   stubGetObject(objects);
-  s3.upload.mockImplementation(
-    ({
+  mockS3.putObject.mockImplementation(
+    async ({
       Key,
       Body,
       ContentType,
@@ -62,9 +81,7 @@ function stubS3AndSharp() {
       ContentType: string;
     }) => {
       objects.set(Key, { Body, ContentType });
-      return {
-        promise: () => Promise.resolve({ Location: "https://s3/cached" }),
-      };
+      return {};
     }
   );
   (sharp as unknown as jest.Mock).mockImplementation(() => {
@@ -81,18 +98,18 @@ function stubS3AndSharp() {
 }
 
 async function waitForUploads(count: number) {
-  for (let i = 0; i < 100 && s3.upload.mock.calls.length < count; i++) {
+  for (let i = 0; i < 100 && mockS3.putObject.mock.calls.length < count; i++) {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  expect(s3.upload).toHaveBeenCalledTimes(count);
+  expect(mockS3.putObject).toHaveBeenCalledTimes(count);
 }
 
 function uploadedKeys(): string[] {
-  return s3.upload.mock.calls.map(([{ Key }]) => Key);
+  return mockS3.putObject.mock.calls.map(([{ Key }]) => Key);
 }
 
 function cacheLookupKeys(): string[] {
-  return s3.getObject.mock.calls
+  return mockS3.getObject.mock.calls
     .map(([{ Key }]) => Key)
     .filter((key) => key.startsWith("img-opt/"));
 }
@@ -118,9 +135,7 @@ let startApp: (
 ) => Promise<string>;
 
 beforeAll(async () => {
-  (S3 as jest.MockedClass<typeof S3>).mockImplementation(() => s3 as any);
-
-  // Required here, not imported: img-optimizer builds its S3 client on load.
+  // Required here, not imported, so the env above is set before they load.
   const { createDatabase, testConfig } =
     require("@/wab/server/test/backend-util") as typeof import("@/wab/server/test/backend-util");
   const { createImgOptimizerApp } =
@@ -313,7 +328,7 @@ describe("image optimizer HTTP boundary", () => {
 
       expect(res.status).toBe(400);
       expect(await res.text()).toMatch(/SVG images are not supported/);
-      expect(s3.upload).not.toHaveBeenCalled();
+      expect(mockS3.putObject).not.toHaveBeenCalled();
     });
 
     it.each([
@@ -331,7 +346,7 @@ describe("image optimizer HTTP boundary", () => {
         const res = await fetch(`${baseUrl}/img-optimizer/v1/img/${key}?w=400`);
 
         expect(res.status).toBe(400);
-        expect(s3.upload).not.toHaveBeenCalled();
+        expect(mockS3.putObject).not.toHaveBeenCalled();
       }
     );
 
@@ -347,7 +362,7 @@ describe("image optimizer HTTP boundary", () => {
 
       expect(res.status).toBe(400);
       expect(await res.text()).toMatch(/SVG images are not supported/);
-      expect(s3.upload).not.toHaveBeenCalled();
+      expect(mockS3.putObject).not.toHaveBeenCalled();
     });
 
     it("does not serve svg bytes from the error fallback", async () => {
@@ -367,9 +382,9 @@ describe("image optimizer HTTP boundary", () => {
 
       expect(res.status).toBe(400);
       expect(body.includes(SVG_BYTES)).toBe(false);
-      expect(s3.upload).not.toHaveBeenCalled();
+      expect(mockS3.putObject).not.toHaveBeenCalled();
       expect(
-        s3.getObject.mock.calls.filter(([{ Key }]) => Key === PNG_KEY)
+        mockS3.getObject.mock.calls.filter(([{ Key }]) => Key === PNG_KEY)
       ).toHaveLength(2);
     });
   });
@@ -457,7 +472,7 @@ describe("image optimizer rate limit", () => {
     for (let i = 0; i < 60; i++) {
       await (await fetch(`${baseUrl}/img-optimizer/v1/img`)).arrayBuffer();
     }
-    s3.getObject.mockClear();
+    mockS3.getObject.mockClear();
 
     const result = await countQueries(() =>
       fetch(`${baseUrl}/img-optimizer/v1/img/${ASSET_KEY}?w=400`)
@@ -473,7 +488,7 @@ describe("image optimizer rate limit", () => {
     );
     expect(result.res.headers.get("x-content-type-options")).toBe("nosniff");
     expect(result.queries).toBe(0);
-    expect(s3.getObject).not.toHaveBeenCalled();
+    expect(mockS3.getObject).not.toHaveBeenCalled();
   });
 });
 
