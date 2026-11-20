@@ -47,7 +47,7 @@ const orderA: EpAccountOrder = { id: "order-a", order_number: "1001" };
 const orderB: EpAccountOrder = { id: "order-b", order_number: "1002" };
 
 function ready(orders: EpAccountOrder[]): AccountOrderHistoryContext {
-  return { status: "ready", orders, total: orders.length, error: null };
+  return { status: "ready", orders, total: orders.length, error: null, page: null };
 }
 
 function History(props: {
@@ -146,6 +146,7 @@ describe("EPAccountOrderList", () => {
           status === "error"
             ? { code: "account_orders_read_failed", message: "nope" }
             : null,
+        page: null,
       };
       render(
         <History history={history}>
@@ -174,7 +175,7 @@ describe("EPAccountOrderList", () => {
   it("does not substitute fixtures over a published empty history on the canvas", () => {
     mockUsePlasmicCanvasContext.mockReturnValue(true);
     render(
-      <History history={{ status: "empty", orders: [], total: 0, error: null }}>
+      <History history={{ status: "empty", orders: [], total: 0, error: null, page: null }}>
         <span>Row</span>
       </History>
     );

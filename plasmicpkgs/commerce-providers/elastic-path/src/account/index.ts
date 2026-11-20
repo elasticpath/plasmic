@@ -79,6 +79,7 @@ export {
   registerEPAccountOrdersProvider,
   epAccountOrdersProviderMeta,
 } from "./EPAccountOrdersProvider";
+export type { EPAccountOrdersProviderActions } from "./EPAccountOrdersProvider";
 export {
   EPAccountOrderList,
   registerEPAccountOrderList,

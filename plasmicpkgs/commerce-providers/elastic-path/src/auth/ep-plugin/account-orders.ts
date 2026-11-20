@@ -1,6 +1,14 @@
 /** Order history of the selected organisation. */
 import { getCustomerOrders } from "@epcc-sdk/sdks-shopper";
-import type { EpAccountOrder, EpAccountOrderResult } from "../../identity/operations";
+import type {
+  EpAccountOrder,
+  EpAccountOrderPageResult,
+  EpAccountOrderResult,
+} from "../../identity/operations";
+import {
+  EP_ACCOUNT_ORDER_PAGE_LIMIT_MAX,
+  EP_ACCOUNT_ORDER_PAGE_OFFSET_MAX,
+} from "../../identity/operations";
 import { buildFixedTokenEpClient } from "../../ep-server-functions/fixed-token-ep-client";
 import { toDecimal, type FormattedPrice } from "../../utils/price";
 import { ACCOUNT_PAGE_LIMIT_MAX } from "./account-tokens";
@@ -173,11 +181,12 @@ function reportedTotal(meta: unknown): number | undefined {
   return reported;
 }
 
-/** One page of `getCustomerOrders`. The limit and offset are the server's. */
+/** One page of `getCustomerOrders`. The limit and offset are the caller's. */
 async function loadAccountOrderPage(input: {
   client: ReturnType<typeof buildFixedTokenEpClient>;
   accountId: string;
   accountToken: string;
+  limit: number;
   offset: number;
 }): Promise<{ rows: unknown[]; meta: unknown }> {
   let result: Awaited<ReturnType<typeof getCustomerOrders>>;
@@ -190,7 +199,7 @@ async function loadAccountOrderPage(input: {
         NonNullable<Parameters<typeof getCustomerOrders>[0]>["headers"]
       >,
       query: {
-        "page[limit]": ACCOUNT_PAGE_LIMIT_MAX,
+        "page[limit]": input.limit,
         "page[offset]": input.offset,
         filter: `eq(account_id,${input.accountId})`,
       },
@@ -243,6 +252,7 @@ export async function readAccountOrders(input: {
       client,
       accountId,
       accountToken: input.accountToken,
+      limit: ACCOUNT_PAGE_LIMIT_MAX,
       offset,
     });
     const reported = reportedTotal(meta);
@@ -276,4 +286,123 @@ export async function readAccountOrders(input: {
   }
 
   throw new AccountOrderReadError(502, INCOMPLETE);
+}
+
+function isInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value);
+}
+
+/** Exactly `{ limit, offset }`, or a reason to refuse before Elastic Path. */
+export function parseAccountOrderPageBody(
+  body: unknown
+):
+  | { ok: true; limit: number; offset: number }
+  | { ok: false; message: string } {
+  if (body == null || typeof body !== "object" || Array.isArray(body)) {
+    return { ok: false, message: "Body must be an object." };
+  }
+  const record = body as Record<string, unknown>;
+  const keys = Object.keys(record);
+  if (
+    keys.length !== 2 ||
+    !Object.prototype.hasOwnProperty.call(record, "limit") ||
+    !Object.prototype.hasOwnProperty.call(record, "offset")
+  ) {
+    return {
+      ok: false,
+      message: "Body must include only limit and offset.",
+    };
+  }
+  if (!isInteger(record.limit)) {
+    return { ok: false, message: "limit must be an integer." };
+  }
+  if (
+    record.limit < 1 ||
+    record.limit > EP_ACCOUNT_ORDER_PAGE_LIMIT_MAX
+  ) {
+    return { ok: false, message: "limit must be from 1 to 100." };
+  }
+  if (!isInteger(record.offset)) {
+    return { ok: false, message: "offset must be an integer." };
+  }
+  if (record.offset < 0 || record.offset > EP_ACCOUNT_ORDER_PAGE_OFFSET_MAX) {
+    return { ok: false, message: "offset must be from 0 to 100000." };
+  }
+  return { ok: true, limit: record.limit, offset: record.offset };
+}
+
+/**
+ * One raw window. Rows that fail the ownership check are dropped. The next
+ * window starts at `offset + limit`, not at the number of rows kept.
+ */
+export async function readAccountOrderPage(input: {
+  host: string;
+  clientId: string;
+  implicitToken: string;
+  accountId: string;
+  accountToken: string;
+  limit: number;
+  offset: number;
+}): Promise<EpAccountOrderPageResult> {
+  const accountId = canonicalAccountId(input.accountId);
+  if (!accountId) {
+    throw new AccountOrderReadError(502, REJECTED);
+  }
+
+  const client = buildFixedTokenEpClient({
+    host: input.host,
+    clientId: input.clientId,
+    token: input.implicitToken,
+  });
+  const { rows, meta } = await loadAccountOrderPage({
+    client,
+    accountId,
+    accountToken: input.accountToken,
+    limit: input.limit,
+    offset: input.offset,
+  });
+
+  if (rows.length > input.limit) {
+    throw new AccountOrderReadError(502, INCOMPLETE);
+  }
+
+  const reported = reportedTotal(meta);
+  if (reported !== undefined) {
+    const pastEnd = input.offset >= reported;
+    if (rows.length === 0 && reported > input.offset) {
+      throw new AccountOrderReadError(502, INCOMPLETE);
+    }
+    if (rows.length > 0 && pastEnd) {
+      throw new AccountOrderReadError(502, INCOMPLETE);
+    }
+    if (input.offset + rows.length > reported) {
+      throw new AccountOrderReadError(502, INCOMPLETE);
+    }
+  }
+
+  const orders: EpAccountOrder[] = [];
+  for (const row of rows) {
+    const order = toAccountOrder(row, accountId);
+    if (order) orders.push(order);
+  }
+
+  const nextOffset = input.offset + input.limit;
+  let hasNextPage = false;
+  if (nextOffset <= EP_ACCOUNT_ORDER_PAGE_OFFSET_MAX) {
+    hasNextPage =
+      reported !== undefined
+        ? input.offset + rows.length < reported
+        : rows.length === input.limit;
+  }
+
+  return {
+    orders,
+    total: orders.length,
+    page: {
+      limit: input.limit,
+      offset: input.offset,
+      hasNextPage,
+      hasPreviousPage: input.offset > 0,
+    },
+  };
 }

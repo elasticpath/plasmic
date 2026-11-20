@@ -77,6 +77,7 @@ export type AccountOrderHistoryContext = {
     orders: EpAccountOrder[];
     total: number;
     error: AccountOrderHistoryError | null;
+    page: EpAccountOrderPageInfo | null;
 };
 
 // @public (undocumented)
@@ -89,7 +90,7 @@ export type AccountOrderHistoryError = {
 export type AccountOrderHistoryStatus = "loading" | "ready" | "empty" | "error";
 
 // @public (undocumented)
-export type AccountOrderPreviewState = "auto" | "withOrders" | "empty" | "loading" | "error" | "noSelectedAccount" | "lapsed";
+export type AccountOrderPreviewState = "auto" | "withOrders" | "empty" | "loading" | "error" | "noSelectedAccount" | "lapsed" | "firstPage" | "middlePage" | "lastPage";
 
 // @public (undocumented)
 export type AccountPreviewState = "auto" | AccountState;
@@ -506,6 +507,12 @@ export interface ElasticPathOrder {
 }
 
 // @public
+export const EP_ACCOUNT_ORDER_PAGE_LIMIT_MAX = 100;
+
+// @public
+export const EP_ACCOUNT_ORDER_PAGE_OFFSET_MAX = 100000;
+
+// @public
 export const EP_AUTH_BASE_PATH = "/api/ep";
 
 // @public
@@ -760,6 +767,36 @@ export function EPAccountOrderList(props: EPAccountOrderListProps): React_2.JSX.
 export const epAccountOrderListMeta: CodeComponentMeta<EPAccountOrderListProps>;
 
 // @public
+export interface EpAccountOrderPageInfo {
+    // (undocumented)
+    hasNextPage: boolean;
+    // (undocumented)
+    hasPreviousPage: boolean;
+    // (undocumented)
+    limit: number;
+    // (undocumented)
+    offset: number;
+}
+
+// @public
+export interface EpAccountOrderPageRequest {
+    // (undocumented)
+    limit: number;
+    // (undocumented)
+    offset: number;
+}
+
+// @public
+export interface EpAccountOrderPageResult {
+    // (undocumented)
+    orders: EpAccountOrder[];
+    // (undocumented)
+    page: EpAccountOrderPageInfo;
+    // (undocumented)
+    total: number;
+}
+
+// @public
 export type EpAccountOrderPayment = "authorized" | "paid" | "unpaid" | "refunded" | "partially_paid" | "partially_authorized";
 
 // @public
@@ -774,7 +811,17 @@ export interface EpAccountOrderResult {
 export type EpAccountOrderShipping = "unfulfilled" | "fulfilled";
 
 // @public (undocumented)
-export function EPAccountOrdersProvider(props: EPAccountOrdersProviderProps): React_2.JSX.Element;
+export const EPAccountOrdersProvider: React_2.ForwardRefExoticComponent<EPAccountOrdersProviderProps & React_2.RefAttributes<EPAccountOrdersProviderActions>>;
+
+// @public (undocumented)
+export interface EPAccountOrdersProviderActions {
+    // (undocumented)
+    nextPage(): void;
+    // (undocumented)
+    previousPage(): void;
+    // (undocumented)
+    retryPage(): void;
+}
 
 // @public (undocumented)
 export const epAccountOrdersProviderMeta: CodeComponentMeta<EPAccountOrdersProviderProps>;
@@ -1272,6 +1319,11 @@ export interface EpIdentityOperations {
     accountAddresses: {
         request: void;
         response: EpAccountAddressResult;
+    };
+    // (undocumented)
+    accountOrderPage: {
+        request: EpAccountOrderPageRequest;
+        response: EpAccountOrderPageResult;
     };
     // (undocumented)
     accountOrders: {
