@@ -1761,6 +1761,7 @@ describe("reading one account order page", () => {
       offset: 20,
     });
     expect(res.status).toBe(200);
+    expect(orderCalls).toHaveLength(1);
     expect(body).toEqual({
       orders: [],
       total: 0,
@@ -1771,6 +1772,50 @@ describe("reading one account order page", () => {
         hasPreviousPage: true,
       },
     });
+  });
+
+  it("accepts an empty page past the reported total", async () => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [
+      { status: 200, body: { data: [], meta: { results: { total: 20 } } } },
+      { status: 200, body: orderPage(10, NORTH, 20) },
+    ];
+    const { res, body } = await readOrderPage(auth, cookies, {
+      limit: 10,
+      offset: 30,
+    });
+    expect(res.status).toBe(200);
+    expect(orderCalls).toHaveLength(1);
+    expect(body).toEqual({
+      orders: [],
+      total: 0,
+      page: {
+        limit: 10,
+        offset: 30,
+        hasNextPage: false,
+        hasPreviousPage: true,
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain("20");
+  });
+
+  it("fails an empty page before the reported total", async () => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [
+      { status: 200, body: { data: [], meta: { results: { total: 20 } } } },
+    ];
+    const { res, body } = await readOrderPage(auth, cookies, {
+      limit: 10,
+      offset: 10,
+    });
+    expect(res.status).toBe(502);
+    expect(body.code).toBe("account_orders_read_failed");
+    expect(body.message).toBe(
+      "Elastic Path did not return the full order history."
+    );
+    expect(body.orders).toBeUndefined();
+    expect(orderCalls).toHaveLength(1);
+    expect(JSON.stringify(body)).not.toContain("20");
   });
 
   it("fails when raw rows run past the reported total", async () => {

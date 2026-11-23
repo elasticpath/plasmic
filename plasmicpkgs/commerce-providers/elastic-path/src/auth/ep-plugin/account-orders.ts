@@ -372,14 +372,11 @@ export async function readAccountOrderPage(input: {
 
   const reported = reportedTotal(meta);
   if (reported !== undefined) {
-    const pastEnd = input.offset >= reported;
-    if (rows.length === 0 && reported > input.offset) {
-      throw new AccountOrderReadError(502, INCOMPLETE);
-    }
-    if (rows.length > 0 && pastEnd) {
-      throw new AccountOrderReadError(502, INCOMPLETE);
-    }
-    if (input.offset + rows.length > reported) {
+    if (rows.length === 0) {
+      if (reported > input.offset) {
+        throw new AccountOrderReadError(502, INCOMPLETE);
+      }
+    } else if (input.offset + rows.length > reported) {
       throw new AccountOrderReadError(502, INCOMPLETE);
     }
   }
