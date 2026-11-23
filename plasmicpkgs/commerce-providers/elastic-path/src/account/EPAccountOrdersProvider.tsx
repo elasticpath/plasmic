@@ -44,6 +44,13 @@ const READ_FAILED = "Elastic Path rejected the account-order read.";
 const UNREACHABLE = "Elastic Path was unreachable.";
 const INVALID_PAGE_SIZE = "Page size must be an integer from 1 to 100.";
 
+const ACCOUNT_GATE_CODES = new Set([
+  "no_session",
+  "no_account_member",
+  "no_selected_account",
+  "account_lapsed",
+]);
+
 type PageConfig =
   | { mode: "full" }
   | { mode: "invalid" }
@@ -467,12 +474,17 @@ export const EPAccountOrdersProvider = React.forwardRef<
         if (cancelled || id !== requestId.current) return;
         setInflight(null);
         const failure = readFailureHistory(err);
+        const gate =
+          failure.error != null && ACCOUNT_GATE_CODES.has(failure.error.code);
         commitHistory({
           key,
           requestId: id,
           history: {
             ...failure,
-            page: paging.mode === "page" ? quietPage(paging.limit, offset) : null,
+            page:
+              paging.mode === "page" && !gate
+                ? quietPage(paging.limit, offset)
+                : null,
           },
         });
       }

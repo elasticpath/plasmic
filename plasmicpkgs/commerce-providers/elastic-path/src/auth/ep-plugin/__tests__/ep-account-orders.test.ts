@@ -1312,6 +1312,53 @@ describe("reading one account order page", () => {
     expect(orderCalls).toEqual([]);
   });
 
+  it("checks the session before the body and the body before the account gates", async () => {
+    const auth = buildAuth();
+    const noSession = await readOrderPage(auth, "", { limit: 0, offset: -1 });
+    expect(noSession.res.status).toBe(401);
+    expect(noSession.body.code).toBe("no_session");
+    expect(orderCalls).toEqual([]);
+
+    const anon = await anonymous(auth);
+    orderCalls = [];
+    const noMember = await readOrderPage(auth, anon, { limit: 10, offset: 0 });
+    expect(noMember.res.status).toBe(401);
+    expect(noMember.body.code).toBe("no_account_member");
+    expect(orderCalls).toEqual([]);
+
+    orderCalls = [];
+    const noMemberBadBody = await readOrderPage(auth, anon, { limit: 0 });
+    expect(noMemberBadBody.res.status).toBe(400);
+    expect(noMemberBadBody.body.code).toBe("invalid_input");
+    expect(orderCalls).toEqual([]);
+
+    store.accounts = [...ACCOUNTS];
+    const unselected = await signedIn(auth);
+    orderCalls = [];
+    const noSelection = await readOrderPage(auth, unselected, {
+      limit: 10,
+      offset: 0,
+    });
+    expect(noSelection.res.status).toBe(401);
+    expect(noSelection.body.code).toBe("no_selected_account");
+    expect(orderCalls).toEqual([]);
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    store.accounts = [ACCOUNTS[0]];
+    store.ttlSeconds = 1;
+    const lapsedCookies = await signedIn(auth);
+    vi.setSystemTime(Date.now() + 5_000);
+    orderCalls = [];
+    const lapsed = await readOrderPage(auth, lapsedCookies, {
+      limit: 10,
+      offset: 0,
+    });
+    expect(lapsed.res.status).toBe(401);
+    expect(lapsed.body.code).toBe("account_lapsed");
+    expect(orderCalls).toEqual([]);
+    expect(fetchUrls.some((url) => url.includes("/v2/orders"))).toBe(false);
+  });
+
   it("rejects invalid pages before calling Elastic Path", async () => {
     const { auth, cookies } = await signedSelected();
     const bodies = [
@@ -1442,6 +1489,7 @@ describe("reading one account order page", () => {
           meta: { results: { total: 30 } },
         },
       },
+      { status: 200, body: orderPage(2, NORTH, 30) },
     ];
 
     const { res, body } = await readOrderPage(auth, cookies, {
@@ -1462,6 +1510,14 @@ describe("reading one account order page", () => {
     });
     expect(JSON.stringify(body)).not.toContain("30");
     expect(JSON.stringify(body)).not.toContain(SOUTH);
+    expect(orderCalls).toEqual([
+      expect.objectContaining({
+        pathname: "/v2/orders",
+        limit: "2",
+        offset: "0",
+      }),
+    ]);
+    expect(orderReplies).toHaveLength(1);
   });
 
   it("reads offset 1000 from a history the full walk would refuse", async () => {

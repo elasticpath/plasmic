@@ -730,6 +730,133 @@ describe("EPAccountOrdersProvider pagination", () => {
     expect(mockAccountOrderPage).toHaveBeenLastCalledWith({ limit: 10, offset: 10 });
   });
 
+  it("keeps a later empty window ready and can return to the previous page", async () => {
+    mockAccountOrderPage
+      .mockResolvedValueOnce(pageOf([orderA], 0, 10, true))
+      .mockResolvedValueOnce(pageOf([], 10, 10, false))
+      .mockResolvedValueOnce(pageOf([orderA], 0, 10, true));
+    const ref = React.createRef<any>();
+    render(<Harness account={selected("acct-a")} pageSize={10} ordersRef={ref} />);
+    await waitFor(() => expect(published().orders.map((order) => order.id)).toEqual(["order-a"]));
+
+    act(() => {
+      ref.current.nextPage();
+    });
+    await waitFor(() => expect(published().page?.offset).toBe(10));
+    expect(published().status).toBe("ready");
+    expect(published().orders).toEqual([]);
+    expect(published().page).toEqual({
+      limit: 10,
+      offset: 10,
+      hasNextPage: false,
+      hasPreviousPage: true,
+    });
+
+    act(() => {
+      ref.current.previousPage();
+    });
+    await waitFor(() =>
+      expect(published().orders.map((order) => order.id)).toEqual(["order-a"])
+    );
+    expect(published().page?.offset).toBe(0);
+    expect(mockAccountOrderPage).toHaveBeenLastCalledWith({ limit: 10, offset: 0 });
+  });
+
+  it.each([0, 101])(
+    "does not retry an invalid page size of %s",
+    async (pageSize) => {
+      const ref = React.createRef<any>();
+      render(
+        <Harness account={selected("acct-a")} pageSize={pageSize} ordersRef={ref} />
+      );
+      expect(published().error?.code).toBe("invalid_page_size");
+      expect(published().page).toBeNull();
+      act(() => {
+        ref.current.retryPage();
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(mockAccountOrders).not.toHaveBeenCalled();
+      expect(mockAccountOrderPage).not.toHaveBeenCalled();
+      expect(published().error?.code).toBe("invalid_page_size");
+    }
+  );
+
+  it.each([
+    ["missing member", undefined, "no_account_member"],
+    ["missing selection", MOCK_ACCOUNT_MEMBER_ONLY, "no_selected_account"],
+  ] as const)(
+    "does not retry a %s error",
+    async (_label, account, code) => {
+      const ref = React.createRef<any>();
+      render(<Harness account={account} pageSize={10} ordersRef={ref} />);
+      await waitFor(() => expect(published().error?.code).toBe(code));
+      expect(published().page).toBeNull();
+      act(() => {
+        ref.current.retryPage();
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(mockAccountOrders).not.toHaveBeenCalled();
+      expect(mockAccountOrderPage).not.toHaveBeenCalled();
+      expect(published().error?.code).toBe(code);
+    }
+  );
+
+  it.each([
+    ["no_session", "No EP session — call /ep/anonymous first to bootstrap."],
+    ["no_account_member", "No account member is signed in."],
+    ["no_selected_account", "No organisation is selected."],
+    [
+      "account_lapsed",
+      "The account credential ran out and cannot be re-minted. Sign in again.",
+    ],
+  ] as const)(
+    "does not retry a server-returned %s error",
+    async (code, message) => {
+      const failure = new Error(message);
+      (failure as { code?: string }).code = code;
+      mockAccountOrderPage.mockRejectedValue(failure);
+      const ref = React.createRef<any>();
+      render(<Harness account={selected("acct-a")} pageSize={10} ordersRef={ref} />);
+      await waitFor(() => expect(published().status).toBe("error"));
+      expect(published().error).toEqual({ code, message });
+      expect(published().orders).toEqual([]);
+      expect(published().page).toBeNull();
+      expect(mockAccountOrderPage).toHaveBeenCalledTimes(1);
+      expect(mockAccountOrderPage).toHaveBeenCalledWith({ limit: 10, offset: 0 });
+      act(() => {
+        ref.current.retryPage();
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(mockAccountOrderPage).toHaveBeenCalledTimes(1);
+      expect(mockAccountOrders).not.toHaveBeenCalled();
+      expect(published().error).toEqual({ code, message });
+      expect(published().orders).toEqual([]);
+      expect(published().page).toBeNull();
+    }
+  );
+
+  it("does not retry an unpaged read", async () => {
+    mockAccountOrders.mockRejectedValue(new Error("Elastic Path was unreachable."));
+    const ref = React.createRef<any>();
+    render(<Harness account={selected("acct-a")} ordersRef={ref} />);
+    await waitFor(() => expect(published().status).toBe("error"));
+    expect(mockAccountOrders).toHaveBeenCalledTimes(1);
+    act(() => {
+      ref.current.retryPage();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockAccountOrders).toHaveBeenCalledTimes(1);
+    expect(mockAccountOrderPage).not.toHaveBeenCalled();
+  });
+
   it("resets to the first page when the account or page size changes", async () => {
     const requests: Array<ReturnType<typeof deferred<EpAccountOrderPageResult>>> = [];
     mockAccountOrderPage.mockImplementation(() => {
