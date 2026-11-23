@@ -58,6 +58,28 @@ identity.accountOrders({ include: "items" });
 // @ts-expect-error SDK options stay on the server
 identity.accountOrders({ client: {} });
 
+identity.accountOrderPage({ limit: 10, offset: 20 });
+// @ts-expect-error limit and offset are required
+identity.accountOrderPage();
+// @ts-expect-error limit is required
+identity.accountOrderPage({ offset: 20 });
+// @ts-expect-error offset is required
+identity.accountOrderPage({ limit: 10 });
+// @ts-expect-error the server chooses the account
+identity.accountOrderPage({ limit: 10, offset: 0, accountId: "acct-1" });
+// @ts-expect-error tokens stay on the server
+identity.accountOrderPage({ limit: 10, offset: 0, token: "secret" });
+// @ts-expect-error account tokens stay on the server
+identity.accountOrderPage({ limit: 10, offset: 0, accountToken: "secret" });
+// @ts-expect-error filters stay on the server
+identity.accountOrderPage({ limit: 10, offset: 0, filter: "eq(account_id,acct-1)" });
+// @ts-expect-error sort stays on the server
+identity.accountOrderPage({ limit: 10, offset: 0, sort: "created_at" });
+// @ts-expect-error include stays on the server
+identity.accountOrderPage({ limit: 10, offset: 0, include: "items" });
+// @ts-expect-error SDK options stay on the server
+identity.accountOrderPage({ limit: 10, offset: 0, client: {} });
+
 identity.createAccountAddress({ line_1: "1 High Street", country: "GB" });
 // @ts-expect-error the address object is required
 identity.createAccountAddress();

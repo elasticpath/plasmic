@@ -1000,6 +1000,39 @@ describe("reading account order history", () => {
     expect(body.total).toBe(102);
   });
 
+  it("stops a short page when the result total is fractional", async () => {
+    expect(Number.isFinite(5.5)).toBe(true);
+    expect(Number.isInteger(5.5)).toBe(false);
+    const auth = buildAuth();
+    store.accounts = [ACCOUNTS[0]];
+    const cookies = await signedIn(auth);
+    orderReplies = [
+      {
+        status: 200,
+        body: {
+          data: [
+            ownedOrder("order-home", NORTH),
+            ownedOrder("order-foreign", SOUTH),
+          ],
+          meta: { results: { total: 5.5 } },
+        },
+      },
+      { status: 200, body: orderPage(100, NORTH, 99999) },
+    ];
+    orderCalls = [];
+
+    const { res, body } = await readOrders(auth, cookies);
+    expect(res.status).toBe(200);
+    expect(orderCalls).toHaveLength(1);
+    expect(body.orders.map((order: { id: string }) => order.id)).toEqual([
+      "order-home",
+    ]);
+    expect(body.total).toBe(1);
+    expect(JSON.stringify(body)).not.toContain("5.5");
+    expect(JSON.stringify(body)).not.toContain(SOUTH);
+    expect(JSON.stringify(body)).not.toContain("order-foreign");
+  });
+
   it("stops a short page when the result total is missing", async () => {
     const auth = buildAuth();
     store.accounts = [ACCOUNTS[0]];
@@ -1235,6 +1268,29 @@ describe("reading account order history", () => {
     }
   });
 
+  it("keeps reading full pages when the result total is fractional and stops at the page cap", async () => {
+    const auth = buildAuth();
+    store.accounts = [ACCOUNTS[0]];
+    const cookies = await signedIn(auth);
+    orderReplies = Array.from({ length: 11 }, () => ({
+      status: 200,
+      body: orderPage(100, NORTH, 5.5),
+    }));
+    orderCalls = [];
+
+    const { res, body } = await readOrders(auth, cookies);
+    expect(res.status).toBe(502);
+    expect(body.code).toBe("account_orders_read_failed");
+    expect(body.message).toBe(
+      "Elastic Path did not return the full order history."
+    );
+    expect(body.orders).toBeUndefined();
+    expect(orderCalls).toHaveLength(10);
+    expect(orderCalls[9].offset).toBe("900");
+    expect(JSON.stringify(body)).not.toContain("5.5");
+    expectNoSecrets(body);
+  });
+
   it("fails ten full pages when no result total is reported", async () => {
     const auth = buildAuth();
     store.accounts = [ACCOUNTS[0]];
@@ -1268,6 +1324,636 @@ describe("reading account order history", () => {
     expect(res.status).toBe(502);
     expect(body.code).toBe("account_orders_read_failed");
     expect(body.message).toBe("Elastic Path was unreachable.");
+    expectNoSecrets(body);
+  });
+});
+
+async function readOrderPage(auth: any, cookies: string, body: unknown) {
+  const res = await auth.api.epAccountOrderPage({
+    body,
+    headers: new Headers({ cookie: cookies }),
+    asResponse: true,
+  });
+  return { res, body: await res.json() };
+}
+
+describe("reading one account order page", () => {
+  async function signedSelected() {
+    const auth = buildAuth();
+    store.accounts = [ACCOUNTS[0]];
+    const cookies = await signedIn(auth);
+    orderCalls = [];
+    fetchUrls = [];
+    return { auth, cookies };
+  }
+
+  it("does not use the anchor, client credentials, or getAnOrder", () => {
+    const plugin = readFileSync(new URL("../ep-plugin.ts", import.meta.url), "utf8");
+    const page = plugin.slice(
+      plugin.indexOf("epAccountOrderPage:"),
+      plugin.indexOf("epAccountAddressCreate:")
+    );
+    expect(page).toContain("readAccountOrderPage");
+    expect(page).not.toContain("readAccountOrders");
+    expect(page).not.toContain("heldAccountCredential");
+    expect(page).not.toContain("getAnOrder");
+    expect(page).not.toContain("client_credentials");
+  });
+
+  it("refuses a missing session without calling Elastic Path", async () => {
+    const auth = buildAuth();
+    const { res, body } = await readOrderPage(auth, "", { limit: 10, offset: 0 });
+    expect(res.status).toBe(401);
+    expect(body.code).toBe("no_session");
+    expect(orderCalls).toEqual([]);
+  });
+
+  it("checks the session before the body and the body before the account gates", async () => {
+    const auth = buildAuth();
+    const noSession = await readOrderPage(auth, "", { limit: 0, offset: -1 });
+    expect(noSession.res.status).toBe(401);
+    expect(noSession.body.code).toBe("no_session");
+    expect(orderCalls).toEqual([]);
+
+    const anon = await anonymous(auth);
+    orderCalls = [];
+    const noMember = await readOrderPage(auth, anon, { limit: 10, offset: 0 });
+    expect(noMember.res.status).toBe(401);
+    expect(noMember.body.code).toBe("no_account_member");
+    expect(orderCalls).toEqual([]);
+
+    orderCalls = [];
+    const noMemberBadBody = await readOrderPage(auth, anon, { limit: 0 });
+    expect(noMemberBadBody.res.status).toBe(400);
+    expect(noMemberBadBody.body.code).toBe("invalid_input");
+    expect(orderCalls).toEqual([]);
+
+    store.accounts = [...ACCOUNTS];
+    const unselected = await signedIn(auth);
+    orderCalls = [];
+    const noSelection = await readOrderPage(auth, unselected, {
+      limit: 10,
+      offset: 0,
+    });
+    expect(noSelection.res.status).toBe(401);
+    expect(noSelection.body.code).toBe("no_selected_account");
+    expect(orderCalls).toEqual([]);
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    store.accounts = [ACCOUNTS[0]];
+    store.ttlSeconds = 1;
+    const lapsedCookies = await signedIn(auth);
+    vi.setSystemTime(Date.now() + 5_000);
+    orderCalls = [];
+    const lapsed = await readOrderPage(auth, lapsedCookies, {
+      limit: 10,
+      offset: 0,
+    });
+    expect(lapsed.res.status).toBe(401);
+    expect(lapsed.body.code).toBe("account_lapsed");
+    expect(orderCalls).toEqual([]);
+    expect(fetchUrls.some((url) => url.includes("/v2/orders"))).toBe(false);
+  });
+
+  it("rejects invalid pages before calling Elastic Path", async () => {
+    const { auth, cookies } = await signedSelected();
+    const bodies = [
+      {},
+      { limit: 10 },
+      { offset: 0 },
+      { limit: 10, offset: 0, accountId: SOUTH },
+      { limit: 10, offset: 0, filter: `eq(account_id,${SOUTH})` },
+      { limit: 10, offset: 0, sort: "created_at" },
+      { limit: 10, offset: 0, include: "items" },
+      { limit: 10, offset: 0, token: "browser-token" },
+      { limit: 10, offset: 0, accountToken: "browser-account-token" },
+      { limit: 10, offset: 0, client: {} },
+      { limit: 0, offset: 0 },
+      { limit: 101, offset: 0 },
+      { limit: 1.5, offset: 0 },
+      { limit: "10", offset: 0 },
+      { limit: 10, offset: 1.5 },
+      { limit: 10, offset: "0" },
+      { limit: 10, offset: null },
+      { limit: null, offset: 0 },
+      { limit: true, offset: 0 },
+      { limit: 10, offset: -1 },
+      { limit: 10, offset: 100001 },
+      [],
+      null,
+      "limit",
+    ];
+    for (const body of bodies) {
+      orderCalls = [];
+      const read = await readOrderPage(auth, cookies, body);
+      expect(read.res.status, JSON.stringify(body)).toBe(400);
+      expect(read.body.code).toBe("invalid_input");
+      expect(read.body.orders).toBeUndefined();
+      expect(orderCalls).toEqual([]);
+    }
+  });
+
+  it("reads one window with the selected account and the server filter", async () => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [
+      { status: 200, body: orderPage(10, NORTH, 40) },
+      { status: 200, body: orderPage(10, NORTH, 40) },
+    ];
+
+    const { res, body } = await readOrderPage(auth, cookies, {
+      limit: 10,
+      offset: 20,
+    });
+
+    expect(res.status).toBe(200);
+    expect(orderCalls).toHaveLength(1);
+    expect(orderCalls[0]).toMatchObject({
+      limit: "10",
+      offset: "20",
+      filter: `eq(account_id,${NORTH})`,
+      accountToken: accountTokenFor(NORTH),
+      authorization: "Bearer anon-token",
+      include: null,
+      sort: null,
+    });
+    expect(body.orders).toHaveLength(10);
+    expect(body.total).toBe(10);
+    expect(body.page).toEqual({
+      limit: 10,
+      offset: 20,
+      hasNextPage: true,
+      hasPreviousPage: true,
+    });
+    expect(JSON.stringify(body)).not.toContain("40");
+    expectNoSecrets(body);
+  });
+
+  it("returns a short page after dropping rows and does not read ahead", async () => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [
+      {
+        status: 200,
+        body: {
+          data: [
+            ownedOrder("order-home", NORTH),
+            ownedOrder("order-guest", NORTH, { relationships: undefined }),
+            ownedOrder("order-foreign", SOUTH),
+            ownedOrder("order-malformed", NORTH, {
+              relationships: { account: { data: { id: "not-a-uuid" } } },
+            }),
+            ownedOrder("order-blank", NORTH, { id: "  " }),
+          ],
+          meta: { results: { total: 5 }, token: FOREIGN_TOKEN },
+        },
+      },
+      { status: 200, body: orderPage(10, NORTH, 99) },
+    ];
+
+    const { res, body } = await readOrderPage(auth, cookies, {
+      limit: 10,
+      offset: 0,
+    });
+
+    expect(res.status).toBe(200);
+    expect(orderCalls).toHaveLength(1);
+    expect(body.orders.map((order: { id: string }) => order.id)).toEqual([
+      "order-home",
+    ]);
+    expect(body.total).toBe(1);
+    expect(body.page).toEqual({
+      limit: 10,
+      offset: 0,
+      hasNextPage: false,
+      hasPreviousPage: false,
+    });
+    expect(JSON.stringify(body)).not.toContain(SOUTH);
+    expect(JSON.stringify(body)).not.toContain("order-foreign");
+    expect(JSON.stringify(body)).not.toContain("order-guest");
+    expectNoSecrets(body);
+  });
+
+  it("keeps an all-dropped window navigable when another raw window exists", async () => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [
+      {
+        status: 200,
+        body: {
+          data: [
+            ownedOrder("order-foreign", SOUTH),
+            ownedOrder("order-guest", NORTH, { relationships: undefined }),
+          ],
+          meta: { results: { total: 30 } },
+        },
+      },
+      { status: 200, body: orderPage(2, NORTH, 30) },
+    ];
+
+    const { res, body } = await readOrderPage(auth, cookies, {
+      limit: 2,
+      offset: 0,
+    });
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({
+      orders: [],
+      total: 0,
+      page: {
+        limit: 2,
+        offset: 0,
+        hasNextPage: true,
+        hasPreviousPage: false,
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain("30");
+    expect(JSON.stringify(body)).not.toContain(SOUTH);
+    expect(orderCalls).toEqual([
+      expect.objectContaining({
+        pathname: "/v2/orders",
+        limit: "2",
+        offset: "0",
+      }),
+    ]);
+    expect(orderReplies).toHaveLength(1);
+  });
+
+  it("reads offset 1000 from a history the full walk would refuse", async () => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [{ status: 200, body: orderPage(10, NORTH, 1500) }];
+
+    const { res, body } = await readOrderPage(auth, cookies, {
+      limit: 10,
+      offset: 1000,
+    });
+
+    expect(res.status).toBe(200);
+    expect(orderCalls).toHaveLength(1);
+    expect(orderCalls[0].offset).toBe("1000");
+    expect(orderCalls[0].limit).toBe("10");
+    expect(body.orders).toHaveLength(10);
+    expect(body.page.hasNextPage).toBe(true);
+    expect(body.page.hasPreviousPage).toBe(true);
+    expect(JSON.stringify(body)).not.toContain("1500");
+  });
+
+  it("accepts offset 100000 and refuses the next integer", async () => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [{ status: 200, body: orderPage(1, NORTH, 100001) }];
+
+    const accepted = await readOrderPage(auth, cookies, {
+      limit: 1,
+      offset: 100000,
+    });
+    expect(accepted.res.status).toBe(200);
+    expect(accepted.body.page).toEqual({
+      limit: 1,
+      offset: 100000,
+      hasNextPage: false,
+      hasPreviousPage: true,
+    });
+    expect(orderCalls).toHaveLength(1);
+
+    orderCalls = [];
+    const refused = await readOrderPage(auth, cookies, {
+      limit: 1,
+      offset: 100001,
+    });
+    expect(refused.res.status).toBe(400);
+    expect(orderCalls).toEqual([]);
+  });
+
+  it("disables next when the following offset would pass 100000", async () => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [{ status: 200, body: orderPage(100, NORTH, 200000) }];
+
+    const { res, body } = await readOrderPage(auth, cookies, {
+      limit: 100,
+      offset: 99950,
+    });
+
+    expect(res.status).toBe(200);
+    expect(body.page.hasNextPage).toBe(false);
+    expect(body.page.hasPreviousPage).toBe(true);
+    expect(JSON.stringify(body)).not.toContain("200000");
+  });
+
+  it("enables next on a full page when the total is missing", async () => {
+    const { auth, cookies } = await signedSelected();
+    const page = orderPage(10, NORTH, 10);
+    delete (page.meta.results as { total?: number }).total;
+    orderReplies = [{ status: 200, body: page }];
+
+    const { body } = await readOrderPage(auth, cookies, { limit: 10, offset: 0 });
+    expect(body.page.hasNextPage).toBe(true);
+    expect(body.page.hasPreviousPage).toBe(false);
+  });
+
+  it("disables next on a short page when the total is missing", async () => {
+    const { auth, cookies } = await signedSelected();
+    const page = orderPage(4, NORTH, 4);
+    delete (page.meta.results as { total?: number }).total;
+    orderReplies = [{ status: 200, body: page }];
+
+    const { body } = await readOrderPage(auth, cookies, {
+      limit: 10,
+      offset: 40,
+    });
+    expect(body.orders).toHaveLength(4);
+    expect(body.page).toEqual({
+      limit: 10,
+      offset: 40,
+      hasNextPage: false,
+      hasPreviousPage: true,
+    });
+  });
+
+  it.each([
+    ["a string", "10"],
+    ["negative", -1],
+    ["NaN", Number.NaN],
+    ["a fraction", 3.5],
+  ] as const)("treats %s total as missing", async (_label, total) => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [
+      {
+        status: 200,
+        body: {
+          data: [ownedOrder("order-1", NORTH)],
+          meta: { results: { total } },
+        },
+      },
+    ];
+    const { res, body } = await readOrderPage(auth, cookies, {
+      limit: 10,
+      offset: 0,
+    });
+    expect(res.status).toBe(200);
+    expect(body.page.hasNextPage).toBe(false);
+    expect(JSON.stringify(body)).not.toContain("order-1-secret");
+  });
+
+  it("enables next on a full page when the total is fractional", async () => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [{ status: 200, body: orderPage(10, NORTH, 9.5) }];
+
+    const { res, body } = await readOrderPage(auth, cookies, {
+      limit: 10,
+      offset: 0,
+    });
+    expect(res.status).toBe(200);
+    expect(body.orders).toHaveLength(10);
+    expect(body.page).toEqual({
+      limit: 10,
+      offset: 0,
+      hasNextPage: true,
+      hasPreviousPage: false,
+    });
+    expect(JSON.stringify(body)).not.toContain("9.5");
+  });
+
+  it("accepts an empty page when the total is fractional", async () => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [
+      { status: 200, body: { data: [], meta: { results: { total: 3.5 } } } },
+      { status: 200, body: orderPage(10, NORTH, 40) },
+    ];
+    const { res, body } = await readOrderPage(auth, cookies, {
+      limit: 10,
+      offset: 0,
+    });
+    expect(res.status).toBe(200);
+    expect(orderCalls).toHaveLength(1);
+    expect(body).toEqual({
+      orders: [],
+      total: 0,
+      page: {
+        limit: 10,
+        offset: 0,
+        hasNextPage: false,
+        hasPreviousPage: false,
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain("3.5");
+  });
+
+  it("fails an empty page when the total still claims rows", async () => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [
+      { status: 200, body: { data: [], meta: { results: { total: 40 } } } },
+    ];
+    const { res, body } = await readOrderPage(auth, cookies, {
+      limit: 10,
+      offset: 0,
+    });
+    expect(res.status).toBe(502);
+    expect(body.code).toBe("account_orders_read_failed");
+    expect(body.message).toBe("Elastic Path did not return the full order history.");
+    expect(body.orders).toBeUndefined();
+    expect(JSON.stringify(body)).not.toContain("40");
+  });
+
+  it("accepts an empty page at or beyond the reported total", async () => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [
+      { status: 200, body: { data: [], meta: { results: { total: 20 } } } },
+    ];
+    const { res, body } = await readOrderPage(auth, cookies, {
+      limit: 10,
+      offset: 20,
+    });
+    expect(res.status).toBe(200);
+    expect(orderCalls).toHaveLength(1);
+    expect(body).toEqual({
+      orders: [],
+      total: 0,
+      page: {
+        limit: 10,
+        offset: 20,
+        hasNextPage: false,
+        hasPreviousPage: true,
+      },
+    });
+  });
+
+  it("accepts an empty page past the reported total", async () => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [
+      { status: 200, body: { data: [], meta: { results: { total: 20 } } } },
+      { status: 200, body: orderPage(10, NORTH, 20) },
+    ];
+    const { res, body } = await readOrderPage(auth, cookies, {
+      limit: 10,
+      offset: 30,
+    });
+    expect(res.status).toBe(200);
+    expect(orderCalls).toHaveLength(1);
+    expect(body).toEqual({
+      orders: [],
+      total: 0,
+      page: {
+        limit: 10,
+        offset: 30,
+        hasNextPage: false,
+        hasPreviousPage: true,
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain("20");
+  });
+
+  it("fails an empty page before the reported total", async () => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [
+      { status: 200, body: { data: [], meta: { results: { total: 20 } } } },
+    ];
+    const { res, body } = await readOrderPage(auth, cookies, {
+      limit: 10,
+      offset: 10,
+    });
+    expect(res.status).toBe(502);
+    expect(body.code).toBe("account_orders_read_failed");
+    expect(body.message).toBe(
+      "Elastic Path did not return the full order history."
+    );
+    expect(body.orders).toBeUndefined();
+    expect(orderCalls).toHaveLength(1);
+    expect(JSON.stringify(body)).not.toContain("20");
+  });
+
+  it("fails when raw rows run past the reported total", async () => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [{ status: 200, body: orderPage(10, NORTH, 5) }];
+    const { res, body } = await readOrderPage(auth, cookies, {
+      limit: 10,
+      offset: 0,
+    });
+    expect(res.status).toBe(502);
+    expect(body.orders).toBeUndefined();
+    expect(body.message).toBe(
+      "Elastic Path did not return the full order history."
+    );
+  });
+
+  it("fails a nonempty page at an offset past the reported total", async () => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [{ status: 200, body: orderPage(1, NORTH, 10) }];
+    const { res, body } = await readOrderPage(auth, cookies, {
+      limit: 10,
+      offset: 10,
+    });
+    expect(res.status).toBe(502);
+    expect(body.orders).toBeUndefined();
+  });
+
+  it("fails when more raw rows come back than limit", async () => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [{ status: 200, body: orderPage(3, NORTH, 3) }];
+    const { res, body } = await readOrderPage(auth, cookies, {
+      limit: 2,
+      offset: 0,
+    });
+    expect(res.status).toBe(502);
+    expect(body.orders).toBeUndefined();
+    expect(body.message).toBe(
+      "Elastic Path did not return the full order history."
+    );
+  });
+
+  it("rejects a non-array data payload without returning orders", async () => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [
+      {
+        status: 200,
+        body: { data: { id: SECRET_STREET }, meta: { results: { total: 1 } } },
+      },
+    ];
+    const { res, body } = await readOrderPage(auth, cookies, {
+      limit: 10,
+      offset: 0,
+    });
+    expect(res.status).toBe(502);
+    expect(body.message).toBe("Elastic Path rejected the account-order read.");
+    expect(body.orders).toBeUndefined();
+    expect(JSON.stringify(body)).not.toContain(SECRET_STREET);
+  });
+
+  it("keeps the nested summary and drops an unusable price", async () => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [
+      {
+        status: 200,
+        body: {
+          data: [
+            ownedOrder("priced", NORTH),
+            ownedOrder("no-price", NORTH, {
+              meta: { timestamps: { created_at: "2024-05-01T00:00:00Z" } },
+            }),
+          ],
+          meta: { results: { total: 2 } },
+        },
+      },
+    ];
+    const { res, body } = await readOrderPage(auth, cookies, {
+      limit: 10,
+      offset: 0,
+    });
+    expect(res.status).toBe(200);
+    expect(body.orders[0].meta.timestamps.created_at).toBe("2024-01-02T03:04:05Z");
+    expect(body.orders[0].meta.display_price.with_tax).toEqual({
+      amount: 2500,
+      currency: "USD",
+      formatted: "$25.00",
+      float_price: 25,
+    });
+    expect(body.orders[0]).not.toHaveProperty("relationships");
+    expect(body.orders[1]).toEqual({
+      id: "no-price",
+      order_number: "N-no-price",
+      status: "complete",
+      payment: "paid",
+      shipping: "fulfilled",
+      meta: { timestamps: { created_at: "2024-05-01T00:00:00Z" } },
+    });
+    expect(JSON.stringify(body)).not.toContain("999");
+    expectNoSecrets(body);
+  });
+
+  it("does not call Elastic Path for a non-canonical selected account", async () => {
+    const auth = buildAuth();
+    store.accounts = [ACCOUNTS[0]];
+    let cookies = await signedIn(auth);
+    cookies = await replaceCachedSession(auth, cookies, (session) => {
+      session.epAccount.id = `eq(account_id,${SOUTH})`;
+    });
+    orderCalls = [];
+    const { res, body } = await readOrderPage(auth, cookies, {
+      limit: 10,
+      offset: 0,
+    });
+    expect(res.status).toBe(502);
+    expect(body.orders).toBeUndefined();
+    expect(orderCalls).toEqual([]);
+    expect(JSON.stringify(body)).not.toContain(SOUTH);
+  });
+
+  it("maps an upstream rejection without echoing it", async () => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = Array.from({ length: 6 }, () => ({
+      status: 401,
+      body: {
+        errors: [{ detail: SECRET_STREET, title: "Upstream" }],
+        request: { url: "https://api.test.elasticpath.com/v2/orders" },
+      },
+    }));
+    const { res, body } = await readOrderPage(auth, cookies, {
+      limit: 10,
+      offset: 0,
+    });
+    expect(res.status).toBe(502);
+    expect(body.code).toBe("account_orders_read_failed");
+    expect(body.message).toBe("Elastic Path rejected the account-order read.");
+    expect(body.orders).toBeUndefined();
+    expect(JSON.stringify(body)).not.toContain(SECRET_STREET);
+    expect(JSON.stringify(body)).not.toContain("Upstream");
+    expect(JSON.stringify(body)).not.toContain("/v2/orders");
     expectNoSecrets(body);
   });
 });

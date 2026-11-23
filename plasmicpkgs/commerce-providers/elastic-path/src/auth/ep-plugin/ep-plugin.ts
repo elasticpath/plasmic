@@ -55,6 +55,8 @@ import {
 } from "./account-addresses";
 import {
   AccountOrderReadError,
+  parseAccountOrderPageBody,
+  readAccountOrderPage,
   readAccountOrders,
 } from "./account-orders";
 import {
@@ -1112,6 +1114,79 @@ export function epPlugin(options: EpPluginOptions): BetterAuthPlugin {
               accountToken: account.token,
             });
             return ctx.json(epIdentityPayload("accountOrders", result));
+          } catch (err) {
+            if (err instanceof AccountOrderReadError) {
+              return jsonError(
+                "account_orders_read_failed",
+                err.status,
+                err.message
+              );
+            }
+            return jsonError(
+              "account_orders_read_failed",
+              502,
+              "Elastic Path was unreachable."
+            );
+          }
+        }
+      ),
+
+      epAccountOrderPage: createAuthEndpoint(
+        "/ep/account/orders/page",
+        { method: "POST" },
+        async (ctx) => {
+          const existing = await readExistingSession(ctx);
+          if (!existing?.user || !existing?.session) return noSessionError();
+
+          const parsed = parseAccountOrderPageBody(ctx.body);
+          if (!parsed.ok) {
+            return jsonError("invalid_input", 400, parsed.message);
+          }
+
+          const session = sessionWithLapseApplied(existing.session);
+          const memberId = session.epMemberId;
+          if (typeof memberId !== "string" || !memberId) {
+            return noAccountMemberError();
+          }
+          if (session.epLapsedAccount) return accountLapsedError();
+
+          const account = session.epAccount as EpAccountSlot | undefined;
+          if (
+            !account ||
+            typeof account.id !== "string" ||
+            !account.id ||
+            typeof account.token !== "string" ||
+            !account.token
+          ) {
+            return noSelectedAccountError();
+          }
+
+          if (
+            typeof session.epAccessToken !== "string" ||
+            !session.epAccessToken ||
+            typeof session.epHost !== "string" ||
+            !session.epHost ||
+            typeof session.epClientId !== "string" ||
+            !session.epClientId
+          ) {
+            return jsonError(
+              "account_orders_read_failed",
+              502,
+              "Elastic Path was unreachable."
+            );
+          }
+
+          try {
+            const result = await readAccountOrderPage({
+              host: session.epHost,
+              clientId: session.epClientId,
+              implicitToken: session.epAccessToken,
+              accountId: account.id,
+              accountToken: account.token,
+              limit: parsed.limit,
+              offset: parsed.offset,
+            });
+            return ctx.json(epIdentityPayload("accountOrderPage", result));
           } catch (err) {
             if (err instanceof AccountOrderReadError) {
               return jsonError(
