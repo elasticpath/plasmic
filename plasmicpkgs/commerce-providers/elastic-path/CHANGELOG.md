@@ -228,7 +228,9 @@ and does not call Elastic Path. A rejection is `account_orders_read_failed`
 with HTTP 502; the upstream status and body are not returned. A session
 account id that is not a canonical UUID fails the same way and does not call
 Elastic Path. A page walk the reader can tell is unfinished or inconsistent
-fails instead of returning a short history. Orders created or removed between
+fails instead of returning a short history. A fractional
+`meta.results.total` is ignored, and the missing-total completion rules
+apply to both the full history and one window. Orders created or removed between
 offset pages can still be duplicated or omitted without detection.
 
 `identity.accountOrderPage({ limit, offset })` and

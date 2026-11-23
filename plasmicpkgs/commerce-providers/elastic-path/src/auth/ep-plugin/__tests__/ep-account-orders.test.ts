@@ -1001,11 +1001,22 @@ describe("reading account order history", () => {
   });
 
   it("stops a short page when the result total is fractional", async () => {
+    expect(Number.isFinite(5.5)).toBe(true);
+    expect(Number.isInteger(5.5)).toBe(false);
     const auth = buildAuth();
     store.accounts = [ACCOUNTS[0]];
     const cookies = await signedIn(auth);
     orderReplies = [
-      { status: 200, body: orderPage(2, NORTH, 3.5) },
+      {
+        status: 200,
+        body: {
+          data: [
+            ownedOrder("order-home", NORTH),
+            ownedOrder("order-foreign", SOUTH),
+          ],
+          meta: { results: { total: 5.5 } },
+        },
+      },
       { status: 200, body: orderPage(100, NORTH, 99999) },
     ];
     orderCalls = [];
@@ -1013,9 +1024,13 @@ describe("reading account order history", () => {
     const { res, body } = await readOrders(auth, cookies);
     expect(res.status).toBe(200);
     expect(orderCalls).toHaveLength(1);
-    expect(body.orders).toHaveLength(2);
-    expect(body.total).toBe(2);
-    expect(JSON.stringify(body)).not.toContain("3.5");
+    expect(body.orders.map((order: { id: string }) => order.id)).toEqual([
+      "order-home",
+    ]);
+    expect(body.total).toBe(1);
+    expect(JSON.stringify(body)).not.toContain("5.5");
+    expect(JSON.stringify(body)).not.toContain(SOUTH);
+    expect(JSON.stringify(body)).not.toContain("order-foreign");
   });
 
   it("stops a short page when the result total is missing", async () => {
@@ -1251,6 +1266,29 @@ describe("reading account order history", () => {
       expect(JSON.stringify(body)).not.toContain(SECRET_STREET);
       expectNoSecrets(body);
     }
+  });
+
+  it("keeps reading full pages when the result total is fractional and stops at the page cap", async () => {
+    const auth = buildAuth();
+    store.accounts = [ACCOUNTS[0]];
+    const cookies = await signedIn(auth);
+    orderReplies = Array.from({ length: 11 }, () => ({
+      status: 200,
+      body: orderPage(100, NORTH, 5.5),
+    }));
+    orderCalls = [];
+
+    const { res, body } = await readOrders(auth, cookies);
+    expect(res.status).toBe(502);
+    expect(body.code).toBe("account_orders_read_failed");
+    expect(body.message).toBe(
+      "Elastic Path did not return the full order history."
+    );
+    expect(body.orders).toBeUndefined();
+    expect(orderCalls).toHaveLength(10);
+    expect(orderCalls[9].offset).toBe("900");
+    expect(JSON.stringify(body)).not.toContain("5.5");
+    expectNoSecrets(body);
   });
 
   it("fails ten full pages when no result total is reported", async () => {
