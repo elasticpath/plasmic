@@ -1000,6 +1000,24 @@ describe("reading account order history", () => {
     expect(body.total).toBe(102);
   });
 
+  it("stops a short page when the result total is fractional", async () => {
+    const auth = buildAuth();
+    store.accounts = [ACCOUNTS[0]];
+    const cookies = await signedIn(auth);
+    orderReplies = [
+      { status: 200, body: orderPage(2, NORTH, 3.5) },
+      { status: 200, body: orderPage(100, NORTH, 99999) },
+    ];
+    orderCalls = [];
+
+    const { res, body } = await readOrders(auth, cookies);
+    expect(res.status).toBe(200);
+    expect(orderCalls).toHaveLength(1);
+    expect(body.orders).toHaveLength(2);
+    expect(body.total).toBe(2);
+    expect(JSON.stringify(body)).not.toContain("3.5");
+  });
+
   it("stops a short page when the result total is missing", async () => {
     const auth = buildAuth();
     store.accounts = [ACCOUNTS[0]];
@@ -1614,6 +1632,7 @@ describe("reading one account order page", () => {
     ["a string", "10"],
     ["negative", -1],
     ["NaN", Number.NaN],
+    ["a fraction", 3.5],
   ] as const)("treats %s total as missing", async (_label, total) => {
     const { auth, cookies } = await signedSelected();
     orderReplies = [
@@ -1632,6 +1651,50 @@ describe("reading one account order page", () => {
     expect(res.status).toBe(200);
     expect(body.page.hasNextPage).toBe(false);
     expect(JSON.stringify(body)).not.toContain("order-1-secret");
+  });
+
+  it("enables next on a full page when the total is fractional", async () => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [{ status: 200, body: orderPage(10, NORTH, 9.5) }];
+
+    const { res, body } = await readOrderPage(auth, cookies, {
+      limit: 10,
+      offset: 0,
+    });
+    expect(res.status).toBe(200);
+    expect(body.orders).toHaveLength(10);
+    expect(body.page).toEqual({
+      limit: 10,
+      offset: 0,
+      hasNextPage: true,
+      hasPreviousPage: false,
+    });
+    expect(JSON.stringify(body)).not.toContain("9.5");
+  });
+
+  it("accepts an empty page when the total is fractional", async () => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [
+      { status: 200, body: { data: [], meta: { results: { total: 3.5 } } } },
+      { status: 200, body: orderPage(10, NORTH, 40) },
+    ];
+    const { res, body } = await readOrderPage(auth, cookies, {
+      limit: 10,
+      offset: 0,
+    });
+    expect(res.status).toBe(200);
+    expect(orderCalls).toHaveLength(1);
+    expect(body).toEqual({
+      orders: [],
+      total: 0,
+      page: {
+        limit: 10,
+        offset: 0,
+        hasNextPage: false,
+        hasPreviousPage: false,
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain("3.5");
   });
 
   it("fails an empty page when the total still claims rows", async () => {

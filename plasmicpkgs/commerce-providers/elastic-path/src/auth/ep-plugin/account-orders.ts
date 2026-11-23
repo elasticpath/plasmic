@@ -167,7 +167,7 @@ export function toAccountOrder(
   return order;
 }
 
-/** A usable `meta.results.total`, or undefined when the page did not report one. */
+/** A usable `meta.results.total` is a nonnegative integer. */
 function reportedTotal(meta: unknown): number | undefined {
   const results =
     meta && typeof meta === "object"
@@ -175,7 +175,11 @@ function reportedTotal(meta: unknown): number | undefined {
       : undefined;
   const reported =
     results && typeof results === "object" ? results.total : undefined;
-  if (typeof reported !== "number" || !Number.isFinite(reported) || reported < 0) {
+  if (
+    typeof reported !== "number" ||
+    !Number.isInteger(reported) ||
+    reported < 0
+  ) {
     return undefined;
   }
   return reported;

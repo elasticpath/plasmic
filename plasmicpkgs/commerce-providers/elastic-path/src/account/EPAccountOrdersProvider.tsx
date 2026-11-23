@@ -346,7 +346,7 @@ export const epAccountOrdersProviderMeta: CodeComponentMeta<EPAccountOrdersProvi
         displayName: "Preview State",
         advanced: true,
         description:
-          "Studio only. Without Page Size, auto shows two sample orders and the page states do the same. With a Page Size from 1 to 100, auto and first page show the first window, middle page shows the next, and last page shows a final window. An invalid Page Size publishes invalid_page_size and ignores Preview State. The canvas does not read order history. Published pages ignore this and follow the selected account.",
+          "Studio only. Without Page Size, auto shows two sample orders and the page states do the same. With a Page Size from 1 to 100, auto, first page, and with orders show the first window, middle page shows the next, and last page shows a final window. Empty keeps the page position and shows no orders. An invalid Page Size publishes invalid_page_size and ignores Preview State, including the account and session states. Next, previous, and retry do not read orders on the canvas. Published pages ignore this and follow the selected account.",
       },
     },
     providesData: true,

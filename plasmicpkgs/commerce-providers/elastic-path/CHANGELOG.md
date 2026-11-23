@@ -258,8 +258,11 @@ missing value is empty, and
 `$ctx.currentAccountOrder.id` stays available for a detail link. A full read
 with rows is `ready`; a full read with no orders is `empty`. No selected
 organisation is `no_selected_account`, a lapsed organisation is
-`account_lapsed`, and no account member is `no_account_member`. Studio Preview
-State is canvas only.
+`account_lapsed`, and no account member is `no_account_member`. An invalid
+Page Size takes precedence over those display errors. Studio Preview State
+is canvas only. With a Page Size, `withOrders` shows the first fixture
+window, and `empty` keeps page metadata so the position stays visible.
+Canvas next, previous, and retry do not read orders.
 
 `EP Account Address Provider`, `EP Account Address List`, and `EP Account
 Address Field` display that result. The provider sits inside EP Account
