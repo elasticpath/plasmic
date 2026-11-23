@@ -1,26 +1,27 @@
+import { TagName } from "@/wab/shared/html";
 import type { Expr } from "@/wab/shared/model/classes";
 import { CSSProperties } from "react";
-import {
-  BaseEditor,
-  Descendant,
-  Editor,
-  Element,
-  Node,
-  Point,
-  Range,
-  Text,
-  Transforms,
-} from "slate";
-import type { ReactEditor } from "slate-react";
+import * as slate from "slate";
+import * as slateDom from "slate-dom";
+import type { HistoryEditor } from "slate-history";
+import * as slateReact from "slate-react";
 import type { MakeADT } from "ts-adt/MakeADT";
 
+interface SlateLibs {
+  slate: typeof slate;
+  slateDom: typeof slateDom;
+  slateReact: typeof slateReact;
+}
+
+const defaultLibs: SlateLibs = { slate, slateDom, slateReact };
+
 type ParagraphAttributes = {
-  children: Descendant[];
+  children: slate.Descendant[];
 };
 
 type TplTagAttributes = {
-  tag: (typeof tags)[number];
-  children: Descendant[];
+  tag: TagName;
+  children: slate.Descendant[];
   uuid?: string;
   attributes?: Record<string, string>;
 };
@@ -30,35 +31,45 @@ type TplTagExprTextAttributes = TplTagAttributes & {
   html: boolean;
 };
 
+/**
+ * A `@`-mention chip
+ */
+type MentionAttributes = {
+  /** The raw text the mention serializes to between `@<` and `>` */
+  raw: string;
+  /** Always a single empty text node: the element is void. */
+  children: slate.Descendant[];
+};
+
 type CustomElement = MakeADT<
   "type",
   {
     paragraph: ParagraphAttributes;
     TplTag: TplTagAttributes;
     TplTagExprText: TplTagExprTextAttributes;
+    mention: MentionAttributes;
   }
 >;
 type CustomText = { text: string } & CSSProperties;
 export type TplTagElement = Record<"type", "TplTag"> & TplTagAttributes;
 export type ParagraphElement = Record<"type", "paragraph"> &
   ParagraphAttributes;
-export type TplTagExprTextElement = Record<"type", "TplTagExprText"> &
-  TplTagExprTextAttributes;
+export type MentionElement = Record<"type", "mention"> & MentionAttributes;
 
 declare module "slate" {
   interface CustomTypes {
-    Editor: BaseEditor & ReactEditor;
+    Editor: slate.BaseEditor & slateReact.ReactEditor & HistoryEditor;
     Element: CustomElement;
     Text: CustomText;
   }
 }
 
 export function mkTplTagElement(
-  tag: (typeof tags)[number],
+  uuid: string,
+  tag: TagName,
   attributes: Record<string, string>,
-  children: Descendant[],
-  uuid?: string
-): Element {
+  children: slate.Descendant[],
+): slate.Element {
   return {
     type: "TplTag",
     tag,
@@ -74,23 +85,26 @@ export function mkTplTagElement(
  * https://docs.slatejs.org/walkthroughs/06-saving-to-a-database
  */
 export function resetNodes(
-  editor: Editor,
+  editor: slate.Editor,
   options: {
-    nodes?: Node | Node[];
-    at?: Location;
-  } = {}
+    nodes?: slate.Node | slate.Node[];
+    at?: slate.Location;
+  } = {},
+  libs: SlateLibs = defaultLibs,
 ): void {
+  const { Editor, Node, Point, Transforms } = libs.slate;
+
   const children = [...editor.children];
 
   children.forEach((node) =>
-    editor.apply({ type: "remove_node", path: [0], node })
+    editor.apply({ type: "remove_node", path: [0], node }),
   );
 
   if (options.nodes) {
     const nodes = Node.isNode(options.nodes) ? [options.nodes] : options.nodes;
 
     nodes.forEach((node, i) =>
-      editor.apply({ type: "insert_node", path: [i], node: node })
+      editor.apply({ type: "insert_node", path: [i], node: node }),
     );
   }
 
@@ -113,7 +127,12 @@ export function resetNodes(
  * Editor.marks() at both [1] and [2] would return no marks.
  * marksForToolbar() correctly returns no marks for [1] and bold for [2].
  */
-export function marksForToolbar(editor: Editor): Omit<Text, "text"> | null {
+export function marksForToolbar(
+  editor: slate.Editor,
+  libs: SlateLibs = defaultLibs,
+): Omit<slate.Text, "text"> | null {
+  const { Editor, Node, Range } = libs.slate;
+
   // When the user toggles a mark on the toolbar without typing anything yet,
   // this might be set.
   if (editor.marks) {
@@ -130,187 +149,74 @@ export function marksForToolbar(editor: Editor): Omit<Text, "text"> | null {
   }
   const [leaf] = Editor.leaf(editor, editor.selection.anchor.path);
   const { text: _text, ...leafMarks } = leaf;
-  return leafMarks as Omit<Text, "text">;
+  return leafMarks as Omit<slate.Text, "text">;
 }
 
-export const tags = [
-  // HTML
-  "a",
-  "abbr",
-  "address",
-  "area",
-  "article",
-  "aside",
-  "audio",
-  "b",
-  "base",
-  "bdi",
-  "bdo",
-  "big",
-  "blockquote",
-  "body",
-  "br",
-  "button",
-  "canvas",
-  "caption",
-  "cite",
-  "code",
-  "col",
-  "colgroup",
-  "data",
-  "datalist",
-  "dd",
-  "del",
-  "details",
-  "dfn",
-  "dialog",
-  "div",
-  "dl",
-  "dt",
-  "em",
-  "embed",
-  "fieldset",
-  "figcaption",
-  "figure",
-  "footer",
-  "form",
-  "h1",
-  "h2",
-  "h3",
-  "h4",
-  "h5",
-  "h6",
-  "head",
-  "header",
-  "hgroup",
-  "hr",
-  "html",
-  "i",
-  "iframe",
-  "img",
-  "input",
-  "ins",
-  "kbd",
-  "keygen",
-  "label",
-  "legend",
-  "li",
-  "link",
-  "main",
-  "map",
-  "mark",
-  "menu",
-  "menuitem",
-  "meta",
-  "meter",
-  "nav",
-  "noindex",
-  "noscript",
-  "object",
-  "ol",
-  "optgroup",
-  "option",
-  "output",
-  "p",
-  "param",
-  "picture",
-  "pre",
-  "progress",
-  "q",
-  "rp",
-  "rt",
-  "ruby",
-  "s",
-  "samp",
-  "slot",
-  "script",
-  "section",
-  "select",
-  "small",
-  "source",
-  "span",
-  "strong",
-  "style",
-  "sub",
-  "summary",
-  "sup",
-  "table",
-  "template",
-  "tbody",
-  "td",
-  "textarea",
-  "tfoot",
-  "th",
-  "thead",
-  "time",
-  "title",
-  "tr",
-  "track",
-  "u",
-  "ul",
-  "var",
-  "video",
-  "wbr",
-  "webview",
+/**
+ * Copies the browser's selection into `editor.selection`.
+ *
+ * Slate throttles selectionchange handling, so its selection can lag
+ * behind the DOM when a keydown handler runs. Call this before reading
+ * the selection or editing based on it.
+ *
+ * For keydown handlers, only sync when the handler consumes the key.
+ * Otherwise, the browser may move the caret afterward, and Slate's
+ * resulting render can restore the earlier selection.
+ */
+export function syncSlateSelectionFromDom(
+  editor: slate.Editor,
+  libs: SlateLibs = defaultLibs,
+): void {
+  const { Range, Transforms } = libs.slate;
+  const { IS_NODE_MAP_DIRTY } = libs.slateDom;
+  const { ReactEditor } = libs.slateReact;
 
-  // SVG
-  "svg",
+  if (
+    !ReactEditor.isFocused(editor) ||
+    ReactEditor.isComposing(editor) ||
+    // Pending operations haven't rendered yet, so DOM offsets don't map onto
+    // the model. The model is already ahead of the DOM in that case.
+    IS_NODE_MAP_DIRTY.get(editor)
+  ) {
+    return;
+  }
+  const domSelection = ReactEditor.getWindow(editor).getSelection();
+  if (
+    !domSelection ||
+    domSelection.rangeCount === 0 ||
+    !ReactEditor.hasEditableTarget(editor, domSelection.anchorNode) ||
+    !ReactEditor.hasTarget(editor, domSelection.focusNode)
+  ) {
+    return;
+  }
+  const range = ReactEditor.toSlateRange(editor, domSelection, {
+    exactMatch: false,
+    suppressThrow: true,
+  });
+  if (range && !(editor.selection && Range.equals(range, editor.selection))) {
+    Transforms.select(editor, range);
+  }
+}
 
-  "animate",
-  "animateMotion",
-  "animateTransform",
-  "circle",
-  "clipPath",
-  "defs",
-  "desc",
-  "ellipse",
-  "feBlend",
-  "feColorMatrix",
-  "feComponentTransfer",
-  "feComposite",
-  "feConvolveMatrix",
-  "feDiffuseLighting",
-  "feDisplacementMap",
-  "feDistantLight",
-  "feDropShadow",
-  "feFlood",
-  "feFuncA",
-  "feFuncB",
-  "feFuncG",
-  "feFuncR",
-  "feGaussianBlur",
-  "feImage",
-  "feMerge",
-  "feMergeNode",
-  "feMorphology",
-  "feOffset",
-  "fePointLight",
-  "feSpecularLighting",
-  "feSpotLight",
-  "feTile",
-  "feTurbulence",
-  "filter",
-  "foreignObject",
-  "g",
-  "image",
-  "line",
-  "linearGradient",
-  "marker",
-  "mask",
-  "metadata",
-  "mpath",
-  "path",
-  "pattern",
-  "polygon",
-  "polyline",
-  "radialGradient",
-  "rect",
-  "stop",
-  "switch",
-  "symbol",
-  "text",
-  "textPath",
-  "tspan",
-  "use",
-  "view",
-] as const;
+/**
+ * Focuses the editor and sets the selection.
+ *
+ * This is useful because just `ReactEditor.focus(editor)` selects the start of
+ * the document.
+ */
+export function focusSlateEditor(
+  editor: slate.Editor,
+  select: "all" | "end",
+  libs: SlateLibs = defaultLibs,
+): void {
+  const { Editor, Transforms } = libs.slate;
+  const { ReactEditor } = libs.slateReact;
+
+  ReactEditor.focus(editor);
+
+  const end = Editor.end(editor, []);
+  Transforms.select(
+    editor,
+    select === "all" ? { anchor: Editor.start(editor, []), focus: end } : end,
+  );
+}

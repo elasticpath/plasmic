@@ -1,8 +1,12 @@
-import { unexpected } from "@/wab/shared/common";
+import {
+  getExpectedValuesForVariantGroup,
+  resolveVariantGroupValue,
+} from "@/wab/shared/Variants";
+import { ensure, unexpected } from "@/wab/shared/common";
 import { StateAccessType, StateVariableType } from "@/wab/shared/core/states";
 import { exprUsesDollarVars } from "@/wab/shared/eval/expression-parser";
-import { Expr } from "@/wab/shared/model/classes";
-import { isArray, isBoolean, isNumber, isPlainObject, isString } from "lodash";
+import { Expr, VariantGroup } from "@/wab/shared/model/classes";
+import { isArray, isPlainObject } from "lodash";
 
 /**
  * Checks that a JSON initial value is compatible with the state's variable
@@ -10,33 +14,57 @@ import { isArray, isBoolean, isNumber, isPlainObject, isString } from "lodash";
  */
 export function validateStateInitialValue(
   variableType: StateVariableType,
-  value: unknown
+  value: unknown,
+  group?: VariantGroup,
 ): string | undefined {
-  const validateType = () => {
-    switch (variableType) {
-      case "text":
-      case "dateString":
-        return isString(value);
-      case "number":
-        return isNumber(value);
-      case "boolean":
-        return isBoolean(value);
-      case "array":
-        return isArray(value);
-      case "object":
-        return isPlainObject(value);
-      case "dateRangeStrings":
-        return isArray(value) && value.every((v) => isString(v));
-      default:
-        unexpected(`unexpected variable type: ${variableType}`);
-    }
-  };
+  const typeError = () =>
+    `Initial value ${JSON.stringify(
+      value,
+    )} is not valid for a "${variableType}" state.`;
+  switch (variableType) {
+    case "text":
+    case "dateString":
+      return typeof value === "string" ? undefined : typeError();
+    case "number":
+      return typeof value === "number" ? undefined : typeError();
+    case "boolean":
+      return typeof value === "boolean" ? undefined : typeError();
+    case "array":
+      return isArray(value) ? undefined : typeError();
+    case "object":
+      return isPlainObject(value) ? undefined : typeError();
+    case "dateRangeStrings":
+      return isArray(value) && value.every((v) => typeof v === "string")
+        ? undefined
+        : typeError();
+    case "variant":
+      return validateVariantGroupInitialValue(
+        ensure(
+          group,
+          "a variant group is required to validate a variant-typed state",
+        ),
+        value,
+      );
+    default:
+      unexpected(`unexpected variable type: ${variableType}`);
+  }
+}
 
-  return validateType()
-    ? undefined
-    : `Initial value ${JSON.stringify(
-        value
-      )} is not valid for a "${variableType}" state.`;
+function validateVariantGroupInitialValue(
+  group: VariantGroup,
+  value: unknown,
+): string | undefined {
+  const { unknownValues } = resolveVariantGroupValue(group, value);
+  if (unknownValues.length === 0) {
+    return undefined;
+  }
+  return `Initial value refers to ${unknownValues
+    .map((v) => JSON.stringify(v))
+    .join(", ")}, which ${
+    unknownValues.length === 1 ? "is not a variant" : "are not variants"
+  } of group "${
+    group.param.variable.name
+  }"; expected values: ${getExpectedValuesForVariantGroup(group)}.`;
 }
 
 /**
@@ -48,7 +76,7 @@ export function validateStateInitialValue(
  */
 export function validateStateAccessType(
   accessType: StateAccessType,
-  initialValueExpr: Expr | null | undefined
+  initialValueExpr: Expr | null | undefined,
 ): string | undefined {
   return accessType === "writable" &&
     initialValueExpr &&

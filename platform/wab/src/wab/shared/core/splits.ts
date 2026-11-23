@@ -1,4 +1,4 @@
-import { mkShortId, removeWhere, switchType } from "@/wab/shared/common";
+import { mkShortId, switchType } from "@/wab/shared/common";
 import {
   ComponentSwapSplitContent,
   ComponentVariantSplitContent,
@@ -71,12 +71,13 @@ export function mkGlobalVariantSplit(opts: {
 
   const slices = getDefaultSlices(type);
 
-  slices[1].contents.push(
+  slices[1].contents = [
+    ...slices[1].contents,
     new GlobalVariantSplitContent({
       group,
       variant,
-    })
-  );
+    }),
+  ];
 
   return new Split({
     uuid: mkShortId(),
@@ -91,14 +92,14 @@ export function mkGlobalVariantSplit(opts: {
 }
 
 export function removeVariantGroupFromSplits(site: Site, group: VariantGroup) {
-  removeWhere(site.splits, (split) => {
-    return split.slices.some((slice) => {
+  site.splits = site.splits.filter((split) => {
+    return !split.slices.some((slice) => {
       return slice.contents.some((content) => {
         return switchType(content)
           .when(ComponentSwapSplitContent, () => false)
           .when(
             [GlobalVariantSplitContent, ComponentVariantSplitContent],
-            (variantContent) => variantContent.group === group
+            (variantContent) => variantContent.group === group,
           )
           .result();
       });
@@ -108,7 +109,7 @@ export function removeVariantGroupFromSplits(site: Site, group: VariantGroup) {
 
 export function isGlobalVariantGroupUsedInSplits(
   site: Site,
-  group: VariantGroup
+  group: VariantGroup,
 ) {
   return site.splits.some((split) =>
     split.slices.some((slice) =>
@@ -116,11 +117,11 @@ export function isGlobalVariantGroupUsedInSplits(
         switchType(content)
           .when(
             GlobalVariantSplitContent,
-            (variantContent) => variantContent.group === group
+            (variantContent) => variantContent.group === group,
           )
-          .elseUnsafe(() => false)
-      )
-    )
+          .elseUnsafe(() => false),
+      ),
+    ),
   );
 }
 

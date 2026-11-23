@@ -1,0 +1,740 @@
+import { unwrap } from "@/wab/commons/neverthrow-utils";
+import { parseMasterPkg } from "@/wab/server/pkg-mgr";
+import { TplMgr } from "@/wab/shared/TplMgr";
+import { FastBundler } from "@/wab/shared/bundler";
+import {
+  CodeComponentSyncCallbackFns,
+  CodeComponentsRegistry,
+  CustomFunctionParam,
+  UnknownComponentError,
+  _testonly,
+  applyCustomFunctionChanges,
+  componentMetaToComponentParams,
+  createCustomFunctionFromRegistration,
+  getNewProps,
+  makePlumeComponentMeta,
+  mkCodeComponent,
+  parseStyles,
+  propTypeToWabType,
+  registeredFunctionId,
+} from "@/wab/shared/code-components/code-components";
+import {
+  mkComponentWithQueries,
+  mkServerQuery,
+} from "@/wab/shared/codegen/react-p/server-queries/__testonly__/test-utils";
+import { arrayWithout } from "@/wab/shared/collections";
+import { mkShortId, only, uncheckedCast } from "@/wab/shared/common";
+import { PlumeComponent } from "@/wab/shared/core/components";
+import { codeLit } from "@/wab/shared/core/exprs";
+import { syncGlobalContexts } from "@/wab/shared/core/project-deps";
+import { createSite } from "@/wab/shared/core/sites";
+import { unbundleSite } from "@/wab/shared/core/tagged-unbundle";
+import {
+  Component,
+  CustomFunction,
+  CustomFunctionExpr,
+  FunctionArg,
+  HostLessPackageInfo,
+  ProjectDependency,
+  PropParam,
+  Site,
+  StateChangeHandlerParam,
+  StateParam,
+} from "@/wab/shared/model/classes";
+import { instFieldValues } from "@/wab/shared/model/model-meta";
+import type {
+  CustomFunctionRegistration,
+  GlobalContextMeta,
+} from "@plasmicapp/host";
+import type { CodeComponentMeta } from "@plasmicapp/host/registerComponent";
+import { ok } from "neverthrow";
+import React from "react";
+
+const { addNewRegisteredComponents, findDuplicateAriaParams } = _testonly;
+
+describe("code-components", () => {
+  // Unbundle plume-master-pkg.json and pick out TextInput
+  // plus some of its interesting params to test.
+  let plumeComponent: PlumeComponent;
+  let plumeNameParam: PropParam;
+  let plumeValueParam: StateParam;
+  let plumeOnChangeParam: PropParam;
+  let plumeIsDisabledParam: StateParam;
+  let plumeOnIsDisabledChangeParam: StateChangeHandlerParam;
+  let plumeAriaLabelParam: PropParam;
+  let plumeAriaLabelledByParam: PropParam;
+
+  // These come from the Plume plugin system
+  let plumePluginComponentMeta: CodeComponentMeta<unknown>;
+
+  let site: Site;
+
+  beforeEach(() => {
+    const {
+      master: [projectId, bundle],
+    } = parseMasterPkg("plume");
+    const unbundled = unbundleSite(new FastBundler(), projectId, bundle, []);
+    const plumeSite = unbundled.site;
+    expect(unbundled.depPkgs).toBeEmpty();
+    plumeComponent = plumeSite.components.find(
+      (c) => c.name === "TextInput",
+    ) as PlumeComponent;
+    expect(plumeComponent).toBeInstanceOf(Component);
+    expect(plumeComponent.plumeInfo).toBeDefined();
+    plumeNameParam = plumeComponent.params.find(
+      (p) => p.variable.name === "name",
+    ) as PropParam;
+    expect(plumeNameParam).toBeInstanceOf(PropParam);
+    plumeValueParam = plumeComponent.params.find(
+      (p) => p.variable.name === "value",
+    ) as StateParam;
+    expect(plumeValueParam).toBeInstanceOf(StateParam);
+    plumeOnChangeParam = plumeComponent.params.find(
+      (p) => p.variable.name === "onChange",
+    ) as PropParam;
+    expect(plumeOnChangeParam).toBeInstanceOf(PropParam);
+    plumeIsDisabledParam = plumeComponent.params.find(
+      (p) => p.variable.name === "Is Disabled",
+    ) as StateParam;
+    expect(plumeIsDisabledParam).toBeInstanceOf(StateParam);
+    plumeOnIsDisabledChangeParam = plumeComponent.params.find(
+      (p) => p.variable.name === "On Is Disabled change",
+    ) as StateChangeHandlerParam;
+    expect(plumeOnIsDisabledChangeParam).toBeInstanceOf(
+      StateChangeHandlerParam,
+    );
+    plumeAriaLabelParam = plumeComponent.params.find(
+      (p) => p.variable.name === "aria-label",
+    ) as PropParam;
+    expect(plumeAriaLabelParam).toBeInstanceOf(PropParam);
+    plumeAriaLabelledByParam = plumeComponent.params.find(
+      (p) => p.variable.name === "aria-labelledby",
+    ) as PropParam;
+    expect(plumeAriaLabelledByParam).toBeInstanceOf(PropParam);
+
+    plumePluginComponentMeta = makePlumeComponentMeta(plumeComponent);
+    expect(Object.keys(plumePluginComponentMeta.props)).toEqual([
+      "value",
+      "name",
+      "aria-label",
+      "aria-labelledby",
+      "onChange",
+      "type",
+    ]);
+
+    site = createSite();
+    site.components = [...site.components, plumeComponent];
+  });
+
+  describe("getNewProps", () => {
+    it("returns no params for the full component", () => {
+      const paramNames = unwrap(
+        getNewProps(site, plumeComponent, plumePluginComponentMeta),
+      ).newProps.map((p) => p.variable.name);
+      expect(paramNames).toBeEmpty();
+    });
+    it("returns all params for a component with no params", () => {
+      plumeComponent.params = [];
+      const paramNames = unwrap(
+        getNewProps(site, plumeComponent, plumePluginComponentMeta),
+      ).newProps.map((p) => p.variable.name);
+      expect(paramNames).toEqual([
+        "value",
+        "name",
+        "aria-label",
+        "aria-labelledby",
+        "onChange",
+        "type",
+      ]);
+    });
+    it("returns missing params", () => {
+      plumeComponent.params = arrayWithout(
+        plumeComponent.params,
+        plumeValueParam,
+      );
+      plumeComponent.params = arrayWithout(
+        plumeComponent.params,
+        plumeAriaLabelParam,
+      );
+      const paramNames = unwrap(
+        getNewProps(site, plumeComponent, plumePluginComponentMeta),
+      ).newProps.map((p) => p.variable.name);
+      expect(paramNames).toEqual(["value", "aria-label"]);
+    });
+  });
+
+  describe("findDuplicateAriaParams", () => {
+    it("returns empty array for 0 params", () => {
+      plumeComponent.params = arrayWithout(
+        plumeComponent.params,
+        plumeAriaLabelParam,
+      );
+      plumeComponent.params = arrayWithout(
+        plumeComponent.params,
+        plumeAriaLabelledByParam,
+      );
+      expect(findDuplicateAriaParams(plumeComponent)).toBeEmpty();
+    });
+    it("returns empty array for 1 params", () => {
+      expect(plumeComponent.params).toContain(plumeAriaLabelParam);
+      expect(plumeComponent.params).toContain(plumeAriaLabelledByParam);
+      expect(findDuplicateAriaParams(plumeComponent)).toBeEmpty();
+    });
+    it("returns the param with higher uid for 2 params", () => {
+      const dupAriaLabelParam = new PropParam(
+        instFieldValues(plumeAriaLabelParam),
+      );
+      const dupAriaLabelledByParam = new PropParam(
+        instFieldValues(plumeAriaLabelledByParam),
+      );
+      plumeComponent.params = [
+        ...plumeComponent.params,
+        dupAriaLabelParam,
+        dupAriaLabelledByParam,
+      ];
+      expect(findDuplicateAriaParams(plumeComponent)).toEqual([
+        dupAriaLabelParam,
+        dupAriaLabelledByParam,
+      ]);
+      expect(dupAriaLabelParam.uid).toBeGreaterThan(plumeAriaLabelParam.uid);
+      expect(dupAriaLabelledByParam.uid).toBeGreaterThan(
+        plumeAriaLabelledByParam.uid,
+      );
+    });
+    it("returns the params with 2 highest uids for 3 params", () => {
+      const dupAriaLabelParams = [
+        new PropParam(instFieldValues(plumeAriaLabelParam)),
+        new PropParam(instFieldValues(plumeAriaLabelParam)),
+      ];
+      const dupAriaLabelledByParams = [
+        new PropParam(instFieldValues(plumeAriaLabelledByParam)),
+        new PropParam(instFieldValues(plumeAriaLabelledByParam)),
+      ];
+      plumeComponent.params = [
+        ...plumeComponent.params,
+        ...dupAriaLabelParams,
+        ...dupAriaLabelledByParams,
+      ];
+      expect(findDuplicateAriaParams(plumeComponent)).toEqual([
+        ...dupAriaLabelParams,
+        ...dupAriaLabelledByParams,
+      ]);
+      expect(
+        dupAriaLabelParams.every((p) => p.uid > plumeAriaLabelParam.uid),
+      ).toBeTrue();
+      expect(
+        dupAriaLabelledByParams.every(
+          (p) => p.uid > plumeAriaLabelledByParam.uid,
+        ),
+      ).toBeTrue();
+    });
+  });
+});
+
+describe("parseStyles", () => {
+  it("cycles transition lists without rewriting timing functions", () => {
+    expect(
+      parseStyles(
+        {
+          transitionProperty: " opacity , transform, filter ",
+          transitionTimingFunction:
+            "cubic-bezier(0.1,  0.2, 0.3, 1), steps(4, jump-end)",
+          transitionDuration: "100ms, 200ms",
+        },
+        "component",
+        {},
+      ),
+    ).toEqual({
+      styles: {
+        "transition-property": "opacity, transform, filter",
+        "transition-timing-function":
+          "cubic-bezier(0.1,  0.2, 0.3, 1), steps(4, jump-end), cubic-bezier(0.1,  0.2, 0.3, 1)",
+        "transition-duration": "100ms, 200ms, 100ms",
+        "transition-delay": "0s, 0s, 0s",
+      },
+      warnings: [],
+    });
+  });
+
+  it("cycles background longhands across images with quoted commas", () => {
+    expect(
+      parseStyles(
+        {
+          backgroundImage:
+            'url("one, image.png"), url("two.png"), url("three.png")',
+          backgroundPosition: "left top, right bottom",
+          backgroundRepeat: "no-repeat",
+        },
+        "component",
+        {},
+      ),
+    ).toEqual({
+      styles: {
+        background:
+          'url("one, image.png") left top no-repeat, url("two.png") right bottom no-repeat, url("three.png") left top no-repeat',
+      },
+      warnings: [],
+    });
+  });
+});
+
+describe("addNewRegisteredComponents", () => {
+  const meta = {
+    name: "AuthContext",
+    importPath: "",
+    props: { domain: "string" },
+    __isContext: true,
+  } as unknown as GlobalContextMeta<any>;
+
+  function mkCtx(
+    site: Site,
+    tplMgr: TplMgr,
+  ): Parameters<typeof addNewRegisteredComponents>[0] {
+    return {
+      site,
+      codeComponentsRegistry: new CodeComponentsRegistry(
+        uncheckedCast<Window>({
+          __PlasmicContextRegistry: [{ component: () => null, meta }],
+        }),
+        {},
+      ),
+      change: async (f) => f(),
+      getRootSubReact: () => {
+        throw new Error("unused");
+      },
+      tplMgr: () => tplMgr,
+      getPlumeSite: () => undefined,
+    };
+  }
+
+  it("adds a global context entry for a new context", async () => {
+    const site = createSite();
+    const tplMgr = new TplMgr({ site });
+    const newComponents = (
+      await addNewRegisteredComponents(mkCtx(site, tplMgr), {} as any)
+    )._unsafeUnwrap();
+
+    const context = only(newComponents);
+    expect(site.components).toContain(context);
+    expect(context.params.map((p) => p.variable.name)).toContain("domain");
+    const tpl = only(site.globalContexts);
+    expect(tpl.component).toBe(context);
+    expect(only(tpl.vsettings).args).toEqual([]);
+  });
+
+  it("takes over a dependency's global context entry and keeps its args", async () => {
+    const depSite = createSite();
+    const depContext = mkCodeComponent(meta.name, meta, {});
+    depContext.params = componentMetaToComponentParams(
+      depSite,
+      meta,
+    )._unsafeUnwrap();
+    new TplMgr({ site: depSite }).attachComponent(depContext);
+    const dep = new ProjectDependency({
+      name: "Lib",
+      pkgId: "lib-pkg-id",
+      projectId: "lib-project-id",
+      version: "0.0.1",
+      uuid: "lib-uuid",
+      site: depSite,
+    });
+
+    const site = createSite({ projectDependencies: [dep] });
+    const tplMgr = new TplMgr({ site });
+    syncGlobalContexts(dep, site);
+    const tpl = only(site.globalContexts);
+    const domainParam = only(
+      depContext.params.filter((p) => p.variable.name === "domain"),
+    );
+    tplMgr.setArg(
+      tpl,
+      only(tpl.vsettings),
+      domainParam.variable,
+      codeLit("example.com"),
+    );
+
+    const newComponents = (
+      await addNewRegisteredComponents(mkCtx(site, tplMgr), {} as any)
+    )._unsafeUnwrap();
+
+    const siteContext = only(newComponents);
+    expect(site.globalContexts).toEqual([tpl]);
+    expect(tpl.component).toBe(siteContext);
+    const arg = only(only(tpl.vsettings).args);
+    expect(siteContext.params).toContain(arg.param);
+    expect(arg.param.variable.name).toBe("domain");
+    expect(arg.expr).toMatchObject({ code: '"example.com"' });
+  });
+});
+
+describe("propTypeToWabType", () => {
+  let site: Site;
+  beforeEach(() => {
+    site = createSite();
+    site.components = [
+      ...site.components,
+      mkCodeComponent(
+        "MyComponent",
+        { name: "MyComponent", importPath: "./my-component", props: {} },
+        {},
+      ),
+    ];
+  });
+
+  it("converts a string prop type", () => {
+    const result = propTypeToWabType(site, "string");
+    expect(result._unsafeUnwrap().name).toBe("text");
+  });
+
+  it.each([
+    ["slot", "renderable"],
+    ["object", "any"],
+    ["imageUrl", "img"],
+  ] as const)("converts the %s shorthand to %s", (propType, expected) => {
+    expect(propTypeToWabType(site, propType)._unsafeUnwrap().name).toBe(
+      expected,
+    );
+  });
+
+  it("converts a slot with known allowedComponents", () => {
+    const result = propTypeToWabType(site, {
+      type: "slot",
+      allowedComponents: ["MyComponent"],
+    });
+    const type = result._unsafeUnwrap();
+    expect(type.name).toBe("renderable");
+    expect((type as any).params.map((p: any) => p.component.name)).toEqual([
+      "MyComponent",
+    ]);
+  });
+
+  it("returns an error for a slot with unknown allowedComponents", () => {
+    const result = propTypeToWabType(site, {
+      type: "slot",
+      allowedComponents: ["MyComponent", "UnknownComponent"],
+    });
+    const error = result._unsafeUnwrapErr();
+    expect(error).toBeInstanceOf(UnknownComponentError);
+    expect(error.componentName).toBe("UnknownComponent");
+    expect(error.message).toBe(
+      'Slot allowedComponents references unknown code component "UnknownComponent". If it comes from a @plasmicpkgs/* package, update your @plasmicpkgs/* packages to the latest version.',
+    );
+  });
+
+  it("converts a slot with renderPropParams to a render function", () => {
+    const result = propTypeToWabType(site, {
+      type: "slot",
+      allowedComponents: ["MyComponent"],
+      renderPropParams: ["item", "index"],
+    });
+    expect(result._unsafeUnwrap()).toMatchObject({
+      name: "renderFunc",
+      params: [{ argName: "item" }, { argName: "index" }],
+      allowed: [{ component: { name: "MyComponent" } }],
+    });
+  });
+
+  it.each([
+    [true, "multiChoice"],
+    [false, "choice"],
+    [undefined, "choice"],
+    [() => true, "choice"],
+  ])("converts a choice with multiSelect=%s to %s", (multiSelect, expected) => {
+    const result = propTypeToWabType(site, {
+      type: "choice",
+      options: ["a", "b"],
+      multiSelect,
+    });
+    expect(result._unsafeUnwrap()).toMatchObject({
+      name: expected,
+      options: ["a", "b"],
+    });
+  });
+});
+
+describe("custom function sync", () => {
+  const registration = (
+    name: string,
+    params: CustomFunctionParam[] = [
+      { name: "keep", type: "string" },
+      { name: "obsolete", type: "number" },
+    ],
+  ): CustomFunctionRegistration => ({
+    function: () => undefined,
+    meta: {
+      name,
+      importPath: "./functions",
+      // The registry erases the concrete function signature; these fixtures
+      // intentionally exercise the full runtime registration vocabulary.
+      params: params as CustomFunctionRegistration["meta"]["params"],
+    },
+  });
+
+  function setup() {
+    const site = createSite();
+    const existing = createCustomFunctionFromRegistration(
+      registration("existing"),
+    );
+    const removed = createCustomFunctionFromRegistration(
+      registration("removed"),
+    );
+    site.customFunctions = [existing, removed];
+    const next = registration("existing", [
+      { name: "keep", type: "string" },
+      { name: "added", type: "boolean" },
+    ]);
+    next.meta.displayName = "Updated function";
+    const registry = new CodeComponentsRegistry(globalThis, {});
+    vi.spyOn(registry, "getRegisteredFunctionsMap").mockReturnValue(
+      new Map(
+        [next, registration("newFunction")].map((reg) => [
+          registeredFunctionId(reg),
+          reg,
+        ]),
+      ),
+    );
+    const ctx: Parameters<typeof _testonly.upsertRegisteredFunctions>[0] = {
+      site,
+      codeComponentsRegistry: registry,
+      change: vi.fn(async (f) => f()),
+      getRootSubReact: () => React,
+      tplMgr: () => new TplMgr({ site }),
+      getPlumeSite: () => undefined,
+    };
+    const callbacks: CodeComponentSyncCallbackFns = {
+      onMissingCodeComponents: async () => ok(),
+      onInvalidReactVersion: async () => ok(),
+      onInvalidComponentImportNames: vi.fn(),
+      onStaleProps: async () => false,
+      onNewDefaultComponents: vi.fn(),
+      onSchemaToTplWarnings: vi.fn(),
+      onSchemaToTplError: vi.fn(),
+      onInvalidJsonForDefaultValue: vi.fn(),
+    };
+    return { site, existing, removed, next, ctx, callbacks };
+  }
+
+  it("defers all mutations to the client callback and preserves matching ArgTypes", async () => {
+    const { site, existing, removed, ctx, callbacks } = setup();
+    const previousParams = existing.params;
+    const callback = vi.fn(async (changes) => {
+      expect(site.customFunctions).toEqual([existing, removed]);
+      expect(existing.displayName).toBeNull();
+      expect(existing.params).toBe(previousParams);
+      expect(changes.updatedFunctions[0].updates.params[0]).toBe(
+        previousParams[0],
+      );
+      expect(ctx.change).not.toHaveBeenCalled();
+      await ctx.change(
+        () => {
+          applyCustomFunctionChanges(site, changes);
+          return ok();
+        },
+        { noUndoRecord: true },
+      );
+    });
+    callbacks.onUpdatedCustomFunctions = callback;
+    expect(
+      (await _testonly.upsertRegisteredFunctions(ctx, callbacks)).isOk(),
+    ).toBe(true);
+    expect(callback).toHaveBeenCalledOnce();
+    expect(ctx.change).toHaveBeenCalledOnce();
+    expect(site.customFunctions.map((f) => f.importName)).toEqual([
+      "existing",
+      "newFunction",
+    ]);
+    expect(existing.displayName).toBe("Updated function");
+    expect(existing.params[0]).toBe(previousParams[0]);
+    expect(existing.params).not.toContain(previousParams[1]);
+  });
+
+  it("applies additions, updates and removals without a client callback and skips unchanged syncs", async () => {
+    const { site, existing, ctx, callbacks } = setup();
+    const kept = existing.params[0];
+    expect(
+      (await _testonly.upsertRegisteredFunctions(ctx, callbacks)).isOk(),
+    ).toBe(true);
+    expect(site.customFunctions.map((f) => f.importName)).toEqual([
+      "existing",
+      "newFunction",
+    ]);
+    expect(existing.params.map((p) => p.argName)).toEqual(["keep", "added"]);
+    expect(existing.params[0]).toBe(kept);
+    expect(existing.displayName).toBe("Updated function");
+    expect(ctx.change).toHaveBeenCalledExactlyOnceWith(expect.any(Function), {
+      noUndoRecord: true,
+    });
+    expect(
+      (await _testonly.upsertRegisteredFunctions(ctx, callbacks)).isOk(),
+    ).toBe(true);
+    expect(ctx.change).toHaveBeenCalledOnce();
+  });
+
+  it("validates every registration before applying pending changes", async () => {
+    const { site, existing, removed, ctx, callbacks } = setup();
+    ctx.codeComponentsRegistry
+      .getRegisteredFunctionsMap()
+      .set(
+        registeredFunctionId(registration("not valid")),
+        registration("not valid"),
+      );
+    const previousParams = existing.params;
+    const result = await _testonly.upsertRegisteredFunctions(ctx, callbacks);
+    expect(result.isErr()).toBe(true);
+    expect(site.customFunctions).toEqual([existing, removed]);
+    expect(existing.params).toBe(previousParams);
+    expect(ctx.change).not.toHaveBeenCalled();
+  });
+
+  function addQueryWithMatchingDependency(
+    site: Site,
+    local: CustomFunction,
+    hostLessPackageInfo: HostLessPackageInfo | null,
+  ) {
+    const dependencyFunction = createCustomFunctionFromRegistration(
+      registration(local.importName, [{ name: "keep", type: "string" }]),
+    );
+    site.projectDependencies = [
+      new ProjectDependency({
+        name: "Library",
+        pkgId: "library",
+        projectId: "library-project",
+        uuid: mkShortId(),
+        version: "1.0.0",
+        site: createSite({
+          customFunctions: [dependencyFunction],
+          hostLessPackageInfo,
+        }),
+      }),
+    ];
+    const call = new CustomFunctionExpr({
+      func: local,
+      args: local.params.map(
+        (argType) =>
+          new FunctionArg({
+            uuid: mkShortId(),
+            argType,
+            expr: codeLit(argType.argName),
+          }),
+      ),
+    });
+    site.components = [mkComponentWithQueries(mkServerQuery("query", call))];
+    const originalArgs = [...call.args];
+    return { call, dependencyFunction, originalArgs };
+  }
+
+  it.each(["matching", "importPath", "defaultExport", "registered", "invalid"])(
+    "restores only unregistered matching hostless imports: %s",
+    async (kind) => {
+      const { site, existing, removed, ctx, callbacks } = setup();
+      const local = kind === "registered" ? existing : removed;
+      const { call, dependencyFunction, originalArgs } =
+        addQueryWithMatchingDependency(
+          site,
+          local,
+          new HostLessPackageInfo({
+            name: "test-library",
+            npmPkg: [],
+            cssImport: [],
+            deps: [],
+            registerCalls: [],
+            minimumReactVersion: null,
+          }),
+        );
+      if (kind === "importPath") {
+        dependencyFunction.importPath = "./other-functions";
+      } else if (kind === "defaultExport") {
+        dependencyFunction.defaultExport = true;
+      }
+      const callback = vi.fn();
+      callbacks.onUpdatedCustomFunctions = callback;
+      if (kind === "invalid") {
+        ctx.codeComponentsRegistry
+          .getRegisteredFunctionsMap()
+          .set(
+            registeredFunctionId(registration("not valid")),
+            registration("not valid"),
+          );
+      }
+      const result = await _testonly.upsertRegisteredFunctions(ctx, callbacks);
+      expect(result.isErr()).toBe(kind === "invalid");
+      if (kind === "matching") {
+        expect(call.func).toBe(dependencyFunction);
+        expect(call.args).toEqual([originalArgs[0]]);
+        expect(call.args[0].argType).toBe(dependencyFunction.params[0]);
+        expect(site.customFunctions).not.toContain(local);
+        expect(callback.mock.calls[0][0].removedFunctions.has(local)).toBe(
+          false,
+        );
+      } else {
+        expect(call.func).toBe(local);
+        expect(call.args).toEqual(originalArgs);
+        expect(site.customFunctions).toContain(local);
+        expect(ctx.change).not.toHaveBeenCalled();
+        if (kind === "invalid") {
+          expect(callback).not.toHaveBeenCalled();
+        } else {
+          expect(callback.mock.calls[0][0].removedFunctions.has(local)).toBe(
+            kind !== "registered",
+          );
+        }
+      }
+    },
+  );
+
+  it("keeps the local query and its arguments when a hosted function is registered again", async () => {
+    const { site, removed: local, ctx, callbacks } = setup();
+    const { call, originalArgs } = addQueryWithMatchingDependency(
+      site,
+      local,
+      null,
+    );
+    const callback = vi.fn();
+    callbacks.onUpdatedCustomFunctions = callback;
+    expect(
+      (await _testonly.upsertRegisteredFunctions(ctx, callbacks)).isOk(),
+    ).toBe(true);
+    expect(callback.mock.calls[0][0].removedFunctions.has(local)).toBe(true);
+    expect(ctx.change).not.toHaveBeenCalled();
+    expect(site.customFunctions).toContain(local);
+    expect(call.func).toBe(local);
+    expect(call.args).toEqual(originalArgs);
+
+    const restored = registration(local.importName, [
+      { name: "limit", type: "number" },
+      { name: "keep", type: "string" },
+      { name: "obsolete", type: "number" },
+    ]);
+    ctx.codeComponentsRegistry
+      .getRegisteredFunctionsMap()
+      .set(registeredFunctionId(restored), restored);
+    callbacks.onUpdatedCustomFunctions = async (changes) => {
+      applyCustomFunctionChanges(site, changes);
+    };
+    expect(
+      (await _testonly.upsertRegisteredFunctions(ctx, callbacks)).isOk(),
+    ).toBe(true);
+    expect(call.func).toBe(local);
+    expect(call.func.params.map((p) => p.argName)).toEqual([
+      "limit",
+      "keep",
+      "obsolete",
+    ]);
+    expect(call.args).toEqual(originalArgs);
+    expect(call.args[0].argType).toBe(local.params[1]);
+    expect(call.args[1].argType).toBe(local.params[2]);
+  });
+
+  it("awaits the fallback transaction", async () => {
+    const { site, ctx, callbacks } = setup();
+    vi.mocked(ctx.change).mockImplementation(async (f) => {
+      await Promise.resolve();
+      return f();
+    });
+    await _testonly.upsertRegisteredFunctions(ctx, callbacks);
+    expect(site.customFunctions.map((f) => f.importName)).toEqual([
+      "existing",
+      "newFunction",
+    ]);
+  });
+});

@@ -79,7 +79,14 @@ import {
 } from "@/wab/shared/core/tpls";
 import { getProjectFlags } from "@/wab/shared/devflags";
 import mobx from "@/wab/shared/import-mobx";
-import { keyedComputedFn, maybeComputedFn } from "@/wab/shared/mobx-util";
+import {
+  coarseComputed,
+  coarseSelector,
+  componentSelector,
+  keyedComputedFn,
+  maybeComputedFn,
+  siteSelector,
+} from "@/wab/shared/mobx-util";
 import {
   ArenaFrame,
   CodeComponentVariantMeta,
@@ -124,13 +131,18 @@ import {
 import { getTplVisibilityAsDescendant } from "@/wab/shared/visibility-utils";
 import { keyBy } from "lodash";
 
-export const flattenComponent = maybeComputedFn(function flattenComponent(
-  component: Component
+// Selectors that traverse a Component or the Site are coarse selectors, which
+// depend on whole scopes rather than on each field they read. Selectors that
+// only read a Site's lists, or combine per-Component selectors, are
+// maybeComputedFns. See mobx-util.ts.
+
+export const flattenComponent = componentSelector(function flattenComponent(
+  component: Component,
 ) {
   return component.tplTree ? flattenTpls(component.tplTree) : [];
 });
 
-export const extractComponentVariantSettings = maybeComputedFn(
+export const extractComponentVariantSettings = siteSelector(
   (site: Site, component: Component, ordered: boolean) => {
     const sorter = ordered
       ? makeVariantComboSorter(site, component)
@@ -147,44 +159,45 @@ export const extractComponentVariantSettings = maybeComputedFn(
       }
     }
     return result;
-  }
+  },
 );
 
-export const extractImageAssetRefsByAttrs = maybeComputedFn(
+export const extractImageAssetRefsByAttrs = siteSelector(
   function extractImageAssetRefsByAttrs(site: Site, component: Component) {
-    const assets = new Set<ImageAsset>();
+    return usedImageAssets(site, component);
+  },
+);
+
+export const findNonEmptyCombos = componentSelector(function findNonEmptyCombos(
+  component: Component,
+) {
+  return findNonEmptyCombosWithElementStates(component)
+    .map((combo) => combo.filter((v) => !isPrivateStyleVariant(v)))
+    .filter((combo) => combo.length > 1);
+});
+
+export const findNonEmptyCombosWithElementStates = componentSelector(
+  function findNonEmptyCombosWithElementStates(component: Component) {
+    const combos = new Map<string, VariantCombo>();
     for (const tpl of flattenComponent(component)) {
       if (isTplVariantable(tpl)) {
-        xAddAll(assets, tplToUsedImageAssets(site, tpl));
-      }
-    }
-    return assets;
-  }
-);
-
-export const findNonEmptyCombos = maybeComputedFn(function findNonEmptyCombos(
-  component: Component
-) {
-  const combos = new Map<string, VariantCombo>();
-  for (const tpl of flattenComponent(component)) {
-    if (isTplVariantable(tpl)) {
-      for (const vs of tpl.vsettings) {
-        const combo = vs.variants.filter((v) => !isPrivateStyleVariant(v));
-        if (combo.length > 1 && !isVariantSettingEmpty(vs)) {
-          const comboKey = variantComboKey(vs.variants);
-          if (!combos.has(comboKey)) {
-            combos.set(comboKey, combo);
+        for (const vs of tpl.vsettings) {
+          if (vs.variants.length > 1 && !isVariantSettingEmpty(vs)) {
+            const comboKey = variantComboKey(vs.variants);
+            if (!combos.has(comboKey)) {
+              combos.set(comboKey, vs.variants);
+            }
           }
         }
       }
     }
-  }
-  return [...combos.values()];
-});
+    return [...combos.values()];
+  },
+);
 
-export const usesVariantGroup = maybeComputedFn(function usesVariantGroup(
+export const usesVariantGroup = componentSelector(function usesVariantGroup(
   component: Component,
-  group: VariantGroup
+  group: VariantGroup,
 ) {
   const variants = new Set(group.variants);
   for (const tpl of flattenComponent(component)) {
@@ -205,7 +218,7 @@ export const usesVariantGroup = maybeComputedFn(function usesVariantGroup(
 export const siteToAllGlobalVariants = maybeComputedFn(
   function siteToAllGlobalVariants(site: Site) {
     return allGlobalVariants(site, { includeDeps: "direct" });
-  }
+  },
 );
 
 export const componentToAllVariants = maybeComputedFn(
@@ -213,11 +226,11 @@ export const componentToAllVariants = maybeComputedFn(
     return allComponentVariants(component, {
       includeSuperVariants: true,
     });
-  }
+  },
 );
 
 export const usedHostLessPkgs = maybeComputedFn(function usedHostLessPkgs(
-  site: Site
+  site: Site,
 ) {
   const usedPkgs = new Set<string>();
   if (isHostLessPackage(site)) {
@@ -226,7 +239,7 @@ export const usedHostLessPkgs = maybeComputedFn(function usedHostLessPkgs(
   walkDependencyTree(site, "all").forEach(
     (dep) =>
       isHostLessPackage(dep.site) &&
-      usedPkgs.add(dep.site.hostLessPackageInfo.name)
+      usedPkgs.add(dep.site.hostLessPackageInfo.name),
   );
   return Array.from(usedPkgs.keys());
 });
@@ -239,18 +252,10 @@ export const usedGlobalVariantGroups = maybeComputedFn(
       excludeInactiveScreenVariants: true,
     });
     return groups.filter((g) => usesVariantGroup(component, g));
-  }
+  },
 );
 
-export const usedScreenVariantGroups = maybeComputedFn(
-  function usedScreenVariantGroups(site: Site, component: Component) {
-    return usedGlobalVariantGroups(site, component).filter(
-      (g) => g === site.activeScreenVariantGroup
-    );
-  }
-);
-
-export const componentToElementNames = maybeComputedFn(
+export const componentToElementNames = componentSelector(
   (component: Component) => {
     const nodeNamer = computedNodeNamer(component);
     return getNamedDescendantNodes(nodeNamer, component.tplTree).flatMap(
@@ -260,16 +265,16 @@ export const componentToElementNames = maybeComputedFn(
           nodeName,
           ...(nodeName && !x.name && nodeName in nodeNameBackwardsCompatibility
             ? ensureArray(nodeNameBackwardsCompatibility[nodeName]).map(
-                (prevNodeName) => prevNodeName
+                (prevNodeName) => prevNodeName,
               )
             : []),
         ];
-      }
+      },
     );
-  }
+  },
 );
 
-export const componentToNonVariantParamNames = maybeComputedFn(
+export const componentToNonVariantParamNames = componentSelector(
   (component: Component) => [
     ...getParamNames(
       component,
@@ -281,33 +286,31 @@ export const componentToNonVariantParamNames = maybeComputedFn(
             component.plumeInfo &&
             isOnChangeParam(p, component) &&
             p.variable.name === "onChange"
-          ) && p.exportType !== ParamExportType.ToolsOnly
-      )
+          ) && p.exportType !== ParamExportType.ToolsOnly,
+      ),
     ),
-  ]
+  ],
 );
 
-export const componentToVariantParamNames = maybeComputedFn(
+export const componentToVariantParamNames = componentSelector(
   function componentToVariantParamNames(component: Component) {
     return getParamNames(
       component,
       component.variantGroups
         .filter((vg) => vg.variants.length > 0)
-        .map((p) => p.param)
+        .map((p) => p.param),
     );
-  }
+  },
 );
 
-export const computedNodeNamer = maybeComputedFn(function makeNodeNamer_(
-  component: Component
+export const computedNodeNamer = componentSelector(function makeNodeNamer_(
+  component: Component,
 ) {
   // We only want to create a new nodeNamer if the actual set of names and their
   // mappings to uid has changed.
-  const uidToNameMap = mobx
-    .computed(() => buildUidToNameMap(component), {
-      equals: mobx.comparer.shallow,
-    })
-    .get();
+  const uidToNameMap = coarseComputed(() => buildUidToNameMap(component), {
+    equals: mobx.comparer.shallow,
+  }).get();
   return makeNodeNamerFromMap(uidToNameMap);
 });
 
@@ -322,8 +325,8 @@ export const computedProjectFlags = maybeComputedFn(getProjectFlags);
  * Plasmic component that wraps another Plasmic component that exposes
  * the code component prop.
  */
-export const getLinkedCodeProps = maybeComputedFn(function getLinkedProps(
-  comp: Component
+export const getLinkedCodeProps = componentSelector(function getLinkedProps(
+  comp: Component,
 ) {
   const attr2LinkedCodeProp = new Map<string, [TplComponent, Param]>();
 
@@ -335,7 +338,7 @@ export const getLinkedCodeProps = maybeComputedFn(function getLinkedProps(
   const recordParam = (
     attr: string,
     innerTpl: TplComponent,
-    linkedParam: Param
+    linkedParam: Param,
   ) => {
     if (
       isCodeComponent(innerTpl.component) ||
@@ -349,7 +352,7 @@ export const getLinkedCodeProps = maybeComputedFn(function getLinkedProps(
       // wrapping and exposing code / plume component props.
       // We descend.
       const maybeDeepLinkedParam = getLinkedCodeProps(innerTpl.component).get(
-        linkedParam.variable.name
+        linkedParam.variable.name,
       );
       if (maybeDeepLinkedParam) {
         attr2LinkedCodeProp.set(attr, maybeDeepLinkedParam);
@@ -382,7 +385,7 @@ export const getLinkedCodeProps = maybeComputedFn(function getLinkedProps(
 export const componentToReferencers = maybeComputedFn(
   function componentToReferencers(site: Site) {
     const compToReferencers = new Map<Component, Set<Component>>(
-      site.components.map((comp) => tuple(comp, new Set<Component>()))
+      site.components.map((comp) => tuple(comp, new Set<Component>())),
     );
     for (const comp of site.components) {
       // This is basically the reverse map of componentToReferenced
@@ -390,13 +393,13 @@ export const componentToReferencers = maybeComputedFn(
         if (site.components.includes(refComp)) {
           ensure(
             compToReferencers.get(refComp),
-            () => `Unknown refenrencer ${getComponentDisplayName(refComp)}`
+            () => `Unknown refenrencer ${getComponentDisplayName(refComp)}`,
           ).add(comp);
         }
       }
     }
     return compToReferencers;
-  }
+  },
 );
 
 export const deepComponentToReferencers = maybeComputedFn(
@@ -409,14 +412,14 @@ export const deepComponentToReferencers = maybeComputedFn(
         return ensure(
           deepCompToReferencers.get(comp),
           () =>
-            `Missing deep refs for component ${getComponentDisplayName(comp)}`
+            `Missing deep refs for component ${getComponentDisplayName(comp)}`,
         );
       }
       const shallowReferencers = [
         ...ensure(
           compToReferencers.get(comp),
           () =>
-            `Missing referencers for component ${getComponentDisplayName(comp)}`
+            `Missing referencers for component ${getComponentDisplayName(comp)}`,
         ),
       ];
       const deepReferencers = new Set([
@@ -432,14 +435,14 @@ export const deepComponentToReferencers = maybeComputedFn(
     }
 
     return deepCompToReferencers;
-  }
+  },
 );
 
 /**
  * Given a component, returns all other components that are used
  * directly as a TplComponent instance or TplRef in its tree
  */
-export const componentToReferenced = maybeComputedFn(
+export const componentToReferenced = componentSelector(
   function componentToReferenced(component: Component) {
     const referenced = new Set<Component>();
     for (const tpl of flattenComponent(component)) {
@@ -453,7 +456,7 @@ export const componentToReferenced = maybeComputedFn(
       });
     }
     return Array.from(referenced);
-  }
+  },
 );
 
 /**
@@ -461,7 +464,7 @@ export const componentToReferenced = maybeComputedFn(
  */
 export function componentToDeepReferenced(
   component: Component,
-  includeSubComps = false
+  includeSubComps = false,
 ) {
   // `computedFn` can't take functions with optional parameters
   // See https://app.shortcut.com/plasmic/story/18666/
@@ -471,7 +474,7 @@ export function componentToDeepReferenced(
 const _componentToDeepReferenced = maybeComputedFn(
   function _componentToDeepReferenced(
     component: Component,
-    includeSubComps: boolean
+    includeSubComps: boolean,
   ) {
     const seen = new Set<Component>();
 
@@ -494,7 +497,7 @@ const _componentToDeepReferenced = maybeComputedFn(
 
     extract(component);
     return seen;
-  }
+  },
 );
 
 /**
@@ -504,11 +507,11 @@ const _componentToDeepReferenced = maybeComputedFn(
  * @param token - The data token to extract usages for
  * @returns The set of all components in the site that reference the given data token
  */
-export const componentsReferencingDataToken = maybeComputedFn(
+export const componentsReferencingDataToken = coarseSelector(
   function componentsReferencingDataToken(
     projectId: ProjectId,
     site: Site,
-    token: DataToken
+    token: DataToken,
   ) {
     const referencingComponents = new Set<Component>();
 
@@ -521,10 +524,10 @@ export const componentsReferencingDataToken = maybeComputedFn(
       }
     }
     return referencingComponents;
-  }
+  },
 );
 
-export const componentsReferencerToPageHref = maybeComputedFn(
+export const componentsReferencerToPageHref = siteSelector(
   function componentsReferencerToPageHref(site: Site, page: PageComponent) {
     const isHRefToPage = (expr: Expr | null | undefined): expr is PageHref =>
       isKnownPageHref(expr) && expr.page === page;
@@ -538,11 +541,11 @@ export const componentsReferencerToPageHref = maybeComputedFn(
       }
     }
     return usingComponents;
-  }
+  },
 );
 
 export const allCustomFunctions = maybeComputedFn(function allCustomFunctions(
-  rootSite: Site
+  rootSite: Site,
 ) {
   const functionIds = new Set<CustomFunctionId>();
   const customFunctions: { site: Site; customFunction: CustomFunction }[] = [];
@@ -555,13 +558,13 @@ export const allCustomFunctions = maybeComputedFn(function allCustomFunctions(
         functionIds.add(customFunctionId(customFunction));
         customFunctions.push({ site, customFunction });
       }
-    })
+    }),
   );
   return customFunctions;
 });
 
 export const allCodeLibraries = maybeComputedFn(function allCodeLibraries(
-  rootSite: Site
+  rootSite: Site,
 ) {
   const codeLibNames = new Set<string>();
   const libs: { site: Site; codeLibrary: CodeLibrary }[] = [];
@@ -574,19 +577,19 @@ export const allCodeLibraries = maybeComputedFn(function allCodeLibraries(
         codeLibNames.add(lib.name);
         libs.push({ site, codeLibrary: lib });
       }
-    })
+    }),
   );
   return libs;
 });
 
-export const cachedExprsInComponent = maybeComputedFn(
+export const cachedExprsInComponent = componentSelector(
   function cachedExprsInComponent(component: Component) {
     return findExprsInComponent(component);
-  }
+  },
 );
 
 export const cachedExprsInSite = maybeComputedFn(function cachedExprsInSite(
-  site: Site
+  site: Site,
 ) {
   return withoutNils(
     site.components.map((component) => {
@@ -598,24 +601,47 @@ export const cachedExprsInSite = maybeComputedFn(function cachedExprsInSite(
         ownerComponent: component,
         exprRefs,
       };
-    })
+    }),
   );
 });
 
-export const customFunctionsAndLibsUsedByComponent = maybeComputedFn(
+export const customFunctionsAndLibsUsedByComponent = siteSelector(
   function customFunctionsAndLibsUsedByComponent(
     site: Site,
-    component: Component
+    component: Component,
   ) {
+    return customFunctionsAndLibsUsedByFunctionIds(
+      site,
+      customFunctionIdsUsedByComponent(component),
+    );
+  },
+);
+
+export function customFunctionsAndLibsUsedByComponents(
+  site: Site,
+  components: Component[],
+) {
+  return customFunctionsAndLibsUsedByFunctionIds(
+    site,
+    new Set(
+      components.flatMap((component) => [
+        ...customFunctionIdsUsedByComponent(component),
+      ]),
+    ),
+  );
+}
+
+const customFunctionIdsUsedByComponent = componentSelector(
+  function customFunctionIdsUsedByComponent(component: Component) {
     const codeExprs = filterFalsy(
       cachedExprsInComponent(component).map(
         ({ expr }) =>
           ((isKnownCustomCode(expr) && isRealCodeExpr(expr)) ||
             isKnownCustomFunctionExpr(expr)) &&
-          expr
-      )
+          expr,
+      ),
     );
-    const usedFunctionIds = new Set<string>(
+    return new Set<string>(
       withoutNils([
         ...codeExprs.flatMap((expr) => {
           if (isKnownCustomCode(expr)) {
@@ -623,46 +649,52 @@ export const customFunctionsAndLibsUsedByComponent = maybeComputedFn(
           }
           return customFunctionId(expr.func);
         }),
-      ])
+      ]),
     );
-    const codeLibraryByJsIdentifier = new Map(
-      allCodeLibraries(site).map(({ codeLibrary }) => [
-        codeLibrary.jsIdentifier,
-        codeLibrary,
-      ])
-    );
-    const usedLibraries = new Map<CodeLibrary, "all" | Set<string>>();
-    usedFunctionIds.forEach((id) => {
-      const [namespace, functionName] = id.split(".");
-      const lib = codeLibraryByJsIdentifier.get(namespace);
-      if (lib) {
-        if (lib.importType === "namespace" && !!functionName) {
-          const usedFns = xSetDefault(usedLibraries, lib, () => new Set());
-          if (usedFns !== "all") {
-            usedFns.add(functionName);
-          }
-        } else {
-          usedLibraries.set(lib, "all");
-        }
-      }
-    });
-    return {
-      customFunctions: allCustomFunctions(site)
-        .map(({ customFunction }) => customFunction)
-        .filter(
-          (fn) =>
-            usedFunctionIds.has(customFunctionId(fn)) ||
-            // If someone does `const L = $$.lodash;`, we should include all
-            // functions in `lodash` namespace!
-            (fn.namespace && usedFunctionIds.has(fn.namespace))
-        ),
-      codeLibraries: Array.from(usedLibraries.entries()).map(
-        ([lib, imports]) =>
-          [lib, imports === "all" ? "all" : Array.from(imports.keys())] as const
-      ),
-    };
-  }
+  },
 );
+
+function customFunctionsAndLibsUsedByFunctionIds(
+  site: Site,
+  usedFunctionIds: Set<string>,
+) {
+  const codeLibraryByJsIdentifier = new Map(
+    allCodeLibraries(site).map(({ codeLibrary }) => [
+      codeLibrary.jsIdentifier,
+      codeLibrary,
+    ]),
+  );
+  const usedLibraries = new Map<CodeLibrary, "all" | Set<string>>();
+  usedFunctionIds.forEach((id) => {
+    const [namespace, functionName] = id.split(".");
+    const lib = codeLibraryByJsIdentifier.get(namespace);
+    if (lib) {
+      if (lib.importType === "namespace" && !!functionName) {
+        const usedFns = xSetDefault(usedLibraries, lib, () => new Set());
+        if (usedFns !== "all") {
+          usedFns.add(functionName);
+        }
+      } else {
+        usedLibraries.set(lib, "all");
+      }
+    }
+  });
+  return {
+    customFunctions: allCustomFunctions(site)
+      .map(({ customFunction }) => customFunction)
+      .filter(
+        (fn) =>
+          usedFunctionIds.has(customFunctionId(fn)) ||
+          // If someone does `const L = $$.lodash;`, we should include all
+          // functions in `lodash` namespace!
+          (fn.namespace && usedFunctionIds.has(fn.namespace)),
+      ),
+    codeLibraries: Array.from(usedLibraries.entries()).map(
+      ([lib, imports]) =>
+        [lib, imports === "all" ? "all" : Array.from(imports.keys())] as const,
+    ),
+  };
+}
 
 export const customFunctionsUsedBySite = maybeComputedFn(
   function customFunctionsUsedBySite(site: Site) {
@@ -674,13 +706,13 @@ export const customFunctionsUsedBySite = maybeComputedFn(
       }
     }
     return usedFunctions;
-  }
+  },
 );
 
 /**
  * Returns all instances of TplComponent for the argument component
  */
-export const componentToTplComponents = maybeComputedFn(
+export const componentToTplComponents = siteSelector(
   function getTplComponentsInSite(site: Site, component: Component) {
     const instances: TplComponent[] = [];
     for (const comp of site.components) {
@@ -691,10 +723,10 @@ export const componentToTplComponents = maybeComputedFn(
       }
     }
     return instances;
-  }
+  },
 );
 
-export const getTplComponentFetchers = maybeComputedFn(
+export const getTplComponentFetchers = componentSelector(
   function getTplComponentFetchers(component: Component) {
     return flattenComponent(component)
       .filter(isTplComponent)
@@ -702,16 +734,16 @@ export const getTplComponentFetchers = maybeComputedFn(
         (tpl) =>
           isBuiltinCodeComponent(tpl.component) &&
           tpl.component.name ===
-            getBuiltinComponentRegistrations().PlasmicFetcher.meta.name
+            getBuiltinComponentRegistrations().PlasmicFetcher.meta.name,
       );
-  }
+  },
 );
 
 export const siteToAllImageAssetsDict = maybeComputedFn((site: Site) =>
-  keyBy(allImageAssets(site, { includeDeps: "all" }), (x) => x.uuid)
+  keyBy(allImageAssets(site, { includeDeps: "all" }), (x) => x.uuid),
 );
 
-export const componentToUsedMixins = maybeComputedFn(
+export const componentToUsedMixins = componentSelector(
   function componentToUsedMixins(component: Component) {
     const mixins = new Set<Mixin>();
     for (const tpl of flattenComponent(component)) {
@@ -720,53 +752,50 @@ export const componentToUsedMixins = maybeComputedFn(
       }
     }
     return mixins;
-  }
+  },
 );
 
-const tplToUsedMixins = maybeComputedFn(function tplToUsedMixins(tpl: TplNode) {
+function tplToUsedMixins(tpl: TplNode) {
   const mixins = new Set<Mixin>();
   for (const vs of tpl.vsettings) {
     xAddAll(mixins, vs.rs.mixins);
   }
   return [...mixins.keys()];
-});
+}
 
-export const componentToUsedImageAssets = maybeComputedFn(
+export const componentToUsedImageAssets = siteSelector(
   function componentToUsedImageAssets(site: Site, component: Component) {
-    const assets = new Set<ImageAsset>();
-    for (const tpl of flattenComponent(component)) {
-      if (isTplVariantable(tpl)) {
-        xAddAll(assets, tplToUsedImageAssets(site, tpl));
-      }
-    }
-    return [...assets.keys()];
-  }
+    return [...usedImageAssets(site, component)];
+  },
 );
 
-const tplToUsedImageAssets = maybeComputedFn(function tplToUsedImageAssets(
-  site: Site,
-  tpl: TplNode
-) {
+function usedImageAssets(site: Site, component: Component) {
   const assets = new Set<ImageAsset>();
-  const assetType = isTplIcon(tpl)
-    ? ImageAssetType.Icon
-    : isTplPicture(tpl)
-    ? ImageAssetType.Picture
-    : undefined;
+  let allAssetsDict: Record<string, ImageAsset> | undefined;
+  for (const tpl of flattenComponent(component)) {
+    if (!isTplVariantable(tpl)) {
+      continue;
+    }
+    const assetType = isTplIcon(tpl)
+      ? ImageAssetType.Icon
+      : isTplPicture(tpl)
+        ? ImageAssetType.Picture
+        : undefined;
 
-  if (assetType) {
-    for (const vs of tpl.vsettings) {
-      const expr = vs.attrs[getTagAttrForImageAsset(assetType)];
-      if (expr && isKnownImageAssetRef(expr)) {
-        assets.add(expr.asset);
+    if (assetType) {
+      for (const vs of tpl.vsettings) {
+        const expr = vs.attrs[getTagAttrForImageAsset(assetType)];
+        if (expr && isKnownImageAssetRef(expr)) {
+          assets.add(expr.asset);
+        }
       }
     }
-  }
 
-  if (assetType === ImageAssetType.Icon) {
-    return [...assets.keys()];
-  }
+    if (assetType === ImageAssetType.Icon) {
+      continue;
+    }
 
+<<<<<<< HEAD
   let allAssetsDict: ReturnType<typeof siteToAllImageAssetsDict> | undefined;
   for (const vs of tpl.vsettings) {
     const rulesets = expandRuleSets([vs.rs]);
@@ -775,18 +804,24 @@ const tplToUsedImageAssets = maybeComputedFn(function tplToUsedImageAssets(
         allAssetsDict ??= siteToAllImageAssetsDict(site);
         if (refId in allAssetsDict) {
           assets.add(allAssetsDict[refId]);
+=======
+    allAssetsDict ??= siteToAllImageAssetsDict(site);
+    for (const vs of tpl.vsettings) {
+      const rulesets = expandRuleSets([vs.rs]);
+      for (const rs of rulesets) {
+        for (const refId of expToPictureAssetRefs(rs, tpl)) {
+          if (refId in allAssetsDict) {
+            assets.add(allAssetsDict[refId]);
+          }
+>>>>>>> upstream/master
         }
       }
     }
   }
+  return assets;
+}
 
-  return [...assets.keys()];
-});
-
-const expToPictureAssetRefs = maybeComputedFn(function expToPictureAssetRefs(
-  rs: DeepReadonly<RuleSet>,
-  tpl: TplNode
-) {
+function expToPictureAssetRefs(rs: DeepReadonly<RuleSet>, tpl: TplNode) {
   const exp = readonlyRSH(rs, tpl);
   const refIds: string[] = [];
   const val = exp.getRaw("background");
@@ -794,116 +829,108 @@ const expToPictureAssetRefs = maybeComputedFn(function expToPictureAssetRefs(
     refIds.push(...extractAllAssetRefs(val));
   }
   return refIds;
-});
+}
 
-export const getComponentsUsingImageAsset = maybeComputedFn(
+export const getComponentsUsingImageAsset = siteSelector(
   function getComponentsUsingImageAsset(site: Site, asset: ImageAsset) {
-    return site.components.filter((comp) => {
-      if (isCodeComponent(comp)) {
-        return false;
-      }
-
-      for (const tpl of flattenComponent(comp)) {
-        if (
-          isTplVariantable(tpl) &&
-          tplToUsedImageAssets(site, tpl).includes(asset)
-        ) {
-          return true;
-        }
-      }
-      return false;
-    });
-  }
+    return site.components.filter(
+      (comp) =>
+        !isCodeComponent(comp) &&
+        componentToUsedImageAssets(site, comp).includes(asset),
+    );
+  },
 );
 
 export const findAllQueryInvalidationExpr = maybeComputedFn(
   function findDataSourceInteractions(site: Site) {
     return site.components.flatMap((c) =>
-      flattenTpls(c.tplTree).flatMap((tpl) =>
-        findExprsInNode(tpl)
-          .filter(({ expr }) => isKnownQueryInvalidationExpr(expr))
-          .map(({ expr }) => ({
-            expr: expr as QueryInvalidationExpr,
-            ownerComponent: c,
-          }))
-      )
+      findAllQueryInvalidationExprForComponent(c).map((expr) => ({
+        expr,
+        ownerComponent: c,
+      })),
     );
-  }
+  },
 );
 
-export const findAllQueryInvalidationExprForComponent = maybeComputedFn(
+export const findAllQueryInvalidationExprForComponent = componentSelector(
   function findDataSourceInteractions(component: Component) {
     return flattenTpls(component.tplTree).flatMap((tpl) =>
       findExprsInNode(tpl)
         .filter(({ expr }) => isKnownQueryInvalidationExpr(expr))
-        .map(({ expr }) => expr as QueryInvalidationExpr)
+        .map(({ expr }) => expr as QueryInvalidationExpr),
     );
-  }
+  },
 );
 
-export const findQueryInvalidationExprWithRefs = maybeComputedFn(
+export const findQueryInvalidationExprWithRefs = siteSelector(
   function findQueryInvalidationExprWithRefs(site: Site, queryRefs: string[]) {
     const queryRefSet = new Set(queryRefs);
     return findAllQueryInvalidationExpr(site).filter(({ expr }) =>
       expr.invalidationQueries.some(
-        (key) => isKnownQueryRef(key) && queryRefSet.has(key.ref.uuid)
-      )
+        (key) => isKnownQueryRef(key) && queryRefSet.has(key.ref.uuid),
+      ),
     );
-  }
+  },
 );
 
-export const findAllDataSourceOpExprForComponent = maybeComputedFn(
+export const findAllDataSourceOpExprForComponent = componentSelector(
   function findAllDataSourceOpExprs(component: Component) {
     return [
       ...withoutNils(component.dataQueries.map((dq) => dq.op)),
       ...flattenTpls(component.tplTree).flatMap((tpl) =>
         findExprsInNode(tpl)
           .filter(({ expr }) => isKnownDataSourceOpExpr(expr))
-          .map(({ expr }) => expr as DataSourceOpExpr)
+          .map(({ expr }) => expr as DataSourceOpExpr),
       ),
     ];
-  }
+  },
+);
+
+const findDataSourceOpExprsWithNodesInComponent = componentSelector(
+  function findDataSourceOpExprsWithNodesInComponent(c: Component) {
+    return [
+      ...withoutNils(c.dataQueries.map((dq) => dq.op)).map((op) => {
+        return {
+          component: c,
+          expr: op,
+          node: undefined,
+        };
+      }),
+      ...flattenTpls(c.tplTree).flatMap((tpl) => {
+        return findExprsInNode(tpl)
+          .filter(({ expr }) => isKnownDataSourceOpExpr(expr))
+          .map(({ expr }) => {
+            return {
+              component: c,
+              expr: expr as DataSourceOpExpr,
+              node: tpl,
+            };
+          });
+      }),
+    ];
+  },
 );
 
 export const findAllDataSourceOpExpr = maybeComputedFn(
   function findAllDataSourceOpExpr(site: Site) {
-    return site.components.flatMap((c) => {
-      return [
-        ...withoutNils(c.dataQueries.map((dq) => dq.op)).map((op) => {
-          return {
-            component: c,
-            expr: op,
-            node: undefined,
-          };
-        }),
-        ...flattenTpls(c.tplTree).flatMap((tpl) => {
-          return findExprsInNode(tpl)
-            .filter(({ expr }) => isKnownDataSourceOpExpr(expr))
-            .map(({ expr }) => {
-              return {
-                component: c,
-                expr: expr as DataSourceOpExpr,
-                node: tpl,
-              };
-            });
-        }),
-      ];
-    });
-  }
+    return site.components.flatMap((c) =>
+      findDataSourceOpExprsWithNodesInComponent(c),
+    );
+  },
 );
 
 export const getActiveVariantsForFrame = maybeComputedFn(
   function getActiveVariantsForFrame(site: Site, frame: ArenaFrame) {
     const pinManager = new FramePinManager(site, frame);
     return pinManager.activeNonBaseVariants();
-  }
+  },
 );
 
-export const findComponentsUsingComponentVariant = maybeComputedFn(
+export const findComponentsUsingComponentVariant = siteSelector(
   function findComponentsUsingComponentVariant(
     site: Site,
     component: Component,
-    variant: Variant
+    variant: Variant,
   ) {
     if (isStyleOrCodeComponentVariant(variant) || isGlobalVariant(variant)) {
       return new Set<Component>();
@@ -935,10 +962,10 @@ export const findComponentsUsingComponentVariant = maybeComputedFn(
     }
 
     return results;
-  }
+  },
 );
 
-export const findComponentsUsingGlobalVariant = maybeComputedFn(
+export const findComponentsUsingGlobalVariant = siteSelector(
   function findComponentsUsingGlobalVariant(site: Site, variant: Variant) {
     const results = new Set<Component>();
 
@@ -958,7 +985,7 @@ export const findComponentsUsingGlobalVariant = maybeComputedFn(
     }
 
     return results;
-  }
+  },
 );
 
 export const findSplitsUsingVariantGroup = maybeComputedFn(
@@ -970,27 +997,27 @@ export const findSplitsUsingVariantGroup = maybeComputedFn(
             .when(ComponentSwapSplitContent, () => false)
             .when(
               [GlobalVariantSplitContent, ComponentVariantSplitContent],
-              (variantContent) => variantContent.group === variantGroup
+              (variantContent) => variantContent.group === variantGroup,
             )
-            .result()
-        )
-      )
+            .result(),
+        ),
+      ),
     );
-  }
+  },
 );
 
 export const findStyleTokensUsingVariantGroup = maybeComputedFn(
   function findStyleTokensUsingVariantGroup(
     site: Site,
-    variantGroup: VariantGroup
+    variantGroup: VariantGroup,
   ) {
     const groupVariants = new Set(variantGroup.variants);
     return site.styleTokens.filter((token) =>
       token.variantedValues.some((value) =>
-        value.variants.some((variant) => groupVariants.has(variant))
-      )
+        value.variants.some((variant) => groupVariants.has(variant)),
+      ),
     );
-  }
+  },
 );
 
 /**
@@ -1001,18 +1028,18 @@ export const isTplSlotVisible = keyedComputedFn(
   function isTplSlotVisible(
     component: Component,
     tpl: TplSlot,
-    variants: VariantCombo
+    variants: VariantCombo,
   ) {
     return getTplVisibilityAsDescendant(tpl, variants);
   },
   {
     keyFn: (component, tpl, variants) =>
-      `${component.uuid}-${tpl.uuid}-${variants.map((v) => v.uuid).join(";")}`,
+      `${component.uuid}-${tpl.uuid}-${variantComboKey(variants)}`,
     name: "isTplSlotVisible",
-  }
+  },
 );
 
-export const componentToUsedDataSources = maybeComputedFn(
+export const componentToUsedDataSources = componentSelector(
   function componentToUsedDataSources(component: Component) {
     const dataSourceCount = new Map<string, number>();
     for (const { expr } of findExprsInComponent(component)) {
@@ -1021,11 +1048,11 @@ export const componentToUsedDataSources = maybeComputedFn(
       }
       dataSourceCount.set(
         expr.sourceId,
-        (dataSourceCount.get(expr.sourceId) ?? 0) + 1
+        (dataSourceCount.get(expr.sourceId) ?? 0) + 1,
       );
     }
     return dataSourceCount;
-  }
+  },
 );
 
 export const getUsedDataSourcesFromDep = maybeMemoizeFn(
@@ -1036,14 +1063,14 @@ export const getUsedDataSourcesFromDep = maybeMemoizeFn(
       customInsertMaps(
         (count1, count2) => count1 + count2,
         dataSourceCount,
-        componentDataSourceCount
+        componentDataSourceCount,
       );
     }
     return dataSourceCount;
-  }
+  },
 );
 
-export const siteToUsedDataSources = maybeComputedFn(
+export const siteToUsedDataSources = siteSelector(
   function siteToUsedDataSources(site: Site) {
     const dataSourceCount = new Map<string, number>();
     for (const component of site.components) {
@@ -1051,7 +1078,7 @@ export const siteToUsedDataSources = maybeComputedFn(
       customInsertMaps(
         (count1, count2) => count1 + count2,
         dataSourceCount,
-        componentDataSourceCount
+        componentDataSourceCount,
       );
     }
     const deps = walkDependencyTree(site, "all");
@@ -1060,7 +1087,7 @@ export const siteToUsedDataSources = maybeComputedFn(
       customInsertMaps(
         (count1, count2) => count1 + count2,
         dataSourceCount,
-        depDataSourceCount
+        depDataSourceCount,
       );
     }
 
@@ -1069,7 +1096,7 @@ export const siteToUsedDataSources = maybeComputedFn(
     const entries = [...dataSourceCount.entries()];
     entries.sort((a, b) => b[1] - a[1]);
     return entries.map((entry) => entry[0]);
-  }
+  },
 );
 
 interface CCVariantInfo {
@@ -1094,20 +1121,20 @@ const componentCCVariantsToInfos = maybeComputedFn(
                 variant.codeComponentVariantKeys.map((key) => {
                   const meta = getVariantMeta(variantMeta, key);
                   return meta ? [key, meta] : null;
-                })
-              )
+                }),
+              ),
             ),
           },
         ]);
     }
     return [];
-  }
+  },
 );
 
 export const siteCCVariantsToInfos = maybeComputedFn(
   (site: Site): Map<CodeComponentVariant, CCVariantInfo> => {
     return new Map(
-      site.components.flatMap((comp) => componentCCVariantsToInfos(comp))
+      site.components.flatMap((comp) => componentCCVariantsToInfos(comp)),
     );
-  }
+  },
 );

@@ -14,7 +14,8 @@ import { mkDefaultInteraction } from "@/wab/client/state-management/interactions
 import { StudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
 import { HighlightInteractionRequest } from "@/wab/shared/code-components/code-components";
-import { moveIndex, remove, spawn } from "@/wab/shared/common";
+import { arrayMoveIndex, arrayWithout } from "@/wab/shared/collections";
+import { spawn } from "@/wab/shared/common";
 import {
   EventHandlerKeyType,
   KeyedEventHandler,
@@ -51,7 +52,7 @@ export interface HandlerSectionProps extends DefaultHandlerSectionProps {
 
 function HandlerSection_(
   props: HandlerSectionProps,
-  ref: HTMLElementRefOf<"div">
+  ref: HTMLElementRefOf<"div">,
 ) {
   const {
     sc,
@@ -70,26 +71,26 @@ function HandlerSection_(
   >(
     maybeEventHandler?.interactions.length === 1
       ? maybeEventHandler.interactions[0]
-      : highlightOnMount?.interaction ?? undefined
+      : (highlightOnMount?.interaction ?? undefined),
   );
 
   const onAddNewInteraction = async () => {
     const eventHandler = maybeEventHandler
       ? maybeEventHandler
       : isEventHandlerKeyForFuncType(keyedEventHandler.key)
-      ? new GenericEventHandler({
-          interactions: [],
-          handlerType: cloneType(keyedEventHandler.key.funcType),
-        })
-      : new EventHandler({ interactions: [] });
+        ? new GenericEventHandler({
+            interactions: [],
+            handlerType: cloneType(keyedEventHandler.key.funcType),
+          })
+        : new EventHandler({ interactions: [] });
     const interaction = mkDefaultInteraction(eventHandler, component);
     spawn(
       sc.change(() => {
         ensureGenericFuncTypes(eventHandler, keyedEventHandler.key);
-        eventHandler.interactions.push(interaction);
+        eventHandler.interactions = [...eventHandler.interactions, interaction];
         onChange(eventHandler);
         return ok();
-      })
+      }),
     );
     setExpandedInteraction(interaction);
   };
@@ -104,15 +105,18 @@ function HandlerSection_(
             spawn(
               sc.change(() => {
                 if (maybeEventHandler) {
-                  remove(maybeEventHandler.interactions, interaction);
+                  maybeEventHandler.interactions = arrayWithout(
+                    maybeEventHandler.interactions,
+                    interaction,
+                  );
                 }
                 return ok();
-              })
+              }),
             )
           }
         >
           Remove
-        </Menu.Item>
+        </Menu.Item>,
       );
     });
     return builder.build({
@@ -154,7 +158,7 @@ function HandlerSection_(
         tpl.component.name.toLowerCase().includes("button") &&
         ancestors(tpl).some(
           (anc) =>
-            isTplComponent(anc) && anc.component.name === "plasmic-antd5-form"
+            isTplComponent(anc) && anc.component.name === "plasmic-antd5-form",
         ) && (
           <Alert
             type="warning"
@@ -178,12 +182,16 @@ function HandlerSection_(
               if (maybeEventHandler) {
                 ensureGenericFuncTypes(
                   maybeEventHandler,
-                  keyedEventHandler.key
+                  keyedEventHandler.key,
                 );
-                moveIndex(maybeEventHandler.interactions, fromIndex, toIndex);
+                maybeEventHandler.interactions = arrayMoveIndex(
+                  maybeEventHandler.interactions,
+                  fromIndex,
+                  toIndex,
+                );
               }
               return ok();
-            })
+            }),
           )
         }
         style={{ width: "100%", height: "100%" }}
@@ -198,7 +206,7 @@ function HandlerSection_(
             isCollapsed={expandedInteraction !== interaction}
             onCollapseClick={() =>
               setExpandedInteraction((expanded) =>
-                expanded === interaction ? undefined : interaction
+                expanded === interaction ? undefined : interaction,
               )
             }
             eventHandlerExpr={maybeEventHandler}
@@ -247,7 +255,7 @@ export default HandlerSection;
  */
 export const ensureGenericFuncTypes = (
   expr: EventHandler,
-  eventHandlerKey: EventHandlerKeyType
+  eventHandlerKey: EventHandlerKeyType,
 ) => {
   if (
     isKnownGenericEventHandler(expr) &&

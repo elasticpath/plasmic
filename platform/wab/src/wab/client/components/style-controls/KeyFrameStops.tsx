@@ -6,13 +6,12 @@ import { Icon } from "@/wab/client/components/widgets/Icon";
 import ColorStopIcon from "@/wab/client/plasmic/plasmic_kit_design_system/icons/PlasmicIcon__ColorStop";
 import { StudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { XDraggable } from "@/wab/commons/components/XDraggable";
+import { arrayInsertAt, arrayRemoveAt } from "@/wab/shared/collections";
 import {
   ensure,
   ensureHTMLElt,
-  insert,
   maybe,
   maybes,
-  removeAt,
   spawn,
   tuple,
   withoutNils,
@@ -63,7 +62,7 @@ const KeyFrameStops_ = (props: KeyFrameStopsProps) => {
       if (barRef.current) {
         const containerOffset = ensure(
           $(getHTMLElt(barRef.current)).offset(),
-          "Element must have offset"
+          "Element must have offset",
         );
         const barWidth = ensureHTMLElt(barRef.current).offsetWidth;
         const top = e.clientY - containerOffset.top;
@@ -74,7 +73,7 @@ const KeyFrameStops_ = (props: KeyFrameStopsProps) => {
       }
       return { top: 0, left: 0, leftFrac: 0, leftPct: 0 };
     },
-    [barRef]
+    [barRef],
   );
 
   const handleChange = (f: () => any) => {
@@ -82,9 +81,11 @@ const KeyFrameStops_ = (props: KeyFrameStopsProps) => {
       studioCtx.change(() => {
         f();
         // Sort keyframes by percentage after any change
-        sequence.keyframes.sort((a, b) => a.percentage - b.percentage);
+        sequence.keyframes = [...sequence.keyframes].sort(
+          (a, b) => a.percentage - b.percentage,
+        );
         return ok();
-      })
+      }),
     );
   };
 
@@ -97,7 +98,7 @@ const KeyFrameStops_ = (props: KeyFrameStopsProps) => {
 
     // Find where to insert this keyframe
     let index = sequence.keyframes.findIndex(
-      (kf) => roundedPct <= kf.percentage
+      (kf) => roundedPct <= kf.percentage,
     );
     if (index < 0) {
       index = sequence.keyframes.length;
@@ -124,7 +125,7 @@ const KeyFrameStops_ = (props: KeyFrameStopsProps) => {
         push(
           <Menu.Item key="delete" onClick={() => onDeleteKeyframe(keyframe)}>
             Delete keyframe
-          </Menu.Item>
+          </Menu.Item>,
         );
       }
     });
@@ -137,7 +138,7 @@ const KeyFrameStops_ = (props: KeyFrameStopsProps) => {
   // Create list of keyframes including potential ghost keyframe
   const keyframez = tuple(
     ...sequence.keyframes,
-    maybes(ghostLeftPct)((g) => createKeyFrame(g))((x) => x.keyframe)()
+    maybes(ghostLeftPct)((g) => createKeyFrame(g))((x) => x.keyframe)(),
   );
   const keyframes = withoutNils(keyframez);
 
@@ -158,7 +159,11 @@ const KeyFrameStops_ = (props: KeyFrameStopsProps) => {
             if (res != null) {
               const { index, keyframe } = res;
               handleChange(() => {
-                insert(sequence.keyframes, index, keyframe);
+                sequence.keyframes = arrayInsertAt(
+                  sequence.keyframes,
+                  keyframe,
+                  index,
+                );
               });
               onSelectKeyframe(keyframe);
             }
@@ -209,11 +214,11 @@ const KeyFrameStops_ = (props: KeyFrameStopsProps) => {
                     const { top, leftPct } = relOffset(e.mouseEvent);
                     const prev = maybe(
                       sequence.keyframes[keyframeNum - 1],
-                      (x) => x.percentage
+                      (x) => x.percentage,
                     );
                     const next = maybe(
                       sequence.keyframes[keyframeNum + 1],
-                      (x) => x.percentage
+                      (x) => x.percentage,
                     );
                     const newRemoving = top > 90 || top < -30;
                     if (removing !== newRemoving) {
@@ -222,7 +227,7 @@ const KeyFrameStops_ = (props: KeyFrameStopsProps) => {
                     const newVal = L.clamp(
                       Math.round(leftPct),
                       prev != null ? prev + 1 : 0,
-                      next != null ? next - 1 : 100
+                      next != null ? next - 1 : 100,
                     );
                     if (keyframe.percentage !== newVal) {
                       handleChange(() => {
@@ -243,13 +248,16 @@ const KeyFrameStops_ = (props: KeyFrameStopsProps) => {
                       (top > 90 || top < -30)
                     ) {
                       handleChange(() => {
-                        removeAt(sequence.keyframes, keyframeNum);
+                        sequence.keyframes = arrayRemoveAt(
+                          sequence.keyframes,
+                          keyframeNum,
+                        );
                       });
                       // Select another keyframe if we deleted the selected one
                       if (isSelected && sequence.keyframes.length > 0) {
                         const newIndex = Math.min(
                           keyframeNum,
-                          sequence.keyframes.length - 1
+                          sequence.keyframes.length - 1,
                         );
                         onSelectKeyframe(sequence.keyframes[newIndex]);
                       }
@@ -269,7 +277,7 @@ const KeyFrameStops_ = (props: KeyFrameStopsProps) => {
                         e.preventDefault();
                         maybeShowContextMenu(
                           e.nativeEvent,
-                          renderKeyframeMenu(keyframe)
+                          renderKeyframeMenu(keyframe),
                         );
                       }
                     }}
@@ -287,8 +295,8 @@ const KeyFrameStops_ = (props: KeyFrameStopsProps) => {
                         border: isGhost
                           ? "1px dashed #ccc"
                           : isSelected
-                          ? "1px solid #007acc"
-                          : "1px solid #ddd",
+                            ? "1px solid #007acc"
+                            : "1px solid #ddd",
                       }}
                     >
                       {keyframe.percentage}%

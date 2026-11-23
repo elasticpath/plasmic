@@ -1,24 +1,20 @@
 import { User } from "@/wab/server/entities/Entities";
-import { logger } from "@/wab/server/observability";
 import { makeUserTraits } from "@/wab/server/routes/util";
 import { disconnectUserSockets } from "@/wab/server/socket-util";
-import { ForbiddenError } from "@/wab/shared/ApiErrors/errors";
-import { TeamWhiteLabelInfo } from "@/wab/shared/ApiSchema";
 import { spawn } from "@/wab/shared/common";
-import OktaJwtVerifier from "@okta/jwt-verifier";
 import { Request, Response } from "express-serve-static-core";
 import { promisify } from "util";
 
 export function doLogin(
   request: Request,
   user: User,
-  done: (err: any) => void
+  done: (err: any) => void,
 ) {
   spawn(
     disconnectUserSockets(request).then(() => {
       request.logIn(user, done);
       request.analytics.identify(user.id, makeUserTraits(user));
-    })
+    }),
   );
 }
 
@@ -41,6 +37,7 @@ export async function doLogout(request: Request, response: Response) {
     }
   });
 }
+<<<<<<< HEAD
 
 export async function verifyClientCredentials(
   whiteLabelName: string,
@@ -63,3 +60,5 @@ export async function verifyClientCredentials(
     throw new ForbiddenError(`Invalid client token: ${err.userMessage}`);
   }
 }
+=======
+>>>>>>> upstream/master

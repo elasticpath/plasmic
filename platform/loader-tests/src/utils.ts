@@ -19,7 +19,7 @@ export function runCommand(
     noExit?: boolean;
     env?: Record<string, string>;
     output?: "inherit";
-  } = {}
+  } = {},
 ) {
   if (!opts.dir) {
     opts.dir = process.cwd();
@@ -27,7 +27,9 @@ export function runCommand(
   if (!opts.env) {
     opts.env = {};
   }
-  console.log("EXEC", command, opts);
+  const label = `${command} (in ${opts.dir})`;
+  const startedAt = Date.now();
+  console.log("EXEC", label);
   const result = execa.command(command, {
     cwd: opts.dir,
     env: {
@@ -42,15 +44,18 @@ export function runCommand(
   });
   // Need to make sure we are returning the original ProcessPromise, so just attach these logs to the end without returning a new promise.
   if (!opts.noExit) {
+    const elapsed = () => `${Math.round((Date.now() - startedAt) / 1000)}s`;
     result.then(
       (outcome) =>
         console.log(
-          `EXEC resolved with code ${outcome?.exitCode}:`,
-          command,
-          opts
+          `EXEC resolved with code ${outcome?.exitCode} in ${elapsed()}:`,
+          label,
         ),
       (reason) =>
-        console.log(`EXEC rejected with reason ${reason}:`, command, opts)
+        console.log(
+          `EXEC rejected in ${elapsed()} with reason ${reason}:`,
+          label,
+        ),
     );
   }
   return result;
@@ -60,7 +65,7 @@ async function apiRequest(
   method: string,
   route: string,
   headers: any,
-  body?: string
+  body?: string,
 ) {
   const host = getEnvVar("WAB_HOST");
   const response = await fetch(`${host}/api/v1${route}`, {
@@ -76,7 +81,7 @@ async function apiRequest(
   if (!response.ok) {
     const error = await response.text();
     throw new Error(
-      `${route} ${method} request returned ${response.status}: ${error}`
+      `${route} ${method} request returned ${response.status}: ${error}`,
     );
   }
 
@@ -105,7 +110,7 @@ async function getCsrfToken(): Promise<{
 export async function apiRequestWithLogin(
   method: string,
   route: string,
-  body?: Record<string, any> | string
+  body?: Record<string, any> | string,
 ) {
   const email = getEnvVar("WAB_USER_EMAIL");
   const password = getEnvVar("WAB_USER_PASSWORD");
@@ -125,7 +130,7 @@ export async function apiRequestWithLogin(
     method,
     route,
     headers,
-    typeof body === "string" ? body : JSON.stringify(body)
+    typeof body === "string" ? body : JSON.stringify(body),
   );
 }
 
@@ -138,7 +143,7 @@ export async function getApiToken() {
   const result = await apiRequestWithLogin("PUT", route);
   if (!result?.token?.token) {
     throw new Error(
-      `Unexpected response when creating API token: ${JSON.stringify(result)}`
+      `Unexpected response when creating API token: ${JSON.stringify(result)}`,
     );
   }
   return result.token.token;
@@ -151,16 +156,12 @@ export async function uploadProject(
     bundleTransformation?: (value: string) => string;
     keepProjectIdsAndNames?: boolean;
     publish?: boolean;
-    dataSourceReplacement?: {
-      type: string;
-    };
-  }
+  },
 ) {
   const {
     bundleTransformation,
     keepProjectIdsAndNames,
     publish = true,
-    dataSourceReplacement,
   } = opts ?? {};
   const name = projectName.replace(/\s/g, "");
   const rawData = fs
@@ -181,8 +182,7 @@ export async function uploadProject(
       prefilled: true,
       updateImportedHostLess: true,
       keepProjectIdsAndNames,
-      dataSourceReplacement,
-    })
+    }),
   );
   console.log(`Uploaded ${fileName} as ${projectName} (${projectId})`);
   return { projectId, projectToken, workspaceId };
@@ -207,7 +207,7 @@ export async function setupCms(fileName: string) {
     JSON.stringify({
       name: "CMS Database",
       workspaceId,
-    })
+    }),
   );
   await apiRequestWithLogin(
     "PUT",
@@ -216,17 +216,17 @@ export async function setupCms(fileName: string) {
       extraData: {
         locales: ["pt-BR"],
       },
-    })
+    }),
   );
   const data = JSON.parse(
     fs
       .readFileSync(path.resolve(path.join(__dirname, "..", "data", fileName)))
-      .toString()
+      .toString(),
   );
   const table = await apiRequestWithLogin(
     "POST",
     `/cmse/databases/${cmsDatabase.id}/tables`,
-    JSON.stringify(data.table)
+    JSON.stringify(data.table),
   );
 
   await apiRequest(
@@ -235,7 +235,7 @@ export async function setupCms(fileName: string) {
     {
       "x-plasmic-api-cms-tokens": `${cmsDatabase.id}:${cmsDatabase.secretToken}`,
     },
-    JSON.stringify(data.entries)
+    JSON.stringify(data.entries),
   );
 
   return cmsDatabase;
@@ -243,7 +243,7 @@ export async function setupCms(fileName: string) {
 
 export async function waitUntil(
   cond: () => boolean | Promise<boolean>,
-  opts: { maxTimeout?: number; timeout?: number } = {}
+  opts: { maxTimeout?: number; timeout?: number } = {},
 ) {
   const start = new Date().getTime();
   const maxTimeout = opts.maxTimeout ?? 300000;
@@ -273,7 +273,7 @@ export async function waitUntilServerUp(
     maxTimeout?: number;
     timeout?: number;
     process?: ExecaChildProcess;
-  } = {}
+  } = {},
 ) {
   let exitCode: number | null = null;
   if (opts.process) {
@@ -302,7 +302,7 @@ export async function waitUntilServerUp(
 
 export async function waitUntilServerDown(
   url: string,
-  opts: { maxTimeout?: number; timeout?: number } = {}
+  opts: { maxTimeout?: number; timeout?: number } = {},
 ) {
   await waitUntil(async () => {
     try {

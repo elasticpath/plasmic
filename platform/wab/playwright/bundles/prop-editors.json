@@ -28465,7 +28465,11 @@
         }
       },
       "deps": [],
+<<<<<<< HEAD
       "version": "259-repoint-ep-commerce-bindings"
+=======
+      "version": "259-add-image-asset-description"
+>>>>>>> upstream/master
     }
   ],
   [
@@ -29272,7 +29276,8 @@
           },
           "__type": "PageHref",
           "query": {},
-          "fragment": null
+          "fragment": null,
+          "encode": false
         },
         "3015503": {
           "code": "\"value\"",
@@ -29963,7 +29968,8 @@
           "width": 360,
           "height": 88,
           "aspectRatio": null,
-          "__type": "ImageAsset"
+          "__type": "ImageAsset",
+          "description": null
         },
         "4030501": {
           "uuid": "sKTLmBPBeoA",
@@ -29973,7 +29979,8 @@
           "width": 150,
           "height": 150,
           "aspectRatio": 1000000,
-          "__type": "ImageAsset"
+          "__type": "ImageAsset",
+          "description": null
         },
         "4030502": {
           "uuid": "Ig14VrKu4uJ",
@@ -29983,7 +29990,8 @@
           "width": 150,
           "height": 150,
           "aspectRatio": 1000000,
-          "__type": "ImageAsset"
+          "__type": "ImageAsset",
+          "description": null
         },
         "4030503": {
           "uuid": "mDPj1zHP6SO",
@@ -36802,7 +36810,8 @@
           },
           "__type": "PageHref",
           "query": {},
-          "fragment": null
+          "fragment": null,
+          "encode": false
         },
         "5022615": { "text": ["123"], "__type": "TemplatedString" },
         "5022616": {
@@ -42419,7 +42428,8 @@
           "width": 150,
           "height": 150,
           "aspectRatio": null,
-          "__type": "ImageAsset"
+          "__type": "ImageAsset",
+          "description": null
         },
         "41233034": {
           "uuid": "WW61sIYhMVD",
@@ -42429,7 +42439,8 @@
           "width": 150,
           "height": 150,
           "aspectRatio": null,
-          "__type": "ImageAsset"
+          "__type": "ImageAsset",
+          "description": null
         },
         "41233035": {
           "uuid": "veDGlfchW_w",
@@ -55521,7 +55532,11 @@
         "DuESJECNxPHt": { "tpl": [], "__type": "VirtualRenderExpr" }
       },
       "deps": ["968565bc-2862-4179-aa20-deebd3879e08"],
+<<<<<<< HEAD
       "version": "259-repoint-ep-commerce-bindings"
+=======
+      "version": "259-add-image-asset-description"
+>>>>>>> upstream/master
     }
   ]
 ]

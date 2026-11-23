@@ -53,7 +53,7 @@ export const loadConfig = memoizeOne((): Config => {
   return config;
 });
 
-function parseConfigFromEnv(): Config {
+export function parseConfigFromEnv(): Config {
   const config = Object.assign({}, DEFAULT_CONFIG);
   const mailConfig = process.env["MAIL_CONFIG"]
     ? JSON.parse(process.env["MAIL_CONFIG"])
@@ -79,7 +79,7 @@ function parseConfigFromEnv(): Config {
     mailBcc: mailConfig?.mailBcc,
     adminEmails: process.env["ADMIN_EMAILS"]
       ? (JSON.parse(process.env["ADMIN_EMAILS"]) as string[]).map((email) =>
-          email.toLowerCase()
+          email.toLowerCase(),
         )
       : undefined,
     terminationGracePeriodMs: terminationGracePeriodMs,

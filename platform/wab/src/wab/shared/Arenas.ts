@@ -1,5 +1,5 @@
-import { ArenaType } from "@/wab/shared/ApiSchema";
-import { arrayRemove, arrayReversed } from "@/wab/shared/collections";
+import { ArenaRef, ArenaType } from "@/wab/shared/ApiSchema";
+import { arrayReversed } from "@/wab/shared/collections";
 import {
   assert,
   ensure,
@@ -15,7 +15,6 @@ import {
   ensureActivatedScreenVariantsForComponentArena,
   ensureActivatedScreenVariantsForCustomCell,
   ensureComponentArenaFrameSizeForTargetScreenVariant,
-  getCellKeyForFrame,
   getComponentArenaBaseFrameViewMode,
   getComponentArenaRowLabel,
   getCustomFrameForActivatedVariants,
@@ -35,6 +34,7 @@ import {
   allGlobalVariants,
   getAllSiteFrames,
   getComponentArena,
+  getDedicatedArena,
   getPageArena,
   getResponsiveStrategy,
   getSiteArenas,
@@ -82,11 +82,10 @@ import {
   getClosestSatisfyingWidth,
   getDisplayVariants,
   getPartitionedScreenVariants,
-  getPartitionedScreenVariantsByTargetVariant,
   isScreenVariant,
   VariantCombo,
 } from "@/wab/shared/Variants";
-import { has, isArray, isEmpty, keyBy, orderBy } from "lodash";
+import { isEmpty, keyBy, omit, orderBy, uniq } from "lodash";
 // eslint-disable-next-line @typescript-eslint/no-restricted-imports
 import { IObservableValue, observable } from "mobx";
 
@@ -164,7 +163,7 @@ export function getArenaType(arena: AnyArena): ArenaType {
   return switchType(arena)
     .when(Arena, () => "custom" as const)
     .when([ComponentArena, PageArena], (v) =>
-      isKnownComponentArena(v) ? ("component" as const) : ("page" as const)
+      isKnownComponentArena(v) ? ("component" as const) : ("page" as const),
     )
     .result();
 }
@@ -180,6 +179,16 @@ export function getArenaUuidOrName(arena: AnyArena) {
     .when(PageArena, (it) => it.component.uuid)
     .when(ComponentArena, (it) => it.component.uuid)
     .result();
+}
+
+export function getArenaRef(arena: AnyArena): ArenaRef {
+  return {
+    type: getArenaType(arena),
+    name: getArenaName(arena),
+    componentUuids: uniq(
+      getArenaFrames(arena, true).map((f) => f.container.component.uuid),
+    ),
+  };
 }
 
 export function getArenaName(arena: AnyArena) {
@@ -199,14 +208,14 @@ export function getArenaName(arena: AnyArena) {
 export function setFocusedFrame(
   site: Site,
   arena: DedicatedArena,
-  fromFocusedFrame?: ArenaFrame
+  fromFocusedFrame?: ArenaFrame,
 ) {
   const { width, height } =
     arena.component.type === "page"
       ? getSiteScreenSizes(site)[0]
       : deriveDefaultFrameSize(site, arena.component);
   const newFocusedFrame = cloneArenaFrame(
-    fromFocusedFrame || getArenaFrames(arena)[0]
+    fromFocusedFrame || getArenaFrames(arena)[0],
   );
   newFocusedFrame.name = "";
   newFocusedFrame.width = width;
@@ -230,7 +239,7 @@ function getPositionedArenaFrames(arena: Arena): PositionedArenaFrame[] {
 
 export function getArenaFrames(
   arena: AnyArena | null | undefined,
-  includeAll = false
+  includeAll = false,
 ): ArenaFrame[] {
   return withoutNils(
     switchType(arena)
@@ -250,14 +259,14 @@ export function getArenaFrames(
               ...getArenaFramesInGrid(it.customMatrix),
             ];
       })
-      .elseUnsafe(() => [])
+      .elseUnsafe(() => []),
   );
 }
 
 export const getArenaFrameDesc = (
   arena: AnyArena,
   arenaFrame: ArenaFrame,
-  site: Site
+  site: Site,
 ) =>
   switchType(arena)
     .when(
@@ -269,7 +278,7 @@ export const getArenaFrameDesc = (
           isPageArena: false,
         })
           .map((it) => capitalizeFirst(it.displayName))
-          .join(" + ") || "Base"
+          .join(" + ") || "Base",
     )
     .when(Arena, () => {
       const artboardName =
@@ -299,10 +308,10 @@ export function getArenaFrameCellsInGrid(grid: ArenaFrameGrid) {
 
 export function getArenaContaining(
   site: Site,
-  frame: ArenaFrame
+  frame: ArenaFrame,
 ): AnyArena | undefined {
   return getSiteArenas(site).find((arena) =>
-    getArenaFrames(arena).includes(frame)
+    getArenaFrames(arena).includes(frame),
   );
 }
 
@@ -334,7 +343,7 @@ export function cloneArena(arena: Arena) {
   return new Arena({
     name: arena.name,
     children: arena.children.map((c) =>
-      cloneArenaFrame(ensureKnownArenaFrame(c))
+      cloneArenaFrame(ensureKnownArenaFrame(c)),
     ),
   });
 }
@@ -345,7 +354,7 @@ export enum FrameViewMode {
 }
 
 export function isHeightAutoDerived(
-  arenaFrame: ArenaFrame
+  arenaFrame: ArenaFrame,
 ): arenaFrame is IArenaFrame {
   return (
     isPageComponent(arenaFrame.container.component) ||
@@ -355,7 +364,7 @@ export function isHeightAutoDerived(
 
 export function updateAutoDerivedFrameHeight(
   arenaFrame: IArenaFrame,
-  newHeight: number
+  newHeight: number,
 ) {
   const minHeight = isPageFrame(arenaFrame) ? arenaFrame.height : 0;
   const height = Math.max(newHeight, minHeight);
@@ -369,12 +378,12 @@ export function updateAutoDerivedFrameHeight(
 export function deriveInitFrameSettings(
   site: Site,
   arena: Arena,
-  component: Component
+  component: Component,
 ): { viewMode?: FrameViewMode; width?: number; height?: number } {
   if (isPageComponent(component) || isStretchyComponent(component)) {
     // We guess that this is a full-screen component
     const lastStretchFrame = arrayReversed(
-      arena.children.filter((x): x is ArenaFrame => isKnownArenaFrame(x))
+      arena.children.filter((x): x is ArenaFrame => isKnownArenaFrame(x)),
     ).find((frame) => frame.viewMode === FrameViewMode.Stretch);
     return {
       viewMode: FrameViewMode.Stretch,
@@ -393,8 +402,8 @@ export function deriveInitFrameSettings(
 
 export function removeVariantsFromArenas(
   site: Site,
-  variants: Variant[],
-  component: Component | undefined
+  variants: VariantCombo,
+  component: Component | undefined,
 ) {
   if (component) {
     if (isPageComponent(component)) {
@@ -422,20 +431,20 @@ export function removeVariantsFromArenas(
   }
 
   // Next, remove references to these variants from leftover frames
+  const variantUuids = variants.map((variant) => variant.uuid);
+  const removed = new Set(variants);
+  const withoutVariants = (targetVariants: VariantCombo) =>
+    targetVariants.filter((v) => !removed.has(v));
   for (const frame of getAllSiteFrames(site)) {
-    const pinnedVariants = component
-      ? frame.pinnedVariants
-      : frame.pinnedGlobalVariants;
-    const targetVariants = component
-      ? frame.targetVariants
-      : frame.targetGlobalVariants;
-    for (const variant of variants) {
-      if (has(pinnedVariants, variant.uuid)) {
-        delete pinnedVariants[variant.uuid];
-      }
-      if (targetVariants.includes(variant)) {
-        arrayRemove(targetVariants, variant);
-      }
+    if (component) {
+      frame.pinnedVariants = omit(frame.pinnedVariants, variantUuids);
+      frame.targetVariants = withoutVariants(frame.targetVariants);
+    } else {
+      frame.pinnedGlobalVariants = omit(
+        frame.pinnedGlobalVariants,
+        variantUuids,
+      );
+      frame.targetGlobalVariants = withoutVariants(frame.targetGlobalVariants);
     }
   }
 }
@@ -443,7 +452,7 @@ export function removeVariantsFromArenas(
 export function removeVariantGroupFromArenas(
   site: Site,
   group: VariantGroup,
-  component: Component | undefined
+  component: Component | undefined,
 ) {
   if (component) {
     if (isPageComponent(component)) {
@@ -472,19 +481,19 @@ export function removeVariantGroupFromArenas(
 }
 
 export function isPageArena(
-  arena: AnyArena | null | undefined
+  arena: AnyArena | null | undefined,
 ): arena is PageArena {
   return isKnownPageArena(arena);
 }
 
 export function isComponentArena(
-  arena: AnyArena | null | undefined
+  arena: AnyArena | null | undefined,
 ): arena is ComponentArena {
   return isKnownComponentArena(arena);
 }
 
 export function isMixedArena(
-  arena: AnyArena | null | undefined
+  arena: AnyArena | null | undefined,
 ): arena is Arena {
   return isKnownArena(arena);
 }
@@ -557,13 +566,13 @@ export type FocusedDedicatedArena = DedicatedArena & {
 };
 
 export function isDedicatedArena(
-  arena: AnyArena | null | undefined
+  arena: AnyArena | null | undefined,
 ): arena is DedicatedArena {
   return isKnownPageArena(arena) || isKnownComponentArena(arena);
 }
 
 export function isFocusedDedicatedArena(
-  arena: AnyArena
+  arena: AnyArena,
 ): arena is FocusedDedicatedArena {
   return isDedicatedArena(arena) && !!arena._focusedFrame;
 }
@@ -582,8 +591,8 @@ export function getActivatedVariantsForFrame(site: Site, frame: ArenaFrame) {
         variants.add(
           ensure(
             uuidToVariant[key],
-            "Pinned local variant missing from local variants"
-          )
+            "Pinned local variant missing from local variants",
+          ),
         );
       }
     }
@@ -595,15 +604,15 @@ export function getActivatedVariantsForFrame(site: Site, frame: ArenaFrame) {
         includeDeps: "direct",
         excludeInactiveScreenVariants: true,
       }),
-      (v) => v.uuid
+      (v) => v.uuid,
     );
     for (const [key, pin] of Object.entries(frame.pinnedGlobalVariants)) {
       if (pin) {
         variants.add(
           ensure(
             uuidToVariant[key],
-            "Pinned global variant missing from global variants"
-          )
+            "Pinned global variant missing from global variants",
+          ),
         );
       }
     }
@@ -630,7 +639,7 @@ export function isDuplicatableFrame(arena: AnyArena, frame: ArenaFrame) {
 export function ensureCustomFrameForActivatedVariants(
   site: Site,
   arena: ComponentArena | PageArena,
-  variants: Set<Variant>
+  variants: Set<Variant>,
 ) {
   const existing = getCustomFrameForActivatedVariants(arena, variants);
   if (existing) {
@@ -654,12 +663,14 @@ export function ensureCustomFrameForActivatedVariants(
         viewMode: getComponentArenaBaseFrameViewMode(arena),
       });
   if (arena.customMatrix.rows.length === 0) {
-    arena.customMatrix.rows.push(
-      new ArenaFrameRow({ cols: [], rowKey: undefined })
-    );
+    arena.customMatrix.rows = [
+      ...arena.customMatrix.rows,
+      new ArenaFrameRow({ cols: [], rowKey: undefined }),
+    ];
   }
   const cell = new ArenaFrameCell({ frame, cellKey: combo });
-  arena.customMatrix.rows[0].cols.push(cell);
+  const firstRow = arena.customMatrix.rows[0];
+  firstRow.cols = [...firstRow.cols, cell];
 
   ensureActivatedScreenVariantsForCustomCell(site, cell);
 
@@ -671,9 +682,20 @@ export function ensureCustomFrameForActivatedVariants(
   return frame;
 }
 
+export function ensureCombinationFrame(
+  site: Site,
+  component: Component,
+  combo: VariantCombo,
+) {
+  const arena = getDedicatedArena(site, component);
+  if (arena && combo.length > 1) {
+    ensureCustomFrameForActivatedVariants(site, arena, new Set(combo));
+  }
+}
+
 export function ensureActivatedScreenVariantsForArena(
   site: Site,
-  arena: AnyArena
+  arena: AnyArena,
 ) {
   if (isComponentArena(arena)) {
     ensureActivatedScreenVariantsForComponentArena(site, arena);
@@ -686,7 +708,7 @@ export function ensureActivatedScreenVariantsForArena(
 
 export function ensureActivatedScreenVariantsForFrameByWidth(
   site: Site,
-  frame: ArenaFrame
+  frame: ArenaFrame,
 ) {
   const [active, inactive] = getPartitionedScreenVariants(site, frame.width);
   const pinManager = new FramePinManager(site, frame);
@@ -698,34 +720,10 @@ export function ensureActivatedScreenVariantsForFrameByWidth(
   }
 }
 
-export function getDerivedScreenVariantsForFrame(
-  site: Site,
-  arena: AnyArena,
-  frame: ArenaFrame
-) {
-  if (isComponentArena(arena)) {
-    const cellKey = getCellKeyForFrame(arena, frame);
-    if (isKnownVariant(cellKey) && isScreenVariant(cellKey)) {
-      return getPartitionedScreenVariantsByTargetVariant(site, cellKey);
-    } else if (isArray(cellKey)) {
-      const screenVariants = cellKey.filter(isScreenVariant);
-      if (screenVariants.length > 0) {
-        return getPartitionedScreenVariantsByTargetVariant(
-          site,
-          screenVariants[0]
-        );
-      }
-    }
-    return [];
-  }
-
-  return getPartitionedScreenVariants(site, frame.width);
-}
-
 export function syncArenaFrameSize(
   site: Site,
   arena: AnyArena,
-  frame: ArenaFrame
+  frame: ArenaFrame,
 ) {
   if (isComponentArena(arena)) {
     syncComponentArenaFrameSize(arena, frame);
@@ -737,11 +735,11 @@ export function syncArenaFrameSize(
 export function ensureFrameSizeForTargetScreenVariant(
   site: Site,
   arena: AnyArena,
-  variant: Variant
+  variant: Variant,
 ) {
   assert(
     isScreenVariant(variant),
-    "Trying to resize frame to something that is not a valid screen variant"
+    "Trying to resize frame to something that is not a valid screen variant",
   );
   if (isComponentArena(arena)) {
     ensureComponentArenaFrameSizeForTargetScreenVariant(site, arena, variant);
@@ -755,11 +753,11 @@ export function ensureFrameSizeForTargetScreenVariant(
 export function maybeResizeFrameForTargetScreenVariant(
   site: Site,
   frame: ArenaFrame,
-  variant: Variant
+  variant: Variant,
 ) {
   assert(
     isScreenVariant(variant),
-    "Trying to resize frame to something that is not a valid screen variant"
+    "Trying to resize frame to something that is not a valid screen variant",
   );
   const pinManager = new FramePinManager(site, frame);
   if (pinManager.selectedVariants().includes(variant)) {
@@ -781,7 +779,7 @@ export const normalMobileWidth = 375;
  */
 export function getFrameSizeForTargetScreenVariant(
   site: Site,
-  targetVariant: Variant | undefined
+  targetVariant: Variant | undefined,
 ): number | undefined {
   // Try finding an already existing frame for this variant and use it's size
   if (targetVariant && site.pageArenas.length > 0) {
@@ -798,11 +796,11 @@ export function getFrameSizeForTargetScreenVariant(
   }
 
   const foundRange = getOrderedScreenRanges(site).find(
-    (range) => range.variant === targetVariant
+    (range) => range.variant === targetVariant,
   );
   if (!foundRange) {
     console.warn(
-      "getFrameSizeForTargetScreenVariant: Target screen variant not found in variant group"
+      "getFrameSizeForTargetScreenVariant: Target screen variant not found in variant group",
     );
   }
   return foundRange?.bestSize;
@@ -822,7 +820,7 @@ export function getOrderedScreenRanges(site: Site): ScreenRange[] {
 
   function parseMq(v: Variant) {
     return parseScreenSpec(
-      ensure(v.mediaQuery, "These screen variants should have media queries")
+      ensure(v.mediaQuery, "These screen variants should have media queries"),
     );
   }
 
@@ -844,14 +842,14 @@ export function getOrderedScreenRanges(site: Site): ScreenRange[] {
   function get(v: Variant) {
     return ensure(
       isMobileFirst ? parseMq(v).minWidth : parseMq(v).maxWidth,
-      "Screen variant must have expected breakpoint"
+      "Screen variant must have expected breakpoint",
     );
   }
 
   const variants = orderBy(
     unordered,
     [(x) => get(x)],
-    [isMobileFirst ? "asc" : "desc"]
+    [isMobileFirst ? "asc" : "desc"],
   );
   // Here we can always assume there is at least one variant.
   // min-width and max-width are inclusive, so for Desktop-first, if Tablet is max-width 100 and Mobile is max-width 99,
@@ -902,7 +900,7 @@ export function getOrderedScreenRanges(site: Site): ScreenRange[] {
 
 function getTwoSidedSpecForScreenVariant(
   site: Site,
-  variant: Variant | undefined
+  variant: Variant | undefined,
 ) {
   const range = getOrderedScreenRanges(site).find((r) => r.variant === variant);
   return range ? new ScreenSizeSpec(range.min, range.max) : undefined;
@@ -911,25 +909,25 @@ function getTwoSidedSpecForScreenVariant(
 export function resizeFrameForScreenVariant(
   site: Site,
   frame: ArenaFrame,
-  variant: Variant | undefined
+  variant: Variant | undefined,
 ) {
   assert(
     variant === undefined || isScreenVariant(variant),
-    "Trying to resize frame to something that is not a valid screen variant"
+    "Trying to resize frame to something that is not a valid screen variant",
   );
   if (variant === undefined) {
     frame.width =
       getFrameSizeForTargetScreenVariant(site, variant) ?? normalDesktopWidth;
   } else {
     const spec = parseScreenSpec(
-      ensure(variant.mediaQuery, "Missing media query from screen variant")
+      ensure(variant.mediaQuery, "Missing media query from screen variant"),
     );
 
     // We try to make the width fit within this variant's "exclusive" range.
     // For instance, if we satisfy Mobile (and thus Tablet already), but now we target Tablet, then we still want to resize to be wider.
     const nudgedWidth = getClosestSatisfyingWidth(
       frame.width,
-      getTwoSidedSpecForScreenVariant(site, variant) ?? spec
+      getTwoSidedSpecForScreenVariant(site, variant) ?? spec,
     );
     if (nudgedWidth !== frame.width) {
       frame.width =
@@ -942,9 +940,9 @@ export function resizeFrameForScreenVariant(
     site,
     ensure(
       getArenaContaining(site, frame),
-      "Frame does not belong to any arena"
+      "Frame does not belong to any arena",
     ),
-    frame
+    frame,
   );
 }
 
@@ -981,7 +979,7 @@ export function getGridRowLabels(arena: AnyArena | null | undefined): string[] {
 
     return [
       ...arena.matrix.rows.map((row) =>
-        getComponentArenaRowLabel(arena.component, row)
+        getComponentArenaRowLabel(arena.component, row),
       ),
       ...arena.customMatrix.rows.map((_) => COMBINATIONS_CAP),
     ];
@@ -990,20 +988,16 @@ export function getGridRowLabels(arena: AnyArena | null | undefined): string[] {
   return [];
 }
 
-export function hasScreenVariantArenaFrame(frame: ArenaFrame) {
-  return frame.targetGlobalVariants.some((v) => isScreenVariant(v));
-}
-
 export function doesFrameVariantMatch(
   frame: ArenaFrame,
   variants: VariantCombo,
   componentVariants: Record<string, Variant | undefined>,
-  globalVariants: Record<string, Variant | undefined>
+  globalVariants: Record<string, Variant | undefined>,
 ): boolean {
   const frameVariants = [
     ...Object.keys(frame.pinnedVariants).map((uuid) => componentVariants[uuid]),
     ...Object.keys(frame.pinnedGlobalVariants).map(
-      (uuid) => globalVariants[uuid]
+      (uuid) => globalVariants[uuid],
     ),
   ].filter(isKnownVariant);
   return setEquals(new Set(variants), new Set(frameVariants));

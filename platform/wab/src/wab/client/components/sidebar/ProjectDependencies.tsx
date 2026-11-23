@@ -29,7 +29,6 @@ import { unbundleProjectDependency } from "@/wab/shared/core/tagged-unbundle";
 import { isAdminTeamEmail } from "@/wab/shared/devflag-utils";
 import { ProjectDependency } from "@/wab/shared/model/classes";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
 import { extractProjectIdFromUrlOrId, getPublicUrl } from "@/wab/shared/urls";
 import { areEquivalentScreenVariants } from "@/wab/shared/Variants";
 import { Menu, notification, Tooltip } from "antd";
@@ -41,7 +40,7 @@ function isDevUser(studioCtx: StudioCtx) {
     getPublicUrl().startsWith("http://localhost:3003") &&
     isAdminTeamEmail(
       studioCtx.appCtx.selfInfo?.email,
-      studioCtx.appCtx.appConfig
+      studioCtx.appCtx.appConfig,
     )
   );
 }
@@ -65,14 +64,14 @@ const DependencyItem = observer(function DependencyItem(props: {
             key="jump-newtab"
             onClick={() => {
               openNewTab(
-                fillRoute(APP_ROUTES.project, {
+                APP_ROUTES.project.fill({
                   projectId: targetProjectId,
-                })
+                }),
               );
             }}
           >
             Open project in new tab
-          </Menu.Item>
+          </Menu.Item>,
         );
       }
 
@@ -83,13 +82,13 @@ const DependencyItem = observer(function DependencyItem(props: {
             onClick={async () => {
               const hostLessDependents =
                 studioCtx.projectDependencyManager.getHostLessPackageDependents(
-                  data.model.pkgId
+                  data.model.pkgId,
                 );
 
               if (hostLessDependents.length > 0) {
                 notification.error({
                   message: `Cannot remove package, the package is a dependency of the following packages: ${hostLessDependents.join(
-                    ","
+                    ",",
                   )}`,
                 });
                 return;
@@ -102,13 +101,13 @@ const DependencyItem = observer(function DependencyItem(props: {
 
               if (answer) {
                 await studioCtx.projectDependencyManager.removeByPkgId(
-                  data.model.pkgId
+                  data.model.pkgId,
                 );
               }
             }}
           >
             Remove imported project
-          </Menu.Item>
+          </Menu.Item>,
         );
       }
     });
@@ -129,7 +128,7 @@ const DependencyItem = observer(function DependencyItem(props: {
           {matcher.boldSnippets(
             isHostLessPkg
               ? `Package ${data.model.name}`
-              : `${data.model.name} v${data.model.version}`
+              : `${data.model.name} v${data.model.version}`,
           )}
         </label>
       </Tooltip>
@@ -145,13 +144,13 @@ const DependencyItem = observer(function DependencyItem(props: {
                 const { pkg: latest, depPkgs } =
                   await studioCtx.appCtx.api.getPkgVersion(
                     data.model.pkgId,
-                    data.latestPkgVersionMeta?.version
+                    data.latestPkgVersionMeta?.version,
                   );
 
                 const { projectDependency } = unbundleProjectDependency(
                   studioCtx.bundler(),
                   latest,
-                  depPkgs
+                  depPkgs,
                 );
 
                 const answer = await promptUpgradeDep({
@@ -196,9 +195,8 @@ export async function importProjectWithPrompt(sc: StudioCtx) {
   }
   const projectId = extractProjectIdFromUrlOrId(rawProjectUrlOrId);
   try {
-    const dependency = await sc.projectDependencyManager.addByProjectId(
-      projectId
-    );
+    const dependency =
+      await sc.projectDependencyManager.addByProjectId(projectId);
     if (dependency.site.activeScreenVariantGroup?.variants.length) {
       // Offer to switch screen variant if exists
       await trySwitchScreenVariant(sc, dependency);
@@ -210,18 +208,18 @@ export async function importProjectWithPrompt(sc: StudioCtx) {
 
 async function updateProjectsWithPrompt(
   studioCtx: StudioCtx,
-  dependenciesWithUpdates: ProjectDependencyData[]
+  dependenciesWithUpdates: ProjectDependencyData[],
 ) {
   const targetDeps = await Promise.all(
     dependenciesWithUpdates.map(async (dep) => {
       const { pkg: latest, depPkgs } = await studioCtx.appCtx.api.getPkgVersion(
         dep.model.pkgId,
-        dep.latestPkgVersionMeta?.version
+        dep.latestPkgVersionMeta?.version,
       );
 
       return unbundleProjectDependency(studioCtx.bundler(), latest, depPkgs)
         .projectDependency;
-    })
+    }),
   );
 
   const shouldUpdate = await promptUpgradeDeps({ studioCtx, targetDeps });
@@ -233,7 +231,7 @@ async function updateProjectsWithPrompt(
 
 async function trySwitchScreenVariant(
   studioCtx: StudioCtx,
-  dependency: ProjectDependency
+  dependency: ProjectDependency,
 ) {
   const prevGroup = studioCtx.site.activeScreenVariantGroup;
   const newGroup = dependency.site.activeScreenVariantGroup;
@@ -248,8 +246,8 @@ async function trySwitchScreenVariant(
     const missingVariants = prevGroup.variants.filter(
       (prevV) =>
         !newGroup.variants.find((newV) =>
-          areEquivalentScreenVariants(prevV, newV)
-        )
+          areEquivalentScreenVariants(prevV, newV),
+        ),
     );
 
     switchGroup = await reactConfirm({
@@ -281,7 +279,7 @@ async function trySwitchScreenVariant(
     await studioCtx
       .siteOps()
       .updateActiveScreenVariantGroup(
-        dependency.site.activeScreenVariantGroup!
+        dependency.site.activeScreenVariantGroup!,
       );
   }
 }
@@ -318,7 +316,7 @@ function _ProjectDependenciesPanel() {
       (dep) =>
         dep.latestPkgVersionMeta &&
         dep.latestPkgVersionMeta.version !== dep.model.version &&
-        (!isHostLessPackage(dep.model.site) || isDevUser(sc))
+        (!isHostLessPackage(dep.model.site) || isDevUser(sc)),
     );
 
   const rendered = renderItems();

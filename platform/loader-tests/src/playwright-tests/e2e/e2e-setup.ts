@@ -11,7 +11,7 @@ import {
   uploadProject,
   waitUntilServerUp,
 } from "../../utils";
-export type CodegenPlatform = "nextjs" | "react" | "tanstack";
+export type CodegenPlatform = "nextjs" | "react" | "tanstack" | "gatsby";
 
 export interface CodegenTestContext {
   projectId: string;
@@ -37,7 +37,7 @@ export interface CodegenTestOptions {
 }
 
 export async function setupCodegenTest(
-  opts: CodegenTestOptions
+  opts: CodegenTestOptions,
 ): Promise<CodegenTestContext> {
   const {
     bundleFile,
@@ -52,7 +52,7 @@ export async function setupCodegenTest(
   const { projectId, projectToken } = await uploadProject(
     bundleFile,
     projectName,
-    { bundleTransformation }
+    { bundleTransformation },
   );
   console.log(`[codegen-setup] Uploaded project: ${projectId}`);
 
@@ -62,10 +62,14 @@ export async function setupCodegenTest(
   console.log(`[codegen-setup] Created tmpdir: ${tmpdir}`);
 
   const npmRegistry = getEnvVar("NPM_CONFIG_REGISTRY");
+  // Share only _cacache: npm <11.6.1 has no lock on the _npx install dir.
   const npmCache = path.join(tmpdir, ".npm-cache");
+  fs.mkdirSync(npmCache);
+  fs.symlinkSync(process.env.E2E_NPM_CACACHE!, path.join(npmCache, "_cacache"));
   const env = {
     npm_config_registry: npmRegistry,
     npm_config_cache: npmCache,
+    npm_config_prefer_offline: "true",
     PLASMIC_AUTH_HOST: getEnvVar("WAB_HOST"),
     PLASMIC_AUTH_USER: getEnvVar("WAB_USER_EMAIL"),
     PLASMIC_AUTH_TOKEN: await getApiToken(),
@@ -91,7 +95,7 @@ export async function setupCodegenTest(
   const { server, host, port } = await buildAndStartServer(
     projectDir,
     platform,
-    env
+    env,
   );
   console.log(`[codegen-setup] Server running at ${host} (pid ${server.pid})`);
 
@@ -174,9 +178,9 @@ function getStartCommand(platform: CodegenPlatform, port: number): string {
     case "nextjs":
       npmScriptName = "start";
       break;
-    // case "gatsby":
-    //   npmScriptName = "serve";
-    //   break;
+    case "gatsby":
+      npmScriptName = "serve";
+      break;
     case "react":
     case "tanstack":
       npmScriptName = "preview";
@@ -194,36 +198,42 @@ function patchLoaderHost(
   projectDir: string,
   platform: CodegenPlatform,
   typescript: boolean,
-  host: string
+  host: string,
 ) {
   const ext = typescript ? "ts" : "js";
-  const filePath =
+  const filePaths =
     platform === "nextjs"
-      ? path.join(projectDir, `plasmic-init.${ext}`)
-      : path.join(projectDir, `gatsby-config.${ext}`);
-  const content = fs.readFileSync(filePath, "utf-8");
-  let patchedContent = content.replace(
-    "projects: [",
-    `host: "${host}",\n    projects: [`
-  );
+      ? [
+          path.join(projectDir, `plasmic-init.${ext}`),
+          path.join(projectDir, "app", `sitemap.${ext}`),
+        ]
+      : [path.join(projectDir, `gatsby-config.${ext}`)];
 
-  if (platform === "nextjs") {
-    patchedContent = patchedContent
-      .replace('import * as NextNavigation from "next/navigation";\n\n', "")
-      .replace(
-        /\/\/ Needed for Next\.js app router support\.\n\s*nextNavigation: NextNavigation,\n/,
-        "platformOptions: {\n    nextjs: {\n      appDir: true,\n    },\n  },\n"
-      );
+  for (const filePath of filePaths.filter((p) => fs.existsSync(p))) {
+    const content = fs.readFileSync(filePath, "utf-8");
+    let patchedContent = content.replace(
+      "projects: ",
+      `host: "${host}",\n    projects: `,
+    );
+
+    if (platform === "nextjs") {
+      patchedContent = patchedContent
+        .replace('import * as NextNavigation from "next/navigation";\n\n', "")
+        .replace(
+          /\/\/ Needed for Next\.js app router support\.\n\s*nextNavigation: NextNavigation,\n/,
+          "platformOptions: {\n    nextjs: {\n      appDir: true,\n    },\n  },\n",
+        );
+    }
+
+    fs.writeFileSync(filePath, patchedContent);
+    console.log(`[codegen-setup] Patched loader host in ${filePath}`);
   }
-
-  fs.writeFileSync(filePath, patchedContent);
-  console.log(`[codegen-setup] Patched loader host in ${filePath}`);
 }
 
 async function buildAndStartServer(
   projectDir: string,
   platform: CodegenPlatform,
-  env: Record<string, string> = {}
+  env: Record<string, string> = {},
 ): Promise<{ server: ExecaChildProcess; host: string; port: number }> {
   console.log(`[codegen-setup] Building ${platform} project...`);
   await runCommand("npm run build", {

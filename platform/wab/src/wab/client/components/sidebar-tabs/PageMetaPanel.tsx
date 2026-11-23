@@ -8,7 +8,7 @@ import { SidebarSection } from "@/wab/client/components/sidebar/SidebarSection";
 import { useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { mkSectionUiId } from "@/wab/client/studio-ctx/ui/studio-ui-ids";
 import { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
-import { spawn, switchType } from "@/wab/shared/common";
+import { switchType } from "@/wab/shared/common";
 import { PageComponent } from "@/wab/shared/core/components";
 import {
   codeLit,
@@ -34,13 +34,10 @@ const PageMetaPanel = observer(function PageMetaPanel(props: {
 }) {
   const { page, viewCtx } = props;
   const sc = useStudioCtx();
-  const disableDynamicValue = !sc.appCtx.appConfig.serverQueries
-    ? true
-    : undefined;
 
   const titleExpr = React.useMemo(
     () => convertPageMetaStringToExpr(page.pageMeta?.title),
-    [page.pageMeta?.title]
+    [page.pageMeta?.title],
   );
 
   return (
@@ -64,12 +61,11 @@ const PageMetaPanel = observer(function PageMetaPanel(props: {
         expr={titleExpr}
         onChange={(expr: Expr | undefined) => {
           const newTitle = convertExprToPageMetaString(expr);
-          spawn(sc.tryChangePageMeta(page, "title", newTitle));
+          sc.tryChangePageMeta(page, "title", newTitle);
         }}
         viewCtx={viewCtx}
         tpl={page.tplTree as TplTag}
         disableLinkToProp={true}
-        disableDynamicValue={disableDynamicValue}
       />
     </SidebarSection>
   );
@@ -89,7 +85,7 @@ export type PageMetaString = string | TemplatedString;
  * This converts the onChange value back to PageMetaString.
  */
 export function convertExprToPageMetaString(
-  value: Expr | null | undefined
+  value: Expr | null | undefined,
 ): PageMetaString | null {
   if (value == null) {
     return null;
@@ -119,7 +115,7 @@ export function convertExprToPageMetaString(
  * This converts PageMetaString to an accepted value type.
  */
 export function convertPageMetaStringToExpr(
-  value: PageMetaString | null | undefined
+  value: PageMetaString | null | undefined,
 ): Expr | undefined {
   if (value == null) {
     return undefined;

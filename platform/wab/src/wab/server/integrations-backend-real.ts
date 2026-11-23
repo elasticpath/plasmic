@@ -31,12 +31,12 @@ async function runAppServer(config: Config) {
       addInternalIntegrationsRoutes(app_);
     },
     undefined,
-    { skipSession: true }
+    { skipSession: true },
   );
   return runExpressApp(app);
 }
 
 export async function serverDataBackendMain() {
-  const { opts, config } = setupServerCli();
+  const { config } = setupServerCli();
   await runAppServer(config);
 }

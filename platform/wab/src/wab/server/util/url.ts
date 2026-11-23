@@ -28,7 +28,7 @@ export type UntrustedRequestConfig = Omit<
  * Defaults to return raw string body by not transforming the response.
  */
 export async function fetchUntrusted<T = string>(
-  req: UntrustedRequestConfig
+  req: UntrustedRequestConfig,
 ): Promise<AxiosResponse<T>> {
   // Default: return AxiosResponse since it's easier to handle than AxiosError
   const validateStatus = req.validateStatus ?? null;
@@ -44,12 +44,19 @@ export async function fetchUntrusted<T = string>(
       transformResponse,
     });
   } catch (err) {
-    if (isRequestFilteringAgentError(err)) {
+    if (isRequestFilteringAgentError(err) || isInvalidUrlError(err)) {
       throw new UnsafeUrlError(req.url ?? "");
     } else {
       throw err;
     }
   }
+}
+
+function isInvalidUrlError(error: unknown): boolean {
+  return (
+    error instanceof TypeError &&
+    (error as TypeError & { code?: string }).code === "ERR_INVALID_URL"
+  );
 }
 
 /**

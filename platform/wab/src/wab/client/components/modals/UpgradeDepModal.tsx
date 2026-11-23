@@ -13,6 +13,7 @@ import TokenIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Token";
 import { StudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import {
   componentToReferenced,
+  customFunctionsAndLibsUsedByComponent,
   customFunctionsUsedBySite,
 } from "@/wab/shared/cached-selectors";
 import {
@@ -87,9 +88,9 @@ export async function promptUpgradeDeps(props: {
         {targetDeps.map((targetDep) => {
           const curDep = ensure(
             studioCtx.site.projectDependencies.find(
-              (dep) => dep.pkgId === targetDep.pkgId
+              (dep) => dep.pkgId === targetDep.pkgId,
             ),
-            "Target dependency must be one of the existing project dependencies"
+            "Target dependency must be one of the existing project dependencies",
           );
           return (
             <WarnChangeDep
@@ -118,9 +119,9 @@ export async function promptUpgradeDep(props: {
   const { studioCtx, targetDep } = props;
   const curDep = ensure(
     studioCtx.site.projectDependencies.find(
-      (dep) => dep.pkgId === targetDep.pkgId
+      (dep) => dep.pkgId === targetDep.pkgId,
     ),
-    "Target dependency must be one of the existing project dependencies"
+    "Target dependency must be one of the existing project dependencies",
   );
   return showTemporaryPrompt<UpgradeDepResponse>((onSubmit, onCancel) => (
     <Modal
@@ -213,7 +214,7 @@ function PublishContent(props: {
 
           setLoading(false);
         }
-      })()
+      })(),
     );
   }, [studioCtx, loading]);
 
@@ -327,21 +328,21 @@ const WarnChangeDep = observer(function WarnChangeDep_(props: {
       diffs.map((diff) =>
         diff.description === "removed" && diff.oldValue?.type === "Component"
           ? diff.oldValue.uuid
-          : undefined
-      )
-    )
+          : undefined,
+      ),
+    ),
   );
   const removedComponents = curDep.site.components.filter((component) =>
-    removedComponentUuids.has(component.uuid)
+    removedComponentUuids.has(component.uuid),
   );
 
   // Build a set of components that are directly used by local components
   const referencedComponents = mergeSets(
-    ...site.components.map((comp) => new Set(componentToReferenced(comp)))
+    ...site.components.map((comp) => new Set(componentToReferenced(comp))),
   );
   const removedReferencedComponents = intersectSets(
     referencedComponents,
-    new Set<Component>(removedComponents)
+    new Set<Component>(removedComponents),
   );
 
   const removedTokenUuids = new Set(
@@ -349,12 +350,12 @@ const WarnChangeDep = observer(function WarnChangeDep_(props: {
       diffs.map((diff) =>
         diff.description === "removed" && diff.oldValue?.type === "Style token"
           ? diff.oldValue.uuid
-          : undefined
-      )
-    )
+          : undefined,
+      ),
+    ),
   );
   const removedTokens = curDep.site.styleTokens.filter((token) =>
-    removedTokenUuids.has(token.uuid)
+    removedTokenUuids.has(token.uuid),
   );
 
   // Build a set of tokens that are directly used by local tokens, overrides,
@@ -380,7 +381,7 @@ const WarnChangeDep = observer(function WarnChangeDep_(props: {
         site,
         {
           derefTokens: false,
-        }
+        },
       ),
       ...extractUsedTokensForComponents(site, site.components, {
         // We don't need to expand mixins, as we're checking local
@@ -392,11 +393,11 @@ const WarnChangeDep = observer(function WarnChangeDep_(props: {
         // that are directly used
         derefTokens: false,
       }),
-    ]
+    ],
   );
   const removedReferencedTokens = intersectSets(
     referencedTokens,
-    new Set<StyleToken>(removedTokens)
+    new Set<StyleToken>(removedTokens),
   );
 
   const removedMixinUuids = new Set(
@@ -404,21 +405,21 @@ const WarnChangeDep = observer(function WarnChangeDep_(props: {
       diffs.map((diff) =>
         diff.description === "removed" && diff.oldValue?.type === "Mixin"
           ? diff.oldValue.uuid
-          : undefined
-      )
-    )
+          : undefined,
+      ),
+    ),
   );
   const removedMixins = curDep.site.mixins.filter((mixin) =>
-    removedMixinUuids.has(mixin.uuid)
+    removedMixinUuids.has(mixin.uuid),
   );
 
   // Build a set of Mixins that are directly used by local components
   const referencedMixins = new Set(
-    extractUsedMixinsForComponents(site.components).keys()
+    extractUsedMixinsForComponents(site.components).keys(),
   );
   const removedReferencedMixins = intersectSets(
     referencedMixins,
-    new Set<Mixin>(removedMixins)
+    new Set<Mixin>(removedMixins),
   );
 
   const removedImageAssetUuids = new Set(
@@ -427,12 +428,12 @@ const WarnChangeDep = observer(function WarnChangeDep_(props: {
         diff.description === "removed" &&
         (diff.oldValue?.type === "Image" || diff.oldValue?.type === "Icon")
           ? diff.oldValue.uuid
-          : undefined
-      )
-    )
+          : undefined,
+      ),
+    ),
   );
   const removedImageAssets = curDep.site.imageAssets.filter((asset) =>
-    removedImageAssetUuids.has(asset.uuid)
+    removedImageAssetUuids.has(asset.uuid),
   );
 
   // Build a set of ImageAssets that are directly used by local components
@@ -447,7 +448,7 @@ const WarnChangeDep = observer(function WarnChangeDep_(props: {
   ]);
   const removedReferencedImageAssets = intersectSets(
     referencedImageAssets,
-    new Set<ImageAsset>(removedImageAssets)
+    new Set<ImageAsset>(removedImageAssets),
   );
 
   const removedFunctionDiffIds = new Set(
@@ -455,18 +456,26 @@ const WarnChangeDep = observer(function WarnChangeDep_(props: {
       diffs.map((diff) =>
         diff.description === "removed" && diff.oldValue?.type === "Function"
           ? diff.oldValue.functionId
-          : undefined
-      )
-    )
+          : undefined,
+      ),
+    ),
   );
   const removedFunctions = curDep.site.customFunctions.filter((fn) =>
-    removedFunctionDiffIds.has(customFunctionId(fn))
+    removedFunctionDiffIds.has(customFunctionId(fn)),
   );
   const removedFunctionsById = new Set(removedFunctions.map(customFunctionId));
   const removedReferencedFunctions = new Set(
-    [...customFunctionsUsedBySite(site)].filter((fn) =>
-      removedFunctionsById.has(customFunctionId(fn))
-    )
+    [
+      ...customFunctionsUsedBySite(site),
+      // Removed components of a hostless package aren't copied.
+      ...(isHostLessPackage(curDep.site)
+        ? []
+        : [...removedReferencedComponents].flatMap(
+            (comp) =>
+              customFunctionsAndLibsUsedByComponent(curDep.site, comp)
+                .customFunctions,
+          )),
+    ].filter((fn) => removedFunctionsById.has(customFunctionId(fn))),
   );
 
   // out of those directly referenced objects that will now be removed,
@@ -477,51 +486,34 @@ const WarnChangeDep = observer(function WarnChangeDep_(props: {
     ...extractTransitiveDepsFromComponents(
       site,
       [...removedReferencedComponents],
-      objDepMap
+      objDepMap,
     ),
     ...extractTransitiveDepsFromTokens(
       site,
       [...removedReferencedTokens],
-      objDepMap
+      objDepMap,
     ),
     ...extractTransitiveDepsFromMixins(
       site,
       [...removedReferencedMixins],
-      objDepMap
+      objDepMap,
     ),
     ...getTransitiveDepsFromObjs(
       site,
       [...removedReferencedImageAssets],
-      objDepMap
+      objDepMap,
     ),
   ]);
-  const functionsList =
-    removedReferencedFunctions.size > 0 ? (
-      <div>
-        <Icon className="function-fg mr-sm" icon={CodeIcon} /> Functions{" "}
-        {[...removedReferencedFunctions]
-          .map((fn) => getCustomFunctionDisplayName(fn))
-          .join(", ")}
-      </div>
-    ) : null;
   const functionsNote = removedReferencedFunctions.size > 0 && (
     <div className="mt-m">
-      These functions will no longer be available:{" "}
+      <Icon className="function-fg mr-sm" icon={CodeIcon} /> These functions
+      will no longer be available. Queries that use them will show an error
+      until you replace them:{" "}
       {[...removedReferencedFunctions]
         .map((fn) => getCustomFunctionDisplayName(fn))
         .join(", ")}
     </div>
   );
-  const removedHostlessArtifactTypes = withoutNils([
-    removedReferencedComponents.size > 0 ? "components" : undefined,
-    removedReferencedFunctions.size > 0 ? "functions" : undefined,
-  ]);
-  const removedHostlessArtifactLabel =
-    removedHostlessArtifactTypes.length === 0
-      ? "items"
-      : removedHostlessArtifactTypes.length === 1
-      ? removedHostlessArtifactTypes[0]
-      : removedHostlessArtifactTypes.join(" and ");
 
   return (
     <>
@@ -545,24 +537,36 @@ const WarnChangeDep = observer(function WarnChangeDep_(props: {
           description={
             isHostLessPackage(curDep.site) ? (
               <div>
-                <div>
-                  These external {removedHostlessArtifactLabel} will be removed
-                  from this project:
-                </div>
                 {removedReferencedComponents.size > 0 && (
-                  <div>
-                    <Icon className="component-fg mr-sm" icon={ComponentIcon} />{" "}
-                    Components{" "}
-                    {[...removedReferencedComponents]
-                      .map((t) => getComponentDisplayName(t))
-                      .join(", ")}
-                  </div>
+                  <>
+                    <div>
+                      These external components will be removed from this
+                      project:
+                    </div>
+                    <div>
+                      <Icon
+                        className="component-fg mr-sm"
+                        icon={ComponentIcon}
+                      />{" "}
+                      Components{" "}
+                      {[...removedReferencedComponents]
+                        .map((t) => getComponentDisplayName(t))
+                        .join(", ")}
+                    </div>
+                  </>
                 )}
-                {functionsList}
+                {functionsNote}
               </div>
             ) : (
               <div>
-                <div>We will make a copy of them for you in this project:</div>
+                {(removedReferencedComponents.size > 0 ||
+                  removedReferencedTokens.size > 0 ||
+                  removedReferencedMixins.size > 0 ||
+                  removedReferencedImageAssets.size > 0) && (
+                  <div>
+                    We will make a copy of them for you in this project:
+                  </div>
+                )}
                 {removedReferencedComponents.size > 0 && (
                   <div>
                     <Icon className="component-fg mr-sm" icon={ComponentIcon} />{" "}

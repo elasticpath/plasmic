@@ -1,4 +1,3 @@
-import { DbCtx } from "@/wab/client/db";
 import { StudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { FrameViewMode } from "@/wab/shared/Arenas";
 import {
@@ -22,7 +21,6 @@ import {
   RecordedChanges,
   mergeRecordedChanges,
 } from "@/wab/shared/core/observable-model";
-import { isTagListContainer } from "@/wab/shared/core/rich-text-util";
 import { getAllSiteFrames, isTplAttachedToSite } from "@/wab/shared/core/sites";
 import {
   ensureCorrectImplicitStates,
@@ -41,6 +39,7 @@ import {
   isTplVariantable,
   tryGetOwnerSite,
 } from "@/wab/shared/core/tpls";
+import { isTagListContainer } from "@/wab/shared/html";
 import {
   Arg,
   RenderExpr,
@@ -68,7 +67,7 @@ import { isStretchyComponent } from "@/wab/shared/sizingutils";
  */
 export function fixupForChanges(
   studioCtx: StudioCtx,
-  changes: RecordedChanges
+  changes: RecordedChanges,
 ) {
   let summary = summarizeChanges(studioCtx, changes);
 
@@ -82,11 +81,11 @@ export function fixupForChanges(
   if (changes.changes.length > 0) {
     // Do model-related fixes
     [changes, summary] = applyFix(() =>
-      fixupVirtualSlotArgs(studioCtx.dbCtx(), studioCtx.tplMgr(), summary)
+      fixupVirtualSlotArgs(studioCtx.tplMgr(), summary),
     );
 
     [changes, summary] = applyFix(() =>
-      fixupForPlume(summary, studioCtx.focusedViewCtx())
+      fixupForPlume(summary, studioCtx.focusedViewCtx()),
     );
 
     [changes, summary] = applyFix(() => fixupGridChildren(summary));
@@ -265,7 +264,7 @@ function fixupTextTags(summary: ChangeSummary) {
 // and that components with public states will receive a name
 function fixupIncorrectlyNamedNodes(
   summary: ChangeSummary,
-  studioCtx: StudioCtx
+  studioCtx: StudioCtx,
 ) {
   for (const tree of summary.newTrees) {
     const tplMgr = studioCtx.tplMgr();
@@ -286,7 +285,7 @@ function fixupImplicitStates(summary: ChangeSummary) {
           removeImplicitStatesAfterRemovingTplNode(
             site,
             component,
-            state.tplNode
+            state.tplNode,
           );
         }
       }
@@ -332,9 +331,8 @@ function fixupImplicitStates(summary: ChangeSummary) {
  * "fix up" the forking or virtual node updates here, after the change has happened.
  */
 export function fixupVirtualSlotArgs(
-  dbCtx: DbCtx,
   tplMgr: TplMgr,
-  summary: Pick<ChangeSummary, "updatedNodes" | "newTrees">
+  summary: Pick<ChangeSummary, "updatedNodes" | "newTrees">,
 ) {
   // Gather up all the new values to see what TplSlot or TplComponent themselves
   // have been updated.
@@ -392,9 +390,6 @@ export function fixupVirtualSlotArgs(
   // affected by updatedTplSlots, because some of those updatedTplSlots may
   // contain one of these newTplComponents, and they need to have their virtual
   // contents filled in first before they are copied to affected TplComponents
-  dbCtx.maybeObserveComponents(
-    Array.from(newTplComponents).map((tpl) => $$$(tpl).owningComponent())
-  );
   for (const tplc of newTplComponents) {
     fillVirtualSlotContents(tplMgr, tplc);
   }
@@ -407,14 +402,14 @@ export function fixupVirtualSlotArgs(
     const affectedComponents = new Set(
       Array.from(updatedTplSlots)
         .map((slot) => param2Components.get(slot.param))
-        .filter(notNil)
+        .filter(notNil),
     );
     const affectedTplComponents = allTplComponents.filter((tplc) => {
       if (!affectedComponents.has(tplc.component)) {
         return false;
       }
       const slots = Array.from(updatedTplSlots).filter((slot) =>
-        tplc.component.params.includes(slot.param)
+        tplc.component.params.includes(slot.param),
       );
       for (const slot of slots) {
         const arg = $$$(tplc).getSlotArgForParam(slot.param);
@@ -424,12 +419,9 @@ export function fixupVirtualSlotArgs(
       }
       return false;
     });
-    dbCtx.maybeObserveComponents(
-      affectedTplComponents.map((tpl) => $$$(tpl).owningComponent())
-    );
     for (const tplc of affectedTplComponents) {
       const slots = Array.from(updatedTplSlots).filter((slot) =>
-        tplc.component.params.includes(slot.param)
+        tplc.component.params.includes(slot.param),
       );
       fillVirtualSlotContents(tplMgr, tplc, slots);
     }
@@ -439,7 +431,7 @@ export function fixupVirtualSlotArgs(
 function fixupSlotParamsOrder(summary: ChangeSummary) {
   for (const component of summary.updatedComponents) {
     const slotParams = component.params.filter((param) =>
-      isKnownSlotParam(param)
+      isKnownSlotParam(param),
     );
 
     // Skip code components, since they don't have tpl trees

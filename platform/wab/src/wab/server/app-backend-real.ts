@@ -21,11 +21,14 @@ import * as path from "path";
 // environment we're running in.
 import { addSocketRoutes } from "@/wab/server/app-socket-backend-real";
 import { Config } from "@/wab/server/config";
+<<<<<<< HEAD
 import { addStudioCompression } from "@/wab/server/ep-compression";
 import { logger } from "@/wab/server/observability";
+=======
+import { logger, withSpan } from "@/wab/server/observability";
+>>>>>>> upstream/master
 import { sendCommentsNotificationEmails } from "@/wab/server/scripts/send-comments-notifications";
-import { withSpan } from "@/wab/server/util/apm-util";
-import httpProxy from "http-proxy";
+import httpProxy from "http-proxy-3";
 
 export async function runAppServer(config: Config) {
   await ensureDbConnections(config.databaseUri, {
@@ -33,7 +36,7 @@ export async function runAppServer(config: Config) {
   });
   await maybeMigrateDatabase();
 
-  logger().info(`Starting up app server; NODE_ENV: ${process.env.NODE_ENV}`);
+  logger.info(`Starting up app server; NODE_ENV: ${process.env.NODE_ENV}`);
 
   const socketHost = process.env["SOCKET_HOST"];
 
@@ -59,7 +62,7 @@ export async function runAppServer(config: Config) {
         // In production, we don't, as codegen routes has security issues
         // like server side rendering, which the prod server is not
         // protected against.
-        logger().info("Adding codegen routes");
+        logger.info("Adding codegen routes");
         addCodegenRoutes(application);
       }
     },
@@ -74,12 +77,13 @@ export async function runAppServer(config: Config) {
           socketProxy.web(req, res);
         });
       } else {
-        logger().info(`No socket host found; serving sockets from app backend`);
+        logger.info(`No socket host found; serving sockets from app backend`);
         ({ attach } = addSocketRoutes(application, config));
       }
-    }
+    },
   );
 
+<<<<<<< HEAD
   if (config.enableCommentNotificationJob) {
     // runs every 10 minutes
     cron.schedule("*/10 * * * *", async () => {
@@ -87,6 +91,13 @@ export async function runAppServer(config: Config) {
         await sendCommentsNotificationEmails(config);
         logger().info("Notification emails sent");
       });
+=======
+  // runs every 10 minutes
+  cron.schedule("*/10 * * * *", async () => {
+    await withSpan("[Comments] notifications emails", async () => {
+      await sendCommentsNotificationEmails(config);
+      logger.info("Notification emails sent");
+>>>>>>> upstream/master
     });
   }
 
@@ -97,8 +108,22 @@ export async function runAppServer(config: Config) {
         socketProxy.ws(req, socket, head);
       });
       socketProxy.on("error", (err, _req, res) => {
+<<<<<<< HEAD
         captureException(err);
         res.end("Something wrong happened when connecting to the server.");
+=======
+        // Client socket errors arrive with the socket already destroyed.
+        // Upstream errors arrive while the client socket is still open.
+        if (res.destroyed) {
+          logger.warn(`Client disconnected from socketProxy. ${err}`);
+          return;
+        }
+        captureException(err);
+        logger.error(`Error in socketProxy. ${err}`);
+        if (!res.writableEnded) {
+          res.end("Something wrong happened when connecting to the server.");
+        }
+>>>>>>> upstream/master
       });
     } else if (attach) {
       attach(server);
@@ -111,28 +136,28 @@ async function prepareFreshDb(opts: any, config: Config) {
   const pgtmp = path.resolve(appDir, "tools/pg_tmp.sh");
   const pgres = childProcess.spawnSync(pgtmp, ["-t", "-w", opts.freshDb]);
   if (pgres.status !== 0) {
-    logger().error("Failed to launch ephemeral postgres.");
+    logger.error("Failed to launch ephemeral postgres.");
     process.exit();
   }
   const dburi = pgres.stdout.toString().trim();
   if (!dburi.startsWith("postgresql://")) {
-    logger().info("Got unexpected output from pg_tmp.sh");
+    logger.info("Got unexpected output from pg_tmp.sh");
     process.exit();
   }
   config.databaseUri = dburi.replace("postgresql", "postgres");
-  logger().info(`Using fresh db at ${config.databaseUri}`);
+  logger.info(`Using fresh db at ${config.databaseUri}`);
 
   const expressSessionSchema = path.resolve(
     appDir,
-    "node_modules/connect-pg-simple/table.sql"
+    "node_modules/connect-pg-simple/table.sql",
   );
   const createSessionRes = childProcess.spawnSync(
     "psql",
     [dburi, "-f", expressSessionSchema],
-    { env: process.env }
+    { env: process.env },
   );
   if (createSessionRes.status !== 0) {
-    logger().error("Failed to create express session table.");
+    logger.error("Failed to create express session table.");
     process.exit();
   }
 }

@@ -1,6 +1,9 @@
 {
   "compilerOptions": {
-    "target": "es2017",
+    "target": "es2020",
+    // Excludes @types/jest, which storybook pulls in and whose globals
+    // conflict with vitest's.
+    "types": ["node", "vitest/globals", "jest-extended"],
     "module": "esnext",
     "lib": [
       "dom",
@@ -60,18 +63,10 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "strict": false,
+    "strictBindCallApply": true,
     "strictFunctionTypes": true,
     "strictNullChecks": true
   },
   "include": ["src", "rsbuild.config.ts"],
-  "exclude": [
-    "node_modules",
-    "build",
-    "tools",
-    "acceptance-tests",
-    "webpack",
-    "jest",
-    "src/wab/client/test/setupTests.ts",
-    "__tests__"
-  ]
+  "exclude": ["node_modules", "tools"]
 }

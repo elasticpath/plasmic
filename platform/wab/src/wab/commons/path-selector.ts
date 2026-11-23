@@ -4,32 +4,34 @@ export type Lookup<Path, T = Site> = Path extends []
   ? T extends infer U | undefined
     ? U
     : T
-  : T extends object[]
-  ? Path extends ["_", ...infer R]
-    ? Lookup<R, T[number]>
-    : never
-  : Path extends [infer K, ...infer R]
-  ? K extends keyof T
-    ? Lookup<R, T[K]>
-    : never
-  : never;
+  : T extends readonly object[]
+    ? Path extends ["_", ...infer R]
+      ? Lookup<R, T[number]>
+      : never
+    : Path extends [infer K, ...infer R]
+      ? K extends keyof T
+        ? Lookup<R, T[K]>
+        : never
+      : never;
 export type PathSelector<
   T,
   C = T,
-  Path extends (string | number | symbol)[] = []
+  Path extends (string | number | symbol)[] = [],
 > = (C extends {}
   ? {
       [P in keyof C]: PathSelector<T, C[P], [...Path, P]>;
     }
   : C) &
-  (C extends any[] ? { _: PathSelector<T, C[number], [...Path, "_"]> } : {}) & {
+  (C extends readonly any[]
+    ? { _: PathSelector<T, C[number], [...Path, "_"]> }
+    : {}) & {
     getPath(): Path;
   };
 
 export function pathSelector<
   T,
   C = T,
-  Path extends (string | number | symbol)[] = []
+  Path extends (string | number | symbol)[] = [],
 >(path?: Path): PathSelector<T, C, []> {
   return new Proxy(
     {
@@ -44,6 +46,6 @@ export function pathSelector<
         }
         return pathSelector([...(path ?? []), name]);
       },
-    }
+    },
   );
 }

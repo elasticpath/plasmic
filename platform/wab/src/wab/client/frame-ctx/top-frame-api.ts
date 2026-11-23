@@ -1,12 +1,18 @@
 import { Api } from "@/wab/client/api";
-import { TopBarPromptBillingArgs } from "@/wab/client/components/modals/PricingModal";
 import { MergeModalContext } from "@/wab/client/components/TopFrame/TopFrameChrome";
+import { TopBarPromptBillingArgs } from "@/wab/client/components/modals/PricingModal";
+import type { RemoteFileDragEvent } from "@/wab/client/file-drag/file-drag-monitor";
 import { HostFrameApi } from "@/wab/client/frame-ctx/host-frame-api";
 import { TopFrameTourState } from "@/wab/client/tours/tutorials/TutorialTours";
-import { ApiBranch, ApiTeam } from "@/wab/shared/ApiSchema";
+import {
+  ApiBranch,
+  ApiTeam,
+  ApiTeamSubscription,
+  CopilotChatOpenOpts,
+} from "@/wab/shared/ApiSchema";
 import { DataSourceType } from "@/wab/shared/data-sources-meta/data-source-registry";
 import { LocalizationConfig } from "@/wab/shared/localization";
-import { LocationListener, UnregisterCallback } from "history";
+import { Listener } from "history";
 
 /**
  * API the TopFrame exposes to HostFrame.
@@ -23,7 +29,7 @@ export type TopFrameFullApi = {
 export interface TopFrameApi {
   pushLocation(path?: string, query?: string, hash?: string): void;
   replaceLocation(path?: string, query?: string, hash?: string): void;
-  registerLocationListener(listener: LocationListener): UnregisterCallback;
+  registerLocationListener(listener: Listener): () => void;
 
   setPrimitiveValues(vals: {
     noComponents: boolean;
@@ -37,7 +43,7 @@ export interface TopFrameApi {
   // component will re-render (because it will be a new object instance) even if
   // the value hasn't changed.
   setLatestPublishedVersionData(
-    data: { revisionId: string; version: string } | undefined
+    data: { revisionId: string; version: string } | undefined,
   ): Promise<void>;
   setSubjectComponentInfo(
     info:
@@ -45,9 +51,10 @@ export interface TopFrameApi {
           pathOrComponent: string;
           componentName: string;
         }
-      | undefined
+      | undefined,
   ): Promise<void>;
   setActivatedBranch(branch: ApiBranch | undefined): Promise<void>;
+  setTeamSubscription(subscription: ApiTeamSubscription | null): Promise<void>;
 
   pickDataSource(opts: {
     sourceType?: DataSourceType;
@@ -74,9 +81,12 @@ export interface TopFrameApi {
   showRegenerateSecretTokenModal(): Promise<void>;
   setShowUpsellForm(val: TopBarPromptBillingArgs | undefined): Promise<void>;
   setShowAppAuthModal(val: boolean): Promise<void>;
+  setStudioModalOpen(val: boolean): Promise<void>;
   setOnboardingTour(val: TopFrameTourState): Promise<void>;
   toggleAdminMode(val: boolean): Promise<void>;
   toggleCopilotChat(): Promise<void>;
+  openCopilotChat(opts: CopilotChatOpenOpts): Promise<void>;
+  onFileDragEventInHost(event: RemoteFileDragEvent): Promise<void>;
 }
 
 export type TopFrameApiArgs<Method extends keyof TopFrameApi> = Parameters<
@@ -85,5 +95,5 @@ export type TopFrameApiArgs<Method extends keyof TopFrameApi> = Parameters<
 export type TopFrameApiReturnType<Method extends keyof TopFrameApi> =
   ReturnType<TopFrameApi[Method]>;
 export type TopFrameApiResolveType<Method extends keyof TopFrameApi> = (
-  result: Awaited<ReturnType<TopFrameApi[Method]>>
+  result: Awaited<ReturnType<TopFrameApi[Method]>>,
 ) => void;

@@ -21,7 +21,7 @@ export function GroupHeader(props: Props) {
         label: item.label,
         key: item.key,
       };
-    }
+    },
   );
 
   return (
@@ -39,10 +39,11 @@ export function GroupHeader(props: Props) {
           }
           onValueChanged={(value) => {
             props.setNot(
-              value === _negationOptions.dontMatch.key ? true : false
+              value === _negationOptions.dontMatch.key ? true : false,
             );
           }}
           hideArrow={true}
+          disabled={props.readonly}
         />
       ) : (
         <span>Match</span>
@@ -55,6 +56,7 @@ export function GroupHeader(props: Props) {
           value={props.selectedConjunction}
           onValueChanged={(value) => props.setConjunction(value)}
           hideArrow={true}
+          disabled={props.readonly}
         />
       ) : (
         <span>{conjunctions[0].label.toLowerCase()}</span>

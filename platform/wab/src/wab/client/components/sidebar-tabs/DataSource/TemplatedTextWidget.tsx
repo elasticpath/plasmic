@@ -7,15 +7,17 @@ import { DataPickerTypesSchema } from "@/wab/client/components/sidebar-tabs/Data
 import { ExprCtx } from "@/wab/shared/core/exprs";
 import {
   CustomCode,
-  ensureKnownTemplatedString,
   ObjectPath,
   TemplatedString,
+  ensureKnownTemplatedString,
 } from "@/wab/shared/model/classes";
 import { TextWidgetProps } from "@react-awesome-query-builder/antd";
 import React from "react";
 
-interface TemplatedTextWidgetProps
-  extends Pick<TextWidgetProps, "value" | "readonly"> {
+interface TemplatedTextWidgetProps extends Pick<
+  TextWidgetProps,
+  "value" | "readonly"
+> {
   setValue: (expr: TemplatedString) => void;
   placeholder?: string;
   data: Record<string, any> | undefined;
@@ -26,7 +28,7 @@ interface TemplatedTextWidgetProps
 }
 
 export function TemplatedTextWidget(props: TemplatedTextWidgetProps) {
-  const { value, bindings, setValue, ...rest } = props;
+  const { value, bindings, setValue, readonly, ...rest } = props;
   const realValue =
     bindings && value
       ? ensureKnownTemplatedString(bindings[value])
@@ -38,21 +40,23 @@ export function TemplatedTextWidget(props: TemplatedTextWidgetProps) {
       {...rest}
       onChange={setValue}
       value={realValue}
+      disabled={readonly}
     />
   );
 }
 
 export function TemplatedTextEditorWithMenuIndicator(
-  props: TemplatedTextEditorProps
+  props: TemplatedTextEditorProps,
 ) {
+  const emptyValue = React.useMemo(() => new TemplatedString({ text: [] }), []);
   return (
     <ContextMenuIndicator
-      showDynamicValueButton
+      showDynamicValueButton={!props.readOnly && !props.disabled}
       tooltip={"Append dynamic value"}
       className="qb-custom-widget"
       fullWidth
     >
-      <TemplatedTextEditor {...props} />
+      <TemplatedTextEditor {...props} value={props.value ?? emptyValue} />
       {/*{evaluated && <ValuePreview val={evaluated.val} err={evaluated.err} />}*/}
     </ContextMenuIndicator>
   );

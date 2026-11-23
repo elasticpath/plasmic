@@ -1,10 +1,11 @@
 import { IconLinkButton } from "@/wab/client/components/widgets";
 import { Icon } from "@/wab/client/components/widgets/Icon";
+import { useFocusOnDisplayed } from "@/wab/client/dom-utils";
 import CloseIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Close";
 import ChevronDownsvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__ChevronDownSvg";
 import { MaybeWrap } from "@/wab/commons/components/ReactUtil";
 import { arrayMoveIndex } from "@/wab/shared/collections";
-import { cx, ensure, ensureHTMLElt, tuple } from "@/wab/shared/common";
+import { cx, ensure, tuple } from "@/wab/shared/common";
 import { Dropdown, Menu, Tooltip } from "antd";
 import classNames from "classnames";
 import Downshift, {
@@ -54,6 +55,16 @@ interface _XMultiSelectState<Item> {
   draggedFromIndex?: number;
   draggedToIndex?: number;
 }
+// antd 5 mounts overlay content while it is still display:none, so the input's
+// autoFocus never fires when this is rendered inside a Popover or Dropdown.
+function AutoFocuser(props: {
+  inputBox: React.RefObject<HTMLInputElement>;
+  autoFocus?: boolean;
+}) {
+  useFocusOnDisplayed(props.inputBox, { autoFocus: props.autoFocus });
+  return null;
+}
+
 class _XMultiSelect<Item> extends React.Component<
   _XMultiSelectProps<Item>,
   _XMultiSelectState<Item>
@@ -108,7 +119,7 @@ class _XMultiSelect<Item> extends React.Component<
     const reorderedItems = this.dragReorderedItems();
     const handleSelect = (
       item: Item | null,
-      downshift: ControllerStateAndHelpers<Item>
+      downshift: ControllerStateAndHelpers<Item>,
     ) => {
       if (item && !selectedItems.includes(item)) {
         const closeOnSelect = onSelect(item);
@@ -155,13 +166,12 @@ class _XMultiSelect<Item> extends React.Component<
                 data-plasmic-prop={this.props["data-plasmic-prop"]}
                 {...getRootProps(undefined, { suppressRefError: true })}
               >
+                <AutoFocuser inputBox={this.inputBox} autoFocus={autoFocus} />
                 <Dropdown
-                  visible={downshift.isOpen && renderOptions.length > 0}
+                  open={downshift.isOpen && renderOptions.length > 0}
                   // We compartmentalize the Ant dropdown menu item padding style tweaks into .xselect.
                   // Don't want to globally affect all Ant dropdown menus.
-                  getPopupContainer={() =>
-                    ensureHTMLElt(document.querySelector(".xselect"))
-                  }
+                  overlayClassName="xselect"
                   overlay={
                     <Menu
                       className={"ant-select-dropdown-menu"}
@@ -201,7 +211,7 @@ class _XMultiSelect<Item> extends React.Component<
                       if (e.target === e.currentTarget) {
                         ensure(
                           this.inputBox.current,
-                          "Unexpected undefined inputBox.current"
+                          "Unexpected undefined inputBox.current",
                         ).focus();
                         e.preventDefault();
                       }
@@ -339,7 +349,7 @@ class _XMultiSelect<Item> extends React.Component<
                               this.inputBox.current.blur();
                             }
                           },
-                        })
+                        }),
                       )}{" "}
                       {this.props.showDropdownArrow ? (
                         <div className="xmultiselect-arrow flex-center">
@@ -369,7 +379,7 @@ class _XMultiSelect<Item> extends React.Component<
   private handleDragOverOrEnter = (
     e: React.DragEvent,
     item: Item,
-    index: number
+    index: number,
   ) => {
     console.log("DRAG OVER", item, index, this.state);
     if (index !== this.state.draggedToIndex) {
@@ -384,7 +394,7 @@ class _XMultiSelect<Item> extends React.Component<
   private handleDragEnd = (_e: React.DragEvent) => {
     const fromIndex = ensure(
       this.state.draggedFromIndex,
-      "Unexpected undefined draggedFromIndex. Should be not null to handle drag end"
+      "Unexpected undefined draggedFromIndex. Should be not null to handle drag end",
     );
     const toIndex = this.state.draggedToIndex;
     this.setState({
@@ -395,7 +405,7 @@ class _XMultiSelect<Item> extends React.Component<
     if (toIndex !== undefined && fromIndex !== toIndex) {
       ensure(
         this.props.onReorder,
-        "Unexpected undefined onReorder. If drag is enable should have onReorder method"
+        "Unexpected undefined onReorder. If drag is enable should have onReorder method",
       )(fromIndex, toIndex);
     }
   };
@@ -407,9 +417,9 @@ class _XMultiSelect<Item> extends React.Component<
         selectedItems,
         ensure(
           this.state.draggedFromIndex,
-          "Unexpected undefined draggedFromIndex. Should be not null to drag reordered items"
+          "Unexpected undefined draggedFromIndex. Should be not null to drag reordered items",
         ),
-        this.state.draggedToIndex
+        this.state.draggedToIndex,
       );
     } else {
       return selectedItems;

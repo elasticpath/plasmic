@@ -168,7 +168,7 @@ class _XDraggable extends React.Component<XDraggableProps, XDraggableState> {
   private createData(
     mouseEvent: MouseEvent,
     draggableData: DraggableData,
-    xdata = ensure(this.state.lastEvent, "expected a lastEvent").data
+    xdata = ensure(this.state.lastEvent, "expected a lastEvent").data,
   ): XDraggableEvent {
     return {
       mouseEvent,
@@ -212,7 +212,11 @@ class _XDraggable extends React.Component<XDraggableProps, XDraggableState> {
     return (
       <>
         {this.state.lastEvent && this.state.lastEvent.data.started && (
-          <UseKey filter={"Escape"} fn={this.handleEscape} />
+          <UseKey
+            filter={"Escape"}
+            fn={this.handleEscape}
+            options={{ capture: true }}
+          />
         )}
         {/* @ts-ignore */}
         <DraggableCore

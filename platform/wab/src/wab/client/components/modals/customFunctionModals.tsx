@@ -9,7 +9,11 @@ import Select from "@/wab/client/components/widgets/Select";
 import TrashsvgIcon from "@/wab/client/plasmic/plasmic_kit_icons/icons/PlasmicIcon__TrashSvg";
 import { StudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { cachedExprsInSite } from "@/wab/shared/cached-selectors";
-import { ensure, removeWhere } from "@/wab/shared/common";
+import {
+  PendingCustomFunctionUpdate,
+  applyCustomFunctionChanges,
+} from "@/wab/shared/code-components/code-components";
+import { ensure } from "@/wab/shared/common";
 import { getComponentDisplayName } from "@/wab/shared/core/components";
 import { fixCustomFunctionExpr } from "@/wab/shared/core/custom-functions";
 import { isDynamicExpr } from "@/wab/shared/core/exprs";
@@ -39,7 +43,7 @@ interface ExprRef {
 }
 
 export function getCustomFunctionDisplayName(
-  customFunction: CustomFunction
+  customFunction: CustomFunction,
 ): string {
   return customFunction.displayName || customFunctionId(customFunction);
 }
@@ -55,7 +59,7 @@ async function promptRemapCustomFunction(props: {
 
   const candidates = naturalSort(
     [...availableFunctions],
-    getCustomFunctionDisplayName
+    getCustomFunctionDisplayName,
   );
 
   return showTemporaryPrompt<RemapFunctionResponse>((onSubmit, onCancel) => (
@@ -84,7 +88,7 @@ async function promptRemapCustomFunction(props: {
             if (value) {
               const newFn = ensure(
                 candidates.find((c) => customFunctionId(c) === value),
-                "Must have picked from candidates list"
+                "Must have picked from candidates list",
               );
               const newName = getCustomFunctionDisplayName(newFn);
               if (
@@ -136,7 +140,7 @@ async function promptRemapCustomFunction(props: {
 async function tryRemapMissingCustomFunctions(
   missing: Set<CustomFunction>,
   componentExprRefs: ExprRef[],
-  availableFunctions: CustomFunction[]
+  availableFunctions: CustomFunction[],
 ): Promise<{
   removedFunctions: Set<CustomFunction>;
   remappedFunctions: Map<CustomFunction, CustomFunction>;
@@ -150,10 +154,10 @@ async function tryRemapMissingCustomFunctions(
       .filter(({ ownerComponent, exprRefs }) => {
         return (
           exprRefs.some(({ expr }) =>
-            exprUsesFunction(expr, customFunction, fnName)
+            exprUsesFunction(expr, customFunction, fnName),
           ) ||
           ownerComponent.serverQueries.some(
-            (q) => q.op && exprUsesFunction(q.op, customFunction, fnName)
+            (q) => q.op && exprUsesFunction(q.op, customFunction, fnName),
           )
         );
       })
@@ -168,7 +172,12 @@ async function tryRemapMissingCustomFunctions(
       refComponents,
       availableFunctions,
     });
-    if (functionToRemap && functionToRemap !== "delete") {
+    // Closing the prompt decides nothing: keep the function and its uses, and
+    // ask again on the next sync.
+    if (!functionToRemap) {
+      continue;
+    }
+    if (functionToRemap !== "delete") {
       remappedFunctions.set(customFunction, functionToRemap);
     }
     removedFunctions.add(customFunction);
@@ -179,7 +188,7 @@ async function tryRemapMissingCustomFunctions(
 function exprUsesFunction(
   expr: Expr,
   fn: CustomFunction,
-  fnName: string
+  fnName: string,
 ): boolean {
   if (isKnownCustomFunctionExpr(expr)) {
     return expr.func === fn;
@@ -189,7 +198,7 @@ function exprUsesFunction(
   }
   if (isKnownTemplatedString(expr)) {
     return expr.text.some(
-      (part) => isKnownExpr(part) && exprUsesFunction(part, fn, fnName)
+      (part) => isKnownExpr(part) && exprUsesFunction(part, fn, fnName),
     );
   }
   return false;
@@ -202,7 +211,7 @@ const isCustomFunctionOrDynamicExpr = (expr: Expr) => {
 export async function updateSiteCustomFunctions(props: {
   ctx: StudioCtx;
   newFunctions: CustomFunction[];
-  updatedFunctions: CustomFunction[];
+  updatedFunctions: PendingCustomFunctionUpdate[];
   removedFunctions: Set<CustomFunction>;
 }) {
   const { ctx, newFunctions, updatedFunctions } = props;
@@ -216,17 +225,15 @@ export async function updateSiteCustomFunctions(props: {
           (isKnownEventHandler(expr) &&
             expr.interactions.some((interaction) =>
               findExprsInInteraction(interaction).some(
-                isCustomFunctionOrDynamicExpr
-              )
+                isCustomFunctionOrDynamicExpr,
+              ),
             )) ||
-          isCustomFunctionOrDynamicExpr(expr)
+          isCustomFunctionOrDynamicExpr(expr),
       ),
     };
   });
-  ctx.observeComponents(exprRefs.map((ref) => ref.ownerComponent));
-
   const availableFunctions = site.customFunctions.filter(
-    (customFunction) => !props.removedFunctions.has(customFunction)
+    (customFunction) => !props.removedFunctions.has(customFunction),
   );
 
   // Allow the user to remap missing functions
@@ -238,14 +245,11 @@ export async function updateSiteCustomFunctions(props: {
 
   await ctx.change(
     () => {
-      // Add new functions first, so they can be used for remapping
-      for (const customFunction of newFunctions) {
-        site.customFunctions.push(customFunction);
-      }
-
-      removeWhere(site.customFunctions, (customFunction) =>
-        removedFunctions.has(customFunction)
-      );
+      applyCustomFunctionChanges(site, {
+        newFunctions,
+        updatedFunctions,
+        removedFunctions,
+      });
 
       exprRefs.forEach((usage) => {
         // Update server queries with remapped functions
@@ -255,13 +259,15 @@ export async function updateSiteCustomFunctions(props: {
           }
         });
         // Remove from server queries
-        removeWhere(
-          usage.ownerComponent.serverQueries,
-          (serverQuery) =>
-            isKnownCustomFunctionExpr(serverQuery.op) &&
-            !!serverQuery.op.func &&
-            removedFunctions.has(serverQuery.op.func)
-        );
+        usage.ownerComponent.serverQueries =
+          usage.ownerComponent.serverQueries.filter(
+            (serverQuery) =>
+              !(
+                isKnownCustomFunctionExpr(serverQuery.op) &&
+                !!serverQuery.op.func &&
+                removedFunctions.has(serverQuery.op.func)
+              ),
+          );
 
         usage.exprRefs.forEach((ref) => {
           const expr = ref.expr;
@@ -270,28 +276,25 @@ export async function updateSiteCustomFunctions(props: {
             fixCustomFunctionExpr(remappedFunctions, expr);
 
             // Update params
-            const updatedRegistration = updatedFunctions.find(
-              (fn) => fn === expr.func
+            const updated = updatedFunctions.find(
+              (u) => u.customFunction === expr.func,
             );
-            if (!updatedRegistration) {
+            if (!updated) {
               return;
             }
-            removeWhere(
-              expr.args,
-              (arg) =>
-                !updatedRegistration.params.find(
-                  (param) => param === arg.argType
-                )
+            expr.args = expr.args.filter((arg) =>
+              updated.customFunction.params.includes(arg.argType),
             );
           } else if (isKnownEventHandler(expr)) {
             expr.interactions.forEach((interaction) => {
               // Remove from event handlers
-              removeWhere(
-                interaction.args,
+              interaction.args = interaction.args.filter(
                 (arg) =>
-                  isKnownCustomFunctionExpr(arg.expr) &&
-                  removedFunctions.has(arg.expr.func) &&
-                  !remappedFunctions.has(arg.expr.func)
+                  !(
+                    isKnownCustomFunctionExpr(arg.expr) &&
+                    removedFunctions.has(arg.expr.func) &&
+                    !remappedFunctions.has(arg.expr.func)
+                  ),
               );
             });
           } else if (isDynamicExpr(expr)) {
@@ -311,7 +314,7 @@ export async function updateSiteCustomFunctions(props: {
       });
       return ok();
     },
-    { noUndoRecord: true }
+    { noUndoRecord: true },
   );
   return [...removedFunctions];
 }

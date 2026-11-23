@@ -46,7 +46,7 @@ export function denormalizeData(data: any | null): any {
       ) {
         const fieldId = fieldValue.sys.id;
         const asset = data.includes.Asset.find(
-          (a: any) => a.sys.id === fieldId
+          (a: any) => a.sys.id === fieldId,
         );
         if (asset) {
           fieldValue = {
@@ -75,14 +75,17 @@ export function denormalizeData(data: any | null): any {
           console.log(`Entry not found for ID: ${fieldId}`);
         }
       }
-      fieldValue = Object.entries(fieldValue).reduce((obj, [key, value]) => {
-        if (key === "sys" || key === "fields") {
-          obj[key] = value;
-        } else {
-          obj[key] = denormalizeField(value);
-        }
-        return obj;
-      }, {} as Record<string, any>);
+      fieldValue = Object.entries(fieldValue).reduce(
+        (obj, [key, value]) => {
+          if (key === "sys" || key === "fields") {
+            obj[key] = value;
+          } else {
+            obj[key] = denormalizeField(value);
+          }
+          return obj;
+        },
+        {} as Record<string, any>,
+      );
     }
 
     return fieldValue;
@@ -119,6 +122,7 @@ export function denormalizeData(data: any | null): any {
   };
 }
 
+<<<<<<< HEAD
 /**
  * @deprecated These filter props are deprecated. Use `filterLogic` with the query builder instead.
  * Only used by the deprecated ContentfulCollection component for backward compatibility.
@@ -130,6 +134,8 @@ export interface QueryContentfulOldFilterProps {
 }
 
 
+=======
+>>>>>>> upstream/master
 export interface QueryContentfulOpts {
   space?: string;
   accessToken?: string;
@@ -152,6 +158,7 @@ export interface QueryContentfulOpts {
 }
 
 /**
+<<<<<<< HEAD
  * Query Contentful with simplified filter props.
  *
  * @deprecated Use {@link queryContentful} with `filterLogic` parameter instead.
@@ -261,6 +268,8 @@ export async function _queryContentful({
 }
 
 /**
+=======
+>>>>>>> upstream/master
  * Query a Contentful content type with optional filtering and ordering.
  *
  * @param opts - Query options including space, accessToken, contentType, filter logic, and pagination
@@ -290,14 +299,78 @@ export async function queryContentful({
   environment = "master",
   contentType,
   filterLogic,
+  order,
+  reverseOrder,
+  limit,
+  skip,
+  include,
+  select,
+  locale,
 }: QueryContentfulOpts): Promise<any> {
-  return _queryContentful({
-    space,
-    accessToken,
-    environment,
-    contentType,
-    filterLogic,
-  });
+  if (!space || !accessToken) {
+    throw new Error("Space and accessToken are required");
+  }
+  if (!contentType) {
+    return null;
+  }
+
+  const path = `/spaces/${space}/environments/${environment}/entries`;
+  const searchParams = new URLSearchParams();
+
+  searchParams.set("access_token", accessToken);
+  searchParams.set("content_type", contentType);
+
+  if (filterLogic) {
+    const filters = rulesLogicToContentfulFilters(filterLogic);
+    for (const [key, value] of Object.entries(filters)) {
+      searchParams.set(key, value.toString());
+    }
+  }
+
+  if (limit) {
+    searchParams.set("limit", limit.toString());
+  }
+
+  if (skip !== undefined) {
+    searchParams.set("skip", skip.toString());
+  }
+
+  if (order) {
+    searchParams.set(
+      "order",
+      `${reverseOrder ? "-" : ""}${
+        // Studio's "Order by" options are already prefixed with "sys." or
+        // "fields.", but callers may also pass a bare field ID.
+        order.startsWith("sys.") || order.startsWith("fields.")
+          ? order
+          : `fields.${order}`
+      }`,
+    );
+  }
+
+  if (include !== undefined) {
+    searchParams.set("include", include.toString());
+  }
+
+  if (select) {
+    if (Array.isArray(select)) {
+      if (select.length > 0) {
+        searchParams.set("select", select.join(","));
+      }
+    } else {
+      // The user may pass a comma-separated string as documented in the Contentful API
+      searchParams.set("select", select);
+    }
+  }
+
+  if (locale) {
+    searchParams.set("locale", locale);
+  }
+
+  const resp = await fetch(`${BASE_URL}${path}?${searchParams.toString()}`);
+  const data = await resp.json();
+
+  return denormalizeData(data);
 }
 
 
@@ -348,7 +421,7 @@ export const queryContentfulMeta: CustomFunctionMeta<typeof queryContentful> = {
           config: ([opts], ctx: any) => {
             const schema = findContentTypeSchema(
               opts?.contentType,
-              ctx?.contentTypes
+              ctx?.contentTypes,
             );
 
             if (schema) {
@@ -374,7 +447,7 @@ export const queryContentfulMeta: CustomFunctionMeta<typeof queryContentful> = {
 
             const schema = findContentTypeSchema(
               opts?.contentType,
-              ctx?.contentTypes
+              ctx?.contentTypes,
             );
 
             if (schema) {
@@ -421,7 +494,7 @@ export const queryContentfulMeta: CustomFunctionMeta<typeof queryContentful> = {
           options: ([opts], ctx: any) => {
             const schema = findContentTypeSchema(
               opts?.contentType,
-              ctx?.contentTypes
+              ctx?.contentTypes,
             );
 
             const fieldOptions = schema
@@ -474,7 +547,7 @@ export const queryContentfulMeta: CustomFunctionMeta<typeof queryContentful> = {
           const contentTypes = await fetchContentTypes(
             contentfulOpts.space!,
             contentfulOpts.accessToken!,
-            contentfulOpts.environment
+            contentfulOpts.environment,
           );
 
           return {

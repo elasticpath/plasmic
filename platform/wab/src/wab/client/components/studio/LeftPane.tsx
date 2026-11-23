@@ -21,6 +21,11 @@ import { ProjectDependenciesPanel } from "@/wab/client/components/sidebar/Projec
 import { SidebarModalProvider } from "@/wab/client/components/sidebar/SidebarModal";
 import { DefaultStylesPanel } from "@/wab/client/components/sidebar/ThemesControls";
 import { UserManagedFontsPanel } from "@/wab/client/components/sidebar/UserManagedFonts";
+import dockSty from "@/wab/client/components/studio/LeftPaneDock.module.sass";
+import {
+  StudioDock,
+  useDockPanels,
+} from "@/wab/client/components/studio/studio-dock";
 import { providesSidebarPopupSetting } from "@/wab/client/components/style-controls/StyleComponent";
 import { Icon } from "@/wab/client/components/widgets/Icon";
 import { ListStack } from "@/wab/client/components/widgets/ListStack";
@@ -29,7 +34,7 @@ import { DataTokenIcon } from "@/wab/client/icons";
 import ComponentIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Component";
 import TokenIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Token";
 import PlasmicLeftPane from "@/wab/client/plasmic/plasmic_kit_left_pane/PlasmicLeftPane";
-import { StudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
+import { StudioCtx, useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { HighlightBlinker } from "@/wab/commons/components/HighlightBlinker";
 import { useSignalListener } from "@/wab/commons/components/use-signal-listener";
 import { XDraggable } from "@/wab/commons/components/XDraggable";
@@ -41,6 +46,7 @@ import { extractTokenUsages } from "@/wab/shared/core/styles";
 import { DEVFLAGS } from "@/wab/shared/devflags";
 import { Component, DataToken, StyleToken } from "@/wab/shared/model/classes";
 import { LeftTabKey } from "@/wab/shared/ui-config-utils";
+import { DockviewApi, IDockviewPanelProps } from "dockview-react";
 import L from "lodash";
 import { observer } from "mobx-react";
 import React, { useState } from "react";
@@ -51,27 +57,87 @@ interface LeftPaneProps {
   className?: string;
 }
 
+/**
+ * Headerless dock driven by `studioCtx.leftTabKey`. Panels stay mounted to preserve state such
+ * as the outline tree; expensive tabs can unmount their contents while inactive.
+ */
+interface LeftPaneTab {
+  key: LeftTabKey;
+  contents: () => React.ReactNode;
+  unmountWhenInactive?: boolean;
+}
+
+const LeftPaneTabsContext = React.createContext<LeftPaneTab[]>([]);
+
+const LeftPaneTabContent = observer(function LeftPaneTabContent(
+  props: IDockviewPanelProps<{ key: string }>,
+) {
+  const tabs = React.useContext(LeftPaneTabsContext);
+  const studioCtx = useStudioCtx();
+  const isActive = studioCtx.leftTabKey === props.params.key;
+  const tab = tabs.find((t) => t.key === props.params.key);
+  return (
+    <ListStack className={dockSty.TabContent}>
+      {tab && (!tab.unmountWhenInactive || isActive) ? tab.contents() : null}
+    </ListStack>
+  );
+});
+
+const LEFT_DOCK_COMPONENTS = {
+  tab: LeftPaneTabContent,
+};
+
+const LeftPaneDock = observer(function LeftPaneDock(props: {
+  studioCtx: StudioCtx;
+  tabs: LeftPaneTab[];
+}) {
+  const { studioCtx, tabs } = props;
+  const [api, setApi] = React.useState<DockviewApi | undefined>(undefined);
+
+  useDockPanels(api, tabs, studioCtx.leftTabKey);
+
+  if (!DEVFLAGS.dockview) {
+    return (
+      <>
+        {tabs.map(
+          (tab) =>
+            (!tab.unmountWhenInactive || studioCtx.leftTabKey === tab.key) && (
+              <div
+                key={tab.key}
+                className="flex-col flex-fill overflow-hidden"
+                style={
+                  tab.key === studioCtx.leftTabKey ? {} : { display: "none" }
+                }
+              >
+                {tab.contents()}
+              </div>
+            ),
+        )}
+      </>
+    );
+  }
+
+  return (
+    <LeftPaneTabsContext.Provider value={tabs}>
+      <div className={dockSty.DockContainer}>
+        {/* The default "onlyWhenVisible" renderer keeps the active panel in the normal
+            group content flow (the "always" renderer's absolute overlay breaks the outline
+            tree's virtualized height measurement). dockview-react keeps inactive panels'
+            React state alive either way. */}
+        <StudioDock
+          className={dockSty.Dock}
+          components={LEFT_DOCK_COMPONENTS}
+          onReady={(event) => setApi(event.api)}
+        />
+      </div>
+    </LeftPaneTabsContext.Provider>
+  );
+});
+
 const LeftPane = observer(function LeftPane(props: LeftPaneProps) {
   const { studioCtx } = props;
   const dbCtx = studioCtx.dbCtx();
   // const [hover, setHover] = React.useState(false);
-
-  const wrapTab = (
-    tabKey: LeftTabKey,
-    panel: React.ReactNode,
-    unmount = false
-  ) => {
-    return (
-      (!unmount || studioCtx.leftTabKey === tabKey) && (
-        <div
-          className="flex-col flex-fill overflow-hidden"
-          style={tabKey === studioCtx.leftTabKey ? {} : { display: "none" }}
-        >
-          {panel}
-        </div>
-      )
-    );
-  };
 
   const leftPaneRef = React.useRef<HTMLDivElement>(null);
 
@@ -82,16 +148,16 @@ const LeftPane = observer(function LeftPane(props: LeftPaneProps) {
         spawn(
           studioCtx.changeUnsafe(() => {
             studioCtx.leftPaneWidth = newWidth;
-          })
+          }),
         );
       },
-      [studioCtx]
+      [studioCtx],
     ),
   });
 
   const [dismissVersionsCTA, setDismissVersionsCTA] = useLocalStorage(
     `${studioCtx.siteInfo.id}-dismissVersionsCTA`,
-    false
+    false,
   );
 
   // revision number of latest published version
@@ -104,10 +170,10 @@ const LeftPane = observer(function LeftPane(props: LeftPaneProps) {
       (async () => {
         const { rev: latestPublishedRev } = await studioCtx.getLatestVersion(
           latestPublishedVersion?.revisionId,
-          latestPublishedVersion?.branchId ?? undefined
+          latestPublishedVersion?.branchId ?? undefined,
         );
         setLatestPublishedRevNum(latestPublishedRev?.revision);
-      })()
+      })(),
     );
   }, [studioCtx, latestPublishedVersion]);
 
@@ -189,33 +255,88 @@ const LeftPane = observer(function LeftPane(props: LeftPaneProps) {
               ref: leftPaneRef,
               children: (
                 <>
-                  {wrapTab("responsiveness", <ResponsivenessPanel />)}
-                  {wrapTab("outline", <OutlineTab />)}
-                  {wrapTab("tokens", <LeftGeneralTokensPanel />)}
-                  {studioCtx.showDataTokens() &&
-                    wrapTab("dataTokens", <LeftGeneralDataTokensPanel />)}
-                  {wrapTab("mixins", <MixinsPanel />)}
-                  {DEVFLAGS.showAnimations &&
-                    wrapTab("animationSequences", <AnimationSequencesPanel />)}
-                  {wrapTab("components", <LeftComponentsPanel />)}
-                  {wrapTab("expressions", <LeftExprsSearchPanel />)}
-                  {wrapTab("themes", <DefaultStylesPanel />)}
-                  {wrapTab("images", <ImageAssetsPanel />)}
-                  {wrapTab("fonts", <UserManagedFontsPanel />)}
-                  {isLoggedIn &&
-                    wrapTab("imports", <ProjectDependenciesPanel />)}
-                  {isLoggedIn &&
-                    wrapTab(
-                      "versions",
-                      <VersionsTab
-                        useVersionsCTA={useVersionsCTA}
-                        dismissVersionsCTA={() => setDismissVersionsCTA(true)}
-                      />,
-                      true
-                    )}
-                  {wrapTab("settings", <LeftProjectSettingsPanel />)}
-                  {wrapTab("splits", <LeftSplitsPanel />)}
-                  {wrapTab("lint", <LeftLintIssuesPanel />, true)}
+                  <LeftPaneDock
+                    studioCtx={studioCtx}
+                    tabs={[
+                      {
+                        key: "responsiveness" as const,
+                        contents: () => <ResponsivenessPanel />,
+                      },
+                      {
+                        key: "outline" as const,
+                        contents: () => <OutlineTab />,
+                      },
+                      {
+                        key: "tokens" as const,
+                        contents: () => <LeftGeneralTokensPanel />,
+                      },
+                      {
+                        key: "dataTokens" as const,
+                        contents: () => <LeftGeneralDataTokensPanel />,
+                      },
+                      {
+                        key: "mixins" as const,
+                        contents: () => <MixinsPanel />,
+                      },
+                      {
+                        key: "animationSequences" as const,
+                        contents: () => <AnimationSequencesPanel />,
+                      },
+                      {
+                        key: "components" as const,
+                        contents: () => <LeftComponentsPanel />,
+                      },
+                      {
+                        key: "expressions" as const,
+                        contents: () => <LeftExprsSearchPanel />,
+                      },
+                      {
+                        key: "themes" as const,
+                        contents: () => <DefaultStylesPanel />,
+                      },
+                      {
+                        key: "images" as const,
+                        contents: () => <ImageAssetsPanel />,
+                      },
+                      {
+                        key: "fonts" as const,
+                        contents: () => <UserManagedFontsPanel />,
+                      },
+                      ...(isLoggedIn
+                        ? [
+                            {
+                              key: "imports" as const,
+                              contents: () => <ProjectDependenciesPanel />,
+                            },
+                            {
+                              key: "versions" as const,
+                              contents: () => (
+                                <VersionsTab
+                                  useVersionsCTA={useVersionsCTA}
+                                  dismissVersionsCTA={() =>
+                                    setDismissVersionsCTA(true)
+                                  }
+                                />
+                              ),
+                              unmountWhenInactive: true,
+                            },
+                          ]
+                        : []),
+                      {
+                        key: "settings" as const,
+                        contents: () => <LeftProjectSettingsPanel />,
+                      },
+                      {
+                        key: "splits" as const,
+                        contents: () => <LeftSplitsPanel />,
+                      },
+                      {
+                        key: "lint" as const,
+                        contents: () => <LeftLintIssuesPanel />,
+                        unmountWhenInactive: true,
+                      },
+                    ]}
+                  />
                   {highlightPane && <HighlightBlinker />}
                 </>
               ),
@@ -234,17 +355,17 @@ const LeftPane = observer(function LeftPane(props: LeftPaneProps) {
               studioCtx.findReferencesComponent,
               studioCtx.findReferencesStyleToken,
               studioCtx.findReferencesDataToken,
-            ].find((x) => x != null) as Component | StyleToken | DataToken
+            ].find((x) => x != null) as Component | StyleToken | DataToken,
           )}
         />
       )}
-    </SidebarModalProvider>
+    </SidebarModalProvider>,
   );
 });
 
 const getFindReferencesProps = (
   studioCtx: StudioCtx,
-  reference: Component | StyleToken | DataToken
+  reference: Component | StyleToken | DataToken,
 ) => {
   return switchType(reference)
     .when(Component, (component) => ({
@@ -284,7 +405,7 @@ const getFindReferencesProps = (
       usageSummary: extractDataTokenUsages(
         studioCtx.siteInfo.id,
         studioCtx.site,
-        token
+        token,
       ),
       onClose: () => {
         studioCtx.findReferencesDataToken = undefined;

@@ -45,7 +45,7 @@
 :where(.__wab_img-spacer-svg) {
   display: block;
   margin: 0;
-  border: none;
+  border: 0;
   padding: 0;
 }
 
@@ -57,7 +57,7 @@
   right: 0;
   margin: 0;
   padding: 0;
-  border: none;
+  border: 0;
   display: block;
   width: 100%;
   min-width: 100%;

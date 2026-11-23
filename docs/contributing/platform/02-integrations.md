@@ -1,10 +1,30 @@
 # Developing Plasmic Studio: third-party system integrations
 
+## Figma import
+
+See [Figma plugin setup](03-figma.md).
+
 ## Plasmic hosting on Vercel
 
-To be able to locallly access a plasmic hosted project in dev environment it's required to have the `hosting` application running (`pm2-dev.config.js` has a configuration to run it locally with the proper environment variables).
+To locally access a Plasmic-hosted project, run the hosting application from
+`platform/hosting`:
 
-With hosting running, you can access a published project by going to `http://localhost:3009/_sites/yourdomain.plasmic.run` which is going to be the equivalent of going to `yourdomain.plasmic.run`.
+```bash
+cd platform/hosting
+pnpm dev
+```
+
+To run it against a local Studio project, temporarily hardcode the local project's
+`projectId`, `token`, and `wantToShowBadge` in
+`platform/hosting/pages/_sites/[site]/[[...catchall]].tsx`. Then set the API host:
+
+```bash
+cd platform/hosting
+NEXT_PUBLIC_PLASMIC_HOST=http://localhost:3003 pnpm dev
+```
+
+You can access a published project at `http://localhost:3000/_sites/yourdomain.plasmic.run`,
+which is equivalent to `yourdomain.plasmic.run`.
 
 ## Setting up Google SSO
 
@@ -90,13 +110,16 @@ resulting temp URL.
 ### Use toolchain debug flags
 
 We internally use our own toolchain including create-plasmic-app,
-@plasmicapp/cli, @plasmicapp/loader, etc. You can use `yalc` to temporarily
-change package.json to use your own local create-plasmic-app, and you can use
-the various debug flags for those packages like `PLASMIC_DEFAULT_HOST`.
+@plasmicapp/cli, @plasmicapp/loader, etc. For local-only testing in a pnpm
+project, use the `local-link` setup/build/teardown workflow documented in
+[CONTRIBUTING.md](../../../CONTRIBUTING.md). It uses temporary `file:` overrides
+without changing the package versions declared by the consuming project. You
+can also use the various debug flags for those packages like
+`PLASMIC_DEFAULT_HOST`.
 
 For example, to have the CLI/PlasmicLoader point to your own localhost server:
 
-    PLASMIC_DEFAULT_HOST=http://localhost:3003 yarn backend
+    PLASMIC_DEFAULT_HOST=http://localhost:3003 pnpm backend
 
 This is ignored by the app server but consumed by CLI/PlasmicLoader.
 

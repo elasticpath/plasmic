@@ -2,6 +2,7 @@ import {
   getTeamMenuItems,
   TeamMenu,
 } from "@/wab/client/components/dashboard/dashboard-actions";
+import { TeamBillingAlertHeader } from "@/wab/client/components/dashboard/TeamBillingAlert";
 import { reactConfirm } from "@/wab/client/components/quick-modals";
 import { Spinner } from "@/wab/client/components/widgets";
 import { useAppCtx } from "@/wab/client/contexts/AppContexts";
@@ -11,9 +12,11 @@ import {
   PlasmicTeamSettings,
 } from "@/wab/client/plasmic/plasmic_kit_dashboard/PlasmicTeamSettings";
 import { GrantRevokeRequest, TeamId } from "@/wab/shared/ApiSchema";
+import { checkIsTeamOnFreeTierOrTrial } from "@/wab/shared/billing/billing-util";
 import { ensure } from "@/wab/shared/common";
 import { DEVFLAGS } from "@/wab/shared/devflags";
 import { accessLevelRank, GrantableAccessLevel } from "@/wab/shared/EntUtil";
+import { ORGANIZATION_LOWER } from "@/wab/shared/Labels";
 import { getAccessLevelToResource } from "@/wab/shared/perms";
 import { HTMLElementRefOf } from "@plasmicapp/react-web";
 import { notification } from "antd";
@@ -29,22 +32,16 @@ function TeamSettings_(props: TeamSettingsProps, ref: HTMLElementRefOf<"div">) {
   const selfInfo = ensure(appCtx.selfInfo, "Unexpected nullish selfInfo");
 
   const { value: data, retry: refetchData } = useAsyncStrict(async () => {
-    // needs to fetch subscription before team, because getSubscription will check the subscription status
-    const subscriptionResp = await appCtx.api.getSubscription(teamId);
     const team = await appCtx.api.getTeam(teamId);
+    const { meta } = await appCtx.api.getTeamMeta(teamId);
     const featureTiers = await appCtx.api.listCurrentFeatureTiers();
-    const subscription =
-      subscriptionResp.type === "success"
-        ? { subscription: subscriptionResp.subscription }
-        : {};
-
     const isWhiteLabeled = !!team.team.whiteLabelInfo;
 
     return {
       ...team,
       ...featureTiers,
-      ...subscription,
       isWhiteLabeled,
+      canStartFreeTrial: meta.canStartFreeTrial,
     };
   }, [appCtx, teamId, selfInfo]);
 
@@ -56,29 +53,31 @@ function TeamSettings_(props: TeamSettingsProps, ref: HTMLElementRefOf<"div">) {
   const perms = data.perms ?? [];
   const members = data.members ?? [];
   const availFeatureTiers = data.tiers ?? [];
-  const subscription = data?.subscription;
   const tier = team.featureTier ?? DEVFLAGS.freeTier;
 
-  const userAccessLevel = team
-    ? getAccessLevelToResource(
-        { type: "team", resource: team },
-        appCtx.selfInfo,
-        perms
-      )
-    : "blocked";
+  const userAccessLevel = getAccessLevelToResource(
+    { type: "team", resource: team },
+    appCtx.selfInfo,
+    perms,
+  );
   const readOnly = accessLevelRank(userAccessLevel) < accessLevelRank("editor");
   const hasOwnership =
     accessLevelRank(userAccessLevel) >= accessLevelRank("owner");
 
-  const teamMenuItems = team ? getTeamMenuItems(appCtx, team) : [];
+  const teamMenuItems = getTeamMenuItems(appCtx, team);
 
   return (
     <PlasmicTeamSettings
       root={{ ref }}
       {...rest}
-      teamName={team?.name}
+      header={{
+        wrap: (node) => (
+          <TeamBillingAlertHeader team={team}>{node}</TeamBillingAlertHeader>
+        ),
+      }}
+      teamName={team.name}
       teamMenuButton={
-        team && teamMenuItems.length > 0
+        teamMenuItems.length > 0
           ? {
               props: {
                 menu: () => (
@@ -102,10 +101,6 @@ function TeamSettings_(props: TeamSettingsProps, ref: HTMLElementRefOf<"div">) {
         perms,
         tier,
         onChangeRole: async (email: string, role?: GrantableAccessLevel) => {
-          if (!team) {
-            return;
-          }
-
           async function grantRevoke(req: GrantRevokeRequest) {
             try {
               await appCtx.api.grantRevoke(req);
@@ -119,7 +114,17 @@ function TeamSettings_(props: TeamSettingsProps, ref: HTMLElementRefOf<"div">) {
           }
 
           if (hasOwnership && role === "owner") {
-            // Confirm user is trying to transfer "owner" to another member.
+            if (
+              checkIsTeamOnFreeTierOrTrial({
+                featureTierId: team.featureTier?.id ?? null,
+                onTrial: team.onTrial,
+              })
+            ) {
+              notification.error({
+                message: `Upgrade this ${ORGANIZATION_LOWER} before transferring ownership.`,
+              });
+              return;
+            }
             const confirm = await reactConfirm({
               title: `Transfer ownership`,
               message: (
@@ -134,18 +139,7 @@ function TeamSettings_(props: TeamSettingsProps, ref: HTMLElementRefOf<"div">) {
             }
 
             await grantRevoke({
-              grants: [
-                // Order matters: target must be promoted to "owner" before the actor is
-                // demoted to "editor". The server processes grants sequentially; reversing
-                // the order would cause the second grant to fail because the actor would
-                // no longer have owner-level access.
-                { email, accessLevel: "owner", teamId: team.id },
-                {
-                  email: selfInfo.email,
-                  accessLevel: "editor",
-                  teamId: team.id,
-                },
-              ],
+              grants: [{ email, accessLevel: "owner", teamId: team.id }],
               revokes: [],
             });
           } else {
@@ -158,9 +152,6 @@ function TeamSettings_(props: TeamSettingsProps, ref: HTMLElementRefOf<"div">) {
           }
         },
         onRemoveUser: async (email: string) => {
-          if (!team) {
-            return;
-          }
           await appCtx.api.purgeUsersFromTeam({
             teamId: team.id,
             emails: [email],
@@ -182,8 +173,8 @@ function TeamSettings_(props: TeamSettingsProps, ref: HTMLElementRefOf<"div">) {
               team,
               members,
               availFeatureTiers,
-              subscription,
-              onChange: () => {
+              canStartFreeTrial: data.canStartFreeTrial,
+              onChange: async () => {
                 refetchData();
               },
               disabled: readOnly,

@@ -4,7 +4,6 @@ import {
 } from "@/wab/server/db/bundle-migration-utils";
 import { UnbundledMigrationFn } from "@/wab/server/db/BundleMigrator";
 import { Bundler } from "@/wab/shared/bundler";
-import { arrayRemove } from "@/wab/shared/collections";
 import { ensure } from "@/wab/shared/common";
 import {
   isKnownNamedState,
@@ -19,32 +18,36 @@ export const migrate: UnbundledMigrationFn = async (bundle, db, entity) => {
     bundler,
     bundle,
     db,
-    entity
+    entity,
   );
 
   for (const component of site.components) {
     const tplNodeToStates: Record<string, NamedState[]> = groupBy(
       component.states.filter(
-        (s) => isKnownTplTag(s.tplNode) && isKnownNamedState(s)
+        (s) => isKnownTplTag(s.tplNode) && isKnownNamedState(s),
       ) as NamedState[],
-      (s) => ensure(s.tplNode, "Just filtered").uuid
+      (s) => ensure(s.tplNode, "Just filtered").uuid,
     );
+    const duplicates = new Set<NamedState>();
     for (const states of Object.values(tplNodeToStates)) {
       const seen = new Set<string>();
       for (const state of states) {
         if (seen.has(state.name)) {
-          arrayRemove(component.states, state);
+          duplicates.add(state);
         } else {
           seen.add(state.name);
         }
       }
     }
+    component.states = component.states.filter(
+      (s) => !duplicates.has(s as NamedState),
+    );
   }
 
   const newBundle = bundler.bundle(
     siteOrProjectDep,
     entity.id,
-    "147-remove-duplicate-implicit-states"
+    "147-remove-duplicate-implicit-states",
   );
   Object.assign(bundle, newBundle);
 };

@@ -108,7 +108,7 @@ export type AddInstallableItem<T = any> = AddItemCommon & {
   // Assumed to run inside sc.change()
   factory: (
     studioCtx: StudioCtx,
-    extraInfo: T
+    extraInfo: T,
   ) => Arena | Component | undefined;
   asyncExtraInfo?: (studioCtx: StudioCtx) => Promise<T>;
 };
@@ -129,6 +129,8 @@ export type AddTplItem<T = any> = AddItemCommon & {
   projectId?: string;
   // Assumed to run inside sc.change()
   factory: (viewCtx: ViewCtx, extraInfo: T) => TplNode | undefined;
+  /** Runs after insertion, inside the same change. */
+  onInserted?: (viewCtx: ViewCtx, tpl: TplNode) => void;
   /**
    * Assumed to be run just outside sc.change().
    * This will get called twice when user is dragging an item:
@@ -138,7 +140,7 @@ export type AddTplItem<T = any> = AddItemCommon & {
    */
   asyncExtraInfo?: (
     studioCtx: StudioCtx,
-    opts?: ExtraInfoOpts
+    opts?: ExtraInfoOpts,
   ) => Promise<T | false>;
   canWrap?: boolean;
   component?: Component;
@@ -168,7 +170,7 @@ export type AddCustomFunctionItem = AddItemCommon & {
   icon: React.ReactNode;
   projectIds: string[];
   createDraftQuery: (
-    studioCtx: StudioCtx
+    studioCtx: StudioCtx,
   ) => Promise<ComponentServerQuery | undefined>;
 };
 
@@ -198,9 +200,6 @@ export type AddItem =
   | AddFakeItem
   | AddInstallableItem
   | AddCustomFunctionItem;
-
-export const isAddItem = (i: { type: string }): i is AddItem =>
-  L.values(AddItemType).includes(i.type as AddItemType);
 
 function mkListItem(vc: ViewCtx) {
   // We create a wrapper li to have display: "list-item" because
@@ -257,7 +256,7 @@ const INSERTABLES: readonly AddItem[] = [
         position: "relative",
         ...getSimplifiedStyles(
           AddItemKey.hstack,
-          vc.studioCtx.getAddItemPrefs()
+          vc.studioCtx.getAddItemPrefs(),
         ),
       });
       return tag;
@@ -278,7 +277,7 @@ const INSERTABLES: readonly AddItem[] = [
         position: "relative",
         ...getSimplifiedStyles(
           AddItemKey.vstack,
-          vc.studioCtx.getAddItemPrefs()
+          vc.studioCtx.getAddItemPrefs(),
         ),
       });
       return tag;
@@ -327,7 +326,7 @@ const INSERTABLES: readonly AddItem[] = [
         tag,
         variant,
         isBaseColumn,
-        getSimplifiedStyles(AddItemKey.columns, vc.studioCtx.getAddItemPrefs())
+        getSimplifiedStyles(AddItemKey.columns, vc.studioCtx.getAddItemPrefs()),
       );
 
       L.range(2).forEach(() => {
@@ -336,9 +335,9 @@ const INSERTABLES: readonly AddItem[] = [
             vc,
             getSimplifiedStyles(
               AddItemKey.vstack,
-              vc.studioCtx.getAddItemPrefs()
-            )
-          )
+              vc.studioCtx.getAddItemPrefs(),
+            ),
+          ),
         );
       });
 
@@ -367,7 +366,10 @@ const INSERTABLES: readonly AddItem[] = [
         ensureBaseRs(
           vc,
           vertStack,
-          getSimplifiedStyles(AddItemKey.vstack, vc.studioCtx.getAddItemPrefs())
+          getSimplifiedStyles(
+            AddItemKey.vstack,
+            vc.studioCtx.getAddItemPrefs(),
+          ),
         );
         $$$(tag).append(vertStack);
       });
@@ -388,7 +390,7 @@ const INSERTABLES: readonly AddItem[] = [
         ...CONTENT_LAYOUT_INITIALS,
         ...getSimplifiedStyles(
           AddItemKey.section,
-          vc.studioCtx.getAddItemPrefs()
+          vc.studioCtx.getAddItemPrefs(),
         ),
         width: CONTENT_LAYOUT_FULL_BLEED,
       });
@@ -412,7 +414,7 @@ const INSERTABLES: readonly AddItem[] = [
         justifyContent: "flex-start",
         ...getSimplifiedStyles(
           AddItemKey.stack,
-          vc.studioCtx.getAddItemPrefs()
+          vc.studioCtx.getAddItemPrefs(),
         ),
       });
       return tag;
@@ -447,7 +449,7 @@ const INSERTABLES: readonly AddItem[] = [
       ensureBaseRs(
         vc,
         tag,
-        getSimplifiedStyles(AddItemKey.image, vc.studioCtx.getAddItemPrefs())
+        getSimplifiedStyles(AddItemKey.image, vc.studioCtx.getAddItemPrefs()),
       );
       return tag;
     },
@@ -465,7 +467,7 @@ const INSERTABLES: readonly AddItem[] = [
       ensureBaseRs(
         vc,
         tag,
-        getSimplifiedStyles(AddItemKey.icon, vc.studioCtx.getAddItemPrefs())
+        getSimplifiedStyles(AddItemKey.icon, vc.studioCtx.getAddItemPrefs()),
       );
       return tag;
     },
@@ -487,7 +489,7 @@ const INSERTABLES: readonly AddItem[] = [
       ensureBaseRs(
         vc,
         tag,
-        getSimplifiedStyles(AddItemKey.link, vc.studioCtx.getAddItemPrefs())
+        getSimplifiedStyles(AddItemKey.link, vc.studioCtx.getAddItemPrefs()),
       );
       return tag;
     },
@@ -510,7 +512,7 @@ const INSERTABLES: readonly AddItem[] = [
         justifyContent: "flex-start",
         ...getSimplifiedStyles(
           AddItemKey.hstack,
-          vc.studioCtx.getAddItemPrefs()
+          vc.studioCtx.getAddItemPrefs(),
         ),
       });
       return tag;
@@ -534,7 +536,7 @@ const INSERTABLES: readonly AddItem[] = [
       ensureBaseRs(
         vc,
         tag,
-        getSimplifiedStyles(AddItemKey.button, vc.studioCtx.getAddItemPrefs())
+        getSimplifiedStyles(AddItemKey.button, vc.studioCtx.getAddItemPrefs()),
       );
       return tag;
     },
@@ -569,7 +571,7 @@ const INSERTABLES: readonly AddItem[] = [
       ensureBaseRs(
         vc,
         tag,
-        getSimplifiedStyles(AddItemKey.textbox, vc.studioCtx.getAddItemPrefs())
+        getSimplifiedStyles(AddItemKey.textbox, vc.studioCtx.getAddItemPrefs()),
       );
       return tag;
     },
@@ -593,7 +595,10 @@ const INSERTABLES: readonly AddItem[] = [
       ensureBaseRs(
         vc,
         tag,
-        getSimplifiedStyles(AddItemKey.textarea, vc.studioCtx.getAddItemPrefs())
+        getSimplifiedStyles(
+          AddItemKey.textarea,
+          vc.studioCtx.getAddItemPrefs(),
+        ),
       );
       return tag;
     },
@@ -613,7 +618,7 @@ const INSERTABLES: readonly AddItem[] = [
         width: "180px",
         ...getSimplifiedStyles(
           AddItemKey.password,
-          vc.studioCtx.getAddItemPrefs()
+          vc.studioCtx.getAddItemPrefs(),
         ),
       });
       return tag;
@@ -629,12 +634,12 @@ const INSERTABLES: readonly AddItem[] = [
       const vtm = vc.variantTplMgr();
       const tag = vtm.mkTplInlinedText(
         "You won't believe what happens next.",
-        "h1"
+        "h1",
       );
       ensureBaseRs(
         vc,
         tag,
-        getSimplifiedStyles(AddItemKey.heading, vc.studioCtx.getAddItemPrefs())
+        getSimplifiedStyles(AddItemKey.heading, vc.studioCtx.getAddItemPrefs()),
       );
       return tag;
     },
@@ -671,7 +676,7 @@ const INSERTABLES: readonly AddItem[] = [
 
 export const INSERTABLES_MAP: Record<string, AddItem> = L.keyBy(
   INSERTABLES,
-  (x) => x.key
+  (x) => x.key,
 );
 
 export const WRAPPERS: AddTplItem[] = [
@@ -684,12 +689,12 @@ export const WRAPPERS: AddTplItem[] = [
     factory: (vc: ViewCtx) => {
       const tag = (INSERTABLES_MAP[AddItemKey.hstack] as AddTplItem).factory(
         vc,
-        null
+        null,
       ) as TplTag;
       ensureBaseRs(
         vc,
         tag,
-        getSimplifiedStyles(WrapItemKey.hstack, vc.studioCtx.getAddItemPrefs())
+        getSimplifiedStyles(WrapItemKey.hstack, vc.studioCtx.getAddItemPrefs()),
       );
       return tag;
     },
@@ -704,12 +709,12 @@ export const WRAPPERS: AddTplItem[] = [
     factory: (vc: ViewCtx) => {
       const tag = (INSERTABLES_MAP[AddItemKey.vstack] as AddTplItem).factory(
         vc,
-        null
+        null,
       ) as TplTag;
       ensureBaseRs(
         vc,
         tag,
-        getSimplifiedStyles(WrapItemKey.vstack, vc.studioCtx.getAddItemPrefs())
+        getSimplifiedStyles(WrapItemKey.vstack, vc.studioCtx.getAddItemPrefs()),
       );
       return tag;
     },
@@ -718,5 +723,5 @@ export const WRAPPERS: AddTplItem[] = [
 
 export const WRAPPERS_MAP: Record<string, AddItem> = L.keyBy(
   WRAPPERS,
-  (x) => x.key
+  (x) => x.key,
 );

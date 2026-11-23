@@ -8,8 +8,8 @@ import { MaybeWrap } from "@/wab/commons/components/ReactUtil";
 import { MIXINS_CAP, MIXIN_CAP } from "@/wab/shared/Labels";
 import { $$$ } from "@/wab/shared/TplQuery";
 import { tryGetVariantSetting } from "@/wab/shared/Variants";
-import { arrayInsert } from "@/wab/shared/collections";
-import { ensure, removeAt } from "@/wab/shared/common";
+import { arrayMoveIndex } from "@/wab/shared/collections";
+import { ensure } from "@/wab/shared/common";
 import { allMixins, isEditable } from "@/wab/shared/core/sites";
 import { isTplTag, isTplVariantable } from "@/wab/shared/core/tpls";
 import {
@@ -40,7 +40,7 @@ export const MixinsSection = observer(function (props: {
   const effectiveVs = vtm.effectiveVariantSetting(tpl, activeVariants);
   const targetVs = tryGetVariantSetting(tpl, targetCombo);
   const [editMixin, setEditMixin] = React.useState<Mixin | undefined>(
-    undefined
+    undefined,
   );
 
   const adoptParentContainerStyle = () => {
@@ -62,7 +62,7 @@ export const MixinsSection = observer(function (props: {
       vtm.applyMixin(
         tpl,
         ensure(editMixin, "Unexpected undefined editMixin"),
-        targetCombo
+        targetCombo,
       );
       adoptParentContainerStyle();
       setEditMixin(undefined);
@@ -77,7 +77,7 @@ export const MixinsSection = observer(function (props: {
   const mixinOptions: (Mixin | CreateOption)[] = [
     ...L.difference(
       allMixins(viewCtx.studioCtx.site, { includeDeps: "direct" }),
-      [...targetVs.rs.mixins, ...fixedMixins]
+      [...targetVs.rs.mixins, ...fixedMixins],
     ),
     { type: "create", text: "" } as CreateOption,
   ];
@@ -169,11 +169,10 @@ export const MixinsSection = observer(function (props: {
         onFocusItem={(item) => setEditMixin(ensureKnownMixin(item))}
         onReorder={(fromIndex, toIndex) => {
           viewCtx.change(() => {
-            const moved = removeAt(targetVs.rs.mixins, fromIndex);
-            arrayInsert(
+            targetVs.rs.mixins = arrayMoveIndex(
               targetVs.rs.mixins,
-              moved,
-              toIndex < fromIndex ? toIndex : toIndex
+              fromIndex,
+              toIndex,
             );
           });
         }}
@@ -188,7 +187,7 @@ export const MixinsSection = observer(function (props: {
             ...options.filter(
               (option) =>
                 isKnownMixin(option) &&
-                option.name.toLowerCase().includes(input.toLowerCase())
+                option.name.toLowerCase().includes(input.toLowerCase()),
             ),
             { type: "create", text: input },
           ];

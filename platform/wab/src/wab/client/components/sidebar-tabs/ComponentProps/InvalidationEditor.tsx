@@ -31,7 +31,7 @@ import {
 } from "@/wab/shared/model/classes";
 import { smartHumanize } from "@/wab/shared/strs";
 import { Menu } from "antd";
-import { isString, uniq } from "lodash";
+import { uniq } from "lodash";
 import { observer } from "mobx-react";
 import * as React from "react";
 
@@ -65,7 +65,7 @@ export const InvalidationEditor = observer(function InvalidationKeysEditor({
     invalidationKeys: undefined,
   };
   const [showKeysEditor, setShowKeysEditor] = React.useState(
-    notNil(invalidationKeys)
+    notNil(invalidationKeys),
   );
   const [isDataPickerVisible, setIsDataPickerVisible] = React.useState(false);
 
@@ -134,12 +134,12 @@ export const InvalidationEditor = observer(function InvalidationKeysEditor({
   };
 
   const multiSelectValues = invalidationQueries
-    ? invalidationQueries.find((query) => isString(query))
+    ? invalidationQueries.find((query) => typeof query === "string")
       ? [ALL_QUERIES.value]
       : uniq(
           invalidationQueries.map((query) =>
-            isString(query) ? query : refToValue(query.ref)
-          )
+            typeof query === "string" ? query : refToValue(query.ref),
+          ),
         )
     : undefined;
 
@@ -165,7 +165,7 @@ export const InvalidationEditor = observer(function InvalidationKeysEditor({
                 new QueryInvalidationExpr({
                   invalidationQueries: [],
                   invalidationKeys: invalidationKeys,
-                })
+                }),
               );
             } else if (val.find((v) => v === SHOW_INVALIDATION_KEYS.value)) {
               setShowKeysEditor(true);
@@ -180,7 +180,7 @@ export const InvalidationEditor = observer(function InvalidationKeysEditor({
                 new QueryInvalidationExpr({
                   invalidationQueries: [ALL_QUERIES.value],
                   invalidationKeys: invalidationKeys,
-                })
+                }),
               );
             } else {
               onChange(
@@ -189,18 +189,18 @@ export const InvalidationEditor = observer(function InvalidationKeysEditor({
                     .filter(
                       (v) =>
                         v !== ALL_QUERIES.value &&
-                        v !== SHOW_INVALIDATION_KEYS.value
+                        v !== SHOW_INVALIDATION_KEYS.value,
                     )
                     .map((v) => {
                       return new QueryRef({
                         ref: ensure(
                           valueToRef.get(v),
-                          "Selection must be a query ref"
+                          "Selection must be a query ref",
                         ),
                       });
                     }),
                   invalidationKeys: invalidationKeys,
-                })
+                }),
               );
             }
           }}
@@ -228,7 +228,7 @@ export const InvalidationEditor = observer(function InvalidationKeysEditor({
                     new QueryInvalidationExpr({
                       invalidationQueries: invalidationQueries,
                       invalidationKeys: undefined,
-                    })
+                    }),
                   );
                   setShowKeysEditor(false);
                 }}
@@ -245,7 +245,7 @@ export const InvalidationEditor = observer(function InvalidationKeysEditor({
                   new QueryInvalidationExpr({
                     invalidationQueries: invalidationQueries,
                     invalidationKeys: undefined,
-                  })
+                  }),
                 );
                 setShowKeysEditor(false);
               }}
@@ -256,6 +256,7 @@ export const InvalidationEditor = observer(function InvalidationKeysEditor({
         >
           <DataPickerEditor
             viewCtx={studioCtx.focusedViewCtx()}
+            title="Invalidation keys"
             value={extractValueSavedFromDataPicker(invalidationKeys, {
               projectFlags: studioCtx.projectFlags(),
               component: component ?? null,
@@ -266,11 +267,11 @@ export const InvalidationEditor = observer(function InvalidationKeysEditor({
                 return;
               }
               const newExpr = createExprForDataPickerValue(val);
-              onChange(
+              return onChange(
                 new QueryInvalidationExpr({
                   invalidationQueries: invalidationQueries,
                   invalidationKeys: newExpr,
-                })
+                }),
               );
             }}
             visible={isDataPickerVisible && showKeysEditor}

@@ -1,8 +1,9 @@
 import { Dropdown, Tooltip } from "antd";
 import * as React from "react";
 
-export interface DropdownTooltipProps
-  extends React.ComponentProps<typeof Dropdown> {
+export interface DropdownTooltipProps extends React.ComponentProps<
+  typeof Dropdown
+> {
   title?: React.ReactNode;
 }
 
@@ -17,7 +18,7 @@ export function DropdownTooltip(props: DropdownTooltipProps) {
   return (
     <Dropdown
       {...rest}
-      visible={isDropdownOpen}
+      open={isDropdownOpen}
       onVisibleChange={(visible) => {
         setDropdownOpen(visible);
         if (!visible) {
@@ -40,7 +41,7 @@ export function DropdownTooltip(props: DropdownTooltipProps) {
     >
       <Tooltip
         title={title}
-        visible={isTooltipShown && !isDropdownOpen}
+        open={isTooltipShown && !isDropdownOpen}
         onVisibleChange={(visible) => setTooltipShown(visible)}
       >
         {children}

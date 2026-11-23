@@ -1,13 +1,13 @@
 // TODO note that cursorPosition logic is broken / not correctly being
 //  tracked, since the use case hasn't come up.
 
-import { Cancelable, ensure, makeCancelable, spawn } from "@/wab/shared/common";
-import sty from "@/wab/commons/components/inputs/BetterAutoComplete.module.css";
 import {
-  callEventHandlers,
   KeyModifiers,
+  callEventHandlers,
 } from "@/wab/commons/components/ReactUtil";
-import { Dropdown, Menu } from "antd";
+import sty from "@/wab/commons/components/inputs/BetterAutoComplete.module.css";
+import { Cancelable, ensure, makeCancelable, spawn } from "@/wab/shared/common";
+import { Dropdown, Menu, MenuRef } from "antd";
 import Downshift, {
   ControllerStateAndHelpers,
   DownshiftProps,
@@ -18,23 +18,18 @@ import $ from "jquery";
 import L, * as _ from "lodash";
 import * as React from "react";
 import { Component, createRef } from "react";
-import ReactDOM from "react-dom";
 
 export interface AutoCompleteSource<T> {
   query: (
     query: string,
     cursorPosition?: number,
-    number?: number
+    number?: number,
   ) => Promise<T[]>;
   render: (item: T) => any;
 }
 
 export type SelectMethod =
-  | "Enter"
-  | "Tab"
-  | "Click"
-  | "ArrowLeft"
-  | "ArrowRight";
+  "Enter" | "Tab" | "Click" | "ArrowLeft" | "ArrowRight";
 export interface SelectModifiers {
   alt?: boolean;
   ctrl?: boolean;
@@ -104,7 +99,7 @@ export interface AutoCompleteProps<P = any> {
 
   downshiftReducer?: (
     state: DownshiftState<P>,
-    changes: StateChangeOptions<P>
+    changes: StateChangeOptions<P>,
   ) => Partial<StateChangeOptions<P>>;
 
   // If not empty, it specifies the class name of the ancestor that may the
@@ -133,18 +128,18 @@ function OverlayMenu(props: {
   scrollClipperAncestors?: string[];
   children: React.ReactNode;
 }) {
-  const menuContainer = React.useRef<Menu | null>(null);
+  const menuContainer = React.useRef<MenuRef | null>(null);
   React.useEffect(() => {
     if (
       menuContainer.current &&
       props.scrollClipperAncestors &&
       props.scrollClipperAncestors.length > 0
     ) {
-      const menuDom = ReactDOM.findDOMNode(menuContainer.current);
+      const menuDom = menuContainer.current.menu?.list;
       if (!menuDom) {
         return;
       }
-      const menu = menuDom as HTMLDivElement;
+      const menu = menuDom as unknown as HTMLDivElement;
       if (menu.style.height !== "") {
         return;
       }
@@ -158,7 +153,7 @@ function OverlayMenu(props: {
           // 8px as the padding
           clipBottom = Math.min(
             $ancestor.get(0).getBoundingClientRect().bottom - 8,
-            clipBottom
+            clipBottom,
           );
         }
       });
@@ -285,7 +280,7 @@ export class BetterAutoComplete<P> extends React.Component<
                       if (itemKey === selectedKey) {
                         props.className = sty.item__active;
                       }
-                      if (L.isString(item) && item === SHOW_MORE) {
+                      if (typeof item === "string" && item === SHOW_MORE) {
                         props = L.assign({}, props, {
                           onClick: (param) => {
                             this.curLimit *= 2;
@@ -297,7 +292,7 @@ export class BetterAutoComplete<P> extends React.Component<
                       return (
                         <Menu.Item key={itemKey} {...props}>
                           {ensure(source, "Unexpected undefined source").render(
-                            item
+                            item,
                           )}
                         </Menu.Item>
                       );
@@ -346,7 +341,7 @@ export class BetterAutoComplete<P> extends React.Component<
             input.props.onFocus,
           ]),
         onKeyDown: (event) => callEventHandlers(event, [input.props.onKeyDown]),
-      })
+      }),
     );
   }
 
@@ -360,7 +355,7 @@ export class BetterAutoComplete<P> extends React.Component<
     item: P | null,
     selector: SelectMethod,
     modifiers: KeyModifiers,
-    cursorPosition?: number
+    cursorPosition?: number,
   ) => {
     if (
       this.props.source !== this.state.queriedSource ||
@@ -404,7 +399,7 @@ export class BetterAutoComplete<P> extends React.Component<
 
   componentDidUpdate(
     prevProps: AutoCompleteProps<P>,
-    prevState: AutoCompleteState<P>
+    prevState: AutoCompleteState<P>,
   ) {
     if (
       this.justSelected ||
@@ -425,7 +420,7 @@ export class BetterAutoComplete<P> extends React.Component<
         this.pQuerying.cancel();
       }
       this.pQuerying = makeCancelable(
-        source.query(text, this.state.cursorPosition, this.curLimit)
+        source.query(text, this.state.cursorPosition, this.curLimit),
       );
       const queriedItems = await this.pQuerying.promise;
       if (source !== this.props.source) {
@@ -459,7 +454,7 @@ export class BetterAutoComplete<P> extends React.Component<
    */
   private queryText(
     props?: AutoCompleteProps<P>,
-    state?: AutoCompleteState<P>
+    state?: AutoCompleteState<P>,
   ) {
     props = props || this.props;
     state = state || this.state;

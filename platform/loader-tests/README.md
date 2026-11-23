@@ -27,43 +27,39 @@ Note: These tests were split by platform into multiple files to enable parallel 
 
 ## pnpm in templates
 
-The framework templates use pnpm with `--frozen-lockfile`. If you update a template's `package.json`, you need to regenerate the lockfile:
-
-1. Create a `pnpm-workspace.yaml` in the template directory if it doesn't already exist:
-   ```bash
-   echo 'packages:\n  - "."' > src/nextjs/template-pages/pnpm-workspace.yaml
-   ```
-   This ensures that the `pnpm install` in the next step alters the template's own lock file.
-   The `pnpm-workspace.yaml` file is gitignored and won't be committed.
-2. Run `pnpm install` in the template directory to regenerate `pnpm-lock.yaml`.
+The framework templates use pnpm with `--frozen-lockfile`. Each template has a
+committed `pnpm-workspace.yaml` so commands in that directory use its own
+lockfile instead of walking up to the loader-tests workspace. If you update a
+template's `package.json`, run `pnpm install` in that template directory and
+commit its updated `pnpm-lock.yaml`.
 
 ## Running tests
 
 ```bash
 # All tests
-yarn test
+pnpm test
 
 # Specific test file
-yarn test-playwright src/playwright-tests/nextjs/antd5/tabs.spec.ts
+pnpm test-playwright src/playwright-tests/nextjs/antd5/tabs.spec.ts
 
 # Specific folder
-yarn test-playwright src/playwright-tests/nextjs/antd5/
+pnpm test-playwright src/playwright-tests/nextjs/antd5/
 
 # Refresh snapshots for a specific spec
-PLAYWRIGHT_REPORTER_OPEN=never yarn test-playwright src/playwright-tests/nextjs/nextjs-wordpress.spec.ts --update-snapshots
+PLAYWRIGHT_REPORTER_OPEN=never pnpm test-playwright src/playwright-tests/nextjs/nextjs-wordpress.spec.ts --update-snapshots
 
 # Refresh all Playwright snapshots
-yarn update-snapshots
+pnpm update-snapshots
 
 # Interactive UI mode
-yarn playwright-ui
+pnpm playwright-ui
 
 # To run E2e tests (requires verdaccio with local packages published)
 # Publish local packages from the repo root.
 (cd ../.. && pnpm local-publish)
 
 # Then, from platform/loader-tests, run Playwright against the local registry.
-yarn run local:playwright-ui
+pnpm run local:playwright-ui
 ```
 
 On failure, traces and videos are saved to `test-results/`. The HTML report opens automatically, or run `npx playwright show-report`. Each test logs its temp directory path (`tmpdir /tmp/...`) which you can inspect to debug build issues (comment out teardown to keep it around).
@@ -72,8 +68,8 @@ On failure, traces and videos are saved to `test-results/`. The HTML report open
 
 Playwright image baselines live in `snapshots/`.
 
-1. Run the target spec with `PLAYWRIGHT_REPORTER_OPEN=never` and `--update-snapshots`, for example `PLAYWRIGHT_REPORTER_OPEN=never yarn test-playwright src/playwright-tests/nextjs/nextjs-wordpress.spec.ts --update-snapshots`.
+1. Run the target spec with `PLAYWRIGHT_REPORTER_OPEN=never` and `--update-snapshots`, for example `PLAYWRIGHT_REPORTER_OPEN=never pnpm test-playwright src/playwright-tests/nextjs/nextjs-wordpress.spec.ts --update-snapshots`.
 2. Review the changed PNGs under `snapshots/`.
 3. Re-run the same spec without `--update-snapshots` to confirm the new baselines pass.
 
-Use `yarn update-snapshots` only when you intend to refresh all Playwright baselines.
+Use `pnpm update-snapshots` only when you intend to refresh all Playwright baselines.

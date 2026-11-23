@@ -4,7 +4,6 @@ import {
 } from "@/wab/shared/model/classes";
 /** @format */
 import { reportError } from "@/wab/client/ErrorNotifications";
-import { ConnectToDBTableModal } from "@/wab/client/components/sidebar-tabs/DataSource/ConnectToDBTable";
 import { updateOrCreateExpr } from "@/wab/client/components/sidebar-tabs/PropEditorRow";
 import { TplExpsProvider } from "@/wab/client/components/style-controls/StyleComponent";
 import Button from "@/wab/client/components/widgets/Button";
@@ -13,7 +12,7 @@ import { BadRequestError } from "@/wab/shared/ApiErrors/errors";
 import { getSlotParams } from "@/wab/shared/SlotUtils";
 import { $$$ } from "@/wab/shared/TplQuery";
 import { elementSchemaToTpl } from "@/wab/shared/code-components/code-components";
-import { ensure, hackyCast, maybe } from "@/wab/shared/common";
+import { ensure, maybe } from "@/wab/shared/common";
 import { isCodeComponent } from "@/wab/shared/core/components";
 import { SlotSelection } from "@/wab/shared/core/slots";
 import { TplComponent } from "@/wab/shared/model/classes";
@@ -74,14 +73,6 @@ export const ComponentActionsSection = observer(
                     tplComp={tpl}
                   />
                 );
-              } else if (hackyCast(action).type === "form-schema") {
-                return (
-                  <ConnectToDBTableModal
-                    key={idx}
-                    viewCtx={viewCtx}
-                    tpl={tpl}
-                  />
-                );
               } else {
                 return null;
               }
@@ -90,14 +81,14 @@ export const ComponentActionsSection = observer(
         }
       </>
     );
-  }
+  },
 );
 
 export function useStudioOps(
   viewCtx: ViewCtx,
   node: HTMLDivElement | null,
   tplComp: TplComponent,
-  expsProvider: TplExpsProvider
+  expsProvider: TplExpsProvider,
 ): ActionProps<any>["studioOps"] {
   const canvasCtx = viewCtx.canvasCtx;
   const sub = canvasCtx.Sub;
@@ -107,7 +98,7 @@ export function useStudioOps(
   }>(null);
   const showModal = React.useCallback(
     (props) => setModalProps(props),
-    [setModalProps]
+    [setModalProps],
   );
 
   const FullScreenModal = React.useMemo(
@@ -120,7 +111,7 @@ export function useStudioOps(
         domAlign,
         popupWidth: 1024,
       }),
-    [sub]
+    [sub],
   );
 
   React.useEffect(() => {
@@ -142,7 +133,7 @@ export function useStudioOps(
           modalProps?.onClose?.();
           setModalProps(null);
         },
-      })
+      }),
     );
     if (root.current) {
       root.current.render(renderElement);
@@ -161,7 +152,7 @@ export function useStudioOps(
 
   const refreshQueryData = React.useCallback(
     () => canvasCtx.refreshFetchedDataFromPlasmicQuery(),
-    [canvasCtx]
+    [canvasCtx],
   );
 
   const appendToSlot = React.useCallback(
@@ -191,9 +182,9 @@ export function useStudioOps(
         tpl: tplComp,
         slotParam: ensure(
           getSlotParams(tplComp.component).find(
-            (p) => p.variable.name === slotName
+            (p) => p.variable.name === slotName,
           ),
-          `Component must have a param named "${slotName}"`
+          `Component must have a param named "${slotName}"`,
         ),
       });
 
@@ -202,7 +193,7 @@ export function useStudioOps(
         viewCtx.setStudioFocusByTpl(tplComp);
       });
     },
-    [viewCtx]
+    [viewCtx],
   );
 
   const removeFromSlotAt = React.useCallback(
@@ -225,7 +216,7 @@ export function useStudioOps(
         }
       });
     },
-    [viewCtx]
+    [viewCtx],
   );
 
   const updateStates = React.useCallback(
@@ -236,7 +227,7 @@ export function useStudioOps(
       Object.keys(newValues).forEach((stateName) => {
         const val = newValues[stateName];
         const state = tplComp.component.states.find(
-          (_state) => isKnownNamedState(_state) && _state.name === stateName
+          (_state) => isKnownNamedState(_state) && _state.name === stateName,
         );
         if (!state) {
           return;
@@ -247,7 +238,7 @@ export function useStudioOps(
           .currentComponent()
           .states.find(
             (_state) =>
-              _state.implicitState === state && _state.tplNode === tplComp
+              _state.implicitState === state && _state.tplNode === tplComp,
           );
         if (!implicitState) {
           return;
@@ -255,7 +246,7 @@ export function useStudioOps(
         viewCtx.setCanvasStateValue(implicitState, val);
       });
     },
-    [viewCtx, expsProvider, tplComp]
+    [viewCtx, expsProvider, tplComp],
   );
 
   const updateProps = React.useCallback(
@@ -268,7 +259,7 @@ export function useStudioOps(
         Object.keys(newValues).forEach((prop) => {
           const val = newValues[prop];
           const param = tplComp.component.params.find(
-            (_param) => _param.variable.name === prop
+            (_param) => _param.variable.name === prop,
           );
           if (!param) {
             return;
@@ -286,7 +277,7 @@ export function useStudioOps(
               param.type,
               val,
               tplComp,
-              viewCtx
+              viewCtx,
             );
 
             vtm.setArg(tplComp, param.variable, newExpr);
@@ -296,7 +287,7 @@ export function useStudioOps(
         });
       });
     },
-    [viewCtx, expsProvider, tplComp]
+    [viewCtx, expsProvider, tplComp],
   );
 
   const studioOps = React.useMemo(
@@ -315,7 +306,7 @@ export function useStudioOps(
       removeFromSlotAt,
       updateProps,
       updateStates,
-    ]
+    ],
   );
   return studioOps;
 }
@@ -342,7 +333,7 @@ function ButtonAction<P>({
     viewCtx,
     containerRef.current,
     tplComp,
-    expsProvider
+    expsProvider,
   );
   const projectData = viewCtx.studioCtx.getProjectData();
 
@@ -389,7 +380,7 @@ function CustomAction<P>({
     viewCtx,
     modalContainerRef.current,
     tplComp,
-    expsProvider
+    expsProvider,
   );
   const projectData = viewCtx.studioCtx.getProjectData();
 
@@ -412,7 +403,7 @@ function CustomAction<P>({
         studioOps: studioOps,
         projectData: projectData,
         studioDocument: window.document,
-      })
+      }),
     );
     if (actionRoot.current) {
       actionRoot.current.render(renderElement);

@@ -1,29 +1,34 @@
-import { DataTokenType, getDataTokenType } from "@/wab/commons/DataToken";
+import {
+  DataTokenRef,
+  DataTokenType,
+  getDataTokenType,
+} from "@/wab/commons/DataToken";
 import { ProjectId } from "@/wab/shared/ApiSchema";
 import { makeShortProjectId, toVarName } from "@/wab/shared/codegen/util";
 import {
   DependencyWalkScope,
   walkDependencyTree,
 } from "@/wab/shared/core/project-deps";
-import { FinalToken, toFinalToken } from "@/wab/shared/core/tokens";
+import { FinalToken, mkToFinalToken } from "@/wab/shared/core/tokens";
 import { maybeComputedFn } from "@/wab/shared/mobx-util";
 import { DataToken, Site } from "@/wab/shared/model/classes";
 import keyBy from "lodash/keyBy";
+import { computedFn } from "mobx-utils";
 
 /**
  * Data tokens for the given site, optionally including dependencies
  */
 function dataTokens(
   site: Site,
-  opts: { includeDeps?: DependencyWalkScope } = {}
+  opts: { includeDeps?: DependencyWalkScope } = {},
 ) {
   const allTokens = [...site.dataTokens];
 
   if (opts.includeDeps) {
     allTokens.push(
       ...walkDependencyTree(site, opts.includeDeps).flatMap(
-        (d) => d.site.dataTokens
-      )
+        (d) => d.site.dataTokens,
+      ),
     );
   }
 
@@ -31,61 +36,84 @@ function dataTokens(
 }
 
 export const siteDataTokens = maybeComputedFn(
-  (site: Site): ReadonlyArray<DataToken> => dataTokens(site)
+  (site: Site): ReadonlyArray<DataToken> => dataTokens(site),
 );
 
-export const siteDataTokensDirectDeps = maybeComputedFn(
+export const siteDataTokensDirectDeps = computedFn(
   (site: Site): ReadonlyArray<DataToken> =>
-    dataTokens(site, { includeDeps: "direct" })
+    dataTokens(site, { includeDeps: "direct" }),
 );
 
 export const siteDataTokensAllDeps = maybeComputedFn(
   (site: Site): ReadonlyArray<DataToken> =>
-    dataTokens(site, { includeDeps: "all" })
+    dataTokens(site, { includeDeps: "all" }),
 );
 
 export const siteDataTokensAllDepsDict = maybeComputedFn(
   (site: Site): Readonly<{ [uuid: string]: DataToken }> =>
-    keyBy(siteDataTokensAllDeps(site), (t) => t.uuid)
+    keyBy(siteDataTokensAllDeps(site), (t) => t.uuid),
 );
 
 export const siteFinalDataTokens = maybeComputedFn(
   (site: Site): ReadonlyArray<FinalToken<DataToken>> =>
-    siteDataTokens(site).map((token) => toFinalToken(token, site))
+    siteDataTokens(site).map(mkToFinalToken(site)),
 );
 
 export const siteFinalDataTokensDirectDeps = maybeComputedFn(
   (site: Site): ReadonlyArray<FinalToken<DataToken>> =>
-    siteDataTokensDirectDeps(site).map((token) => toFinalToken(token, site))
+    siteDataTokensDirectDeps(site).map(mkToFinalToken(site)),
 );
 
 export const siteFinalDataTokensAllDeps = maybeComputedFn(
   (site: Site): ReadonlyArray<FinalToken<DataToken>> =>
-    siteDataTokensAllDeps(site).map((token) => toFinalToken(token, site))
+    siteDataTokensAllDeps(site).map(mkToFinalToken(site)),
 );
 
 export const siteFinalDataTokensOfType = maybeComputedFn(
   (
     site: Site,
     category: DataTokenType,
-    opts: { includeDeps?: DependencyWalkScope } = {}
+    opts: { includeDeps?: DependencyWalkScope } = {},
   ): ReadonlyArray<FinalToken<DataToken>> => {
     const tokens =
       opts.includeDeps === "all"
         ? siteFinalDataTokensAllDeps(site)
         : opts.includeDeps === "direct"
-        ? siteFinalDataTokensDirectDeps(site)
-        : siteFinalDataTokens(site);
+          ? siteFinalDataTokensDirectDeps(site)
+          : siteFinalDataTokens(site);
 
     return tokens.filter((t) => getDataTokenType(t.value) === category);
-  }
+  },
+);
+
+/**
+ * Local + direct-dependency data tokens of the given type as
+ * {@link DataTokenRef}s, keeping each token's owning project id
+ */
+export const siteDataTokenRefsDirectDeps = maybeComputedFn(
+  (
+    site: Site,
+    projectId: ProjectId,
+    category: DataTokenType,
+  ): ReadonlyArray<DataTokenRef> => [
+    ...siteFinalDataTokensOfType(site, category).map((finalToken) => ({
+      token: finalToken.base,
+      projectId,
+    })),
+    ...walkDependencyTree(site, "direct").flatMap((dep) =>
+      siteFinalDataTokensOfType(dep.site, category).map((finalToken) => ({
+        token: finalToken.base,
+        projectId: dep.projectId as ProjectId,
+      })),
+    ),
+  ],
 );
 
 export function finalDataTokensForDep(
   site: Site,
-  depSite: Site
+  depSite: Site,
 ): ReadonlyArray<FinalToken<DataToken>> {
-  return depSite.dataTokens.map((token) => toFinalToken(token, site));
+  return depSite.dataTokens.map(mkToFinalToken(site));
 }
 
 /**
@@ -93,10 +121,10 @@ export function finalDataTokensForDep(
  */
 export function findDepNameByShortProjectId(
   site: Site,
-  shortProjectId: string
+  shortProjectId: string,
 ): string | undefined {
   return walkDependencyTree(site, "all").find((dep) =>
-    dep.projectId.startsWith(shortProjectId)
+    dep.projectId.startsWith(shortProjectId),
   )?.name;
 }
 
@@ -106,10 +134,10 @@ export function findDepNameByShortProjectId(
  */
 export function findShortProjectIdByDepName(
   site: Site,
-  depVarName: string
+  depVarName: string,
 ): string | undefined {
   const foundDep = walkDependencyTree(site, "all").find(
-    (dep) => toVarName(dep.name) === depVarName
+    (dep) => toVarName(dep.name) === depVarName,
   );
   return foundDep
     ? makeShortProjectId(foundDep.projectId as ProjectId)

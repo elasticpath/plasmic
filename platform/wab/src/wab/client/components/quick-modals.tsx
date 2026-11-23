@@ -1,3 +1,4 @@
+import { AntdConfigProvider } from "@/wab/client/antd-theme";
 import Button from "@/wab/client/components/widgets/Button";
 import { Modal } from "@/wab/client/components/widgets/Modal";
 import Textbox from "@/wab/client/components/widgets/Textbox";
@@ -9,7 +10,7 @@ import { getComponentDisplayName } from "@/wab/shared/core/components";
 import { Form } from "antd";
 import { Rule } from "antd/lib/form";
 import React from "react";
-import ReactDOM from "react-dom";
+import { createRoot } from "react-dom/client";
 
 /**
  * Shows a React element appended to the end of document.  As such, it is outside of
@@ -23,14 +24,18 @@ import ReactDOM from "react-dom";
 function showTemporaryWidget(children: React.ReactElement<any>) {
   const div = document.createElement("div");
   document.body.appendChild(div);
+  const root = createRoot(div);
+  let destroyed = false;
   function destroy() {
-    const unmountResult = ReactDOM.unmountComponentAtNode(div);
-    if (unmountResult && div.parentNode) {
-      div.parentNode.removeChild(div);
+    if (destroyed) {
+      return;
     }
+    destroyed = true;
+    root.unmount();
+    div.remove();
   }
 
-  ReactDOM.render(children, div);
+  root.render(<AntdConfigProvider>{children}</AntdConfigProvider>);
   return { destroy };
 }
 
@@ -55,8 +60,8 @@ function showTemporaryWidget(children: React.ReactElement<any>) {
 export async function showTemporaryPrompt<T>(
   children: (
     onSubmit: (val: T) => void,
-    onCancel: () => void
-  ) => React.ReactElement<any>
+    onCancel: () => void,
+  ) => React.ReactElement<any>,
 ) {
   let modalResolve: (result?: T) => void;
   const promise = new Promise<T | undefined>((resolve) => {
@@ -284,16 +289,21 @@ export async function reactPrompt(opts: ReactPromptOpts) {
             data-test-id="prompt"
           />
         </Form.Item>
-        <Form.Item style={{ margin: 0 }}>
-          <Button
-            className="mr-sm"
-            type="primary"
-            htmlType="submit"
-            data-test-id="prompt-submit"
-          >
-            {actionText ?? "Submit"}
-          </Button>
-          <Button onClick={() => onCancel()}>Cancel</Button>
+        <Form.Item style={{ margin: 0 }} shouldUpdate>
+          {({ getFieldValue }) => (
+            <>
+              <Button
+                className="mr-sm"
+                type="primary"
+                htmlType="submit"
+                disabled={!(getFieldValue("input") ?? defaultValue)}
+                data-test-id="prompt-submit"
+              >
+                {actionText ?? "Submit"}
+              </Button>
+              <Button onClick={() => onCancel()}>Cancel</Button>
+            </>
+          )}
         </Form.Item>
       </Form>
     </Modal>
@@ -311,7 +321,7 @@ export async function deleteStudioElementConfirm(
     element: StudioElement;
     summary: UsageSummary;
   }[],
-  message?: React.ReactNode
+  message?: React.ReactNode,
 ) {
   return await reactConfirm({
     title,
@@ -324,29 +334,29 @@ export async function deleteStudioElementConfirm(
             <ul>
               {makeUsageControl(
                 "Components",
-                summary.components?.map(getComponentDisplayName)
+                summary.components?.map(getComponentDisplayName),
               )}
               {makeUsageControl(
                 FRAMES_CAP,
                 summary.frames?.map(
-                  (frame) => frame.name || `unnamed ${FRAME_LOWER}`
-                )
+                  (frame) => frame.name || `unnamed ${FRAME_LOWER}`,
+                ),
               )}
               {makeUsageControl(
                 MIXINS_CAP,
-                summary.mixins?.map((m) => m.name)
+                summary.mixins?.map((m) => m.name),
               )}
               {makeUsageControl(
                 "Tokens",
-                summary.styleTokens?.map((t) => t.name)
+                summary.styleTokens?.map((t) => t.name),
               )}
               {makeUsageControl(
                 "Token Overrides",
-                summary.styleTokenOverrides?.map((t) => t.token.name)
+                summary.styleTokenOverrides?.map((t) => t.token.name),
               )}
               {makeUsageControl(
                 "Default Typography Styles",
-                summary.themes?.map((t) => t.style.name)
+                summary.themes?.map((t) => t.style.name),
               )}
               {makeUsageControl("Initial Styles", summary.addItemPrefs)}
             </ul>
@@ -368,7 +378,7 @@ const makeUsageControl = (usageName: string, names?: Array<string>) => {
       <span className="asset-usage-items">
         {joinReactNodes(
           names.map((name, i) => <code key={i}>{name}</code>),
-          ", "
+          ", ",
         )}
       </span>
     </li>

@@ -29,17 +29,17 @@ import {
 } from "@/wab/shared/model/model-util";
 import type { CodeComponentMeta } from "@plasmicapp/host/registerComponent";
 import { notification } from "antd";
-import { isArray, isBoolean, isNumber, isObject, isString, omit } from "lodash";
+import { isArray, isObject, omit } from "lodash";
 
 function getChildComponentNameFromPropertyKey(
   allDescendants: InstanceNode[],
-  key: string | undefined
+  key: string | undefined,
 ) {
   if (!key) {
     return undefined;
   }
   const refNode = allDescendants.find(
-    (child) => child.componentPropertyReferences?.mainComponent === key
+    (child) => child.componentPropertyReferences?.mainComponent === key,
   );
 
   const nodeName = refNode?.name;
@@ -61,10 +61,10 @@ function fixComponentFigmaPropKey(key: string, prop: ComponentProperty) {
 }
 
 function isFigmaTrueishValue(value: number | string | boolean | null) {
-  if (isBoolean(value)) {
+  if (typeof value === "boolean") {
     return value;
   }
-  if (isNumber(value)) {
+  if (typeof value === "number") {
     return value === 1;
   }
   if (value === null) {
@@ -76,7 +76,7 @@ function isFigmaTrueishValue(value: number | string | boolean | null) {
 function fixComponentFigmaPropValue(
   key: string,
   figmaProp: ComponentProperty,
-  descendants: InstanceNode[]
+  descendants: InstanceNode[],
 ): ComponentProperty {
   // We remove the "parent" prop from the object, since those values can go
   // through user code to be transformed
@@ -85,7 +85,7 @@ function fixComponentFigmaPropValue(
   // Figma prop.value will either be a string, boolean or number, but we want to
   // but we will try to ensure that the value is a boolean, as we runned into
   if (prop.type === "BOOLEAN") {
-    if (isBoolean(prop.value)) {
+    if (typeof prop.value === "boolean") {
       return prop;
     }
     return { ...prop, value: isFigmaTrueishValue(prop.value) };
@@ -110,7 +110,7 @@ function filterFigmaPropsFromComponent(
   figmaProps: ComponentPropertiesEntries,
   opts: {
     includePropsWithoutParam: boolean;
-  }
+  },
 ) {
   return figmaProps.filter(([key, prop]) => {
     if (key === "parent") {
@@ -138,10 +138,10 @@ function filterFigmaPropsFromComponent(
 function fromFigmaNodeToFigmaProps(
   component: Component,
   inst: InstanceNode,
-  descendants: InstanceNode[]
+  descendants: InstanceNode[],
 ): ComponentPropertiesEntries {
   const localProps: ComponentPropertiesEntries = Object.entries(
-    inst.componentProperties ?? {}
+    inst.componentProperties ?? {},
   ).map(([key, prop]) => {
     // We fix directly in the source, since running the fix functions twice can cause issues
     // For example. If we have a key "text#other#id" and we run the fixComponentFigmaPropKey function
@@ -158,8 +158,8 @@ function fromFigmaNodeToFigmaProps(
     fromFigmaNodeToFigmaProps(component, _inst, descendants).map(
       ([key, value]): ComponentPropertyEntry => {
         return [`${_inst.name}.${key}`, value];
-      }
-    )
+      },
+    ),
   );
 
   // When creating the nodes while denormalizing the data, we always create an
@@ -175,14 +175,14 @@ function fromFigmaNodeToFigmaProps(
       // This is before we transform the props, so we want to allow extraneous props
       // to the component in Plasmic, so that the user can transform them
       includePropsWithoutParam: true,
-    }
+    },
   );
 }
 
 function getAllDescendants(inst: InstanceNode): InstanceNode[] {
   const children = inst.children ?? [];
   const descendants = children.flatMap((child) =>
-    child.type === "INSTANCE" ? [child, ...getAllDescendants(child)] : []
+    child.type === "INSTANCE" ? [child, ...getAllDescendants(child)] : [],
   );
   return descendants;
 }
@@ -195,7 +195,7 @@ type ComponentPropsObjectExtended = ReturnType<
 
 function fromFigmaPropsToTplProps(
   component: Component,
-  figmaProps: ComponentPropsObjectExtended
+  figmaProps: ComponentPropsObjectExtended,
 ): Array<[string, VariantsRef | CustomCode | string | number | boolean]> {
   return withoutNils(
     Object.entries(figmaProps).map(([key, value]) => {
@@ -206,7 +206,7 @@ function fromFigmaPropsToTplProps(
       }
 
       const variantGroup = component.variantGroups.find(
-        (group) => group.param === param
+        (group) => group.param === param,
       );
       if (variantGroup) {
         // Currently only will toggle single-variants if the Property and Value has the same name, the value has the name "on" or if its
@@ -220,7 +220,7 @@ function fromFigmaPropsToTplProps(
             : null;
         } else {
           const variant = variantGroup.variants.find(
-            (v) => toVarName(v.name) === toVarName(`${value}`)
+            (v) => toVarName(v.name) === toVarName(`${value}`),
           );
           return variant
             ? [param.variable.name, new VariantsRef({ variants: [variant] })]
@@ -228,11 +228,11 @@ function fromFigmaPropsToTplProps(
         }
       }
       // Link props crashes studio if assigned an boolean
-      if (param.type.name === "href" && isBoolean(value)) {
+      if (param.type.name === "href" && typeof value === "boolean") {
         return null;
       }
       // Parse text to number if param is number
-      if (isNumType(param.type) && isString(value)) {
+      if (isNumType(param.type) && typeof value === "string") {
         return [param.variable.name, Number(value)];
       }
       if (isBoolType(param.type)) {
@@ -265,14 +265,14 @@ function fromFigmaPropsToTplProps(
       }
 
       return [param.variable.name, value];
-    })
+    }),
   );
 }
 
 function safeFigmaPropsTransform(
   component: Component,
   figmaPropsTransform: FigmaPropsTransform,
-  props: ComponentPropsObject
+  props: ComponentPropsObject,
 ): { props: ComponentPropsObjectExtended; success: true } | { success: false } {
   try {
     const transformedProps = figmaPropsTransform?.(props);
@@ -290,7 +290,7 @@ function safeFigmaPropsTransform(
     });
     console.error(
       `Error transforming figma props for code component ${component.name}`,
-      e
+      e,
     );
   }
 
@@ -302,10 +302,10 @@ function safeFigmaPropsTransform(
 function maybeFigmaPropsTransform(
   studioCtx: StudioCtx,
   component: Component,
-  figmaProps: ComponentPropertiesEntries
+  figmaProps: ComponentPropertiesEntries,
 ): ComponentPropsObjectExtended {
   const componentProps = Object.fromEntries(
-    figmaProps.map(([key, prop]) => [key, prop.value])
+    figmaProps.map(([key, prop]) => [key, prop.value]),
   );
 
   if (isCodeComponent(component)) {
@@ -314,7 +314,7 @@ function maybeFigmaPropsTransform(
       const transformResult = safeFigmaPropsTransform(
         component,
         meta.figmaPropsTransform,
-        componentProps
+        componentProps,
       );
 
       if (transformResult.success) {
@@ -328,7 +328,7 @@ function maybeFigmaPropsTransform(
 export function fromFigmaComponentToTplProps(
   studioCtx: StudioCtx,
   component: Component,
-  node: InstanceNode
+  node: InstanceNode,
 ) {
   const allDescendants = getAllDescendants(node);
 
@@ -336,6 +336,6 @@ export function fromFigmaComponentToTplProps(
 
   return fromFigmaPropsToTplProps(
     component,
-    maybeFigmaPropsTransform(studioCtx, component, figmaProps)
+    maybeFigmaPropsTransform(studioCtx, component, figmaProps),
   );
 }

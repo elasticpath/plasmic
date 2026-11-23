@@ -1,12 +1,13 @@
-import { isRealCodeExpr } from "@/wab/shared/core/exprs";
 import { UnbundledMigrationFn } from "@/wab/server/db/BundleMigrator";
 import {
   BundleMigrationType,
   unbundleSite,
 } from "@/wab/server/db/bundle-migration-utils";
 import { Bundler } from "@/wab/shared/bundler";
-import { isKnownEventHandler, isKnownVarRef } from "@/wab/shared/model/classes";
+import { isRealCodeExpr } from "@/wab/shared/core/exprs";
 import { flattenTpls, isAttrEventHandler } from "@/wab/shared/core/tpls";
+import { isKnownEventHandler, isKnownVarRef } from "@/wab/shared/model/classes";
+import { omit } from "lodash";
 
 export const migrate: UnbundledMigrationFn = async (bundle, db, entity) => {
   const bundler = new Bundler();
@@ -14,7 +15,7 @@ export const migrate: UnbundledMigrationFn = async (bundle, db, entity) => {
     bundler,
     bundle,
     db,
-    entity
+    entity,
   );
 
   for (const component of site.components) {
@@ -28,7 +29,7 @@ export const migrate: UnbundledMigrationFn = async (bundle, db, entity) => {
             !isRealCodeExpr(expr)
           ) {
             // event handler is just a string
-            delete vs.attrs[attr];
+            vs.attrs = omit(vs.attrs, attr);
           }
         }
       }
@@ -38,7 +39,7 @@ export const migrate: UnbundledMigrationFn = async (bundle, db, entity) => {
   const newBundle = bundler.bundle(
     siteOrProjectDep,
     entity.id,
-    "98-remove-event-handler-attrs"
+    "98-remove-event-handler-attrs",
   );
   Object.assign(bundle, newBundle);
 };

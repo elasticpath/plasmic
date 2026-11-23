@@ -2,7 +2,7 @@ import { fetchUntrusted, UnsafeUrlError } from "@/wab/server/util/url";
 import { DataSourceError } from "@/wab/shared/data-sources-meta/data-sources";
 import { GraphqlDataSource } from "@/wab/shared/data-sources-meta/graphql-meta";
 import { AxiosResponse } from "axios";
-import { isEmpty, isString } from "lodash";
+import { isEmpty } from "lodash";
 
 export function makeGraphqlFetcher(source: GraphqlDataSource) {
   return new GraphqlFetcher(source);
@@ -185,16 +185,17 @@ async function processResult(res: AxiosResponse<string>) {
   } catch {}
   if (statusCode >= 400) {
     throw new DataSourceError(
-      isString(processedResponse) || !isEmpty(processedResponse)
+      typeof processedResponse === "string" || !isEmpty(processedResponse)
         ? processedResponse
         : undefined,
-      statusCode
+      statusCode,
     );
   }
   return {
     data: {
       response: processedResponse,
       statusCode,
+      // eslint-disable-next-line @typescript-eslint/no-misused-spread -- AxiosHeaders keeps headers as own properties
       headers: { ...res.headers },
     },
   };

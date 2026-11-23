@@ -8,6 +8,7 @@ import {
 } from "@/wab/client/plasmic/plasmic_kit_continuous_deployment/PlasmicSubsectionSaveVersion";
 import type { PublishResult } from "@/wab/client/studio-ctx/StudioCtx";
 import { ApiProject } from "@/wab/shared/ApiSchema";
+import { rolePaywallMessage } from "@/wab/shared/billing/billing-util";
 import { spawn } from "@/wab/shared/common";
 import {
   INITIAL_VERSION_NUMBER,
@@ -31,7 +32,7 @@ export type StatusSaveVersion = {
 };
 
 export function mkSaveVersionPublishState(
-  status: StatusSaveVersion | undefined
+  status: StatusSaveVersion | undefined,
 ): PublishState {
   if (!status?.enabled) {
     return undefined;
@@ -49,8 +50,7 @@ export function mkSaveVersionPublishState(
 }
 
 interface SubsectionSaveVersionProps
-  extends DefaultSubsectionSaveVersionProps,
-    VisibleEnableBlock {
+  extends DefaultSubsectionSaveVersionProps, VisibleEnableBlock {
   project: ApiProject;
   closeDialog: () => void;
   gotoReviewChanges: () => void;
@@ -89,7 +89,7 @@ function SubsectionSaveVersion(props: SubsectionSaveVersionProps) {
         setPreviousTags([
           ...new Set(projectReleases?.map((release) => release.tags).flat()),
         ] as string[]);
-      })()
+      })(),
     );
   }, []);
 
@@ -117,10 +117,10 @@ function SubsectionSaveVersion(props: SubsectionSaveVersionProps) {
         loading
           ? "loading"
           : version === INITIAL_VERSION_NUMBER
-          ? "first"
-          : !releaseType
-          ? "none"
-          : releaseType
+            ? "first"
+            : !releaseType
+              ? "none"
+              : releaseType
       }
       // Hide if loading or no changes
       nextVersion={loading || !version ? "" : version}
@@ -169,6 +169,8 @@ function SubsectionSaveVersion(props: SubsectionSaveVersionProps) {
           "Error: No new changes to publish."
         ) : result === "UnknownError" ? (
           "Error: Unknown error."
+        ) : result === "RolePaywallError" ? (
+          rolePaywallMessage
         ) : result === "PaywallError" ? (
           "Error: Paywall error."
         ) : (
@@ -194,15 +196,15 @@ function SubsectionSaveVersion(props: SubsectionSaveVersionProps) {
                 result === "Success"
                   ? "finished"
                   : result === "PreFilling"
-                  ? "started"
-                  : "unstarted"
+                    ? "started"
+                    : "unstarted"
               }
               description={
                 result === "Success"
                   ? "Pushed updates to CDN cache!"
                   : result === "PreFilling"
-                  ? "Pushing updates to CDN cache..."
-                  : "Push updates to CDN cache"
+                    ? "Pushing updates to CDN cache..."
+                    : "Push updates to CDN cache"
               }
             />
           </>

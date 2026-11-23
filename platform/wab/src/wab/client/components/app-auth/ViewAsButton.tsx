@@ -7,7 +7,7 @@ import {
   useAppRoles,
   useAppUsers,
 } from "@/wab/client/components/app-auth/app-auth-contexts";
-import { useDataSourceOpExprBottomModal } from "@/wab/client/components/sidebar-tabs/DataSource/DataSourceOpPicker";
+import { useDataSourceOpExprPanel } from "@/wab/client/components/sidebar-tabs/DataSource/DataSourceOpPicker";
 import {
   ClickStopper,
   IFrameAwareDropdownMenu,
@@ -18,11 +18,7 @@ import {
   DefaultViewAsButtonProps,
   PlasmicViewAsButton,
 } from "@/wab/client/plasmic/plasmic_kit_top_bar/PlasmicViewAsButton";
-import {
-  StudioAppUser,
-  isUserProjectEditor,
-  useStudioCtx,
-} from "@/wab/client/studio-ctx/StudioCtx";
+import { StudioAppUser, useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { trackEvent } from "@/wab/client/tracking";
 import { ApiAppUser } from "@/wab/shared/ApiSchema";
 import { DATA_SOURCE_OPERATION_LOWER } from "@/wab/shared/Labels";
@@ -30,7 +26,8 @@ import { Bundle, FastBundler } from "@/wab/shared/bundler";
 import { ifEmpty, spawn } from "@/wab/shared/common";
 import { isValidCurrentUserPropsExpr } from "@/wab/shared/core/exprs";
 import { DataSourceOpExpr } from "@/wab/shared/model/classes";
-import { Menu, notification } from "antd";
+import { isUserProjectEditor } from "@/wab/shared/perms";
+import { Menu } from "antd";
 import { observer } from "mobx-react";
 import * as React from "react";
 import { useState } from "react";
@@ -63,7 +60,7 @@ function _ViewAsButton(props: ViewAsButtonProps) {
   const isEditor = isUserProjectEditor(
     appCtx.selfInfo,
     studioCtx.siteInfo,
-    studioCtx.siteInfo.perms
+    studioCtx.siteInfo.perms,
   );
 
   const [search, setSearch] = useState("");
@@ -144,8 +141,8 @@ function _ViewAsButton(props: ViewAsButtonProps) {
                 appUsers.appUsers
                   .filter((u) =>
                     (u.email ?? u.externalId ?? "").includes(
-                      search.trim().toLowerCase()
-                    )
+                      search.trim().toLowerCase(),
+                    ),
                   )
                   .slice(0, maxListedUsers)
                   .map((user) => {
@@ -163,7 +160,7 @@ function _ViewAsButton(props: ViewAsButtonProps) {
                   }),
                 () => (
                   <Menu.Item disabled>User not found</Menu.Item>
-                )
+                ),
               )}
             </Menu.ItemGroup>
           )}
@@ -203,9 +200,7 @@ export function AdvancedAppAuthMenuItems() {
   const appCtx = studioCtx.appCtx;
   const appId = studioCtx.siteInfo.id;
   const { roles } = useAppRoles(appCtx, appId);
-  const dataSourceModal = useDataSourceOpExprBottomModal(
-    "current-user-properties"
-  );
+  const dataSourceModal = useDataSourceOpExprPanel("current-user-properties");
   const {
     config: appCurrentUserOpConfig,
     mutate: mutateAppCurrentUserOpConfig,
@@ -219,11 +214,9 @@ export function AdvancedAppAuthMenuItems() {
         inStudio: true,
       })
     ) {
-      notification.error({
-        message:
-          "The current user properties expression is invalid. You can only use direct properties from the current user without any manipulation.",
-      });
-      return;
+      throw new Error(
+        "The current user properties expression is invalid. You can only use direct properties from the current user without any manipulation.",
+      );
     }
 
     // This opId shouldn't be possible to leak as it's only used internally
@@ -243,8 +236,6 @@ export function AdvancedAppAuthMenuItems() {
     });
 
     await studioCtx.refreshAppUserProperties();
-
-    dataSourceModal.close();
   }
 
   return (
@@ -257,11 +248,9 @@ export function AdvancedAppAuthMenuItems() {
               dataSourceModal.open({
                 title: `Configure user properties ${DATA_SOURCE_OPERATION_LOWER}`,
                 value: getDataSourceOpExprFromBundle(
-                  appCurrentUserOpConfig.userPropsBundledOp
+                  appCurrentUserOpConfig.userPropsBundledOp,
                 ),
-                onSave: (newExpr) => {
-                  spawn(handleSave(newExpr));
-                },
+                onSaveAsync: handleSave,
                 onCancel: () => dataSourceModal.close(),
                 env: {
                   currentUser: {
@@ -306,7 +295,7 @@ export function AdvancedAppAuthMenuItems() {
                     userPropsBundledOp: null,
                     userPropsDataSourceId: null,
                   },
-                }
+                },
               );
             }}
           >
@@ -320,10 +309,10 @@ export function AdvancedAppAuthMenuItems() {
 
 function getBundledFromDataSourceOpExpr(
   expr: DataSourceOpExpr,
-  appCtx: AppCtx
+  appCtx: AppCtx,
 ) {
   return JSON.stringify(
-    appCtx.bundler.bundle(expr, "currentUserOpExpr", appCtx.lastBundleVersion)
+    appCtx.bundler.bundle(expr, "currentUserOpExpr", appCtx.lastBundleVersion),
   );
 }
 

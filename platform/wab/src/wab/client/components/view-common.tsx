@@ -12,15 +12,8 @@ import {
 } from "@/wab/shared/common";
 import L from "lodash";
 import * as React from "react";
-import {
-  CSSProperties,
-  DetailedHTMLProps,
-  ReactElement,
-  SyntheticEvent,
-} from "react";
+import { CSSProperties, DetailedHTMLProps, ReactElement } from "react";
 import * as ReactDOM from "react-dom";
-
-type EventBase = JQuery.EventBase;
 
 export function truncate(str: string, end: number): string {
   return str.substring(0, end) + "...";
@@ -54,7 +47,7 @@ export function truncateAtWordBoundary(str: string, maxLength: number): string {
 export function getTextWithScrolling(
   text: string,
   maxLength: number,
-  matcher?: Matcher
+  matcher?: Matcher,
 ): string {
   const normalized = text.replace(/\s+/g, " ").trim();
 
@@ -65,9 +58,7 @@ export function getTextWithScrolling(
     return truncateAtWordBoundary(normalized, maxLength);
   }
 
-  const query = matcher._query.toLowerCase();
-  const lowerText = normalized.toLowerCase();
-  const matchIndex = lowerText.indexOf(query);
+  const matchIndex = matcher.findMatchIndex(normalized);
 
   // If no match, or match is early enough
   if (matchIndex === -1 || matchIndex < maxLength - 10) {
@@ -101,23 +92,81 @@ export function getTextWithScrolling(
 
   return result;
 }
+
+// Code search tolerates whitespace around symbols (e.g. `${ a }` and `${a}`),
+// while keeping Unicode identifier characters together.
+function codeWordPattern(word: string) {
+  return (
+    word.match(
+      /[\p{ID_Continue}$\u200c\u200d]+|[^\p{ID_Continue}$\u200c\u200d]/gu,
+    ) ?? []
+  )
+    .map((token) => L.escapeRegExp(token))
+    .join("\\s*");
+}
+
 export class Matcher {
   _query: /*TWZ*/ string;
-  _typeaheadPatternGlobal: /*TWZ*/ RegExp;
-  _typeaheadPatternOnce: /*TWZ*/ RegExp;
-  constructor(rawQuery: string, opts: { matchMiddleOfWord?: boolean } = {}) {
+  _boldPattern: RegExp;
+  private readonly wordPatterns: RegExp[];
+  private readonly matchCode: boolean;
+  constructor(
+    rawQuery: string,
+    opts: { matchMiddleOfWord?: boolean; matchCode?: boolean } = {},
+  ) {
     const matchMiddleOfWord = opts.matchMiddleOfWord ?? true;
     this._query = rawQuery.trim();
     const patPrefix = matchMiddleOfWord ? "" : "\\b";
-    const patternStr = [...simpleWords(this._query)]
-      .map((word: /*TWZ*/ string) => patPrefix + L.escapeRegExp(word))
-      .join(".*");
-    // We use two here since RegExps are stateful if g flag is used.
-    this._typeaheadPatternGlobal = new RegExp(`${patternStr}`, "gi");
-    this._typeaheadPatternOnce = new RegExp(`${patternStr}`, "i");
+    const words = [...simpleWords(this._query)];
+    const toPattern = (word: string) =>
+      patPrefix +
+      (opts.matchCode ? codeWordPattern(word) : L.escapeRegExp(word));
+    this.matchCode = opts.matchCode ?? false;
+    this.wordPatterns = words.map((word) => new RegExp(toPattern(word), "gi"));
+    // Bold words separately so a snippet that cuts off the full match still shows.
+    const boldWords = words.some((word) => word.length > 1)
+      ? words.filter((word) => word.length > 1)
+      : words;
+    this._boldPattern = new RegExp(
+      L.sortBy(boldWords, (word) => -word.length)
+        .map(toPattern)
+        .join("|"),
+      "gi",
+    );
   }
-  matches(text: /*TWZ*/ string) {
-    return !this.hasQuery() || this._typeaheadPatternOnce.test(text);
+  matches(text: string | undefined) {
+    return this.findMatchIndex(text) !== -1;
+  }
+  findMatchIndex(text: string = ""): number {
+    if (!this.hasQuery()) {
+      return 0;
+    }
+    // Scan each word once in order, without backtracking over earlier matches.
+    // Outside code search, query words must match within a single line.
+    const parts = this.matchCode ? [text] : text.split(/[\n\r\u2028\u2029]/);
+    let offset = 0;
+    for (const part of parts) {
+      let end = 0;
+      let start = -1;
+      let matched = true;
+      for (const pattern of this.wordPatterns) {
+        pattern.lastIndex = end;
+        const match = pattern.exec(part);
+        if (!match) {
+          matched = false;
+          break;
+        }
+        if (start === -1) {
+          start = match.index;
+        }
+        end = pattern.lastIndex;
+      }
+      if (matched) {
+        return offset + start;
+      }
+      offset += part.length + 1;
+    }
+    return -1;
   }
   hasQuery() {
     return this._query !== "";
@@ -126,14 +175,13 @@ export class Matcher {
     if (!this.hasQuery()) {
       return text;
     } else {
-      const pat = this._typeaheadPatternGlobal;
-      return boldSnippets(text, pat, className);
+      return boldSnippets(text, this._boldPattern, className);
     }
   }
   boldSnippetsWithScrolling(
     text: string,
     maxLength: number,
-    className?: string
+    className?: string,
   ): React.ReactNode {
     const scrolledText = getTextWithScrolling(text, maxLength, this);
     return this.boldSnippets(scrolledText, className);
@@ -143,7 +191,7 @@ export class Matcher {
 function boldSnippets(text: React.ReactNode, pat: RegExp, className?: string) {
   if (React.isValidElement(text)) {
     const newChildren = React.Children.map(text.props.children, (x) =>
-      boldSnippets(x, pat)
+      boldSnippets(x, pat),
     );
     return React.cloneElement(text, {}, ...newChildren);
   } else {
@@ -190,11 +238,11 @@ function stripDefault(name: string) {
 export function uncontrollable<
   TComp extends React.ComponentType<P>,
   DP extends {},
-  P extends {} = PropsOf<TComp>
+  P extends {} = PropsOf<TComp>,
 >(
   ComponentClass: TComp,
   defaultProps: DP,
-  propToCallbackName: { [prop: string]: string }
+  propToCallbackName: { [prop: string]: string },
 ) {
   const CastedComponent = ComponentClass as React.ComponentType<P>;
   const newClass = class extends React.Component<P, any> {
@@ -206,7 +254,7 @@ export function uncontrollable<
           for (const [prop, pureProp] of [...this.getUncontrolledProps()]) {
             yield tuple(pureProp, this.props[prop]);
           }
-        })
+        }),
       );
     }
     getUncontrolledProps() {
@@ -228,7 +276,7 @@ export function uncontrollable<
           if (pureProp && pureProp in propToCallbackName) {
             props[pureProp] = this.state[pureProp];
             return (props[propToCallbackName[pureProp]] = (
-              val: /*TWZ*/ boolean
+              val: /*TWZ*/ boolean,
             ) => {
               return this.setState(Object.fromEntries([tuple(pureProp, val)]));
             });
@@ -244,15 +292,6 @@ export function uncontrollable<
   };
   return newClass;
 }
-export function absorb<T, This>(
-  fn: (this: This, e: Event | SyntheticEvent | EventBase) => T
-) {
-  return function (this: This, e: Event | SyntheticEvent | EventBase) {
-    e.stopPropagation();
-    return fn.call(this, e);
-  };
-}
-
 export function findDOMElt(x: any): Element | null {
   const res = ReactDOM.findDOMNode(x) as Element | null;
   check(!res || L.isElement(res));
@@ -283,12 +322,12 @@ export function replaceLink(
     React.HTMLAttributes<HTMLDivElement>,
     HTMLDivElement
   >,
-  makeLink: (linkText: string) => ReactElement
+  makeLink: (linkText: string) => ReactElement,
 ) {
   // Replace the [text] with a link.
   const { children: childOrChildren, ...rest } = props;
   const children = ensureArray(childOrChildren);
-  assert(L.isString(children[0]), "Unexpected not string children");
+  assert(typeof children[0] === "string", "Unexpected not string children");
   const pat = /\[(.+?)\]/g;
   const match = pat.exec(children[0]);
   if (match) {

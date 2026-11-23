@@ -91,7 +91,7 @@ export function incHttpRequestCount(opts: {
 }
 
 export function getTemplatedEndpointFromExpressRoutePath(
-  routePath: unknown
+  routePath: unknown,
 ): string {
   const raw = typeof routePath === "string" ? routePath : routePath?.toString();
   if (!raw) {
@@ -110,16 +110,28 @@ const taskDuration = new Histogram({
   buckets: DEFAULT_HISTOGRAM_BUCKETS,
 });
 
-export const loaderBundleCacheCounter = new Counter({
+export type LoaderCacheKind = "published" | "preview" | "revision";
+
+export const loaderBundleCacheCounter = new Counter<
+  "result" | "source" | "kind"
+>({
   name: "loader_bundle_cache_total",
-  help: "Final bundle S3 cache hits and misses by source (prefill vs live)",
-  labelNames: ["result", "source"],
+  help: "Final bundle S3 cache hits and misses by source (prefill vs live) and kind (published, preview, revision)",
+  labelNames: ["result", "source", "kind"],
 });
 
-export const loaderCodegenCacheCounter = new Counter({
+export const previewLoaderCacheCounter = new Counter({
+  name: "preview_loader_cache_total",
+  help: "Preview loader bundle requests by result (cache, joined, computed)",
+  labelNames: ["result"],
+});
+
+export const loaderCodegenCacheCounter = new Counter<
+  "result" | "source" | "kind"
+>({
   name: "loader_codegen_cache_total",
-  help: "Per-project codegen S3 cache hits and misses by source (prefill vs live)",
-  labelNames: ["result", "source"],
+  help: "Per-project codegen S3 cache hits and misses by source (prefill vs live) and kind (published, preview, revision)",
+  labelNames: ["result", "source", "kind"],
 });
 
 export class WabPromTimer {
@@ -167,7 +179,7 @@ new Gauge({
 });
 
 export function trackPostgresPool(app: string) {
-  const pgPoolTotal = new Gauge({
+  new Gauge({
     name: `pg_pool_total`,
     labelNames: ["pool", "app"],
     help: `Number of total connections in client pool`,
@@ -179,7 +191,7 @@ export function trackPostgresPool(app: string) {
     },
   });
 
-  const pgPoolIdle = new Gauge({
+  new Gauge({
     name: `pg_pool_idle`,
     labelNames: ["pool", "app"],
     help: `Number of idle connections in client pool`,
@@ -191,7 +203,7 @@ export function trackPostgresPool(app: string) {
     },
   });
 
-  const pgWaiting = new Gauge({
+  new Gauge({
     name: `pg_pool_waiting`,
     labelNames: ["pool", "app"],
     help: `Number of waiting requests for client pool`,

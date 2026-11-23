@@ -1,12 +1,13 @@
 import ContextMenuIndicator from "@/wab/client/components/ContextMenuIndicator/ContextMenuIndicator";
 import "@/wab/client/components/QueryBuilder/QueryBuilder.scss";
-import DataPicker, {
-  DataPickerTypesSchema,
-} from "@/wab/client/components/sidebar-tabs/DataBinding/DataPicker";
+import { DataPickerTypesSchema } from "@/wab/client/components/sidebar-tabs/DataBinding/DataPicker";
+import {
+  DataPickerTrigger,
+  DataPickerTriggerHandle,
+} from "@/wab/client/components/sidebar-tabs/DataBinding/DataPickerPanel";
 import { IconLinkButton } from "@/wab/client/components/widgets";
 import { Icon } from "@/wab/client/components/widgets/Icon";
 import CloseIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Close";
-import { zIndex } from "@/wab/client/z-index";
 import { cx } from "@/wab/shared/common";
 import {
   ExprCtx,
@@ -18,9 +19,12 @@ import {
   CustomCode,
   ObjectPath,
   TemplatedString,
+  isKnownCustomCode,
+  isKnownObjectPath,
+  isKnownTemplatedString,
 } from "@/wab/shared/model/classes";
 import { WidgetProps } from "@react-awesome-query-builder/antd";
-import { Menu, Popover } from "antd";
+import { Menu } from "antd";
 import * as React from "react";
 
 export interface DataPickerWidgetFactoryProps {
@@ -51,12 +55,12 @@ export function DataPickerWidgetFactory({
     setValue(mkUndefinedObjectPath());
   }, [setDefaultOpenDataPicker]);
 
-  const { value } = widgetProps;
+  const { value, readonly } = widgetProps;
 
   const isDynamicValue =
-    value instanceof ObjectPath ||
-    value instanceof CustomCode ||
-    value instanceof TemplatedString;
+    isKnownObjectPath(value) ||
+    isKnownCustomCode(value) ||
+    isKnownTemplatedString(value);
 
   let contextMenu: React.ReactNode;
   let widget: React.ReactNode;
@@ -82,6 +86,10 @@ export function DataPickerWidgetFactory({
         schema={schema}
         defaultOpenDataPicker={defaultOpenDataPicker}
         exprCtx={exprCtx}
+        disabled={readonly}
+        title={
+          typeof widgetProps.field === "string" ? widgetProps.field : undefined
+        }
       />
     );
   } else {
@@ -97,6 +105,10 @@ export function DataPickerWidgetFactory({
       </Menu>
     );
     widget = renderOriginalWidget();
+  }
+
+  if (readonly) {
+    return <div className="qb-custom-widget">{widget}</div>;
   }
 
   return (
@@ -121,6 +133,9 @@ type DynamicValueWidgetProps = {
   expectedValues?: string;
   setValue: (newVal: ObjectPath | CustomCode | null | undefined) => void;
   exprCtx: ExprCtx;
+  disabled?: boolean;
+  /** Names the field in the panel's tab. */
+  title?: string;
 };
 
 export function DynamicValueWidget({
@@ -132,41 +147,46 @@ export function DynamicValueWidget({
   deleteIcon = true,
   expectedValues,
   exprCtx,
+  disabled,
+  title,
 }: DynamicValueWidgetProps) {
   const [popoverVisible, setPopoverVisible] = React.useState(
-    defaultOpenDataPicker ?? false
+    defaultOpenDataPicker ?? false,
   );
+
+  const pickerRef = React.useRef<DataPickerTriggerHandle>(null);
+  React.useEffect(() => {
+    if (defaultOpenDataPicker) {
+      pickerRef.current?.open();
+    }
+  }, []);
 
   const previewValue = summarizeExpr(value, exprCtx);
   const textValue = extractValueSavedFromDataPicker(value, exprCtx);
 
   return (
-    <Popover
-      zIndex={zIndex.dataPicker}
-      content={
-        <DataPicker
-          value={textValue}
-          onChange={(val) => {
-            const newVal =
-              val != null ? createExprForDataPickerValue(val) : val;
-            setValue(newVal);
-            setPopoverVisible(false);
-          }}
-          onCancel={() => setPopoverVisible(false)}
-          data={data}
-          schema={schema}
-          expectedValues={expectedValues}
-        />
-      }
-      trigger="click"
-      visible={popoverVisible}
-      onVisibleChange={(_visible) => setPopoverVisible(_visible)}
-      destroyTooltipOnHide={true}
-      overlayClassName="data-picker-popover-overlay"
+    <DataPickerTrigger
+      ref={pickerRef}
+      visible={!disabled && popoverVisible}
+      setVisible={setPopoverVisible}
+      title={title ?? "Dynamic value"}
+      picker={{
+        value: textValue,
+        onChange: (val) => {
+          const newVal = val != null ? createExprForDataPickerValue(val) : val;
+          setValue(newVal);
+          setPopoverVisible(false);
+        },
+        onCancel: () => setPopoverVisible(false),
+        data,
+        schema,
+        expectedValues,
+      }}
     >
       <div
         contentEditable={false}
         className={cx("nowrap", "flex", "code-editor-input")}
+        onClick={() => pickerRef.current?.open()}
       >
         <span
           className={cx("text-align-left", "text-ellipsis", {
@@ -177,7 +197,7 @@ export function DynamicValueWidget({
           {previewValue ?? "unset"}
         </span>
 
-        {deleteIcon && (
+        {deleteIcon && !disabled && (
           <div className="inline-block">
             <IconLinkButton
               className={cx(["dropdown-pill__deleter", "ml-sm"])}
@@ -197,6 +217,6 @@ export function DynamicValueWidget({
         )}
       </div>
       {/*{evaluated && <ValuePreview val={evaluated.val} err={evaluated.err} />}*/}
-    </Popover>
+    </DataPickerTrigger>
   );
 }

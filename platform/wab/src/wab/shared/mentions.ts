@@ -1,0 +1,69 @@
+import type {
+  ComponentScopedTag,
+  SiteScopedTag,
+} from "@/wab/client/studio-ctx/ui/studio-ui-ids";
+import { includes } from "lodash";
+import { regex } from "regex";
+
+export const MENTION_REGEX = regex("g")`
+  @<                        # Start of mention @<
+  (?<raw> [^>]+ )           # What the mention stores
+  >                         # Ends at closing angle bracket >
+`;
+
+export const SITE_SCOPED_MENTION_TAGS = [
+  "Component",
+  "StyleToken",
+  "DataToken",
+  "ImageAsset",
+  "Mixin",
+  "Theme",
+  "AnimationSequence",
+  "GlobalVariantGroup",
+  "GlobalVariant",
+] as const satisfies readonly SiteScopedTag[];
+
+export type SiteScopedMentionTag = (typeof SITE_SCOPED_MENTION_TAGS)[number];
+
+export const COMPONENT_SCOPED_MENTION_TAGS = [
+  "ComponentVariantGroup",
+  "Variant",
+  "PropParam",
+  "StateParam",
+  "ComponentServerQuery",
+  "ComponentDataQuery",
+  "Tpl",
+] as const satisfies readonly ComponentScopedTag[];
+
+export type ComponentScopedMentionTag =
+  (typeof COMPONENT_SCOPED_MENTION_TAGS)[number];
+
+export const MENTION_TAGS = [
+  ...SITE_SCOPED_MENTION_TAGS,
+  ...COMPONENT_SCOPED_MENTION_TAGS,
+];
+export type MentionTag = (typeof MENTION_TAGS)[number];
+
+/** Mention names that match the exported `__type`. */
+const RENAMED_MENTION_TAGS: ReadonlyArray<readonly [MentionTag, string]> = [
+  ["ComponentServerQuery", "DataQuery"],
+  ["ComponentDataQuery", "LegacyDataQuery"],
+];
+
+/** Returns the tag's mention name. */
+export function getMentionTagName(
+  tag: SiteScopedTag | ComponentScopedTag,
+): string {
+  return RENAMED_MENTION_TAGS.find(([renamed]) => renamed === tag)?.[1] ?? tag;
+}
+
+export const MENTION_TAGS_BY_NAME = new Map<string, MentionTag>([
+  ...MENTION_TAGS.map((tag) => [tag, tag] as const),
+  ...RENAMED_MENTION_TAGS.map(([tag, name]) => [name, tag] as const),
+]);
+
+export function isComponentScopedMentionTag(
+  tag: MentionTag,
+): tag is ComponentScopedMentionTag {
+  return includes(COMPONENT_SCOPED_MENTION_TAGS, tag);
+}

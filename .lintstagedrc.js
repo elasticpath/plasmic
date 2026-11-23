@@ -1,8 +1,18 @@
+const { ESLint } = require("eslint");
+
 module.exports = {
-  "*.{js,jsx,ts,tsx,cjs,mjs,cts,mts}": (files) => {
-    // Examples lint themselves via `next lint`; the monorepo eslint can't
-    // load their eslint-config-next (`extends` resolves before ignores).
-    const eslintable = files.filter((f) => !/(^|\/)examples\//.test(f));
+  "*.{js,jsx,ts,tsx,cjs,mjs,cts,mts}": async (files) => {
+    // Examples and the loader-test app templates lint themselves via
+    // `next lint`; the monorepo eslint can't load their eslint-config-next
+    // (`extends` resolves before ignores).
+    const selfLinted =
+      /(^|\/)(examples|platform\/loader-tests\/src\/(cra|gatsby|html|nextjs)\/[^/]+)\//;
+    const eslint = new ESLint();
+    const candidates = files.filter((f) => !selfLinted.test(f));
+    const ignored = await Promise.all(
+      candidates.map((f) => eslint.isPathIgnored(f)),
+    );
+    const eslintable = candidates.filter((_, index) => !ignored[index]);
     const cmds = [];
     if (eslintable.length) {
       cmds.push(`eslint --fix ${eslintable.map((f) => `"${f}"`).join(" ")}`);
@@ -10,7 +20,7 @@ module.exports = {
     cmds.push(`prettier --write ${files.map((f) => `"${f}"`).join(" ")}`);
     return cmds;
   },
-  "*.{json,css,less,scss,md,toml,xml,yml,yaml}": ["prettier --write"],
+  "*.{json,css,less,scss,md,xml,yml,yaml}": ["prettier --write"],
   "Dockerfile*": ["hadolint --failure-threshold=error"],
 
   // Format HCL/Terragrunt files, but never touch generated *.lock.hcl (excluded via extglob)

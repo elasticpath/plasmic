@@ -5,10 +5,8 @@ import {
 import { DataInspector } from "@/wab/client/components/coding/DataInspector";
 import type { FullCodeEditor } from "@/wab/client/components/coding/FullCodeEditor";
 import LazyFullCodeEditor from "@/wab/client/components/coding/LazyFullCodeEditor";
-import {
-  DataPickerRunCodeActionContext,
-  DataPickerTypesSchema,
-} from "@/wab/client/components/sidebar-tabs/DataBinding/DataPicker";
+import type { DataPickerTypesSchema } from "@/wab/client/components/sidebar-tabs/DataBinding/DataPicker";
+import { DataPickerRunCodeActionContext } from "@/wab/client/components/sidebar-tabs/DataBinding/DataPickerRunCodeActionContext";
 import {
   DefaultDataPickerCodeEditorLayoutProps,
   PlasmicDataPickerCodeEditorLayout,
@@ -19,14 +17,17 @@ import { HTMLElementRefOf } from "@plasmicapp/react-web";
 import L from "lodash";
 import * as React from "react";
 
-export interface DataPickerCodeEditorLayoutProps
-  extends Omit<DefaultDataPickerCodeEditorLayoutProps, "envPanel"> {
+export interface DataPickerCodeEditorLayoutProps extends Omit<
+  DefaultDataPickerCodeEditorLayoutProps,
+  "envPanel"
+> {
   editorRef: React.RefObject<FullCodeEditor>;
   data: object;
   /** Env for code preview, with real`$q` query results so access throws on error. */
   previewData: object | undefined;
   defaultValue: string;
   onSave: (val: string) => boolean;
+  onChange?: (val: string) => void;
   schema?: DataPickerTypesSchema;
   context?: string;
   hideEnvPanel?: boolean;
@@ -34,7 +35,7 @@ export interface DataPickerCodeEditorLayoutProps
 
 function DataPickerCodeEditorLayout_(
   props: DataPickerCodeEditorLayoutProps,
-  ref: HTMLElementRefOf<"div">
+  ref: HTMLElementRefOf<"div">,
 ) {
   const {
     editorRef,
@@ -42,12 +43,15 @@ function DataPickerCodeEditorLayout_(
     previewData,
     defaultValue,
     onSave,
+    onChange,
     schema,
     hideEnvPanel,
     context,
     ...rest
   } = props;
   const [currentValue, setCurrentValue] = React.useState(defaultValue);
+  // Monaco owns edits; changing its initial value resets its model and auto-closing pairs.
+  const [initialValue, setInitialValue] = React.useState(defaultValue);
   const [codeEditorKey, setCodeEditorKey] = React.useState(0);
   const [showEnv, setShowEnv] = React.useState(false);
   const studioCtx = useStudioCtx();
@@ -65,10 +69,13 @@ function DataPickerCodeEditorLayout_(
           key={codeEditorKey}
           hideLineNumbers={true}
           language={"javascript"}
-          defaultValue={defaultValue}
+          defaultValue={initialValue}
           data={completionData}
           onSave={onSave}
-          onChange={(val: string) => setCurrentValue(val)}
+          onChange={(val: string) => {
+            setCurrentValue(val);
+            onChange?.(val);
+          }}
           enableMinimap={false}
           hideGlobalSuggestions={true}
           folding={false}
@@ -82,6 +89,8 @@ function DataPickerCodeEditorLayout_(
           currentValue,
           onUpdate: (v) => {
             setCurrentValue(v);
+            setInitialValue(v);
+            onChange?.(v);
             onSave(v);
             setCodeEditorKey(codeEditorKey + 1);
           },
@@ -99,13 +108,7 @@ function DataPickerCodeEditorLayout_(
           renderInspector(runCodeContext.stepValue)
         )
       }
-      envPanel={
-        hideEnvPanel || !studioCtx.appCtx.appConfig.envPanel
-          ? "hidden"
-          : !showEnv
-          ? "collapsed"
-          : undefined
-      }
+      envPanel={hideEnvPanel ? "hidden" : !showEnv ? "collapsed" : undefined}
       env={<DataInspector data={completionData} editorRef={editorRef} />}
       envToggleButton={{
         onClick: () => setShowEnv(!showEnv),
@@ -115,7 +118,7 @@ function DataPickerCodeEditorLayout_(
 }
 
 export function cleanDataForPreview(
-  data: Record<string, any>
+  data: Record<string, any>,
 ): Record<string, any> {
   const cache = new Map<any, any>();
 
@@ -138,7 +141,7 @@ export function cleanDataForPreview(
       });
       cache.set(x, filtered);
       Object.keys(filtered).forEach(
-        (key) => (filtered[key] = rec(filtered[key]))
+        (key) => (filtered[key] = rec(filtered[key])),
       );
       return filtered;
     }
@@ -150,6 +153,6 @@ export function cleanDataForPreview(
 export const _testonly = { cleanDataForPreview };
 
 const DataPickerCodeEditorLayout = React.forwardRef(
-  DataPickerCodeEditorLayout_
+  DataPickerCodeEditorLayout_,
 );
 export default DataPickerCodeEditorLayout;

@@ -35,13 +35,12 @@ export const ComponentTab = observer(function ComponentTab(props: {
   isHalf?: boolean;
 }) {
   const { component, studioCtx, viewCtx, isHalf = false } = props;
-  const appConfig = studioCtx.appCtx.appConfig;
 
   const plugin = getPlumeEditorPlugin(component);
   const variantsPanelRef = React.useRef<VariantsPanelHandle>(null);
   const [isExpanded, setExpanded] = useLocalStorage(
     "ComponentTab.isExpanded",
-    false
+    false,
   );
   const [showSettings, setShowSettings] = React.useState(false);
 
@@ -91,7 +90,7 @@ export const ComponentTab = observer(function ComponentTab(props: {
                     value={component.name}
                     onChange={async (name) =>
                       studioCtx.changeUnsafe(() =>
-                        studioCtx.siteOps().tryRenameComponent(component, name)
+                        studioCtx.siteOps().tryRenameComponent(component, name),
                       )
                     }
                     placeholder={`(unnamed component)`}
@@ -133,23 +132,19 @@ export const ComponentTab = observer(function ComponentTab(props: {
                           viewCtx={viewCtx}
                         />
                       )}
-                      {canEdit(PublicStyleSection.DataQueries) &&
-                        (!appConfig.rscRelease ||
-                          appConfig.enableDataQueries) && (
-                          <>
-                            <ComponentDataQueriesSection
-                              component={component}
-                              viewCtx={viewCtx}
-                              isDeprecated={appConfig.serverQueries}
-                            />
-                            {studioCtx.appCtx.appConfig.serverQueries && (
-                              <ServerQueriesSection
-                                component={component}
-                                viewCtx={viewCtx}
-                              />
-                            )}
-                          </>
-                        )}
+                      {canEdit(PublicStyleSection.DataQueries) && (
+                        <>
+                          <ServerQueriesSection
+                            component={component}
+                            viewCtx={viewCtx}
+                          />
+                          <ComponentDataQueriesSection
+                            component={component}
+                            viewCtx={viewCtx}
+                            isDeprecated
+                          />
+                        </>
+                      )}
                       {canEdit(PublicStyleSection.States) && (
                         <VariablesSection
                           component={component}

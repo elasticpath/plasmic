@@ -13,9 +13,9 @@ import {
   DataTokenType,
   dataTypes,
   getDataTokenType,
+  toDataTokenDisplayValue,
+  toDataTokenStoredValue,
 } from "@/wab/commons/DataToken";
-import { componentsReferencingDataToken } from "@/wab/shared/cached-selectors";
-import { customCode, stripParens } from "@/wab/shared/core/exprs";
 import { DataToken } from "@/wab/shared/model/classes";
 import { isNil } from "lodash";
 import { observer } from "mobx-react";
@@ -55,16 +55,16 @@ export const DataTokenEditModal = observer(function DataTokenEditModal(props: {
     React.useState<DataTokenType>(getDataTokenType(token.value));
 
   const [value, setValue] = React.useState(
-    getDisplayValue(token.value, selectedTokenType)
+    toDataTokenDisplayValue(token.value, selectedTokenType),
   );
 
   const storeValue = React.useCallback(
     (val: string, tokenType: DataTokenType) => {
       return studioCtx.changeUnsafe(() => {
-        token.value = getStoredValue(val, tokenType);
+        token.value = toDataTokenStoredValue(val, tokenType);
       });
     },
-    [studioCtx, token]
+    [studioCtx, token],
   );
 
   const onChange = React.useCallback(
@@ -80,7 +80,7 @@ export const DataTokenEditModal = observer(function DataTokenEditModal(props: {
         void storeValue(val, selectedTokenType);
       }
     },
-    [storeValue, selectedTokenType]
+    [storeValue, selectedTokenType],
   );
 
   const onTypeChange = React.useCallback(
@@ -88,14 +88,17 @@ export const DataTokenEditModal = observer(function DataTokenEditModal(props: {
       setSelectedTokenType(newType);
 
       const newValue =
-        value && newType === "number" && isFinite(Number(value))
+        value && newType === "number" && Number.isFinite(Number(value))
           ? value
-          : getDisplayValue(dataTypes[newType].defaultSerializedValue, newType);
+          : toDataTokenDisplayValue(
+              dataTypes[newType].defaultSerializedValue,
+              newType,
+            );
 
       setValue(newValue);
       void storeValue(newValue, newType);
     },
-    [value, storeValue]
+    [value, storeValue],
   );
 
   const titleContent = (
@@ -108,19 +111,10 @@ export const DataTokenEditModal = observer(function DataTokenEditModal(props: {
         defaultValue={token.name}
         onValueChange={(name) => {
           const projectId = studioCtx.siteInfo.id;
-          return studioCtx.changeObserved(
-            () => [
-              ...componentsReferencingDataToken(
-                projectId,
-                studioCtx.site,
-                token
-              ),
-            ],
-            () => {
-              studioCtx.tplMgr().renameDataToken(projectId, token, name);
-              return ok();
-            }
-          );
+          return studioCtx.change(() => {
+            studioCtx.tplMgr().renameDataToken(projectId, token, name);
+            return ok();
+          });
         }}
         placeholder={"(unnamed token)"}
         autoFocus={defaultEditingName}
@@ -214,31 +208,6 @@ export const DataTokenEditModal = observer(function DataTokenEditModal(props: {
   );
 });
 
-function getDisplayValue(storedValue: string, type: DataTokenType) {
-  if (type === "string") {
-    try {
-      const parsed = JSON.parse(storedValue);
-      if (typeof parsed === "string") {
-        return parsed;
-      }
-    } catch (e) {
-      // If it's not valid JSON, return as-is
-    }
-  }
-  return stripParens(storedValue);
-}
-
-function getStoredValue(displayValue: string, type: DataTokenType) {
-  if (type === "string") {
-    return JSON.stringify(displayValue);
-  }
-  if (type === "code") {
-    //  Store the code inside parentheses so `tryEvalExpr` can evaluate it correctly.
-    return customCode(displayValue).code;
-  }
-  return displayValue;
-}
-
 function isValidValue(displayValue: string, type: DataTokenType) {
   if (type === "number") {
     // Empty string is valid - we'll convert it to default value
@@ -246,7 +215,7 @@ function isValidValue(displayValue: string, type: DataTokenType) {
       return true;
     }
     // Check if it's a valid number
-    return isFinite(Number(displayValue));
+    return Number.isFinite(Number(displayValue));
   }
   // For "code" and "string" types, no validation during input
   return true;
