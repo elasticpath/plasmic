@@ -14,7 +14,7 @@ declare module "acorn-walk" {
   type Visitors = {
     [k in ast.Node["type"]]?: (
       node: ast.Node & { type: k },
-      parents: ast.Node[]
+      parents: ast.Node[],
     ) => void;
   } & {
     [k: string]: (node: any, parents: ast.Node[]) => void;
@@ -33,7 +33,7 @@ export function parseJsCode(code: string) {
 
 export function writeJs(
   ast: ast.Program,
-  opts?: { semicolons?: boolean; indentLevel?: number }
+  opts?: { semicolons?: boolean; indentLevel?: number },
 ) {
   return generate(ast, {
     format: {
@@ -94,7 +94,7 @@ export function maybeConvertToIife(code: string) {
 
 export function isValidJavaScriptCode(
   code: string,
-  opts?: { throwIfInvalid?: boolean }
+  opts?: { throwIfInvalid?: boolean },
 ) {
   try {
     // Use AsyncFunction instead of Function to support `await`
@@ -121,25 +121,37 @@ export type ScopeNode =
   | ast.Program
   | ast.FunctionDeclaration
   | ast.FunctionExpression
-  | ast.ArrowFunctionExpression;
+  | ast.ArrowFunctionExpression
+  | ast.StaticBlock;
 export function isScope(node: ast.Node): node is ScopeNode {
   return (
     node.type === "FunctionExpression" ||
     node.type === "FunctionDeclaration" ||
     node.type === "ArrowFunctionExpression" ||
-    node.type === "Program"
+    node.type === "Program" ||
+    node.type === "StaticBlock"
   );
 }
 
 export type BlockScopeNode =
   | ScopeNode
   | ast.BlockStatement
-  | ast.SwitchStatement;
+  | ast.SwitchStatement
+  | ast.ForStatement
+  | ast.ForInStatement
+  | ast.ForOfStatement;
 export function isBlockScope(node: ast.Node): node is BlockScopeNode {
   // The body of switch statement is a block.
   return (
     node.type === "BlockStatement" ||
     node.type === "SwitchStatement" ||
+    // A `for` head scopes its own let/const bindings to the loop: the `x` in
+    // `for (const x of xs)` is visible across the head and body, but not after
+    // the loop. Without this, such a binding would land on the enclosing block
+    // and shadow the global of that name for the whole block.
+    node.type === "ForStatement" ||
+    node.type === "ForInStatement" ||
+    node.type === "ForOfStatement" ||
     isScope(node)
   );
 }
@@ -166,7 +178,7 @@ const returnableStatements = new Set([
 ] as ast.Node["type"][]);
 
 function isReturnableStatement(
-  stmt: ast.Program["body"][number]
+  stmt: ast.Program["body"][number],
 ): stmt is ReturnableStatement {
   return returnableStatements.has(stmt.type);
 }
@@ -183,7 +195,7 @@ const convertibleToExprStmts = new Set([
 ] as ast.Node["type"][]);
 
 function canConvertToExpression(
-  stmt: ast.Program["body"][number]
+  stmt: ast.Program["body"][number],
 ): stmt is ConvertibleToExpression {
   return convertibleToExprStmts.has(stmt.type);
 }
@@ -239,7 +251,7 @@ function addImplicitReturnToAst(ast: ast.Program) {
 
   if (lastStmt.type === "VariableDeclaration") {
     const genReturnValueFromPattern = (
-      pattern: ast.Pattern
+      pattern: ast.Pattern,
     ): ast.Expression | null => {
       switch (pattern.type) {
         case "Identifier":
@@ -260,7 +272,7 @@ function addImplicitReturnToAst(ast: ast.Program) {
           }
           const lastProp = last(pattern.properties);
           return genReturnValueFromPattern(
-            lastProp.type === "Property" ? lastProp.value : lastProp.argument
+            lastProp.type === "Property" ? lastProp.value : lastProp.argument,
           );
         }
         default:
@@ -284,7 +296,7 @@ function addImplicitReturnToAst(ast: ast.Program) {
     const plasmicReturnIdentifier = "__plasmic_ret";
 
     function* getCompletionRecords(
-      stmt: ast.Statement
+      stmt: ast.Statement,
     ): Generator<ast.Statement> {
       if (isReturnableStatement(stmt)) {
         switch (stmt.type) {

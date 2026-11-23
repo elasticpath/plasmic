@@ -5,9 +5,10 @@ import { ValuePreview } from "@/wab/client/components/sidebar-tabs/data-tab";
 import {
   InvalidArgsBadge,
   InvalidArgsSummary,
+  UnregisteredFunctionMessage,
 } from "@/wab/client/components/widgets/InvalidArgs";
 import { Modal } from "@/wab/client/components/widgets/Modal";
-import { observer } from "@/wab/client/utils/mobx-client-util";
+import { useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { ServerQueryOp } from "@/wab/shared/codegen/react-p/server-queries/utils";
 import { StatefulQueryState } from "@/wab/shared/core/custom-functions";
 import { ExprCtx } from "@/wab/shared/core/exprs";
@@ -23,6 +24,7 @@ import {
 } from "@/wab/shared/model/classes";
 import { smartHumanize } from "@/wab/shared/strs";
 import { Tooltip } from "antd";
+import { observer } from "mobx-react";
 import * as React from "react";
 
 export const CustomFunctionExprPreview = observer(
@@ -37,7 +39,7 @@ export const CustomFunctionExprPreview = observer(
       return null;
     }
     return <CustomFunctionExprPreviewInner {...props} env={props.env} />;
-  }
+  },
 );
 
 const CustomFunctionExprPreviewInner = observer(
@@ -49,12 +51,22 @@ const CustomFunctionExprPreviewInner = observer(
     currGlobalThis?: typeof globalThis;
   }) {
     const { expr, env, title, exprCtx, currGlobalThis } = props;
+    const studioCtx = useStudioCtx();
     const { queryState, invalidArgs } = useServerQueryOp({
       expr,
       env,
       exprCtx,
       currGlobalThis,
     });
+    if (!studioCtx.getRegisteredFunction(expr.func)) {
+      return (
+        <Tooltip title={<UnregisteredFunctionMessage func={expr.func} />}>
+          <InvalidArgsBadge className="value-preview">
+            Function not registered
+          </InvalidArgsBadge>
+        </Tooltip>
+      );
+    }
     // The query is blocked from running while required params are unset; show
     // a "Fix validation errors" indicator rather than the blocked query's
     // error, and don't offer to inspect a non-result.
@@ -65,7 +77,7 @@ const CustomFunctionExprPreviewInner = observer(
       return null;
     }
     return <QueryResultPreview queryState={queryState} title={title} />;
-  }
+  },
 );
 
 /**
@@ -201,5 +213,5 @@ export const ServerQueryOpSummary = observer(
           : "Custom code"}
       </div>
     );
-  }
+  },
 );

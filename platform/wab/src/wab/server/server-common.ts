@@ -7,7 +7,7 @@ import http from "http";
 
 export function runExpressApp(
   app: Application,
-  setupServer?: (server: http.Server) => void
+  setupServer?: (server: http.Server) => void,
 ) {
   const server = http.createServer(app);
   const config = loadConfig();
@@ -41,21 +41,21 @@ export function runExpressApp(
     signals: ["SIGTERM", "SIGINT"], // send this signal to begin graceful shutdown
     timeout: 200000, // wait this many ms before force closing active conns
     beforeShutdown: () => {
-      logger().info(`Received signal to shut down...`);
+      logger.info(`Received signal to shut down...`);
       // This has to be greater than the number of seconds defined
       // in the readiness probe "periodSeconds"
       return new Promise((resolve) =>
-        setTimeout(resolve, config.terminationGracePeriodMs)
+        setTimeout(resolve, config.terminationGracePeriodMs),
       );
     },
     onSignal: async () => {
       await closeDbConnections();
     },
     onShutdown: async () => {
-      logger().info(`Shutdown complete, exiting...`);
+      logger.info(`Shutdown complete, exiting...`);
     },
     logger: (msg, err) => {
-      logger().error(`Shutdown error: ${msg}`, err);
+      logger.error(`Shutdown error: ${msg}`, err);
     },
     useExit0: true,
   });
@@ -63,10 +63,10 @@ export function runExpressApp(
   /**
    * Start Express server.
    */
-  return server.listen(app.get("port"), () => {
-    logger().info(`
+  return server.listen(app.get("port"), process.env.BIND_HOST, () => {
+    logger.info(`
 App ${app.get("name")} is running at http://localhost:${app.get(
-      "port"
+      "port",
     )} in ${app.get("env")} mode
 Press CTRL-C to stop immediately.
 Send SIGINT to shutdown gracefully: kill -INT ${process.pid}
@@ -85,7 +85,7 @@ export function setupServerCli(argv: string[] = process.argv) {
     .option(
       "--freshDb <n>",
       "Start an ephemeral pg instance that self-terminates in n seconds",
-      Number
+      Number,
     )
     .parse(argv)
     .opts();

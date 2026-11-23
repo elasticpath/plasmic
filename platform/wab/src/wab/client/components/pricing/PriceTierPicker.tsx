@@ -22,6 +22,8 @@ interface PriceTierPickerProps extends DefaultPriceTierPickerProps {
   currentFeatureTier?: ApiFeatureTier;
   // Callback when selecting a feature
   onSelectFeatureTier: (tier: ApiFeatureTier) => Promise<void>;
+  // Settings can offer seat management on the current paid plan.
+  onManageSeats?: () => Promise<void>;
   // If false, the team already had a free trial before
   canStartFreeTrial: boolean;
   // Callback when starting a free trial
@@ -55,13 +57,14 @@ interface PriceTierPickerProps extends DefaultPriceTierPickerProps {
 
 function PriceTierPicker_(
   props: PriceTierPickerProps,
-  ref: HTMLElementRefOf<"div">
+  ref: HTMLElementRefOf<"div">,
 ) {
   const {
     appCtx,
     availableTiers,
     currentFeatureTier,
     onSelectFeatureTier,
+    onManageSeats,
     canStartFreeTrial,
     onStartFreeTrial,
     isFreeTrialTeam,
@@ -79,7 +82,7 @@ function PriceTierPicker_(
   const tierData: Record<string, ApiFeatureTier> = {};
   newTiers.forEach((tier) => {
     const currentTier = availableTiers.find((t) =>
-      t.name.toLowerCase().includes(tier)
+      t.name.toLowerCase().includes(tier),
     );
     if (currentTier) {
       tierData[tier] = currentTier;
@@ -90,6 +93,15 @@ function PriceTierPicker_(
 
   const isOnFreeTier =
     !currentFeatureTier || DEVFLAGS.freeTier.id === currentFeatureTier?.id;
+
+  const manageSeats =
+    !disabled && !isFreeTrialTeam && !overrideStatus && !isOnFreeTier
+      ? onManageSeats
+      : undefined;
+
+  const currentStatus: PriceTierStatus = manageSeats
+    ? "manageSeats"
+    : "current";
 
   const getPriceTierProps = (featureTier?: ApiFeatureTier) => {
     // If we can't find the data for the feature tier, just hide it for now
@@ -106,16 +118,16 @@ function PriceTierPicker_(
     const status: PriceTierStatus = overrideStatus
       ? overrideStatus
       : isCurrent && isFreeTrialTeam
-      ? "freeTrialCurrent"
-      : isCurrent
-      ? "current"
-      : featureTier === DEVFLAGS.freeTier || disabled
-      ? "unavailable"
-      : canStartFreeTrial && isOnFreeTier && appCtx.appConfig.freeTrial
-      ? "startFreeTrial"
-      : "upgrade";
+        ? "freeTrialCurrent"
+        : isCurrent
+          ? currentStatus
+          : featureTier === DEVFLAGS.freeTier || disabled
+            ? "unavailable"
+            : canStartFreeTrial && isOnFreeTier && appCtx.appConfig.freeTrial
+              ? "startFreeTrial"
+              : "upgrade";
     const hide =
-      (!!hideCurrentTier && status === "current") ||
+      (!!hideCurrentTier && status === currentStatus) ||
       (!!hideFree && featureTier === DEVFLAGS.freeTier) ||
       // Hide all other tiers if on Enterprise
       (featureTier !== currentFeatureTier && isEnterprise(currentFeatureTier));
@@ -126,6 +138,10 @@ function PriceTierPicker_(
       billingFrequency,
       hide,
       onClick: async () => {
+        if (status === "manageSeats") {
+          await manageSeats?.();
+          return;
+        }
         // Neuter the onClick for inactive tiles
         if (status === "current" || status === "unavailable") {
           return;
@@ -157,7 +173,8 @@ function PriceTierPicker_(
         }
         newGrandfatheredTier={{
           featureTier: currentFeatureTier,
-          status: "current",
+          status: currentStatus,
+          onClick: manageSeats,
           billingFrequency: billingFrequency,
           valueProps: "You are on a grandfathered plan.",
           isLegacy: true,
@@ -186,13 +203,12 @@ function PriceTierPicker_(
           featureTier: enterpriseTierData,
           status: isEnterprise(currentFeatureTier) ? "current" : "manual",
           hide: hideEnterprise,
-          // Enterprise will always go to a Typeform
+          // Enterprise is a custom contract: never route it to Stripe checkout
           onClick: async () => {
-            // Only open a new window if *not* already on enterprise plan
             if (!isEnterprise(currentFeatureTier)) {
               window.open(
                 "https://www.plasmic.app/enterprise-contact",
-                "_blank"
+                "_blank",
               );
             }
           },

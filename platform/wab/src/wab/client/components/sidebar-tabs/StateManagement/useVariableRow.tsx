@@ -15,7 +15,7 @@ import {
   isPrivateState,
   StateVariableType,
 } from "@/wab/shared/core/states";
-import { VARIABLE_LOWER } from "@/wab/shared/Labels";
+import { CONFIGURE_ACTION, DELETE_ACTION } from "@/wab/shared/Labels";
 import { Component, isKnownTplSlot, State } from "@/wab/shared/model/classes";
 import { Menu } from "antd";
 import React from "react";
@@ -42,13 +42,13 @@ function useVariableMenu({
   builder.genSection(undefined, (push) => {
     push(
       <Menu.Item key="edit-state" onClick={() => showVariableConfigModal()}>
-        Configure {VARIABLE_LOWER}
-      </Menu.Item>
+        {CONFIGURE_ACTION}
+      </Menu.Item>,
     );
     push(
       <Menu.Item key="change-value" onClick={() => showValueModal()}>
         Change preview value
-      </Menu.Item>
+      </Menu.Item>,
     );
     push(
       <Menu.Item
@@ -57,7 +57,7 @@ function useVariableMenu({
         onClick={handleTempValueReset}
       >
         Reset preview value
-      </Menu.Item>
+      </Menu.Item>,
     );
   });
 
@@ -65,8 +65,8 @@ function useVariableMenu({
     if (canDeleteState(component, state)) {
       push(
         <Menu.Item key="remove-state" onClick={() => onRemove?.()}>
-          Delete {VARIABLE_LOWER}
-        </Menu.Item>
+          {DELETE_ACTION}
+        </Menu.Item>,
       );
     }
   });
@@ -103,7 +103,7 @@ export function useVariableRow({
 } {
   const vc = ensure(
     viewCtx || studioCtx.focusedViewCtx(),
-    "Must have a focusedViewCtx"
+    "Must have a focusedViewCtx",
   );
 
   const [valueModalVisible, setValueModalVisible] =
@@ -117,7 +117,7 @@ export function useVariableRow({
 
   assert(
     !isKnownTplSlot(component.tplTree),
-    "slots or tpl groups can't be root of a component"
+    "slots or tpl groups can't be root of a component",
   );
   const onRemove = state.implicitState
     ? undefined
@@ -130,8 +130,8 @@ export function useVariableRow({
             {
               state,
               component,
-            }
-          )
+            },
+          ),
         );
       };
 
@@ -154,8 +154,8 @@ export function useVariableRow({
           state,
           viewCtx: vc,
           component: vc.component,
-        }
-      )
+        },
+      ),
     );
   };
 

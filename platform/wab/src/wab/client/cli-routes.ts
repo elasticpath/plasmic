@@ -1,5 +1,3 @@
-/** @format */
-
 import { latestTag } from "@/wab/commons/semver";
 import { MainBranchId, isArenaType } from "@/wab/shared/ApiSchema";
 import { ensure } from "@/wab/shared/common";
@@ -11,56 +9,24 @@ import {
   SEARCH_PARAM_ARENA_TYPE,
   SEARCH_PARAM_BRANCH,
   SEARCH_PARAM_COMMENT,
+  SEARCH_PARAM_COPILOT_CHAT,
   SEARCH_PARAM_REVISION,
   SEARCH_PARAM_VERSION,
 } from "@/wab/shared/route/app-routes";
-import { Route, fillRoute } from "@/wab/shared/route/route";
+import { Route } from "@/wab/shared/route/route";
 import { getPublicUrl } from "@/wab/shared/urls";
-import { History, Location, LocationDescriptor, createPath } from "history";
+import { joinDecodedSegments } from "@/wab/shared/utils/url-utils";
+import { History, Location, To, createPath } from "history";
 import { trimStart } from "lodash";
-import { match as Match, matchPath, useRouteMatch } from "react-router-dom";
-
-type XMatch<T> = Match<any> & {
-  params: T;
-};
-
-export function parseRoute<PathParams extends {}>(
-  route: Route<PathParams>,
-  path: string = location.pathname,
-  exact = true
-): XMatch<PathParams> | null {
-  // We use `any` here because react-router actually does support /:foo* and /:bar+ but this isn't reflected in the types.
-  const match = matchPath<any>(path, {
-    path: route.pattern,
-    exact,
-  });
-  if (!match) {
-    return null;
-  }
-
-  // React Router matchPath doesn't decode even though it encodes, so we manually decode here.
-  const encodedParams: PathParams = match.params;
-  const decodedParams: PathParams = Object.fromEntries(
-    Object.entries(encodedParams).map(([k, v]) => [
-      k,
-      typeof v === "string" ? decodeURIComponent(v) : v,
-    ])
-  ) as unknown as PathParams;
-  return {
-    ...match,
-    params: decodedParams,
-  };
-}
 
 export function isProjectPath(pathname: string) {
   return !!(
-    parseRoute(APP_ROUTES.project, pathname) ||
-    parseRoute(APP_ROUTES.projectSlug, pathname)
+    APP_ROUTES.project.parse(pathname) || APP_ROUTES.projectSlug.parse(pathname)
   );
 }
 
 export function parseProjectLocation(
-  location: Location
+  location: Location,
 ): ProjectLocationParams | undefined {
   const searchParams = new URLSearchParams(location.search);
   let branchName = searchParams.get(SEARCH_PARAM_BRANCH) || MainBranchId;
@@ -71,11 +37,13 @@ export function parseProjectLocation(
   const arenaUuidOrNameOrPath =
     searchParams.get(SEARCH_PARAM_ARENA) || undefined;
   const threadId = searchParams.get(SEARCH_PARAM_COMMENT) || undefined;
+  const copilotChat =
+    searchParams.get(SEARCH_PARAM_COPILOT_CHAT) === "true" || undefined;
 
-  const matchProject = parseRoute(APP_ROUTES.project, location.pathname);
+  const matchProject = APP_ROUTES.project.parse(location.pathname);
   if (matchProject) {
     return {
-      projectId: matchProject.params.projectId,
+      projectId: matchProject.projectId,
       slug: undefined,
       branchName,
       branchVersion,
@@ -83,38 +51,36 @@ export function parseProjectLocation(
       arenaType,
       arenaUuidOrNameOrPath,
       threadId,
+      copilotChat,
     };
   }
 
-  const matchProjectSlug = parseRoute(
-    APP_ROUTES.projectSlug,
-    location.pathname
-  );
+  const matchProjectSlug = APP_ROUTES.projectSlug.parse(location.pathname);
   if (matchProjectSlug) {
     return {
-      projectId: matchProjectSlug.params.projectId,
-      slug: matchProjectSlug.params.slug,
+      projectId: matchProjectSlug.projectId,
+      slug: matchProjectSlug.slug,
       branchName,
       branchVersion,
       branchRevision,
       arenaType,
       arenaUuidOrNameOrPath,
       threadId,
+      copilotChat,
     };
   }
 
-  const matchProjectPreview = parseRoute(
-    APP_ROUTES.projectPreview,
-    location.pathname
+  const matchProjectPreview = APP_ROUTES.projectPreview.parse(
+    location.pathname,
   );
   if (matchProjectPreview) {
     const previewHashParams = new URLSearchParams(
-      trimStart(location.hash, "#")
+      trimStart(location.hash, "#"),
     );
     branchName = previewHashParams.get(SEARCH_PARAM_BRANCH) || MainBranchId;
-    const previewPath = matchProjectPreview.params.previewPath || "";
+    const previewPath = joinDecodedSegments(matchProjectPreview.previewPath);
     return {
-      projectId: matchProjectPreview.params.projectId,
+      projectId: matchProjectPreview.projectId,
       slug: undefined,
       arenaType: undefined,
       branchRevision: undefined,
@@ -122,16 +88,17 @@ export function parseProjectLocation(
       branchVersion: latestTag,
       arenaUuidOrNameOrPath: previewPath,
       isPreview: true,
+      copilotChat,
     };
   }
 
   return undefined;
 }
 
-export function openNewTab(location: LocationDescriptor) {
+export function openNewTab(location: To) {
   window.open(
     typeof location === "string" ? location : createPath(location),
-    "_blank"
+    "_blank",
   );
 }
 
@@ -140,6 +107,7 @@ export class Router {
   routeTo(path: string) {
     if (path.startsWith("//") || path.startsWith("https:")) {
       document.location.href = path;
+      return;
     }
     this.history.push(path);
   }
@@ -163,12 +131,12 @@ export function getRouteContinuation() {
 
 export function getLoginRouteWithContinuation() {
   const continueTo = getRouteContinuation();
-  return fillRoute(APP_ROUTES.login, {}, { continueTo });
+  return APP_ROUTES.login.fill({}, { continueTo });
 }
 
 export function getEmaiLVerificationRouteWithContinuation() {
   const continueTo = getRouteContinuation();
-  return fillRoute(APP_ROUTES.emailVerification, {}, { continueTo });
+  return APP_ROUTES.emailVerification.fill({}, { continueTo });
 }
 
 export function isPlasmicPath(pathname: string) {
@@ -183,7 +151,7 @@ export function isPlasmicPath(pathname: string) {
     pathname = new URL(origin + pathname).pathname;
   }
   return Object.values(APP_ROUTES).some((route: Route) =>
-    parseRoute(route, pathname)
+    route.parse(pathname),
   );
 }
 
@@ -204,10 +172,4 @@ export function isHostFrame() {
 
 export function ensureIsHostFrame() {
   ensure(isHostFrame(), "not in host frame");
-}
-
-export function useRRouteMatch<PathParams extends {}>(
-  route: Route<PathParams>
-) {
-  return useRouteMatch<PathParams>(route.pattern);
 }

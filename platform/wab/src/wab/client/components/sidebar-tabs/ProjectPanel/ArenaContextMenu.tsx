@@ -9,7 +9,6 @@ import {
   isMixedArena,
   isPageArena,
 } from "@/wab/shared/Arenas";
-import { componentsReferencerToPageHref } from "@/wab/shared/cached-selectors";
 import { assert, spawn } from "@/wab/shared/common";
 import {
   PageComponent,
@@ -25,29 +24,18 @@ import * as React from "react";
 
 export const deleteArenas = async (
   studioCtx: StudioCtx,
-  arenas: AnyArena[]
+  arenas: AnyArena[],
 ) => {
-  const allRefs = arenas.flatMap((arena) =>
-    isDedicatedArena(arena) && isPageComponent(arena.component)
-      ? Array.from(
-          componentsReferencerToPageHref(studioCtx.site, arena.component)
-        )
-      : []
-  );
-
-  await studioCtx.changeObserved(
-    () => allRefs,
-    () => {
-      for (const arena of arenas) {
-        if (isDedicatedArena(arena)) {
-          studioCtx.siteOps().tryRemoveComponent(arena.component);
-        } else if (isMixedArena(arena)) {
-          studioCtx.siteOps().removeMixedArena(arena);
-        }
+  await studioCtx.change(() => {
+    for (const arena of arenas) {
+      if (isDedicatedArena(arena)) {
+        studioCtx.siteOps().tryRemoveComponent(arena.component);
+      } else if (isMixedArena(arena)) {
+        studioCtx.siteOps().removeMixedArena(arena);
       }
-      return ok();
     }
-  );
+    return ok();
+  });
 };
 
 /**
@@ -75,7 +63,7 @@ export function ArenaContextMenu({
   const isSuperComp = !!component && component.subComps.length > 0;
   const isAdmin = isAdminTeamEmail(
     studioCtx.appCtx.selfInfo?.email,
-    studioCtx.appCtx.appConfig
+    studioCtx.appCtx.appConfig,
   );
 
   const doReplaceAllInstances = (toComp: Component) => {
@@ -112,22 +100,22 @@ export function ArenaContextMenu({
     ...menuSection(
       "local",
       ...naturalSort(studioCtx.site.components, (c) => c.name).map((comp) =>
-        componentToReplaceAllInstancesItem(comp)
-      )
+        componentToReplaceAllInstancesItem(comp),
+      ),
     ),
     ...studioCtx.site.projectDependencies.flatMap((dep) =>
       menuSection(
         "imported",
         ...naturalSort(dep.site.components, (c) => c.name).map((comp) =>
-          componentToReplaceAllInstancesItem(comp)
-        )
-      )
+          componentToReplaceAllInstancesItem(comp),
+        ),
+      ),
     ),
   ];
 
   const replaceAllLinksMenuItems = naturalSort(
     studioCtx.tplMgr().getPageComponents(),
-    (c) => c.name
+    (c) => c.name,
   )
     .filter((c) => c !== component)
     .map((comp) => pageToReplaceAllLinksItem(comp));
@@ -170,25 +158,22 @@ export function ArenaContextMenu({
 
   const onRequestEditingInNewArtboard = () =>
     studioCtx.changeUnsafe(() =>
-      studioCtx.siteOps().createNewFrameForMixedArena(component!)
+      studioCtx.siteOps().createNewFrameForMixedArena(component!),
     );
 
   const onConvertToComponent = () => {
     assert(
       component && isPageComponent(component),
-      "Can only convert Page to component if it exists"
+      "Can only convert Page to component if it exists",
     );
     return studioCtx.siteOps().convertPageToComponent(component);
   };
 
   const onConvertToPage = () =>
-    studioCtx.changeObserved(
-      () => [component!],
-      () => {
-        studioCtx.siteOps().convertComponentToPage(component!);
-        return ok();
-      }
-    );
+    studioCtx.change(() => {
+      studioCtx.siteOps().convertComponentToPage(component!);
+      return ok();
+    });
 
   const onFindReferences = () => {
     studioCtx.findReferencesComponent = component;
@@ -203,7 +188,7 @@ export function ArenaContextMenu({
         ? studioCtx.commentsCtx
             .computedData()
             .commentStatsByComponent.get(arena.component.uuid)?.commentCount
-        : undefined
+        : undefined,
     );
     if (!confirmation) {
       return;
@@ -221,7 +206,7 @@ export function ArenaContextMenu({
           onClick={onFindReferences}
         >
           <strong>Find</strong> all references
-        </Menu.Item>
+        </Menu.Item>,
       )}
       {menuSection(
         "component-actions",
@@ -242,7 +227,7 @@ export function ArenaContextMenu({
           onClick={onDuplicate}
         >
           <strong>Duplicate</strong> {getSiteItemTypeName(arena)}
-        </Menu.Item>
+        </Menu.Item>,
       )}
       {menuSection(
         "artboard-actions",
@@ -266,7 +251,7 @@ export function ArenaContextMenu({
           onClick={onConvertToPage}
         >
           <strong>Convert</strong> to page component
-        </Menu.Item>
+        </Menu.Item>,
       )}
       {shouldShowItem.replaceAllInstances &&
         menuSection(
@@ -280,7 +265,7 @@ export function ArenaContextMenu({
             }
           >
             {replaceAllInstancesMenuItems}
-          </Menu.SubMenu>
+          </Menu.SubMenu>,
         )}
       {shouldShowItem.replaceAllLinks &&
         menuSection(
@@ -294,7 +279,7 @@ export function ArenaContextMenu({
             }
           >
             {replaceAllLinksMenuItems}
-          </Menu.SubMenu>
+          </Menu.SubMenu>,
         )}
       {menuSection(
         "delete",
@@ -304,7 +289,7 @@ export function ArenaContextMenu({
           hidden={!shouldShowItem.delete}
         >
           <strong>Delete</strong> {getSiteItemTypeName(arena)}
-        </Menu.Item>
+        </Menu.Item>,
       )}
       {isAdmin &&
         menuSection(
@@ -319,21 +304,12 @@ export function ArenaContextMenu({
                   <Menu.Item
                     key="delete-preserve-links"
                     onClick={async () =>
-                      studioCtx.changeObserved(
-                        () => [
-                          component,
-                          ...componentsReferencerToPageHref(
-                            studioCtx.site,
-                            component
-                          ),
-                        ],
-                        () => {
-                          studioCtx.tplMgr().removeComponentGroup([component], {
-                            convertPageHrefToCode: true,
-                          });
-                          return ok();
-                        }
-                      )
+                      studioCtx.change(() => {
+                        studioCtx.tplMgr().removeComponentGroup([component], {
+                          convertPageHrefToCode: true,
+                        });
+                        return ok();
+                      })
                     }
                   >
                     <strong>Delete</strong> page, but convert PageHref to links
@@ -341,7 +317,7 @@ export function ArenaContextMenu({
                 )}
               </Menu.SubMenu>
             )}
-          </Menu.SubMenu>
+          </Menu.SubMenu>,
         )}
     </Menu>
   );

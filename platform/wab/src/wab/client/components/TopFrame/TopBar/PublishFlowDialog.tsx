@@ -76,8 +76,7 @@ export interface SubsectionMeta {
 
 interface PublishFlowDialogProps extends DefaultPublishFlowDialogProps {
   latestPublishedVersionData:
-    | { revisionId: string; version: string }
-    | undefined;
+    { revisionId: string; version: string } | undefined;
   appCtx: AppCtx;
   project: ApiProject;
   refreshProjectAndPerms: () => void;
@@ -85,7 +84,7 @@ interface PublishFlowDialogProps extends DefaultPublishFlowDialogProps {
   closeDialog: () => void;
   subsectionMeta: SubsectionMeta;
   setView: (
-    view: PlasmicPublishFlowDialog__VariantMembers["view"] | undefined
+    view: PlasmicPublishFlowDialog__VariantMembers["view"] | undefined,
   ) => void;
   publish: () => void;
   resetStatus: () => void;
@@ -136,23 +135,20 @@ function PublishFlowDialog(props: PublishFlowDialogProps) {
               subsectionMeta.saveVersion.setVisibleEnableBlock(
                 true,
                 true,
-                false
+                false,
               );
             } else {
               subsectionMeta.saveVersion.setVisibleEnableBlock(
                 true,
                 false,
-                true
+                true,
               );
             }
           }
         }
-      })()
+      })(),
     );
   }, [hostFrameApi, view, loadingVersion]);
-
-  // Push and deploy (Git)
-  const projectRepository = subsectionMeta.pushDeploy.setup.projectRepository;
 
   // Webhooks
   const fetchWebhooks = useAsyncFnStrict(async () => {
@@ -168,7 +164,7 @@ function PublishFlowDialog(props: PublishFlowDialogProps) {
         subsectionMeta.webhooks.setVisibleEnableBlock(
           subsectionMeta.webhooks.visible,
           false,
-          true
+          true,
         );
       }
     }
@@ -193,7 +189,7 @@ function PublishFlowDialog(props: PublishFlowDialogProps) {
   const prodUrl = prodUrlForProject(
     DEVFLAGS,
     project,
-    plasmicHostingDomains?.domains ?? []
+    plasmicHostingDomains?.domains ?? [],
   );
 
   return (
@@ -347,7 +343,7 @@ function PublishFlowDialog(props: PublishFlowDialogProps) {
             subsectionMeta.plasmicHosting.setVisibleEnableBlock(
               true,
               false, // We don't have any domains set yet, so the action is disabled
-              true
+              true,
             );
           },
         }}

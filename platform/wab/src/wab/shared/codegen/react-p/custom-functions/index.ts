@@ -1,10 +1,14 @@
-import { customFunctionsAndLibsUsedByComponent } from "@/wab/shared/cached-selectors";
+import { customFunctionsAndLibsUsedByComponents } from "@/wab/shared/cached-selectors";
 import { SerializerBaseContext } from "@/wab/shared/codegen/react-p/types";
 import { CustomFunctionConfig } from "@/wab/shared/codegen/types";
 import { ensure } from "@/wab/shared/common";
 import { customFunctionId } from "@/wab/shared/core/query-ids";
 import { isHostLessPackage } from "@/wab/shared/core/sites";
-import { CodeLibrary, CustomFunction } from "@/wab/shared/model/classes";
+import {
+  CodeLibrary,
+  Component,
+  CustomFunction,
+} from "@/wab/shared/model/classes";
 import { groupBy } from "lodash";
 
 export function customFunctionImportAlias(customFunction: CustomFunction) {
@@ -24,9 +28,12 @@ export function codeLibraryFnImportAlias(lib: CodeLibrary, fn: string) {
   return `${libPrefix}${lib.jsIdentifier}__${fn}`;
 }
 
-export function serializeCustomFunctionsAndLibs(ctx: SerializerBaseContext) {
+export function serializeCustomFunctionsAndLibs(
+  ctx: SerializerBaseContext,
+  components: Component[] = [ctx.component],
+) {
   const { customFunctions, codeLibraries } =
-    customFunctionsAndLibsUsedByComponent(ctx.site, ctx.component);
+    customFunctionsAndLibsUsedByComponents(ctx.site, components);
 
   if (!customFunctions.length && !codeLibraries.length) {
     return {
@@ -56,21 +63,21 @@ export function serializeCustomFunctionsAndLibs(ctx: SerializerBaseContext) {
     ...customFunctions.map((fn) => {
       const ownerSite = ensure(
         ctx.siteCtx.customFunctionToOwnerSite.get(fn),
-        () => `No ownerSite for CustomFunction ${customFunctionId(fn)}`
+        () => `No ownerSite for CustomFunction ${customFunctionId(fn)}`,
       );
 
       if (ctx.exportOpts.useCustomFunctionsStub) {
         // Use the functions stub module for user registered functions.
         if (ctx.exportOpts.isLivePreview) {
           return `import { ${customFunctionImportAlias(
-            fn
+            fn,
           )} } from "./custom-functions";`;
         }
         // For hostless custom functions, we only do that in live preview.
         if (!isHostLessPackage(ownerSite)) {
           importLoaderRegistry = true;
           return `const { ${customFunctionImportAlias(
-            fn
+            fn,
           )} } = registeredCustomFunctions;`;
         }
       }
@@ -80,7 +87,7 @@ export function serializeCustomFunctionsAndLibs(ctx: SerializerBaseContext) {
       const importPath = isHostLessPackage(ownerSite)
         ? `"${fn.importPath}";`
         : `"./importPath__${customFunctionId(
-            fn
+            fn,
           )}"; // plasmic-import: ${customFunctionId(fn)}/customFunction`;
       return `import ${
         fn.defaultExport
@@ -98,7 +105,7 @@ export function serializeCustomFunctionsAndLibs(ctx: SerializerBaseContext) {
       // - Loader / codegen: import from the `importPath` NPM package.
       if (ctx.exportOpts.isLivePreview) {
         return `import { ${codeLibraryImportAlias(
-          lib
+          lib,
         )} } from "./custom-functions";`;
       } else {
         // For tree shaking, if we know which functions will be used, we can
@@ -110,15 +117,15 @@ export function serializeCustomFunctionsAndLibs(ctx: SerializerBaseContext) {
                   (importedFn) =>
                     `${importedFn} as ${codeLibraryFnImportAlias(
                       lib,
-                      importedFn
-                    )}`
+                      importedFn,
+                    )}`,
                 )
                 .join(", ")} }`
             : lib.importType === "namespace"
-            ? `* as ${codeLibraryImportAlias(lib)}` // namespace import
-            : lib.importType === "default"
-            ? `${codeLibraryImportAlias(lib)}` // default import
-            : `{ ${lib.namedImport} as ${codeLibraryImportAlias(lib)} }` // named import
+              ? `* as ${codeLibraryImportAlias(lib)}` // namespace import
+              : lib.importType === "default"
+                ? `${codeLibraryImportAlias(lib)}` // default import
+                : `{ ${lib.namedImport} as ${codeLibraryImportAlias(lib)} }` // named import
         } from "${lib.importPath}";`;
       }
     }),
@@ -135,20 +142,20 @@ ${customFunctionsAndLibsImport}`;
       ...Object.values(
         groupBy(
           customFunctions.filter((f) => !!f.namespace),
-          (f) => f.namespace
-        )
+          (f) => f.namespace,
+        ),
       ),
     ]
       .map((functionOrGroup) =>
         !Array.isArray(functionOrGroup)
           ? `${functionOrGroup.importName}: ${customFunctionImportAlias(
-              functionOrGroup
+              functionOrGroup,
             )},`
           : `${functionOrGroup[0].namespace}: {
           ${functionOrGroup
             .map((fn) => `${fn.importName}: ${customFunctionImportAlias(fn)},`)
             .join("\n")}
-        },`
+        },`,
       )
       .join("\n")}
     ${codeLibraries
@@ -161,11 +168,11 @@ ${customFunctionsAndLibsImport}`;
             ${imports
               .map(
                 (importedFn) =>
-                  `${importedFn}: ${codeLibraryFnImportAlias(lib, importedFn)},`
+                  `${importedFn}: ${codeLibraryFnImportAlias(lib, importedFn)},`,
               )
               .join("\n")}
           }`
-          },`
+          },`,
       )
       .join("\n")}
   };`;
@@ -174,7 +181,7 @@ ${customFunctionsAndLibsImport}`;
 }
 
 export function exportCustomFunctionConfig(
-  customFunction: CustomFunction
+  customFunction: CustomFunction,
 ): CustomFunctionConfig {
   return {
     id: customFunctionId(customFunction),

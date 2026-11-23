@@ -2,32 +2,93 @@ import * as semver from "@/wab/commons/semver";
 import { loadDepPackages } from "@/wab/server/db/DbBundleLoader";
 import { DbMgr } from "@/wab/server/db/DbMgr";
 import { PkgVersion, ProjectRevision } from "@/wab/server/entities/Entities";
-import { withSpan } from "@/wab/server/util/apm-util";
+import { withSpan } from "@/wab/server/observability";
 import { BadRequestError } from "@/wab/shared/ApiErrors/errors";
 import { ProjectId } from "@/wab/shared/ApiSchema";
 import { UnsafeBundle } from "@/wab/shared/bundles";
 import { sortBy } from "lodash";
 
-export type VersionToSync = {
+export interface PkgVersionToSync {
   version: string;
   indirect: boolean;
-};
+  revisionId?: undefined;
+}
+
+/** Root projects can use revision IDs. Dependencies always use package versions. */
+export interface RevisionToSync {
+  revisionId: string;
+  indirect: false;
+  version?: undefined;
+}
+
+export type VersionToSync = PkgVersionToSync | RevisionToSync;
 
 export function mkVersionToSync(
   version: string,
-  indirect?: boolean
-): VersionToSync {
+  indirect?: boolean,
+): PkgVersionToSync {
   return {
     version,
     indirect: !!indirect,
   };
 }
 
+<<<<<<< HEAD
+=======
+export function mkRevisionToSync(revisionId: string): RevisionToSync {
+  return { revisionId, indirect: false };
+}
+
+export function isRevisionToSync(v: VersionToSync): v is RevisionToSync {
+  return v.revisionId !== undefined;
+}
+
+export function isPinnedVersionToSync(
+  v: VersionToSync,
+  branches: { name: string }[],
+) {
+  return (
+    isRevisionToSync(v) ||
+    (v.version !== "latest" && !branches.some((b) => b.name === v.version))
+  );
+}
+
+const REVISION_SPEC_SEPARATOR = "@rev:";
+const REVISION_SPEC_PART_RE = /^[A-Za-z0-9_-]+$/;
+
+export function makeRevisionSpec(projectId: string, revisionId: string) {
+  return `${projectId}${REVISION_SPEC_SEPARATOR}${revisionId}`;
+}
+
+export function parseRevisionSpec(spec: string): {
+  projectId: ProjectId;
+  revisionId: string;
+} {
+  const sepIndex = spec.indexOf(REVISION_SPEC_SEPARATOR);
+  const projectId = spec.slice(0, sepIndex);
+  const revisionId = spec.slice(sepIndex + REVISION_SPEC_SEPARATOR.length);
+  if (
+    sepIndex < 0 ||
+    !REVISION_SPEC_PART_RE.test(projectId) ||
+    !REVISION_SPEC_PART_RE.test(revisionId)
+  ) {
+    throw new BadRequestError(
+      `Invalid revision spec "${spec}"; expected <projectId>@rev:<projectRevisionId>`,
+    );
+  }
+  return { projectId: projectId as ProjectId, revisionId };
+}
+
+>>>>>>> upstream/master
 async function getPkgByProjectOrThrow(dbMgr: DbMgr, projectId: string) {
   const pkg = await dbMgr.getPkgByProjectId(projectId);
   if (!pkg) {
     throw new BadRequestError(
+<<<<<<< HEAD
       `Project ${projectId} has not been published yet.`
+=======
+      `Project ${projectId} has not been published yet.`,
+>>>>>>> upstream/master
     );
   }
   return pkg;
@@ -38,7 +99,7 @@ async function getPkgVersionByProject(
   projectId: string,
   versionRange?: string,
   tag?: string,
-  opts: { prefilledOnly: boolean } = { prefilledOnly: false }
+  opts: { prefilledOnly: boolean } = { prefilledOnly: false },
 ) {
   const pkg = await getPkgByProjectOrThrow(dbMgr, projectId);
   const pkgVersion = await dbMgr.getPkgVersion(pkg.id, versionRange, tag, opts);
@@ -47,12 +108,15 @@ async function getPkgVersionByProject(
 
 export async function resolveProjectDeps(
   dbMgr: DbMgr,
-  projectVersions: Record<string, VersionToSync>
+  projectVersions: Record<string, VersionToSync>,
 ): Promise<Record<string, VersionToSync>> {
   const seeds = await Promise.all(
     Object.entries(projectVersions).map(async ([projectId, v]) => {
+      if (isRevisionToSync(v)) {
+        return await dbMgr.getProjectRevByIdForProject(projectId, v.revisionId);
+      }
       const branches = await dbMgr.listBranchesForProject(
-        projectId as ProjectId
+        projectId as ProjectId,
       );
       const maybeBranch = branches.find((branch) => branch.name === v.version);
 
@@ -65,21 +129,21 @@ export async function resolveProjectDeps(
           branchId: maybeBranch?.id,
         });
       }
-    })
+    }),
   );
   const deps = await resolveDeps(dbMgr, seeds);
   return Object.fromEntries(
     Object.entries(deps).map(([id, version]) => [
       id,
       mkVersionToSync(version, true),
-    ])
+    ]),
   );
 }
 
 export async function resolveLatestProjectVersions(
   dbMgr: DbMgr,
   projectIdsAndTags: { projectId: string; tag: string | undefined }[],
-  opts: { prefilledOnly: boolean } = { prefilledOnly: false }
+  opts: { prefilledOnly: boolean } = { prefilledOnly: false },
 ) {
   return withSpan(
     "resolveLatestProjectVersions",
@@ -91,6 +155,7 @@ export async function resolveLatestProjectVersions(
             projectId,
             version: await dbMgr.getLatestPkgVersionNumber(pkg.id, tag, opts),
           };
+<<<<<<< HEAD
         })
       );
       return Object.fromEntries(
@@ -105,25 +170,33 @@ export async function resolveLatestProjectVersions(
         p.tag ? `${p.projectId}@${p.tag}` : p.projectId
       ),
     }
+=======
+        }),
+      );
+      return Object.fromEntries(
+        pkgVersions.map(({ projectId, version }) => [projectId, version]),
+      );
+    },
+>>>>>>> upstream/master
   );
 }
 
 export async function resolveLatestProjectRevisions(
   dbMgr: DbMgr,
-  projectIdsAndBranches: { id: string; branchName: string | undefined }[]
+  projectIdsAndBranches: { id: string; branchName: string | undefined }[],
 ) {
   const revisions = await Promise.all(
     projectIdsAndBranches.map(async (p) => {
       const branches = await dbMgr.listBranchesForProject(p.id as ProjectId);
       const matchingBranch = branches.find(
-        (branch) => branch.name === p.branchName
+        (branch) => branch.name === p.branchName,
       );
       const branchId = matchingBranch?.id;
       return [
         p.id,
         await dbMgr.getLatestProjectRevNumber(p.id, { branchId: branchId }),
       ];
-    })
+    }),
   );
   return Object.fromEntries(revisions) as Record<string, number>;
 }
@@ -167,7 +240,7 @@ export function extractProjectId(id: string): ProjectId {
 
 async function resolveDeps(
   dbMgr: DbMgr,
-  seeds: (ProjectRevision | PkgVersion)[]
+  seeds: (ProjectRevision | PkgVersion)[],
 ) {
   const pkgIdToMaxVersion: Record<string, string> = {};
 
@@ -185,7 +258,7 @@ async function resolveDeps(
 
   for (const seed of seeds) {
     const bundle = JSON.parse(
-      seed instanceof ProjectRevision ? seed.data : seed.model
+      seed instanceof ProjectRevision ? seed.data : seed.model,
     ) as UnsafeBundle;
     const deps = await loadDepPackages(dbMgr, bundle, { extendTokens: true });
     for (const dep of deps) {
@@ -205,7 +278,7 @@ async function resolveDeps(
 export async function getResolvedProjectVersions(
   mgr: DbMgr,
   projectIdSpecs: string[],
-  opts: { prefilledOnly: boolean } = { prefilledOnly: false }
+  opts: { prefilledOnly: boolean } = { prefilledOnly: false },
 ) {
   const projectVersionsOrTags = projectIdSpecs.map(parseProjectIdSpec);
   const projectIdsAndTagsToResolve = projectVersionsOrTags
@@ -217,20 +290,20 @@ export async function getResolvedProjectVersions(
     const resolved = await resolveLatestProjectVersions(
       mgr,
       projectIdsAndTagsToResolve,
-      opts
+      opts,
     );
     const newProjectIdSpecsMap = {
       ...Object.fromEntries(
         projectVersionsOrTags.map(({ projectId, version }) => [
           projectId,
           version,
-        ])
+        ]),
       ),
       ...resolved,
     };
     const newProjectIdSpecs = sortBy(
       Object.entries(newProjectIdSpecsMap),
-      ([projectId]) => projectId
+      ([projectId]) => projectId,
     ).map(([projectId, version]) => `${projectId}@${version}`);
     return newProjectIdSpecs;
   }
@@ -246,18 +319,18 @@ export async function getResolvedProjectVersions(
 async function resolvePreviewVersion(
   mgr: DbMgr,
   projectId: string,
-  maybeBranchName: string | undefined
+  maybeBranchName: string | undefined,
 ) {
   const branches = await mgr.listBranchesForProject(projectId as ProjectId);
   const maybeBranch = branches.find(
-    (branch) => branch.name === maybeBranchName
+    (branch) => branch.name === maybeBranchName,
   );
   return maybeBranch?.name ?? "latest";
 }
 
 export async function getPreviewResolvedVersions(
   mgr: DbMgr,
-  projectIdSpecs: string[]
+  projectIdSpecs: string[],
 ) {
   const projectAndBranches = projectIdSpecs.map(parseProjectIdSpec);
   const projectIdsAndBranchesToResolve = projectAndBranches
@@ -270,7 +343,7 @@ export async function getPreviewResolvedVersions(
     const resolvedVersion = resolvePreviewVersion(
       mgr,
       pb.projectId,
-      pb.maybeBranchName
+      pb.maybeBranchName,
     );
     return `${pb.projectId}@${resolvedVersion}`;
   });

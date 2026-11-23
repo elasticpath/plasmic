@@ -1,22 +1,11 @@
 import styles from "@/wab/client/components/style-controls/GridEditor.module.scss";
-import { getRect } from "@/wab/client/dom";
+import { Axis, Offset } from "@/wab/shared/Grids";
 import { Dict } from "@/wab/shared/collections";
 import { ensure, parsePx, zipWithIndex } from "@/wab/shared/common";
-import { ClientRect } from "@/wab/shared/geom";
-import { Axis, Offset } from "@/wab/shared/Grids";
 import { px } from "@/wab/shared/core/styles";
+import { ClientRect } from "@/wab/shared/geom";
 import $ from "jquery";
-import L from "lodash";
 import { CSSProperties } from "react";
-
-function ensureValues<T>(x: Dict<T | null | undefined>): Dict<T> {
-  for (const k in x) {
-    if (!x[k]) {
-      throw new Error();
-    }
-  }
-  return x as Dict<T>;
-}
 
 interface MeasuredAxis {
   readonly tracks: ReadonlyArray<number>;
@@ -60,7 +49,7 @@ interface Lane {
 
 const makeMimicGridStyle = (
   computed: Dict<string>,
-  scale: number
+  scale: number,
 ): Dict<string> => {
   if (!computed.display) {
     return {};
@@ -74,16 +63,16 @@ const makeMimicGridStyle = (
     gridTemplateRows: getTrackPixels(
       ensure(
         computed.gridTemplateRows,
-        () => `Unexpected nullish griTemplateRows`
-      )
+        () => `Unexpected nullish griTemplateRows`,
+      ),
     )
       .map((v) => px(v * scale))
       .join(" "),
     gridTemplateColumns: getTrackPixels(
       ensure(
         computed.gridTemplateColumns,
-        () => `Unexpected nullish gridTemplateColumns`
-      )
+        () => `Unexpected nullish gridTemplateColumns`,
+      ),
     )
       .map((v) => px(v * scale))
       .join(" "),
@@ -91,7 +80,7 @@ const makeMimicGridStyle = (
     gridColumnGap: scalePixelString(computed.gridColumnGap),
     width: scalePixelString(computed.width),
     height: scalePixelString(
-      ensure(computed.height, () => `Unexpected nullish height`)
+      ensure(computed.height, () => `Unexpected nullish height`),
     ),
   };
 };
@@ -107,8 +96,8 @@ export function adjustGridStyleForCurZoom(curZoom: number) {
   const originalGridStyle = JSON.parse(
     ensure(
       $mimicGrid.attr(originalStyleAttr),
-      () => `Unexpected nullish originalStyleAttr: ${originalStyleAttr}`
-    )
+      () => `Unexpected nullish originalStyleAttr: ${originalStyleAttr}`,
+    ),
   );
   $mimicGrid.css(makeMimicGridStyle(originalGridStyle, curZoom));
 
@@ -129,57 +118,14 @@ export function adjustGridStyleForCurZoom(curZoom: number) {
     const style = JSON.parse(
       ensure(
         $e.attr(originalStyleAttr),
-        () => `Unexpected nullish originalStyleAttr: ${originalStyleAttr}`
-      )
+        () => `Unexpected nullish originalStyleAttr: ${originalStyleAttr}`,
+      ),
     );
     for (const k in style) {
       style[k] *= curZoom;
     }
     $e.css(style);
   });
-}
-
-export function measureGrid(subj: HTMLElement) {
-  const computed = ensureValues(
-    L.pick(
-      getComputedStyle(subj),
-      "gridTemplateRows",
-      "gridTemplateColumns",
-      "gridRowGap",
-      "gridColumnGap",
-      "width",
-      "height",
-      "display"
-    )
-  );
-  const getTrackPixels = (axis: string) =>
-    axis.split(" ").map((word) => parsePx(word));
-
-  const rect = getRect(subj);
-  const pageRect = getRect(
-    ensure(subj.ownerDocument, () => `ownerDocument is nullish`).documentElement
-  );
-  const isAtLeft = rect.left < 40;
-  const isAtTop = rect.top < 40;
-  const isAtRight = pageRect.right - rect.right < 40;
-  const isAtBottom = pageRect.bottom - rect.bottom < 40;
-  const measured = {
-    rect: rect,
-    style: computed,
-    rows: {
-      gap: parsePx(computed.gridRowGap),
-      tracks: getTrackPixels(computed.gridTemplateRows),
-      isAtEnd: isAtLeft && !isAtRight,
-      isInset: isAtLeft && isAtRight,
-    },
-    cols: {
-      gap: parsePx(computed.gridColumnGap),
-      tracks: getTrackPixels(computed.gridTemplateColumns),
-      isAtEnd: isAtTop && !isAtBottom,
-      isInset: isAtTop && isAtBottom,
-    },
-  };
-  return measured;
 }
 
 interface MousePos {
@@ -197,7 +143,7 @@ export function findRowColForMouse(
   mode: "track" | "line",
   measured: MeasuredGrid,
   zoom: number,
-  viewportOffset: Offset
+  viewportOffset: Offset,
 ) {
   function* genLanes(measuredAxis: MeasuredAxis): IterableIterator<Lane> {
     let offset = 0;
@@ -233,23 +179,23 @@ export function findRowColForMouse(
     const row = lanes.rows.findIndex(
       (lane) =>
         lane.endOffset - (+lane.hasEndGutter * measured.rows.gap) / 2 >=
-        mouseYInFrame
+        mouseYInFrame,
     );
     const col = lanes.cols.findIndex(
       (lane) =>
         lane.endOffset - (+lane.hasEndGutter * measured.cols.gap) / 2 >=
-        mouseXInFrame
+        mouseXInFrame,
     );
     return { row, col };
   } else {
     const findLine = (axis: Axis, mousePos: number) => {
       // Simply split lanes into midpoints.  Ignores gaps.
       const midpoints = lanes[axis].map(
-        (lane) => (lane.startOffset + lane.endOffset) / 2
+        (lane) => (lane.startOffset + lane.endOffset) / 2,
       );
       // This should return 0 if before the first midpoint, and the last index if after the last midpoint.
       return [...midpoints, Number.POSITIVE_INFINITY].findIndex(
-        (midpoint) => midpoint > mousePos
+        (midpoint) => midpoint > mousePos,
       );
     };
     return {

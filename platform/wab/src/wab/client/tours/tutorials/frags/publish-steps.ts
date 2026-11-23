@@ -13,8 +13,8 @@ import {
   TopFrameTutorialStep,
 } from "@/wab/client/tours/tutorials/tutorials-types";
 import { RevalidatePlasmicHostingResponse } from "@/wab/shared/ApiSchema";
+import { assert } from "@/wab/shared/common";
 import { APP_ROUTES } from "@/wab/shared/route/app-routes";
-import { fillRoute } from "@/wab/shared/route/route";
 import { notification } from "antd";
 import { createElement } from "react";
 import { render } from "react-dom";
@@ -57,7 +57,14 @@ The easiest way to publish is by using Plasmic's built-in hosting provider.
       return event.type === TutorialEventsType.AddWebsiteButtonClicked;
     },
     onNext: async (ctx) => {
-      await ctx.appCtx.api.setSubdomainForProject(ctx.domain, ctx.projectId);
+      const { freeSubdomain } = await ctx.appCtx.api.getDomainsForProject(
+        ctx.projectId,
+      );
+      const { status } = await ctx.appCtx.api.setSubdomainForProject(
+        freeSubdomain,
+        ctx.projectId,
+      );
+      assert(status === "DomainUpdated", `Could not set up hosting: ${status}`);
       await mutate(apiKey("getDomainsForProject", ctx.projectId));
     },
     placement: "left",
@@ -66,7 +73,7 @@ The easiest way to publish is by using Plasmic's built-in hosting provider.
     name: "plasmic-hosting-subsection",
     target: TOPFRAME_ELEMENTS_TARGETS.plasmicHostingSubsection,
     content: `
-Plasmic Hosting lets you deploy to a custom domain for free, or to a default *.plasmic.run domain.
+Plasmic Hosting lets you connect a custom domain or use an automatically generated *.plasmic.run address for free. Choosing your own *.plasmic.run name requires a paid plan.
 
 Here we've configured the app to deploy to <https://{APP_DOMAIN}>.
 `,
@@ -139,7 +146,7 @@ And don't forget to:
     });
   },
   onSecondary: async () => {
-    location.href = fillRoute(APP_ROUTES.dashboard, {});
+    location.href = APP_ROUTES.dashboard.fill({});
   },
   secondaryButtonText: "Exit to dashboard",
 };

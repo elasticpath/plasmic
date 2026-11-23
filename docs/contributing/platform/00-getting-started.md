@@ -2,8 +2,37 @@
 
 ## Database setup
 
-Plasmic uses PostgreSQL (v15) as a database. We highly recommend setting postgres through docker (see `docker-compose.yml` for details). If you follow the Docker setup guide -- database will be created for you automatically.
+Plasmic uses PostgreSQL (v18) as a database. We highly recommend setting postgres through docker (see `docker-compose.yml` for details). If you follow the Docker setup guide -- database will be created for you automatically.
 If you prefer the manual application set up just run `docker-compose up -d --no-deps plasmic-db` in your terminal to build and launch the postgresql instance.
+
+### Upgrading an existing Docker database
+
+Postgres 18 refuses to start with an existing 15 volume. Migrate before upgrading:
+
+1. Stop the app and other database writers. With Postgres 15 still running, back up `wab`:
+   ```bash
+   docker compose stop plasmic-wab
+   docker compose exec -T plasmic-db pg_dump -U wab -Fc wab > wab-pg15.dump
+   docker compose down # Keep volumes; do not use -v.
+   ```
+   If already upgraded, temporarily use the previous Compose configuration to start Postgres 15.
+2. After a successful dump, use the new Compose configuration and add this volume override to
+   `docker-compose.override.yml`, choosing an unused name unique to your installation:
+   ```yaml
+   volumes:
+     postgres_data:
+       name: <project>_postgres18_data
+   ```
+3. Start Postgres 18 and restore before starting the app:
+   ```bash
+   docker compose up -d --wait --no-deps plasmic-db
+   docker compose exec -T plasmic-db pg_restore -U postgres -d postgres \
+     --clean --if-exists --create --exit-on-error < wab-pg15.dump
+   docker compose up -d
+   ```
+
+Keep the override for future starts and retain the old volume and dump until you verify your data.
+These steps migrate only `wab`; migrate any custom roles or other databases separately.
 
 ## OS-specific instructions
 
@@ -16,17 +45,17 @@ Update the version numbers for Postgresql in the following depending on what's l
 ```
 { sed 's/#.*//' | while read line; do sudo port install -b $line; done ; } << "EOF"
 curl-ca-bundle
-postgresql15
-postgresql15-server
+postgresql18
+postgresql18-server
 hadolint # for Dockerfile checking
 EOF
 
 # Follow the instructions printed during the postgresql-server installation:
-sudo port select postgresql postgresql15
-sudo mkdir -p /opt/local/var/db/postgresql15/defaultdb
-sudo chown postgres:postgres /opt/local/var/db/postgresql15/defaultdb
-sudo su postgres -c 'cd /opt/local/var/db/postgresql15 && /opt/local/lib/postgresql15/bin/initdb -D /opt/local/var/db/postgresql15/defaultdb
-sudo port load postgresql15-server
+sudo port select postgresql postgresql18
+sudo mkdir -p /opt/local/var/db/postgresql18/defaultdb
+sudo chown postgres:postgres /opt/local/var/db/postgresql18/defaultdb
+sudo su postgres -c 'cd /opt/local/var/db/postgresql18 && /opt/local/lib/postgresql18/bin/initdb -D /opt/local/var/db/postgresql18/defaultdb
+sudo port load postgresql18-server
 ```
 
 (Your life will be much easier if you use macports. Don't use brew for installing PG.)
@@ -76,12 +105,12 @@ Notes:
   - we have more consistent control across platforms of which python we are relying on, which can have subtle effects on the chances of success of npm gyp builds. Plus, no more sudden switching python 3.8 to 3.9 (for ex) just because you updated MacOS!
 - You want asdf-direnv so that:
   - you get local virtualenv's managed by direnv (what's called "layouts" in direnv) - these local envs are not handled by asdf.
-  - things like `node --various-node-flags $(which yarn)` work as expected (used in various scripts).
+  - things like `node --various-node-flags $(which pnpm)` work as expected (used in various scripts).
   - plus the general benefits of avoiding shims.
 
 ## Docker setup
 
-By default, the source code is mounted as a shared volume with the host. The node modules are mounted separately, each having their own volume, in order to cache the npm install step and make sure we don't pollute the shared volume with the built artifacts.
+By default, the source code is mounted as a shared volume with the host. The node modules are mounted separately, each having their own volume, in order to cache dependency installation and make sure we don't pollute the shared volume with the built artifacts.
 
 This setup is quite heavy on CPU/RAM consumption, make sure you have **at least** 8GB of RAM available for the application container.
 
@@ -110,7 +139,7 @@ NODE_ENV=development
 
 ### 2. Installing dependencies
 
-Run `pnpm install` in the root folder, then `yarn install` in `./platform/wab`
+Run `pnpm install` in the root folder, then `pnpm install` in `./platform` (one pnpm workspace covering wab, canvas-packages, loader-bundle-env and loader-html-hydrate)
 
 #### Configuring Git and Git hooks
 
@@ -121,7 +150,7 @@ The root `pnpm install` also sets up the repository's Git hooks through Husky. I
 In the `./platform/wab` run:
 
 ```
-yarn seed
+pnpm seed
 ```
 
 ### 4. Application setup

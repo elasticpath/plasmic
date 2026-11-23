@@ -5,7 +5,7 @@ multiple strategies for signing in, such as password, Google, Okta, etc.
 
 ## Google
 
-To set up Google sign-in for local development, follow these instructions:
+To set up signing in with Google for local development, follow these instructions:
 
 1. Sign in to https://console.cloud.google.com/.
 2. Create a separate project for Plasmic development.
@@ -43,7 +43,7 @@ To set up Okta SSO for local development, follow these instructions:
 1. Go to the [Plasmic Generic SSO Test app](https://dev-2205008-admin.okta.com/admin/app/oidc_client/instance/0oa7xfuoxgo9Jsfu45d7/).
 2. Sign in as the admin user (credentials in Bitwarden).
    You should see a client ID and client secret, which you'll need later.
-3. Go to https://localhost:3003/admin/teams.
+3. Go to http://localhost:3003/admin/teams.
 4. Lookup a team and open it.
 5. Scroll down, open the "Misc" tab, and click "Configure SSO".
 6. Fill in the following fields:

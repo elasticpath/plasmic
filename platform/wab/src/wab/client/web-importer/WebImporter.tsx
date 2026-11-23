@@ -15,12 +15,8 @@ const MAX_SHOWN_IMPORT_ISSUES = 5;
 
 export async function pasteFromWebImporter(
   text,
-  { studioCtx, cursorClientPt, insertRelLoc }: PasteArgs
+  { studioCtx, cursorClientPt, insertRelLoc }: PasteArgs,
 ): Promise<PasteResult> {
-  if (!studioCtx.appCtx.appConfig.allowHtmlPaste) {
-    return { handled: false };
-  }
-
   const htmlString = text.trim();
   if (!htmlString.startsWith("<")) {
     return { handled: false };
@@ -34,7 +30,8 @@ export async function pasteFromWebImporter(
       site: studioCtx.site,
       vtm: viewCtx.variantTplMgr(),
       appCtx: viewCtx.appCtx,
-    })
+      pageHrefs: false,
+    }),
   );
 
   if (result.isErr()) {
@@ -62,15 +59,15 @@ export async function pasteFromWebImporter(
           }),
           wiErrors,
         });
-      }
-    )
+      },
+    ),
   );
 
   const wiErrors = formatWIErrors([...errors, ...finalizeResult.wiErrors]);
   if (wiErrors.length > 0) {
     console.warn(
       `[web-importer] HTML imported with ${wiErrors.length} issue(s):\n` +
-        wiErrors.map((e) => `  - ${e}`).join("\n")
+        wiErrors.map((e) => `  - ${e}`).join("\n"),
     );
     notification.warning({
       message: `HTML imported with ${wiErrors.length} issue(s)`,

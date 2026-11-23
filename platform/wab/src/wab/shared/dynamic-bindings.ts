@@ -1,16 +1,8 @@
 // Borrowed from Appsmith
 
-import { isPrimitive } from "@/wab/shared/common";
 import { ApiAppUser } from "@/wab/shared/ApiSchema";
-import {
-  isBoolean,
-  isFunction,
-  isNull,
-  isNumber,
-  isObject,
-  isString,
-  isUndefined,
-} from "lodash";
+import { isPrimitive } from "@/wab/shared/common";
+import { isFunction, isNull, isObject, isUndefined } from "lodash";
 
 export const DATA_BIND_REGEX = /{{([\s\S]*?)}}/;
 
@@ -30,7 +22,7 @@ export function getDynamicStringSegments(dynamicString: string): string[] {
   firstString && stringSegments.push(firstString);
   let rest = dynamicString.substring(
     indexOfDoubleParanStart,
-    dynamicString.length
+    dynamicString.length,
   );
   //{{}}{{}}}
   let sum = 0;
@@ -47,7 +39,7 @@ export function getDynamicStringSegments(dynamicString: string): string[] {
         rest = rest.substring(i + 1, rest.length);
         if (rest) {
           stringSegments = stringSegments.concat(
-            getDynamicStringSegments(rest)
+            getDynamicStringSegments(rest),
           );
           break;
         }
@@ -86,10 +78,10 @@ export function isCurrentUserCustomPropertiesBinding(binding: string) {
  * }
  */
 export const getDynamicBindings = (
-  dynamicString: string
+  dynamicString: string,
 ): { stringSegments: string[]; jsSnippets: string[] } => {
   // Protect against bad string parse
-  if (!dynamicString || !isString(dynamicString)) {
+  if (!dynamicString || typeof dynamicString !== "string") {
     return { stringSegments: [], jsSnippets: [] };
   }
   const sanitisedString = dynamicString.trim();
@@ -115,18 +107,18 @@ export function getDynamicSnippets(dynamicString: string) {
 
 export function getDynamicSnippetsForExpr(dynamicString: string) {
   return getDynamicSnippets(dynamicString).filter(
-    (x) => !isCurrentUserBinding(x)
+    (x) => !isCurrentUserBinding(x),
   );
 }
 
 export function getDynamicSnippetsForJsonExpr(dynamicJson: any) {
   return getDynamicSnippetsInJson(dynamicJson).filter(
-    (x) => !isCurrentUserBinding(x)
+    (x) => !isCurrentUserBinding(x),
   );
 }
 
 function getDynamicSnippetsInJson(dynamicJson: any): string[] {
-  if (isString(dynamicJson)) {
+  if (typeof dynamicJson === "string") {
     return getDynamicSnippets(dynamicJson);
   } else if (isPrimitive(dynamicJson)) {
     return [];
@@ -146,13 +138,13 @@ export type DataSourceUser = Partial<ApiAppUser>;
 
 export function extractValueFromCurrentUser(
   currentUser: DataSourceUser | undefined,
-  binding: string
+  binding: string,
 ) {
   if (!currentUser) {
     return undefined;
   }
   const bindingRegexExec = CURRENT_USER_FIELD_EXTRACT_REGEX.exec(
-    binding.substring(2, binding.length - 2)
+    binding.substring(2, binding.length - 2),
   );
   if (!bindingRegexExec) {
     return undefined;
@@ -183,7 +175,7 @@ export function extractValueFromCurrentUser(
 export const templateSubstituteDynamicValues = (
   binding: string,
   subBindings: string[],
-  subValues: unknown[]
+  subValues: unknown[],
 ): string => {
   // Replace the string with the data tree values
   let finalValue = binding;
@@ -207,7 +199,7 @@ export const templateSubstituteDynamicValues = (
 export const smartSubstituteDynamicValues = (
   binding: string,
   subBindings: string[],
-  subValues: unknown[]
+  subValues: unknown[],
 ): string => {
   // We are not using `removeQuotesFromBindings` (which could aceppt both
   // {"blah": {{yup}}} and {"blah": "{{yup}}"} formats) because it breaks
@@ -237,7 +229,7 @@ export const smartSubstituteDynamicValues = (
         if (finalBinding.includes(`"${b}"`)) {
           finalBinding = finalBinding.replace(
             `"${b}"`,
-            `"${PLASMIC_UNDEFINED}"`
+            `"${PLASMIC_UNDEFINED}"`,
           );
         } else {
           finalBinding = finalBinding.replace(b, `${value}`);
@@ -247,7 +239,7 @@ export const smartSubstituteDynamicValues = (
         // JSON.stringify string to escape any unsupported characters
         finalBinding = finalBinding.replace(
           b,
-          `${JSON.stringify(value).slice(1, -1)}`
+          `${JSON.stringify(value).slice(1, -1)}`,
         );
         break;
       case Types.ARRAY:
@@ -260,12 +252,12 @@ export const smartSubstituteDynamicValues = (
         if (finalBinding.includes(`"${b}"`)) {
           finalBinding = finalBinding.replace(
             `"${b}"`,
-            JSON.stringify(value, null, 2)
+            JSON.stringify(value, null, 2),
           );
         } else {
           finalBinding = finalBinding.replace(
             b,
-            JSON.stringify(value, null, 2)
+            JSON.stringify(value, null, 2),
           );
         }
         break;
@@ -278,13 +270,13 @@ export const smartSubstituteDynamicValues = (
 };
 
 const getType = (value: unknown) => {
-  if (isString(value)) {
+  if (typeof value === "string") {
     return Types.STRING;
   }
-  if (isNumber(value)) {
+  if (typeof value === "number") {
     return Types.NUMBER;
   }
-  if (isBoolean(value)) {
+  if (typeof value === "boolean") {
     return Types.BOOLEAN;
   }
   if (Array.isArray(value)) {
@@ -322,7 +314,7 @@ export function withCurrentUserValues(
   binding: string,
   subBindings: string[],
   values: unknown[],
-  currentUser: DataSourceUser | undefined
+  currentUser: DataSourceUser | undefined,
 ) {
   const expandedValues: unknown[] = [];
   let valuesIdx = 0;

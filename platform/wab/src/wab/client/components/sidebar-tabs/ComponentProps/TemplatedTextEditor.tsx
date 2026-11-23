@@ -1,13 +1,19 @@
 import { ContextMenuContext } from "@/wab/client/components/ContextMenuIndicator/ContextMenuIndicator";
-import { resetNodes as doResetNodes } from "@/wab/client/components/canvas/slate";
+import {
+  resetNodes as doResetNodes,
+  focusSlateEditor,
+} from "@/wab/client/components/canvas/slate";
 import { CopilotCodePrompt } from "@/wab/client/components/copilot/CopilotCodePrompt";
+import type { BindingIdentity } from "@/wab/client/components/editor-sessions/binding-session";
 import styles from "@/wab/client/components/sidebar-tabs/ComponentProps/TemplatedTextEditor.module.scss";
-import DataPicker, {
-  DataPickerTypesSchema,
-} from "@/wab/client/components/sidebar-tabs/DataBinding/DataPicker";
+import { DataPickerTypesSchema } from "@/wab/client/components/sidebar-tabs/DataBinding/DataPicker";
+import {
+  DataPickerTrigger,
+  DataPickerTriggerHandle,
+} from "@/wab/client/components/sidebar-tabs/DataBinding/DataPickerPanel";
+import { useDataTokenSuggestionsMenu } from "@/wab/client/components/sidebar-tabs/DataBinding/useDataTokenSuggestionsMenu";
 import { PropEditorRef } from "@/wab/client/components/sidebar-tabs/PropEditorRow";
 import { useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
-import { zIndex } from "@/wab/client/z-index";
 import { useSignalListener } from "@/wab/commons/components/use-signal-listener";
 import { DropFirst } from "@/wab/commons/types";
 import {
@@ -26,15 +32,18 @@ import {
   codeLit,
   createExprForDataPickerValue,
   extractValueSavedFromDataPicker,
+  flattenTemplatedStringToString,
   isRealCodeExpr,
   summarizeExpr,
 } from "@/wab/shared/core/exprs";
 import { tryGetOwnerSite } from "@/wab/shared/core/tpls";
+import { DEVFLAGS } from "@/wab/shared/devflags";
 import { tryEvalExpr } from "@/wab/shared/eval";
 import {
   isPathDataToken,
   pathToDisplayString,
 } from "@/wab/shared/eval/expression-parser";
+import { Pt } from "@/wab/shared/geom";
 import {
   Component,
   CustomCode,
@@ -44,7 +53,7 @@ import {
   isKnownObjectPath,
 } from "@/wab/shared/model/classes";
 import { DataSourceSchema } from "@plasmicapp/data-sources";
-import { Popover, Tooltip } from "antd";
+import { Tooltip } from "antd";
 import { debounce } from "lodash";
 import isEqual from "lodash/isEqual";
 import memoizeOne from "memoize-one";
@@ -57,7 +66,7 @@ import React, {
   useState,
 } from "react";
 import ReactDOM from "react-dom";
-import { usePrevious } from "react-use";
+import { useMountedState, usePrevious } from "react-use";
 import {
   BasePoint,
   Editor,
@@ -127,6 +136,8 @@ export interface TemplatedTextEditorProps {
   component?: Component;
   "data-plasmic-prop"?: string;
   exprCtx: ExprCtx;
+  title?: string;
+  bindingTarget?: BindingIdentity;
 }
 
 const editorCache = new WeakMap<
@@ -143,7 +154,7 @@ const editorCache = new WeakMap<
 // and reset)
 const resetNodes: typeof doResetNodes = (editor, options) => {
   const fn = xSetDefault(editorCache, editor, () =>
-    debounce((opts) => doResetNodes(editor, opts), 0)
+    debounce((opts) => doResetNodes(editor, opts), 0),
   );
   fn(options);
 };
@@ -171,9 +182,11 @@ export const TemplatedTextEditor = React.forwardRef<
       component,
       prefix,
       multiLine,
+      title,
+      bindingTarget,
       "data-plasmic-prop": dataPlasmicProp,
     },
-    outerRef
+    outerRef,
   ) => {
     const multiLineAllowed = multiLine === "allowed";
 
@@ -184,38 +197,16 @@ export const TemplatedTextEditor = React.forwardRef<
           : withCodeTag(
               withSingleLine(
                 withReact(withHistory(createEditor())),
-                multiLineAllowed
-              )
+                multiLineAllowed,
+              ),
             ),
-      []
+      [],
     );
 
     const [validSqlString, setValidSqlString] = React.useState(true);
+    const [moved, setMoved] = useState(false);
     const studioCtx = useStudioCtx();
     const viewCtx = studioCtx.focusedViewCtx();
-
-    const slateContainerRef = React.useRef<HTMLDivElement>(null);
-    const ctx = useContext(ContextMenuContext);
-    const insertDynamicValue = React.useCallback(() => {
-      if (!templatedString) {
-        ctx.useDynamicValue();
-      } else {
-        insertCodeTag(editor);
-      }
-    }, [templatedString, editor, ctx]);
-    React.useImperativeHandle<PropEditorRef, PropEditorRef>(
-      outerRef,
-      () => ({
-        focus: () => {
-          ReactEditor.focus(editor);
-          Transforms.select(editor, Editor.end(editor, []));
-        },
-        isFocused: () => ReactEditor.isFocused(editor),
-        element: slateContainerRef.current,
-        useDynamicValue: insertDynamicValue,
-      }),
-      [slateContainerRef, editor, insertDynamicValue]
-    );
 
     const exprCtx = React.useMemo(
       () => ({
@@ -224,12 +215,45 @@ export const TemplatedTextEditor = React.forwardRef<
         projectId: viewCtx?.siteInfo.id,
         inStudio: true,
       }),
-      [component, studioCtx]
+      [component, studioCtx],
+    );
+
+    const slateContainerRef = React.useRef<HTMLDivElement>(null);
+    const ctx = useContext(ContextMenuContext);
+    const insertDynamicValue = React.useCallback(
+      (expr?: ObjectPath | CustomCode, dropPt?: Pt) => {
+        if (!templatedString && !expr) {
+          ctx.useDynamicValue();
+          return;
+        }
+        if (expr) {
+          Transforms.select(
+            editor,
+            (dropPt && findDropRange(editor, dropPt)) ?? Editor.end(editor, []),
+          );
+        }
+        insertCodeTag(
+          editor,
+          expr,
+          expr ? asCode(expr, exprCtx).code : undefined,
+        );
+      },
+      [templatedString, editor, ctx, exprCtx],
+    );
+    React.useImperativeHandle<PropEditorRef, PropEditorRef>(
+      outerRef,
+      () => ({
+        focus: () => focusSlateEditor(editor, "end"),
+        isFocused: () => ReactEditor.isFocused(editor),
+        element: slateContainerRef.current,
+        useDynamicValue: insertDynamicValue,
+      }),
+      [slateContainerRef, editor, insertDynamicValue],
     );
 
     const value = React.useMemo(
       () => parseTemplatedStringToSlateNodes(templatedString, exprCtx),
-      [templatedString, exprCtx]
+      [templatedString, exprCtx],
     );
 
     const isEmptyTextSlateDescendant = (descendants: Descendant[]) => {
@@ -238,6 +262,16 @@ export const TemplatedTextEditor = React.forwardRef<
       }
       return getTextFromDescendents(descendants, exprCtx) === "``";
     };
+
+    const queryText = templatedString
+      ? flattenTemplatedStringToString(templatedString)
+      : "";
+    const { openMenu, getComboboxProps, getInputProps, menu } =
+      useDataTokenSuggestionsMenu({
+        category: "string",
+        queryText,
+        openDelayMs: 200,
+      });
 
     const onSlateChange = React.useCallback(
       async (newValue: Descendant[]) => {
@@ -255,6 +289,11 @@ export const TemplatedTextEditor = React.forwardRef<
 
         const newVal = resolveTemplatedString(newValue);
 
+        // Update the hover caret after Slate applies the edit. Rendering during
+        // keydown can clear the DOM selection before the browser uses it.
+        setMoved(false);
+        openMenu();
+
         if (sql) {
           if (!(await isValidSqlString(newVal))) {
             setValidSqlString(false);
@@ -266,7 +305,7 @@ export const TemplatedTextEditor = React.forwardRef<
 
         onChange(newVal);
       },
-      [value, onChange, sql]
+      [value, onChange, sql, openMenu],
     );
 
     const renderElementFn = React.useMemo(
@@ -278,9 +317,20 @@ export const TemplatedTextEditor = React.forwardRef<
           showExpressionAsPreviewValue,
           exprCtx,
           prefix,
-          disabled
+          disabled,
+          title,
+          bindingTarget,
+          () => onChange(resolveTemplatedString(editor.children)),
         ),
-      [data, schema, showExpressionAsPreviewValue, prefix]
+      [
+        data,
+        schema,
+        showExpressionAsPreviewValue,
+        prefix,
+        title,
+        bindingTarget,
+        onChange,
+      ],
     );
 
     const decorate = useCallback(([node, path]) => {
@@ -309,8 +359,6 @@ export const TemplatedTextEditor = React.forwardRef<
       return ranges;
     }, []);
 
-    const [moved, setMoved] = useState(false);
-
     const previousValue = React.useRef(value);
     // Slate doesn't support changing the values externally, so we need to keep
     // track of it
@@ -326,7 +374,7 @@ export const TemplatedTextEditor = React.forwardRef<
     }, [value, component, studioCtx]);
 
     return (
-      <div className="flex-col fill-width">
+      <div {...getComboboxProps()} className="flex-col fill-width">
         <div
           ref={slateContainerRef}
           onPointerMove={() => setMoved(true)}
@@ -352,7 +400,7 @@ export const TemplatedTextEditor = React.forwardRef<
                   "fill-width": true,
                   code: !!sql,
                 },
-                className
+                className,
               )}
               renderElement={renderElementFn}
               renderLeaf={sql ? renderSqlLeaf : renderLeaf}
@@ -361,21 +409,21 @@ export const TemplatedTextEditor = React.forwardRef<
               placeholder={placeholder}
               readOnly={readOnly || disabled}
               disabled={disabled}
-              onKeyDown={(event) => {
-                setMoved(false);
-                onKeyDown?.(event);
-              }}
-              onBlur={onBlur}
+              {...getInputProps({
+                onKeyDown,
+                onBlur: (event) => onBlur?.(event),
+              })}
             />
           </Slate>
         </div>
+        {menu}
         <div className="flex-row fill-width">
           {sql && !validSqlString && (
             <small className={cx(styles.errorMsg, "flex-no-shrink")}>
               Invalid SQL string
             </small>
           )}
-          {sql && dataSourceSchema && (
+          {sql && dataSourceSchema && studioCtx.codeCopilotEnabled() && (
             <CopilotCodePrompt
               className="mt-sm"
               data={data}
@@ -383,7 +431,7 @@ export const TemplatedTextEditor = React.forwardRef<
                 resetNodes(editor, {
                   nodes: parseTemplatedStringToSlateNodes(
                     interpolatedStringToTemplatedString(str),
-                    exprCtx
+                    exprCtx,
                   ) as SlateDescendant[],
                 });
               }}
@@ -391,7 +439,9 @@ export const TemplatedTextEditor = React.forwardRef<
               dataSourceSchema={dataSourceSchema}
               currentValue={templatedString?.text
                 .map((v) =>
-                  typeof v === "string" ? v : `{{ ${asCode(v, exprCtx).code} }}`
+                  typeof v === "string"
+                    ? v
+                    : `{{ ${asCode(v, exprCtx).code} }}`,
                 )
                 .join("")}
             />
@@ -399,7 +449,7 @@ export const TemplatedTextEditor = React.forwardRef<
         </div>
       </div>
     );
-  }
+  },
 );
 
 // Ensures the syntax is correct and the dynamic values can become parameters
@@ -460,7 +510,7 @@ function renderSqlLeaf({ attributes, children, leaf }: RenderLeafProps) {
       | "special"
       | "bracket"
       | "clear"
-      | undefined
+      | undefined,
   ): string | undefined => {
     switch (segmentType) {
       case "bracket":
@@ -510,7 +560,10 @@ function renderElement(
   showExpressionAsPreviewValue: boolean | undefined,
   exprCtx: ExprCtx | undefined,
   prefix: string | undefined,
-  disabled: boolean | undefined
+  disabled: boolean | undefined,
+  title: string | undefined,
+  bindingTarget: BindingIdentity | undefined,
+  onDetachedChange: () => void,
 ) {
   switch (props.element.type as string) {
     case "code-tag":
@@ -522,6 +575,9 @@ function renderElement(
           exprCtx={exprCtx}
           showExpressionAsPreviewValue={showExpressionAsPreviewValue}
           disabled={disabled}
+          title={title}
+          bindingTarget={bindingTarget}
+          onDetachedChange={onDetachedChange}
         />
       );
     default:
@@ -531,7 +587,7 @@ function renderElement(
 
 function withSingleLine<T extends Editor>(
   editor: T,
-  multiLineAllowed: boolean | undefined
+  multiLineAllowed: boolean | undefined,
 ): T {
   const { normalizeNode, insertText } = editor;
 
@@ -609,7 +665,7 @@ function withCodeTag<T extends Editor>(editor: T): T {
               const curValue: any = element.jsSnippet;
               const newValue = createExprForDataPickerValue(
                 curValue.path ?? curValue.code,
-                codeLit(curValue.fallback?.code)
+                codeLit(curValue.fallback?.code),
               );
               element.jsSnippet = newValue;
             }
@@ -627,7 +683,7 @@ function withCodeTag<T extends Editor>(editor: T): T {
 
 function parseTemplatedStringToSlateNodes(
   value: TemplatedString | undefined,
-  exprCtx: ExprCtx
+  exprCtx: ExprCtx,
 ): Descendant[] {
   return value
     ? [
@@ -681,10 +737,10 @@ function resolveTemplatedString(nodes: Descendant[]): TemplatedString {
       node["type"] === "code-tag"
         ? node["jsSnippet"]
         : node["type"] === "paragraph"
-        ? idx === _nodes.length - 1
-          ? traverseTree(node["children"])
-          : [...traverseTree(node["children"]), "\n"]
-        : node["text"]
+          ? idx === _nodes.length - 1
+            ? traverseTree(node["children"])
+            : [...traverseTree(node["children"]), "\n"]
+          : node["text"],
     );
   };
 
@@ -692,15 +748,17 @@ function resolveTemplatedString(nodes: Descendant[]): TemplatedString {
 }
 
 interface CodeTagProps {
+  bindingTarget?: BindingIdentity;
+  onDetachedChange: () => void;
   element: CodeTagNode;
-  // eslint-disable-next-line @typescript-eslint/ban-types
-  attributes: Object;
+  attributes: RenderElementProps["attributes"];
   children: React.ReactElement;
   data: Record<string, any> | undefined;
   schema?: DataPickerTypesSchema;
   showExpressionAsPreviewValue?: boolean;
   disabled?: boolean;
   exprCtx: ExprCtx;
+  title?: string;
 }
 
 /**
@@ -718,7 +776,13 @@ function CodeTag({
   showExpressionAsPreviewValue,
   disabled,
   exprCtx,
+  title,
+  bindingTarget,
+  onDetachedChange,
 }: CodeTagProps) {
+  const pickerRef = React.useRef<DataPickerTriggerHandle>(null);
+  const chipId = React.useId();
+  const isMounted = useMountedState();
   const [explicitlyOpened, setExplicitlyOpened] = React.useState(false);
   const [open, setOpen] = React.useState(() => element.openDataPicker ?? false);
   const editor = useSlateStatic();
@@ -728,7 +792,7 @@ function CodeTag({
   const wasOpen = usePrevious(open);
   // Restore focus on the input when exiting the popover.
   useEffect(() => {
-    if (!open && wasOpen) {
+    if (!DEVFLAGS.dockview && !open && wasOpen) {
       spawn(
         (async () => {
           while (!ReactEditor.isFocused(editor)) {
@@ -750,7 +814,7 @@ function CodeTag({
             }
             await delay(10);
           }
-        })()
+        })(),
       );
     }
   }, [open]);
@@ -760,6 +824,12 @@ function CodeTag({
       Transforms.setNodes(editor, { openDataPicker: false } as any, {
         at: path,
       });
+      if (DEVFLAGS.dockview) {
+        // Slate queues onChange for the new chip. Capture the binding only after
+        // that initial write, so it is not mistaken for an external edit.
+        const picker = pickerRef.current;
+        window.setTimeout(() => picker?.open(), 0);
+      }
     }
   }, [element, path, editor]);
 
@@ -777,7 +847,7 @@ function CodeTag({
           return pathToDisplayString(
             element.jsSnippet.path,
             site,
-            exprCtx.projectId
+            exprCtx.projectId,
           );
         }
       }
@@ -789,65 +859,54 @@ function CodeTag({
 
   const value = extractValueSavedFromDataPicker(element.jsSnippet, exprCtx);
 
-  // Prevent double click from closing modal if already selected.
-  const preventPopoverClosingRef = useRef(false);
-  const preventAccidentalPopoverClosing = () => {
-    preventPopoverClosingRef.current = true;
-
-    // Loose attempt. Should really be canceling and resetting timeout.
-    setTimeout(() => {
-      preventPopoverClosingRef.current = false;
-    }, 500 /* Default double click delay */);
-  };
-
   return (
-    <Popover
-      zIndex={zIndex.dataPicker}
-      content={
-        <DataPicker
-          value={value}
-          onChange={(val) => {
-            val = val || "";
-            const newExpr = createExprForDataPickerValue(
-              val,
-              element.jsSnippet?.fallback
-                ? clone(element.jsSnippet.fallback)
-                : undefined
-            );
-            Transforms.setNodes(
-              editor,
-              {
-                label: asCode(newExpr, exprCtx).code,
-                jsSnippet: newExpr,
-              } as any,
-              {
-                at: path,
-              }
-            );
-            setOpen(false);
-          }}
-          onDelete={() => {
-            setOpen(false);
-            Transforms.delete(editor, { at: path });
-          }}
-          onCancel={() => setOpen(false)}
-          data={data}
-          schema={schema}
-        />
-      }
+    <DataPickerTrigger
+      ref={pickerRef}
       visible={open}
-      // We want this only so that the popover dismisses on click outside,
-      // and doesn't dismiss on pointer leave.
-      trigger={"click"}
-      onVisibleChange={(newOpen) => {
-        if (!newOpen && preventPopoverClosingRef.current) {
+      setVisible={setOpen}
+      title={title ?? "Dynamic value"}
+      picker={{
+        value,
+        target: bindingTarget && {
+          exists: bindingTarget.exists,
+          read: bindingTarget.read,
+          key: `${bindingTarget.key}:chip:${chipId}`,
+        },
+        onChange: (val) => {
+          val = val || "";
+          const newExpr = createExprForDataPickerValue(
+            val,
+            element.jsSnippet?.fallback
+              ? clone(element.jsSnippet.fallback)
+              : undefined,
+          );
+          Transforms.setNodes(
+            editor,
+            {
+              label: asCode(newExpr, exprCtx).code,
+              jsSnippet: newExpr,
+            } as any,
+            {
+              at: path,
+            },
+          );
+          // A docked draft can outlive its field after selection or variant changes.
+          if (!isMounted()) {
+            onDetachedChange();
+          }
           setOpen(false);
-        } else {
-          preventAccidentalPopoverClosing();
-        }
+        },
+        onDelete: () => {
+          setOpen(false);
+          Transforms.delete(editor, { at: path });
+          if (!isMounted()) {
+            onDetachedChange();
+          }
+        },
+        onCancel: () => setOpen(false),
+        data,
+        schema,
       }}
-      destroyTooltipOnHide={true}
-      overlayClassName="data-picker-popover-overlay"
     >
       <div
         {...attributes}
@@ -857,22 +916,19 @@ function CodeTag({
           if (disabled) {
             return;
           }
-          // In most text editors, clicking an object like this selects it rather than interacts with it, but we're choosing to interact (open) because it's common.
-          // We tolerate single click to open because we also show a Delete button inside the modal, which is a very common thing you want to do with pills.
-          // To do other operations, like cutting/copying, you'll need to edit it or maneuver with keyboard.
-          setOpen(true);
+          pickerRef.current?.open();
           setExplicitlyOpened(true);
         }}
         className={cx(
           "inline-block",
           "code-chip",
-          selected && "right-panel-input-background-selected"
+          selected && "right-panel-input-background-selected",
         )}
       >
         {children}
         {previewValue}
       </div>
-    </Popover>
+    </DataPickerTrigger>
   );
 }
 
@@ -967,7 +1023,7 @@ function CustomCaret({
 
   const cachedAnchor = React.useMemo(
     () => selection?.anchor,
-    [JSON.stringify(selection?.anchor ?? null)]
+    [JSON.stringify(selection?.anchor ?? null)],
   );
 
   const ctx = useContext(ContextMenuContext);
@@ -979,7 +1035,7 @@ function CustomCaret({
     () => {
       wasFocused.current = focused;
     },
-    [focused]
+    [focused],
   );
   useSignalListener(
     ctx.onClickSignal,
@@ -1004,7 +1060,7 @@ function CustomCaret({
       boundingClientRect,
       slateContainerRef.current,
       onCaretClick,
-    ]
+    ],
   );
 
   if (!boundingClientRect || !slateContainerRef.current || !cachedAnchor) {
@@ -1017,7 +1073,7 @@ function CustomCaret({
       left={Math.round(boundingClientRect.left)}
       anchor={cachedAnchor}
     />,
-    slateContainerRef.current
+    slateContainerRef.current,
   );
 }
 
@@ -1075,16 +1131,48 @@ function CaretUI({ top, left }: CaretUIProps) {
   );
 }
 
-function insertCodeTag(editor: Editor) {
+/** Maps a drop point to the editor location, if any. */
+function findDropRange(editor: Editor, dropPt: Pt): Range | undefined {
+  // The full-screen transparent drag guard is still mounted while the drop is being handled, and it
+  // would swallow all point-based hit-testing.
+  const guards = Array.from(
+    document.querySelectorAll<HTMLElement>(".drag-guard"),
+  );
+  const prevPointerEvents = guards.map((g) => g.style.pointerEvents);
+  guards.forEach((g) => (g.style.pointerEvents = "none"));
+  try {
+    const target = document.elementFromPoint(dropPt.x, dropPt.y);
+    if (!target) {
+      return undefined;
+    }
+    return ReactEditor.findEventRange(editor, {
+      clientX: dropPt.x,
+      clientY: dropPt.y,
+      target,
+    });
+  } catch {
+    return undefined;
+  } finally {
+    guards.forEach((g, i) => (g.style.pointerEvents = prevPointerEvents[i]));
+  }
+}
+
+function insertCodeTag(
+  editor: Editor,
+  droppedExpr?: ObjectPath | CustomCode,
+  label?: string,
+) {
   const element = {
     type: "code-tag",
     children: [{ text: "" }],
-    label: "",
-    jsSnippet: new ObjectPath({
-      path: ["undefined"],
-      fallback: codeLit(undefined),
-    }),
-    openDataPicker: true,
+    label: label ?? "",
+    jsSnippet:
+      droppedExpr ??
+      new ObjectPath({
+        path: ["undefined"],
+        fallback: codeLit(undefined),
+      }),
+    openDataPicker: !droppedExpr,
   };
   const previous = Editor.previous(editor);
   const nodes: Node[] = [element as Node];

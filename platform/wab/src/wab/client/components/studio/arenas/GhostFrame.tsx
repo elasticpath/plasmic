@@ -8,7 +8,6 @@ import {
 import PlusIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Plus";
 import { cx, mkShortId } from "@/wab/shared/common";
 import { Dropdown, Popover, Tooltip } from "antd";
-import { isString } from "lodash";
 import React, {
   useCallback,
   useEffect,
@@ -40,7 +39,7 @@ export const GhostFrame = React.forwardRef(function GhostFrame_(
     popover?: () => React.ReactElement;
     "aria-label"?: string;
   },
-  ref: React.Ref<GhostFrameRef>
+  ref: React.Ref<GhostFrameRef>,
 ) {
   const {
     tooltip,
@@ -57,11 +56,11 @@ export const GhostFrame = React.forwardRef(function GhostFrame_(
 
   const height = Math.max(
     GHOST_FRAME_MIN_DIM,
-    Math.min(GHOST_FRAME_MAX_DIM, heightProp)
+    Math.min(GHOST_FRAME_MAX_DIM, heightProp),
   );
   const width = Math.max(
     GHOST_FRAME_MIN_DIM,
-    Math.min(GHOST_FRAME_MAX_DIM, widthProp)
+    Math.min(GHOST_FRAME_MAX_DIM, widthProp),
   );
 
   const plusIconSize = 48;
@@ -110,7 +109,8 @@ export const GhostFrame = React.forwardRef(function GhostFrame_(
         width,
       }}
       aria-label={
-        props["aria-label"] ?? (isString(tooltip) ? tooltip : undefined)
+        props["aria-label"] ??
+        (typeof tooltip === "string" ? tooltip : undefined)
       }
       onClick={onClick}
       {...rest}
@@ -137,7 +137,7 @@ export const GhostFrame = React.forwardRef(function GhostFrame_(
   if (menu) {
     content = (
       <Dropdown
-        visible={showMenu}
+        open={showMenu}
         overlayClassName={menuOverlayClassName}
         onVisibleChange={(show) => setShowMenu(show)}
         transitionName=""

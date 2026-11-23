@@ -3,7 +3,7 @@ import {
   shouldIgnoreError,
 } from "@/wab/client/ErrorNotifications";
 import { AppCtx } from "@/wab/client/app-ctx";
-import { PostHogAnalytics } from "@/wab/client/observability/posthog-browser";
+import { isExpectedApiError } from "@/wab/client/observability/expected-errors";
 import type { StudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { UserError } from "@/wab/shared/UserError";
 import { CustomError, hackyCast, withoutFalsy } from "@/wab/shared/common";
@@ -12,7 +12,7 @@ import { getMaximumTier } from "@/wab/shared/pricing/pricing-utils";
 import * as Sentry from "@sentry/browser";
 import * as Integrations from "@sentry/integrations";
 import { onReactionError } from "mobx";
-import { posthog } from "posthog-js";
+import type { PostHog } from "posthog-js";
 
 export function initSentryBrowser(opts: {
   production: boolean;
@@ -20,7 +20,7 @@ export function initSentryBrowser(opts: {
   dsn: string;
   orgId: string;
   projId: number;
-  posthogAnalytics: PostHogAnalytics;
+  posthog?: PostHog;
 }) {
   if (!opts.production) {
     return;
@@ -28,14 +28,15 @@ export function initSentryBrowser(opts: {
   Sentry.init({
     dsn: opts.dsn,
     release: opts.commitHash,
-    integrations: [
+    integrations: withoutFalsy([
       new Integrations.Dedupe(),
-      new posthog.SentryIntegration(
-        opts.posthogAnalytics.ph,
-        opts.orgId,
-        opts.projId
-      ),
-    ],
+      opts.posthog &&
+        new opts.posthog.SentryIntegration(
+          opts.posthog,
+          opts.orgId,
+          opts.projId,
+        ),
+    ]),
     ignoreErrors: ERROR_PATTERNS_TO_IGNORE,
     beforeSend(event, hint) {
       if (
@@ -47,6 +48,10 @@ export function initSentryBrowser(opts: {
       }
 
       if (hint && hint.originalException instanceof UserError) {
+        return null;
+      }
+
+      if (isExpectedApiError(hint?.originalException)) {
         return null;
       }
 
@@ -81,7 +86,7 @@ export function initSentryBrowser(opts: {
       }
 
       const studioCtx = hackyCast<StudioCtx | undefined>(
-        hackyCast(window).studioCtx
+        hackyCast(window).studioCtx,
       );
       const maybeProjectId = studioCtx?.siteInfo.id;
       if (maybeProjectId) {
@@ -107,7 +112,7 @@ export function initSentryBrowser(opts: {
         event.tags.tier = "plasmic";
       } else {
         const userTiers = withoutFalsy(
-          appCtx?.teams.map((t) => t.featureTier?.name) ?? []
+          appCtx?.teams.map((t) => t.featureTier?.name) ?? [],
         );
         event.tags.tier = getMaximumTier(userTiers);
       }

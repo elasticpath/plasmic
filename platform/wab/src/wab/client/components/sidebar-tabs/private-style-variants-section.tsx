@@ -8,6 +8,7 @@ import { makeVariantsController } from "@/wab/client/components/variants/Variant
 import { makeVariantMenu } from "@/wab/client/components/variants/variant-menu";
 import { IconLinkButton } from "@/wab/client/components/widgets";
 import { ElementVariantsTooltip } from "@/wab/client/components/widgets/DetailedTooltips";
+import { EditableLabelHandles } from "@/wab/client/components/widgets/EditableLabel/EditableLabel";
 import { Icon } from "@/wab/client/components/widgets/Icon";
 import { LabelWithDetailedTooltip } from "@/wab/client/components/widgets/LabelWithDetailedTooltip";
 import PlusIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Plus";
@@ -19,6 +20,7 @@ import {
   getPrivateStyleVariantsForTag,
 } from "@/wab/shared/Variants";
 import { spawn } from "@/wab/shared/common";
+import { isPageComponent } from "@/wab/shared/core/components";
 import { TplTag, Variant } from "@/wab/shared/model/classes";
 import { observer } from "mobx-react";
 import React from "react";
@@ -35,6 +37,7 @@ export const PrivateStyleVariantsPanel = observer(
     const [editingVariant, setEditingVariant] = React.useState<
       Variant | undefined
     >(undefined);
+    const labelRefs = React.useRef(new Map<string, EditableLabelHandles>());
 
     if (!viewCtx.valState().maybeValSysRoot()) {
       return null;
@@ -56,10 +59,14 @@ export const PrivateStyleVariantsPanel = observer(
 
         ensureVariantSetting(tpl, [variant]);
         setEditingVariant(variant);
+        labelRefs.current.get(variant.uuid)?.setEditing(true);
         vcontroller.onAddedVariant(variant);
       });
 
     const privateStyleVariants = getPrivateStyleVariantsForTag(component, tpl);
+
+    const isRoot = tpl === component.tplTree;
+    const isPageRoot = isRoot && isPageComponent(component);
 
     // Get the current component variant combo (excluding private style variants and base variant)
     // This is needed to properly scope animations for VariantCombo [ComponentVariant, PrivateStyleVariant]
@@ -70,7 +77,7 @@ export const PrivateStyleVariantsPanel = observer(
     // Check if any private style variant for this tpl is currently targeted
     const targetedVariants = vcontroller.getTargetedVariants();
     const hasTargetedPrivateVariant = privateStyleVariants.some((v) =>
-      targetedVariants.includes(v)
+      targetedVariants.includes(v),
     );
 
     return (
@@ -86,11 +93,19 @@ export const PrivateStyleVariantsPanel = observer(
         }
         isHeaderActive={privateStyleVariants.length > 0}
         onHeaderClick={
-          privateStyleVariants.length === 0 ? addPrivateVariant : undefined
+          privateStyleVariants.length === 0 && !isPageRoot
+            ? addPrivateVariant
+            : undefined
         }
         controls={
           <IconLinkButton
             data-test-id="add-private-interaction-variant-button"
+            disabled={isPageRoot}
+            tooltip={
+              isPageRoot
+                ? "Element variants are not available on the page root"
+                : undefined
+            }
             onClick={addPrivateVariant}
           >
             <Icon icon={PlusIcon} />
@@ -111,7 +126,7 @@ export const PrivateStyleVariantsPanel = observer(
             }
             onClick={() =>
               studioCtx.changeUnsafe(() =>
-                pinManager.removeSelectedVariants(privateStyleVariants)
+                pinManager.removeSelectedVariants(privateStyleVariants),
               )
             }
           />
@@ -156,17 +171,17 @@ export const PrivateStyleVariantsPanel = observer(
                           spawn(
                             studioCtx
                               .siteOps()
-                              .removeVariant(component, variant)
-                          )
-                        )
+                              .removeVariant(component, variant),
+                          ),
+                        ),
                       ),
                     onCopyTo: (toVariant) =>
                       spawn(
                         studioCtx.changeUnsafe(() =>
                           studioCtx
                             .tplMgr()
-                            .copyToVariant(component, variant, toVariant)
-                        )
+                            .copyToVariant(component, variant, toVariant),
+                        ),
                       ),
                     previewAnimation:
                       animations.length > 0
@@ -188,6 +203,13 @@ export const PrivateStyleVariantsPanel = observer(
                   additional={animationsList}
                   label={
                     <StyleOrCodeComponentVariantLabel
+                      ref={(handle) => {
+                        if (handle) {
+                          labelRefs.current.set(variant.uuid, handle);
+                        } else {
+                          labelRefs.current.delete(variant.uuid);
+                        }
+                      }}
                       variant={variant}
                       forTag={tpl.tag}
                       forRoot={tpl === component.tplTree}
@@ -206,5 +228,5 @@ export const PrivateStyleVariantsPanel = observer(
         </div>
       </SidebarSection>
     );
-  }
+  },
 );

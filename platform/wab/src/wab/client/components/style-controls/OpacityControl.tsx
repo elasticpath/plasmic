@@ -16,7 +16,7 @@ interface OpacityControlProps {
 }
 
 export const OpacityControl = observer(function OpacityControl(
-  props: OpacityControlProps
+  props: OpacityControlProps,
 ) {
   const { expsProvider } = props;
   const styling = useStyleComponent();
@@ -40,7 +40,7 @@ export const OpacityControl = observer(function OpacityControl(
       : parseFloat(val || "1");
 
     styling.change(() => {
-      if (val === undefined || (isNaN(newVal) && !isTokenRef(val))) {
+      if (val === undefined || (Number.isNaN(newVal) && !isTokenRef(val))) {
         styling.exp().clear("opacity");
       } else {
         styling

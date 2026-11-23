@@ -1,8 +1,8 @@
-/** @jest-environment node */
+/** @vitest-environment node */
 import {
   setupSsrfTestServers,
   SsrfTestServers,
-} from "@/wab/server/testonly/test-server";
+} from "@/wab/server/__testonly__/test-server";
 import { triggerWebhookOnly } from "@/wab/server/trigger-webhooks";
 
 describe("triggerWebhookOnly", () => {
@@ -42,6 +42,17 @@ describe("triggerWebhookOnly", () => {
       data: "Invalid URL",
     });
     expect(ssrf!.internalServer.requestCount()).toBe(0);
+  });
+
+  it("reports a malformed URL as an invalid URL result", async () => {
+    expect(
+      await triggerWebhookOnly({
+        method: "GET",
+        url: "htp//not a url",
+        headers: [],
+        payload: "",
+      }),
+    ).toEqual({ status: 400, data: "Invalid URL" });
   });
 
   it("does not follow redirects", async () => {

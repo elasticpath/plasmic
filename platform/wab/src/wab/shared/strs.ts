@@ -8,6 +8,10 @@ export function decapitalizeFirst(text: string) {
   return decapitalize(text);
 }
 
+export function maybeUnquote(text: string) {
+  return text.replace(/^(['"])(.*)\1$/, "$2");
+}
+
 /**
  * From https://stackoverflow.com/questions/7930751/regexp-for-subdomain
  */
@@ -24,6 +28,6 @@ export function isValidSubdomainPart(subdomain: string) {
 export function smartHumanize(text: string) {
   return capitalize(underscored(text).replace(/_/g, " ").trim()).replace(
     /\bid\b/gi,
-    "ID"
+    "ID",
   );
 }

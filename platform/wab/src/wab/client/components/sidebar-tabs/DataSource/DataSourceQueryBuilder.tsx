@@ -31,7 +31,7 @@ import {
   WidgetProps,
 } from "@react-awesome-query-builder/antd";
 import cn from "classnames";
-import { isNil, isString, merge, pick } from "lodash";
+import { isNil, merge, pick } from "lodash";
 import * as React from "react";
 
 const InitialConfig = QueryBuilderConfig;
@@ -43,7 +43,7 @@ const baseConfig: Config = {
 interface DataSourceQueryBuilderProps {
   saveTree: (
     data: Filters,
-    bindings: Record<string, TemplatedString | CustomCode | ObjectPath>
+    bindings: Record<string, TemplatedString | CustomCode | ObjectPath>,
   ) => void;
   logic?: any;
   tree: JsonTree | undefined;
@@ -53,11 +53,12 @@ interface DataSourceQueryBuilderProps {
   schema?: DataPickerTypesSchema;
   bindings: Record<string, TemplatedString | CustomCode | ObjectPath>;
   exprCtx: ExprCtx;
+  disabled?: boolean;
 }
 
 function DataSourceQueryBuilder_(
   props: DataSourceQueryBuilderProps,
-  outerRef: React.Ref<HTMLDivElement>
+  outerRef: React.Ref<HTMLDivElement>,
 ) {
   const {
     saveTree,
@@ -69,6 +70,7 @@ function DataSourceQueryBuilder_(
     schema,
     bindings: defaultBindings,
     exprCtx,
+    disabled,
   } = props;
 
   const fields = Object.entries(defaultFields)
@@ -88,11 +90,20 @@ function DataSourceQueryBuilder_(
 
     return {
       ...mergedConfig,
+      settings: {
+        ...mergedConfig.settings,
+        ...(disabled && {
+          immutableGroupsMode: true,
+          immutableFieldsMode: true,
+          immutableOpsMode: true,
+          immutableValuesMode: true,
+        }),
+      },
       fields: {
         ...fields,
       },
     } as Config;
-  }, [dataSourceConfig, fields]);
+  }, [dataSourceConfig, fields, disabled]);
 
   // We create a ref to `data` to use it in query builder widgets factory
   // below, so that the widget factory always use the latest/current
@@ -104,7 +115,7 @@ function DataSourceQueryBuilder_(
 
   const types = React.useMemo(
     () => ["boolean", "number", "datetime", "date", "select"],
-    []
+    [],
   );
 
   const [state, setState] = React.useState<{
@@ -154,7 +165,7 @@ function DataSourceQueryBuilder_(
                     : undefined;
 
                 const setValue = (
-                  expr: CustomCode | ObjectPath | null | undefined
+                  expr: CustomCode | ObjectPath | null | undefined,
                 ) => {
                   if (isNil(expr)) {
                     widgetProps.setValue(undefined);
@@ -180,7 +191,7 @@ function DataSourceQueryBuilder_(
                     renderOriginalWidget={() =>
                       ensure(
                         baseConfig.widgets[widgetType].factory,
-                        () => `No factory for widget: ${widgetType}`
+                        () => `No factory for widget: ${widgetType}`,
                       )(widgetPropsWithRealValue as any, context)
                     }
                     exprCtx={exprCtx}
@@ -188,7 +199,7 @@ function DataSourceQueryBuilder_(
                 );
               },
             },
-          ])
+          ]),
         ),
       },
       types: Object.fromEntries(
@@ -205,10 +216,10 @@ function DataSourceQueryBuilder_(
               config.types[type],
               "excludeOperators",
               "defaultOperator",
-              "valueSources"
+              "valueSources",
             ),
           },
-        ])
+        ]),
       ),
       fields: Object.fromEntries(
         Object.entries(config.fields)
@@ -229,17 +240,18 @@ function DataSourceQueryBuilder_(
                 validateValue: (v) => {
                   // TODO: Better validation for select / datetime?
                   return (
-                    (isString(v) && isDynamicValue(v)) ||
+                    (typeof v === "string" && isDynamicValue(v)) ||
                     typeof v === fieldConfig.type ||
                     `${typeof v}-custom` === fieldConfig.type ||
-                    (fieldConfig.type === "select" && isString(v)) ||
-                    (fieldConfig.type === "datetime" && isString(v)) ||
-                    (fieldConfig.type === "date" && isString(v))
+                    (fieldConfig.type === "select" && typeof v === "string") ||
+                    (fieldConfig.type === "datetime" &&
+                      typeof v === "string") ||
+                    (fieldConfig.type === "date" && typeof v === "string")
                   );
                 },
               },
             },
-          ])
+          ]),
       ),
     };
     return {
@@ -248,12 +260,12 @@ function DataSourceQueryBuilder_(
           ? QbUtils.loadTree(tree)
           : QbUtils.loadFromJsonLogic(
               logic,
-              merge({}, config, initialWidgetsConfig)
+              merge({}, config, initialWidgetsConfig),
             )) ??
         QbUtils.loadTree(
           getEmptyTree(merge({}, config, initialWidgetsConfig), {
             appendFirstField: true,
-          })
+          }),
         ),
       config: merge({}, config, initialWidgetsConfig),
     };

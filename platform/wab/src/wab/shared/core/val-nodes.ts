@@ -21,7 +21,7 @@ import {
   createRuleSetMerger,
   expandRuleSets,
 } from "@/wab/shared/core/styles";
-import { TplTagType, TplTextTag, ancestors } from "@/wab/shared/core/tpls";
+import { TplTextTag, ancestors } from "@/wab/shared/core/tpls";
 import { CanvasEnv } from "@/wab/shared/eval";
 import { SlotInfo, ValState } from "@/wab/shared/eval/val-state";
 import mobx from "@/wab/shared/import-mobx";
@@ -35,12 +35,11 @@ import {
   TplTag,
 } from "@/wab/shared/model/classes";
 import L, { uniq } from "lodash";
-import type React from "react";
 
 // Remove `readonly` modifier so the global hook can update the node's children.
 // Should only be called when updating the React tree nodes.
 export const writeableValNode = <T extends ValNode>(
-  v: T
+  v: T,
 ): { -readonly [P in keyof T]: T[P] } => v;
 
 export interface ValNodeParams {
@@ -56,10 +55,13 @@ export interface ValNodeParams {
 }
 export abstract class ValNode {
   static modelTypeName = "ValNode";
-  private readonly _envs = mobx.observable.box<{
-    env: CanvasEnv;
-    wrappingEnv: CanvasEnv;
-  }>(undefined, { deep: false });
+  private readonly _envs = mobx.observable.box<
+    | {
+        env: CanvasEnv;
+        wrappingEnv: CanvasEnv;
+      }
+    | undefined
+  >(undefined, { deep: false });
   constructor(args: ValNodeParams) {
     Object.assign(this, args);
   }
@@ -76,7 +78,7 @@ export abstract class ValNode {
     assert(
       !this.fullKey || this.fullKey === other.fullKey,
       () =>
-        `Expected fullKeys to match, but got: ${this.fullKey} and ${other.fullKey}`
+        `Expected fullKeys to match, but got: ${this.fullKey} and ${other.fullKey}`,
     );
     const writeableThis = writeableValNode(this);
     writeableThis.tpl = other.tpl;
@@ -106,6 +108,15 @@ export abstract class ValNode {
     this.copyFrom(other, { merge: false });
   }
 
+  /**
+   * The frame this ValNode was attached needs to be disposed, so clear any
+   * state that references it that might prevent release.
+   */
+  detachFrame() {
+    writeableValNode(this).fibers = [];
+    this._envs.set(undefined);
+  }
+
   declare readonly tpl: TplNode;
   declare readonly valOwner: ValComponent | null | undefined;
   declare readonly key: string;
@@ -127,11 +138,11 @@ export class ValTag extends ValNode {
   constructor(args: ValTagParams) {
     super(args);
   }
-  merge(other: ValTag) {
+  override merge(other: ValTag) {
     super.merge(other);
     writeableValNode(this).children = [...other.children];
   }
-  copy(other: ValTag) {
+  override copy(other: ValTag) {
     super.copy(other);
     writeableValNode(this).children = [...other.children];
   }
@@ -180,7 +191,7 @@ export class ValComponent extends ValNode {
   // haven't been gathered yet. We use this information when we merge or
   // copy; we never merge `undefined` contents into defined contents.
   private readonly _contents = mobx.observable.box<ValNode[] | undefined>(
-    undefined
+    undefined,
   );
   set contents(vals: ValNode[] | undefined) {
     this._contents.set(vals);
@@ -189,7 +200,7 @@ export class ValComponent extends ValNode {
     return this._contents.get();
   }
 
-  merge(other: ValComponent) {
+  override merge(other: ValComponent) {
     super.merge(other);
     insertMaps(this.slotArgs, other.slotArgs);
     insertMaps(this.slotCanvasEnvs, other.slotCanvasEnvs);
@@ -206,7 +217,7 @@ export class ValComponent extends ValNode {
     }
   }
 
-  copy(other: ValComponent) {
+  override copy(other: ValComponent) {
     super.copy(other);
     writeableValNode(this).slotArgs = new Map([...other.slotArgs.entries()]);
     writeableValNode(this).slotCanvasEnvs = new Map([
@@ -225,8 +236,14 @@ export class ValComponent extends ValNode {
     }
   }
 
+  override detachFrame() {
+    super.detachFrame();
+    this.slotCanvasEnvs.clear();
+    this.codeComponentProps = undefined;
+  }
+
   private _invalidArgs = mobx.observable.box<InvalidArgMeta[] | undefined>(
-    undefined
+    undefined,
   );
   get invalidArgs() {
     return this._invalidArgs.get();
@@ -252,11 +269,11 @@ export class ValSlot extends ValNode {
   constructor(args: ValSlotParams) {
     super(args);
   }
-  merge(other: ValSlot) {
+  override merge(other: ValSlot) {
     super.merge(other);
     writeableValNode(this).contents = other.contents && [...other.contents];
   }
-  copy(other: ValSlot) {
+  override copy(other: ValSlot) {
     super.copy(other);
     writeableValNode(this).contents = other.contents && [...other.contents];
   }
@@ -281,15 +298,20 @@ export class ValTextTag extends ValTag {
   constructor(args: ValTextParams) {
     super(args);
   }
-  merge(other: ValTextTag) {
+  override merge(other: ValTextTag) {
     super.merge(other);
     writeableValNode(this).handle = other.handle;
     writeableValNode(this).text = other.text;
   }
-  copy(other: ValTextTag) {
+  override copy(other: ValTextTag) {
     super.copy(other);
     writeableValNode(this).handle = other.handle;
     writeableValNode(this).text = other.text;
+  }
+  override detachFrame() {
+    super.detachFrame();
+    // The handle closes over the frame's text editor
+    writeableValNode(this).handle = undefined;
   }
   declare readonly tpl: TplTextTag;
   declare readonly handle:
@@ -338,7 +360,7 @@ export function cloneValNode<T extends ValNode>(valNode: T): T {
           ...commonParams,
           contents: valSlot.contents && [...valSlot.contents],
           tpl: valSlot.tpl,
-        })
+        }),
     )
     .when(
       ValTextTag,
@@ -350,7 +372,7 @@ export function cloneValNode<T extends ValNode>(valNode: T): T {
           tpl: valText.tpl,
           handle: valText.handle,
           text: valText.text,
-        })
+        }),
     )
     .when(
       ValTag,
@@ -360,7 +382,7 @@ export function cloneValNode<T extends ValNode>(valNode: T): T {
           children: [...valTag.children],
           className: valTag.className,
           tpl: valTag.tpl,
-        })
+        }),
     )
     .result();
   if (valNode.env && valNode.wrappingEnv) {
@@ -396,7 +418,7 @@ export function getValComponentChildren(val: ValComponent) {
     // this won't select slot placeholders.
     // really, want to navigate among slot placeholders too, but only the rendered ones and not all possible slots!
     return [...val.slotArgs.keys()].map(
-      (slotParam) => new SlotSelection({ val, slotParam })
+      (slotParam) => new SlotSelection({ val, slotParam }),
     );
   }
 }
@@ -407,7 +429,7 @@ export function getValChildren(val: ValNode): (ValNode | SlotSelection)[] {
     .when(ValTag, (valTag) => valTag.children)
     .when(ValSlot, (valSlot) => valSlot.contents?.map(slotContentValNode) || [])
     .when(ValComponent, (valComp: /*TWZ*/ ValComponent) =>
-      getValComponentChildren(valComp)
+      getValComponentChildren(valComp),
     )
     .result();
 }
@@ -427,8 +449,8 @@ export const slotHasDefaultContent = (slot: ValSlot) =>
   slot.contents.length === slot.tpl.defaultContents.length &&
   L.every(
     slot.contents.map(
-      (v, i) => slotContentValNode(v).tpl === slot.tpl.defaultContents[i]
-    )
+      (v, i) => slotContentValNode(v).tpl === slot.tpl.defaultContents[i],
+    ),
   );
 
 export function isSelectableValNode(valNode: ValNode) {
@@ -479,7 +501,7 @@ function bestValForTplInternal(
   frameNum: number,
   valState: ValState,
   initialSel: Selectable,
-  tplUserRoot: TplNode
+  tplUserRoot: TplNode,
 ): ValNode | undefined {
   //
   // Select everything through the frame before frameNum.
@@ -543,13 +565,11 @@ function bestValForTplInternal(
     valIndex = nextValIndex;
     tplIndex = nextTplIndex;
   }
-  if (
-    !(
-      valPath[valIndex] &&
-      tplPath[tplIndex] &&
-      valPath[valIndex].tpl === tplPath[tplIndex]
-    )
-  ) {
+  if (!(
+    valPath[valIndex] &&
+    tplPath[tplIndex] &&
+    valPath[valIndex].tpl === tplPath[tplIndex]
+  )) {
     return undefined;
   }
 
@@ -579,11 +599,11 @@ export function bestValForTpl(
   frameNum: number,
   valState: ValState,
   initialSel: Selectable,
-  tplUserRoot: TplNode
+  tplUserRoot: TplNode,
 ): Selectable | undefined {
   return switchType(target)
     .when(TplNode, (tpl) =>
-      bestValForTplInternal(tpl, frameNum, valState, initialSel, tplUserRoot)
+      bestValForTplInternal(tpl, frameNum, valState, initialSel, tplUserRoot),
     )
     .when(SlotSelection, (selection) => {
       const val = bestValForTplInternal(
@@ -591,7 +611,7 @@ export function bestValForTpl(
         frameNum,
         valState,
         initialSel,
-        tplUserRoot
+        tplUserRoot,
       );
       if (!val) {
         // The SlotSelection is not evaluated because it is hidden
@@ -605,36 +625,18 @@ export function bestValForTpl(
     .result();
 }
 
-export function isScrollableVal(val: ValTag) {
-  return getComputedStyleForVal(val).get("overflow") === "auto";
-}
-
 export function getValTagForValNode(val: ValTag | ValComponent): ValTag {
   return val instanceof ValTag
     ? val
     : getValTagForValNode(
-        ensureInstance(val.contents?.[0], ValTag, ValComponent)
+        ensureInstance(val.contents?.[0], ValTag, ValComponent),
       );
-}
-
-export function isValText(val: ValNode) {
-  if (!(val instanceof ValTag)) {
-    return false;
-  }
-  return val.tpl.type === TplTagType.Text;
-}
-
-export function isValImage(val: ValNode) {
-  if (!(val instanceof ValTag)) {
-    return false;
-  }
-  return val.tpl.type === TplTagType.Image;
 }
 
 export function getComputedStyleForVal(val: ValTag | ValComponent) {
   const classes = val.className.split(/\s+/);
   const ruleSetUidMap = Object.fromEntries(
-    val.tpl.vsettings.map((vs) => tuple(vs.rs.uid, vs))
+    val.tpl.vsettings.map((vs) => tuple(vs.rs.uid, vs)),
   );
   // Find the applied rulesets *of the rulesets on this tpl*. Basically, for
   // TplComponents, they have their own rulesets, and their wrapped TplTag (or
@@ -649,7 +651,7 @@ export function getComputedStyleForVal(val: ValTag | ValComponent) {
         }
       }
       return undefined;
-    }) ?? []
+    }) ?? [],
   );
   const expandedRuleSets = expandRuleSets(rulesets);
   return createRuleSetMerger(expandedRuleSets, val.tpl);
@@ -657,10 +659,6 @@ export function getComputedStyleForVal(val: ValTag | ValComponent) {
 
 export function isValTagOrComponent(val: any): val is ValTag | ValComponent {
   return val instanceof ValTag || val instanceof ValComponent;
-}
-
-export function isValTag(val: any): val is ValTag {
-  return val instanceof ValTag;
 }
 
 export function isValComponent(val: any): val is ValComponent {
@@ -694,11 +692,5 @@ export function getLayoutContents(val: ValNode): ValNode[] {
 }
 
 export function slotContentValNode(child: ValNode) {
-  return child;
-}
-
-export function slotContentValNodeOrReactElement(
-  child: ValNode | React.ReactElement
-) {
   return child;
 }

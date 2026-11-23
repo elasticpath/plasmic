@@ -4,7 +4,8 @@ import {
   getOperationCurrentUserUsage,
 } from "@/wab/server/data-sources/data-source-utils";
 import { DbMgr } from "@/wab/server/db/DbMgr";
-import { logger } from "@/wab/server/observability";
+import { logger, withSpan } from "@/wab/server/observability";
+import { createInlineRateLimiter } from "@/wab/server/rate-limit";
 import {
   extractAppUserFromToken,
   trackAppUserActivity,
@@ -17,21 +18,43 @@ import {
 } from "@/wab/server/routes/end-user";
 import { superDbMgr, userDbMgr } from "@/wab/server/routes/util";
 import { asyncTimed } from "@/wab/server/timing-util";
-import { withSpan } from "@/wab/server/util/apm-util";
+import {
+  BadRequestError,
+  RateLimitedExceeded,
+} from "@/wab/shared/ApiErrors/errors";
 import { GenericDataSource } from "@/wab/shared/data-sources-meta/data-source-registry";
 import { OperationTemplate } from "@/wab/shared/data-sources-meta/data-sources";
 import { Request, Response } from "express-serve-static-core";
-import { isString } from "lodash";
+
+/**
+ * Limits calls to each legacy integration, per the limitDataQueries devflag.
+ * Handlers call this only after validating and authorizing the request, so
+ * that anyone who knows a source ID can't use up its quota with bad requests.
+ */
+export const checkLegacyDataSourceOpRateLimit = createInlineRateLimiter({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  limit: (req) => req.devflags.limitDataQueries ?? 0,
+  skip: (req) =>
+    req.devflags.limitDataQueries === null ||
+    req.devflags.limitDataQueriesExemptDataSourceIds.includes(
+      req.params.dataSourceId,
+    ),
+  keyGenerator: (req) => req.params.dataSourceId,
+  makeError: () =>
+    new RateLimitedExceeded(
+      "Too many requests to this legacy integration. Migrate its queries to keep using them.",
+    ),
+});
 
 export function executeDataSourceOperationWithCurrentUserHandler(
-  inStudioAuth: boolean
+  inStudioAuth: boolean,
 ) {
   const getCurrentUserInfo = asyncTimed(
     "getCurrentUserInfo",
     async function getCurrentUserInfo(
       req: Request,
       mgr: DbMgr,
-      op: OperationTemplate
+      op: OperationTemplate,
     ): Promise<
       | {
           appUser: Awaited<ReturnType<typeof getAppUserInfo>>;
@@ -60,7 +83,7 @@ export function executeDataSourceOperationWithCurrentUserHandler(
                     // canCurrentUserExecuteOperation function. This way it won't require the
                     // user to have access to the directory/team to perform the operation.
                     skipDirectoryPermsCheck: true,
-                  }
+                  },
                 )
               : undefined;
             return {
@@ -84,13 +107,13 @@ export function executeDataSourceOperationWithCurrentUserHandler(
           req.con,
           mgr,
           userInfo,
-          authUsage.usesCurrentUserCustomProperties
+          authUsage.usesCurrentUserCustomProperties,
         );
         const isAuthorized = await canCurrentUserExecuteOperation(
           mgr,
           userInfo.appId,
           appUser,
-          op
+          op,
         );
 
         if (userInfo.appId && userInfo.endUserId && "email" in appUser) {
@@ -98,7 +121,7 @@ export function executeDataSourceOperationWithCurrentUserHandler(
             req,
             userInfo.appId,
             userInfo.endUserId,
-            "data-operation"
+            "data-operation",
           );
         }
 
@@ -115,10 +138,11 @@ export function executeDataSourceOperationWithCurrentUserHandler(
         // In studio, we allow user to perform operations as user
         const { identifier: reqIdentifier } = req.body;
         const identifier = {
-          ...(reqIdentifier?.email && isString(reqIdentifier.email)
+          ...(reqIdentifier?.email && typeof reqIdentifier.email === "string"
             ? { email: reqIdentifier.email }
             : {}),
-          ...(reqIdentifier?.externalId && isString(reqIdentifier.externalId)
+          ...(reqIdentifier?.externalId &&
+          typeof reqIdentifier.externalId === "string"
             ? { externalId: reqIdentifier.externalId }
             : {}),
         };
@@ -128,7 +152,7 @@ export function executeDataSourceOperationWithCurrentUserHandler(
               req,
               mgr,
               userInfo.appId,
-              identifier
+              identifier,
             );
 
           if (!isAbleToExecuteAs) {
@@ -142,13 +166,13 @@ export function executeDataSourceOperationWithCurrentUserHandler(
             mgr,
             userInfo.appId,
             identifier,
-            authUsage.usesCurrentUserCustomProperties
+            authUsage.usesCurrentUserCustomProperties,
           );
           const isAuthorized = await canCurrentUserExecuteOperation(
             mgr,
             userInfo.appId,
             appUser,
-            op
+            op,
           );
           return {
             appId: userInfo.appId,
@@ -168,12 +192,12 @@ export function executeDataSourceOperationWithCurrentUserHandler(
               mgr,
               userInfo.appId,
               {},
-              op
+              op,
             ),
           };
         }
       }
-    }
+    },
   );
 
   return async function (req: Request, res: Response) {
@@ -184,7 +208,10 @@ export function executeDataSourceOperationWithCurrentUserHandler(
       skipPermissionCheck: !inStudioAuth,
     });
 
-    const opString = req.body.opId as string;
+    const opString: unknown = req.body?.opId;
+    if (typeof opString !== "string" || !opString) {
+      throw new BadRequestError("opId must be a non-empty string");
+    }
     const op = await getDataSourceOperation(reqMgr, dataSourceId, opString);
 
     res.header("Access-Control-Allow-Origin", "*");
@@ -199,14 +226,16 @@ export function executeDataSourceOperationWithCurrentUserHandler(
     }
 
     if (!currentUserInfo.isAuthorized) {
-      logger().error(
-        `App: ${currentUserInfo.appId} (User: ${currentUserInfo.appUserEmail}) (ExtId: ${currentUserInfo.appUserExternalId}) (RoleId: ${currentUserInfo.appRoleId}) is not authorized to perform operation requiring (RoleId: ${op.roleId})`
+      logger.error(
+        `App: ${currentUserInfo.appId} (User: ${currentUserInfo.appUserEmail}) (ExtId: ${currentUserInfo.appUserExternalId}) (RoleId: ${currentUserInfo.appRoleId}) is not authorized to perform operation requiring (RoleId: ${op.roleId})`,
       );
       res.status(401).json({
         error: "Not authorized",
       });
       return;
     }
+
+    await checkLegacyDataSourceOpRateLimit(req, res);
 
     const currentUser = currentUserInfo.appUser;
 
@@ -224,12 +253,12 @@ export function executeDataSourceOperationWithCurrentUserHandler(
             paginate: req.body.paginate,
           },
           currentUser,
-          false
-        )
+          false,
+        ),
       ),
       `ExecuteDataOp ${dataSourceId} (${dataSource.source} - "${
         dataSource.name
-      }") op:${opString} args:${JSON.stringify(userArgs)}`
+      }") op:${opString} args:${JSON.stringify(userArgs)}`,
     );
 
     res.json(data);

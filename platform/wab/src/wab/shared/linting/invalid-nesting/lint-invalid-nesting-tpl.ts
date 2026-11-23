@@ -21,7 +21,7 @@ import {
 } from "@/wab/shared/linting/invalid-nesting/reactValidateDomNesting";
 import { InvalidTplNestingLintIssue } from "@/wab/shared/linting/lint-types";
 import { lintIssuesEquals } from "@/wab/shared/linting/lint-utils";
-import { maybeComputedFn } from "@/wab/shared/mobx-util";
+import { componentSelector, maybeComputedFn } from "@/wab/shared/mobx-util";
 import { getSlotArgs } from "@/wab/shared/SlotUtils";
 // eslint-disable-next-line @typescript-eslint/no-restricted-imports
 import { comparer } from "mobx";
@@ -50,7 +50,7 @@ export const lintInvalidNesting = maybeComputedFn(
     keepAlive: false,
     equals: lintIssuesEquals,
     name: "lintTagNesting",
-  }
+  },
 );
 
 interface ComponentAncestorInfo {
@@ -58,9 +58,9 @@ interface ComponentAncestorInfo {
   infoBySlot: Map<string, AncestorTplInfo>;
 }
 
-const getAncestorInfoOfComponent = maybeComputedFn(
+const getAncestorInfoOfComponent = componentSelector(
   function getAncestorInfoOfComponent(
-    component: Component
+    component: Component,
   ): ComponentAncestorInfo {
     const infoByTag: Map<string, TplInfo> = new Map();
     const infoBySlot: Map<string, AncestorTplInfo> = new Map();
@@ -76,7 +76,7 @@ const getAncestorInfoOfComponent = maybeComputedFn(
         if (isKnownTplSlot(tpl)) {
           infoBySlot.set(
             tpl.param.variable.name,
-            ancestorInfoStack[ancestorInfoStack.length - 1]
+            ancestorInfoStack[ancestorInfoStack.length - 1],
           );
           return false;
         }
@@ -88,8 +88,8 @@ const getAncestorInfoOfComponent = maybeComputedFn(
                 tpl,
                 component,
               },
-              tpl.tag
-            )
+              tpl.tag,
+            ),
           );
           infoByTag.set(tpl.tag, {
             tpl,
@@ -113,7 +113,7 @@ const getAncestorInfoOfComponent = maybeComputedFn(
     keepAlive: false,
     equals: comparer.structural,
     name: "getAncestorInfoOfComponent",
-  }
+  },
 );
 
 /**
@@ -121,7 +121,7 @@ const getAncestorInfoOfComponent = maybeComputedFn(
  * should only list issues that happen because of the structure of component.tplTree
  * so component.tplTree is what implies in the relation of ancestor/descendant
  */
-const lintComponent = maybeComputedFn(
+const lintComponent = componentSelector(
   function lintComponent(component: Component) {
     const issues: InvalidTplNestingLintIssue[] = [];
 
@@ -135,7 +135,7 @@ const lintComponent = maybeComputedFn(
               invalidAncestor.tplComponent ?? invalidAncestor.tpl,
               invalidAncestor.tpl,
               tpl,
-              tpl
+              tpl,
             ),
             type: TYPE,
             ancestorComponent: component,
@@ -154,19 +154,19 @@ const lintComponent = maybeComputedFn(
               updatedAncestorInfo(
                 ancestorInfo,
                 { tpl: node, component },
-                node.tag
-              )
+                node.tag,
+              ),
             );
           });
         })
         .when(TplComponent, (node) => {
           const { infoByTag, infoBySlot } = getAncestorInfoOfComponent(
-            node.component
+            node.component,
           );
           Array.from(infoByTag.entries()).forEach(([tag, info]) => {
             const invalidAncestor = findInvalidAncestorForTag(
               tag,
-              ancestorInfo
+              ancestorInfo,
             );
             if (invalidAncestor) {
               // We reached a case where there is a tag inside the component which
@@ -177,7 +177,7 @@ const lintComponent = maybeComputedFn(
                   invalidAncestor.tplComponent ?? invalidAncestor.tpl,
                   invalidAncestor.tpl,
                   node,
-                  info.tpl
+                  info.tpl,
                 ),
                 type: TYPE,
                 ancestorComponent: component,
@@ -224,7 +224,7 @@ const lintComponent = maybeComputedFn(
     keepAlive: false,
     equals: lintIssuesEquals,
     name: "lintTagNestingComponent",
-  }
+  },
 );
 
 function makeIssueKey(
@@ -232,7 +232,7 @@ function makeIssueKey(
   ancestorComponent: TplNode,
   ancestorTpl: TplNode,
   descendantComponent: TplNode,
-  descendantTpl: TplNode
+  descendantTpl: TplNode,
 ) {
   return `${TYPE}-${component.uuid}-${ancestorComponent.uuid}-${ancestorTpl.uuid}-${descendantComponent.uuid}-${descendantTpl.uuid}`;
 }

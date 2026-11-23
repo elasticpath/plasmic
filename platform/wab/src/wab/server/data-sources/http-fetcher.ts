@@ -3,7 +3,7 @@ import { fetchUntrusted, UnsafeUrlError } from "@/wab/server/util/url";
 import { DataSourceError } from "@/wab/shared/data-sources-meta/data-sources";
 import { HttpDataSource } from "@/wab/shared/data-sources-meta/http-meta";
 import { AxiosResponse } from "axios";
-import { isEmpty, isNil, isString } from "lodash";
+import { isEmpty, isNil } from "lodash";
 
 const DEFAULT_TIMEOUT = 175000;
 
@@ -68,7 +68,7 @@ export class HttpFetcher {
       body?: string | object;
       params?: Record<string, string>;
       headers?: Record<string, string>;
-    }
+    },
   ) {
     const url = this.makeUrl(opts.path, opts.params).toString();
     const headers = this.makeHeaders(opts.headers);
@@ -96,8 +96,8 @@ export class HttpFetcher {
     const fixedPath = isNil(path)
       ? ""
       : path.startsWith("/")
-      ? path.slice(1)
-      : path;
+        ? path.slice(1)
+        : path;
     const url = new URL(this.baseUrl + fixedPath);
 
     const searchParams = new URLSearchParams(params);
@@ -125,16 +125,17 @@ async function processResult(res: AxiosResponse<string>) {
   } catch {}
   if (statusCode >= 400) {
     throw new DataSourceError(
-      isString(processedResponse) || !isEmpty(processedResponse)
+      typeof processedResponse === "string" || !isEmpty(processedResponse)
         ? processedResponse
         : undefined,
-      statusCode
+      statusCode,
     );
   }
   return {
     data: {
       response: processedResponse,
       statusCode,
+      // eslint-disable-next-line @typescript-eslint/no-misused-spread -- AxiosHeaders keeps headers as own properties
       headers: { ...res.headers },
     },
   };

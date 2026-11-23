@@ -14,6 +14,7 @@ import {
   RootSelection,
 } from "@/wab/server/util/cms-util";
 import { publicCmsReadsContract } from "@/wab/shared/api/cms";
+import { BadRequestError } from "@/wab/shared/ApiErrors/errors";
 import {
   ApiCmsTable,
   CmsDatabaseId,
@@ -21,13 +22,7 @@ import {
   CmsTableId,
   CmsTableSchema,
 } from "@/wab/shared/ApiSchema";
-import {
-  ensure,
-  multimap,
-  notNil,
-  setMultimap,
-  unexpected,
-} from "@/wab/shared/common";
+import { multimap, notNil, setMultimap, unexpected } from "@/wab/shared/common";
 import { initServer } from "@ts-rest/express";
 import { NextFunction } from "express";
 import { Request, Response } from "express-serve-static-core";
@@ -56,7 +51,10 @@ export const publicCmsReadsServer = s.router(publicCmsReadsContract, {
     const table = await dbMgr.getCmsTableByIdentifier(
       params.dbId,
       params.tableIdentifier,
+<<<<<<< HEAD
       useDraft ? "content" : "viewer"
+=======
+>>>>>>> upstream/master
     );
 
     const cmsQuery = query.q || {};
@@ -82,21 +80,21 @@ export const publicCmsReadsServer = s.router(publicCmsReadsContract, {
     const selectionTree = await makeSelectionTree(
       tableCache,
       table,
-      fieldPaths
+      fieldPaths,
     );
 
     // Resolve refs recursively, storing them in rowCache
     const resolveNested = async (
       prevRowIds: Set<CmsRowId>,
-      selection: RootSelection
+      selection: RootSelection,
     ): Promise<void> => {
       // Get previous row data, only projecting selected ref fields
       const refsOnlySelection: RootSelection = {
         table: selection.table,
         fields: new Map(
           [...selection.fields.entries()].filter(
-            ([_fieldPath, fieldSelection]) => fieldSelection.type === "ref"
-          )
+            ([_fieldPath, fieldSelection]) => fieldSelection.type === "ref",
+          ),
         ),
       };
       const prevRowDatas = [...prevRowIds]
@@ -165,7 +163,10 @@ export const publicCmsReadsServer = s.router(publicCmsReadsContract, {
     const table = await dbMgr.getCmsTableByIdentifier(
       params.dbId,
       params.tableIdentifier,
+<<<<<<< HEAD
       useDraft ? "content" : "viewer"
+=======
+>>>>>>> upstream/master
     );
 
     const cmsQuery = query.q || {};
@@ -190,8 +191,11 @@ export const publicCmsReadsServer = s.router(publicCmsReadsContract, {
 
 export async function upsertDatabaseTables(req: Request, res: Response) {
   const databaseId: CmsDatabaseId = toOpaque(req.params.dbId);
-  const deleteUnspecified = req.body.deleteUnspecified as boolean;
-  const tables: ApiCmsTable[] = req.body.tables;
+  const deleteUnspecified = req.body?.deleteUnspecified as boolean;
+  const tables: ApiCmsTable[] = req.body?.tables;
+  if (!Array.isArray(tables)) {
+    throw new BadRequestError("'tables' must be an array");
+  }
   const mgr = userDbMgr(req);
   const existingTables = await mgr.listCmsTables(databaseId);
   if (deleteUnspecified) {
@@ -202,7 +206,7 @@ export async function upsertDatabaseTables(req: Request, res: Response) {
   }
   for (const table of tables) {
     const existingTable = existingTables.find(
-      (t) => t.identifier === table.identifier
+      (t) => t.identifier === table.identifier,
     );
     if (existingTable) {
       await mgr.updateCmsTable(existingTable.id, table);
@@ -221,7 +225,7 @@ export async function upsertDatabaseTables(req: Request, res: Response) {
 function toWriteApiCmsRow(
   row: CmsRow,
   tableSchema: CmsTableSchema,
-  locales?: string[]
+  locales?: string[],
 ) {
   return {
     id: row.id,
@@ -272,7 +276,7 @@ export async function publicUpdateRow(req: Request, res: Response) {
     draftData: normalizeCmsData(
       req.body.data,
       makeFieldMetaMap(table.schema),
-      db.extraData.locales
+      db.extraData.locales,
     ),
   });
   if (shouldPublish(req)) {
@@ -290,6 +294,9 @@ export async function publicUpdateRow(req: Request, res: Response) {
 }
 
 export async function publicCreateRows(req: Request, res: Response) {
+  if (!Array.isArray(req.body?.rows)) {
+    throw new BadRequestError("'rows' must be an array");
+  }
   const mgr = userDbMgr(req);
   const dbId = req.params.dbId as CmsDatabaseId;
   const tableIdentifier = req.params.tableIdentifier;
@@ -302,19 +309,18 @@ export async function publicCreateRows(req: Request, res: Response) {
 
   const table = await mgr.getCmsTableByIdentifier(dbId, tableIdentifier);
   const db = await mgr.getCmsDatabaseById(dbId);
-  ensure(req.body.rows, "'rows' should exist to create rows");
   const rows = await mgr.createCmsRows(
     table.id,
     req.body.rows.map((row) => {
       const normalizedData = normalizeCmsData(
         row.data,
         makeFieldMetaMap(table.schema),
-        db.extraData.locales
+        db.extraData.locales,
       );
       return shouldPublish(req)
         ? { data: normalizedData, identifier: row.identifier }
         : { draftData: normalizedData, identifier: row.identifier };
-    })
+    }),
   );
   rows.forEach((row) => {
     req.analytics.track("Create cms row", {
@@ -326,7 +332,7 @@ export async function publicCreateRows(req: Request, res: Response) {
   });
   res.json({
     rows: rows.map((row) =>
-      toWriteApiCmsRow(row, table.schema, db.extraData.locales)
+      toWriteApiCmsRow(row, table.schema, db.extraData.locales),
     ),
   });
 }
@@ -342,7 +348,7 @@ function fixLocale(locale: string) {
 export function cachePublicCmsRead(
   req: Request,
   res: Response | null,
-  next: NextFunction
+  next: NextFunction,
 ) {
   // Instruct cloudfront to cache reads for 1 minute for
   // now to avoid huge spikes.  But we make an exception for

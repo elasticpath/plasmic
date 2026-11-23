@@ -14,7 +14,7 @@ test.describe("component-props", () => {
     await apiClient.removeProjectAfterTest(
       projectId,
       "user2@example.com",
-      "!53kr3tz!"
+      "!53kr3tz!",
     );
   });
 
@@ -36,10 +36,6 @@ test.describe("component-props", () => {
     await models.studio.createComponentProp({
       propName: "objectProp",
       propType: "any",
-    });
-    await models.studio.createComponentProp({
-      propName: "queryDataProp",
-      propType: "queryData",
     });
     await models.studio.createComponentProp({
       propName: "eventHandlerProp",
@@ -99,13 +95,13 @@ test.describe("component-props", () => {
     });
 
     await models.studio.insertTextWithDynamic(
-      "`textProp = ${$props.textProp}`"
+      "`textProp = ${$props.textProp}`",
     );
     await models.studio.insertTextWithDynamic(
-      "`numberProp = ${$props.numberProp}`"
+      "`numberProp = ${$props.numberProp}`",
     );
     await models.studio.insertTextWithDynamic(
-      "`numberProp * 10 = ${$props.numberProp * 10}`"
+      "`numberProp * 10 = ${$props.numberProp * 10}`",
     );
 
     await componentBody
@@ -113,37 +109,37 @@ test.describe("component-props", () => {
       .waitFor({ state: "visible", timeout: 5000 });
 
     await expect(
-      componentBody.getByText("textProp = preview text")
+      componentBody.getByText("textProp = preview text"),
     ).toBeVisible();
     await expect(componentBody.getByText("numberProp = 42")).toBeVisible();
     await expect(
-      componentBody.getByText("numberProp * 10 = 420")
+      componentBody.getByText("numberProp * 10 = 420"),
     ).toBeVisible();
 
     await models.studio.rightPanel.setComponentPropPreviewValue(
       "textProp",
-      "Hello, world!"
+      "Hello, world!",
     );
     await expect(
-      componentBody.getByText("textProp = Hello, world!")
+      componentBody.getByText("textProp = Hello, world!"),
     ).toBeVisible();
 
     await models.studio.rightPanel.setComponentPropPreviewValue(
       "numberProp",
-      undefined
+      undefined,
     );
     await expect(componentBody.getByText("numberProp = 0")).toBeVisible();
     await expect(componentBody.getByText("numberProp * 10 = 0")).toBeVisible();
 
     await models.studio.rightPanel.setComponentPropDefaultValue(
       "numberProp",
-      undefined
+      undefined,
     );
     await expect(
-      componentBody.getByText("numberProp = undefined")
+      componentBody.getByText("numberProp = undefined"),
     ).toBeVisible();
     await expect(
-      componentBody.getByText("numberProp * 10 = NaN")
+      componentBody.getByText("numberProp * 10 = NaN"),
     ).toBeVisible();
 
     await models.studio.leftPanel.createNewPage("Page using component props");
@@ -164,7 +160,7 @@ test.describe("component-props", () => {
       "custom text",
       {
         reset: true,
-      }
+      },
     );
     await expect(pageBody.getByText("textProp = custom text")).toBeVisible();
 
@@ -196,12 +192,12 @@ test.describe("component-props", () => {
         propType: "text",
       });
       await expect(
-        rightPanel.getByText("Header", { exact: true })
+        rightPanel.getByText("Header", { exact: true }),
       ).toBeVisible();
 
       // The group is expanded on creation — its leaf must be visible.
       await expect(
-        rightPanel.getByText("title", { exact: true })
+        rightPanel.getByText("title", { exact: true }),
       ).toBeVisible();
 
       await rightPanel.getByText("title", { exact: true }).dblclick();
@@ -210,10 +206,10 @@ test.describe("component-props", () => {
 
       // The further-nested group is expanded on creation.
       await expect(
-        rightPanel.getByText("Subsection", { exact: true })
+        rightPanel.getByText("Subsection", { exact: true }),
       ).toBeVisible();
       await expect(
-        rightPanel.getByText("tagline", { exact: true })
+        rightPanel.getByText("tagline", { exact: true }),
       ).toBeVisible();
 
       // Clicking "+" on a group opens the modal with "<group> / " prefilled.
@@ -224,7 +220,7 @@ test.describe("component-props", () => {
         .locator('[data-test-id="add-prop-to-folder-btn"]')
         .click();
       await expect(studio.rightPanel.propNameInput.first()).toHaveValue(
-        "Header / "
+        "Header / ",
       );
       await studio.rightPanel.closeSidebarButton.click();
       const subRow = rightPanel
@@ -232,7 +228,7 @@ test.describe("component-props", () => {
         .locator("> :first-child");
       await subRow.locator('[data-test-id="add-prop-to-folder-btn"]').click();
       await expect(studio.rightPanel.propNameInput.first()).toHaveValue(
-        "Header / Subsection / "
+        "Header / Subsection / ",
       );
       await studio.rightPanel.closeSidebarButton.click();
 
@@ -285,43 +281,43 @@ test.describe("component-props", () => {
     await test.step("Instance view - advanced props collapsed", async () => {
       // Normal props/leaves at root are shown
       await expect(
-        instanceSection.getByText("title", { exact: true })
+        instanceSection.getByText("title", { exact: true }),
       ).toBeVisible();
       await expect(
-        instanceSection.getByText("Header", { exact: true })
+        instanceSection.getByText("Header", { exact: true }),
       ).toBeVisible();
       await expect(
-        instanceSection.getByText("Subsection", { exact: true })
+        instanceSection.getByText("Subsection", { exact: true }),
       ).toBeVisible();
       await expect(
-        instanceSection.getByText("tagline", { exact: true })
+        instanceSection.getByText("tagline", { exact: true }),
       ).toBeVisible();
       await expect(
-        instanceSection.getByText("subtitle", { exact: true })
+        instanceSection.getByText("subtitle", { exact: true }),
       ).toBeVisible();
 
       await expect(
-        instanceSection.getByText("Body", { exact: true })
+        instanceSection.getByText("Body", { exact: true }),
       ).toBeVisible();
       await expect(
-        instanceSection.getByText("heading", { exact: true })
+        instanceSection.getByText("heading", { exact: true }),
       ).toBeVisible();
 
       // Advanced leaves and advanced-only groups are hidden.
       await expect(
-        instanceSection.getByText("Analytics", { exact: true })
+        instanceSection.getByText("Analytics", { exact: true }),
       ).toBeHidden();
       // advanced-only nested group hidden (even though parent Body is shown)
       await expect(
-        instanceSection.getByText("Accessibility", { exact: true })
+        instanceSection.getByText("Accessibility", { exact: true }),
       ).toBeHidden();
       // root advanced
       await expect(
-        instanceSection.getByText("isDisabled", { exact: true })
+        instanceSection.getByText("isDisabled", { exact: true }),
       ).toBeHidden();
       // advanced leaf inside mixed group
       await expect(
-        instanceSection.getByText("maxWidth", { exact: true })
+        instanceSection.getByText("maxWidth", { exact: true }),
       ).toBeHidden();
     });
 
@@ -332,16 +328,16 @@ test.describe("component-props", () => {
         .first()
         .click();
       await expect(
-        instanceSection.getByText("Analytics", { exact: true })
+        instanceSection.getByText("Analytics", { exact: true }),
       ).toBeVisible();
       await expect(
-        instanceSection.getByText("Accessibility", { exact: true })
+        instanceSection.getByText("Accessibility", { exact: true }),
       ).toBeVisible();
       await expect(
-        instanceSection.getByText("isDisabled", { exact: true })
+        instanceSection.getByText("isDisabled", { exact: true }),
       ).toBeVisible();
       await expect(
-        instanceSection.getByText("maxWidth", { exact: true })
+        instanceSection.getByText("maxWidth", { exact: true }),
       ).toBeVisible();
     });
 
@@ -351,7 +347,7 @@ test.describe("component-props", () => {
       .first()
       .click();
     await expect(
-      instanceSection.getByText("Analytics", { exact: true })
+      instanceSection.getByText("Analytics", { exact: true }),
     ).toBeHidden();
   });
 
@@ -388,18 +384,18 @@ test.describe("component-props", () => {
 
       // The new-prop modal should be prefilled with `<tplName> / <propName>`,
       await expect(studio.rightPanel.propNameInput.first()).toHaveValue(
-        propName
+        propName,
       );
       await studio.rightPanel.propSubmitButton.click();
 
       await studio.rightPanel.switchToComponentDataTab();
       await expect(
-        rightPanel.getByText("myCard", { exact: true })
+        rightPanel.getByText("myCard", { exact: true }),
       ).toBeVisible();
       // Groups are collapsed by default. Click to expand
       rightPanel.getByText("myCard", { exact: true }).click();
       await expect(
-        rightPanel.getByText("someProp", { exact: true })
+        rightPanel.getByText("someProp", { exact: true }),
       ).toBeVisible();
     });
 
@@ -478,7 +474,7 @@ test.describe("component-props", () => {
 
       // The new-prop modal is prefilled with `<tplName> / <groupName>`.
       await expect(studio.rightPanel.propNameInput.first()).toHaveValue(
-        propName
+        propName,
       );
       await studio.rightPanel.propSubmitButton.click();
 
@@ -486,7 +482,7 @@ test.describe("component-props", () => {
       await expect(
         rightPanel
           .locator('[data-test-id="variants-picker-section"]')
-          .getByText(/Linked to/)
+          .getByText(/Linked to/),
       ).toBeVisible();
 
       const lockedRow = rightPanel
@@ -496,7 +492,7 @@ test.describe("component-props", () => {
       await studio.allowExternalAccess();
       await studio.createNewProp();
       await expect(studio.rightPanel.propNameInput.first()).toHaveValue(
-        "myCard / Locked"
+        "myCard / Locked",
       );
       await studio.rightPanel.propSubmitButton.click();
 
@@ -504,15 +500,15 @@ test.describe("component-props", () => {
       await studio.rightPanel.switchToComponentDataTab();
       const propsSection = rightPanel.locator('[data-test-id="props-section"]');
       await expect(
-        propsSection.getByText("myCard", { exact: true })
+        propsSection.getByText("myCard", { exact: true }),
       ).toBeVisible();
       // Groups are collapsed by default. Click to expand
       propsSection.getByText("myCard", { exact: true }).click();
       await expect(
-        propsSection.getByText("Theme", { exact: true })
+        propsSection.getByText("Theme", { exact: true }),
       ).toBeVisible();
       await expect(
-        propsSection.getByText("Locked", { exact: true })
+        propsSection.getByText("Locked", { exact: true }),
       ).toBeVisible();
     });
 
@@ -630,7 +626,7 @@ test.describe("component-props", () => {
     await studio.rightPanel.removeChoiceComponentPropOption(1);
     await studio.rightPanel.submitPropModal();
     await expect(
-      componentBody.getByText("tags = x", { exact: true })
+      componentBody.getByText("tags = x", { exact: true }),
     ).toBeVisible();
 
     await studio.leftPanel.createNewPage("MultiChoicePage");
@@ -679,18 +675,18 @@ test.describe("component-props", () => {
     await studio.rightPanel.submitPropModal();
 
     await expect(
-      studio.frame.getByText("Linked props out of sync")
+      studio.frame.getByText("Linked props out of sync"),
     ).toBeVisible();
     await studio.frame.getByText("Review in Issues tab").click();
 
     await expect(
-      studio.frame.getByText("no longer matches the linked component prop")
+      studio.frame.getByText("no longer matches the linked component prop"),
     ).toBeVisible();
     await studio.frame.getByText("Element myCard").click();
 
     await studio.rightPanel.switchToSettingsTab();
     const warning = studio.frame.locator(
-      '[data-test-id="linked-prop-warning"]'
+      '[data-test-id="linked-prop-warning"]',
     );
     await expect(warning).toBeVisible();
 
@@ -705,10 +701,10 @@ test.describe("component-props", () => {
     const { studio } = models;
     const rightPanel = studio.rightPanel.frame;
     const variantsSection = rightPanel.locator(
-      '[data-test-id="variants-picker-section"]'
+      '[data-test-id="variants-picker-section"]',
     );
     const warningButton = rightPanel.locator(
-      '[data-test-id="linked-prop-warning"]'
+      '[data-test-id="linked-prop-warning"]',
     );
 
     await test.step("set up Inner with two variants", async () => {
@@ -750,11 +746,11 @@ test.describe("component-props", () => {
       // Adding the variant fired the drift toast; follow it into the Issues
       // panel and jump to the affected instance from there.
       await expect(
-        studio.frame.getByText("Linked props out of sync")
+        studio.frame.getByText("Linked props out of sync"),
       ).toBeVisible();
       await studio.frame.getByText("Review in Issues tab").click();
       await expect(
-        studio.frame.getByText("no longer matches the linked component prop")
+        studio.frame.getByText("no longer matches the linked component prop"),
       ).toBeVisible();
       await studio.frame.getByText("Element myCard").click();
 
@@ -781,10 +777,10 @@ test.describe("component-props", () => {
     const { studio } = models;
     const rightPanel = studio.rightPanel.frame;
     const variantsSection = rightPanel.locator(
-      '[data-test-id="variants-picker-section"]'
+      '[data-test-id="variants-picker-section"]',
     );
     const warningButton = rightPanel.locator(
-      '[data-test-id="linked-prop-warning"]'
+      '[data-test-id="linked-prop-warning"]',
     );
 
     await test.step("set up Inner with a single-select Theme group", async () => {

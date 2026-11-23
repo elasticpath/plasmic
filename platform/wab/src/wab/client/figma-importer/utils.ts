@@ -13,12 +13,11 @@ import { FigmaData } from "@/wab/client/figma-importer/types";
 import { arrayReversed, unzip } from "@/wab/shared/collections";
 import { arrayEqIgnoreOrder, ensure } from "@/wab/shared/common";
 import { getComponentDisplayName } from "@/wab/shared/core/components";
-import { MkTplTagOpts, isTplVariantable } from "@/wab/shared/core/tpls";
+import { isTplVariantable, MkTplTagOpts } from "@/wab/shared/core/tpls";
 import { Component, TplNode } from "@/wab/shared/model/classes";
 import { RSH } from "@/wab/shared/RuleSetHelpers";
 import { VariantTplMgr } from "@/wab/shared/VariantTplMgr";
 import { getBoundingRect } from "@figma-plugin/helpers";
-import { isString } from "lodash";
 import { Matrix } from "transformation-matrix";
 
 export function transformToMatrix(transform: Transform): Matrix {
@@ -28,7 +27,7 @@ export function transformToMatrix(transform: Transform): Matrix {
 
 export function rgbToString({ r, g, b }: RGB, a: number = 1): string {
   return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(
-    b * 255
+    b * 255,
   )}, ${a})`;
 }
 
@@ -52,7 +51,7 @@ function getMainComponentName(node: InstanceNode) {
   if (!node.mainComponent) {
     return undefined;
   }
-  if (isString(node.mainComponent)) {
+  if (typeof node.mainComponent === "string") {
     return node.mainComponent;
   }
   return node.mainComponent.name;
@@ -60,13 +59,13 @@ function getMainComponentName(node: InstanceNode) {
 
 export function findMappedComponent(
   node: InstanceNode,
-  components: Component[]
+  components: Component[],
 ) {
   // First use Component.figmaMappings, which takes precedence over
   // name matching
   const mainComponentName = getMainComponentName(node);
   const mapped = components.find((c) =>
-    c.figmaMappings?.some((m) => m.figmaComponentName === mainComponentName)
+    c.figmaMappings?.some((m) => m.figmaComponentName === mainComponentName),
   );
   if (mapped) {
     return mapped;
@@ -80,7 +79,7 @@ export function findMappedComponent(
 
   // Finally, use display name, which is "fuzziest"
   return components.find(
-    (c) => getComponentDisplayName(c) === mainComponentName
+    (c) => getComponentDisplayName(c) === mainComponentName,
   );
 }
 
@@ -88,7 +87,7 @@ export const isFigmaData = (object: any): object is FigmaData => {
   if (typeof object === "object") {
     return arrayEqIgnoreOrder(
       Object.keys(object).filter((k) => k !== "version"),
-      ["i", "k", "n", "s", "v"]
+      ["i", "k", "n", "s", "v"],
     );
   }
   return false;
@@ -103,7 +102,7 @@ function _getBoundingRect(nodes: SceneNode[]) {
     nodes.map((node) => ({
       ...node,
       absoluteTransform: node.relativeTransform,
-    }))
+    })),
   );
 }
 
@@ -114,7 +113,7 @@ function _getBoundingRect(nodes: SceneNode[]) {
 export function wrapInBox(
   vtm: VariantTplMgr,
   nodeTplPairs: [SceneNode, TplNode][],
-  boxOpts: MkTplTagOpts = {}
+  boxOpts: MkTplTagOpts = {},
 ) {
   const rsh = (tpl: TplNode) => RSH(vtm.ensureBaseVariantSetting(tpl).rs, tpl);
 
@@ -150,17 +149,17 @@ export function wrapInBox(
  */
 export function wrapTplNodes(
   nodeToTpl: Map<SceneNode, TplNode>,
-  vtm: VariantTplMgr
+  vtm: VariantTplMgr,
 ) {
   return nodeToTpl.size === 0
     ? undefined
     : nodeToTpl.size === 1
-    ? Array.from(nodeToTpl.values())[0]
-    : wrapInBox(vtm, [...nodeToTpl.entries()], { name: "Figma Paste" });
+      ? Array.from(nodeToTpl.values())[0]
+      : wrapInBox(vtm, [...nodeToTpl.entries()], { name: "Figma Paste" });
 }
 
 export function hasChildren(
-  node: SceneNode
+  node: SceneNode,
 ): node is FrameNode | GroupNode | ComponentNode | InstanceNode {
   return (
     node.type === "FRAME" ||
@@ -173,7 +172,7 @@ export function hasChildren(
 export function getLayoutParent(node: SceneNode) {
   const parent = ensure(
     node.parent,
-    "All nodes from denormalized figma data should have parent"
+    "All nodes from denormalized figma data should have parent",
   );
   return { layoutParent: parent, indexOfSibling: -1 };
 }

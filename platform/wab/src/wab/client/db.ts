@@ -9,15 +9,11 @@ import { TplMgr } from "@/wab/shared/TplMgr";
 import { maybe } from "@/wab/shared/common";
 import {
   ChangeRecorder,
-  ComponentContext,
   FakeChangeRecorder,
   IChangeRecorder,
 } from "@/wab/shared/core/observable-model";
 import { trackComponentRoot, trackComponentSite } from "@/wab/shared/core/tpls";
-import { instUtil } from "@/wab/shared/model/InstUtil";
-import { Component, Site } from "@/wab/shared/model/classes";
-import { meta } from "@/wab/shared/model/classes-metas";
-import { uniqBy } from "lodash";
+import { Site } from "@/wab/shared/model/classes";
 import { IObservableValue, observable } from "mobx";
 
 class DbCtxArgs {
@@ -121,7 +117,7 @@ export class DbCtx {
   setSite(
     site: Site,
     branch: ApiBranch | undefined,
-    projectVersion: PkgVersionInfoMeta | ProjectRevision | undefined
+    projectVersion: PkgVersionInfoMeta | ProjectRevision | undefined,
   ) {
     this._site.set(site);
     this._branchInfo.set(branch);
@@ -148,58 +144,14 @@ export class DbCtx {
     this._siteInfo.set(siteInfo);
   }
 
-  /**
-   * This function will observe the tplTree of any component that is still not being observed.
-   * @param components the list of components to try to observe the tplTree of.
-   * @returns true if any of the components in the list started being observed now, false otherwise.
-   */
-  maybeObserveComponents(
-    components: Component[],
-    componentContext?: ComponentContext
-  ) {
-    if (!this.appCtx.appConfig.incrementalObservables) {
-      return false;
-    }
-    return this.recorder.maybeObserveComponents(
-      uniqBy(components, "uuid"),
-      componentContext
-    );
-  }
-
   private createRecorder(site: Site) {
-    const incrementalObservables = this.appCtx.appConfig.incrementalObservables;
     return new ChangeRecorder({
-      inst: site,
-      _instUtil: instUtil,
-      excludeFields: [
-        // Skip tracking parent pointers, which is a big source of cycles and
-        // is just a redundant pointer anyway; if parent bas changed, something
-        // else has also changed.
-        // ---
-        // Because of incremental saves, we do want to carefully track and apply
-        // changes to the parent pointer. So we are including parent in tracking.
-        // Performance seems comparable, but if things get worse, and we want
-        // to exclude parent from tracking again, then we need to make sure
-        // incremental saves does not break when we do so.
-        // meta.getFieldByName("TplNode", "parent"),
-
-        // Skip tracking ProjectDependency.site, which is static.  When a dep is
-        // added to our site, we don't want to see them as detected new tpl nodes;
-        // instead, ProjectDependencyManager will take care of updating the
-        // styles, etc.
-        meta.getFieldByName("ProjectDependency", "site"),
-      ],
-      excludeClasses: [],
+      site,
       isExternalRef: (obj) =>
         !!maybe(
           this.bundler().addrOf(obj),
-          (addr) => addr.uuid !== this.siteInfo.id
+          (addr) => addr.uuid !== this.siteInfo.id,
         ),
-      visitNodeListener: undefined,
-      skipInitialObserveFields: incrementalObservables
-        ? [meta.getFieldByName("Component", "tplTree")]
-        : undefined,
-      incremental: incrementalObservables,
     });
   }
 }

@@ -1,4 +1,3 @@
-import fetch from "node-fetch";
 import { getVercelSecrets } from "../src/wab/server/secrets";
 import { ensureString } from "../src/wab/shared/common";
 
@@ -14,7 +13,7 @@ async function checkVercelDomain() {
         Authorization: `Bearer ${getVercelSecrets().authBearerToken}`,
         "Content-Type": "application/json",
       },
-    }
+    },
   );
   const data = await response.json();
   console.log(data);

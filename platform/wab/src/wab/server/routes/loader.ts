@@ -1,4 +1,5 @@
 import { DbMgr } from "@/wab/server/db/DbMgr";
+import { getDevFlagsMergedWithOverrides } from "@/wab/server/db/appconfig";
 import { Project } from "@/wab/server/entities/Entities";
 import {
   LATEST_LOADER_VERSION,
@@ -6,6 +7,8 @@ import {
   LOADER_CACHE_BUST,
   genLatestLoaderCodeBundle,
   genPublishedLoaderCodeBundle,
+  genRevisionLoaderCodeBundle,
+  isChunkableBundleKey,
 } from "@/wab/server/loader/gen-code-bundle";
 import { genLoaderHtmlBundle } from "@/wab/server/loader/gen-html-bundle";
 import {
@@ -16,49 +19,64 @@ import {
   parseComponentProps,
   parseGlobalVariants,
 } from "@/wab/server/loader/parse-query-params";
+import { PreviewBundleCache } from "@/wab/server/loader/preview-bundle-cache";
 import {
   VersionToSync,
   getResolvedProjectVersions,
+  makeRevisionSpec,
   mkVersionToSync,
   parseProjectIdSpec,
+  parseRevisionSpec,
   resolveLatestProjectRevisions,
 } from "@/wab/server/loader/resolve-projects";
-import { logger } from "@/wab/server/observability";
+import { logger, withSpan } from "@/wab/server/observability";
+import { setSentryErrorContext } from "@/wab/server/observability/sentry-filters";
 import { superDbMgr, userDbMgr } from "@/wab/server/routes/util";
+<<<<<<< HEAD
 import { TraceCarrier, withSpan } from "@/wab/server/util/apm-util";
 import {
   getServerTimingHeader,
   runWithServerTiming,
   timedProxy,
 } from "@/wab/server/util/server-timing";
+=======
+import { makeS3Client } from "@/wab/server/util/s3-util";
+>>>>>>> upstream/master
 import { prefillCloudfront } from "@/wab/server/workers/prefill-cloudfront";
-import { BadRequestError, NotFoundError } from "@/wab/shared/ApiErrors/errors";
-import { ProjectId } from "@/wab/shared/ApiSchema";
+import {
+  BadRequestError,
+  NotFoundError,
+  UnauthorizedError,
+  transformErrors,
+} from "@/wab/shared/ApiErrors/errors";
 import { Bundler } from "@/wab/shared/bundler";
 import { toClassName } from "@/wab/shared/codegen/util";
-import {
-  ensure,
-  ensureArray,
-  ensureInstance,
-  hackyCast,
-  tuple,
-} from "@/wab/shared/common";
+import { ensure, ensureArray, hackyCast, tuple } from "@/wab/shared/common";
 import { tplToPlasmicElements } from "@/wab/shared/element-repr/gen-element-repr-v2";
 import { LocalizationKeyScheme } from "@/wab/shared/localization";
 import { toJson } from "@/wab/shared/model/model-tree-util";
+<<<<<<< HEAD
 import {
   getCodegenOriginUrl,
   getCodegenPublicUrl,
   getLoaderInternalUrl,
 } from "@/wab/shared/urls";
 import { Semaphore } from "async-mutex";
+=======
+import { getCodegenOriginUrl, getCodegenUrl } from "@/wab/shared/urls";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
+>>>>>>> upstream/master
 import { context, propagation } from "@opentelemetry/api";
-import S3 from "aws-sdk/clients/s3";
+import type { TraceCarrier } from "@plasmic-shared/observability";
 import execa from "execa";
 import { Request, Response } from "express-serve-static-core";
 import fs from "fs";
-import { isString } from "lodash";
+import { pickBy, sortBy } from "lodash";
 import path from "path";
+import { promisify } from "util";
+import zlib from "zlib";
+
+const gzip = promisify(zlib.gzip);
 
 // Semaphore to limit concurrent HTML preview subprocess spawning.
 // Each subprocess uses ~500MB-1GB memory, so we limit concurrency to prevent OOM.
@@ -111,6 +129,20 @@ function getLoaderVersion(req: Request) {
   return parseInt(loaderVersion || "0");
 }
 
+// The CDN cache key includes loaderVersion from the query only.
+function getQueryLoaderVersion(req: Request) {
+  if (typeof req.query.loaderVersion !== "string") {
+    throw new BadRequestError("loaderVersion must be specified in the query");
+  }
+  const loaderVersion = parseInt(req.query.loaderVersion);
+  if (Number.isNaN(loaderVersion)) {
+    throw new BadRequestError(
+      `Invalid loaderVersion: ${req.query.loaderVersion}`,
+    );
+  }
+  return loaderVersion;
+}
+
 function getLoaderOptions(req: Request) {
   const projectIdSpecs = ensureArray(req.query.projectId) as string[];
   if (projectIdSpecs.length === 0) {
@@ -148,11 +180,24 @@ export async function buildPublishedLoaderAssets(req: Request, res: Response) {
     skipHead,
   } = getLoaderOptions(req);
 
-  const resolvedProjectIdSpecs = await getResolvedProjectVersions(
-    mgr,
-    projectIdSpecs,
-    { prefilledOnly: true }
-  );
+  let resolvedProjectIdSpecs: string[];
+  try {
+    resolvedProjectIdSpecs = await getResolvedProjectVersions(
+      mgr,
+      projectIdSpecs,
+      { prefilledOnly: true },
+    );
+  } catch (err) {
+    // An unpublished project (400) or one with no prefilled version for the tag
+    // (404) is the same answer for every caller allowed to see it, so cache it
+    // as briefly as the redirect a publish turns it into. 401 and 403 depend on
+    // the token, which isn't in the cache key, so they stay no-store.
+    const apiErr = transformErrors(err);
+    if (apiErr instanceof BadRequestError || apiErr instanceof NotFoundError) {
+      setAsCacheableRedirect(req, res);
+    }
+    throw err;
+  }
 
   const query = makeCacheableVersionedLoaderQuery({
     platform,
@@ -173,16 +218,16 @@ export async function buildPublishedLoaderAssets(req: Request, res: Response) {
   // Return 200 with redirect URL - https://linear.app/plasmic/issue/PLA-12576
   const polyfillProjectId = ANGULAR_POLYFILL_PROJECT_ID;
   const isPolyfillProject = projectIdSpecs.some(
-    (spec) => parseProjectIdSpec(spec).projectId === polyfillProjectId
+    (spec) => parseProjectIdSpec(spec).projectId === polyfillProjectId,
   );
 
   if (isPolyfillProject) {
-    setAsCacheableRedirect(res);
+    setAsCacheableRedirect(req, res);
     res.status(200).json({ redirectUrl: destination });
     return;
   }
 
-  redirectToCacheableResource(res, destination);
+  redirectToCacheableResource(req, res, destination);
 }
 
 export function makeCacheableVersionedLoaderQuery({
@@ -232,6 +277,7 @@ export function makeCacheableVersionedLoaderQuery({
 }
 
 export async function buildVersionedLoaderAssets(req: Request, res: Response) {
+<<<<<<< HEAD
   return runWithServerTiming(async () => {
     const mgr = userDbMgr(req);
     const {
@@ -311,6 +357,72 @@ export async function buildVersionedLoaderAssets(req: Request, res: Response) {
       i18nTagPrefix,
       appDir: nextjsAppDir,
     });
+=======
+  const mgr = userDbMgr(req);
+  const {
+    platform,
+    nextjsAppDir,
+    browserOnly,
+    projectIdSpecs,
+    loaderVersion,
+    i18nKeyScheme,
+    i18nTagPrefix,
+    skipHead,
+  } = getLoaderOptions(req);
+
+  const projectVersions = projectIdSpecs.map(parseProjectIdSpec);
+
+  for (const { projectId, version } of projectVersions) {
+    if (!version) {
+      throw new BadRequestError(
+        `Project ${projectId} does not have a specified version`,
+      );
+    }
+  }
+
+  await Promise.all(
+    projectVersions.map(({ projectId }) =>
+      mgr.checkProjectPerms(projectId, "viewer", "get"),
+    ),
+  );
+
+  const projects = await Promise.all(
+    projectVersions.map(
+      async ({ projectId }) => await mgr.getProjectById(projectId),
+    ),
+  );
+  trackLoaderCodegenEvent(req, projects, {
+    versionType: "versioned",
+    platform,
+  });
+
+  req.promLabels.projectId = projects.map((p) => p.id).join(",");
+
+  const result = await genPublishedLoaderCodeBundle(
+    mgr,
+    req.workerpool,
+    makeGenPublishedLoaderCodeBundleOpts({
+      source: "live",
+      platform,
+      appDir: nextjsAppDir,
+      projectVersions: Object.fromEntries(
+        projectVersions.map(({ projectId, version }) => [
+          projectId,
+          mkVersionToSync(
+            ensure(version, "Unexpected nullish version in projectVersions"),
+          ),
+        ]),
+      ),
+      i18n: {
+        keyScheme: i18nKeyScheme,
+        tagPrefix: i18nTagPrefix,
+      },
+      loaderVersion,
+      browserOnly,
+      skipHead,
+    }),
+  );
+>>>>>>> upstream/master
 
     if (process.env.ENABLE_SERVER_TIMING === "true") {
       const timingHeader = getServerTimingHeader();
@@ -321,6 +433,12 @@ export async function buildVersionedLoaderAssets(req: Request, res: Response) {
     setAsCacheableResource(res);
     res.json(result);
   });
+<<<<<<< HEAD
+=======
+
+  setAsCacheableResource(req, res);
+  res.json(result);
+>>>>>>> upstream/master
 }
 
 /**
@@ -380,41 +498,14 @@ export async function buildLatestLoaderAssets(req: Request, res: Response) {
     skipHead,
   } = getLoaderOptions(req);
 
-  const parsedProjectIdsSpecs = projectIdSpecs.map(parseProjectIdSpec);
-  const projectIdsBranches = await Promise.all(
-    parsedProjectIdsSpecs.map(async (pv) => {
-      // We ignore pv.version, as preview:true should have higher priority over
-      // versions. But we can't just ignore pv.tag, as it may be used for branches,
-      // and maybe the user is trying to get the latest version of a branch.
-      if (pv.tag) {
-        // We need to check if pv.tag is a branch name or a pkgversion tag.
-        // The only way to know is to try to find a branch with the same name...
-        const branches = await mgr.listBranchesForProject(
-          pv.projectId as ProjectId
-        );
-        if (branches.some((b) => b.name === pv.tag)) {
-          // Found it!
-          return {
-            id: pv.projectId,
-            branchName: pv.tag,
-          };
-        } else {
-          // No matching branch, so assume this is a pkgversion tag,
-          // which we don't care about for preview bundle
-          return {
-            id: pv.projectId,
-            branchName: undefined,
-          };
-        }
-      } else {
-        return { id: pv.projectId, branchName: undefined };
-      }
-    })
+  const projectIdsBranches = await resolvePreviewProjectBranches(
+    mgr,
+    projectIdSpecs,
   );
   await Promise.all(
     projectIdsBranches.map(({ id }) =>
-      mgr.checkProjectPerms(id, "viewer", "get")
-    )
+      mgr.checkProjectPerms(id, "viewer", "get"),
+    ),
   );
 
   // We set the projectIds and their current revisions as weak e-tag.  If the browser
@@ -422,18 +513,18 @@ export async function buildLatestLoaderAssets(req: Request, res: Response) {
   // been updated, and skip re-generating code if so.
   const projectRevs = await resolveLatestProjectRevisions(
     mgr,
-    projectIdsBranches
+    projectIdsBranches,
   );
   const etag = `W/"${LOADER_CACHE_BUST}-${Object.entries(projectRevs)
     .map(([pid, rev]) => `${pid}@${rev}`)
     .join(",")}"`;
 
-  if (checkEtagSkippable(req, res, etag)) {
+  if (checkEtagSkippable(req, res, etag, previewCacheControl(req))) {
     return;
   }
 
   const projects = await Promise.all(
-    projectIdsBranches.map(async ({ id }) => await mgr.getProjectById(id))
+    projectIdsBranches.map(async ({ id }) => await mgr.getProjectById(id)),
   );
 
   req.promLabels.projectId = projects.map((p) => p.id).join(",");
@@ -442,7 +533,257 @@ export async function buildLatestLoaderAssets(req: Request, res: Response) {
     platform,
   });
 
-  const result = await genLatestLoaderCodeBundle(mgr, req.workerpool, {
+  const compute = () =>
+    genLatestLoaderCodeBundle(mgr, req.workerpool, {
+      source: "live",
+      platform,
+      platformOptions: {
+        nextjs: {
+          appDir: nextjsAppDir,
+        },
+      },
+      projectIdsBranches: projectIdsBranches,
+      loaderVersion,
+      browserOnly,
+      i18nKeyScheme,
+      i18nTagPrefix,
+      skipHead,
+    });
+
+  // Permissions are checked above, so a shared result only reaches callers
+  // allowed to see these projects.
+  const { lane, key } = makePreviewBundleCacheKeys({
+    projectIdsBranches,
+    projectRevs,
+    options: {
+      platform,
+      nextjsAppDir,
+      browserOnly,
+      loaderVersion,
+      i18nKeyScheme,
+      i18nTagPrefix,
+      skipHead,
+    },
+  });
+  const { body, source } = await previewBundleCache.get({
+    lane,
+    key,
+    ttlMs: req.devflags.previewLoaderCacheTtlMs,
+    getTtlAfterBuild: async () =>
+      (await getDevFlagsMergedWithOverrides(mgr)).previewLoaderCacheTtlMs,
+    skipFinished: isUptimeCheck(req),
+    compute,
+  });
+  if (source !== "computed") {
+    logger.info(`Preview bundle ${source}: ${key}`);
+  }
+  res.type("json").send(body);
+}
+
+// Bounds memory held by finished preview bundles in the codegen process.
+const previewBundleCache = new PreviewBundleCache({ maxBytes: 200_000_000 });
+
+export function makePreviewBundleCacheKeys(args: {
+  projectIdsBranches: { id: string; branchName: string | undefined }[];
+  projectRevs: Record<string, number>;
+  options: Record<string, unknown>;
+}) {
+  const projects = sortBy(args.projectIdsBranches, (p) => p.id);
+  const base = [LOADER_CACHE_BUST, JSON.stringify(args.options)];
+  const lane = [
+    ...base,
+    ...projects.map((p) => `${p.id}:${p.branchName ?? ""}`),
+  ].join("|");
+  // Revisions are what make a finished bundle stale.
+  const key = [
+    lane,
+    ...projects.map((p) => `${p.id}@${args.projectRevs[p.id]}`),
+  ].join("|");
+  return { lane, key };
+}
+
+/** Preview uses the latest revision on the matching branch, or main for a version tag. */
+async function resolvePreviewProjectBranches(
+  mgr: DbMgr,
+  projectIdSpecs: string[],
+) {
+  return await Promise.all(
+    projectIdSpecs.map(parseProjectIdSpec).map(async (pv) => {
+      if (pv.tag) {
+        const branches = await mgr.listBranchesForProject(pv.projectId);
+        const branch = branches.find((b) => b.name === pv.tag);
+        return {
+          id: pv.projectId,
+          branchName: branch?.name,
+          branchId: branch?.id,
+        };
+      } else {
+        return { id: pv.projectId, branchName: undefined, branchId: undefined };
+      }
+    }),
+  );
+}
+
+export function makeCacheableRevisionLoaderQuery({
+  projectRevisions,
+  loaderVersion,
+  ...opts
+}: Omit<
+  Parameters<typeof makeCacheableVersionedLoaderQuery>[0],
+  "resolvedProjectIdSpecs" | "loaderVersion"
+> & {
+  projectRevisions: { projectId: string; revisionId: string }[];
+  loaderVersion: number;
+}) {
+  return makeCacheableVersionedLoaderQuery({
+    ...opts,
+    loaderVersion,
+    resolvedProjectIdSpecs: projectRevisions.map(({ projectId, revisionId }) =>
+      makeRevisionSpec(projectId, revisionId),
+    ),
+  });
+}
+
+function hostOf(url: string) {
+  return new URL(url).host.toLowerCase();
+}
+
+/** Send codegen origin traffic to the CDN. Keep custom hosts on their own origin. */
+export function makeRevisionRedirectLocation({
+  requestHost,
+  path,
+  cdnUrl = getCodegenUrl(),
+  codegenOriginUrl = getCodegenOriginUrl(),
+}: {
+  requestHost: string | undefined;
+  path: string;
+  cdnUrl?: string;
+  codegenOriginUrl?: string;
+}) {
+  if (!requestHost) {
+    return path;
+  }
+  const host = requestHost.toLowerCase();
+  const cdnHost = hostOf(cdnUrl);
+  const isCodegenHost = host === cdnHost || host === hostOf(codegenOriginUrl);
+  if (!isCodegenHost || host === cdnHost) {
+    return path;
+  }
+  return `${new URL(cdnUrl).origin}${path}`;
+}
+
+export async function buildLatestRevisionLoaderRedirect(
+  req: Request,
+  res: Response,
+) {
+  const mgr = userDbMgr(req);
+  const {
+    platform,
+    nextjsAppDir,
+    browserOnly,
+    projectIdSpecs,
+    i18nKeyScheme,
+    i18nTagPrefix,
+    skipHead,
+  } = getLoaderOptions(req);
+  const loaderVersion = getQueryLoaderVersion(req);
+
+  const projectIdsBranches = await resolvePreviewProjectBranches(
+    mgr,
+    projectIdSpecs,
+  );
+  await Promise.all(
+    projectIdsBranches.map(({ id }) =>
+      mgr.checkProjectPerms(id, "viewer", "get"),
+    ),
+  );
+  const projectRevisions = await Promise.all(
+    projectIdsBranches.map(async ({ id, branchId }) => ({
+      projectId: id,
+      revisionId: (await mgr.getLatestProjectRevRef(id, { branchId })).id,
+    })),
+  );
+
+  req.promLabels.projectId = projectIdsBranches.map((p) => p.id).join(",");
+
+  const query = makeCacheableRevisionLoaderQuery({
+    platform,
+    nextjsAppDir,
+    loaderVersion,
+    projectRevisions,
+    browserOnly,
+    i18nKeyScheme,
+    i18nTagPrefix,
+    skipHead,
+  });
+  const destination = `/api/v1/loader/code/revision?${query}`;
+
+  res.setHeader(
+    "Cache-Control",
+    isSharedCacheable(req)
+      ? "public, max-age=0, s-maxage=5"
+      : PRIVATE_CACHE_CONTROL,
+  );
+  res.vary("x-plasmic-api-project-tokens");
+
+  // The SDK prepends its configured host to JSON redirect URLs.
+  if (projectIdsBranches.some(({ id }) => id === ANGULAR_POLYFILL_PROJECT_ID)) {
+    res.status(200).json({ redirectUrl: destination });
+    return;
+  }
+
+  // No body: Media CDN doesn't cache a GET 302 from res.redirect, which has one.
+  res
+    .status(302)
+    .location(
+      makeRevisionRedirectLocation({
+        requestHost: req.headers.host,
+        path: destination,
+      }),
+    )
+    .end();
+}
+
+export async function buildRevisionLoaderAssets(req: Request, res: Response) {
+  const mgr = userDbMgr(req);
+  const {
+    platform,
+    nextjsAppDir,
+    browserOnly,
+    projectIdSpecs,
+    i18nKeyScheme,
+    i18nTagPrefix,
+    skipHead,
+  } = getLoaderOptions(req);
+  const loaderVersion = getQueryLoaderVersion(req);
+
+  const projectRevisions = projectIdSpecs.map(parseRevisionSpec);
+  const projectIds = projectRevisions.map(({ projectId }) => projectId);
+  if (new Set(projectIds).size !== projectIds.length) {
+    throw new BadRequestError("Each projectId must be specified once");
+  }
+
+  await Promise.all(
+    projectIds.map((projectId) =>
+      mgr.checkProjectPerms(projectId, "viewer", "get"),
+    ),
+  );
+  await Promise.all(
+    projectRevisions.map(({ projectId, revisionId }) =>
+      mgr.getProjectRevRefByIdForProject(projectId, revisionId),
+    ),
+  );
+
+  const projects = await Promise.all(
+    projectIds.map(async (projectId) => await mgr.getProjectById(projectId)),
+  );
+  trackLoaderCodegenEvent(req, projects, {
+    versionType: "revision",
+    platform,
+  });
+  req.promLabels.projectId = projectIds.join(",");
+
+  const result = await genRevisionLoaderCodeBundle(mgr, req.workerpool, {
     source: "live",
     platform,
     platformOptions: {
@@ -450,7 +791,12 @@ export async function buildLatestLoaderAssets(req: Request, res: Response) {
         appDir: nextjsAppDir,
       },
     },
-    projectIdsBranches: projectIdsBranches,
+    projectRevisions: Object.fromEntries(
+      projectRevisions.map(({ projectId, revisionId }) => [
+        projectId,
+        revisionId,
+      ]),
+    ),
     loaderVersion,
     browserOnly,
     i18nKeyScheme,
@@ -458,46 +804,62 @@ export async function buildLatestLoaderAssets(req: Request, res: Response) {
     skipHead,
   });
 
-  res.json(result);
+  setAsCacheableResource(req, res);
+  res.vary("x-plasmic-api-project-tokens");
+  // nginx gzips the body as a stream with no Content-Length, which Media CDN
+  // doesn't reliably cache. Media CDN only compresses bodies up to 1 MiB.
+  res.vary("Accept-Encoding");
+  res.type("json");
+  const body = Buffer.from(JSON.stringify(result));
+  if (req.acceptsEncodings("gzip") === "gzip") {
+    res.set("Content-Encoding", "gzip");
+    res.send(await gzip(body));
+  } else {
+    res.send(body);
+  }
 }
 
 export async function getLoaderChunk(req: Request, res: Response) {
-  const fileNames = isString(req.query.fileName)
-    ? req.query.fileName.split(",")
-    : undefined;
+  const fileNames =
+    typeof req.query.fileName === "string"
+      ? req.query.fileName.split(",")
+      : undefined;
 
   const bundleKey = req.query.bundleKey;
 
-  if (!isString(bundleKey)) {
+  if (typeof bundleKey !== "string" || !isChunkableBundleKey(bundleKey)) {
     throw new BadRequestError("Invalid `bundleKey` param: " + bundleKey);
   }
 
   if (!Array.isArray(fileNames)) {
     throw new BadRequestError(
-      "Invalid `fileName` param: " + req.query.fileName
+      "Invalid `fileName` param: " + req.query.fileName,
     );
   }
 
   const fileNamesSet = new Set(fileNames);
 
-  logger().info(`Loading S3 bundle from ${LOADER_ASSETS_BUCKET} ${bundleKey}`);
+  logger.info(`Loading S3 bundle from ${LOADER_ASSETS_BUCKET} ${bundleKey}`);
 
-  const s3 = new S3({ endpoint: process.env.S3_ENDPOINT });
+  const s3 = makeS3Client();
 
-  const obj = await s3
-    .getObject({
+  const obj = await s3.send(
+    new GetObjectCommand({
       Bucket: LOADER_ASSETS_BUCKET,
       Key: bundleKey,
-    })
-    .promise();
-  const serialized = ensureInstance(obj.Body, Buffer).toString("utf8");
+    }),
+  );
+  const serialized = await ensure(
+    obj.Body,
+    "Unexpected empty loader bundle body",
+  ).transformToString("utf8");
 
   const bundle: LoaderBundleOutput = JSON.parse(serialized);
 
   const modules = (
     Array.isArray(bundle.modules) ? bundle.modules : bundle.modules.browser
   ).filter(
-    (m): m is CodeModule => m.type === "code" && fileNamesSet.has(m.fileName)
+    (m): m is CodeModule => m.type === "code" && fileNamesSet.has(m.fileName),
   );
 
   if (!modules.length || !fileNames) {
@@ -512,15 +874,16 @@ export async function getLoaderChunk(req: Request, res: Response) {
       ${modules
         .map((module) =>
           `globalThis.__PLASMIC_CHUNKS[${JSON.stringify(
-            module.fileName
+            module.fileName,
           )}] = ${JSON.stringify(module.code)};
           globalThis.__PlasmicBundlePromises[${JSON.stringify(
-            "__promise_resolve_" + module.fileName
-          )}]();`.trim()
+            "__promise_resolve_" + module.fileName,
+          )}]();`.trim(),
         )
         .join("\n")}
     })()`.trim();
-  setAsCacheableResource(res);
+  // Chunks need no authorization, so they are cached under a URL-only key.
+  setAsPublicCacheableResource(res);
   res.setHeader("content-type", "text/javascript");
   res.send(response);
 }
@@ -541,10 +904,10 @@ export async function buildPublishedLoaderHtml(req: Request, res: Response) {
       ],
       [
         "globalVariants",
-        req.query.globalVariants ? (req.query.componentProps as string) : "[]",
+        req.query.globalVariants ? (req.query.globalVariants as string) : "[]",
       ],
       ["prepass", req.query.prepass === "1" ? "1" : "0"],
-    ]).toString()
+    ]).toString(),
   );
 }
 
@@ -566,7 +929,7 @@ async function buildLoader(
   versionType: "preview" | "versioned",
   platform: "html" | "repr-v2" | "repr-v3",
   componentRequired: true,
-  func: (props: ComponentLoaderProps) => Promise<void>
+  func: (props: ComponentLoaderProps) => Promise<void>,
 ): Promise<void>;
 async function buildLoader(
   req: Request,
@@ -574,7 +937,7 @@ async function buildLoader(
   versionType: "preview" | "versioned",
   platform: "html" | "repr-v2" | "repr-v3",
   componentRequired: false,
-  func: (props: ProjectLoaderProps) => Promise<void>
+  func: (props: ProjectLoaderProps) => Promise<void>,
 ): Promise<void>;
 async function buildLoader(
   req: Request,
@@ -584,7 +947,7 @@ async function buildLoader(
   componentRequired: boolean,
   func:
     | ((props: ProjectLoaderProps) => Promise<void>)
-    | ((props: ComponentLoaderProps) => Promise<void>)
+    | ((props: ComponentLoaderProps) => Promise<void>),
 ): Promise<void> {
   const mgr = userDbMgr(req);
   const projectIdSpec = req.params.projectId as string | undefined;
@@ -603,15 +966,15 @@ async function buildLoader(
 
   if (!version && versionType !== "preview") {
     throw new BadRequestError(
-      `Project ${projectId} does not have specified version`
+      `Project ${projectId} does not have specified version`,
     );
   }
 
   const token = mgr.projectIdsAndTokens?.find(
-    (p) => p.projectId === projectId
+    (p) => p.projectId === projectId,
   )?.projectApiToken;
   if (!token) {
-    throw new BadRequestError(`No project token specified for ${projectId}`);
+    throw new UnauthorizedError(`No project token specified for ${projectId}`);
   }
 
   await mgr.checkProjectPerms(projectId, "viewer", "get");
@@ -625,10 +988,13 @@ async function buildLoader(
       ])
     )[projectId];
     const prefix = `${LOADER_CACHE_BUST}-${projectId}@${projectRev}`;
-    const suffix = component ? `-${normComponentName(component)}` : "";
+    // Encode because Node rejects header values with chars above U+00FF
+    const suffix = component
+      ? `-${encodeURIComponent(normComponentName(component))}`
+      : "";
     const etag = `W/${prefix}${suffix}`;
 
-    if (checkEtagSkippable(req, res, etag)) {
+    if (checkEtagSkippable(req, res, etag, previewCacheControl(req))) {
       return;
     }
   }
@@ -650,8 +1016,9 @@ async function buildLoader(
 }
 
 export async function genLoaderHtmlBundleSandboxed(
-  args: Parameters<typeof genLoaderHtmlBundle>[0]
+  args: Parameters<typeof genLoaderHtmlBundle>[0],
 ) {
+<<<<<<< HEAD
   // Acquire semaphore permit to limit concurrent subprocess spawning
   const getHtmlPreviewQueueDepth = () =>
     (htmlPreviewSemaphore["_weightedQueues"] as unknown[][]).reduce(
@@ -669,6 +1036,10 @@ export async function genLoaderHtmlBundleSandboxed(
   });
   try {
     return await withSpan("genLoaderHtmlBundleSandboxed", async () => {
+=======
+  return withSpan("genLoaderHtmlBundleSandboxed", async () => {
+    const profilerService = process.env.GCLOUD_PROFILER_SERVICE;
+>>>>>>> upstream/master
     const cmd = [
       "node",
       "-r",
@@ -676,7 +1047,24 @@ export async function genLoaderHtmlBundleSandboxed(
       "src/wab/server/loader/gen-html-bundle.ts",
     ];
     const payload = JSON.stringify(args);
+<<<<<<< HEAD
     const renderStart = Date.now();
+=======
+    const profilerEnv = profilerService
+      ? { GCLOUD_PROFILER_SERVICE: `${profilerService}-bwrap-worker` }
+      : {};
+    // The env the OTel auto-instrumentation and Cloud Profiler need. Already
+    // allowlisted here, so the sandbox never sees the rest of process.env.
+    const sandboxEnv = {
+      ...pickBy(
+        process.env,
+        (value, key) =>
+          value !== undefined &&
+          (key === "NODE_OPTIONS" || key.startsWith("OTEL_")),
+      ),
+      ...profilerEnv,
+    };
+>>>>>>> upstream/master
 
     // prettier-ignore
     const bwrapArgs = [
@@ -695,11 +1083,10 @@ export async function genLoaderHtmlBundleSandboxed(
       "--ro-bind-try", "/otel-auto-instrumentation-nodejs", "/otel-auto-instrumentation-nodejs",
     ];
 
-    // Allowlist the env the OTel auto-instrumentation needs, plus the trace
-    // carrier. Pushed as discrete --setenv triples because values like
-    // NODE_OPTIONS and OTEL_RESOURCE_ATTRIBUTES can contain spaces.
-    for (const [k, v] of Object.entries(process.env)) {
-      if (v !== undefined && (k === "NODE_OPTIONS" || k.startsWith("OTEL_"))) {
+    // Pushed as discrete --setenv triples because values like NODE_OPTIONS and
+    // OTEL_RESOURCE_ATTRIBUTES can contain spaces.
+    for (const [k, v] of Object.entries(sandboxEnv)) {
+      if (v !== undefined) {
         bwrapArgs.push("--setenv", k, v);
       }
     }
@@ -717,10 +1104,14 @@ export async function genLoaderHtmlBundleSandboxed(
 
     bwrapArgs.push("--chdir", process.cwd(), ...cmd, payload);
 
-    const { stdout, stderr, exitCode } =
+    const result =
       process.env.DISABLE_BWRAP === "1"
-        ? await execa(cmd[0], [...cmd.slice(1), payload], { reject: false })
+        ? await execa(cmd[0], [...cmd.slice(1), payload], {
+            reject: false,
+            env: { ...process.env, ...profilerEnv },
+          })
         : await execa("bwrap", bwrapArgs, { reject: false });
+<<<<<<< HEAD
     logger().info("html-preview-subprocess-done", {
       htmlPreviewRenderMs: Date.now() - renderStart,
       htmlPreviewExitCode: exitCode,
@@ -730,18 +1121,44 @@ export async function genLoaderHtmlBundleSandboxed(
         `Sandboxed loader subprocess succeeded with exit code 0 but got unexpected stderr ${stderr}`
       );
     } else if (exitCode !== 0) {
+=======
+    const { stdout, stderr, exitCode, signal, timedOut, failed } = result;
+    const hideProjectToken = (value: string) =>
+      args.projectToken
+        ? value.replaceAll(args.projectToken, "[redacted]")
+        : value;
+    const diagnostic = {
+      projectId: args.projectId,
+      component: args.component,
+      traceparent: traceCarrier.traceparent,
+      exitCode,
+      signal,
+      timedOut,
+      failed,
+      stdoutLength: stdout.length,
+      stderr: hideProjectToken(stderr).slice(0, 8192),
+      spawnError:
+        "originalMessage" in result
+          ? hideProjectToken(String(result.originalMessage)).slice(0, 8192)
+          : undefined,
+    };
+    if (failed || exitCode !== 0 || stdout.length === 0) {
+>>>>>>> upstream/master
       // This error comes from @plasmicapp/loader-react
       if (stderr.includes("Unable to find components")) {
-        // Split at the first new line to avoid returning the stack trace.
-        throw new NotFoundError(stderr.split("\n")[0]);
+        logger.info("Sandboxed loader component not found", diagnostic);
+        throw new NotFoundError(hideProjectToken(stderr.split("\n")[0]));
       }
-
-      logger().error(
-        `Sandboxed loader subprocess failed with exit code ${exitCode} with stderr: ${stderr}`
-      );
+      logger.error("Sandboxed loader subprocess failed", diagnostic);
+      const error = new Error("Sandboxed loader subprocess failed");
+      setSentryErrorContext(error, "htmlBuild", diagnostic);
+      throw error;
     }
-    if (stdout.length === 0) {
-      throw new Error("Sandboxed loader subprocess returned no HTML");
+    if (stderr.trim().length > 0) {
+      logger.warn(
+        "Sandboxed loader subprocess succeeded with stderr",
+        diagnostic,
+      );
     }
     return { html: stdout };
     });
@@ -777,7 +1194,7 @@ export async function buildVersionedLoaderHtml(req: Request, res: Response) {
       appDir: false,
     });
 
-    setAsCacheableResource(res, maxAge);
+    setAsCacheableResource(req, res, maxAge);
     res.json(result);
   });
 }
@@ -803,30 +1220,7 @@ export async function buildLatestLoaderHtml(req: Request, res: Response) {
 async function genReprV2(
   req: Request,
   res: Response,
-  props: ProjectLoaderProps
-) {
-  const { projectId, project } = props;
-
-  const mgr = superDbMgr(req);
-
-  const bundler = new Bundler();
-  const { site } = await mgr.tryGetPkgVersionByProjectVersionOrTag(
-    bundler,
-    projectId,
-    props.version || "latest"
-  );
-
-  const componentReprs = site.components.map((c) =>
-    tuple(c.name, tplToPlasmicElements(c.tplTree))
-  );
-
-  res.json({ site: { components: Object.fromEntries(componentReprs) } });
-}
-
-async function genReprV3(
-  req: Request,
-  res: Response,
-  props: ProjectLoaderProps
+  props: ProjectLoaderProps,
 ) {
   const { projectId } = props;
 
@@ -836,7 +1230,30 @@ async function genReprV3(
   const { site } = await mgr.tryGetPkgVersionByProjectVersionOrTag(
     bundler,
     projectId,
-    props.version || "latest"
+    props.version || "latest",
+  );
+
+  const componentReprs = site.components.map((c) =>
+    tuple(c.name, tplToPlasmicElements(c.tplTree)),
+  );
+
+  res.json({ site: { components: Object.fromEntries(componentReprs) } });
+}
+
+async function genReprV3(
+  req: Request,
+  res: Response,
+  props: ProjectLoaderProps,
+) {
+  const { projectId } = props;
+
+  const mgr = superDbMgr(req);
+
+  const bundler = new Bundler();
+  const { site } = await mgr.tryGetPkgVersionByProjectVersionOrTag(
+    bundler,
+    projectId,
+    props.version || "latest",
   );
 
   res.json({ site: toJson(site, bundler) });
@@ -847,7 +1264,7 @@ async function buildPublishedLoaderRedirect(
   res: Response,
   loaderType: `repr-v2` | `repr-v3` | `html`,
   componentRequired: boolean,
-  query: string
+  query: string,
 ) {
   const mgr = userDbMgr(req);
   const projectIdSpec = req.params.projectId as string | undefined;
@@ -871,10 +1288,11 @@ async function buildPublishedLoaderRedirect(
 
   // Make sure we don't cache redirects
   redirectToCacheableResource(
+    req,
     res,
     `/api/v1/loader/${loaderType}/versioned/${resolvedProjectIdSpec}${
       component ? "/" + normComponentName(component) : ""
-    }?${query}`
+    }?${query}`,
   );
 }
 
@@ -884,7 +1302,7 @@ export async function buildPublishedLoaderReprV2(req: Request, res: Response) {
     res,
     "repr-v2",
     true,
-    new URLSearchParams([["cb", LOADER_CACHE_BUST]]).toString()
+    new URLSearchParams([["cb", LOADER_CACHE_BUST]]).toString(),
   );
 }
 
@@ -898,7 +1316,7 @@ export async function buildVersionedLoaderReprV2(req: Request, res: Response) {
     async (props) => {
       setAsCacheableResource(res);
       await genReprV2(req, res, props);
-    }
+    },
   );
 }
 
@@ -911,7 +1329,7 @@ export async function buildLatestLoaderReprV2(req: Request, res: Response) {
     false,
     async (props) => {
       await genReprV2(req, res, props);
-    }
+    },
   );
 }
 
@@ -921,7 +1339,7 @@ export async function buildPublishedLoaderReprV3(req: Request, res: Response) {
     res,
     "repr-v3",
     false,
-    new URLSearchParams([["cb", LOADER_CACHE_BUST]]).toString()
+    new URLSearchParams([["cb", LOADER_CACHE_BUST]]).toString(),
   );
 }
 
@@ -935,7 +1353,7 @@ export async function buildVersionedLoaderReprV3(req: Request, res: Response) {
     async (props) => {
       setAsCacheableResource(res);
       await genReprV3(req, res, props);
-    }
+    },
   );
 }
 
@@ -948,7 +1366,7 @@ export async function buildLatestLoaderReprV3(req: Request, res: Response) {
     false,
     async (props) => {
       await genReprV3(req, res, props);
-    }
+    },
   );
 }
 
@@ -967,17 +1385,45 @@ export async function prefillPublishedLoader(req: Request, res: Response) {
   res.json({});
 }
 
-function redirectToCacheableResource(res: Response, destination: string) {
-  setAsCacheableRedirect(res);
+/** Only credentials in the project token header are part of the shared cache key. */
+function isSharedCacheable(req: Request) {
+  return !req.user && !req.apiTeam && !req.body?.projectIdsAndTokens;
+}
+
+const PRIVATE_CACHE_CONTROL = "private, no-store";
+
+function redirectToCacheableResource(
+  req: Request,
+  res: Response,
+  destination: string,
+) {
+  setAsCacheableRedirect(req, res);
   res.redirect(destination);
 }
 
-function setAsCacheableRedirect(res: Response) {
+function setAsCacheableRedirect(req: Request, res: Response) {
+  if (!isSharedCacheable(req)) {
+    res.setHeader("Cache-Control", PRIVATE_CACHE_CONTROL);
+    return;
+  }
   // We ask the CDN to cache redirects for us for a short time
   res.setHeader("Cache-Control", "s-maxage=30");
 }
 
-function setAsCacheableResource(res: Response, maxAge = 31536000) {
+function setAsCacheableResource(
+  req: Request,
+  res: Response,
+  maxAge = 31536000,
+) {
+  if (!isSharedCacheable(req)) {
+    res.setHeader("Cache-Control", PRIVATE_CACHE_CONTROL);
+    return;
+  }
+  setAsPublicCacheableResource(res, maxAge);
+}
+
+/** For resources that need no authorization. */
+function setAsPublicCacheableResource(res: Response, maxAge = 31536000) {
   // We set a relatively short max-age, and a long s-maxage (so, the browser
   // doesn't cache much, but cloudfront caches for a long time).  This is
   // because if we discover a bug on the image optimizer, it is easy for us to
@@ -985,13 +1431,30 @@ function setAsCacheableResource(res: Response, maxAge = 31536000) {
   // browser cache.
   res.setHeader(
     "Cache-Control",
-    `max-age=${Math.min(3600, maxAge)}, s-maxage=${maxAge}`
+    `max-age=${Math.min(3600, maxAge)}, s-maxage=${maxAge}`,
   );
 }
 
-export function checkEtagSkippable(req: Request, res: Response, etag: string) {
+function isUptimeCheck(req: Request) {
+  return Boolean(req.headers["x-plasmic-uptime-check"]);
+}
+
+/**
+ * Cache-Control override for loader preview responses, which pass through
+ * mini-cache. See `isSharedCacheable`.
+ */
+function previewCacheControl(req: Request) {
+  return isSharedCacheable(req) ? undefined : PRIVATE_CACHE_CONTROL;
+}
+
+export function checkEtagSkippable(
+  req: Request,
+  res: Response,
+  etag: string,
+  cacheControl = "max-age=5",
+) {
   if (req.devflags.disableETagCaching) {
-    logger().info("Etag mechanism is disabled");
+    logger.info("Etag mechanism is disabled");
     return false;
   }
 
@@ -999,27 +1462,27 @@ export function checkEtagSkippable(req: Request, res: Response, etag: string) {
   // next time as well.
   res.setHeader("ETag", etag);
 
-  // We set a short max-age here so that the browser or cloudfront
+  // By default we set a short max-age here so that the browser or cloudfront
   // will try to revalidate via if-none-match first before reusing
   // the cache entry. We used to set no-cache here, but no-cache would
   // disable request collapsing that cloudfront does for simultaneous
   // requests.
-  res.setHeader("Cache-Control", "max-age=5");
+  res.setHeader("Cache-Control", cacheControl);
 
-  if (req.headers["x-plasmic-uptime-check"]) {
+  if (isUptimeCheck(req)) {
     // Never skip uptime checks, but still set cache headers above
     return false;
   }
 
   if (req.headers["if-none-match"] === etag) {
     // We got a match!  We can skip codegen.
-    logger().info(`Preview request matched! ${etag}`);
+    logger.info(`Preview request matched! ${etag}`);
     res.status(304);
     res.send();
     return true;
   }
-  logger().info(
-    `Preview request no match ${etag} ${req.headers["if-none-match"]}`
+  logger.info(
+    `Preview request no match ${etag} ${req.headers["if-none-match"]}`,
   );
   return false;
 }
@@ -1032,9 +1495,9 @@ function trackLoaderCodegenEvent(
   req: Request,
   projects: Project[],
   opts: {
-    versionType: "versioned" | "preview" | "chunk";
+    versionType: "versioned" | "preview" | "revision" | "chunk";
     platform: string;
-  }
+  },
 ) {
   const { versionType, platform } = opts;
   req.analytics.track(
@@ -1048,18 +1511,18 @@ function trackLoaderCodegenEvent(
       platform,
       versionType,
     },
-    { sampleThreshold: 0.1 }
+    { sampleThreshold: 0.1 },
   );
 }
 
 const getHydrationScriptInfo = () => {
   const dir = path.resolve(
-    path.join(process.cwd(), "..", "loader-html-hydrate")
+    path.join(process.cwd(), "..", "loader-html-hydrate"),
   );
   const buildDir = path.join(dir, "build");
   const files = fs.readdirSync(buildDir);
   const filename = files.filter(
-    (file) => file.startsWith("loader-") && file.endsWith(".js")
+    (file) => file.startsWith("loader-") && file.endsWith(".js"),
   )[0];
 
   if (!filename) {
@@ -1074,20 +1537,27 @@ const getHydrationScriptInfo = () => {
 };
 
 export function getHydrationScript(_: Request, res: Response) {
+<<<<<<< HEAD
   res.setHeader("Cache-Control", "maxage=60, s-maxage=60");
   res.redirect(
     `${getCodegenPublicUrl()}/static/js/${getHydrationScriptInfo().filename}`
   );
+=======
+  const { dir, filename } = getHydrationScriptInfo();
+  res.setHeader("Cache-Control", "max-age=60, s-maxage=60");
+  // Serve directly to avoid the CDN's rejection of the redirect response.
+  res.sendFile(path.join(dir, filename));
+>>>>>>> upstream/master
 }
 
 export function getHydrationScriptVersioned(req: Request, res: Response) {
   const { dir, filename, hash } = getHydrationScriptInfo();
   if (hash !== req.params.hash) {
     throw new NotFoundError(
-      `Hydration script with hash=${req.params.hash} is unavailable`
+      `Hydration script with hash=${req.params.hash} is unavailable`,
     );
   }
-  res.setHeader("Cache-Control", "maxage=31536000, s-maxage=31536000");
+  res.setHeader("Cache-Control", "max-age=31536000, s-maxage=31536000");
   res.sendFile(path.join(dir, filename));
 }
 

@@ -1,3 +1,7 @@
+import type { AssetModule, CodeModule } from "./runtime-types";
+
+export type { AssetModule, CodeModule };
+
 export interface ComponentMeta {
   id: string;
   usedComponents: string[];
@@ -121,19 +125,6 @@ export interface LoaderBundleOutput extends ApiLoaderBundleOutput {
   filteredIds: Record<string, string[]>;
 }
 
-export interface CodeModule {
-  fileName: string;
-  code: string;
-  imports: string[];
-  type: "code";
-}
-
-export interface AssetModule {
-  fileName: string;
-  source: string;
-  type: "asset";
-}
-
 const VERSION = "10";
 
 export const isBrowser =
@@ -142,7 +133,7 @@ export const isBrowser =
   typeof window.document !== "undefined";
 
 export function transformApiLoaderBundleOutput(
-  bundle: ApiLoaderBundleOutput
+  bundle: ApiLoaderBundleOutput,
 ): LoaderBundleOutput {
   return {
     ...bundle,
@@ -150,10 +141,19 @@ export function transformApiLoaderBundleOutput(
   };
 }
 
+const DEFAULT_CDN_HOST = "https://codegen.plasmic.app";
+
+const REDIRECT_STATUSES = new Set([301, 302, 307, 308]);
+
+const BROWSER_FETCH_FAILED = Symbol("BROWSER_FETCH_FAILED");
+const ROUTE_NOT_FOUND = Symbol("ROUTE_NOT_FOUND");
+
 export class Api {
-  private readonly apiHost: string;
+  private readonly previewHost: string;
   private readonly cdnHost: string;
   private fetch: typeof globalThis.fetch;
+
+  private useLegacyPreview = false;
 
   private lastResponse:
     | {
@@ -171,11 +171,10 @@ export class Api {
       /** @deprecated No-op. Native fetch is always used now. */
       nativeFetch?: boolean;
       manualRedirect?: boolean;
-    }
+    },
   ) {
-    this.apiHost =
-      opts.apiHost ?? opts.host ?? "https://codegen-origin.plasmic.app";
-    this.cdnHost = opts.cdnHost ?? opts.host ?? "https://codegen.plasmic.app";
+    this.cdnHost = opts.cdnHost ?? opts.host ?? DEFAULT_CDN_HOST;
+    this.previewHost = opts.apiHost ?? opts.host ?? this.cdnHost;
     this.fetch = globalThis.fetch.bind(globalThis);
   }
 
@@ -193,7 +192,9 @@ export class Api {
       i18nKeyScheme?: "content" | "hash" | "path";
       i18nTagPrefix?: string;
       skipHead?: boolean;
-    }
+      /** Watcher revisions bypass cached redirects to older previews. */
+      minRevs?: Record<string, number>;
+    },
   ): Promise<LoaderBundleOutput> {
     const { platform, preview } = opts;
     const query = new URLSearchParams([
@@ -206,69 +207,145 @@ export class Api {
       ...(opts.i18nKeyScheme ? [["i18nKeyScheme", opts.i18nKeyScheme]] : []),
       ...(opts.i18nTagPrefix ? [["i18nTagPrefix", opts.i18nTagPrefix]] : []),
       ...(opts.skipHead ? [["skipHead", "true"]] : []),
+      ...(preview ? [["loaderVersion", VERSION]] : []),
+      ...(preview && opts.minRevs
+        ? Object.entries(opts.minRevs)
+            .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+            .map(([projectId, rev]) => ["minRev", `${projectId}:${rev}`])
+        : []),
     ]).toString();
 
-    const host = preview ? this.apiHost : this.cdnHost;
-    const url = preview
-      ? `${host}/api/v1/loader/code/preview?${query}`
-      : `${host}/api/v1/loader/code/published?${query}`;
+    if (!preview) {
+      const host = this.cdnHost;
+      return this.fetchFromRoute(
+        host,
+        `${host}/api/v1/loader/code/published?${query}`,
+        { preview: false },
+      );
+    }
 
-    // We only expect a redirect when we're dealing with published mode, as there should be
-    // a stable set of versions to be used. As in browser, we could receive a opaque response
-    // with a redirect, we don't try to use last response in browser.
-    const useLastReponse =
-      // We consider that manualRedirect is true by default, only by setting it to false
-      // we disable it.
-      !(this.opts.manualRedirect === false) && !preview && !isBrowser;
+    const host = this.previewHost;
+    const legacyUrl = `${host}/api/v1/loader/code/preview?${query}`;
+    if (this.useLegacyPreview) {
+      return this.fetchFromRoute(host, legacyUrl, { preview: true });
+    }
+    const result = await this.fetchFromRoute(
+      host,
+      `${host}/api/v1/loader/code/revision/latest?${query}`,
+      { preview: true, allowRouteNotFound: true },
+    );
+    if (result !== ROUTE_NOT_FOUND && result !== BROWSER_FETCH_FAILED) {
+      return result;
+    }
+    const bundle = await this.fetchFromRoute(host, legacyUrl, {
+      preview: true,
+    });
+    // A browser network error can be temporary. Only remember a confirmed 404.
+    if (result === ROUTE_NOT_FOUND) {
+      this.useLegacyPreview = true;
+    }
+    return bundle;
+  }
 
-    if (useLastReponse) {
+  private async fetchFromRoute(
+    host: string,
+    url: string,
+    opts: { preview: boolean; allowRouteNotFound?: false },
+  ): Promise<LoaderBundleOutput>;
+  private async fetchFromRoute(
+    host: string,
+    url: string,
+    opts: { preview: boolean; allowRouteNotFound: true },
+  ): Promise<
+    LoaderBundleOutput | typeof ROUTE_NOT_FOUND | typeof BROWSER_FETCH_FAILED
+  >;
+  private async fetchFromRoute(
+    host: string,
+    url: string,
+    opts: { preview: boolean; allowRouteNotFound?: boolean },
+  ): Promise<
+    LoaderBundleOutput | typeof ROUTE_NOT_FOUND | typeof BROWSER_FETCH_FAILED
+  > {
+    const { preview, allowRouteNotFound } = opts;
+
+    // Browsers hide manual redirect targets. Node can reuse the last bundle by URL.
+    const useManualRedirect = this.opts.manualRedirect !== false && !isBrowser;
+
+    if (useManualRedirect) {
       const redirectResp = await this.fetch(url, {
         method: "GET",
         headers: this.makeGetHeaders(),
         redirect: "manual",
       });
 
-      if (redirectResp.status !== 301 && redirectResp.status !== 302) {
+      if (allowRouteNotFound && redirectResp.status === 404) {
+        return ROUTE_NOT_FOUND;
+      }
+
+      if (!REDIRECT_STATUSES.has(redirectResp.status)) {
+        if (preview) {
+          return this.handleBundleResponse(redirectResp, host);
+        }
         const error = await this.parseJsonResponse(redirectResp);
         throw new Error(
           `Error fetching loader data, a redirect was expected: ${
             error?.error?.message ?? redirectResp.statusText
-          }`
+          }`,
         );
       }
 
-      const nextLocation = redirectResp.headers.get("location");
-      if (!nextLocation) {
+      const location = redirectResp.headers.get("location");
+      if (!location) {
         throw new Error(
-          `Error fetching loader data, a redirect was expected but no location header was found`
+          `Error fetching loader data, a redirect was expected but no location header was found`,
         );
       }
 
-      if (this.lastResponse?.key === nextLocation) {
+      // Resolve before caching so relative locations are scoped to their host.
+      const nextUrl = new URL(location, url).toString();
+      if (this.lastResponse?.key === nextUrl) {
         return this.lastResponse.bundle;
       }
 
-      const resp = await this.fetch(`${host}${nextLocation}`, {
+      const resp = await this.fetch(nextUrl, {
         method: "GET",
         headers: this.makeGetHeaders(),
       });
 
       const json = transformApiLoaderBundleOutput(
-        await this.verifyAndParseJsonResponse(resp)
+        await this.verifyAndParseJsonResponse(resp),
       );
       this.lastResponse = {
         bundle: json,
-        key: nextLocation,
+        key: nextUrl,
       };
 
       return json;
     }
 
-    const resp = await this.fetch(url, {
-      method: "GET",
-      headers: this.makeGetHeaders(),
-    });
+    let resp: Response;
+    try {
+      resp = await this.fetch(url, {
+        method: "GET",
+        headers: this.makeGetHeaders(),
+      });
+    } catch (error) {
+      // Browsers reject fetch with TypeError when an older host omits CORS on its 404.
+      if (isBrowser && allowRouteNotFound && error instanceof TypeError) {
+        return BROWSER_FETCH_FAILED;
+      }
+      throw error;
+    }
 
+    // A followed redirect can return 404 for a missing revision.
+    if (allowRouteNotFound && resp.status === 404 && !resp.redirected) {
+      return ROUTE_NOT_FOUND;
+    }
+
+    return this.handleBundleResponse(resp, host);
+  }
+
+  private async handleBundleResponse(resp: Response, host: string) {
     let json = await this.verifyAndParseJsonResponse(resp);
 
     // An Angular polyfill can cause 302 redirects to fail in Safari, due to missing headers.
@@ -286,12 +363,12 @@ export class Api {
 
   private async verifyAndParseJsonResponse(
     resp: Response,
-    errorText = "Error fetching loader data"
+    errorText = "Error fetching loader data",
   ) {
     if (resp.status >= 400) {
       const error = await this.parseJsonResponse(resp);
       throw new Error(
-        `${errorText}: ${error?.error?.message ?? resp.statusText}`
+        `${errorText}: ${error?.error?.message ?? resp.statusText}`,
       );
     }
     return (await this.parseJsonResponse(resp)) as ApiLoaderBundleOutput;
@@ -303,7 +380,7 @@ export class Api {
       return JSON.parse(text);
     } catch (err) {
       throw new Error(
-        `Error parsing JSON response: ${err}; status: ${resp.status}; response: ${text}`
+        `Error parsing JSON response: ${err}; status: ${resp.status}; response: ${text}`,
       );
     }
   }
@@ -316,7 +393,12 @@ export class Api {
   }
 
   private makeAuthHeaders() {
-    const tokens = this.opts.projects
+    // CDN caches key loader responses on this header, so serialize projects in
+    // a canonical order: callers listing the same projects in a different
+    // order then share cache entries. The sort is stable, so duplicate IDs keep
+    // their relative order.
+    const tokens = [...this.opts.projects]
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
       .map((p) => `${p.id}:${p.token}`)
       .join(",");
     return {
@@ -326,12 +408,12 @@ export class Api {
 
   getChunksUrl(bundle: LoaderBundleOutput, modules: CodeModule[]) {
     return `${this.cdnHost}/api/v1/loader/chunks?bundleKey=${encodeURIComponent(
-      bundle.bundleKey ?? "null"
+      bundle.bundleKey ?? "null",
     )}&fileName=${encodeURIComponent(
       modules
         .map((m) => m.fileName)
         .sort()
-        .join(",")
+        .join(","),
     )}`;
   }
 }

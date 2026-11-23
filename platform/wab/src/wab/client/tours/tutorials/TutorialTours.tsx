@@ -1,7 +1,8 @@
 import { reportError } from "@/wab/client/ErrorNotifications";
+import { tourSeenForProjectKey } from "@/wab/client/LocalStorageKey";
+import { useGetDomainsForProject } from "@/wab/client/api-hooks";
 import { AppCtx } from "@/wab/client/app-ctx";
 import { topFrameTourSignals } from "@/wab/client/components/TopFrame/TopFrameChrome";
-import { tourSeenForProjectKey } from "@/wab/client/LocalStorageKey";
 import { reactConfirm } from "@/wab/client/components/quick-modals";
 import Button from "@/wab/client/components/widgets/Button";
 import IconButton from "@/wab/client/components/widgets/IconButton";
@@ -23,7 +24,8 @@ import { StandardMarkdown } from "@/wab/client/utils/StandardMarkdown";
 import { zIndex } from "@/wab/client/z-index";
 import { useSignalListener } from "@/wab/commons/components/use-signal-listener";
 import { ProjectId } from "@/wab/shared/ApiSchema";
-import { mkShortId, spawn, waitUntil } from "@/wab/shared/common";
+import { spawn, waitUntil } from "@/wab/shared/common";
+import { DomainValidator } from "@/wab/shared/hosting";
 import * as Sentry from "@sentry/browser";
 import { notification } from "antd";
 import { observer } from "mobx-react";
@@ -163,7 +165,7 @@ const USER_CHANGE_MAX_WAIT = 1000 * 60 * 45; // 45 minutes
 const useTourStepTargetVisibility = (
   isTourRunning: boolean,
   target?: string,
-  onVisibilityChange?: (isVisible: boolean) => void
+  onVisibilityChange?: (isVisible: boolean) => void,
 ) => {
   const [isTargetVisible, setIsTargetVisible] = React.useState(false);
 
@@ -229,7 +231,7 @@ export const StudioTutorialTours = observer(function _StudioTutorialTours() {
           flags: {},
         });
 
-        notification.warn({
+        notification.warning({
           message:
             "Since you navigated away from the tour, it was paused. By navigating back to the previous state, you can resume the tour.",
         });
@@ -237,13 +239,13 @@ export const StudioTutorialTours = observer(function _StudioTutorialTours() {
         trackCurrentStepTourEvent("paused");
       }
     },
-    [tourState.run]
+    [tourState.run],
   );
 
   const { isTargetVisible } = useTourStepTargetVisibility(
     tourState.run,
     currentStep?.target,
-    clearFlagsOnVisibilityChange
+    clearFlagsOnVisibilityChange,
   );
 
   const closeTour = () => {
@@ -259,7 +261,7 @@ export const StudioTutorialTours = observer(function _StudioTutorialTours() {
   const markTourAsSeen = async () => {
     await api.addStorageItem(
       tourSeenForProjectKey(studioCtx.siteInfo.id),
-      true
+      true,
     );
   };
 
@@ -291,9 +293,7 @@ export const StudioTutorialTours = observer(function _StudioTutorialTours() {
     });
   };
 
-  const advanceToNextStep = async (
-    flags: Partial<TutorialStateFlags> = {}
-  ) => {
+  const advanceToNextStep = async (flags: Partial<TutorialStateFlags> = {}) => {
     studioCtx.setOnboardingTourState({
       ...studioCtx.onboardingTourState,
       run: false, // sneakily disable the tour so that the tutorial is hidden while waiting
@@ -372,7 +372,7 @@ export const StudioTutorialTours = observer(function _StudioTutorialTours() {
         spawn(advanceToNextStep());
       }
     },
-    [tourState.tour, tourState.run, tourState.stepIndex]
+    [tourState.tour, tourState.run, tourState.stepIndex],
   );
 
   React.useEffect(() => {
@@ -421,7 +421,7 @@ export const StudioTutorialTours = observer(function _StudioTutorialTours() {
         }
 
         const hasSeenTour = await api.getStorageItem(
-          tourSeenForProjectKey(projectId)
+          tourSeenForProjectKey(projectId),
         );
 
         if (!hasSeenTour && isMounted()) {
@@ -442,7 +442,7 @@ export const StudioTutorialTours = observer(function _StudioTutorialTours() {
             triggers: [],
           });
         }
-      })()
+      })(),
     );
   }, [studioCtx, isMounted]);
 
@@ -558,12 +558,6 @@ export interface TopFrameTourState {
   stepIndex: number;
 }
 
-function generateCustomDomain(appCtx: AppCtx, tour: string) {
-  const uniqueId = mkShortId().toLowerCase();
-  const tourPrefix = "portfolio-";
-  return `${tourPrefix}${uniqueId}.${appCtx.appConfig.plasmicHostingSubdomainSuffix}`;
-}
-
 export function TopFrameTours(props: {
   appCtx: AppCtx;
   tourState: TopFrameTourState;
@@ -577,13 +571,16 @@ export function TopFrameTours(props: {
   const currentStep = currentTutorial?.[tourState.stepIndex];
   const { isTargetVisible } = useTourStepTargetVisibility(
     tourState.run,
-    currentStep?.target
+    currentStep?.target,
   );
 
-  const domain = React.useMemo(
-    () => generateCustomDomain(appCtx, tourState.tour),
-    [appCtx, tourState.tour]
+  const { data: domainsResult } = useGetDomainsForProject(
+    projectId,
+    tourState.run && !!currentTutorial,
   );
+  const domain = new DomainValidator(
+    appCtx.appConfig.plasmicHostingSubdomainSuffix,
+  ).extractSubdomain(domainsResult?.domains ?? []);
 
   function trackCurrentStepTourEvent(status: TourStepMeta["status"]) {
     trackTourEvent({
@@ -614,7 +611,6 @@ export function TopFrameTours(props: {
     appCtx,
     topFrameApi,
     projectId,
-    domain,
   };
 
   const advanceToNextStep = async () => {
@@ -665,7 +661,7 @@ export function TopFrameTours(props: {
         spawn(advanceToNextStep());
       }
     },
-    [tourState.tour, tourState.run, tourState.stepIndex]
+    [tourState.tour, tourState.run, tourState.stepIndex],
   );
 
   if (!tourState.run || !currentTutorial || !isTargetVisible) {

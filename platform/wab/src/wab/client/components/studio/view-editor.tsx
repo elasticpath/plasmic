@@ -4,6 +4,10 @@ import { ReadableClipboard } from "@/wab/client/clipboard/ReadableClipboard";
 import { WritableClipboard } from "@/wab/client/clipboard/WritableClipboard";
 import AutoOpenBanner from "@/wab/client/components/AutoOpenBanner";
 import { BottomModals } from "@/wab/client/components/BottomModal";
+import {
+  BottomPanel,
+  BottomPanelSlot,
+} from "@/wab/client/components/BottomPanel";
 import { maybeShowContextMenu } from "@/wab/client/components/ContextMenu";
 import PageSettings from "@/wab/client/components/PageSettings";
 import { CanvasDndOverlay } from "@/wab/client/components/canvas/CanvasDndOverlay";
@@ -24,25 +28,19 @@ import { CanvasCtx } from "@/wab/client/components/canvas/canvas-ctx";
 import { closestTaggedNonTextDomElt } from "@/wab/client/components/canvas/studio-canvas-util";
 import { getMergedTextArg } from "@/wab/client/components/canvas/view-ops";
 import { CommentsDialogs } from "@/wab/client/components/comments/CommentsDialogs";
-import CommentsTab from "@/wab/client/components/comments/CommentsTab";
-import { CopilotUiPrompt } from "@/wab/client/components/copilot/CopilotUiPrompt";
 import { DevContainer } from "@/wab/client/components/dev";
 import { ComponentPresetsModal } from "@/wab/client/components/insert-panel/ComponentPresetsModal";
 import InsertPanelWrapper from "@/wab/client/components/insert-panel/InsertPanelWrapper";
 import { PreviewCtx } from "@/wab/client/components/live/PreviewCtx";
 import { makeFrameSizeMenu } from "@/wab/client/components/menus/FrameSizeMenu";
-import {
-  ComponentOrPageTab,
-  StyleTab,
-  StyleTabContext,
-} from "@/wab/client/components/sidebar-tabs/style-tab";
+import { dataBrowserTab } from "@/wab/client/components/sidebar-tabs/DataBinding/DataPickerPanel";
 import { FocusedModeToolbar } from "@/wab/client/components/studio/FocusedModeToolbar/FocusedModeToolbar";
 import { GlobalCssVariables } from "@/wab/client/components/studio/GlobalCssVariables";
 import LeftPane from "@/wab/client/components/studio/LeftPane";
+import { RightPane } from "@/wab/client/components/studio/RightPane";
 import { TopFrameObserver } from "@/wab/client/components/studio/TopFrameObserver";
 import { TopModal } from "@/wab/client/components/studio/TopModal";
 import { CodePreviewPanel } from "@/wab/client/components/studio/code-preview/CodePreviewPanel";
-import { providesSidebarPopupSetting } from "@/wab/client/components/style-controls/StyleComponent";
 import { TopBar } from "@/wab/client/components/top-bar";
 import { getContextMenuForFocusedTpl } from "@/wab/client/components/tpl-menu";
 import * as widgets from "@/wab/client/components/widgets";
@@ -61,7 +59,7 @@ import { PLATFORM } from "@/wab/client/platform";
 import { bindShortcutHandlers } from "@/wab/client/shortcuts/shortcut-handler";
 import { shouldHandleStudioShortcut } from "@/wab/client/shortcuts/studio/studio-shortcut-handlers";
 import { STUDIO_SHORTCUTS } from "@/wab/client/shortcuts/studio/studio-shortcuts";
-import { RightTabKey, StudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
+import { StudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { ViewportCtx } from "@/wab/client/studio-ctx/ViewportCtx";
 import { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
 import {
@@ -87,7 +85,6 @@ import { isBaseVariantFrame } from "@/wab/shared/component-arenas";
 import {
   isCodeComponent,
   isFrameComponent,
-  isPageComponent,
 } from "@/wab/shared/core/components";
 import { ExprCtx } from "@/wab/shared/core/exprs";
 import { getSiteArenas } from "@/wab/shared/core/sites";
@@ -111,10 +108,10 @@ import {
 import { TplVisibility } from "@/wab/shared/visibility-utils";
 import { Alert, notification } from "antd";
 import { ArgsProps } from "antd/lib/notification";
-import { default as cn, default as cx } from "classnames";
+import { default as cn } from "classnames";
 import $ from "jquery";
 import { throttle } from "lodash";
-import { observable, runInAction } from "mobx";
+import { runInAction } from "mobx";
 import { observer } from "mobx-react";
 import { ok } from "neverthrow";
 import React, { createRef } from "react";
@@ -154,9 +151,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
     targetVc: ViewCtx;
   };
   private resizeObserver?: ResizeObserver;
-  private dndOverlayOpts = observable({
-    visible: false,
-  });
+  private canvasContainer = createRef<HTMLDivElement>();
 
   private unbindShortcutHandlers: () => void;
 
@@ -180,7 +175,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
   private viewOps() {
     return ensure(
       ensure(this.viewCtx(), () => "Expected viewCtx to exist").viewOps,
-      () => "Expected viewOps to exist"
+      () => "Expected viewOps to exist",
     );
   }
 
@@ -192,8 +187,8 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
     if (!this.viewCtx()) {
       spawn(
         this.props.studioCtx.changeUnsafe(() =>
-          this.props.studioCtx.focusNextFrame()
-        )
+          this.props.studioCtx.focusNextFrame(),
+        ),
       );
       return true;
     }
@@ -204,7 +199,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
   private registerListener<K extends keyof HTMLElementEventMap>(
     event: K,
     listener: (this: HTMLElement, ev: HTMLElementEventMap[K]) => any,
-    options?: boolean | AddEventListenerOptions
+    options?: boolean | AddEventListenerOptions,
   ) {
     this.listeners.push(tuple(event, listener));
     document.body.addEventListener(event, listener, options);
@@ -228,13 +223,13 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
     window.focus();
 
     this.registerListener("pointerdown", (e) =>
-      this.handleMouseDown(e, this.viewCtx())
+      this.handleMouseDown(e, this.viewCtx()),
     );
     this.registerListener("pointermove", (e) =>
-      this.handleMouseMove(e, this.viewCtx())
+      this.handleMouseMove(e, this.viewCtx()),
     );
     this.registerListener("pointerup", (e) =>
-      this.handleMouseUp(e, this.viewCtx())
+      this.handleMouseUp(e, this.viewCtx()),
     );
 
     // We need to make sure the wheel handler uses {passive: false} so that we
@@ -291,7 +286,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
         e.preventDefault();
         await this.props.studioCtx.copy(
           WritableClipboard.fromDataTransfer(e.clipboardData),
-          vc
+          vc,
         );
       }
     });
@@ -305,7 +300,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
         e.preventDefault();
         await this.props.studioCtx.cut(
           WritableClipboard.fromDataTransfer(e.clipboardData),
-          vc
+          vc,
         );
       }
     });
@@ -317,7 +312,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
       if (e.clipboardData) {
         e.preventDefault();
         await this.props.studioCtx.paste(
-          ReadableClipboard.fromDataTransfer(e.clipboardData)
+          ReadableClipboard.fromDataTransfer(e.clipboardData),
         );
       }
     });
@@ -357,7 +352,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
       initialClipperBox: Box.fromRect(canvasClipper.getBoundingClientRect()),
       initialClipperScroll: new Pt(
         canvasClipper.scrollLeft,
-        canvasClipper.scrollTop
+        canvasClipper.scrollTop,
       ),
     });
     this.props.studioCtx.viewportCtx = viewportCtx;
@@ -371,7 +366,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
               frame: initArenaChildren[0] as ArenaFrame,
               autoZoom: false,
             });
-          })
+          }),
         );
       }
 
@@ -384,13 +379,13 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
           // We want the client box of the clipper, so use getBoundingClientRect().
           // contentRect only provides the size of the box.
           viewportCtx.setClipperBox(
-            Box.fromRect(canvasClipper.getBoundingClientRect())
+            Box.fromRect(canvasClipper.getBoundingClientRect()),
           );
         } else if (entry.target === canvasScaler) {
           // We want the size of the scaler, before CSS transforms, so use contentRect.
           // Note that CSS transforms do not trigger the resize observer.
           viewportCtx.setArenaScalerSize(
-            Box.fromRect(entry.contentRect).size()
+            Box.fromRect(entry.contentRect).size(),
           );
         }
       }
@@ -406,7 +401,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
 
     this.onClipperScrollListener = () => {
       viewportCtx.setScroll(
-        new Pt(canvasClipper.scrollLeft, canvasClipper.scrollTop)
+        new Pt(canvasClipper.scrollLeft, canvasClipper.scrollTop),
       );
     };
     canvasClipper.addEventListener("scroll", this.onClipperScrollListener);
@@ -424,7 +419,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
                 autoZoom: false,
               });
             }
-          })
+          }),
         ),
       NAV_CHILD: (e: KeyboardEvent) =>
         this.focusDefaultFrame() ||
@@ -454,7 +449,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
                 }
               }
             }
-          })
+          }),
         ),
       NAV_PREV_SIBLING: (e: KeyboardEvent) =>
         this.focusDefaultFrame() ||
@@ -472,7 +467,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
                 shortcutHandlers.NAV_PARENT(e2);
               }
             }
-          })
+          }),
         ),
       NAV_NEXT_SIBLING: (e: KeyboardEvent) =>
         this.focusDefaultFrame() ||
@@ -490,7 +485,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
                 shortcutHandlers.NAV_PARENT(e2);
               }
             }
-          })
+          }),
         ),
       DELETE: (e: KeyboardEvent) => this.handleDelete(e, { forceDelete: true }),
       HIDE: (e: KeyboardEvent) =>
@@ -524,15 +519,15 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
                     codeComponent
                       ? "a code"
                       : ownedBySite
-                      ? "this"
-                      : "an imported"
+                        ? "this"
+                        : "an imported"
                   } component.`,
                 });
               }
             } else {
               vc.getViewOps().tryEditText();
             }
-          })
+          }),
         ),
       GO_TO_COMPONENT_ARENA: (e: KeyboardEvent) =>
         this.handleHotkey(e, async () =>
@@ -543,7 +538,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
             if (focusObj) {
               vc.studioCtx.switchToComponentArena(focusObj);
             }
-          })
+          }),
         ),
       ENTER_EDIT_FRAME: (e: KeyboardEvent) =>
         this.handleHotkey(e, async () =>
@@ -575,29 +570,31 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
                     codeComponent
                       ? "a code"
                       : ownedBySite
-                      ? "this"
-                      : "an imported"
+                        ? "this"
+                        : "an imported"
                   } component.`,
                 });
               }
             }
-          })
+          }),
         ),
       MOVE_LEFT: (e: KeyboardEvent) =>
         this.handleHotkey(e, async () =>
-          this.props.studioCtx.changeUnsafe(() => this.viewOps().moveBackward())
+          this.props.studioCtx.changeUnsafe(() =>
+            this.viewOps().moveBackward(),
+          ),
         ),
       MOVE_RIGHT: (e: KeyboardEvent) =>
         this.handleHotkey(e, async () =>
-          this.props.studioCtx.changeUnsafe(() => this.viewOps().moveForward())
+          this.props.studioCtx.changeUnsafe(() => this.viewOps().moveForward()),
         ),
       MOVE_HOME: (e: KeyboardEvent) =>
         this.handleHotkey(e, async () =>
-          this.props.studioCtx.changeUnsafe(() => this.viewOps().moveStart())
+          this.props.studioCtx.changeUnsafe(() => this.viewOps().moveStart()),
         ),
       MOVE_END: (e: KeyboardEvent) =>
         this.handleHotkey(e, async () =>
-          this.props.studioCtx.changeUnsafe(() => this.viewOps().moveEnd())
+          this.props.studioCtx.changeUnsafe(() => this.viewOps().moveEnd()),
         ),
       WRAP_HSTACK: (e: KeyboardEvent) =>
         this.handleHotkey(e, async () => {
@@ -628,21 +625,21 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
                   focusedTpl,
                   isTplSlot(focusedTpl)
                     ? TplVisibility.NotRendered
-                    : TplVisibility.DisplayNone
+                    : TplVisibility.DisplayNone,
                 );
               } else {
                 viewOps.setTplVisibility(focusedTpl, TplVisibility.Visible);
               }
             }
-          })
+          }),
         );
       },
       NUDGE_LEFT: (e) => {
         if (!this.props.studioCtx.isLiveMode) {
           this.handleHotkey(e, async (e2) =>
             this.props.studioCtx.changeUnsafe(() =>
-              this.viewOps().nudgePosition("left", e2.shiftKey)
-            )
+              this.viewOps().nudgePosition("left", e2.shiftKey),
+            ),
           );
         }
       },
@@ -650,74 +647,74 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
         if (!this.props.studioCtx.isLiveMode) {
           this.handleHotkey(e, async (e2) =>
             this.props.studioCtx.changeUnsafe(() =>
-              this.viewOps().nudgePosition("right", e2.shiftKey)
-            )
+              this.viewOps().nudgePosition("right", e2.shiftKey),
+            ),
           );
         }
       },
       NUDGE_UP: (e) =>
         this.handleHotkey(e, async (e2) =>
           this.props.studioCtx.changeUnsafe(() =>
-            this.viewOps().nudgePosition("up", e2.shiftKey)
-          )
+            this.viewOps().nudgePosition("up", e2.shiftKey),
+          ),
         ),
       NUDGE_DOWN: (e) =>
         this.handleHotkey(e, async (e2) =>
           this.props.studioCtx.changeUnsafe(() =>
-            this.viewOps().nudgePosition("down", e2.shiftKey)
-          )
+            this.viewOps().nudgePosition("down", e2.shiftKey),
+          ),
         ),
       GROW_WIDTH: (e) =>
         this.handleHotkey(e, async (e2) =>
           this.props.studioCtx.changeUnsafe(() =>
-            this.viewOps().nudgeSize("width", true, e2.shiftKey)
-          )
+            this.viewOps().nudgeSize("width", true, e2.shiftKey),
+          ),
         ),
       SHRINK_WIDTH: (e) =>
         this.handleHotkey(e, async (e2) =>
           this.props.studioCtx.changeUnsafe(() =>
-            this.viewOps().nudgeSize("width", false, e2.shiftKey)
-          )
+            this.viewOps().nudgeSize("width", false, e2.shiftKey),
+          ),
         ),
       GROW_HEIGHT: (e) =>
         this.handleHotkey(e, async (e2) =>
           this.props.studioCtx.changeUnsafe(() =>
-            this.viewOps().nudgeSize("height", true, e2.shiftKey)
-          )
+            this.viewOps().nudgeSize("height", true, e2.shiftKey),
+          ),
         ),
       SHRINK_HEIGHT: (e) =>
         this.handleHotkey(e, async (e2) =>
           this.props.studioCtx.changeUnsafe(() =>
-            this.viewOps().nudgeSize("height", false, e2.shiftKey)
-          )
+            this.viewOps().nudgeSize("height", false, e2.shiftKey),
+          ),
         ),
       TOGGLE_AUTOLAYOUT: (e: KeyboardEvent) =>
         this.handleHotkey(e, async () =>
           this.props.studioCtx.changeUnsafe(() =>
-            this.viewOps().toggleAutoLayout()
-          )
+            this.viewOps().toggleAutoLayout(),
+          ),
         ),
       TOGGLE_HSTACK: (e: KeyboardEvent) =>
         this.handleHotkey(e, async () =>
           this.props.studioCtx.changeUnsafe(() =>
-            this.viewOps().setHstackLayout()
-          )
+            this.viewOps().setHstackLayout(),
+          ),
         ),
       TOGGLE_VSTACK: (e: KeyboardEvent) =>
         this.handleHotkey(e, async () =>
           this.props.studioCtx.changeUnsafe(() =>
-            this.viewOps().setVstackLayout()
-          )
+            this.viewOps().setVstackLayout(),
+          ),
         ),
       AUTOSIZE: (e: KeyboardEvent) =>
         this.handleHotkey(e, async () =>
           this.props.studioCtx.changeUnsafe(() =>
-            this.viewOps().autoSizeFocused()
-          )
+            this.viewOps().autoSizeFocused(),
+          ),
         ),
       DUPLICATE: (e) =>
         this.handleHotkey(e, async () =>
-          this.props.studioCtx.changeUnsafe(() => this.viewOps().duplicate())
+          this.props.studioCtx.changeUnsafe(() => this.viewOps().duplicate()),
         ),
       EXTRACT_COMPONENT: (e) =>
         this.handleHotkey(e, async () => {
@@ -754,11 +751,11 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
             if (tpl && canConvertToSlot(tpl)) {
               this.viewOps().convertToSlot(tpl);
             }
-          })
+          }),
         ),
       COPY_ELEMENT_STYLE: (e) =>
         this.handleHotkey(e, async () =>
-          this.props.studioCtx.changeUnsafe(() => this.viewOps().copyStyle())
+          this.props.studioCtx.changeUnsafe(() => this.viewOps().copyStyle()),
         ),
       PASTE_ELEMENT_STYLE: (e) =>
         this.handleHotkey(e, async () => {
@@ -774,44 +771,44 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
         this.handleHotkey(e, async () => this.props.studioCtx.pasteAsSibling()),
       BOLD: (e) =>
         this.handleHotkey(e, async () =>
-          this.props.studioCtx.changeUnsafe(() => this.viewOps().toggleBold())
+          this.props.studioCtx.changeUnsafe(() => this.viewOps().toggleBold()),
         ),
       DECREASE_FONT_SIZE: (e) =>
         this.handleHotkey(e, async () =>
           this.props.studioCtx.changeUnsafe(() =>
-            this.viewOps().updateFontSize(-1)
-          )
+            this.viewOps().updateFontSize(-1),
+          ),
         ),
       INCREASE_FONT_SIZE: (e) =>
         this.handleHotkey(e, async () =>
           this.props.studioCtx.changeUnsafe(() =>
-            this.viewOps().updateFontSize(1)
-          )
+            this.viewOps().updateFontSize(1),
+          ),
         ),
       DECREASE_FONT_WEIGHT: (e) =>
         this.handleHotkey(e, async () =>
           this.props.studioCtx.changeUnsafe(() =>
-            this.viewOps().updateFontWeight(-1)
-          )
+            this.viewOps().updateFontWeight(-1),
+          ),
         ),
       INCREASE_FONT_WEIGHT: (e) =>
         this.handleHotkey(e, async () =>
           this.props.studioCtx.changeUnsafe(() =>
-            this.viewOps().updateFontWeight(1)
-          )
+            this.viewOps().updateFontWeight(1),
+          ),
         ),
       CONVERT_LINK: (e) =>
         this.handleHotkey(e, async () =>
           this.props.studioCtx.changeUnsafe(() => {
             this.viewOps().convertToLink();
-          })
+          }),
         ),
     };
     this.unbindShortcutHandlers = bindShortcutHandlers(
       document.body,
       STUDIO_SHORTCUTS,
       shortcutHandlers,
-      shouldHandleStudioShortcut(this.props.studioCtx)
+      shouldHandleStudioShortcut(this.props.studioCtx),
     );
   }
 
@@ -862,16 +859,14 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
     const isActiveElementOnCanvas =
       document.activeElement === document.body ||
       ignorableClassNames.some((cls) =>
-        document.activeElement?.classList.contains(cls)
+        document.activeElement?.classList.contains(cls),
       );
-    return (
-      isActiveElementOnCanvas && !this.props.studioCtx.isBottomModalFocused()
-    );
+    return isActiveElementOnCanvas && !this.props.studioCtx.bottomPanel.focused;
   }
 
   private handleHotkey(
     e: KeyboardEvent,
-    f: (e: KeyboardEvent) => Promise<void>
+    f: (e: KeyboardEvent) => Promise<void>,
   ) {
     const vc = this.viewCtx();
     if (vc && !vc.viewOps.isEditing() && this.props.studioCtx.isDevMode) {
@@ -889,7 +884,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
    */
   private handleHotkeyIfCanvasFocused(
     e: KeyboardEvent,
-    f: (e: KeyboardEvent) => Promise<void>
+    f: (e: KeyboardEvent) => Promise<void>,
   ) {
     if (!this.isFocusedOnCanvas()) {
       return false;
@@ -899,40 +894,19 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
   }
 
   /**
-   * The dragenter and dragleave events fire on entering/leaving nested elements
-   * in a DOM tree, so we count how deep we are in a nested tree to track
-   * whether we're actually entered or exited from the overall tree.
-   */
-  private dragDepth = 0;
-
-  /**
-   * We must call preventDefault to signify a valid drop target.
+   * We must call preventDefault to signify a valid drop target. The drop
+   * affordance itself follows `fileDragMonitor`; see `CanvasDndOverlay`.
    */
   private handleDragEnter(e: DragEvent | React.DragEvent<HTMLDivElement>) {
     if (this.props.studioCtx.isInteractiveMode) {
       return;
     }
     e.preventDefault();
-    this.dragDepth++;
-    if (!this.dndOverlayOpts.visible) {
-      this.dndOverlayOpts.visible = true;
-    }
-  }
-
-  private handleDragLeave(e: DragEvent | React.DragEvent<HTMLDivElement>) {
-    if (this.props.studioCtx.isInteractiveMode) {
-      return;
-    }
-    e.preventDefault();
-    this.dragDepth--;
-    if (this.dndOverlayOpts.visible && this.dragDepth === 0) {
-      this.dndOverlayOpts.visible = false;
-    }
   }
 
   private updateCursorLocation(
     e: MouseEvent | React.MouseEvent<HTMLDivElement> | null,
-    vc?: ViewCtx
+    vc?: ViewCtx,
   ) {
     let data: { left: number; top: number } | null = null;
     if (e) {
@@ -954,18 +928,16 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
       return;
     }
     e.preventDefault();
-    this.dndOverlayOpts.visible = false;
-    this.dragDepth = 0;
     if (e.dataTransfer) {
       await this.props.studioCtx.paste(
-        ReadableClipboard.fromDataTransfer(e.dataTransfer)
+        ReadableClipboard.fromDataTransfer(e.dataTransfer),
       );
     }
   }
 
   private async handleMouseDown(
     e: MouseEvent,
-    focusedVc: ViewCtx | undefined | null
+    focusedVc: ViewCtx | undefined | null,
   ) {
     if (
       this.props.studioCtx.isLiveMode ||
@@ -1028,7 +1000,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
             dragState?.dragMgr.endDrag(dragState?.spec, extraInfo);
           }
           this.props.studioCtx.setDragInsertState(undefined);
-        })
+        }),
       );
       return;
     }
@@ -1050,7 +1022,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
             frame: undefined,
             autoZoom: false,
           });
-        })
+        }),
       );
       return;
     }
@@ -1108,7 +1080,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
     });
 
     if (closest == null) {
-      notification.warn({
+      notification.warning({
         message: "Unknown element",
         description: (
           <span>
@@ -1153,11 +1125,11 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
   }
 
   private throttledWarn = throttle(
-    (args: ArgsProps) => notification.warn(args),
+    (args: ArgsProps) => notification.warning(args),
     5000,
     {
       trailing: false,
-    }
+    },
   );
 
   private async handleMouseMove(e: MouseEvent, vc: ViewCtx | undefined | null) {
@@ -1174,14 +1146,6 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
       return;
     }
 
-    if (this.dndOverlayOpts.visible) {
-      // Sometimes dropping over the canvas gets stuck.  But we know that while dragging,
-      // mouse events are not fired; so if we detect mouse move events, then we
-      // cancel the canvas-drop overlay
-      this.dndOverlayOpts.visible = false;
-      this.dragDepth = 0;
-    }
-
     // Record where the mouse is
     const $target = $(e.target as HTMLElement);
     const isOverFrame =
@@ -1191,13 +1155,13 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
     if (isOverFrame) {
       this.updateCursorLocation(
         e,
-        ensure(vc, () => "Expected vc to exist")
+        ensure(vc, () => "Expected vc to exist"),
       );
     }
     const clientPt = isOverFrame
       ? frameToClientPt(
           new Pt(e.pageX, e.pageY),
-          ensure(vc, () => "Expected vc to exist")
+          ensure(vc, () => "Expected vc to exist"),
         )
       : new Pt(e.clientX, e.clientY);
     this.props.studioCtx.setCursorClientPt(clientPt);
@@ -1206,11 +1170,11 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
       await this.props.studioCtx.changeUnsafe(() => {
         const manager = ensure(
           this.props.studioCtx.dragInsertState()?.dragMgr,
-          "dragMgr should exist on dragInsertState."
+          "dragMgr should exist on dragInsertState.",
         );
         if (
           !Box.fromRect(
-            this.props.studioCtx.canvasClipper().getBoundingClientRect()
+            this.props.studioCtx.canvasClipper().getBoundingClientRect(),
           ).contains(new Pt(e.clientX, e.clientY))
         ) {
           manager.clear();
@@ -1303,7 +1267,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
           const dragMoveManager = new DragMoveFrameManager(
             vc.studioCtx,
             frame,
-            initClientPt
+            initClientPt,
           );
           this.dragState = {
             ...this.dragState,
@@ -1311,12 +1275,12 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
           };
         } else {
           const tagAndCompObjs = filteredFocusObjs.filter(
-            (obj) => obj instanceof ValTag || obj instanceof ValComponent
+            (obj) => obj instanceof ValTag || obj instanceof ValComponent,
           );
           const dragMoveManager = new DragMoveManager(
             vc,
             tagAndCompObjs as (ValTag | ValComponent)[],
-            initClientPt
+            initClientPt,
           );
           this.dragState = {
             ...this.dragState,
@@ -1373,7 +1337,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
 
   private genericHandleMouseOver = (
     e: MouseEvent,
-    focusedVc: ViewCtx | null | undefined
+    focusedVc: ViewCtx | null | undefined,
   ) => {
     const sc = this.props.studioCtx;
     if (sc.isLiveMode || sc.isInteractiveMode) {
@@ -1388,7 +1352,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
       // mouse visually moved out of the iframe
       if (focusedVc) {
         focusedVc.change(() =>
-          focusedVc.getViewOps().tryHoverObj(undefined, { exact: true })
+          focusedVc.getViewOps().tryHoverObj(undefined, { exact: true }),
         );
       }
       return;
@@ -1411,7 +1375,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
       0,
       0,
       targetVc.arenaFrame().width,
-      getFrameHeight(targetVc.arenaFrame())
+      getFrameHeight(targetVc.arenaFrame()),
     );
     const cursorPt = new Pt(e.clientX, e.clientY);
     const $measureTool = targetVc.$measureToolDomElt();
@@ -1427,7 +1391,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
           targetPt: arenaBounds.contains(cursorPt)
             ? cursorPt.moveBy(
                 targetVc.arenaFrame().left ?? 0,
-                targetVc.arenaFrame().top ?? 0
+                targetVc.arenaFrame().top ?? 0,
               )
             : undefined,
           targetVc: targetVc,
@@ -1528,7 +1492,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
     // Studio frame
     const outerClientPt = frameToClientPt(
       new Pt(e.clientX, e.clientY),
-      targetVc
+      targetVc,
     );
 
     // And then we can use this directly as the pageX/pageY, because the
@@ -1550,16 +1514,16 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
 
   private extractEventTarget(
     e: MouseEvent,
-    focusedVc: ViewCtx | undefined | null
+    focusedVc: ViewCtx | undefined | null,
   ): [JQuery, ViewCtx | undefined] | undefined {
     const $target = $(e.target as HTMLElement);
     if (this.isZoomOverlay($target) || isCanvasOverlay($target)) {
       const frameUid = +ensure(
         $target.attr("data-frame-uid"),
-        "Expected attr data-frame-uid to exist"
+        "Expected attr data-frame-uid to exist",
       );
       const targetVc = this.props.studioCtx.viewCtxs.find(
-        (v) => v.arenaFrame().uid === frameUid
+        (v) => v.arenaFrame().uid === frameUid,
       );
       if (!targetVc) {
         // It's possible for the frame to exist but not the ViewCtx, because the
@@ -1575,14 +1539,14 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
         const actualTargetElt =
           targetVc.canvasCtx.getActualTargetUnderCanvasOverlay(
             e.clientX,
-            e.clientY
+            e.clientY,
           );
         return actualTargetElt && [$(actualTargetElt as HTMLElement), targetVc];
       }
 
       const clientPt = new Pt(e.clientX, e.clientY);
       const iframeBound = Box.fromRect(
-        targetVc.canvasCtx.viewport().getBoundingClientRect()
+        targetVc.canvasCtx.viewport().getBoundingClientRect(),
       );
       if (!iframeBound.contains(clientPt)) {
         // Due to precision problem, the overlay may cover portions outside the
@@ -1594,7 +1558,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
       const framePt = clientToFramePt(
         new Pt(e.clientX, e.clientY),
         targetVc,
-        false
+        false,
       );
       const $targetElt = tplRootBound.contains(framePt)
         ? $tplRoot
@@ -1642,7 +1606,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
     if (!studioCtx.currentArena || studioCtx.currentArenaEmpty) {
       assert(
         !isComponentArena(studioCtx.currentArena),
-        `Component arenas cannot be empty`
+        `Component arenas cannot be empty`,
       );
       return (
         <div className="canvas-editor__floating-msg">
@@ -1651,8 +1615,8 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
               isMixedArena(studioCtx.currentArena)
                 ? `This ${ARENA_LOWER} is empty.`
                 : isPageArena(studioCtx.currentArena)
-                ? `This page is empty.`
-                : "This project is empty."
+                  ? `This page is empty.`
+                  : "This project is empty."
             }
             description={
               !studioCtx.currentArena ||
@@ -1699,7 +1663,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
                                 studioCtx
                                   .siteOps()
                                   .addScreenSizeToPageArenas(size);
-                              })
+                              }),
                             );
                           },
                         })
@@ -1720,7 +1684,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
 
   private handleDelete(
     e: KeyboardEvent,
-    { forceDelete }: { forceDelete: boolean }
+    { forceDelete }: { forceDelete: boolean },
   ) {
     return this.handleHotkey(e, async () => {
       const currentArena = this.props.studioCtx.currentArena;
@@ -1765,17 +1729,17 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
       // We use pointer events instead of mouse events because they fire first, and we want to try to block events from firing in the user app.
       // We may even eventually want to be more aggressively capturing pointer events. This would let us prevent more listeners from the user app from firing.
       doc.addEventListener("pointerdown", (e) =>
-        spawn(this.handleMouseDown(e, vc))
+        spawn(this.handleMouseDown(e, vc)),
       );
       doc.addEventListener("pointerup", (e) => this.handleMouseUp(e, vc));
       doc.addEventListener("pointermove", (e) =>
-        spawn(this.handleMouseMove(e, vc))
+        spawn(this.handleMouseMove(e, vc)),
       );
       doc.addEventListener("pointerover", (e) => this.handleMouseOver(e, vc));
       doc.addEventListener("pointerout", (e) => this.handleMouseOut(e, vc));
       doc.addEventListener("contextmenu", (e) => this.handleContextMenu(e, vc));
       doc.addEventListener("wheel", () =>
-        document.dispatchEvent(new Event(plasmicIFrameWheelEvent))
+        document.dispatchEvent(new Event(plasmicIFrameWheelEvent)),
       );
       canvasCtx
         .$body()
@@ -1783,21 +1747,16 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
         .on("drop", (e) => {
           spawn(
             this.handleDrop(
-              ensure(e.originalEvent, () => "Expected originalEvent to exist")
-            )
+              ensure(e.originalEvent, () => "Expected originalEvent to exist"),
+            ),
           );
         })
         .on("dragenter", (e) =>
           this.handleDragEnter(
-            ensure(e.originalEvent, () => "Expected originalEvent to exist")
-          )
+            ensure(e.originalEvent, () => "Expected originalEvent to exist"),
+          ),
         )
-        .on("dragover", (e) => e.preventDefault())
-        .on("dragleave", (e) =>
-          this.handleDragLeave(
-            ensure(e.originalEvent, () => "Expected originalEvent to exist")
-          )
-        );
+        .on("dragover", (e) => e.preventDefault());
     });
   };
 
@@ -1813,10 +1772,6 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
     const watchedPlayer = studioCtx.watchPlayerId
       ? studioCtx.multiplayerCtx.getPlayerDataById(studioCtx.watchPlayerId)
       : undefined;
-
-    const disableRightPane =
-      !!(DEVFLAGS.richtext2 && this.viewCtx()?.editingTextContext()) ||
-      (this.viewCtx()?.focusedTpls().length ?? 0) > 1;
 
     return (
       <div className="canvas-editor">
@@ -1845,177 +1800,178 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
 
           <div className="canvas-editor__hsplit">
             <LeftPane key={studioCtx.site.uid} studioCtx={studioCtx} />
-            <div
-              className={cn("canvas-editor__canvas-container", {
-                "canvas-editor__canvas-container__focus_mode":
-                  studioCtx.focusedMode,
-              })}
-              onPointerDown={(e) => {
-                if (
-                  !studioCtx.isInteractiveMode &&
-                  !studioCtx.isSpaceDown() &&
-                  e.button === 0 &&
-                  ((e.target instanceof Element &&
-                    e.target.matches(".canvas-editor__canvas")) ||
-                    $(e.target).parents().is(".canvas-editor__frames"))
-                ) {
-                  // Make sure that the onBlur events are called before resetting
-                  // the focus.
-                  maybeInstance(document.activeElement, HTMLElement, (ae) =>
-                    ae.blur()
-                  );
-                  spawn(
-                    studioCtx.changeUnsafe(() =>
-                      studioCtx.setStudioFocusOnFrame(
-                        // By clicking the empty area on the canvas, it will select
-                        // the current frame if using focused mode, otherwise
-                        // it'll just clear selection
-                        {
-                          frame: undefined,
-                          autoZoom: false,
-                        }
-                      )
-                    )
-                  );
-                }
-              }}
-              // Handle drag-n-drop files into blank canvas
-              onDrop={async (e) => this.handleDrop(e)}
-              // Prevents the file from being loaded in a new tab when dropped
-              onDragOver={(e) => e.preventDefault()}
-              onDragEnter={(e) => this.handleDragEnter(e)}
-              onDragLeave={(e) => this.handleDragLeave(e)}
-              onMouseLeave={() => this.updateCursorLocation(null)}
-              onMouseMove={(e) => this.updateCursorLocation(e)}
-              onMouseDown={() => {
-                this.props.studioCtx.setWatchPlayerId(null);
-              }}
-              onMouseUp={() => {
-                this.props.studioCtx.setWatchPlayerId(null);
-              }}
-            >
-              {watchedPlayer && (
-                <MultiplayerFollowingBorder
-                  className="canvas-editor__watch-mode"
-                  name={watchedPlayer.user?.firstName ?? "Anon"}
-                  hexColor={watchedPlayer.color}
-                />
-              )}
-              {studioCtx.showUiCopilot ? <CopilotUiPrompt /> : null}
-              {studioCtx.showDevControls && (
-                <div className="canvas-editor__top-pane">
-                  <div className="canvas-editor__top-pane__floating-elements-container">
-                    {studioCtx.alertBannerState && (
-                      <div className="canvas-editor__alert-banner-container">
-                        <AlertBanner studioCtx={studioCtx} />
-                      </div>
-                    )}
-                    {this.makeAlert()}
-                  </div>
-                </div>
-              )}
+            <div className="canvas-editor__center-column">
               <div
-                ref={this.canvasClipper}
-                className="canvas-editor__canvas-clipper"
+                ref={this.canvasContainer}
+                className={cn("canvas-editor__canvas-container", {
+                  "canvas-editor__canvas-container__focus_mode":
+                    studioCtx.focusedMode,
+                })}
+                onPointerDown={(e) => {
+                  if (
+                    !studioCtx.isInteractiveMode &&
+                    !studioCtx.isSpaceDown() &&
+                    e.button === 0 &&
+                    ((e.target instanceof Element &&
+                      e.target.matches(".canvas-editor__canvas")) ||
+                      $(e.target).parents().is(".canvas-editor__frames"))
+                  ) {
+                    // Make sure that the onBlur events are called before resetting
+                    // the focus.
+                    maybeInstance(document.activeElement, HTMLElement, (ae) =>
+                      ae.blur(),
+                    );
+                    spawn(
+                      studioCtx.changeUnsafe(() =>
+                        studioCtx.setStudioFocusOnFrame(
+                          // By clicking the empty area on the canvas, it will select
+                          // the current frame if using focused mode, otherwise
+                          // it'll just clear selection
+                          {
+                            frame: undefined,
+                            autoZoom: false,
+                          },
+                        ),
+                      ),
+                    );
+                  }
+                }}
+                // Handle drag-n-drop files into blank canvas
+                onDrop={async (e) => this.handleDrop(e)}
+                // Prevents the file from being loaded in a new tab when dropped
+                onDragOver={(e) => e.preventDefault()}
+                onDragEnter={(e) => this.handleDragEnter(e)}
+                onMouseLeave={() => this.updateCursorLocation(null)}
+                onMouseMove={(e) => this.updateCursorLocation(e)}
+                onMouseDown={() => {
+                  this.props.studioCtx.setWatchPlayerId(null);
+                }}
+                onMouseUp={() => {
+                  this.props.studioCtx.setWatchPlayerId(null);
+                }}
               >
-                {studioCtx.isDevMode && (
-                  <div className="canvas-editor__canvas-clipper-grid" />
+                {watchedPlayer && (
+                  <MultiplayerFollowingBorder
+                    className="canvas-editor__watch-mode"
+                    name={watchedPlayer.user?.firstName ?? "Anon"}
+                    hexColor={watchedPlayer.color}
+                  />
                 )}
-                <div ref={this.canvas} className="canvas-editor__canvas">
-                  <div
-                    ref={this.canvasScaler}
-                    className="canvas-editor__scaler"
-                  >
-                    {getSiteArenas(studioCtx.site, { noSorting: true }).map(
-                      (arena) => (
-                        <CanvasArenaShell
-                          key={arena.uid}
-                          arena={arena}
-                          studioCtx={studioCtx}
-                          onFrameLoad={this.onFrameLoad}
-                        />
-                      )
-                    )}
-                    <DevContainer
-                      className="abs"
-                      showControls={studioCtx.isDevMode}
-                    >
-                      <div className="canvas-editor__hoverbox-scroller">
-                        {this.viewCtx() && (
-                          <Spotlight viewCtx={this.ensureViewCtx()} />
-                        )}
-                        <PlayerBoxes />
-                        {!studioCtx.isInteractiveMode && <CloneBoxes />}
-                        {!studioCtx.isInteractiveMode &&
-                          (DEVFLAGS.ancestorsBoxes ||
-                            studioCtx.appCtx.appConfig.ancestorsBoxes) && (
-                            <PreselectBoxes />
-                          )}
-                        {!studioCtx.isInteractiveMode && (
-                          <HoverBoxes studioCtx={studioCtx} />
-                        )}
-                        <MeasureTool />
-                        <FreestyleBox />
-                        <input
-                          className="hidden-image-selector"
-                          type="file"
-                          accept={".gif,.jpg,.jpeg,.png,.avif,.tif,.svg"}
-                        />
-                        <>
-                          {!studioCtx.isInteractiveMode &&
-                            this.props.studioCtx.viewCtxs.map((vc) => (
-                              <DndMarkers
-                                key={vc.arenaFrame().uid}
-                                viewCtx={vc}
-                              />
-                            ))}
-                        </>
-                        {!studioCtx.isInteractiveMode && this.viewCtx() && (
-                          <>
-                            <DndAdoptee key="dnd-adoptee" />
-                          </>
-                        )}
-                        <div
-                          className={
-                            studioCtx.dragInsertState() ? "DragInsertState" : ""
-                          }
-                        />
-                      </div>
-                    </DevContainer>
+                {studioCtx.showDevControls && (
+                  <div className="canvas-editor__top-pane">
+                    <div className="canvas-editor__top-pane__floating-elements-container">
+                      {studioCtx.alertBannerState && (
+                        <div className="canvas-editor__alert-banner-container">
+                          <AlertBanner studioCtx={studioCtx} />
+                        </div>
+                      )}
+                      {this.makeAlert()}
+                    </div>
                   </div>
-                  <div className="canvas-editor__viewport-click-guard" />
-                  <CanvasDndOverlay opts={this.dndOverlayOpts} />
-                </div>
-                {!studioCtx.focusedMode && <VariantsBar />}
-              </div>
-              {DEVFLAGS.richtext2 && this.viewCtx()?.editingTextContext() && (
-                <RichTextToolbar
-                  ctx={ensure(
-                    this.viewCtx()?.editingTextContext(),
-                    () => "Expected editingTextContent to exist"
+                )}
+                <div
+                  ref={this.canvasClipper}
+                  className="canvas-editor__canvas-clipper"
+                >
+                  {studioCtx.isDevMode && (
+                    <div className="canvas-editor__canvas-clipper-grid" />
                   )}
-                />
-              )}
-              {DEVFLAGS.codePreview && (
-                <CodePreviewPanel studioCtx={studioCtx} />
-              )}
-              <PlayerCursors />
-              <FocusedModeToolbar studioCtx={studioCtx} />
+                  <div ref={this.canvas} className="canvas-editor__canvas">
+                    <div
+                      ref={this.canvasScaler}
+                      className="canvas-editor__scaler"
+                    >
+                      {getSiteArenas(studioCtx.site, { noSorting: true }).map(
+                        (arena) => (
+                          <CanvasArenaShell
+                            key={arena.uid}
+                            arena={arena}
+                            studioCtx={studioCtx}
+                            onFrameLoad={this.onFrameLoad}
+                          />
+                        ),
+                      )}
+                      <DevContainer
+                        className="abs"
+                        showControls={studioCtx.isDevMode}
+                      >
+                        <div className="canvas-editor__hoverbox-scroller">
+                          {this.viewCtx() && (
+                            <Spotlight viewCtx={this.ensureViewCtx()} />
+                          )}
+                          <PlayerBoxes />
+                          {!studioCtx.isInteractiveMode && <CloneBoxes />}
+                          {!studioCtx.isInteractiveMode && <PreselectBoxes />}
+                          {!studioCtx.isInteractiveMode && (
+                            <HoverBoxes studioCtx={studioCtx} />
+                          )}
+                          <MeasureTool />
+                          <FreestyleBox />
+                          <input
+                            className="hidden-image-selector"
+                            type="file"
+                            accept={".gif,.jpg,.jpeg,.png,.avif,.tif,.svg"}
+                          />
+                          <>
+                            {!studioCtx.isInteractiveMode &&
+                              this.props.studioCtx.viewCtxs.map((vc) => (
+                                <DndMarkers
+                                  key={vc.arenaFrame().uid}
+                                  viewCtx={vc}
+                                />
+                              ))}
+                          </>
+                          {!studioCtx.isInteractiveMode && this.viewCtx() && (
+                            <>
+                              <DndAdoptee key="dnd-adoptee" />
+                            </>
+                          )}
+                          <div
+                            className={
+                              studioCtx.dragInsertState()
+                                ? "DragInsertState"
+                                : ""
+                            }
+                          />
+                        </div>
+                      </DevContainer>
+                    </div>
+                    <div className="canvas-editor__viewport-click-guard" />
+                  </div>
+                  {!studioCtx.focusedMode && <VariantsBar />}
+                </div>
+                <CanvasDndOverlay container={this.canvasContainer} />
+                {this.viewCtx()?.editingTextContext() && (
+                  <RichTextToolbar
+                    ctx={ensure(
+                      this.viewCtx()?.editingTextContext(),
+                      () => "Expected editingTextContent to exist",
+                    )}
+                  />
+                )}
+                {DEVFLAGS.codePreview && (
+                  <CodePreviewPanel studioCtx={studioCtx} />
+                )}
+                <PlayerCursors />
+                <FocusedModeToolbar studioCtx={studioCtx} />
+              </div>
+              {DEVFLAGS.dockview && <BottomPanelSlot slot="center" />}
             </div>
-            <RightPane studioCtx={studioCtx} disabled={disableRightPane} />
+            <RightPane
+              studioCtx={studioCtx}
+              disabled={(this.viewCtx()?.focusedTpls().length ?? 0) > 1}
+            />
             <FloatingWindowLayer>
               <CommentsDialogs studioCtx={studioCtx} />
             </FloatingWindowLayer>
           </div>
 
-          <DevContainer
-            showControls={studioCtx.showDevControls}
-            defaultHidden={true}
-            className={cx({
-              "canvas-editor__bottom-pane": true,
-              "canvas-editor__bottom-pane--expanded": false,
-            })}
-          />
+          {DEVFLAGS.dockview && (
+            <>
+              <BottomPanelSlot slot="bottom" />
+              <BottomPanel rootTab={dataBrowserTab} />
+            </>
+          )}
         </div>
         {studioCtx.isDraggingObject() &&
           !this.dragState &&
@@ -2024,7 +1980,7 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
           <TopModal
             onClose={() =>
               studioCtx.changeUnsafe(
-                () => (studioCtx.showPageSettings = undefined)
+                () => (studioCtx.showPageSettings = undefined),
               )
             }
           >
@@ -2035,113 +1991,10 @@ class ViewEditor_ extends React.Component<ViewEditorProps, ViewEditorState> {
             />
           </TopModal>
         )}
-        <BottomModals
-          onFocusedIndexChange={(newIndex) =>
-            studioCtx.setFocusedBottomModalIndex(newIndex)
-          }
-        />
+        {!DEVFLAGS.dockview && <BottomModals />}
       </div>
     );
   }
 }
 
 export const ViewEditor = observer(ViewEditor_);
-
-const RightPane = observer(function RightPane(props: {
-  studioCtx: StudioCtx;
-  disabled?: boolean;
-}) {
-  const { studioCtx, disabled } = props;
-
-  const [hover, setHover] = React.useState(false);
-
-  const focusedViewCtx = studioCtx.focusedViewCtx();
-  const focusedOrFirstViewCtx = studioCtx.focusedOrFirstViewCtx();
-
-  const tabs: widgets.Tab[] = [];
-
-  // Element tabs are shown if an artboard is focused
-  // and element is selected (not frame)
-  if (focusedViewCtx && !studioCtx.focusedFrame()) {
-    tabs.push(
-      new widgets.Tab({
-        name: "Settings",
-        key: RightTabKey.settings,
-        contents: () => (
-          <StyleTabContext.Provider value={"settings-only"}>
-            <StyleTab studioCtx={studioCtx} viewCtx={focusedViewCtx} />
-          </StyleTabContext.Provider>
-        ),
-      })
-    );
-    tabs.push(
-      new widgets.Tab({
-        name: "Design",
-        key: RightTabKey.style,
-        contents: () => (
-          <StyleTabContext.Provider value={"style-only"}>
-            <StyleTab studioCtx={studioCtx} viewCtx={focusedViewCtx} />
-          </StyleTabContext.Provider>
-        ),
-      })
-    );
-  }
-
-  // Page/component tab is shown if an artboard is focused
-  // or defaults to the first artboard for dedicated arenas.
-  if (focusedOrFirstViewCtx) {
-    tabs.push(
-      new widgets.Tab({
-        name: isPageComponent(focusedOrFirstViewCtx.component)
-          ? "Page data"
-          : "Component data",
-        key: RightTabKey.component,
-        contents: () => (
-          <ComponentOrPageTab
-            studioCtx={studioCtx}
-            viewCtx={focusedOrFirstViewCtx}
-          />
-        ),
-      })
-    );
-  }
-
-  React.useEffect(() => {
-    if (tabs.length === 1) {
-      studioCtx.switchRightTab(tabs[0].key as RightTabKey);
-    }
-  }, [tabs.length]);
-
-  return providesSidebarPopupSetting({ left: false })(
-    <DevContainer
-      className={cx({
-        "canvas-editor__right-pane": true,
-        "canvas-editor__right-pane-box-shadow": !studioCtx.watchPlayerId,
-        dimfg: true,
-        monochrome: !hover,
-      })}
-      showControls={studioCtx.showDevControls}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-    >
-      {disabled && !studioCtx.showCommentsPanel && (
-        <div className="canvas-editor__disable-right-pane" />
-      )}
-      {studioCtx.showComments() && studioCtx.showCommentsPanel ? (
-        <CommentsTab />
-      ) : (
-        <widgets.Tabs
-          onSwitch={(tabKey: RightTabKey) => {
-            studioCtx.switchRightTab(tabKey);
-          }}
-          tabKey={studioCtx.rightTabKey}
-          useDefaultClasses={false}
-          tabBarClassName="hilite-tabs"
-          tabClassName="hilite-tab"
-          activeTabClassName="hilite-tab--active"
-          tabs={tabs}
-        />
-      )}
-    </DevContainer>
-  );
-});

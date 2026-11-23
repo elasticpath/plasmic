@@ -21,9 +21,13 @@ import * as US from "underscore.string";
 export const summarizeVal = function (val: any) {
   if (val == null) {
     return "Nothing";
-  } else if (L.isString(val)) {
+  } else if (typeof val === "string") {
     return US.quote(val);
-  } else if (L.isNumber(val) || L.isDate(val) || L.isBoolean(val)) {
+  } else if (
+    typeof val === "number" ||
+    L.isDate(val) ||
+    typeof val === "boolean"
+  ) {
     return `${val}`;
   } else if (
     isKnownRenderExpr(val) ||
@@ -81,7 +85,7 @@ export function isValSelectable(x: Selectable) {
 }
 
 export function asTplOrSlotSelection(
-  v: Selectable | TplNode
+  v: Selectable | TplNode,
 ): TplNode | SlotSelection {
   return switchType(v)
     .when(TplNode, (x) => x)
@@ -92,7 +96,7 @@ export function asTplOrSlotSelection(
 
 export function equivTplOrSlotSelection(
   x: TplNode | SlotSelection,
-  y: TplNode | SlotSelection
+  y: TplNode | SlotSelection,
 ): boolean {
   return x instanceof SlotSelection && y instanceof SlotSelection
     ? x.toTplSlotSelection().equals(y.toTplSlotSelection())

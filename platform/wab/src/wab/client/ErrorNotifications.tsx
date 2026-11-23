@@ -1,4 +1,5 @@
 import { analytics } from "@/wab/client/observability";
+import { UserError } from "@/wab/shared/UserError";
 import {
   AssertionError,
   FalsyValueError,
@@ -9,16 +10,12 @@ import {
 } from "@/wab/shared/common";
 import { DEVFLAGS } from "@/wab/shared/devflags";
 import { isStampedIgnoreError } from "@/wab/shared/error-handling";
-import { UserError } from "@/wab/shared/UserError";
 import * as Sentry from "@sentry/browser";
 import { notification } from "antd";
-import { IconType } from "antd/lib/notification";
+import { IconType } from "antd/lib/notification/interface";
+import React from "react";
 
 const errorMessageCounters = new Map<string, number>();
-
-function mungeErrorMsg(msg: string) {
-  return DEVFLAGS.mungeErrorMessages[msg] ?? msg;
-}
 
 // Note that sometimes you will see double errors, due to React rethrowing
 // errors and/or mobx rethrowing errors.  I don't fully understand the mechanics
@@ -30,7 +27,7 @@ export function showError(
     title?: string;
     description?: string;
     type?: IconType;
-  }
+  },
 ) {
   const { title = "Unexpected error", description, type } = opts ?? {};
   const deriveErrorInfo = () => {
@@ -60,7 +57,7 @@ export function showError(
     type: info.type,
     key: info.title,
     message: info.title + occurrences,
-    description: description ?? mungeErrorMsg(info.description),
+    description: description ?? info.description,
     duration: info.type === "warning" ? 10 : 0,
     onClose: () => {
       errorMessageCounters.delete(title);
@@ -119,6 +116,8 @@ export const ERROR_PATTERNS_TO_IGNORE = [
   "reading 'getStartPosition'",
   // Monaco tried to use web workers, but the apphost can block it with CSP
   ".loadForeignModule",
+  // Monaco falls back to the main thread if its worker bundle cannot load.
+  "editor.worker.js' failed to load",
 
   // antd / rc-align sometimes throw this by using ReactDOM.findDOMNode()
   "Unable to find node on an unmounted component",
@@ -140,6 +139,7 @@ export const ERROR_PATTERNS_TO_IGNORE = [
   // This is a known benign error that happens with ResizeObserver
   // https://linear.app/plasmic/issue/PLA-1721
   "ResizeObserver loop completed with undelivered notifications.",
+  "ResizeObserver loop limit exceeded",
 ];
 
 export function shouldIgnoreError(error: Error, source?: string) {
@@ -186,7 +186,7 @@ export function reportError(error: Error, eventName?: string) {
 
 export function reportSilentErrorMessage(
   msg: string,
-  eventName = "Silent Error"
+  eventName = "Silent Error",
 ) {
   Sentry.captureMessage(msg);
   analytics().track(eventName, {
@@ -200,14 +200,14 @@ export function normalizeError(error: any) {
   return isStampedIgnoreError(error)
     ? error
     : error instanceof Error
-    ? error
-    : error && error.error
-    ? (error.error as Error)
-    : typeof error === "string"
-    ? new Error(error)
-    : new Error(
-        `Unknown error: ${
-          typeof error === "object" ? JSON.stringify(error) : error
-        }`
-      );
+      ? error
+      : error && error.error
+        ? (error.error as Error)
+        : typeof error === "string"
+          ? new Error(error)
+          : new Error(
+              `Unknown error: ${
+                typeof error === "object" ? JSON.stringify(error) : error
+              }`,
+            );
 }

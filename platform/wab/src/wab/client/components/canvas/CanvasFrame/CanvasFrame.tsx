@@ -112,11 +112,11 @@ export const CanvasFrame = observer(function CanvasFrame({
 
   const maybeViewCtx = useCallback(
     () => studioCtx.tryGetViewCtxForFrame(arenaFrame),
-    [studioCtx, arenaFrame]
+    [studioCtx, arenaFrame],
   );
   const viewCtx = useCallback(
     () => ensure(maybeViewCtx(), () => "Expected viewCtx to exist"),
-    [maybeViewCtx]
+    [maybeViewCtx],
   );
   const canvasCtx = useCallback(() => viewCtx().canvasCtx, [viewCtx]);
 
@@ -144,25 +144,40 @@ export const CanvasFrame = observer(function CanvasFrame({
       }
 
       const $viewport = $(viewport);
-      const vc = maybeViewCtx();
-      const ctx = vc ? vc.canvasCtx : createCanvasCtx($viewport, canvasName);
+      const ctx = createCanvasCtx($viewport, canvasName);
+      // If the frame unmounts while it's initializing, dispose the ctx then,
+      // rather than when the initialization finishes or times out
+      disposeRef.current = () => {
+        ctx.dispose();
+        loadedResolveRef.current?.();
+      };
       try {
         for await (const initState_ of ctx.initViewPort(
           $viewport,
           arenaFrame,
-          studioCtx
+          studioCtx,
         )) {
+          if (ctx.isDisposed) {
+            return;
+          }
           setInitState(initState_);
         }
       } catch (e: any) {
+        if (ctx.isDisposed) {
+          return;
+        }
+        ctx.dispose();
         if (!toggleTrailingSlash && e?.name === "SecurityError") {
           console.log(
-            "SecurityError while accessing artboard. Trying again..."
+            "SecurityError while accessing artboard. Trying again...",
           );
           setToggleTrailingSlash(true);
           return;
         }
         throw e;
+      }
+      if (ctx.isDisposed) {
+        return;
       }
 
       const onFocus = () => {
@@ -195,12 +210,9 @@ export const CanvasFrame = observer(function CanvasFrame({
           : e.target;
 
         const $target = $(actualTarget);
-        if (
-          !(
-            $target.is(canvasCtx().$userBody()) ||
-            $target.is(canvasCtx().$html())
-          )
-        ) {
+        if (!(
+          $target.is(canvasCtx().$userBody()) || $target.is(canvasCtx().$html())
+        )) {
           const closest = closestTaggedNonTextDomElt($target, viewCtx(), {
             excludeNonSelectable: true,
           });
@@ -236,7 +248,7 @@ export const CanvasFrame = observer(function CanvasFrame({
         if (studioCtx.isLiveMode || studioCtx.isInteractiveMode) {
           if (e.type === "click") {
             absorbLinkClick(e, (href) =>
-              showCanvasPageNavigationNotification(viewCtx().studioCtx, href)
+              showCanvasPageNavigationNotification(viewCtx().studioCtx, href),
             );
           }
 
@@ -285,7 +297,7 @@ export const CanvasFrame = observer(function CanvasFrame({
           TOGGLE_INTERACTIVE_MODE: () => {
             studioCtx.isInteractiveMode = false;
           },
-        }
+        },
       );
 
       // On Chrome, wheel event on iframe's window/body/html/document cannot be
@@ -334,7 +346,7 @@ export const CanvasFrame = observer(function CanvasFrame({
       loadState,
       toggleTrailingSlash,
       onFrameLoad,
-    ]
+    ],
   );
 
   useEffect(() => {
@@ -379,7 +391,7 @@ export const CanvasFrame = observer(function CanvasFrame({
       const clientY = frameEvent.clientY * studioCtx.zoom + frameBB.top;
       return tuple(clientX, clientY);
     },
-    [studioCtx]
+    [studioCtx],
   );
 
   const handleSelectionClick = useCallback(() => {
@@ -390,7 +402,7 @@ export const CanvasFrame = observer(function CanvasFrame({
       studioCtx.change(() => {
         studioCtx.setStudioFocusOnFrame({ frame: arenaFrame });
         return ok();
-      })
+      }),
     );
   }, [studioCtx]);
   const handleArenaHandleClick = useCallback(() => {
@@ -401,7 +413,7 @@ export const CanvasFrame = observer(function CanvasFrame({
       studioCtx.change(() => {
         studioCtx.setStudioFocusOnlyOnFrame(arenaFrame);
         return ok();
-      })
+      }),
     );
   }, [studioCtx]);
 
@@ -415,7 +427,7 @@ export const CanvasFrame = observer(function CanvasFrame({
     dragMoveManager.current = new DragMoveFrameManager(
       studioCtx,
       arenaFrame,
-      clientPt
+      clientPt,
     );
 
     if (dragMoveManager.current && dragMoveManager.current.aborted()) {
@@ -458,7 +470,7 @@ export const CanvasFrame = observer(function CanvasFrame({
           const html = await studioCtx.fetchHostPageHtml();
           const doc = ensure(
             viewport.contentDocument,
-            () => "Expected contentDocument to exist"
+            () => "Expected contentDocument to exist",
           );
 
           /*
@@ -570,15 +582,15 @@ export const CanvasFrame = observer(function CanvasFrame({
                 new URL(studioCtx.getHostUrl()).pathname + `#${makeFrameHash()}`
               }");
               !function(){const n=window,i="__REACT_DEVTOOLS_GLOBAL_HOOK__",o="__PlasmicPreambleVersion",t=function(){};
-              if(void 0!==n){if(n.parent!==n)try{n[i]=n.parent[i]}catch(e){}if(!n[i]){const r=new Map
-              n[i]={supportsFiber:!0,renderers:r,inject:function(n){r.set(r.size+1,n)},onCommitFiberRoot:t,onCommitFiberUnmount:t}}n[i][o]||(n[i][o]="1")}}()
+              if(void 0!==n){if(n.parent!==n)try{n[i]=n.parent[i]}catch(e){}if(!n[i]){const r=new Map;let d=0
+              n[i]={supportsFiber:!0,renderers:r,inject:function(n){return r.set(++d,n),d},onCommitFiberRoot:t,onCommitFiberUnmount:t}}n[i][o]||(n[i][o]="1")}}()
               window.__PLASMIC_ARTBOARD = true;
             </script>
-          `
+          `,
           );
           if (html.length === finalHtml.length) {
             reportError(
-              "Failed to inject Plasmic script into canvas host frame."
+              "Failed to inject Plasmic script into canvas host frame.",
             );
             return;
           }
@@ -599,7 +611,7 @@ export const CanvasFrame = observer(function CanvasFrame({
             });
             doc.addEventListener("readystatechange", listener);
           }
-        })()
+        })(),
       );
     }
   }, [loadState]);
@@ -607,7 +619,7 @@ export const CanvasFrame = observer(function CanvasFrame({
   const makeFrameHash = React.useCallback(() => {
     const globalVariantMap = L.keyBy(
       siteToAllGlobalVariants(studioCtx.site),
-      (v) => v.uuid
+      (v) => v.uuid,
     );
     const activeGlobalVariants = Object.fromEntries(
       L.uniq([
@@ -616,21 +628,21 @@ export const CanvasFrame = observer(function CanvasFrame({
           .map(([key]) =>
             ensure(
               globalVariantMap[key],
-              `Globat variant with uuid ${key} not found.`
-            )
+              `Globat variant with uuid ${key} not found.`,
+            ),
           ),
         ...arenaFrame.targetGlobalVariants,
       ]).map((variant) => {
         assert(
           variant.parent,
-          "Global variant should belong to a VariantGroup"
+          "Global variant should belong to a VariantGroup",
         );
         const globalVariantGroupName = toJsIdentifier(
-          variant.parent.param.variable.name
+          variant.parent.param.variable.name,
         );
         const globalVariantName = toVarName(variant.name);
         return [globalVariantGroupName, globalVariantName];
-      })
+      }),
     );
     const hash = new URLSearchParams({
       canvas: "true",
@@ -655,7 +667,7 @@ export const CanvasFrame = observer(function CanvasFrame({
         ) {
           iframeRef.current.contentWindow.location.hash = hash;
         }
-      }
+      },
     );
     return () => dispose();
   }, [makeFrameHash, iframeRef.current]);
@@ -667,7 +679,7 @@ export const CanvasFrame = observer(function CanvasFrame({
           <ScreenDimmer>
             <Spin size={"large"} />
           </ScreenDimmer>,
-          document.body
+          document.body,
         )}
       <div
         className={"CanvasFrame__Container"}
@@ -677,11 +689,11 @@ export const CanvasFrame = observer(function CanvasFrame({
                 position: "absolute",
                 left: ensure(
                   arenaFrame.left,
-                  () => "Expected arenaFrame.left to exist"
+                  () => "Expected arenaFrame.left to exist",
                 ),
                 top: ensure(
                   arenaFrame.top,
-                  () => "Expected arenaFrame.top to exist"
+                  () => "Expected arenaFrame.top to exist",
                 ),
                 width: arenaFrame.width,
                 height: getFrameHeight(arenaFrame),
@@ -696,7 +708,7 @@ export const CanvasFrame = observer(function CanvasFrame({
         <iframe
           className={cx(
             "canvas-editor__viewport",
-            loadState !== "loaded" && "no-pointer-events"
+            loadState !== "loaded" && "no-pointer-events",
           )}
           data-test-frame-uid={
             loadState === "unloaded" || loadState === "queued"
@@ -759,9 +771,7 @@ export const CanvasFrame = observer(function CanvasFrame({
           studioCtx.showCommentsOverlay && (
             <CanvasCommentMarkers arena={arena} arenaFrame={arenaFrame} />
           )}
-        {studioCtx.appCtx.appConfig.warningsInCanvas && (
-          <CanvasActions arena={arena} arenaFrame={arenaFrame} />
-        )}
+        <CanvasActions arena={arena} arenaFrame={arenaFrame} />
       </div>
     </div>
   );

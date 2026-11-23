@@ -27,7 +27,6 @@ import { useCurrentRecordingTarget } from "@/wab/client/hooks/useCurrentRecordin
 import SlotIcon from "@/wab/client/plasmic/plasmic_kit/PlasmicIcon__Slot";
 import { StudioCtx, useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
 import { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
-import { isDedicatedArena } from "@/wab/shared/Arenas";
 import { MIXINS_CAP, PRIVATE_STYLE_VARIANTS_CAP } from "@/wab/shared/Labels";
 import {
   getAncestorTplSlot,
@@ -82,9 +81,7 @@ export const StyleTabContext = createContext<StyleTabFilter>("all");
  * - "selector": Animation on a private style variant with the given CSS selector
  */
 export type NewAnimation =
-  | { type: "base" }
-  | { type: "selector"; cssSelector: string }
-  | null;
+  { type: "base" } | { type: "selector"; cssSelector: string } | null;
 
 interface NewAnimationContextValue {
   newAnimation: NewAnimation;
@@ -124,7 +121,7 @@ const StyleTabForTpl = observer(function _StyleTabForTpl(props: {
       (mixinVisible) => setShowMixins(mixinVisible),
       {
         fireImmediately: true,
-      }
+      },
     );
     const privateStyleVariantsDisposal = mobx.reaction(
       () => {
@@ -137,7 +134,7 @@ const StyleTabForTpl = observer(function _StyleTabForTpl(props: {
         setShowPrivateStyleVariants(privateStyleVariantsVisible),
       {
         fireImmediately: true,
-      }
+      },
     );
     return () => {
       mixinDisposal();
@@ -162,8 +159,12 @@ const StyleTabForTpl = observer(function _StyleTabForTpl(props: {
   // Compute checks for ApplyMenu visibility
   const canShowAnimations =
     isTag && canRenderPrivateStyleVariants(tpl, viewCtx) && showStyleSections;
+  const ownerComponent = viewCtx.currentTplComponent().component;
+  const isPageRoot =
+    isPageComponent(ownerComponent) && tpl === ownerComponent.tplTree;
   const canShowElementVariants =
     canRenderPrivateStyleVariants(tpl, viewCtx) &&
+    !isPageRoot &&
     !showPrivateStyleVariants &&
     showStyleSections;
   const canShowMixins =
@@ -192,13 +193,13 @@ const StyleTabForTpl = observer(function _StyleTabForTpl(props: {
             }}
           >
             Base
-          </Menu.Item>
+          </Menu.Item>,
         );
 
         // Available selectors (Hover, Pressed, etc.) - each uses a private style variant
         // Filter out "Not X" selectors as they don't make sense for animations
         for (const selector of applicableSelectors.filter(
-          (s) => !s.displayName.toLowerCase().startsWith("not ")
+          (s) => !s.displayName.toLowerCase().startsWith("not "),
         )) {
           push(
             <Menu.Item
@@ -213,7 +214,7 @@ const StyleTabForTpl = observer(function _StyleTabForTpl(props: {
                     (selectors) =>
                       studioCtx
                         .tplMgr()
-                        .createPrivateStyleVariant(component, tpl, selectors)
+                        .createPrivateStyleVariant(component, tpl, selectors),
                   );
                   // Pin the variant to turn on recording for it
                   vcontroller?.onClickVariant(variant);
@@ -229,7 +230,7 @@ const StyleTabForTpl = observer(function _StyleTabForTpl(props: {
               }}
             >
               {selector.displayName}
-            </Menu.Item>
+            </Menu.Item>,
           );
         }
       });
@@ -244,7 +245,7 @@ const StyleTabForTpl = observer(function _StyleTabForTpl(props: {
             onClick={() => setShowPrivateStyleVariants(true)}
           >
             {PRIVATE_STYLE_VARIANTS_CAP}
-          </Menu.Item>
+          </Menu.Item>,
         );
       });
     }
@@ -255,7 +256,7 @@ const StyleTabForTpl = observer(function _StyleTabForTpl(props: {
         push(
           <Menu.Item key="mixins" onClick={() => setShowMixins(true)}>
             {MIXINS_CAP}
-          </Menu.Item>
+          </Menu.Item>,
         );
       });
     }
@@ -270,7 +271,7 @@ const StyleTabForTpl = observer(function _StyleTabForTpl(props: {
       [Section.Mixins, showMixins],
       [Section.PrivateStyleVariants, showPrivateStyleVariants],
     ]),
-    styleTabFilter
+    styleTabFilter,
   );
 
   const newAnimationContextValue = React.useMemo(
@@ -278,7 +279,7 @@ const StyleTabForTpl = observer(function _StyleTabForTpl(props: {
       newAnimation,
       onAnimationAdded: clearNewAnimation,
     }),
-    [newAnimation, clearNewAnimation]
+    [newAnimation, clearNewAnimation],
   );
 
   return providesStyleComponent(sc)(
@@ -305,22 +306,9 @@ const StyleTabForTpl = observer(function _StyleTabForTpl(props: {
         />
       )}
       {orderedSections.map((render) => render())}
-    </NewAnimationContext.Provider>
+    </NewAnimationContext.Provider>,
   );
 });
-
-/** Get the focused component, either from the ViewCtx (focused arena frame), or from the arena itself (so, even if you have nothing selected but are on a dedicated page/component arena. */
-export function getFocusedComponentFromViewCtxOrArena(
-  studioCtx: StudioCtx,
-  viewCtx: ViewCtx | undefined
-) {
-  const arena = studioCtx.currentArena;
-
-  return (
-    viewCtx?.currentComponent() ??
-    (isDedicatedArena(arena) ? arena.component : undefined)
-  );
-}
 
 export const ComponentOrPageTab = observer(function ComponentOrPageTab(props: {
   studioCtx: StudioCtx;
@@ -401,8 +389,8 @@ export const StyleTab = observer(function StyleTab(props: {
           },
           {
             noUndoRecord: true,
-          }
-        )
+          },
+        ),
       );
     }
   }, [tpl]);
@@ -546,7 +534,7 @@ const SlotSelectionMessage = observer(function SlotSelectionMessage(props: {
                   revertToDefaultSlotContents(
                     viewCtx.tplMgr(),
                     tplComponent,
-                    node.slotParam.variable
+                    node.slotParam.variable,
                   );
                 })
               }
@@ -573,7 +561,7 @@ const TplSlotMessage = observer(function TplSlotMessage(props: {
           value={tpl.param.variable.name}
           onChange={(val) =>
             viewCtx.change(() =>
-              viewCtx.getViewOps().tryRenameParam(val, tpl.param)
+              viewCtx.getViewOps().tryRenameParam(val, tpl.param),
             )
           }
           placeholder={`(unnamed slot)`}
@@ -637,11 +625,11 @@ const NonBaseTplSlotDescendantMessage = observer(
         />
       </SidebarSection>
     );
-  }
+  },
 );
 
 export const NonBaseVariantTransitionsMessage = observer(
-  NonBaseVariantTransitionsMessage_
+  NonBaseVariantTransitionsMessage_,
 );
 
 function NonBaseVariantTransitionsMessage_() {
@@ -701,7 +689,7 @@ function shouldShowPrivateStyleVariantsSection(tpl: TplNode, viewCtx: ViewCtx) {
   const baseVariantCombo = vtm.getCurrentSharedVariantComboForNode(tpl);
   const { definedIndicator } = vtm.getAnimationInfoForVariantCombo(
     tpl,
-    baseVariantCombo
+    baseVariantCombo,
   );
 
   return definedIndicator.source !== "none";

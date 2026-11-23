@@ -33,13 +33,15 @@ export type Selector = TaggedUnion<
   }
 >;
 
+export type CssSelector = Extract<Selector, { type: "CssSelector" }>;
+
 function selectorToReactKey(selector: Selector): string {
   return `${selector.type}-${getVariantIdentifier(selector)}`;
 }
 
 function selectorToDisplayName(
   selector: Selector,
-  preferCssSelector = false
+  preferCssSelector = false,
 ): string {
   switch (selector.type) {
     case "CodeComponentSelector":
@@ -47,7 +49,7 @@ function selectorToDisplayName(
     case "CssSelector":
       return preferCssSelector
         ? selector.cssSelector
-        : selector.preset?.displayName ?? selector.cssSelector;
+        : (selector.preset?.displayName ?? selector.cssSelector);
   }
 }
 
@@ -84,7 +86,7 @@ function areSelectorsEqual(a: Selector, b: Selector) {
  */
 export function styleOrCodeComponentVariantToSelectors(
   variant: StyleOrCodeComponentVariant,
-  site: Site
+  site: Site,
 ): Selector[] {
   if (isCodeComponentVariant(variant)) {
     const info = siteCCVariantsToInfos(site).get(variant);
@@ -115,6 +117,7 @@ export function styleOrCodeComponentVariantToSelectors(
 export interface SelectorsInputProps {
   selectors: Selector[];
   onChange?: (selectors: Selector[]) => void;
+  onInteractionSelectorSelected?: (selector: CssSelector) => void;
   onBlur?: (x: any) => void;
   onClick?: (e: React.MouseEvent) => void;
   onOuterClick?: () => void;
@@ -140,16 +143,23 @@ export function SelectorsInput({
   focusedClassName,
   forRoot,
   codeComponent,
+  onInteractionSelectorSelected,
 }: SelectorsInputProps) {
   const [text, setText] = useState("");
   const matcher = new Matcher(text);
   const isTypingPseudoSelector = text.startsWith(":");
+  const isRootPrivateStyleVariant = !!forRoot && forPrivateStyleVariant;
+  const isTypedSelectorRejected =
+    isRootPrivateStyleVariant &&
+    !onInteractionSelectorSelected &&
+    isTypingPseudoSelector &&
+    !text.startsWith("::");
 
   // Get all applicable selectors to the current element
   const applicableSelectors: Selector[] = codeComponent
     ? getCodeComponentSelectors(codeComponent)
     : [
-        ...(isTypingPseudoSelector
+        ...(isTypingPseudoSelector && !isTypedSelectorRejected
           ? [
               {
                 type: "CssSelector" as const,
@@ -158,11 +168,16 @@ export function SelectorsInput({
               },
             ]
           : []),
-        ...getApplicableSelectors(
-          forTag,
-          forPrivateStyleVariant,
-          forRoot ?? false
-        ).map((preset) => ({
+        ...[
+          ...getApplicableSelectors(
+            forTag,
+            forPrivateStyleVariant,
+            forRoot ?? false,
+          ),
+          ...(onInteractionSelectorSelected
+            ? getApplicableSelectors(forTag, false, true)
+            : []),
+        ].map((preset) => ({
           type: "CssSelector" as const,
           cssSelector: preset.cssSelector,
           preset,
@@ -186,7 +201,7 @@ export function SelectorsInput({
       }
 
       return true;
-    })
+    }),
   );
 
   const [keepOpen, setKeepOpen] = useState(false);
@@ -239,11 +254,19 @@ export function SelectorsInput({
           })()}
         >
           {matcher.boldSnippets(
-            selectorToDisplayName(selector, isTypingPseudoSelector)
+            selectorToDisplayName(selector, isTypingPseudoSelector),
           )}
         </Tooltip>
       )}
       onSelect={(newSelector: Selector) => {
+        if (
+          onInteractionSelectorSelected &&
+          newSelector.type === "CssSelector" &&
+          !newSelector.cssSelector.startsWith("::")
+        ) {
+          onInteractionSelectorSelected(newSelector);
+          return true;
+        }
         onChange([...selectors, newSelector]);
         console.log("SelectorsInput.onChange", [...selectors, newSelector]);
         return true;
@@ -262,7 +285,7 @@ export function SelectorsInput({
             selectorToDisplayName(selector)
               .toLowerCase()
               .includes(inputLower) ||
-            getVariantIdentifier(selector).toLowerCase().includes(inputLower)
+            getVariantIdentifier(selector).toLowerCase().includes(inputLower),
         );
       }}
     />
@@ -309,6 +332,6 @@ function getCodeComponentSelectors(codeComponent: CodeComponent): Selector[] {
       componentName: codeComponent.name,
       key,
       displayName: variantMeta.displayName,
-    })
+    }),
   );
 }

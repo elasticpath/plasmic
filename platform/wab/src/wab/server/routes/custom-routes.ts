@@ -1,8 +1,10 @@
-import { withNext } from "@/wab/server/routes/util";
+import { subscriptionStatusServer } from "@/wab/server/routes/subscription-status";
+import { createTsRestEndpoints, withNext } from "@/wab/server/routes/util";
 import {
   GetSubscriptionResponse,
   RevalidatePlasmicHostingResponse,
 } from "@/wab/shared/ApiSchema";
+import { subscriptionStatusContract } from "@/wab/shared/api/subscription-status";
 import { Application, Request, Response } from "express";
 
 export const ROUTES_WITH_TIMING = [];
@@ -19,26 +21,15 @@ function addHostingRoutes(app: Application) {
 }
 
 function addPaymentRoutes(app: Application) {
+  createTsRestEndpoints(
+    subscriptionStatusContract,
+    subscriptionStatusServer,
+    app,
+  );
   app.get(
     "/api/v1/billing/subscription/:teamId",
-    withNext(getBillingSubscription)
+    withNext(getBillingSubscription),
   );
-}
-
-/**
- * Hook for custom logic for creating a team. If handled, returns true;
- * else returns false and default handling will take place.
- */
-export async function customCreateTeam(req: Request, res: Response) {
-  return false;
-}
-
-/**
- * Returns true if req corresponds to a custom public API request, and thus
- * does not need CSRF checking
- */
-export function isCustomPublicApiRequest(req: Request) {
-  return false;
 }
 
 function revalidatePlasmicHosting(req: Request, res: Response) {

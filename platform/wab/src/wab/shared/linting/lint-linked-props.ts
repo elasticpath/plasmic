@@ -8,7 +8,7 @@ import {
 import { isLinkCompatible } from "@/wab/shared/linked-props";
 import { LinkedPropDriftLintIssue } from "@/wab/shared/linting/lint-types";
 import { lintIssuesEquals } from "@/wab/shared/linting/lint-utils";
-import { maybeComputedFn } from "@/wab/shared/mobx-util";
+import { componentSelector, maybeComputedFn } from "@/wab/shared/mobx-util";
 import {
   Arg,
   Component,
@@ -32,10 +32,10 @@ export const lintLinkedProps = maybeComputedFn(
     keepAlive: false,
     equals: lintIssuesEquals,
     name: "lintLinkedProps",
-  }
+  },
 );
 
-const lintComponent = maybeComputedFn(
+const lintComponent = componentSelector(
   function lintComponent(component: Component) {
     const issues: LinkedPropDriftLintIssue[] = [];
     for (const tpl of flattenComponent(component)) {
@@ -57,7 +57,7 @@ const lintComponent = maybeComputedFn(
     keepAlive: false,
     equals: lintIssuesEquals,
     name: "lintLinkedPropsComponent",
-  }
+  },
 );
 
 function makeIssueKey(component: Component, tpl: TplNode, propName: string) {
@@ -71,7 +71,7 @@ function makeIssueKey(component: Component, tpl: TplNode, propName: string) {
 function driftedLinkIssue(
   outerComponent: Component,
   tpl: TplNode,
-  arg: Arg
+  arg: Arg,
 ): { issue: LinkedPropDriftLintIssue; outerParam: Param } | undefined {
   if (!isTplComponent(tpl) || !isKnownVarRef(arg.expr)) {
     return undefined;
@@ -81,7 +81,7 @@ function driftedLinkIssue(
     !outerParam ||
     isLinkCompatible(
       getRealParamType(tpl.component, arg.param),
-      outerParam.type
+      outerParam.type,
     )
   ) {
     return undefined;
@@ -104,7 +104,7 @@ function driftedLinkIssue(
 export function findLinkedPropIssuesForParam(
   site: Site,
   component: Component,
-  param: Param
+  param: Param,
 ): LinkedPropDriftLintIssue[] {
   const issues: LinkedPropDriftLintIssue[] = [];
   const seen = new Set<string>();
@@ -118,7 +118,7 @@ export function findLinkedPropIssuesForParam(
   // `param` as the inner: instances of `component` forward it out.
   for (const { referencedComponent: outer, tpl } of findAllInstancesOfComponent(
     site,
-    component
+    component,
   )) {
     for (const vs of tpl.vsettings) {
       for (const arg of vs.args) {

@@ -833,7 +833,8 @@
           "width": 150,
           "height": 150,
           "aspectRatio": 1000000,
-          "__type": "ImageAsset"
+          "__type": "ImageAsset",
+          "description": null
         },
         "i9xJcsRFqi76": {
           "uuid": "nH4fDsauK_rU",
@@ -843,7 +844,8 @@
           "width": 150,
           "height": 150,
           "aspectRatio": 1000000,
-          "__type": "ImageAsset"
+          "__type": "ImageAsset",
+          "description": null
         },
         "XLJSGB8O24nV": {
           "type": { "__ref": "0qZgZKOTWbwu" },
@@ -9283,7 +9285,8 @@
           "params": {},
           "__type": "PageHref",
           "query": {},
-          "fragment": null
+          "fragment": null,
+          "encode": false
         },
         "g3wMLg3cYMxm": {
           "variants": [{ "__ref": "AALHp7VW3AZi" }],
@@ -9356,7 +9359,8 @@
           "params": {},
           "__type": "PageHref",
           "query": {},
-          "fragment": null
+          "fragment": null,
+          "encode": false
         },
         "w8N6d22MPfi9": {
           "variants": [{ "__ref": "jY5r_aRO-4Eb" }],
@@ -9429,7 +9433,8 @@
           "params": {},
           "__type": "PageHref",
           "query": {},
-          "fragment": null
+          "fragment": null,
+          "encode": false
         },
         "OD4ygA56ibQC": {
           "variants": [{ "__ref": "1sj2PKIZW7Yv" }],
@@ -10084,7 +10089,11 @@
         }
       },
       "deps": [],
+<<<<<<< HEAD
       "version": "259-repoint-ep-commerce-bindings"
+=======
+      "version": "259-add-image-asset-description"
+>>>>>>> upstream/master
     }
   ]
 ]

@@ -45,7 +45,6 @@ import {
   inputTypeToComponentName as inputTypeToAntdComponentName,
   SimplifiedFormItemsProp,
 } from "@plasmicpkgs/antd5";
-import { isString } from "lodash";
 
 type FormItemProps = {
   [key in keyof SimplifiedFormItemsProp]: Expr | undefined;
@@ -55,7 +54,10 @@ export const inputTypeToElementSchema = (formItem: any) => {
   const inputType = isKnownExpr(formItem.inputType)
     ? tryExtractJson(formItem.inputType)
     : formItem.inputType;
-  if (!isString(inputType) || !(inputType in inputTypeToAntdComponentName)) {
+  if (
+    typeof inputType !== "string" ||
+    !(inputType in inputTypeToAntdComponentName)
+  ) {
     return undefined;
   }
   return {
@@ -68,30 +70,30 @@ export const inputTypeToElementSchema = (formItem: any) => {
 export const createDefaultSubmitButton = (
   tplMgr: TplMgr,
   ownerComponent: Component,
-  allComponents: Component[]
+  allComponents: Component[],
 ) => {
   return mkTplComponent(
     ensure(
       allComponents.find((c) => c.name === buttonComponentName),
-      `project should have a "${formItemComponentName}" component`
+      `project should have a "${formItemComponentName}" component`,
     ),
     tplMgr.ensureBaseVariant(ownerComponent),
     {
       type: codeLit("primary"),
       submitsForm: codeLit("boolean"),
-    }
+    },
   );
 };
 
 export const createLabelRenderExprFromFormItem = (
   formItem: FormItemProps,
-  baseVariant: Variant
+  baseVariant: Variant,
 ) => {
   const text = isRealCodeExpr(formItem.label)
     ? undefined
     : isKnownExpr(formItem.label)
-    ? tryExtractString(formItem.label)
-    : formItem.label;
+      ? tryExtractString(formItem.label)
+      : formItem.label;
   const labelTpl = mkTplInlinedText(text ?? "", [baseVariant], "div", {
     baseVariant,
   });
@@ -107,7 +109,7 @@ export const createLabelRenderExprFromFormItem = (
 export function generateTplsFromFormItems(
   tpl: TplCodeComponent,
   site: Site,
-  component: Component
+  component: Component,
 ) {
   const tplFormsItems: TplNode[] = [];
   const baseVs = ensureBaseVariantSetting(tpl);
@@ -118,13 +120,13 @@ export function generateTplsFromFormItems(
 
   const formItemsParam = ensure(
     tpl.component.params.find((p) => p.variable.name === "formItems"),
-    `forms should have a "formItems" param`
+    `forms should have a "formItems" param`,
   );
   const formItemsArg = getTplComponentArgByParamName(tpl, "formItems", baseVs);
 
   const extractFormItemsFromArg = (
     itemArg: Arg | undefined,
-    itemParam: Param
+    itemParam: Param,
   ): FormItemProps[] | undefined => {
     if (itemArg) {
       if (isKnownCompositeExpr(itemArg.expr)) {
@@ -134,8 +136,7 @@ export function generateTplsFromFormItems(
     }
     if (itemParam.defaultExpr) {
       return tryExtractJson(itemParam.defaultExpr) as
-        | FormItemProps[]
-        | undefined;
+        FormItemProps[] | undefined;
     }
     return undefined;
   };
@@ -149,7 +150,7 @@ export function generateTplsFromFormItems(
         : undefined;
       const labelRenderExpr = createLabelRenderExprFromFormItem(
         formItem,
-        baseVariant
+        baseVariant,
       );
       const elementSchema = inputTypeToElementSchema(formItem);
       if (!elementSchema) {
@@ -158,7 +159,7 @@ export function generateTplsFromFormItems(
       const inputTpl = unwrap(
         elementSchemaToTpl(site, component, elementSchema, {
           codeComponentsOnly: true,
-        })
+        }),
       ).tpl as TplComponent;
       const inputTplBaseVs = ensureBaseVariantSetting(inputTpl);
       if (
@@ -170,7 +171,7 @@ export function generateTplsFromFormItems(
           inputTpl,
           inputTplBaseVs,
           getParamVariable(inputTpl, "options"),
-          cloneExpr(formItem.options)
+          cloneExpr(formItem.options),
         );
       }
       if (InputType.RadioGroup === inputType && formItem.optionType) {
@@ -178,13 +179,13 @@ export function generateTplsFromFormItems(
           inputTpl,
           inputTplBaseVs,
           getParamVariable(inputTpl, "optionType"),
-          cloneExpr(formItem.optionType)
+          cloneExpr(formItem.optionType),
         );
       }
 
       const formItemComponent = ensure(
         allComponents.find((c) => c.name === formItemComponentName),
-        `project should have a "${formItemComponentName}" component`
+        `project should have a "${formItemComponentName}" component`,
       );
       const tplFormItem = mkTplComponent(
         formItemComponent,
@@ -202,31 +203,31 @@ export function generateTplsFromFormItems(
                     "key",
                     "fieldId",
                     "showTime",
-                  ].includes(name)
+                  ].includes(name),
               )
               .map(([name, value]) => [
                 name,
                 isKnownExpr(value as any)
                   ? cloneExpr(value as Expr)
                   : codeLit(value as any),
-              ])
+              ]),
           ),
           ...(labelRenderExpr && inputType !== InputType.Checkbox
             ? { label: labelRenderExpr }
             : inputType === InputType.Checkbox
-            ? { noLabel: codeLit(true) }
-            : {}),
+              ? { noLabel: codeLit(true) }
+              : {}),
         },
-        inputTpl
+        inputTpl,
       );
       if (InputType.Checkbox === inputType) {
         const checkboxChildrenSlot = new SlotSelection({
           tpl: inputTpl,
           slotParam: ensure(
             inputTpl.component.params.find(
-              (p) => p.variable.name === "children"
+              (p) => p.variable.name === "children",
             ),
-            `"${inputTpl.component.name}" should have a "children" slot`
+            `"${inputTpl.component.name}" should have a "children" slot`,
           ),
         });
         $$$(checkboxChildrenSlot.getTpl()).remove({ deep: true });
@@ -239,14 +240,14 @@ export function generateTplsFromFormItems(
   const submitSlotArg = getTplComponentArgByParamName(
     tpl,
     "submitSlot",
-    baseVs
+    baseVs,
   );
   const submitButton = getSingleTplComponentFromArg(submitSlotArg);
   if (submitButton) {
     tplFormsItems.push(cloneTpl(submitButton));
   } else {
     tplFormsItems.push(
-      createDefaultSubmitButton(tplMgr, component, allComponents)
+      createDefaultSubmitButton(tplMgr, component, allComponents),
     );
   }
   return tplFormsItems;

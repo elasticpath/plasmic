@@ -38,7 +38,6 @@ import {
   ClientCantAddChildMsg,
   renderCantAddMsg,
 } from "@/wab/client/messages/parenting-msgs";
-import { computeNodeOutlineTagLayoutClass } from "@/wab/client/node-outline";
 import {
   StudioCtx,
   cssPropsForInvertTransform,
@@ -64,7 +63,11 @@ import {
   isSelectableLocked,
 } from "@/wab/shared/core/selection";
 import { SlotSelection } from "@/wab/shared/core/slots";
-import { isTplVariantable, prepareFocusedTpls } from "@/wab/shared/core/tpls";
+import {
+  flattenTpls,
+  isTplVariantable,
+  prepareFocusedTpls,
+} from "@/wab/shared/core/tpls";
 import {
   ValComponent,
   ValNode,
@@ -134,7 +137,8 @@ function DndTentativeContainerMarker_(props: { viewCtx: ViewCtx }) {
     if (
       insertion.type === "FreeBoxInsertion" ||
       insertion.type === "GridInsertion" ||
-      insertion.type === "ErrorInsertion"
+      insertion.type === "ErrorInsertion" ||
+      insertion.type === "BindInsertion"
     ) {
       return insertion.nodeBox.selectable;
     } else if (insertion.type === "SiblingInsertion") {
@@ -145,13 +149,15 @@ function DndTentativeContainerMarker_(props: { viewCtx: ViewCtx }) {
   }
 
   function createContainerIcon(container: Selectable) {
-    if (
-      ensure(
-        ins,
-        "Unexpected undefined ins. Should only call this function if ins is defined."
-      ).type === "ErrorInsertion"
-    ) {
+    const insType = ensure(
+      ins,
+      "Unexpected undefined ins. Should only call this function if ins is defined.",
+    ).type;
+    if (insType === "ErrorInsertion") {
       return <div className="dnd__container-tag__icon">{ERROR_ICON}</div>;
+    }
+    if (insType === "BindInsertion") {
+      return null;
     }
     if (container instanceof SlotSelection) {
       return <div className="dnd__container-tag__icon">{SLOT_ICON}</div>;
@@ -178,8 +184,8 @@ function DndTentativeContainerMarker_(props: { viewCtx: ViewCtx }) {
       const containerVal = getContainerVal(insertion);
       const dom = withoutNils(
         ensureArray(
-          vc.renderState.sel2dom(containerVal as ValNode, vc.canvasCtx)
-        )
+          vc.renderState.sel2dom(containerVal as ValNode, vc.canvasCtx),
+        ),
       );
       if (dom.length === 0) {
         return undefined;
@@ -194,6 +200,8 @@ function DndTentativeContainerMarker_(props: { viewCtx: ViewCtx }) {
   function tagContent(container: Selectable) {
     if (ins && ins.type === "ErrorInsertion") {
       return renderCantAddMsg(ins.msg);
+    } else if (ins && ins.type === "BindInsertion") {
+      return ins.kind === "text-content" ? "Replace text" : "Repeat element";
     } else if (
       container instanceof ValNode &&
       isTplVariantable(container.tpl)
@@ -223,14 +231,13 @@ function DndTentativeContainerMarker_(props: { viewCtx: ViewCtx }) {
     return null;
   }
 
-  const $doc = vc.canvasCtx.$doc();
-
   return (
     <div
       className={classNames({
         dnd__container: true,
         "dnd__container--free": ins.type === "FreeBoxInsertion",
         "dnd__container--error": ins.type === "ErrorInsertion",
+        "dnd__container--bind": ins.type === "BindInsertion",
       })}
       style={{
         top: containerRect.top,
@@ -242,12 +249,12 @@ function DndTentativeContainerMarker_(props: { viewCtx: ViewCtx }) {
       }}
     >
       <div
-        className={`${classNames({
+        className={classNames({
           "dnd__container-tag": true,
           "node-outline-tag": true,
           "dnd__container-tag--error": ins.type === "ErrorInsertion",
+          "dnd__container-tag--bind": ins.type === "BindInsertion",
         })}
-          ${computeNodeOutlineTagLayoutClass($doc, containerRect).join(" ")}`}
       >
         {createContainerIcon(containerVal)}
         {tagContent(containerVal)}
@@ -256,7 +263,7 @@ function DndTentativeContainerMarker_(props: { viewCtx: ViewCtx }) {
   );
 }
 export const DndTentativeContainerMarker = observer(
-  DndTentativeContainerMarker_
+  DndTentativeContainerMarker_,
 );
 
 function DndTentativeSlotDropMarker_(props: { viewCtx: ViewCtx }) {
@@ -295,7 +302,7 @@ export function DndAdoptee() {
   const getParentLoc = L.memoize(() => {
     const elt = ensure(
       vc.canvasCtx.viewport().parentElement,
-      "Unexpected undefined parent element."
+      "Unexpected undefined parent element.",
     );
     return {
       frameOffsetLeft: elt.offsetLeft,
@@ -341,7 +348,7 @@ class InsertionBox {
     public readonly valNode: ValNode,
     public readonly dom: HTMLElement,
     public readonly box: Box,
-    public readonly flowDir: Orientation
+    public readonly flowDir: Orientation,
   ) {}
 }
 
@@ -362,7 +369,7 @@ class NodeBox {
     public readonly acceptsChildren: true | ClientCantAddChildMsg,
     public readonly acceptsNeighbors: boolean,
     public readonly measuredGrid: MeasuredGrid | undefined,
-    public readonly containerType: ContainerType | "slot" | undefined
+    public readonly containerType: ContainerType | "slot" | undefined,
   ) {}
 }
 
@@ -384,6 +391,14 @@ interface BoxCalcs {
   frameRect: ClientRect;
 }
 
+// List items use normal flow even though the layout classifier calls them free.
+function isListItem(nodeBox: NodeBox) {
+  return (
+    isValTagOrComponent(nodeBox.selectable) &&
+    getComputedStyleForVal(nodeBox.selectable).get("display") === "list-item"
+  );
+}
+
 function isBody(sel: Selectable) {
   return sel instanceof ValTag && sel.tpl.tag === "body";
 }
@@ -394,7 +409,7 @@ export class FreeBoxInsertion {
   constructor(
     public readonly nodeBox: NodeBox,
     public readonly slotted: boolean,
-    public readonly pt: Pt
+    public readonly pt: Pt,
   ) {}
 }
 
@@ -410,7 +425,7 @@ class GridInsertion {
   constructor(
     /** The nodeBox of the grid container. */
     public readonly nodeBox: NodeBox,
-    public readonly area: Area
+    public readonly area: Area,
   ) {}
 }
 
@@ -418,15 +433,52 @@ class ErrorInsertion {
   readonly type = "ErrorInsertion";
   constructor(
     public readonly nodeBox: NodeBox,
-    public readonly msg: ClientCantAddChildMsg
+    public readonly msg: ClientCantAddChildMsg,
   ) {}
+}
+
+type BindKind = "text-content" | "data-rep";
+
+/** Bind dragged data to the hovered node instead of inserting a new node. */
+export class BindInsertion {
+  readonly type = "BindInsertion";
+  constructor(
+    public readonly nodeBox: NodeBox,
+    public readonly kind: BindKind,
+    public readonly path: (string | number)[],
+    public readonly fallbackValue: unknown,
+  ) {}
+}
+
+/** Targeting hooks used only when dragging data out of the data picker. */
+export interface DataDragTargeting {
+  /** Path of the dragged data, carried onto the produced BindInsertion. */
+  path: (string | number)[];
+  /** Current runtime value of the dragged data, used as the expr fallback. */
+  fallbackValue: unknown;
+  /**
+   * Maps hovering the middle of a node to a bind action, error, or undefined to keep the normal
+   * insertion targeting.
+   */
+  getBindTarget: (
+    vc: ViewCtx,
+    sel: Selectable,
+    modifiers: ModifierStates | undefined,
+  ) => { kind: BindKind } | { error: ClientCantAddChildMsg } | undefined;
+  /** Whether the dragged data's root binding exists in the env at `tpl`. */
+  isAvailable: (
+    vc: ViewCtx,
+    tpl: TplNode,
+    where: "inside" | "outside",
+  ) => boolean;
 }
 
 export type InsertionSpec =
   | FreeBoxInsertion
   | SiblingInsertion
   | GridInsertion
-  | ErrorInsertion;
+  | ErrorInsertion
+  | BindInsertion;
 
 export function calcOffset(domElt: HTMLElement, clientPt: Pt, vc: ViewCtx) {
   const parentFrameBox = Box.fromRect(getPaddingRect(domElt));
@@ -453,11 +505,32 @@ function shouldInsertInReverseOrder(spec: InsertionSpec) {
   return ["after", "bottom", "right"].includes(spec.insertionBox.loc);
 }
 
+/** Applies a BindInsertion by mutating the hovered node's model. */
+function applyBindInsertion(
+  vc: ViewCtx,
+  ins: BindInsertion,
+  focusTpl: boolean,
+) {
+  const valNode = ensureInstance(ins.nodeBox.selectable, ValNode);
+  if (ins.kind === "text-content") {
+    vc.getViewOps().bindTextContentToData(
+      valNode.tpl,
+      ins.path,
+      ins.fallbackValue,
+    );
+  } else {
+    vc.getViewOps().setDataRepCollection(valNode.tpl, ins.path);
+  }
+  if (focusTpl) {
+    vc.setStudioFocusByTpl(valNode.tpl);
+  }
+}
+
 export function insertBySpec(
   vc: ViewCtx,
-  ins: Exclude<InsertionSpec, ErrorInsertion>,
+  ins: Exclude<InsertionSpec, ErrorInsertion | BindInsertion>,
   newNode: TplNode,
-  focusNewTpl: boolean
+  focusNewTpl: boolean,
 ) {
   let targetVal: ValNode | undefined = undefined;
   if (ins.type === "SiblingInsertion") {
@@ -467,7 +540,7 @@ export function insertBySpec(
         .tryInsertAsSibling(
           newNode,
           ins.insertionBox.valNode.tpl,
-          ins.insertionBox.loc
+          ins.insertionBox.loc,
         )
     ) {
       return;
@@ -504,9 +577,10 @@ export function insertBySpec(
     vc.selectNewTpl(
       newNode,
       false,
-      ensure(targetVal, "Unexpected undefined targetVal.")
+      ensure(targetVal, "Unexpected undefined targetVal."),
     );
   }
+  return true;
 }
 
 export interface Adoptee {
@@ -540,7 +614,7 @@ export class DragMoveManager {
   constructor(
     private vc: ViewCtx,
     private objects: (ValTag | ValComponent | ValSlot)[],
-    clientPt: Pt
+    clientPt: Pt,
   ) {
     this.$dragHandles = [];
     this.isAbsPos = [];
@@ -561,12 +635,12 @@ export class DragMoveManager {
       const domElts = ensureArray(
         ensure(
           vc.eltFinder(object),
-          "Unexpected undefined elt. Should be defined as it's the object being dragged."
-        )
+          "Unexpected undefined elt. Should be defined as it's the object being dragged.",
+        ),
       );
       const domRect = frameToClientRect(
         domMod.getBoundingClientRect(...domElts),
-        vc
+        vc,
       );
 
       const $dragHandle = $(".dnd__drag-ghost-" + i)
@@ -596,7 +670,7 @@ export class DragMoveManager {
           () => {
             this.moveStates.push(undefined);
             this._aborted = true;
-          }
+          },
         );
       }
 
@@ -606,12 +680,12 @@ export class DragMoveManager {
       // mouse cursor, so that we can determine the final position of the `object` on drop
       this.cursorOffset = new Pt(
         Math.min(this.cursorOffset.x, domRect.left - clientPt.x),
-        Math.min(this.cursorOffset.y, domRect.top - clientPt.y)
+        Math.min(this.cursorOffset.y, domRect.top - clientPt.y),
       );
       this.targeter = new NodeTargeter(
         this.vc,
         this.objects.map((obj) => obj.tpl),
-        this.cursorOffset
+        this.cursorOffset,
       );
 
       if (!this._aborted) {
@@ -658,7 +732,7 @@ export class DragMoveManager {
     }
 
     const dragPtInScaler = this.vc.viewportCtx.clientToScaler(
-      clientPt.plus(this.cursorOffset)
+      clientPt.plus(this.cursorOffset),
     );
 
     this.$dragHandles.forEach(($dragHandle) => {
@@ -686,7 +760,7 @@ export class DragMoveManager {
 
     assert(
       this.moveStates.length === this.objects.length,
-      "Moves states and objects should have same length."
+      "Moves states and objects should have same length.",
     );
 
     for (let i = 0; i < this.moveStates.length; i++) {
@@ -698,7 +772,7 @@ export class DragMoveManager {
             safeTry(function* () {
               (yield* mkFreestyleManipForFocusedDomElt(
                 self.vc,
-                self.objects[i]
+                self.objects[i],
               )).move(ms, {
                 deltaFrameX: framePt.x - self.startingFramePt.x,
                 deltaFrameY: framePt.y - self.startingFramePt.y,
@@ -708,7 +782,7 @@ export class DragMoveManager {
                 ctrlKey: modifiers.ctrlKey,
               });
               return ok();
-            })
+            }),
         );
         if (res.isErr()) {
           this._aborted = true;
@@ -739,7 +813,8 @@ export class DragMoveManager {
         if (
           this.isValidDragState() &&
           this.tentativeInsertion &&
-          this.tentativeInsertion.type !== "ErrorInsertion"
+          this.tentativeInsertion.type !== "ErrorInsertion" &&
+          this.tentativeInsertion.type !== "BindInsertion"
         ) {
           const tplToPositionStyle = new Map<TplNode, string | undefined>();
           for (let i = 0; i < this.objects.length; i++) {
@@ -774,7 +849,11 @@ export class DragInsertManager {
    * @param factory zero-argument function that creates the TplNode to insert
    *   if the motion is successful.
    */
-  constructor(private studioCtx: StudioCtx, targeters: NodeTargeter[]) {
+  constructor(
+    private studioCtx: StudioCtx,
+    targeters: NodeTargeter[],
+    private dataDrag?: DataDragTargeting,
+  ) {
     this.targeters.push(...targeters);
   }
 
@@ -797,7 +876,8 @@ export class DragInsertManager {
   public static async build(
     studioCtx: StudioCtx,
     spec: AddTplItem,
-    opts?: CloneOpts
+    opts?: CloneOpts,
+    dataDrag?: DataDragTargeting,
   ): Promise<DragInsertManager> {
     const targeters: NodeTargeter[] = [];
     const extraInfo = spec.asyncExtraInfo
@@ -812,12 +892,14 @@ export class DragInsertManager {
         await studioCtx.changeUnsafe(() => {
           const toInsert = spec.factory(vc, extraInfo);
           if (toInsert != null) {
-            targeters.push(new NodeTargeter(vc, [toInsert]));
+            targeters.push(
+              new NodeTargeter(vc, [toInsert], undefined, dataDrag),
+            );
           }
         });
       }
     }
-    return new DragInsertManager(studioCtx, targeters);
+    return new DragInsertManager(studioCtx, targeters, dataDrag);
   }
 
   clear() {
@@ -835,7 +917,7 @@ export class DragInsertManager {
     for (const targeter of this.targeters) {
       this.tentativeInsertion = isFreeMove
         ? targeter.getAbsInsertion(clientPt)
-        : targeter.getInsertion(clientPt);
+        : targeter.getInsertion(clientPt, modifiers);
       if (this.tentativeInsertion) {
         this.tentativeVc = targeter.vc;
         break;
@@ -848,20 +930,59 @@ export class DragInsertManager {
    * to create the new TplNode and inserts it at the insertion point.
    */
   endDrag(spec?: AddTplItem, extraInfo?: any): [ViewCtx, TplNode] | undefined {
-    this.clearTargeters();
-    if (
-      this.tentativeVc &&
-      this.tentativeInsertion &&
-      this.tentativeInsertion.type !== "ErrorInsertion"
-    ) {
-      const tpl = spec?.factory(this.tentativeVc, extraInfo);
-      if (tpl) {
-        this.studioCtx.setStudioFocusOnFrameContents(
-          this.tentativeVc.arenaFrame()
-        );
-        insertBySpec(this.tentativeVc, this.tentativeInsertion, tpl, true);
-        return tuple(this.tentativeVc, tpl);
+    const vc = this.tentativeVc;
+    const ins = this.tentativeInsertion;
+    this.clear();
+    if (!spec || !vc || !ins || ins.type === "ErrorInsertion") {
+      return undefined;
+    }
+    if (this.dataDrag) {
+      const target =
+        ins.type === "SiblingInsertion"
+          ? ins.insertionBox.valNode.tpl
+          : asVal(ins.nodeBox.selectable)?.tpl;
+      const where =
+        ins.type === "SiblingInsertion" ||
+        (ins.type === "BindInsertion" && ins.kind === "data-rep")
+          ? "outside"
+          : "inside";
+      if (
+        !target ||
+        !flattenTpls(vc.currentComponent().tplTree).includes(target) ||
+        !this.dataDrag.isAvailable(vc, target, where)
+      ) {
+        return undefined;
       }
+      if (ins.type === "BindInsertion") {
+        const binding = this.dataDrag.getBindTarget(
+          vc,
+          ins.nodeBox.selectable,
+          {
+            altKey: ins.kind === "data-rep",
+            ctrlKey: false,
+            metaKey: false,
+            shiftKey: false,
+          },
+        );
+        if (!binding || !("kind" in binding) || binding.kind !== ins.kind) {
+          return undefined;
+        }
+      }
+    }
+    if (ins.type === "BindInsertion") {
+      const tpl = ensureInstance(ins.nodeBox.selectable, ValNode).tpl;
+      this.studioCtx.setStudioFocusOnFrameContents(vc.arenaFrame());
+      applyBindInsertion(vc, ins, true);
+      return tuple(vc, tpl);
+    }
+    const tpl = spec.factory(vc, extraInfo);
+    if (tpl) {
+      this.studioCtx.setStudioFocusOnFrameContents(vc.arenaFrame());
+      if (!insertBySpec(vc, ins, tpl, true)) {
+        return undefined;
+      }
+      spec.onInserted?.(vc, tpl);
+      return tuple(vc, tpl);
     }
     return undefined;
   }
@@ -894,9 +1015,53 @@ export class NodeTargeter {
   constructor(
     public vc: ViewCtx,
     private toInsert?: TplNode[],
-    private cursorOffset?: Pt
+    private cursorOffset?: Pt,
+    private dataDrag?: DataDragTargeting,
   ) {
     this.boxes = this.calcBoxes(toInsert);
+  }
+
+  /**
+   * For data drags, downgrades an insertion whose dragged path isn't available in the env at the
+   * target to an error marker.
+   */
+  private checkDataAvailability(ins: InsertionSpec | undefined) {
+    const dataDrag = this.dataDrag;
+    if (!ins || !dataDrag || ins.type === "ErrorInsertion") {
+      return ins;
+    }
+    const target = ((): [
+      TplNode | undefined,
+      "inside" | "outside",
+      NodeBox | undefined,
+    ] => {
+      if (ins.type === "SiblingInsertion") {
+        const valNode = ins.insertionBox.valNode;
+        return [
+          valNode.tpl,
+          "outside",
+          this.boxes.nodeBoxes.find((nb) => nb.selectable === valNode),
+        ];
+      }
+      if (ins.type === "BindInsertion") {
+        return [
+          ensureInstance(ins.nodeBox.selectable, ValNode).tpl,
+          ins.kind === "data-rep" ? "outside" : "inside",
+          ins.nodeBox,
+        ];
+      }
+      return [asVal(ins.nodeBox.selectable)?.tpl, "inside", ins.nodeBox];
+    })();
+    const [tpl, where, nodeBox] = target;
+    if (tpl && !dataDrag.isAvailable(this.vc, tpl, where)) {
+      return nodeBox
+        ? this.targetError(nodeBox, {
+            type: "CantBindData",
+            message: "This data is not available here",
+          })
+        : this.targetNothing();
+    }
+    return ins;
   }
 
   /**
@@ -906,21 +1071,28 @@ export class NodeTargeter {
    *
    * @param clientPt Mouse cursor in the client coordinate
    */
-  getInsertion(clientPt: Pt) {
+  getInsertion(clientPt: Pt, modifiers?: ModifierStates) {
+    return this.checkDataAvailability(
+      this.computeInsertion(clientPt, modifiers),
+    );
+  }
+
+  private computeInsertion(clientPt: Pt, modifiers?: ModifierStates) {
     const { frameRect, insertionBoxes, nodeBoxes, nodeBoxToBeforeAfter } =
       this.boxes;
 
     const rootNb = L.last(nodeBoxes);
 
-    // If we're directly over an InsertionBox, drop there.
+    // If we're directly over an InsertionBox, drop there. Alt on a data drag skips this: it forces
+    // binding to the hovered node instead.
     const insertionBox = insertionBoxes.find((ib) => ib.box.contains(clientPt));
 
-    if (insertionBox) {
+    if (insertionBox && !(this.dataDrag && modifiers?.altKey)) {
       return this.targetInsertionBox(insertionBox);
     }
 
     const containingNodeBoxes = nodeBoxes.filter((nb) =>
-      nb.box.contains(clientPt)
+      nb.box.contains(clientPt),
     );
 
     // If we're not over any NodeBox but are inside the frame, try to target the
@@ -932,12 +1104,27 @@ export class NodeTargeter {
     ) {
       return this.targetNodeBox(
         rootNb,
-        rootNb.containerType !== "free",
-        clientPt
+        rootNb.containerType !== "free" || isListItem(rootNb),
+        clientPt,
       );
     }
 
     for (const nodeBox of containingNodeBoxes) {
+      // Data drags can bind to the hovered node, edges still mean insert before/after.
+      if (this.dataDrag) {
+        const bindTarget = this.dataDrag.getBindTarget(
+          this.vc,
+          nodeBox.selectable,
+          modifiers,
+        );
+        if (bindTarget) {
+          if ("error" in bindTarget) {
+            return this.targetError(nodeBox, bindTarget.error);
+          }
+          return this.targetBind(nodeBox, bindTarget.kind);
+        }
+      }
+
       // If we're hovering over a grid, draw a mimic grid and handle its hover
       // events.
       // TODO allow dropping into grid slot even if there is stuff already
@@ -960,7 +1147,7 @@ export class NodeTargeter {
         } else if (nodeBox.containerType === "free") {
           if (children.length === 0) {
             // If this is the first child, then just target the box
-            return this.targetNodeBox(nodeBox, false, clientPt);
+            return this.targetNodeBox(nodeBox, isListItem(nodeBox), clientPt);
           }
           // don't target anything when the cursor is still within the node being
           // moved.
@@ -968,7 +1155,7 @@ export class NodeTargeter {
             return this.targetNothing();
           }
           // If this is a free container, then we can always insert into it
-          return this.targetNodeBox(nodeBox, false, clientPt);
+          return this.targetNodeBox(nodeBox, isListItem(nodeBox), clientPt);
         } else if (
           nodeBox.containerType &&
           (nodeBox.containerType.includes("flex") ||
@@ -992,7 +1179,7 @@ export class NodeTargeter {
           // has children, but not over any of its children, just in blank space.
           const childrenSet = new Set(children);
           const childrenInsertions = insertionBoxes.filter((ib) =>
-            childrenSet.has(ib.valNode)
+            childrenSet.has(ib.valNode),
           );
 
           // We can have no children insertion boxes, in case all children are free/fixed
@@ -1002,7 +1189,7 @@ export class NodeTargeter {
           }
 
           const nearestChildInsertion = L.minBy(childrenInsertions, (ib) =>
-            ib.box.dist(clientPt)
+            ib.box.dist(clientPt),
           );
           if (nearestChildInsertion) {
             return this.targetInsertionBox(nearestChildInsertion);
@@ -1023,7 +1210,7 @@ export class NodeTargeter {
 
         const { before, after } = ensure(
           nodeBoxToBeforeAfter.get(nodeBox),
-          "Unexpected undefined reference in Map to nodeBox. All nodeBoxes should be mapped"
+          "Unexpected undefined reference in Map to nodeBox. All nodeBoxes should be mapped",
         );
 
         const someValNode = (before ?? after)?.valNode;
@@ -1046,10 +1233,10 @@ export class NodeTargeter {
                       : insertionStripExtension,
                     flowDir === "horizontal"
                       ? insertionStripExtension
-                      : insertionStripThickness
+                      : insertionStripThickness,
                   ),
-                flowDir
-              )
+                flowDir,
+              ),
             );
           }
         }
@@ -1088,12 +1275,16 @@ export class NodeTargeter {
    * @param clientPt mouse cursor in the client coordinate
    */
   getAbsInsertion(clientPt: Pt) {
+    return this.checkDataAvailability(this.computeAbsInsertion(clientPt));
+  }
+
+  private computeAbsInsertion(clientPt: Pt) {
     const { frameRect, nodeBoxes } = this.boxes;
 
     const rootNb = L.last(nodeBoxes);
 
     const containingNodeBoxes = nodeBoxes.filter((nb) =>
-      nb.box.contains(clientPt)
+      nb.box.contains(clientPt),
     );
 
     for (const nodeBox of containingNodeBoxes) {
@@ -1129,7 +1320,7 @@ export class NodeTargeter {
   getAbsInsertionAndAdoptees(
     clientRect: Rect,
     forceFree: boolean,
-    noAdopt: boolean
+    noAdopt: boolean,
   ): [InsertionSpec | undefined, Adoptee[]] {
     const { nodeBoxes } = this.boxes;
     const clientBox = Box.fromRect(clientRect);
@@ -1142,7 +1333,7 @@ export class NodeTargeter {
 
     const parent = nodeBoxes.find(
       (nb) =>
-        nb.paddingBox.containsBox(clientBox) && nb.acceptsChildren === true
+        nb.paddingBox.containsBox(clientBox) && nb.acceptsChildren === true,
     );
     if (!parent) {
       return [this.targetNothing(), []];
@@ -1152,7 +1343,7 @@ export class NodeTargeter {
     // children of the tentative parent.  Highlight them.
 
     const children = new Set(
-      SQ(parent.selectable, this.vc.valState()).children().toArrayOfValNodes()
+      SQ(parent.selectable, this.vc.valState()).children().toArrayOfValNodes(),
     );
     const adoptees: Adoptee[] = noAdopt
       ? []
@@ -1174,7 +1365,7 @@ export class NodeTargeter {
             } else {
               return undefined;
             }
-          })
+          }),
         );
 
     // // Even though we allow the root to be a parent in this special way, we
@@ -1187,7 +1378,7 @@ export class NodeTargeter {
       this.targetNodeBox(
         parent,
         !(forceFree || parent.containerType === "free"),
-        new Pt(clientRect.left, clientRect.top)
+        new Pt(clientRect.left, clientRect.top),
       ),
       adoptees,
     ];
@@ -1220,6 +1411,21 @@ export class NodeTargeter {
     return ins;
   }
 
+  private targetBind(nodeBox: NodeBox, kind: BindKind) {
+    const dataDrag = ensure(
+      this.dataDrag,
+      "targetBind is only reachable on data drags",
+    );
+    const ins = new BindInsertion(
+      nodeBox,
+      kind,
+      dataDrag.path,
+      dataDrag.fallbackValue,
+    );
+    this.vc.setDndTentativeInsertion(ins);
+    return ins;
+  }
+
   // insertionBox is indicator of the position of a statically positioned
   // element. insertionBox is in topmost window's viewport's scale.
   private targetInsertionBox(insertionBox: InsertionBox) {
@@ -1236,8 +1442,8 @@ export class NodeTargeter {
       this.vc.studioCtx.zoom,
       ensure(
         this.vc.canvasCtx.$viewport().offset(),
-        "Unexpected undefined offset"
-      )
+        "Unexpected undefined offset",
+      ),
     );
     const area = {
       rows: { start: row, end: row },
@@ -1326,7 +1532,7 @@ export class NodeTargeter {
       this.vc.canvasCtx.viewportContainerOffset();
     const currentValComponentCtx: ValComponent | undefined = maybe(
       this.vc.currentComponentCtx(),
-      (cc) => cc.valComponent()
+      (cc) => cc.valComponent(),
     );
 
     /**
@@ -1358,19 +1564,19 @@ export class NodeTargeter {
       SQ(
         maybe(currentValComponentCtx, (vc) => vc.contents ?? []) ||
           this.vc.valState().valUserRoot(),
-        this.vc.valState()
+        this.vc.valState(),
       )
         .descendantsDfsFullstack()
         .toArray()
         .filter(
           (selectable): selectable is ValComponent =>
             selectable instanceof ValComponent &&
-            isNodeInCurrentComponentContext(selectable)
+            isNodeInCurrentComponentContext(selectable),
         )
         .flatMap((val) => {
           const domElement = this.vc.renderState.sel2dom(
             val,
-            this.vc.canvasCtx
+            this.vc.canvasCtx,
           );
           if (Array.isArray(domElement)) {
             // Extract element from array so that in we can get ValComponents with .get(dom) instead of .get([dom])
@@ -1378,7 +1584,7 @@ export class NodeTargeter {
           }
           return [];
         })
-        .filter(([dom]) => !!dom)
+        .filter(([dom]) => !!dom),
     );
 
     const vc = this.vc;
@@ -1411,13 +1617,11 @@ export class NodeTargeter {
     function* genNodeBoxes(viewCtx: ViewCtx) {
       for (const $domElt of domElts) {
         const domElt = $domElt[0];
-        if (
-          !(
-            !$domElt.is(canvasCtx.$userBody()) &&
-            hasLinkedSelectable($domElt, vc) &&
-            hasLayoutBox(domElt)
-          )
-        ) {
+        if (!(
+          !$domElt.is(canvasCtx.$userBody()) &&
+          hasLinkedSelectable($domElt, vc) &&
+          hasLayoutBox(domElt)
+        )) {
           continue;
         }
         const selectable = vc.dom2val($domElt);
@@ -1430,29 +1634,29 @@ export class NodeTargeter {
           selectable instanceof SlotSelection
             ? selectable
             : selectable instanceof ValSlot &&
-              !viewCtx.showingDefaultSlotContentsFor(
-                ensure(
-                  selectable.valOwner,
-                  `Unexpected undefined valOwner. ${selectable} should be ValSlot with defined valOwner`
-                ).tpl
-              )
-            ? // If this is a ValSlot, and we are _not_ showing default slot contents,
-              // then treat this as a SlotSelection for the owning ValComponent;
-              // whether this ValSlot is a valid node to target depends on the
-              // current component context, and whether the owning ValComponent
-              // belongs in that context.
-              new SlotSelection({
-                val: ensure(
-                  selectable.valOwner,
-                  `Unexpected undefined valOwner. ${selectable} should be ValSlot with defined valOwner`
-                ),
-                slotParam: selectable.tpl.param,
-              })
-            : // Otherwise, no SlotSelection.  Notably, for ValSlot where we are
-              // currently showing default slot contents to, we will be using
-              // the ValSlot instead of the SlotSelection, as we will be editing the
-              // defaultContents of the ValSlot.
-              undefined;
+                !viewCtx.showingDefaultSlotContentsFor(
+                  ensure(
+                    selectable.valOwner,
+                    `Unexpected undefined valOwner. ${selectable} should be ValSlot with defined valOwner`,
+                  ).tpl,
+                )
+              ? // If this is a ValSlot, and we are _not_ showing default slot contents,
+                // then treat this as a SlotSelection for the owning ValComponent;
+                // whether this ValSlot is a valid node to target depends on the
+                // current component context, and whether the owning ValComponent
+                // belongs in that context.
+                new SlotSelection({
+                  val: ensure(
+                    selectable.valOwner,
+                    `Unexpected undefined valOwner. ${selectable} should be ValSlot with defined valOwner`,
+                  ),
+                  slotParam: selectable.tpl.param,
+                })
+              : // Otherwise, no SlotSelection.  Notably, for ValSlot where we are
+                // currently showing default slot contents to, we will be using
+                // the ValSlot instead of the SlotSelection, as we will be editing the
+                // defaultContents of the ValSlot.
+                undefined;
 
         // Checking if this DOM is a child of the Slot we are trying to change
         ancestorSlotSelections.forEach((ancestorSlotSelection) => {
@@ -1494,7 +1698,7 @@ export class NodeTargeter {
         const valNodeToCheck = slotSelection
           ? ensure(
               slotSelection.val,
-              `Unexpected undefined val for ${slotSelection}.`
+              `Unexpected undefined val for ${slotSelection}.`,
             )
           : ensureInstance(selectable, ValNode);
         const targetSelectable = isNodeInCurrentComponentContext(valNodeToCheck)
@@ -1516,8 +1720,8 @@ export class NodeTargeter {
             $$$(
               ensure(
                 asVal(targetSelectable),
-                "Unexpected undefined targetSelectable."
-              ).tpl
+                "Unexpected undefined targetSelectable.",
+              ).tpl,
             )
               .ancestors()
               .toArrayOfTplNodes()
@@ -1564,7 +1768,7 @@ export class NodeTargeter {
         const box = isBody(targetSelectable)
           ? Box.fromRect($viewport[0].getBoundingClientRect())
           : Box.fromRect(
-              frameToClientRect(getVisibleBoundingClientRect(domElt), viewCtx)
+              frameToClientRect(getVisibleBoundingClientRect(domElt), viewCtx),
             );
         const paddingBox = isBody(targetSelectable)
           ? box
@@ -1572,11 +1776,11 @@ export class NodeTargeter {
         const boxInScaler = isBody(targetSelectable)
           ? Box.fromRect(getElementVisibleBounds($viewport)).moveBy(
               frameContainerOffsetToScaler.left,
-              frameContainerOffsetToScaler.top
+              frameContainerOffsetToScaler.top,
             )
           : Box.fromRect(getElementVisibleBounds(domElt)).moveBy(
               frameContainerOffsetToScaler.left,
-              frameContainerOffsetToScaler.top
+              frameContainerOffsetToScaler.top,
             );
 
         // Absolutely-positioned or floating elements don't accept neighbors
@@ -1605,11 +1809,11 @@ export class NodeTargeter {
           isChildrenAccepted(
             viewCtx,
             targetSelectable,
-            toInsert && toInsert[0]
+            toInsert && toInsert[0],
           ),
           acceptsNeighbors,
           undefined,
-          containerType
+          containerType,
         );
         count = count + 1;
       }
@@ -1626,7 +1830,7 @@ export class NodeTargeter {
      * 3. If there is no existing nodebox for the Slot's component then we add a fakebox.
      */
     const isValidSlotInfoNodeBox = (
-      nb: NodeBox
+      nb: NodeBox,
     ): nb is ValidSlotInfoNodeBox => {
       return nb.selectable instanceof ValNode && !!nb.selectable.slotInfo;
     };
@@ -1659,7 +1863,7 @@ export class NodeTargeter {
           true,
           slotNodeBox.acceptsNeighbors,
           undefined,
-          slotNodeBox.containerType
+          slotNodeBox.containerType,
         );
         nodeBoxes.push(fakeNodeBox);
       }
@@ -1670,20 +1874,20 @@ export class NodeTargeter {
       const box = Box.mergeBBs(
         slotChildrenDoms.map((domElt) => {
           return frameToClientRect(getVisibleBoundingClientRect(domElt), vc);
-        })
+        }),
       );
       const paddingBox = Box.mergeBBs(
         slotChildrenDoms.map((domElt) => {
           return frameToClientRect(getPaddingRect(domElt), vc);
-        })
+        }),
       );
       const boxInScaler = Box.mergeBBs(
         slotChildrenDoms.map((domElt) => {
           return getElementVisibleBounds(domElt);
-        })
+        }),
       )?.moveBy(
         frameContainerOffsetToScaler.left,
-        frameContainerOffsetToScaler.top
+        frameContainerOffsetToScaler.top,
       );
       assert(box && paddingBox && boxInScaler, "Unexpected undefined boxes.");
       ancestorSlotSelections.forEach((ancestorSlotSelection) => {
@@ -1700,7 +1904,7 @@ export class NodeTargeter {
             true,
             false,
             undefined,
-            "slot"
+            "slot",
           );
           nodeBoxes.splice(nodeBoxes.length - firstChild, 0, fakeNodeBox);
         }
@@ -1720,7 +1924,7 @@ export class NodeTargeter {
             const isNeighborInstanceOfSameTpl = (selQuery: SelQuery) => {
               return maybe(
                 selQuery.tryGet(),
-                (nb) => nb instanceof ValNode && nb.tpl === valNode.tpl
+                (nb) => nb instanceof ValNode && nb.tpl === valNode.tpl,
               );
             };
 
@@ -1739,7 +1943,7 @@ export class NodeTargeter {
                     valNode,
                     domElt,
                     !nodeBox.isInFlexReverse ? leftSide : rightSide,
-                    flowDir
+                    flowDir,
                   )
                 : undefined;
               const after = hasAfter
@@ -1748,7 +1952,7 @@ export class NodeTargeter {
                     valNode,
                     domElt,
                     !nodeBox.isInFlexReverse ? rightSide : leftSide,
-                    flowDir
+                    flowDir,
                   )
                 : undefined;
               if (before) {
@@ -1771,7 +1975,7 @@ export class NodeTargeter {
                     valNode,
                     domElt,
                     !nodeBox.isInFlexReverse ? topSide : bottomSide,
-                    flowDir
+                    flowDir,
                   )
                 : undefined;
               const after = hasAfter
@@ -1780,7 +1984,7 @@ export class NodeTargeter {
                     valNode,
                     domElt,
                     !nodeBox.isInFlexReverse ? bottomSide : topSide,
-                    flowDir
+                    flowDir,
                   )
                 : undefined;
               if (before) {
@@ -1808,7 +2012,7 @@ export class NodeTargeter {
 function isChildrenAccepted(
   vc: ViewCtx,
   selectable: Selectable,
-  child?: TplNode
+  child?: TplNode,
 ): true | ClientCantAddChildMsg {
   const cantAdd = canAddChildrenToSelectableAndWhy(selectable, child);
   if (cantAdd !== true) {
@@ -1819,8 +2023,8 @@ function isChildrenAccepted(
     !vc.showingDefaultSlotContentsFor(
       ensure(
         selectable.valOwner,
-        `Unexpected undefined valOwner. ${selectable} should be ValSlot with defined valOwner`
-      ).tpl
+        `Unexpected undefined valOwner. ${selectable} should be ValSlot with defined valOwner`,
+      ).tpl,
     )
   ) {
     // Cannot add default content to a TplSlot unless we're showing the

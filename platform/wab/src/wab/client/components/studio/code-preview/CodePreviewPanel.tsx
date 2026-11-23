@@ -18,22 +18,21 @@ export const CodePreviewPanel = observer(function CodePreviewPanel(props: {
     studioCtx.site,
     studioCtx.siteInfo.name,
     studioCtx.siteInfo.id,
-    vc.component
+    vc.component,
   );
 
-  const loader = () =>
-    import("prettier").then((Prettier) =>
-      import("prettier/parser-typescript").then(
-        ({ default: parserTypeScript }) => {
-          const formatted = Prettier.format(module, {
-            parser: "typescript",
-            plugins: [parserTypeScript],
-            trailingComma: "none",
-          });
-          return formatted;
-        }
-      )
-    );
+  const loader = async () => {
+    const [Prettier, parserTypeScript, printerEstree] = await Promise.all([
+      import("prettier/standalone"),
+      import("prettier/plugins/typescript"),
+      import("prettier/plugins/estree"),
+    ]);
+    return Prettier.format(module, {
+      parser: "typescript",
+      plugins: [parserTypeScript, printerEstree],
+      trailingComma: "none",
+    });
+  };
 
   const contents = (formatted: string) => {
     return (

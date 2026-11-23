@@ -60,7 +60,7 @@ export function ContentEditorConfigModal(props: {
               ...values,
               pageTemplates: safeParse(values.pageTemplates),
               insertableTemplates: safeParse(values.insertableTemplates),
-            })
+            }),
           );
         }}
         initialValues={{
@@ -117,15 +117,17 @@ export function ContentEditorConfigModal(props: {
           <Form.Item name={["canInsertHostless"]} noStyle>
             <BooleanPreferencesControl
               label="Can use components from component store?"
-              prefKeys={[
-                ...uniqBy(
-                  appCtx.appConfig.hostLessComponents ?? [],
-                  (p) => p.codeName
-                ).map((pkg) => ({
-                  value: pkg.codeName ?? "",
-                  label: pkg.name,
-                })),
-              ]}
+              prefKeys={uniqBy(
+                [
+                  // The "plume" key gates both Plume and Plexus components
+                  { value: "plume", label: "Plasmic Customizable Components" },
+                  ...(appCtx.appConfig.hostLessComponents ?? []).map((pkg) => ({
+                    value: pkg.codeName ?? "",
+                    label: pkg.name,
+                  })),
+                ],
+                (p) => p.value,
+              ).sort((a, b) => a.label.localeCompare(b.label))}
             />
           </Form.Item>
 
@@ -148,7 +150,7 @@ export function ContentEditorConfigModal(props: {
             <PreferencesControl
               label={"Show left tabs?"}
               prefKeys={LEFT_TAB_UI_KEYS.filter(
-                (x) => !HIDDEN_LEFT_TAB_KEYS.includes(x)
+                (x) => !HIDDEN_LEFT_TAB_KEYS.includes(x),
               )
                 .map((t) => ({ value: t, label: leftTabKeyToLabel(t) }))
                 .sort((a, b) => a.label.localeCompare(b.label))}
@@ -165,7 +167,7 @@ export function ContentEditorConfigModal(props: {
                 ([label, value]) => ({
                   value,
                   label: publicStyleSectionToLabel(value, label),
-                })
+                }),
               )}
             />
           </Form.Item>
@@ -180,6 +182,17 @@ export function ContentEditorConfigModal(props: {
             label="Can override registered tokens?"
           >
             <BooleanControl trueLabel="Allowed" falseLabel="Disallowed" />
+          </Form.Item>
+
+          <h3 className="mv-xlg">AI</h3>
+          <Form.Item name={["chatCopilot"]} label="Plasmic AI">
+            <BooleanControl trueLabel="Enabled" falseLabel="Disabled" />
+          </Form.Item>
+          <Form.Item name={["codeCopilot"]} label="AI in dynamic value editor">
+            <BooleanControl trueLabel="Enabled" falseLabel="Disabled" />
+          </Form.Item>
+          <Form.Item name={["studioMcp"]} label="Studio MCP">
+            <BooleanControl trueLabel="Enabled" falseLabel="Disabled" />
           </Form.Item>
 
           {isOneOf(level, ["team", "workspace"]) && (
@@ -306,7 +319,7 @@ function JsonControl(props: {
   value?: string;
   onChange?: (value: string) => void;
 }) {
-  const { label, defaultInitialValue, value, onChange } = props;
+  const { defaultInitialValue, value, onChange } = props;
   return (
     <>
       <Input.TextArea
@@ -348,7 +361,7 @@ function BooleanControl(props: {
       value={value === true ? "true" : value === false ? "false" : "default"}
       onChange={(newValue) =>
         onChange?.(
-          newValue === "true" ? true : newValue === "false" ? false : null
+          newValue === "true" ? true : newValue === "false" ? false : null,
         )
       }
     >
@@ -365,8 +378,7 @@ function BooleanControl(props: {
  * If the value is BooleanOrDefault, the value applies to all string keys.
  */
 type BooleanOrDefaultRecord<T extends string> =
-  | BooleanOrDefault
-  | Record<T, BooleanOrDefault>;
+  BooleanOrDefault | Record<T, BooleanOrDefault>;
 
 function BooleanPreferencesControl<T extends string>(props: {
   label: string;
@@ -385,20 +397,20 @@ function BooleanPreferencesControl<T extends string>(props: {
             value == null
               ? "default"
               : value === true
-              ? "yes"
-              : value === false
-              ? "no"
-              : "whitelist"
+                ? "yes"
+                : value === false
+                  ? "no"
+                  : "whitelist"
           }
           onChange={(newValue) =>
             onChange?.(
               newValue === "default"
                 ? null
                 : newValue === "yes"
-                ? true
-                : newValue === "no"
-                ? false
-                : ({} as Record<T, boolean>)
+                  ? true
+                  : newValue === "no"
+                    ? false
+                    : ({} as Record<T, boolean>),
             )
           }
         >
@@ -438,8 +450,8 @@ function PreferenceSelect<OptionType>(props: {
       (op as any) === true
         ? "Allowed"
         : (op as any) === false
-        ? "Disallowed"
-        : `${op}`);
+          ? "Disallowed"
+          : `${op}`);
   return (
     <Select
       className={sty.select}
@@ -487,7 +499,9 @@ function PreferencesControl<T extends string, OptionType>(props: {
           value={value == null ? "default" : "customize"}
           onChange={(newValue) =>
             onChange?.(
-              newValue === "default" ? undefined : ({} as Record<T, OptionType>)
+              newValue === "default"
+                ? undefined
+                : ({} as Record<T, OptionType>),
             )
           }
         >
@@ -551,7 +565,7 @@ function PreferenceMapControl<T extends string, OptionType>(props: {
                           (value ? omit(value, prefKeyString) : {}) as Record<
                             T,
                             OptionType
-                          >
+                          >,
                         );
                       } else {
                         onChange?.({ ...value, [prefKeyString]: op } as Record<
@@ -618,7 +632,7 @@ function leftTabKeyToLabel(key: LeftTabUiKey) {
 
 function publicStyleSectionToLabel(
   section: PublicStyleSection,
-  defaultLabel: string
+  defaultLabel: string,
 ) {
   switch (section) {
     case PublicStyleSection.Mixins:

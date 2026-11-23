@@ -1,4 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
+import { E2E_DEVFLAGS_COOKIE_NAME } from "../src/wab/shared/e2e";
+
+const baseURL = process.env.WAB_HOST ?? "http://localhost:3003";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -21,20 +24,37 @@ export default defineConfig({
   timeout: 600_000,
   use: {
     actionTimeout: 10_000,
+<<<<<<< HEAD
     navigationTimeout: 30_000,
     baseURL: process.env.WAB_HOST ?? "http://localhost:3003",
     trace: process.env.CI ? "on-first-retry" : "retain-on-failure",
+=======
+    navigationTimeout: 15_000,
+    baseURL,
+    trace: "retain-on-failure",
+>>>>>>> upstream/master
     video: process.env.CI ? "on-first-retry" : "retain-on-failure",
+    storageState: {
+      cookies: [
+        {
+          name: E2E_DEVFLAGS_COOKIE_NAME,
+          value: "1",
+          domain: new URL(baseURL).hostname,
+          path: "/",
+          expires: -1,
+          httpOnly: false,
+          secure: false,
+          sameSite: "Lax",
+        },
+      ],
+      origins: [],
+    },
   },
   projects: [
     {
-      name: "setup",
-      testMatch: /global-setup\.spec\.ts/,
-    },
-    {
       name: "chromium",
+      testIgnore: /global-setup\.spec\.ts/,
       use: { ...devices["Desktop Chrome"] },
-      dependencies: ["setup"],
     },
   ],
 });

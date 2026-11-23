@@ -17,7 +17,7 @@ export function assertSameInstType(inst: ObjInst, ...others: ObjInst[]) {
     assert(
       cls === instUtil.getInstClass(other),
       () =>
-        `Types mismatch: ${cls.name}  and ${instUtil.getInstClassName(other)}`
+        `Types mismatch: ${cls.name}  and ${instUtil.getInstClassName(other)}`,
     );
   });
 }
@@ -28,10 +28,11 @@ export function areSameInstType(inst: any, ...others: any[]) {
   }
   const cls = instUtil.getInstClass(inst);
   return others.every(
-    (other) => other && cls === instUtil.tryGetInstClass(other)
+    (other) => other && cls === instUtil.tryGetInstClass(other),
   );
 }
 
+<<<<<<< HEAD
 export function walkModelTree(aCtx: NodeCtx, walked = new Array<ObjInst>()) {
   const inst = aCtx.node;
   assert(inst, "inst must be defined");
@@ -63,16 +64,50 @@ function walkFieldValue(val: any, walked: ObjInst[]): void {
   } else {
     unexpected();
   }
+=======
+export function walkModelTree(
+  aCtx: NodeCtx<ObjInst>,
+  walked = new Array<ObjInst>(),
+) {
+  const { node: inst } = aCtx;
+  assert(inst, "inst must be defined");
+  walkInst(inst, walked);
+  return walked;
+>>>>>>> upstream/master
+}
+
+function walkInst(inst: ObjInst, walked: ObjInst[]) {
+  const cls = instUtil.getInstClass(inst);
+  walked.push(inst);
+  for (const field of meta.allFields(cls)) {
+    if (!isWeakRefField(field)) {
+      walkFieldValue(inst[field.name], walked);
+    }
+  }
+}
+
+function walkFieldValue(val: any, walked: ObjInst[]): void {
+  if (isPrimitive(val)) {
+    return;
+  } else if (Array.isArray(val)) {
+    return val.forEach((_v, i) => walkFieldValue(val[i], walked));
+  } else if (isLiteralObject(val)) {
+    return Object.keys(val).forEach((k) => walkFieldValue(val[k], walked));
+  } else if (instUtil.isObjInst(val)) {
+    return walkInst(val, walked);
+  } else {
+    unexpected();
+  }
 }
 
 export function cowalkModelTrees(
-  aCtx: NodeCtx,
-  bCtx: NodeCtx,
+  aCtx: NodeCtx<ObjInst>,
+  bCtx: NodeCtx<ObjInst>,
   bundler: Bundler,
-  updates = new Map<ObjInst, ObjInst>()
+  updates = new Map<ObjInst, ObjInst>(),
 ): Map<ObjInst, ObjInst> {
-  const { node: origInst, path: origPath } = aCtx;
-  const { node: updatedInst, path: updatedPath } = bCtx;
+  const { node: origInst } = aCtx;
+  const { node: updatedInst } = bCtx;
 
   assert(origInst && updatedInst, "instances must exist");
   const cls = instUtil.getInstClass(origInst);
@@ -93,58 +128,80 @@ export function cowalkModelTrees(
       } else if (Array.isArray(origVal)) {
         assert(
           Array.isArray(updatedVal),
-          () => `Expected field values to be equivalent`
+          () => `Expected field values to be equivalent`,
         );
         return origVal.forEach((v, i) =>
-          rec(nextCtx(_aCtx, `${i}`), nextCtx(_bCtx, `${i}`))
+          rec(_aCtx.child(`${i}`), _bCtx.child(`${i}`)),
         );
       } else if (isLiteralObject(origVal)) {
         assert(
           isLiteralObject(updatedVal),
-          () => `Expected field values to be equivalent`
+          () => `Expected field values to be equivalent`,
         );
         const keys = [...Object.keys(origVal)];
-        return keys.forEach((k) => rec(nextCtx(_aCtx, k), nextCtx(_bCtx, k)));
+        return keys.forEach((k) => rec(_aCtx.child(k), _bCtx.child(k)));
       } else if (instUtil.isObjInst(origVal)) {
         return cowalkModelTrees(_aCtx, _bCtx, bundler, updates);
       } else {
         unexpected();
       }
     };
-    const origFieldCtx = nextCtx(aCtx, field.name);
-    const updatedFieldCtx = nextCtx(bCtx, field.name);
-    rec(origFieldCtx, updatedFieldCtx);
+    rec(aCtx.child(field.name), bCtx.child(field.name));
   }
 
   return updates;
 }
 
-export interface NodeCtx<T extends ObjInst = ObjInst> {
-  node: T | undefined;
-  site: Site;
-  path: string[];
-  /**
-   * keyPath mirrors path, but for arrays, instead of using the index, we use the "key".
-   * Since this only applies to arrays, and possibly later only certain arrays,
-   * we allow this to be undefined, which it will usually be (it will be sparse).
-   *
-   * As such, it is not a required field, and is expected to be lazily padded to be the
-   * same length as path when it comes time to extract the keyPath.
-   */
-  keyPath?: (string | undefined)[];
-}
+const NO_PATH: readonly string[] = [];
 
-export function createNodeCtx(site: Site): NodeCtx<Site> {
-  return {
-    node: site,
-    path: [],
+/**
+ * A value in a site's model tree, and the path to it.
+ *
+ * A child links to its parent instead of copying the path, because tree walks
+ * create a NodeCtx per value but rarely read its path.
+ */
+export class NodeCtx<T = any> {
+  private constructor(
+    readonly site: Site,
+    readonly node: T | undefined,
+    private readonly parent: NodeCtx | undefined,
+    // The field or array index that leads from the parent to this node.
+    private readonly field: string,
+    // The key of an array element, which identifies it across branches.
+    private readonly key: string | undefined,
+    // The full path of a root. Children don't read it.
+    private readonly rootPath: readonly string[],
+  ) {}
+
+  static root(site: Site): NodeCtx<Site> {
+    return NodeCtx.at({ site, node: site, path: [] });
+  }
+
+  /** A ctx for a node whose path is already known. */
+  static at<T>({
     site,
-    keyPath: [],
-  };
-}
+    node,
+    path,
+  }: {
+    site: Site;
+    node: T | undefined;
+    path: readonly string[];
+  }): NodeCtx<T> {
+    return new NodeCtx(site, node, undefined, "", undefined, path);
+  }
 
-export type NodeFieldCtx = Omit<NodeCtx, "node"> & { node: any };
+  child(field: string, key?: string): NodeCtx {
+    return new NodeCtx(
+      this.site,
+      (this.node as any)?.[field],
+      this,
+      field,
+      key,
+      NO_PATH,
+    );
+  }
 
+<<<<<<< HEAD
 export function nextCtx(
   ctx: NodeFieldCtx,
   field: string,
@@ -165,6 +222,31 @@ export function nextCtx(
     path: [...ctx.path, field],
     keyPath,
   };
+=======
+  /** Field names and array indexes from the site to this node. */
+  path(): string[] {
+    return this.buildPath(false);
+  }
+
+  /**
+   * Like path(), but with an array element's key in place of its index where
+   * it has one. Unlike indexes, keys identify the same element in every
+   * branch, so merges compare and match changes by this path.
+   */
+  keyedPath(): string[] {
+    return this.buildPath(true);
+  }
+
+  private buildPath(keyed: boolean): string[] {
+    const segments: string[] = [];
+    let ctx: NodeCtx = this;
+    for (; ctx.parent; ctx = ctx.parent) {
+      segments.push((keyed ? ctx.key : undefined) ?? ctx.field);
+    }
+    segments.reverse();
+    return ctx.rootPath.length ? [...ctx.rootPath, ...segments] : segments;
+  }
+>>>>>>> upstream/master
 }
 
 export function toJson(inst: ObjInst, bundler: Bundler) {
@@ -178,17 +260,15 @@ export function toJson(inst: ObjInst, bundler: Bundler) {
         .allFields(cls)
         .filter((field) => !field.annotations.includes("Transient"))
         .map((field) => {
-          const rec = (_ctx: NodeCtx) => {
-            const { node: origVal } = _ctx;
-
+          const rec = (origVal: any) => {
             if (isPrimitive(origVal)) {
               return origVal;
             } else if (Array.isArray(origVal)) {
-              return origVal.map((v, i) => rec(nextCtx(_ctx, `${i}`)));
+              return origVal.map((v) => rec(v));
             } else if (isLiteralObject(origVal)) {
               const keys = [...Object.keys(origVal)];
               return Object.fromEntries(
-                keys.map((k) => tuple(k, rec(nextCtx(_ctx, k))))
+                keys.map((k) => tuple(k, rec(origVal[k]))),
               );
             } else if (instUtil.isObjInst(origVal)) {
               const origAddr = bundler.addrOfUnsafe(origVal);
@@ -203,11 +283,8 @@ export function toJson(inst: ObjInst, bundler: Bundler) {
               unexpected();
             }
           };
-          return tuple(
-            field.name,
-            rec(nextCtx(createNodeCtx(inst as any), field.name))
-          );
-        })
+          return tuple(field.name, rec(inst[field.name]));
+        }),
     ),
   };
 }

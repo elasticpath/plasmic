@@ -1,12 +1,8 @@
+import { ApiError } from "@/wab/shared/ApiErrors/ApiError";
 import {
   UniqueViolationError,
   isUniqueViolationError,
 } from "@/wab/shared/ApiErrors/cms-errors";
-
-export abstract class ApiError extends Error {
-  name = "ApiError";
-  statusCode = 400;
-}
 
 export class UnauthorizedError extends ApiError {
   name = "UnauthorizedError";
@@ -49,7 +45,7 @@ export class BadRequestError extends ApiError {
       ...errorOptions
     }: ErrorOptions & {
       issues?: unknown;
-    } = {}
+    } = {},
   ) {
     super(message, errorOptions);
     this.issues = issues;
@@ -58,6 +54,11 @@ export class BadRequestError extends ApiError {
 
 export class AuthError extends ApiError {
   name = "AuthError";
+  statusCode = 403;
+}
+
+export class CaptchaError extends ApiError {
+  name = "CaptchaError";
   statusCode = 403;
 }
 
@@ -76,16 +77,29 @@ export class BundleTypeError extends ApiError {
   statusCode = 412;
 }
 
+export class RateLimitedExceeded extends ApiError {
+  name = "RateLimitedExceeded";
+  statusCode = 429;
+}
+
 export class CopilotRateLimitExceededError extends ApiError {
   name = "CopilotRateLimitExceededError";
   statusCode = 429;
 }
 
+export class CopilotLimitReachedError extends ApiError {
+  name = "CopilotLimitReachedError";
+  statusCode = 429;
+  constructor() {
+    super("You have used today's free Plasmic AI.");
+  }
+}
+
 export class PublicCopilotServiceUnavailable extends ApiError {
   name = "PublicCopilotServiceUnavailable";
   statusCode = 503;
-  constructor(options?: ErrorOptions) {
-    super("Service unavailable", options);
+  constructor() {
+    super("Service unavailable");
   }
 }
 
@@ -111,15 +125,6 @@ export class LoaderEsbuildFatalError extends Error {
   name = "LoaderEsbuildFatalError";
 }
 
-/**
- * We can't simply use instanceof ApiError, since our build pipeline doesn't
- * handle extending Error correctly. class extends Error works fine with
- * instanceof in normal ES6, but not in our TS compiles.
- */
-export function isApiError(err: Error): err is ApiError {
-  return !!(err as any).statusCode;
-}
-
 const errorNameRegistry = {
   UnauthorizedError,
   ForbiddenError,
@@ -128,19 +133,25 @@ const errorNameRegistry = {
   SchemaMismatchError,
   StaleCliError,
   AuthError,
+  CaptchaError,
   UnknownReferencesError,
   BundleTypeError,
   EntityNotFound: NotFoundError,
   BadRequestError,
+  CopilotLimitReachedError,
+  RateLimitedExceeded,
   CopilotRateLimitExceededError,
   GrantUserNotFoundError,
   PreconditionFailedError,
+  LoaderBundlingError,
+  LoaderDeprecatedVersionError,
 };
 
 /**
- * We can't simply use instanceof DbMgrError, since our build pipeline doesn't
- * handle extending Error correctly. class extends Error works fine with
- * instanceof in normal ES6, but not in our TS compiles.
+ * Reconstructs ApiErrors from errors that have lost their prototype: errors
+ * parsed from a JSON response on the client, and errors thrown in worker
+ * threads (workerpool copies the error's own properties, including `name`,
+ * onto a plain Error). Also maps a few known non-ApiErrors to ApiErrors.
  */
 export function transformErrors(err: Error): Error {
   if (
@@ -148,6 +159,9 @@ export function transformErrors(err: Error): Error {
     err.message === "CSRF token mismatch"
   ) {
     return new AuthError(err.message);
+  }
+  if ((err as { type?: unknown }).type === "entity.parse.failed") {
+    return new BadRequestError("Invalid JSON body");
   }
   const transformedErrType = errorNameRegistry[err.name];
   if (transformedErrType) {

@@ -41,11 +41,10 @@ export const PageTab = observer(function PageTab(props: {
     inStudio: true,
   };
 
-  const appConfig = studioCtx.appCtx.appConfig;
   const [showSettings, setShowSettings] = React.useState(false);
   const [isExpanded, setExpanded] = useLocalStorage(
     "PageTab.isExpanded",
-    false
+    false,
   );
 
   const uiConfig = studioCtx.getCurrentUiConfig();
@@ -64,13 +63,13 @@ export const PageTab = observer(function PageTab(props: {
         value={page.name}
         onChange={(name) =>
           studioCtx.changeUnsafe(() =>
-            studioCtx.siteOps().tryRenameComponent(page, name)
+            studioCtx.siteOps().tryRenameComponent(page, name),
           )
         }
         placeholder={`(unnamed page)`}
       />
     ),
-    [page, page.name]
+    [page, page.name],
   );
 
   const headerControls = React.useMemo(
@@ -84,7 +83,7 @@ export const PageTab = observer(function PageTab(props: {
           <Icon icon={GearIcon} />
         </IconButton>
       ),
-    []
+    [],
   );
 
   return (
@@ -128,20 +127,15 @@ export const PageTab = observer(function PageTab(props: {
                       )}
                       {canEdit(PublicStyleSection.DataQueries) && (
                         <>
-                          {appConfig.serverQueries && (
-                            <ServerQueriesSection
-                              component={page}
-                              viewCtx={viewCtx}
-                            />
-                          )}
-                          {(!appConfig.rscRelease ||
-                            appConfig.enableDataQueries) && (
-                            <ComponentDataQueriesSection
-                              component={page}
-                              viewCtx={viewCtx}
-                              isDeprecated={appConfig.serverQueries}
-                            />
-                          )}
+                          <ServerQueriesSection
+                            component={page}
+                            viewCtx={viewCtx}
+                          />
+                          <ComponentDataQueriesSection
+                            component={page}
+                            viewCtx={viewCtx}
+                            isDeprecated
+                          />
                         </>
                       )}
 

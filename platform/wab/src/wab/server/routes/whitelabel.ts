@@ -22,7 +22,7 @@ function whiteLabelMgr(req: Request) {
     !req.apiTeam.whiteLabelName ||
     req.apiTeam.whiteLabelName !== req.params.whiteLabelName
   ) {
-    throw new ForbiddenError(`Cannot use white label API`);
+    throw new ForbiddenError();
   }
 
   return userDbMgr(req);
@@ -36,7 +36,7 @@ function whiteLabelMgr(req: Request) {
 export async function openJwt(req: Request, res: Response, next: NextFunction) {
   const token = req.query.token;
   if (!token || typeof token !== "string") {
-    throw new BadRequestError(`Missing JWT token to open Plasmic page`);
+    throw new UnauthorizedError(`Missing JWT token to open Plasmic page`);
   }
 
   const url = req.query.url;
@@ -45,7 +45,7 @@ export async function openJwt(req: Request, res: Response, next: NextFunction) {
   }
   if (!url.startsWith("/")) {
     throw new BadRequestError(
-      `Can only redirect to relative urls, starts with "/"`
+      `Can only redirect to relative urls, starts with "/"`,
     );
   }
 
@@ -57,7 +57,7 @@ export async function openJwt(req: Request, res: Response, next: NextFunction) {
   const redirectConfig = team.whiteLabelInfo?.openRedirect;
   if (!redirectConfig) {
     throw new UnauthorizedError(
-      `Not authorized to open Plasmic pages as users`
+      `Not authorized to open Plasmic pages as users`,
     );
   }
 
@@ -67,19 +67,19 @@ export async function openJwt(req: Request, res: Response, next: NextFunction) {
       algorithms: [redirectConfig.algo],
     });
   } catch (err) {
-    logger().info(`Error openJwt ${err}`);
-    throw new UnauthorizedError(`Invalid token`);
+    logger.info(`Error openJwt ${err}`);
+    throw new UnauthorizedError();
   }
 
   const payload = asValidJwtPayload(jwtPayload);
-  logger().info(`JWT token payload`, payload);
+  logger.info(`JWT token payload`, payload);
   if (payload.team !== team.whiteLabelName) {
-    throw new UnauthorizedError(`Invalid token`);
+    throw new UnauthorizedError();
   }
 
   const user = await superMgr.getUserByWhiteLabelId(
     team.id,
-    payload.externalUserId
+    payload.externalUserId,
   );
   await new Promise<void>((resolve) => {
     doLogin(req, user, (err2) => {
@@ -95,14 +95,14 @@ export async function openJwt(req: Request, res: Response, next: NextFunction) {
 
 function asValidJwtPayload(payload: any) {
   if (!payload || payload == null || typeof payload !== "object") {
-    logger().info(`Error validating jwt: not an object`);
-    throw new UnauthorizedError(`Invalid token`);
+    logger.info(`Error validating jwt: not an object`);
+    throw new UnauthorizedError();
   }
   if (payload.team && payload.externalUserId) {
     return payload as TeamJwtOpenPayload;
   }
-  logger().info(`Error validating jwt: not all necessary fields: ${payload}`);
-  throw new UnauthorizedError(`Invalid token`);
+  logger.info(`Error validating jwt: not all necessary fields: ${payload}`);
+  throw new UnauthorizedError();
 }
 
 export async function createWhiteLabelUser(req: Request, res: Response) {
@@ -115,11 +115,11 @@ export async function createWhiteLabelUser(req: Request, res: Response) {
 
   const existingUser = await mgr.tryGetUserByWhiteLabelId(
     team.id,
-    info.externalId
+    info.externalId,
   );
   if (existingUser) {
     throw new BadRequestError(
-      `User with external ID ${info.externalId} already exists`
+      `User with external ID ${info.externalId} already exists`,
     );
   }
 
@@ -140,7 +140,7 @@ export async function getWhiteLabelUser(req: Request, res: Response) {
 
   const user = await mgr.getUserByWhiteLabelId(
     team.id,
-    req.params.externalUserId
+    req.params.externalUserId,
   );
   res.json(toWhiteLabelUser(user));
 }
@@ -150,9 +150,9 @@ export async function deleteWhiteLabelUser(req: Request, res: Response) {
   const team = ensure(req.apiTeam, "Always defined for whiteLabelMgr");
   const user = await mgr.getUserByWhiteLabelId(
     team.id,
-    req.params.externalUserId
+    req.params.externalUserId,
   );
-  logger().info("DELETING USER", user);
+  logger.info("DELETING USER", user);
   await mgr.deleteUser(user, false);
   res.json({ deletedId: req.params.externalUserId });
 }

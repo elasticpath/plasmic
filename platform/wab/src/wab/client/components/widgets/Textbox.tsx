@@ -34,8 +34,6 @@ type TextboxProps = Omit<React.ComponentProps<"input">, "disabled"> & {
   wrapperProps?: React.ComponentProps<"div">;
 };
 
-type X = { x: number | string | null } & { x: string | number };
-
 export interface TextboxRef {
   value: () => string;
   setValue: (val: string) => void;
@@ -206,7 +204,7 @@ export const Textbox = React.forwardRef(
         }}
       />
     );
-  }
+  },
 );
 
 export default Textbox as React.FunctionComponent<

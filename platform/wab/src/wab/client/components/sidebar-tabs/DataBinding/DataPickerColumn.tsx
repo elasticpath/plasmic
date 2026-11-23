@@ -6,13 +6,20 @@ import {
   evalExpr,
   getDollarVarIcon,
   getItemPath,
+  getSourceQuery,
   getSourceUiId,
   getSupportedObjectKeys,
   getVariableType,
   isListType,
   isTypeSupported,
 } from "@/wab/client/components/sidebar-tabs/DataBinding/DataPickerUtil";
-import { useViewCtxMaybe } from "@/wab/client/contexts/StudioContexts";
+import {
+  isDraggableDataItem,
+  mkDataDragSpec,
+  mkDataDragTargeting,
+} from "@/wab/client/components/sidebar-tabs/DataBinding/data-drag";
+import { DraggableInsertable } from "@/wab/client/components/studio/add-drawer/DraggableInsertable";
+import { useOpenQueryPanel } from "@/wab/client/hooks/useOpenQueryPanel";
 import {
   DefaultDataPickerColumnProps,
   PlasmicDataPickerColumn,
@@ -23,10 +30,15 @@ import {
   runInteraction,
 } from "@/wab/client/state-management/preview-steps";
 import { useStudioCtx } from "@/wab/client/studio-ctx/StudioCtx";
+import type { ViewCtx } from "@/wab/client/studio-ctx/view-ctx";
+import { MaybeWrap } from "@/wab/commons/components/ReactUtil";
 import { ensure, isTruthy } from "@/wab/shared/common";
 import { isTplTagOrComponent } from "@/wab/shared/core/tpls";
 import { DEVFLAGS } from "@/wab/shared/devflags";
-import { pathToString } from "@/wab/shared/eval/expression-parser";
+import {
+  pathToString,
+  transformDataTokenPathToBundle,
+} from "@/wab/shared/eval/expression-parser";
 import { ensureKnownInteraction } from "@/wab/shared/model/classes";
 import { mkMetaName } from "@plasmicapp/host";
 import { HTMLElementRefOf } from "@plasmicapp/react-web";
@@ -35,6 +47,7 @@ import { observer } from "mobx-react";
 import * as React from "react";
 
 export interface DataPickerColumnProps extends DefaultDataPickerColumnProps {
+  viewCtx: ViewCtx | undefined;
   data: Record<string, any>;
   columnIndex: number;
   selectedItem: number | undefined;
@@ -43,6 +56,10 @@ export interface DataPickerColumnProps extends DefaultDataPickerColumnProps {
   onItemSelected: (column: number, item: number) => void;
   opts: DataPickerOpts;
   onCancelDataPicker?: () => void;
+  /** In the bottom panel, where a query link opens its editor in place. */
+  docked?: boolean;
+  /** Rows can be dragged onto the canvas to create/bind elements. */
+  allowDragging?: boolean;
   // Error message shown in place of data fields when set.
   errorMessage?: string;
 }
@@ -63,10 +80,11 @@ function ColumnErrorNotice(props: { columnIndex: number; message: string }) {
 
 function DataPickerColumn_(
   props: DataPickerColumnProps,
-  ref: HTMLElementRefOf<"div">
+  ref: HTMLElementRefOf<"div">,
 ) {
   const {
     data,
+    viewCtx,
     columnIndex,
     selectedItem,
     columnItems,
@@ -74,6 +92,8 @@ function DataPickerColumn_(
     isActiveColumn,
     opts,
     onCancelDataPicker,
+    docked,
+    allowDragging,
     errorMessage,
     ...rest
   } = props;
@@ -82,19 +102,19 @@ function DataPickerColumn_(
   }
 
   const studioCtx = useStudioCtx();
-  const viewCtx = useViewCtxMaybe();
+  const openQuery = useOpenQueryPanel();
   const getInteraction = React.useCallback(
     (key: string) => {
       return data["$steps"]?.[mkMetaName(key)]?.interaction;
     },
-    [data, studioCtx]
+    [data, studioCtx],
   );
   const wasStepExecuted = React.useCallback(
     (key: string) => {
       const interaction = getInteraction(key);
       return interaction && studioCtx.hasCached$stepValue(interaction.uuid);
     },
-    [data, studioCtx, getInteraction]
+    [data, studioCtx, getInteraction],
   );
   const isStepsColumn = React.useMemo(() => {
     const pathPrefix = columnItems.find((item) => item.pathPrefix)?.pathPrefix;
@@ -130,56 +150,105 @@ function DataPickerColumn_(
                 (!isListType(variableType)
                   ? evalExpr(
                       path,
-                      ensure(data, "Should only be called if data exists")
+                      ensure(data, "Should only be called if data exists"),
                     )
                   : variableType === "array"
-                  ? keyCount + ` item${keyCount === 1 ? "" : "s"}`
-                  : undefined);
+                    ? keyCount + ` item${keyCount === 1 ? "" : "s"}`
+                    : undefined);
               const isSelected = index === selectedItem;
               const sourceUiId = viewCtx
                 ? getSourceUiId(path, viewCtx.site, viewCtx.currentComponent())
                 : undefined;
+              const sourceQuery =
+                docked && viewCtx
+                  ? getSourceQuery(path, viewCtx.currentComponent())
+                  : undefined;
+              const canDrag =
+                allowDragging &&
+                !!viewCtx &&
+                item.errorMessage == null &&
+                isDraggableDataItem(variableType);
               return (
-                <DataPickerColumnItem
-                  ref={
-                    isSelected && isActiveColumn
-                      ? (el) =>
-                          setTimeout(
-                            () =>
-                              el?.scrollIntoView({
-                                block: "center",
-                                inline: "start",
-                                behavior: "smooth",
-                              }),
-                            0
-                          )
-                      : undefined
-                  }
+                <MaybeWrap
                   key={pathToString(path)}
-                  itemName={label ?? key}
-                  variableType={variableType}
-                  icon={columnIndex === 0 ? getDollarVarIcon(path) : undefined}
-                  previewValue={previewValue}
-                  isSelected={isSelected}
-                  onClick={() => onItemSelected(columnIndex, index)}
-                  onJumpToSource={
-                    sourceUiId
-                      ? () => {
-                          onCancelDataPicker?.();
-                          studioCtx.uiActionBus.dispatch(sourceUiId, "jump");
-                        }
-                      : undefined
-                  }
-                  columnIndex={columnIndex}
-                  step={
-                    isStepsColumn && enabledPreviewSteps
-                      ? wasStepExecuted(key)
-                        ? "played"
-                        : "notPlayed"
-                      : undefined
-                  }
-                  interaction={getInteraction(key)}
-                />
+                  cond={!!canDrag}
+                  wrapper={(children) => {
+                    const sourceViewCtx = ensure(
+                      viewCtx,
+                      "canDrag implies viewCtx",
+                    );
+                    const payload = {
+                      path: transformDataTokenPathToBundle(
+                        path,
+                        sourceViewCtx.site,
+                        sourceViewCtx.siteInfo.id,
+                      ),
+                      label: label ?? key,
+                      value,
+                      varType: variableType,
+                      previewValue,
+                      sourceViewCtx,
+                      envKeys: Object.keys(data),
+                    };
+                    return (
+                      <DraggableInsertable
+                        sc={studioCtx}
+                        spec={mkDataDragSpec(payload)}
+                        dataDrag={mkDataDragTargeting(payload)}
+                        dataDragPayload={payload}
+                      >
+                        {children}
+                      </DraggableInsertable>
+                    );
+                  }}
+                >
+                  <DataPickerColumnItem
+                    ref={
+                      isSelected && isActiveColumn
+                        ? (el) =>
+                            setTimeout(
+                              () =>
+                                el?.scrollIntoView({
+                                  block: "center",
+                                  inline: "start",
+                                  behavior: "smooth",
+                                }),
+                              0,
+                            )
+                        : undefined
+                    }
+                    itemName={label ?? key}
+                    variableType={variableType}
+                    icon={
+                      columnIndex === 0 ? getDollarVarIcon(path) : undefined
+                    }
+                    previewValue={previewValue}
+                    isSelected={isSelected}
+                    onClick={() => onItemSelected(columnIndex, index)}
+                    onJumpToSource={
+                      sourceQuery && viewCtx
+                        ? () => openQuery(viewCtx, sourceQuery)
+                        : sourceUiId
+                          ? () => {
+                              onCancelDataPicker?.();
+                              studioCtx.uiActionBus.dispatch(
+                                sourceUiId,
+                                "jump",
+                              );
+                            }
+                          : undefined
+                    }
+                    columnIndex={columnIndex}
+                    step={
+                      isStepsColumn && enabledPreviewSteps
+                        ? wasStepExecuted(key)
+                          ? "played"
+                          : "notPlayed"
+                        : undefined
+                    }
+                    interaction={getInteraction(key)}
+                  />
+                </MaybeWrap>
               );
             })
             .filter(isTruthy)
@@ -188,11 +257,11 @@ function DataPickerColumn_(
       runAllSteps={{
         onClick: () => {
           const currentInteraction = ensureKnownInteraction(
-            data[mkMetaName("$steps")]?.currentInteraction
+            data[mkMetaName("$steps")]?.currentInteraction,
           );
           const previousSteps = currentInteraction.parent.interactions.slice(
             0,
-            currentInteraction.parent.interactions.indexOf(currentInteraction)
+            currentInteraction.parent.interactions.indexOf(currentInteraction),
           );
           const vc = studioCtx.focusedViewCtx();
           const tpl = vc?.focusedTpls()?.[0];

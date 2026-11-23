@@ -1,29 +1,26 @@
-import {
-  arrayEqIgnoreOrder,
-  mkShortId,
-  remove,
-  removeWhere,
-  switchType,
-} from "@/wab/shared/common";
+import { arrayWithout } from "@/wab/shared/collections";
+import { arrayEqIgnoreOrder, mkShortId, switchType } from "@/wab/shared/common";
 import { cloneVariantedValue } from "@/wab/shared/core/styles";
+import { maybeComputedFn } from "@/wab/shared/mobx-util";
 import {
   DataToken,
+  isKnownStyleToken,
   Site,
   StyleToken,
   StyleTokenOverride,
   Token,
-  Variant,
   VariantedValue,
-  isKnownStyleToken,
 } from "@/wab/shared/model/classes";
+import { VariantCombo } from "@/wab/shared/Variants";
 
 export type FinalToken<T extends Token> =
-  | MutableToken<T>
-  | OverrideableToken<T>
-  | ImmutableToken<T>;
+  MutableToken<T> | OverrideableToken<T> | ImmutableToken<T>;
 
 export abstract class BaseToken<T extends Token> {
-  constructor(readonly base: T, readonly isLocal: boolean) {}
+  constructor(
+    readonly base: T,
+    readonly isLocal: boolean,
+  ) {}
 
   get override(): StyleTokenOverride | null {
     return null;
@@ -52,37 +49,38 @@ export abstract class BaseToken<T extends Token> {
 
   protected static setValue<T extends Token>(
     tokenOrOverride: T | StyleTokenOverride,
-    value: string
+    value: string,
   ): void {
     tokenOrOverride.value = value;
   }
 
   protected static setVariantedValue<T extends Token>(
     tokenOrOverride: T | StyleTokenOverride,
-    variants: Variant[],
-    value: string
+    variants: VariantCombo,
+    value: string,
   ): void {
     const variantedValue = tokenOrOverride.variantedValues.find((v) =>
-      arrayEqIgnoreOrder(v.variants, variants)
+      arrayEqIgnoreOrder(v.variants, variants),
     );
     if (variantedValue) {
       variantedValue.value = value;
     } else {
-      tokenOrOverride.variantedValues.push(
+      tokenOrOverride.variantedValues = [
+        ...tokenOrOverride.variantedValues,
         new VariantedValue({
           variants,
           value,
-        })
-      );
+        }),
+      ];
     }
   }
 
   protected static removeVariantedValue<T extends Token>(
     tokenOrOverride: T | StyleTokenOverride,
-    variants: Variant[]
+    variants: VariantCombo,
   ): void {
-    removeWhere(tokenOrOverride.variantedValues, (v) =>
-      arrayEqIgnoreOrder(v.variants, variants)
+    tokenOrOverride.variantedValues = tokenOrOverride.variantedValues.filter(
+      (v) => !arrayEqIgnoreOrder(v.variants, variants),
     );
   }
 }
@@ -98,35 +96,36 @@ export class MutableToken<T extends Token> extends BaseToken<T> {
     this.removeExtraneousValues();
   }
 
-  setVariantedValue(variants: Variant[], value: string): void {
+  setVariantedValue(variants: VariantCombo, value: string): void {
     BaseToken.setVariantedValue(this.base, variants, value);
     this.removeExtraneousValues();
   }
 
-  removeVariantedValue(variants: Variant[]): void {
+  removeVariantedValue(variants: VariantCombo): void {
     BaseToken.removeVariantedValue(this.base, variants);
   }
 
   private removeExtraneousValues(): void {
-    this.variantedValues.forEach((v) => {
-      if (v.value === this.base.value) {
-        remove(this.base.variantedValues, v);
-      }
-    });
+    this.base.variantedValues = this.base.variantedValues.filter(
+      (v) => v.value !== this.base.value,
+    );
   }
 }
 
 /**Tokens from direct dependencies are immutable but can be overridden. */
 // TODO: Make this work for Data Tokens
 export class OverrideableToken<T extends Token> extends BaseToken<T> {
-  constructor(base: T, private readonly site: Site) {
+  constructor(
+    base: T,
+    private readonly site: Site,
+  ) {
     super(base, false);
   }
 
   get override(): StyleTokenOverride | null {
     return (
       this.site.styleTokenOverrides.find(
-        (t) => t.token.uuid === this.base.uuid
+        (t) => t.token.uuid === this.base.uuid,
       ) ?? null
     );
   }
@@ -153,7 +152,7 @@ export class OverrideableToken<T extends Token> extends BaseToken<T> {
     this.removeExtraneousValues();
   }
 
-  setVariantedValue(variants: Variant[], value: string) {
+  setVariantedValue(variants: VariantCombo, value: string) {
     const override = this.upsertStyleTokenOverride();
     BaseToken.setVariantedValue(override, variants, value);
     this.removeExtraneousValues();
@@ -170,7 +169,7 @@ export class OverrideableToken<T extends Token> extends BaseToken<T> {
         const baseValue =
           // if the global variant for the varianted value is imported (e.g. imported breakpoints), use the imported varianted value as the base value
           this.base.variantedValues.find((v) =>
-            arrayEqIgnoreOrder(v.variants, variantedValue.variants)
+            arrayEqIgnoreOrder(v.variants, variantedValue.variants),
           )?.value ??
           // use the overrideable base value
           this.value;
@@ -197,7 +196,7 @@ export class OverrideableToken<T extends Token> extends BaseToken<T> {
   }
 
   /** Returns true if override no longer exists. */
-  removeVariantedValue(variants: Variant[]): boolean {
+  removeVariantedValue(variants: VariantCombo): boolean {
     const override = this.override;
     if (!override) {
       return true;
@@ -209,7 +208,7 @@ export class OverrideableToken<T extends Token> extends BaseToken<T> {
 
   private upsertStyleTokenOverride(): StyleTokenOverride {
     const existingOverride = this.site.styleTokenOverrides.find(
-      (o) => o.token.uuid === this.base.uuid
+      (o) => o.token.uuid === this.base.uuid,
     );
     if (existingOverride) {
       return existingOverride;
@@ -219,7 +218,10 @@ export class OverrideableToken<T extends Token> extends BaseToken<T> {
       value: null,
       variantedValues: [],
     });
-    this.site.styleTokenOverrides.push(newOverride);
+    this.site.styleTokenOverrides = [
+      ...this.site.styleTokenOverrides,
+      newOverride,
+    ];
     return newOverride;
   }
 
@@ -231,7 +233,10 @@ export class OverrideableToken<T extends Token> extends BaseToken<T> {
     }
 
     if (!override.value && override.variantedValues.length === 0) {
-      remove(this.site.styleTokenOverrides, override);
+      this.site.styleTokenOverrides = arrayWithout(
+        this.site.styleTokenOverrides,
+        override,
+      );
       return true;
     } else {
       return false;
@@ -271,6 +276,7 @@ export function cloneToken(token: Token): Token {
     .result();
 }
 
+<<<<<<< HEAD
 export type TokenMembership = (
   tokens: ReadonlyArray<Token>,
   token: Token
@@ -289,17 +295,53 @@ export function setMembership(): TokenMembership {
       sets.set(tokens, set);
     }
     return set.has(token);
+=======
+// Observable sites invalidate these sets when token membership or dependencies change.
+// Plain server sites rebuild them; batch callers reuse them only for one traversal.
+const tokenMembership = maybeComputedFn(
+  (site: Site, type: "styleTokens" | "dataTokens") => ({
+    local: new Set<Token>(site[type]),
+    direct: new Set<Token>(
+      site.projectDependencies.flatMap(
+        (dep): readonly Token[] => dep.site[type],
+      ),
+    ),
+  }),
+);
+
+/** A snapshot of token ownership for a single batch; do not retain across edits. */
+export function mkToFinalToken(site: Site) {
+  let styleMembership: ReturnType<typeof tokenMembership> | undefined;
+  let dataMembership: ReturnType<typeof tokenMembership> | undefined;
+  return <T extends Token>(token: T): FinalToken<T> => {
+    const base: Token = token;
+    const membership = isKnownStyleToken(base)
+      ? (styleMembership ??= tokenMembership(site, "styleTokens"))
+      : (dataMembership ??= tokenMembership(site, "dataTokens"));
+    const isLocal = membership.local.has(token);
+    if (isLocal && !token.isRegistered) {
+      return new MutableToken(token);
+    } else if (isLocal || membership.direct.has(token)) {
+      return new OverrideableToken(token, site);
+    } else {
+      return new ImmutableToken(token, isLocal);
+    }
+>>>>>>> upstream/master
   };
 }
 
 export function toFinalToken(
   token: DataToken,
   site: Site,
+<<<<<<< HEAD
   isMember?: TokenMembership
+=======
+>>>>>>> upstream/master
 ): FinalToken<DataToken>;
 export function toFinalToken(
   token: StyleToken,
   site: Site,
+<<<<<<< HEAD
   isMember?: TokenMembership
 ): FinalToken<StyleToken>;
 export function toFinalToken(
@@ -322,4 +364,9 @@ export function toFinalToken(
   } else {
     return new ImmutableToken(token, isLocal);
   }
+=======
+): FinalToken<StyleToken>;
+export function toFinalToken(token: Token, site: Site) {
+  return mkToFinalToken(site)(token);
+>>>>>>> upstream/master
 }

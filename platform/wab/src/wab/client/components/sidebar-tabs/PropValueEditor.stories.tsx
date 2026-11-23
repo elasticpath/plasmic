@@ -1,20 +1,41 @@
 import { PropValueEditor } from "@/wab/client/components/sidebar-tabs/PropValueEditor";
 import { SidebarModalProvider } from "@/wab/client/components/sidebar/SidebarModal";
-import { expect } from "@storybook/jest";
 import type { Meta, StoryObj } from "@storybook/react";
-import { userEvent, waitFor, within } from "@storybook/testing-library";
 import React from "react";
+import { expect, fn, userEvent, waitFor, within } from "storybook/test";
+
+type Props = React.ComponentProps<typeof PropValueEditor>;
+
+/**
+ * Controls `value` with local state rather than `updateArgs()`, since an args
+ * update during `play` remounts the story and resets the `fn()` mocks.
+ */
+function ControlledPropValueEditor(props: Props) {
+  const [value, setValue] = React.useState(props.value);
+  return (
+    <PropValueEditor
+      {...props}
+      value={value}
+      onChange={(newValue) => {
+        props.onChange(newValue);
+        setValue(newValue);
+      }}
+    />
+  );
+}
 
 export default {
   component: PropValueEditor,
+  render: (args) => <ControlledPropValueEditor {...args} />,
   args: {
     attr: "Attr",
     label: "Label",
     value: undefined,
+    onChange: fn(),
   },
-  argTypes: {
-    onChange: { action: "changed" },
-  },
+  // updateArgs re-runs loaders, and the default mock restore can
+  // wipe the onChange call before the play function asserts it.
+  parameters: { test: { restoreMocks: false } },
   decorators: [
     (Story) => (
       <SidebarModalProvider>
@@ -63,7 +84,7 @@ export const href: StoryObj<typeof PropValueEditor> = {
     const editor = canvas.getByRole("textbox");
     await userEvent.type(editor, "https://plasmic.app{Enter}");
     await waitFor(() =>
-      expect(args.onChange).toHaveBeenCalledWith("https://plasmic.app")
+      expect(args.onChange).toHaveBeenCalledWith("https://plasmic.app"),
     );
   },
 };
