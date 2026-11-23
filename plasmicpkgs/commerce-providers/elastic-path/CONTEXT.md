@@ -166,8 +166,9 @@ Path call. Auto-selected only when the member belongs to exactly one.
 An order whose `relationships.account.data.id` is the selected organisation.
 Account order history is that organisation's orders, not only the ones the
 current member placed, and not a guest order that came back under the same
-token. The browser asks with an empty body. The server chooses the account,
-the filter, and the pages. The result is a sanitized summary that keeps the
+token. The full history asks with an empty body. One window asks with
+`limit` and `offset` only. The server chooses the account, the filter, and
+which window to read. The result is a sanitized summary that keeps the
 approved Elastic Path paths, not a raw order document: `created_at` stays at
 `meta.timestamps.created_at` and the taxed price stays at
 `meta.display_price.with_tax`. Everything else in the order resource stays on

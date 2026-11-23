@@ -116,6 +116,42 @@ export interface EpAccountOrderResult {
   total: number;
 }
 
+/**
+ * One shopper-facing window. `limit` is 1–100. `offset` is 0–100000.
+ * Both are required. The server rejects every other field.
+ */
+export interface EpAccountOrderPageRequest {
+  limit: number;
+  offset: number;
+}
+
+/**
+ * Navigation for one raw window. `hasNextPage` means another raw window may
+ * exist. It does not mean that window contains an authorized order.
+ */
+export interface EpAccountOrderPageInfo {
+  limit: number;
+  offset: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+}
+
+/**
+ * Sanitized orders from one raw window. `total` is `orders.length` for this
+ * window, not the size of the history.
+ */
+export interface EpAccountOrderPageResult {
+  orders: EpAccountOrder[];
+  total: number;
+  page: EpAccountOrderPageInfo;
+}
+
+/** Package guard. Elastic Path's own offset ceiling is not this number. */
+export const EP_ACCOUNT_ORDER_PAGE_OFFSET_MAX = 100_000;
+
+/** Elastic Path rejects a `page[limit]` above this. */
+export const EP_ACCOUNT_ORDER_PAGE_LIMIT_MAX = 100;
+
 /** The saved address to delete. The server trims `id` and chooses the account. */
 export interface EpAccountAddressDeleteRequest {
   id: string;
@@ -182,6 +218,10 @@ export interface EpIdentityOperations {
   member: { request: void; response: EpAccountMemberResult };
   accountAddresses: { request: void; response: EpAccountAddressResult };
   accountOrders: { request: void; response: EpAccountOrderResult };
+  accountOrderPage: {
+    request: EpAccountOrderPageRequest;
+    response: EpAccountOrderPageResult;
+  };
   createAccountAddress: {
     request: EpAccountAddressCreateRequest;
     response: EpAccountAddress;
@@ -226,6 +266,7 @@ export const EP_IDENTITY_ROUTES: {
   member: { path: "/ep/account/member", method: "POST" },
   accountAddresses: { path: "/ep/account/addresses", method: "POST" },
   accountOrders: { path: "/ep/account/orders", method: "POST" },
+  accountOrderPage: { path: "/ep/account/orders/page", method: "POST" },
   createAccountAddress: {
     path: "/ep/account/addresses/create",
     method: "POST",

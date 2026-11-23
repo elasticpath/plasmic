@@ -2,9 +2,11 @@
 
 const mockUsePlasmicCanvasContext = jest.fn().mockReturnValue(false);
 const mockAccountOrders = jest.fn();
+const mockAccountOrderPage = jest.fn();
 const mockAccountAddresses = jest.fn();
 const mockIdentity = {
   accountOrders: mockAccountOrders,
+  accountOrderPage: mockAccountOrderPage,
   accountAddresses: mockAccountAddresses,
 };
 
@@ -46,7 +48,11 @@ jest.mock("../../identity/useEpIdentity", () => ({
 
 import React from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
-import type { EpAccountOrder, EpAccountOrderResult } from "../../identity/operations";
+import type {
+  EpAccountOrder,
+  EpAccountOrderPageResult,
+  EpAccountOrderResult,
+} from "../../identity/operations";
 import {
   MOCK_ACCOUNT_ANONYMOUS,
   MOCK_ACCOUNT_LAPSED,
@@ -61,7 +67,7 @@ const {
   registerEPAccountOrdersProvider,
   epAccountOrdersProviderMeta,
 } = require("../EPAccountOrdersProvider");
-const { EPAccountOrderList } = require("../EPAccountOrderList");
+const { EPAccountOrderList, epAccountOrderListMeta } = require("../EPAccountOrderList");
 const { EPAccountAddressProvider, epAccountAddressProviderMeta } = require("../EPAccountAddressProvider");
 const { epAccountProviderMeta } = require("../EPAccountProvider");
 
@@ -116,13 +122,19 @@ function published(): AccountOrderHistoryContext {
 function Harness(props: {
   account?: AccountContext;
   previewState?: string;
+  pageSize?: number;
   children?: React.ReactNode;
+  ordersRef?: React.Ref<any>;
 }) {
   const { DataProvider } = require("@plasmicapp/host");
-  const { account, previewState, children } = props;
+  const { account, previewState, pageSize, children, ordersRef } = props;
   return (
     <DataProvider name="account" data={account}>
-      <EPAccountOrdersProvider previewState={previewState as any}>
+      <EPAccountOrdersProvider
+        ref={ordersRef}
+        previewState={previewState as any}
+        pageSize={pageSize}
+      >
         {children}
       </EPAccountOrdersProvider>
     </DataProvider>
@@ -132,8 +144,19 @@ function Harness(props: {
 describe("EPAccountOrdersProvider", () => {
   beforeEach(() => {
     mockAccountOrders.mockReset();
+    mockAccountOrderPage.mockReset();
     mockAccountAddresses.mockReset();
     mockAccountOrders.mockResolvedValue({ orders: [], total: 0 });
+    mockAccountOrderPage.mockResolvedValue({
+      orders: [],
+      total: 0,
+      page: {
+        limit: 10,
+        offset: 0,
+        hasNextPage: false,
+        hasPreviousPage: false,
+      },
+    });
     mockAccountAddresses.mockResolvedValue({ addresses: [], total: 0 });
     mockUsePlasmicCanvasContext.mockReturnValue(false);
   });
@@ -160,6 +183,7 @@ describe("EPAccountOrdersProvider", () => {
       orders: [],
       total: 0,
       error: null,
+      page: null,
     });
   });
 
@@ -469,7 +493,7 @@ describe("EPAccountOrdersProvider", () => {
       /accountOrders/
     );
     expect(JSON.stringify(epAccountProviderMeta)).not.toMatch(/accountOrders/);
-    expect(epAccountOrdersProviderMeta.refActions).toBeUndefined();
+    expect(epAccountOrderListMeta.refActions).toBeUndefined();
   });
 
   describe("registration", () => {
@@ -487,20 +511,32 @@ describe("EPAccountOrdersProvider", () => {
         "plasmic-commerce-ep-account-provider"
       );
       expect(epAccountOrdersProviderMeta.providesData).toBe(true);
-      expect(epAccountOrdersProviderMeta.refActions).toBeUndefined();
-      expect(Object.keys(epAccountOrdersProviderMeta.props ?? {}).sort()).toEqual(
-        ["children", "previewState"]
-      );
-      const preview = (epAccountOrdersProviderMeta.props as any).previewState;
-      expect(preview.options.map((option: { value: string }) => option.value)).toEqual([
-        "auto",
-        "withOrders",
-        "empty",
-        "loading",
-        "error",
-        "noSelectedAccount",
-        "lapsed",
-      ]);
+    expect(Object.keys(epAccountOrdersProviderMeta.refActions ?? {}).sort()).toEqual([
+      "nextPage",
+      "previousPage",
+      "retryPage",
+    ]);
+    expect(epAccountOrdersProviderMeta.refActions?.nextPage.argTypes).toEqual([]);
+    expect(epAccountOrdersProviderMeta.refActions?.previousPage.argTypes).toEqual([]);
+    expect(epAccountOrdersProviderMeta.refActions?.retryPage.argTypes).toEqual([]);
+    expect(Object.keys(epAccountOrdersProviderMeta.props ?? {}).sort()).toEqual([
+      "children",
+      "pageSize",
+      "previewState",
+    ]);
+    const preview = (epAccountOrdersProviderMeta.props as any).previewState;
+    expect(preview.options.map((option: { value: string }) => option.value)).toEqual([
+      "auto",
+      "withOrders",
+      "empty",
+      "loading",
+      "error",
+      "noSelectedAccount",
+      "lapsed",
+      "firstPage",
+      "middlePage",
+      "lastPage",
+    ]);
     });
 
     it("registers the component with its meta", () => {
@@ -512,4 +548,529 @@ describe("EPAccountOrdersProvider", () => {
       );
     });
   });
+});
+
+function pageOf(
+  orders: EpAccountOrder[],
+  offset: number,
+  limit = 10,
+  hasNextPage = false
+): EpAccountOrderPageResult {
+  return {
+    orders,
+    total: orders.length,
+    page: {
+      limit,
+      offset,
+      hasNextPage,
+      hasPreviousPage: offset > 0,
+    },
+  };
+}
+
+describe("EPAccountOrdersProvider pagination", () => {
+  beforeEach(() => {
+    mockAccountOrders.mockReset();
+    mockAccountOrderPage.mockReset();
+    mockAccountAddresses.mockReset();
+    mockUsePlasmicCanvasContext.mockReturnValue(false);
+  });
+
+  it("calls accountOrderPage for a valid page size and not the full history", async () => {
+    mockAccountOrderPage.mockResolvedValue(pageOf([orderA, orderB], 0, 10, true));
+    render(
+      <Harness account={selected("acct-a")} pageSize={10}>
+        <EPAccountOrderList>
+          <span>Row</span>
+        </EPAccountOrderList>
+      </Harness>
+    );
+    await waitFor(() => expect(published().status).toBe("ready"));
+    expect(mockAccountOrders).not.toHaveBeenCalled();
+    expect(mockAccountOrderPage).toHaveBeenCalledTimes(1);
+    expect(mockAccountOrderPage).toHaveBeenCalledWith({ limit: 10, offset: 0 });
+    expect(published().orders.map((order) => order.id)).toEqual(["order-a", "order-b"]);
+    expect(published().total).toBe(2);
+    expect(published().page).toEqual({
+      limit: 10,
+      offset: 0,
+      hasNextPage: true,
+      hasPreviousPage: false,
+    });
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+  });
+
+  it.each([0, 1.5, 101, -1])(
+    "publishes invalid_page_size for %s and does not read orders",
+    async (pageSize) => {
+      render(<Harness account={selected("acct-a")} pageSize={pageSize} />);
+      expect(published().status).toBe("error");
+      expect(published().error?.code).toBe("invalid_page_size");
+      expect(published().page).toBeNull();
+      expect(published().orders).toEqual([]);
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(mockAccountOrders).not.toHaveBeenCalled();
+      expect(mockAccountOrderPage).not.toHaveBeenCalled();
+    }
+  );
+
+  it("moves one window at a time and retries the same offset", async () => {
+    const requests: Array<ReturnType<typeof deferred<EpAccountOrderPageResult>>> = [];
+    mockAccountOrderPage.mockImplementation(() => {
+      const next = deferred<EpAccountOrderPageResult>();
+      requests.push(next);
+      return next.promise;
+    });
+    const ref = React.createRef<any>();
+    const frames: Array<{ status: string; ids: string[]; offset: number | null }> = [];
+    function RecordFrames() {
+      const { useSelector } = require("@plasmicapp/host");
+      const history = useSelector("accountOrders") as AccountOrderHistoryContext;
+      frames.push({
+        status: history.status,
+        ids: history.orders.map((order) => order.id),
+        offset: history.page?.offset ?? null,
+      });
+      return null;
+    }
+    render(
+      <Harness account={selected("acct-a")} pageSize={10} ordersRef={ref}>
+        <RecordFrames />
+      </Harness>
+    );
+    expect(frames.at(-1)).toEqual({ status: "loading", ids: [], offset: 0 });
+    expect(frames.some((frame) => frame.status === "ready")).toBe(false);
+    await act(async () => {
+      requests[0].resolve(pageOf([orderA], 0, 10, true));
+    });
+    await waitFor(() => expect(published().status).toBe("ready"));
+
+    const beforeNext = frames.length;
+    act(() => {
+      ref.current.nextPage();
+      ref.current.nextPage();
+    });
+    expect(frames.slice(beforeNext).every((frame) => frame.ids.length === 0)).toBe(true);
+    expect(frames.slice(beforeNext).some((frame) => frame.status === "ready")).toBe(false);
+    expect(published()).toMatchObject({
+      status: "loading",
+      orders: [],
+      page: { limit: 10, offset: 10, hasNextPage: false, hasPreviousPage: false },
+    });
+    expect(mockAccountOrderPage).toHaveBeenCalledTimes(2);
+    expect(mockAccountOrderPage).toHaveBeenLastCalledWith({ limit: 10, offset: 10 });
+
+    await act(async () => {
+      requests[1].resolve(pageOf([orderB], 10, 10, false));
+    });
+    await waitFor(() => expect(published().orders.map((order) => order.id)).toEqual(["order-b"]));
+
+    const beforeBack = frames.length;
+    act(() => {
+      ref.current.previousPage();
+    });
+    expect(frames.slice(beforeBack).some((frame) => frame.ids.includes("order-a"))).toBe(false);
+    expect(frames.slice(beforeBack).some((frame) => frame.ids.includes("order-b"))).toBe(false);
+    expect(published().status).toBe("loading");
+    expect(published().page?.offset).toBe(0);
+    await act(async () => {
+      requests[2].resolve(pageOf([{ ...orderA, order_number: "fresh" }], 0, 10, true));
+    });
+    await waitFor(() =>
+      expect(published().orders.map((order) => order.order_number)).toEqual(["fresh"])
+    );
+
+    const failure = new Error("Elastic Path rejected the account-order read.");
+    (failure as { code?: string }).code = "account_orders_read_failed";
+    mockAccountOrderPage.mockRejectedValueOnce(failure);
+    act(() => {
+      ref.current.nextPage();
+    });
+    await waitFor(() => expect(published().status).toBe("error"));
+    expect(published().orders).toEqual([]);
+    expect(published().page).toEqual({
+      limit: 10,
+      offset: 10,
+      hasNextPage: false,
+      hasPreviousPage: false,
+    });
+    act(() => {
+      ref.current.nextPage();
+      ref.current.previousPage();
+    });
+    expect(mockAccountOrderPage).toHaveBeenCalledTimes(4);
+    mockAccountOrderPage.mockResolvedValueOnce(pageOf([orderB], 10, 10, false));
+    act(() => {
+      ref.current.retryPage();
+    });
+    await waitFor(() => expect(published().status).toBe("ready"));
+    expect(mockAccountOrderPage).toHaveBeenLastCalledWith({ limit: 10, offset: 10 });
+    expect(published().orders.map((order) => order.id)).toEqual(["order-b"]);
+  });
+
+  it("keeps a later empty window ready and a first empty window empty", async () => {
+    mockAccountOrderPage.mockResolvedValue(pageOf([], 0, 10, false));
+    const ref = React.createRef<any>();
+    const { rerender } = render(
+      <Harness account={selected("acct-a")} pageSize={10} ordersRef={ref} />
+    );
+    await waitFor(() => expect(published().status).toBe("empty"));
+    expect(published().page?.hasNextPage).toBe(false);
+
+    mockAccountOrderPage.mockResolvedValue(pageOf([], 0, 10, true));
+    rerender(<Harness account={selected("acct-b")} pageSize={10} ordersRef={ref} />);
+    await waitFor(() => expect(published().status).toBe("ready"));
+    expect(published().orders).toEqual([]);
+    expect(published().page?.hasNextPage).toBe(true);
+    act(() => {
+      ref.current.nextPage();
+    });
+    expect(mockAccountOrderPage).toHaveBeenLastCalledWith({ limit: 10, offset: 10 });
+  });
+
+  it("keeps a later empty window ready and can return to the previous page", async () => {
+    mockAccountOrderPage
+      .mockResolvedValueOnce(pageOf([orderA], 0, 10, true))
+      .mockResolvedValueOnce(pageOf([], 10, 10, false))
+      .mockResolvedValueOnce(pageOf([orderA], 0, 10, true));
+    const ref = React.createRef<any>();
+    render(<Harness account={selected("acct-a")} pageSize={10} ordersRef={ref} />);
+    await waitFor(() => expect(published().orders.map((order) => order.id)).toEqual(["order-a"]));
+
+    act(() => {
+      ref.current.nextPage();
+    });
+    await waitFor(() => expect(published().page?.offset).toBe(10));
+    expect(published().status).toBe("ready");
+    expect(published().orders).toEqual([]);
+    expect(published().page).toEqual({
+      limit: 10,
+      offset: 10,
+      hasNextPage: false,
+      hasPreviousPage: true,
+    });
+
+    act(() => {
+      ref.current.previousPage();
+    });
+    await waitFor(() =>
+      expect(published().orders.map((order) => order.id)).toEqual(["order-a"])
+    );
+    expect(published().page?.offset).toBe(0);
+    expect(mockAccountOrderPage).toHaveBeenLastCalledWith({ limit: 10, offset: 0 });
+  });
+
+  it.each([0, 101])(
+    "does not retry an invalid page size of %s",
+    async (pageSize) => {
+      const ref = React.createRef<any>();
+      render(
+        <Harness account={selected("acct-a")} pageSize={pageSize} ordersRef={ref} />
+      );
+      expect(published().error?.code).toBe("invalid_page_size");
+      expect(published().page).toBeNull();
+      act(() => {
+        ref.current.retryPage();
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(mockAccountOrders).not.toHaveBeenCalled();
+      expect(mockAccountOrderPage).not.toHaveBeenCalled();
+      expect(published().error?.code).toBe("invalid_page_size");
+    }
+  );
+
+  it.each([
+    ["missing member", undefined, "no_account_member"],
+    ["missing selection", MOCK_ACCOUNT_MEMBER_ONLY, "no_selected_account"],
+  ] as const)(
+    "does not retry a %s error",
+    async (_label, account, code) => {
+      const ref = React.createRef<any>();
+      render(<Harness account={account} pageSize={10} ordersRef={ref} />);
+      await waitFor(() => expect(published().error?.code).toBe(code));
+      expect(published().page).toBeNull();
+      act(() => {
+        ref.current.retryPage();
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(mockAccountOrders).not.toHaveBeenCalled();
+      expect(mockAccountOrderPage).not.toHaveBeenCalled();
+      expect(published().error?.code).toBe(code);
+    }
+  );
+
+  it.each([
+    ["no_session", "No EP session — call /ep/anonymous first to bootstrap."],
+    ["no_account_member", "No account member is signed in."],
+    ["no_selected_account", "No organisation is selected."],
+    [
+      "account_lapsed",
+      "The account credential ran out and cannot be re-minted. Sign in again.",
+    ],
+  ] as const)(
+    "does not retry a server-returned %s error",
+    async (code, message) => {
+      const failure = new Error(message);
+      (failure as { code?: string }).code = code;
+      mockAccountOrderPage.mockRejectedValue(failure);
+      const ref = React.createRef<any>();
+      render(<Harness account={selected("acct-a")} pageSize={10} ordersRef={ref} />);
+      await waitFor(() => expect(published().status).toBe("error"));
+      expect(published().error).toEqual({ code, message });
+      expect(published().orders).toEqual([]);
+      expect(published().page).toBeNull();
+      expect(mockAccountOrderPage).toHaveBeenCalledTimes(1);
+      expect(mockAccountOrderPage).toHaveBeenCalledWith({ limit: 10, offset: 0 });
+      act(() => {
+        ref.current.retryPage();
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(mockAccountOrderPage).toHaveBeenCalledTimes(1);
+      expect(mockAccountOrders).not.toHaveBeenCalled();
+      expect(published().error).toEqual({ code, message });
+      expect(published().orders).toEqual([]);
+      expect(published().page).toBeNull();
+    }
+  );
+
+  it("does not retry an unpaged read", async () => {
+    mockAccountOrders.mockRejectedValue(new Error("Elastic Path was unreachable."));
+    const ref = React.createRef<any>();
+    render(<Harness account={selected("acct-a")} ordersRef={ref} />);
+    await waitFor(() => expect(published().status).toBe("error"));
+    expect(mockAccountOrders).toHaveBeenCalledTimes(1);
+    act(() => {
+      ref.current.retryPage();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockAccountOrders).toHaveBeenCalledTimes(1);
+    expect(mockAccountOrderPage).not.toHaveBeenCalled();
+  });
+
+  it("resets to the first page when the account or page size changes", async () => {
+    const requests: Array<ReturnType<typeof deferred<EpAccountOrderPageResult>>> = [];
+    mockAccountOrderPage.mockImplementation(() => {
+      const next = deferred<EpAccountOrderPageResult>();
+      requests.push(next);
+      return next.promise;
+    });
+    const frames: string[][] = [];
+    function RecordFrames() {
+      const { useSelector } = require("@plasmicapp/host");
+      const history = useSelector("accountOrders") as AccountOrderHistoryContext;
+      frames.push(history.orders.map((order) => order.id));
+      return null;
+    }
+    const { rerender } = render(
+      <Harness account={selected("acct-a")} pageSize={10}>
+        <RecordFrames />
+      </Harness>
+    );
+    await act(async () => {
+      requests[0].resolve(pageOf([orderA], 0, 10, true));
+    });
+    await waitFor(() => expect(published().status).toBe("ready"));
+    const ref = React.createRef<any>();
+    rerender(
+      <Harness account={selected("acct-a")} pageSize={10} ordersRef={ref}>
+        <RecordFrames />
+      </Harness>
+    );
+    act(() => {
+      ref.current.nextPage();
+    });
+    await act(async () => {
+      requests[1].resolve(pageOf([orderB], 10, 10, false));
+    });
+    await waitFor(() => expect(published().orders.map((order) => order.id)).toEqual(["order-b"]));
+
+    const beforeB = frames.length;
+    rerender(
+      <Harness account={selected("acct-b")} pageSize={10} ordersRef={ref}>
+        <RecordFrames />
+      </Harness>
+    );
+    expect(frames.slice(beforeB).some((ids) => ids.includes("order-b"))).toBe(false);
+    expect(frames.slice(beforeB).some((ids) => ids.includes("order-a"))).toBe(false);
+    expect(mockAccountOrderPage).toHaveBeenLastCalledWith({ limit: 10, offset: 0 });
+    await act(async () => {
+      requests[2].resolve(pageOf([{ id: "order-b2" }], 0, 10, false));
+    });
+    await waitFor(() => expect(published().orders.map((order) => order.id)).toEqual(["order-b2"]));
+
+    const beforeSize = frames.length;
+    rerender(
+      <Harness account={selected("acct-b")} pageSize={5} ordersRef={ref}>
+        <RecordFrames />
+      </Harness>
+    );
+    expect(frames.slice(beforeSize).some((ids) => ids.length > 0)).toBe(false);
+    expect(mockAccountOrderPage).toHaveBeenLastCalledWith({ limit: 5, offset: 0 });
+  });
+
+  it("discards a stale page when the page size changes before it returns", async () => {
+    const requests: Array<ReturnType<typeof deferred<EpAccountOrderPageResult>>> = [];
+    mockAccountOrderPage.mockImplementation(() => {
+      const next = deferred<EpAccountOrderPageResult>();
+      requests.push(next);
+      return next.promise;
+    });
+    const { rerender } = render(<Harness account={selected("acct-a")} pageSize={10} />);
+    await waitFor(() => expect(requests).toHaveLength(1));
+    rerender(<Harness account={selected("acct-a")} pageSize={20} />);
+    expect(published().orders).toEqual([]);
+    await act(async () => {
+      requests[0].resolve(pageOf([orderA], 0, 10, true));
+    });
+    expect(published().orders).toEqual([]);
+    await act(async () => {
+      requests[1].resolve(pageOf([orderB], 0, 20, false));
+    });
+    await waitFor(() => expect(published().orders.map((order) => order.id)).toEqual(["order-b"]));
+    expect(published().page?.limit).toBe(20);
+  });
+
+  it("does not refetch when the same selected account is republished", async () => {
+    mockAccountOrderPage.mockResolvedValue(pageOf([orderA], 0, 10, false));
+    const { rerender } = render(<Harness account={selected("acct-a")} pageSize={10} />);
+    await waitFor(() => expect(published().status).toBe("ready"));
+    rerender(
+      <Harness
+        account={selected("acct-a", {
+          selectedAccount: { id: "acct-a", name: "Renamed" },
+        })}
+        pageSize={10}
+      />
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockAccountOrderPage).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let a slow page overwrite a newer one under StrictMode", async () => {
+    const requests: Array<ReturnType<typeof deferred<EpAccountOrderPageResult>>> = [];
+    mockAccountOrderPage.mockImplementation(() => {
+      const next = deferred<EpAccountOrderPageResult>();
+      requests.push(next);
+      return next.promise;
+    });
+    const { unmount } = render(
+      <React.StrictMode>
+        <Harness account={selected("acct-a")} pageSize={10} />
+      </React.StrictMode>
+    );
+    await waitFor(() => expect(requests.length).toBeGreaterThanOrEqual(1));
+    const first = requests[0];
+    const latest = requests[requests.length - 1];
+    await act(async () => {
+      latest.resolve(pageOf([orderB], 0, 10, false));
+    });
+    await waitFor(() => expect(published().orders.map((order) => order.id)).toEqual(["order-b"]));
+    await act(async () => {
+      first.resolve(pageOf([orderA], 0, 10, true));
+    });
+    expect(published().orders.map((order) => order.id)).toEqual(["order-b"]);
+    unmount();
+    await act(async () => {
+      first.resolve(pageOf([orderA], 0, 10, true));
+    });
+  });
+
+  it("uses fixture windows on the canvas and does not read orders", async () => {
+    mockUsePlasmicCanvasContext.mockReturnValue(true);
+    const { rerender } = render(
+      <Harness account={selected("acct-a")} pageSize={2} previewState="firstPage" />
+    );
+    expect(published().page).toEqual({
+      limit: 2,
+      offset: 0,
+      hasNextPage: true,
+      hasPreviousPage: false,
+    });
+    expect(published().orders.map((order) => order.id)).toEqual([
+      "sample-order-1",
+      "sample-order-2",
+    ]);
+    rerender(<Harness account={selected("acct-a")} pageSize={2} previewState="middlePage" />);
+    expect(published().page).toMatchObject({
+      offset: 2,
+      hasNextPage: true,
+      hasPreviousPage: true,
+    });
+    rerender(<Harness account={selected("acct-a")} pageSize={2} previewState="lastPage" />);
+    expect(published().page).toMatchObject({
+      offset: 4,
+      hasNextPage: false,
+      hasPreviousPage: true,
+    });
+    rerender(<Harness account={selected("acct-a")} previewState="firstPage" />);
+    expect(published().page).toBeNull();
+    expect(published().orders).toEqual(MOCK_ACCOUNT_ORDERS);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockAccountOrders).not.toHaveBeenCalled();
+    expect(mockAccountOrderPage).not.toHaveBeenCalled();
+  });
+
+  it.each([0, 101, 1.5])(
+    "publishes invalid_page_size on the canvas for %s and ignores preview state",
+    async (pageSize) => {
+      mockUsePlasmicCanvasContext.mockReturnValue(true);
+      const { rerender } = render(
+        <Harness
+          account={selected("acct-a")}
+          pageSize={pageSize}
+          previewState="withOrders"
+        />
+      );
+      const invalid = {
+        status: "error",
+        orders: [],
+        total: 0,
+        page: null,
+        error: {
+          code: "invalid_page_size",
+          message: "Page size must be an integer from 1 to 100.",
+        },
+      };
+      expect(published()).toEqual(invalid);
+      for (const previewState of [
+        "auto",
+        "firstPage",
+        "middlePage",
+        "lastPage",
+        "empty",
+        "loading",
+        "error",
+        "noSelectedAccount",
+        "lapsed",
+      ]) {
+        rerender(
+          <Harness
+            account={selected("acct-a")}
+            pageSize={pageSize}
+            previewState={previewState}
+          />
+        );
+        expect(published()).toEqual(invalid);
+      }
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(mockAccountOrders).not.toHaveBeenCalled();
+      expect(mockAccountOrderPage).not.toHaveBeenCalled();
+    }
+  );
 });

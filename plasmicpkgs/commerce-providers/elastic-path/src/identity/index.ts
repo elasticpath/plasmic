@@ -2,7 +2,12 @@ export { createEpIdentityClient, epIdentityErrorCode } from "./client";
 export { EP_AUTH_BASE_PATH } from "../ep-auth-base-path";
 export type { EpIdentityClientOptions, EpIdentityError } from "./client";
 export { useEpIdentity } from "./useEpIdentity";
-export { EP_IDENTITY_ROUTES, EP_IDENTITY_OPERATION_NAMES } from "./operations";
+export {
+  EP_IDENTITY_ROUTES,
+  EP_IDENTITY_OPERATION_NAMES,
+  EP_ACCOUNT_ORDER_PAGE_LIMIT_MAX,
+  EP_ACCOUNT_ORDER_PAGE_OFFSET_MAX,
+} from "./operations";
 export type {
   EpAccountAddress,
   EpAccountAddressCreateRequest,
@@ -10,6 +15,9 @@ export type {
   EpAccountAddressUpdateRequest,
   EpAccountAddressResult,
   EpAccountOrder,
+  EpAccountOrderPageInfo,
+  EpAccountOrderPageRequest,
+  EpAccountOrderPageResult,
   EpAccountOrderPayment,
   EpAccountOrderResult,
   EpAccountOrderShipping,

@@ -1,4 +1,8 @@
-import type { EpAccountAddress, EpAccountOrder } from "../identity/operations";
+import type {
+  EpAccountAddress,
+  EpAccountOrder,
+  EpAccountOrderPageInfo,
+} from "../identity/operations";
 
 /**
  * Studio-facing account identity published as `$ctx.account`.
@@ -122,6 +126,8 @@ export type AccountOrderHistoryContext = {
   orders: EpAccountOrder[];
   total: number;
   error: AccountOrderHistoryError | null;
+  /** `null` for a full-history read. A window otherwise. */
+  page: EpAccountOrderPageInfo | null;
 };
 
 export type AccountOrderPreviewState =
@@ -131,4 +137,7 @@ export type AccountOrderPreviewState =
   | "loading"
   | "error"
   | "noSelectedAccount"
-  | "lapsed";
+  | "lapsed"
+  | "firstPage"
+  | "middlePage"
+  | "lastPage";

@@ -228,23 +228,43 @@ and does not call Elastic Path. A rejection is `account_orders_read_failed`
 with HTTP 502; the upstream status and body are not returned. A session
 account id that is not a canonical UUID fails the same way and does not call
 Elastic Path. A page walk the reader can tell is unfinished or inconsistent
-fails instead of returning a short history. Orders created or removed between
+fails instead of returning a short history. A fractional
+`meta.results.total` is ignored, and the missing-total completion rules
+apply to both the full history and one window. Orders created or removed between
 offset pages can still be duplicated or omitted without detection.
 
+`identity.accountOrderPage({ limit, offset })` and
+`POST /ep/account/orders/page` read one window of that same history.
+`limit` is an integer from 1 to 100 and `offset` is an integer from 0 to
+100000. The body contains those two fields and nothing else. The result is
+`{ orders, total, page }`. `total` is the number of sanitized orders kept
+from that window. `page` is `{ limit, offset, hasNextPage, hasPreviousPage }`.
+`hasNextPage` means another raw window may exist. It is not an authorized-order
+count, and there is no `totalPages`. A window can be shorter than `limit`
+when rows fail the ownership check. The reader does not fetch further windows
+to fill it. `EP Account Orders Provider`'s **Page Size** opts into this call.
+Leave it empty and the provider still calls `identity.accountOrders()`. A
+normal Studio button calls the provider's `nextPage`, `previousPage`, or
+`retryPage` ref action. The page index lives in the provider, not the URL.
+
 `EP Account Orders Provider` and `EP Account Order List` display that result.
-The provider sits inside EP Account Provider, calls `identity.accountOrders()`
-with no arguments when an organisation is selected, and publishes
-`$ctx.accountOrders` (`status`, `orders`, `total`, `error`). It does not take
-an account id, token, filter, or page, and it has no reload action and no ref
-actions. The list repeats its children and publishes `$ctx.currentAccountOrder`
-on each row. Bind ordinary text to `id`, `status`, `payment`,
+The provider sits inside EP Account Provider. With Page Size empty it calls
+`identity.accountOrders()` with no arguments when an organisation is selected.
+With a valid Page Size it calls `identity.accountOrderPage()`. It publishes
+`$ctx.accountOrders` (`status`, `orders`, `total`, `error`, `page`). It does
+not take an account id, token, or filter. The list repeats its children and
+publishes `$ctx.currentAccountOrder` on each row, and the list has no ref
+actions. Bind ordinary text to `id`, `status`, `payment`,
 `meta.timestamps.created_at`, or `meta.display_price.with_tax.formatted`. A
 missing value is empty, and
-`$ctx.currentAccountOrder.id` stays available for a detail link. A selected
-account with rows is `ready`;
-an empty result is `empty`. No selected organisation is `no_selected_account`,
-a lapsed organisation is `account_lapsed`, and no account member is
-`no_account_member`. Studio Preview State is canvas only.
+`$ctx.currentAccountOrder.id` stays available for a detail link. A full read
+with rows is `ready`; a full read with no orders is `empty`. No selected
+organisation is `no_selected_account`, a lapsed organisation is
+`account_lapsed`, and no account member is `no_account_member`. An invalid
+Page Size takes precedence over those display errors. Studio Preview State
+is canvas only. With a Page Size, `withOrders` shows the first fixture
+window, and `empty` keeps page metadata so the position stays visible.
+Canvas next, previous, and retry do not read orders.
 
 `EP Account Address Provider`, `EP Account Address List`, and `EP Account
 Address Field` display that result. The provider sits inside EP Account
