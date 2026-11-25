@@ -22,6 +22,7 @@ import {
 import { ImageAssetType } from "@/wab/shared/core/image-asset-type";
 import { CssVarResolver } from "@/wab/shared/core/styles";
 import { Component, Site } from "@/wab/shared/model/classes";
+import { addErrorLogFields } from "@/wab/shared/observability/ErrorLogFields";
 import { computeSerializerSiteContext, exportReactPresentational } from ".";
 
 export function exportSiteComponents(
@@ -129,7 +130,19 @@ export function exportSiteComponents(
   };
 
   const componentBundles = components.map((c) => {
-    return genComponentBundle(c);
+    try {
+      return genComponentBundle(c);
+    } catch (err) {
+      if (err instanceof Error) {
+        err.message = `Codegen failed for component "${c.name}" (${c.uuid}) in project ${projectConfig.projectId}: ${err.message}`;
+        addErrorLogFields(err, {
+          project_id: projectConfig.projectId,
+          component_uuid: c.uuid,
+          component_name: c.name,
+        });
+      }
+      throw err;
+    }
   });
 
   const codeComponentMetas = site.components

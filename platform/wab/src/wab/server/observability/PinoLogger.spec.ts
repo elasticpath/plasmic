@@ -12,6 +12,7 @@ jest.mock("pino", () => {
 });
 
 import { PinoLogger } from "@/wab/server/observability/PinoLogger";
+import { addErrorLogFields } from "@/wab/shared/observability/ErrorLogFields";
 
 describe("PinoLogger", () => {
   beforeEach(() => mockLog.mockClear());
@@ -35,7 +36,7 @@ describe("PinoLogger", () => {
 
     expect(lastEntry()).toMatchObject({
       message: "connection refused",
-      error: { name: "Error", message: "connection refused" },
+      error: { kind: "Error", message: "connection refused" },
     });
     expect(lastEntry().error.stack).toContain("connection refused");
   });
@@ -46,6 +47,20 @@ describe("PinoLogger", () => {
     // The original defect: JSON.stringify(new Error(...)) is "{}", so an
     // un-expanded Error reached the log sink as only {"name":"..."}.
     expect(JSON.stringify(lastEntry())).toContain("connection refused");
+  });
+
+  it("adds an error's log fields to the top level of the entry", () => {
+    const err = new Error("parse failed");
+    addErrorLogFields(err, { project_id: "p1", component_uuid: "c1" });
+
+    new PinoLogger().error("request failed", { err });
+
+    expect(lastEntry()).toMatchObject({
+      message: "request failed",
+      project_id: "p1",
+      component_uuid: "c1",
+      error: { message: "parse failed" },
+    });
   });
 
   it("falls back to the error name when the message is empty", () => {
