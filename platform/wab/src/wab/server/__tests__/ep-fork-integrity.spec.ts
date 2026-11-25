@@ -291,6 +291,45 @@ describe("EP Fork Integrity", () => {
     });
   });
 
+  describe("codegen errors name the project and component (not yet upstream)", () => {
+    it("the codegen error context and failure log modules and tests exist", () => {
+      for (const file of [
+        "platform/wab/src/wab/shared/codegen/react-p/ep-codegen-error-context.ts",
+        "platform/wab/src/wab/shared/codegen/react-p/ep-codegen-error-context.spec.ts",
+        "platform/wab/src/wab/server/workers/ep-codegen-failure-log.ts",
+        "platform/wab/src/wab/server/workers/ep-codegen-failure-log.spec.ts",
+      ]) {
+        expect(fileExists(file)).toBe(true);
+      }
+    });
+
+    it("exportSiteComponents generates each component inside withCodegenErrorContext", () => {
+      expect(
+        readFile(
+          "platform/wab/src/wab/shared/codegen/react-p/gen-site-bundle.ts"
+        )
+      ).toMatch(
+        /withCodegenErrorContext\(projectConfig\.projectId, c, \(\) =>\s*genComponentBundle\(c\)\s*\)/
+      );
+    });
+
+    it("the loader logs a failed project codegen", () => {
+      expect(
+        readFile("platform/wab/src/wab/server/loader/gen-code-bundle.ts")
+      ).toMatch(
+        /await pendingCodegen\.catch\(\s*logCodegenFailure\("loader-codegen-project-failed"/
+      );
+    });
+
+    it("the CLI codegen route logs a failed project codegen", () => {
+      expect(
+        readFile("platform/wab/src/wab/server/routes/projects.ts")
+      ).toMatch(
+        /await pendingCodegen\.catch\(\s*logCodegenFailure\("cli-codegen-project-failed"/
+      );
+    });
+  });
+
   describe("EP admin-only resource creation gates", () => {
     it("AppServer applies adminOnly middleware", () => {
       const appServer = readFile("platform/wab/src/wab/server/AppServer.ts");

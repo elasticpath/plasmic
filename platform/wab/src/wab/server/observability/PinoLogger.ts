@@ -1,4 +1,3 @@
-import { getErrorLogFields } from "@/wab/shared/observability/ErrorLogFields";
 import { Logger } from "@/wab/shared/observability/Logger";
 import {
   mergeProperties,
@@ -104,7 +103,6 @@ export class PinoLogger implements Logger {
     const logEntry = {
       message: text,
       ...(requestId ? { x_request_id: requestId } : {}),
-      ...(err ? getErrorLogFields(err) : {}),
       ...extra,
       ...(err
         ? { error: { kind: err.name, message: err.message, stack: err.stack } }

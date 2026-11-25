@@ -1,6 +1,7 @@
 import { ProjectId } from "@/wab/shared/ApiSchema";
 import { mkVariantSetting } from "@/wab/shared/Variants";
 import { exportProjectConfig } from "@/wab/shared/codegen/react-p";
+import { withCodegenErrorContext } from "@/wab/shared/codegen/react-p/ep-codegen-error-context";
 import { exportSiteComponents } from "@/wab/shared/codegen/react-p/gen-site-bundle";
 import {
   mkCustomCodeOp,
@@ -17,7 +18,6 @@ import { createSite } from "@/wab/shared/core/sites";
 import { initBuiltinActions } from "@/wab/shared/core/states";
 import { deepTrackComponents, mkTplTagX } from "@/wab/shared/core/tpls";
 import { DEVFLAGS } from "@/wab/shared/devflags";
-import { getErrorLogFields } from "@/wab/shared/observability/ErrorLogFields";
 
 const projectId = "testProject" as ProjectId;
 
@@ -98,7 +98,7 @@ function exportSiteWithBrokenServerQuery() {
   return { page, thrown };
 }
 
-describe("exportSiteComponents", () => {
+describe("withCodegenErrorContext", () => {
   it("names the project and component in the error when a component fails", () => {
     const { page, thrown } = exportSiteWithBrokenServerQuery();
 
@@ -108,13 +108,16 @@ describe("exportSiteComponents", () => {
     );
   });
 
-  it("adds the project and component as log fields on the error", () => {
-    const { page, thrown } = exportSiteWithBrokenServerQuery();
+  it("rethrows a thrown value that is not an Error unchanged", () => {
+    let thrown: unknown;
+    try {
+      withCodegenErrorContext("p1", { name: "Card", uuid: "c1" }, () => {
+        throw "not an error";
+      });
+    } catch (err) {
+      thrown = err;
+    }
 
-    expect(getErrorLogFields(thrown as Error)).toEqual({
-      project_id: "testProject",
-      component_uuid: page.uuid,
-      component_name: "BrokenPage",
-    });
+    expect(thrown).toBe("not an error");
   });
 });
