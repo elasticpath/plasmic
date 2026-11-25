@@ -9,7 +9,7 @@ export function logCodegenFailure(
   }
 ) {
   return (err: unknown): never => {
-    logger().error(event, { ...fields, err });
+    logger().warn(event, { ...fields, err });
     throw err;
   };
 }
