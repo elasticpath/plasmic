@@ -57,6 +57,7 @@ import {
 import { broadcastProjectsMessage } from "@/wab/server/socket-util";
 import { TutorialType } from "@/wab/server/tutorialdb/tutorialdb-utils";
 import { withSpan } from "@/wab/server/util/apm-util";
+import { logCodegenFailure } from "@/wab/server/workers/ep-codegen-failure-log";
 import {
   BadRequestError,
   BundleTypeError,
@@ -2618,7 +2619,7 @@ export async function genCode(req: Request, res: Response) {
       : req.body.version;
 
   logger().info(`Performing cli codegen for ${project.id}`);
-  const { output, checksums } = await withSpan("cli-codegen", async () =>
+  const pendingCodegen = withSpan("cli-codegen", async () =>
     req.workerpool.exec("codegen", [
       {
         scheme,
@@ -2631,6 +2632,13 @@ export async function genCode(req: Request, res: Response) {
         indirect: !!req.body.indirect,
       },
     ])
+  );
+  const { output, checksums } = await pendingCodegen.catch(
+    logCodegenFailure("cli-codegen-project-failed", {
+      project_id: project.id,
+      project_version: resolvedVersion,
+      indirect: !!req.body.indirect,
+    })
   );
 
   const metadata = parseMetadata(req.body.metadata);

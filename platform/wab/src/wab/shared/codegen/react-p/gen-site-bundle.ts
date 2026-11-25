@@ -8,6 +8,7 @@ import {
   exportPictureAsset,
 } from "@/wab/shared/codegen/image-assets";
 import { exportCustomFunctionConfig } from "@/wab/shared/codegen/react-p/custom-functions";
+import { withCodegenErrorContext } from "@/wab/shared/codegen/react-p/ep-codegen-error-context";
 import { exportReactPlain } from "@/wab/shared/codegen/react-p/plain";
 import { exportStyleTokens } from "@/wab/shared/codegen/style-tokens";
 import { ExportOpts, ProjectConfig } from "@/wab/shared/codegen/types";
@@ -129,7 +130,9 @@ export function exportSiteComponents(
   };
 
   const componentBundles = components.map((c) => {
-    return genComponentBundle(c);
+    return withCodegenErrorContext(projectConfig.projectId, c, () =>
+      genComponentBundle(c)
+    );
   });
 
   const codeComponentMetas = site.components

@@ -207,6 +207,25 @@ On conflict, keep the EP version. If upstream adds its own compression, check th
 leaves socket traffic and the other backends unencoded before you take it, then delete
 its checks from `ep-fork-integrity.spec.ts`.
 
+**Codegen errors name the project and component (fork-first)**
+
+When codegen fails for a component, the error message starts with the component name,
+component ID and project ID. The loader and the CLI codegen route also log each failed
+project as `loader-codegen-project-failed` or `cli-codegen-project-failed`, with the fields
+`project_id`, `project_version` and `indirect`. Upstream errors do not say which component
+or project failed.
+
+EP changes to preserve:
+- `platform/wab/src/wab/shared/codegen/react-p/gen-site-bundle.ts`: `exportSiteComponents`
+  calls `genComponentBundle(c)` inside `withCodegenErrorContext(projectConfig.projectId, c, ...)`.
+- `platform/wab/src/wab/server/loader/gen-code-bundle.ts`: `codegenProject` awaits
+  `pendingCodegen.catch(logCodegenFailure("loader-codegen-project-failed", ...))`.
+- `platform/wab/src/wab/server/routes/projects.ts`: `genCode` awaits
+  `pendingCodegen.catch(logCodegenFailure("cli-codegen-project-failed", ...))`.
+
+On conflict, keep the EP version. If upstream adds its own context to codegen errors, take
+it and delete these checks from `ep-fork-integrity.spec.ts`.
+
 **Sentry → Datadog (fork-wide)**
 
 EP replaced `Sentry.captureException`/`captureMessage` with
@@ -283,6 +302,10 @@ If upstream somehow conflicts with these, always keep our version entirely:
 | `platform/wab/src/wab/server/loader/next-modules.spec.ts` | Tests for that plugin through `bundleModules` |
 | `platform/wab/src/wab/server/loader/ep-commerce-imports.ts` | Loader-bundle esbuild plugin that imports the EP commerce package one export at a time (#731) |
 | `platform/wab/src/wab/server/loader/ep-commerce-imports.spec.ts` | Tests for that plugin, one of them through `bundleModules` |
+| `platform/wab/src/wab/shared/codegen/react-p/ep-codegen-error-context.ts` | Adds the component and project to the message of a codegen error |
+| `platform/wab/src/wab/shared/codegen/react-p/ep-codegen-error-context.spec.ts` | Tests for it, one of them through `exportSiteComponents` |
+| `platform/wab/src/wab/server/workers/ep-codegen-failure-log.ts` | Logs a failed project codegen with `project_id`, `project_version` and `indirect` |
+| `platform/wab/src/wab/server/workers/ep-codegen-failure-log.spec.ts` | Tests for it |
 | `packages/plasmic-mcp/` | MCP server |
 | `packages/plasmic-mcp-registry/` | MCP registry |
 | `.github/workflows/` | All CI/CD workflows |

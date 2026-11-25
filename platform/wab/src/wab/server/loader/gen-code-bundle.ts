@@ -19,6 +19,7 @@ import {
   CachedCodegenOutputBundle,
   ComponentReference,
 } from "@/wab/server/workers/codegen";
+import { logCodegenFailure } from "@/wab/server/workers/ep-codegen-failure-log";
 import { PlasmicWorkerPool } from "@/wab/server/workers/pool";
 import { ensureDevFlags } from "@/wab/server/workers/worker-utils";
 import { ProjectId } from "@/wab/shared/ApiSchema";
@@ -199,7 +200,7 @@ async function genLoaderCodeBundleForProjectVersions(
     version: string | undefined,
     indirect: boolean
   ) => {
-    const res = await pool.exec("codegen", [
+    const pendingCodegen = pool.exec("codegen", [
       {
         scheme: "blackbox",
         connectionOptions: getConnection().options,
@@ -210,6 +211,13 @@ async function genLoaderCodeBundleForProjectVersions(
         skipChecksums: true,
       },
     ]);
+    const res = await pendingCodegen.catch(
+      logCodegenFailure("loader-codegen-project-failed", {
+        project_id: projectId,
+        project_version: version,
+        indirect,
+      })
+    );
 
     return tuple(res.output, res.componentDeps, res.componentRefs);
   };

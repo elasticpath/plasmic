@@ -35,7 +35,7 @@ describe("PinoLogger", () => {
 
     expect(lastEntry()).toMatchObject({
       message: "connection refused",
-      error: { name: "Error", message: "connection refused" },
+      error: { kind: "Error", message: "connection refused" },
     });
     expect(lastEntry().error.stack).toContain("connection refused");
   });
