@@ -205,6 +205,43 @@ describe("EPAccountOrderDetailProvider", () => {
     expect(publishedData().error).toBeNull();
   });
 
+  it("publishes contact and addresses on the ready order", async () => {
+    const rich = {
+      ...product,
+      contact: { name: "Ada Lovelace", email: "buyer@example.com" },
+      shipping_address: {
+        first_name: "Ada",
+        line_1: "12 Analytical Engines",
+        line_3: "Floor 3",
+      },
+      billing_address: { first_name: "Ada", line_1: "1 Billing Street" },
+    };
+    mockAccountOrder.mockResolvedValue(rich);
+    render(<Harness account={selected("acct-a")} orderId={ORDER} />);
+    await waitFor(() => expect(publishedData().status).toBe("ready"));
+    expect(publishedOrder()?.contact).toEqual(rich.contact);
+    expect(publishedOrder()?.shipping_address).toEqual(rich.shipping_address);
+    expect(publishedOrder()?.shipping_address?.line_3).toBe("Floor 3");
+    expect(publishedOrder()?.billing_address).toEqual(rich.billing_address);
+  });
+
+  it("publishes null instead of the detail while loading, not-found, or error", async () => {
+    const { rerender } = render(
+      <Harness account={selected("acct-a", { isLoading: true })} orderId={ORDER} />
+    );
+    expect(publishedData().status).toBe("loading");
+    expect(publishedOrder()).toBeNull();
+
+    rerender(<Harness account={selected("acct-a")} orderId="not-a-uuid" />);
+    expect(publishedData().status).toBe("not-found");
+    expect(publishedOrder()).toBeNull();
+
+    mockAccountOrder.mockRejectedValue(refusal("account_orders_read_failed", READ_FAILED));
+    rerender(<Harness account={selected("acct-a")} orderId={ORDER} />);
+    await waitFor(() => expect(publishedData().status).toBe("error"));
+    expect(publishedOrder()).toBeNull();
+  });
+
   it("stays ready when the order has no items", async () => {
     const empty = detail(ORDER, []);
     mockAccountOrder.mockResolvedValue(empty);

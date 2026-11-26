@@ -150,6 +150,32 @@ describe("EPAccountOrderItemList", () => {
     expect(screen.getAllByText("Custom item")).toHaveLength(2);
   });
 
+  it("renders no item rows while loading", () => {
+    render(
+      <List data={{ status: "loading", error: null }} order={null}>
+        <span>Custom item</span>
+      </List>
+    );
+    expect(screen.queryAllByRole("listitem")).toEqual([]);
+    expect(screen.queryByText("Custom item")).toBeNull();
+  });
+
+  it("renders no item rows while error", () => {
+    render(
+      <List
+        data={{
+          status: "error",
+          error: { code: "account_orders_read_failed", message: "nope" },
+        }}
+        order={null}
+      >
+        <span>Custom item</span>
+      </List>
+    );
+    expect(screen.queryAllByRole("listitem")).toEqual([]);
+    expect(screen.queryByText("Custom item")).toBeNull();
+  });
+
   it.each(["loading", "not-found", "error"] as const)(
     "renders no rows while %s",
     (status) => {

@@ -654,6 +654,68 @@ describe("reading one account order", () => {
     expectNoSecrets(body);
   });
 
+  it.each([
+    ["empty strings", { name: "", email: "" }],
+    ["whitespace", { name: "  ", email: "\t" }],
+  ])("omits a contact made of %s", async (_label, contact) => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [{ status: 200, body: detailDocument(NORTH, { contact }) }];
+
+    const { res, body } = await readOrder(auth, cookies, { id: ORDER });
+    expect(res.status).toBe(200);
+    expect(body.contact).toBeUndefined();
+    expect(body.shipping_address.line_2).toBe("");
+    expect(body.billing_address.line_2).toBe("");
+  });
+
+  it("keeps the usable contact field and drops the blank one", async () => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [
+      {
+        status: 200,
+        body: detailDocument(NORTH, {
+          contact: { name: "  ", email: "buyer@example.com" },
+        }),
+      },
+    ];
+
+    const { res, body } = await readOrder(auth, cookies, { id: ORDER });
+    expect(res.status).toBe(200);
+    expect(body.contact).toEqual({ email: "buyer@example.com" });
+    expect(body.shipping_address.line_2).toBe("");
+  });
+
+  it("keeps both usable contact fields", async () => {
+    const { auth, cookies } = await signedSelected();
+    orderReplies = [
+      {
+        status: 200,
+        body: detailDocument(NORTH, {
+          contact: { name: "Ada Lovelace", email: "buyer@example.com" },
+          shipping_address: {
+            first_name: "Ada",
+            line_1: "12 Analytical Engines",
+            line_2: "",
+            line_3: "",
+          },
+        }),
+      },
+    ];
+
+    const { res, body } = await readOrder(auth, cookies, { id: ORDER });
+    expect(res.status).toBe(200);
+    expect(body.contact).toEqual({
+      name: "Ada Lovelace",
+      email: "buyer@example.com",
+    });
+    expect(body.shipping_address).toEqual({
+      first_name: "Ada",
+      line_1: "12 Analytical Engines",
+      line_2: "",
+      line_3: "",
+    });
+  });
+
   it("matches an uppercase account relationship", async () => {
     const { auth, cookies } = await signedSelected();
     orderReplies = [

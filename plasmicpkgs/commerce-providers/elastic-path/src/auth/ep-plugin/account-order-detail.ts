@@ -81,8 +81,15 @@ function copyStrings(
 }
 
 function toContact(value: unknown): EpAccountOrderContact | undefined {
-  const copied = copyStrings(value, ["name", "email"]);
-  return copied as EpAccountOrderContact | undefined;
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  const name = usableText(record.name);
+  const email = usableText(record.email);
+  if (!name && !email) return undefined;
+  const contact: EpAccountOrderContact = {};
+  if (name) contact.name = name;
+  if (email) contact.email = email;
+  return contact;
 }
 
 /**
