@@ -377,7 +377,7 @@ describe("reading account order history", () => {
     const plugin = readFileSync(new URL("../ep-plugin.ts", import.meta.url), "utf8");
     const orders = plugin.slice(
       plugin.indexOf("epAccountOrders:"),
-      plugin.indexOf("epAccountAddressCreate:")
+      plugin.indexOf("epAccountOrderRead:")
     );
     expect(orders).toContain("readAccountOrders");
     expect(orders).not.toContain("heldAccountCredential");
@@ -1351,7 +1351,7 @@ describe("reading one account order page", () => {
     const plugin = readFileSync(new URL("../ep-plugin.ts", import.meta.url), "utf8");
     const page = plugin.slice(
       plugin.indexOf("epAccountOrderPage:"),
-      plugin.indexOf("epAccountAddressCreate:")
+      plugin.indexOf("epAccountOrderRead:")
     );
     expect(page).toContain("readAccountOrderPage");
     expect(page).not.toContain("readAccountOrders");

@@ -752,5 +752,66 @@ Lookup table for Plasmic dynamic value bindings (`$ctx.xxx`).
 | `billingToggleData` | EPBillingAddressToggle | `isSameAsShipping` |
 | `promoCodeData` | EPPromoCodeInput | `code`, `state`, `formattedDiscount`, `errorMessage` |
 | `accountOrders` | EPAccountOrdersProvider | `status` (`loading` \| `ready` \| `empty` \| `error`), `orders`, `total`, `error`, `page` (`null` for a full history; otherwise `limit`, `offset`, `hasNextPage`, `hasPreviousPage`). `total` is the sanitized rows in this result. There is no authorized total or page count |
-| `currentAccountOrder` | EPAccountOrderList | `id`, `order_number`, `status`, `payment`, `shipping`, `meta.timestamps.created_at`, `meta.display_price.with_tax.formatted`. Bind a Text element to these paths |
+| `currentAccountOrder` | EPAccountOrderList | Summary inside a history row: `id`, `order_number`, `status`, `payment`, `shipping`, `meta.timestamps.created_at`, `meta.display_price.with_tax.formatted`. Bind a Text element to these paths |
 | `currentAccountOrderIndex` | EPAccountOrderList | `number` |
+| `accountOrderDetailData` | EPAccountOrderDetailProvider | `status` (`loading` \| `ready` \| `not-found` \| `error`), `error` (`{ code, message }` or `null`). `not-found` has `error: null` |
+| `currentAccountOrder` | EPAccountOrderDetailProvider | The `EpAccountOrderDetail` while `accountOrderDetailData.status` is `ready`: the history summary, `contact`, `shipping_address`, `billing_address`, and `items`. `null` in every other state, including when an outer history row published a summary |
+| `currentAccountOrderItem` | EPAccountOrderItemList | `id`, `name`, `sku`, `quantity`, `product_id`, `meta.display_price.with_tax.unit.formatted`, `meta.display_price.with_tax.value.formatted` |
+| `currentAccountOrderItemIndex` | EPAccountOrderItemList | `number` |
+
+---
+
+## 9. Account order detail
+
+These two components read one order. They do not read the history, and they do not create a route. The host application serves the detail URL and passes its route param into the page.
+
+### EPAccountOrderDetailProvider
+
+**EP Account Order Detail Provider.** Registration name `plasmic-commerce-ep-account-order-detail-provider`. Required parent: `plasmic-commerce-ep-account-provider` (EP Account Provider). It does not require EP Account Orders Provider.
+
+Calls `identity.accountOrder({ id })` with the normalized Order ID when an organisation is selected. The browser sends only that id. The server uses the selected account's credential and keeps the order only when `relationships.account.data.id` matches. HTTP 200 alone is not authorization.
+
+**Props:**
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `orderId` | `string` | | Order to read. Bind it to the host route param, `$ctx.params.id` when the segment is named `id`. A blank or non-UUID value publishes `not-found` and does not call |
+| `children` | slot | EP Account Order Item List | Detail content |
+| `previewState` | `"auto" \| "ready" \| "not-found" \| "loading" \| "error" \| "noSelectedAccount" \| "lapsed"` | `"auto"` | Studio only. Published pages ignore it |
+
+**DataProviders:**
+
+- `accountOrderDetailData` — `{ status, error }`. `status` is `loading`, `ready`, `not-found`, or `error`.
+- `currentAccountOrder` — the detail while `ready`, otherwise `null`.
+
+`ready` includes an order whose `items` array is empty. `not-found` covers a bad id, an unknown order, a guest order, and an order owned by another organisation. Gate failures (`no_session`, `no_account_member`, `no_selected_account`, `account_lapsed`) and a generic read failure are `error`.
+
+**Preview State:** `auto` with a blank Order ID shows the sample order that has a product line and a shipping line. `auto` with `11111111-1111-4111-8111-111111111111` shows that sample. `auto` with `22222222-2222-4222-8222-222222222222` shows the itemless sample. Any other nonblank id shows `not-found`. The explicit states replace `auto`. Canvas and interactive preview do not call `identity.accountOrder()`.
+
+**refActions:** `retry()`. Repeats the same order id after `account_orders_read_failed` for the current selected account and a valid id. No-op while loading or ready, for `not-found`, for the four session and account gate codes, and in the Studio canvas and interactive preview. It does not change the selected account. There is no next, previous, or mutation action.
+
+### EPAccountOrderItemList
+
+**EP Account Order Item List.** Registration name `plasmic-commerce-ep-account-order-item-list`. Required parent: `plasmic-commerce-ep-account-order-detail-provider`.
+
+Repeats its children for each item of a ready detail. Loading, not-found, error, and an itemless order render no rows.
+
+**Props:**
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `children` | slot | native Text, literal `Item` | One row. The default is editable plain text, not a dynamic expression. Bind Text elements to `$ctx.currentAccountOrderItem` |
+
+**DataProviders:** `currentAccountOrderItem` and `currentAccountOrderItemIndex` on each row.
+
+Bind name, SKU, quantity, and price with:
+
+- `$ctx.currentAccountOrderItem?.name`
+- `$ctx.currentAccountOrderItem?.sku`
+- `$ctx.currentAccountOrderItem?.quantity`
+- `$ctx.currentAccountOrderItem?.meta?.display_price?.with_tax?.unit?.formatted`
+- `$ctx.currentAccountOrderItem?.meta?.display_price?.with_tax?.value?.formatted`
+
+On the canvas, with no detail provider above it, the list shows the sample lines and does not call. A published not-found or empty detail is not replaced by those samples.
+
+**refActions:** none. The repeated rows have none either. There is no Item Field component.

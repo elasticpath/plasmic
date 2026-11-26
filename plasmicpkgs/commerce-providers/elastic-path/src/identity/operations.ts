@@ -146,6 +146,65 @@ export interface EpAccountOrderPageResult {
   page: EpAccountOrderPageInfo;
 }
 
+/** One order of the selected organisation. The server trims and checks `id`. */
+export interface EpAccountOrderReadRequest {
+  id: string;
+}
+
+/** The order contact. Name and email only. */
+export interface EpAccountOrderContact {
+  name?: string;
+  email?: string;
+}
+
+/**
+ * A shipping or billing address. `phone_number` and `instructions` are copied
+ * from the shipping address only.
+ */
+export interface EpAccountOrderAddress {
+  first_name?: string;
+  last_name?: string;
+  company_name?: string;
+  line_1?: string;
+  line_2?: string;
+  line_3?: string;
+  city?: string;
+  county?: string;
+  region?: string;
+  postcode?: string;
+  country?: string;
+  phone_number?: string;
+  instructions?: string;
+}
+
+/** One line of an order, including a shipping line. */
+export interface EpAccountOrderItem {
+  id: string;
+  name?: string;
+  sku?: string;
+  quantity?: number;
+  product_id?: string;
+  meta?: {
+    display_price?: {
+      with_tax?: {
+        unit?: FormattedPrice;
+        value?: FormattedPrice;
+      };
+    };
+  };
+}
+
+/**
+ * One authorized order. The summary fields are an `EpAccountOrder`. Contact,
+ * addresses, and items are added only after the account relationship matches.
+ */
+export interface EpAccountOrderDetail extends EpAccountOrder {
+  contact?: EpAccountOrderContact;
+  shipping_address?: EpAccountOrderAddress;
+  billing_address?: EpAccountOrderAddress;
+  items: EpAccountOrderItem[];
+}
+
 /** Package guard. Elastic Path's own offset ceiling is not this number. */
 export const EP_ACCOUNT_ORDER_PAGE_OFFSET_MAX = 100_000;
 
@@ -222,6 +281,10 @@ export interface EpIdentityOperations {
     request: EpAccountOrderPageRequest;
     response: EpAccountOrderPageResult;
   };
+  accountOrder: {
+    request: EpAccountOrderReadRequest;
+    response: EpAccountOrderDetail;
+  };
   createAccountAddress: {
     request: EpAccountAddressCreateRequest;
     response: EpAccountAddress;
@@ -267,6 +330,7 @@ export const EP_IDENTITY_ROUTES: {
   accountAddresses: { path: "/ep/account/addresses", method: "POST" },
   accountOrders: { path: "/ep/account/orders", method: "POST" },
   accountOrderPage: { path: "/ep/account/orders/page", method: "POST" },
+  accountOrder: { path: "/ep/account/orders/read", method: "POST" },
   createAccountAddress: {
     path: "/ep/account/addresses/create",
     method: "POST",
