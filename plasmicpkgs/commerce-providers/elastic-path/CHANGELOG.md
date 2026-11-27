@@ -266,6 +266,30 @@ is canvas only. With a Page Size, `withOrders` shows the first fixture
 window, and `empty` keeps page metadata so the position stays visible.
 Canvas next, previous, and retry do not read orders.
 
+`identity.accountOrder({ id })` and `POST /ep/account/orders/read` (#618)
+read one order of the selected organisation. The body is exactly `{ id }`, a
+canonical UUID. The server uses the implicit shopper token and the selected
+account-management token, asks Elastic Path for that order with its items,
+and keeps the order only when `relationships.account.data.id` is the selected
+organisation. HTTP 200 is not enough. An unknown order, a guest order, an
+order owned by another organisation, and a missing or unusable ownership
+relationship all answer `404` `account_order_not_found` with `That order
+could not be found.` Other upstream failures answer `502`
+`account_orders_read_failed` and do not return the upstream body. The result
+is an `EpAccountOrderDetail`: the existing summary plus contact name and
+email, the approved shipping and billing address fields, and the included
+items. A taxed item price stays at `meta.display_price.with_tax.unit` and
+`meta.display_price.with_tax.value`.
+
+`EP Account Order Detail Provider` and `EP Account Order Item List` display
+that result. The provider sits inside EP Account Provider and does not
+require the history provider. Its **Order ID** prop is bound by the designer,
+usually to the host route param, and it calls `identity.accountOrder({ id })`
+with the normalized id. It publishes `$ctx.accountOrderDetailData` and sets
+`$ctx.currentAccountOrder` only while the detail is ready. A normal Studio
+button calls `retry()` after `account_orders_read_failed`. History,
+pagination, and checkout are unchanged. The package does not add a route.
+
 `EP Account Address Provider`, `EP Account Address List`, and `EP Account
 Address Field` display that result. The provider sits inside EP Account
 Provider, calls `identity.accountAddresses()` with no arguments when an

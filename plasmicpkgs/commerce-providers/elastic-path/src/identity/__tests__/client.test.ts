@@ -56,6 +56,7 @@ describe("createEpIdentityClient", () => {
     await client.accountAddresses();
     await client.accountOrders();
     await client.accountOrderPage({ limit: 10, offset: 20 });
+    await client.accountOrder({ id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" });
     await client.createAccountAddress({ line_1: "1 High Street" });
     await client.deleteAccountAddress({ id: "addr-1" });
     await client.updateAccountAddress({ id: "addr-1", city: "Manchester" });
@@ -75,6 +76,7 @@ describe("createEpIdentityClient", () => {
       "/api/ep/ep/account/addresses",
       "/api/ep/ep/account/orders",
       "/api/ep/ep/account/orders/page",
+      "/api/ep/ep/account/orders/read",
       "/api/ep/ep/account/addresses/create",
       "/api/ep/ep/account/addresses/delete",
       "/api/ep/ep/account/addresses/update",
@@ -212,6 +214,22 @@ describe("createEpIdentityClient", () => {
     expect(JSON.parse(stub.calls[0].init.body as string)).toEqual({
       limit: 10,
       offset: 20,
+    });
+    expect(stub.calls[0].init.credentials).toBe("include");
+  });
+
+  it("asks for one order with only its id", async () => {
+    const orderId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const detail = { id: orderId, items: [] };
+    const stub = fetchStub(() => json(detail));
+    const client = createEpIdentityClient({ fetch: stub.fetch });
+
+    await expect(client.accountOrder({ id: orderId })).resolves.toEqual(detail);
+
+    expect(stub.calls[0].init.method).toBe("POST");
+    expect(stub.calls[0].url).toBe("/api/ep/ep/account/orders/read");
+    expect(JSON.parse(stub.calls[0].init.body as string)).toEqual({
+      id: orderId,
     });
     expect(stub.calls[0].init.credentials).toBe("include");
   });

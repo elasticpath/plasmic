@@ -72,6 +72,18 @@ export type AccountMember = {
 };
 
 // @public (undocumented)
+export type AccountOrderDetailData = {
+    status: AccountOrderDetailStatus;
+    error: AccountOrderHistoryError | null;
+};
+
+// @public (undocumented)
+export type AccountOrderDetailPreviewState = "auto" | "ready" | "not-found" | "loading" | "error" | "noSelectedAccount" | "lapsed";
+
+// @public
+export type AccountOrderDetailStatus = "loading" | "ready" | "not-found" | "error";
+
+// @public (undocumented)
 export type AccountOrderHistoryContext = {
     status: AccountOrderHistoryStatus;
     orders: EpAccountOrder[];
@@ -760,6 +772,97 @@ export interface EpAccountOrder {
     status?: EpAccountOrderStatus;
 }
 
+// @public
+export interface EpAccountOrderAddress {
+    // (undocumented)
+    city?: string;
+    // (undocumented)
+    company_name?: string;
+    // (undocumented)
+    country?: string;
+    // (undocumented)
+    county?: string;
+    // (undocumented)
+    first_name?: string;
+    // (undocumented)
+    instructions?: string;
+    // (undocumented)
+    last_name?: string;
+    // (undocumented)
+    line_1?: string;
+    // (undocumented)
+    line_2?: string;
+    // (undocumented)
+    line_3?: string;
+    // (undocumented)
+    phone_number?: string;
+    // (undocumented)
+    postcode?: string;
+    // (undocumented)
+    region?: string;
+}
+
+// @public
+export interface EpAccountOrderContact {
+    // (undocumented)
+    email?: string;
+    // (undocumented)
+    name?: string;
+}
+
+// @public
+export interface EpAccountOrderDetail extends EpAccountOrder {
+    // (undocumented)
+    billing_address?: EpAccountOrderAddress;
+    // (undocumented)
+    contact?: EpAccountOrderContact;
+    // (undocumented)
+    items: EpAccountOrderItem[];
+    // (undocumented)
+    shipping_address?: EpAccountOrderAddress;
+}
+
+// @public (undocumented)
+export const EPAccountOrderDetailProvider: React_2.ForwardRefExoticComponent<EPAccountOrderDetailProviderProps & React_2.RefAttributes<EPAccountOrderDetailProviderActions>>;
+
+// @public (undocumented)
+export interface EPAccountOrderDetailProviderActions {
+    // (undocumented)
+    retry(): void;
+}
+
+// @public (undocumented)
+export const epAccountOrderDetailProviderMeta: CodeComponentMeta<EPAccountOrderDetailProviderProps>;
+
+// @public
+export interface EpAccountOrderItem {
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    meta?: {
+        display_price?: {
+            with_tax?: {
+                unit?: FormattedPrice;
+                value?: FormattedPrice;
+            };
+        };
+    };
+    // (undocumented)
+    name?: string;
+    // (undocumented)
+    product_id?: string;
+    // (undocumented)
+    quantity?: number;
+    // (undocumented)
+    sku?: string;
+}
+
+// @public (undocumented)
+export function EPAccountOrderItemList(props: EPAccountOrderItemListProps): React_2.JSX.Element | null;
+
+// @public (undocumented)
+export const epAccountOrderItemListMeta: CodeComponentMeta<EPAccountOrderItemListProps>;
+
 // @public (undocumented)
 export function EPAccountOrderList(props: EPAccountOrderListProps): React_2.JSX.Element | null;
 
@@ -798,6 +901,12 @@ export interface EpAccountOrderPageResult {
 
 // @public
 export type EpAccountOrderPayment = "authorized" | "paid" | "unpaid" | "refunded" | "partially_paid" | "partially_authorized";
+
+// @public
+export interface EpAccountOrderReadRequest {
+    // (undocumented)
+    id: string;
+}
 
 // @public
 export interface EpAccountOrderResult {
@@ -1319,6 +1428,11 @@ export interface EpIdentityOperations {
     accountAddresses: {
         request: void;
         response: EpAccountAddressResult;
+    };
+    // (undocumented)
+    accountOrder: {
+        request: EpAccountOrderReadRequest;
+        response: EpAccountOrderDetail;
     };
     // (undocumented)
     accountOrderPage: {
@@ -2044,6 +2158,12 @@ export function registerEPAccountGate(loader?: Registerable, customMeta?: CodeCo
 
 // @public (undocumented)
 export function registerEPAccountLoginFormProvider(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountLoginFormProviderProps>): void;
+
+// @public (undocumented)
+export function registerEPAccountOrderDetailProvider(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountOrderDetailProviderProps>): void;
+
+// @public (undocumented)
+export function registerEPAccountOrderItemList(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountOrderItemListProps>): void;
 
 // @public (undocumented)
 export function registerEPAccountOrderList(loader?: Registerable, customMeta?: CodeComponentMeta<EPAccountOrderListProps>): void;

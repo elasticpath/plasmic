@@ -17,7 +17,11 @@ import type {
   StockLocationData,
   ProductStockSummary,
 } from "../stock/StockContext";
-import type { EpAccountAddress, EpAccountOrder } from "../identity/operations";
+import type {
+  EpAccountAddress,
+  EpAccountOrder,
+  EpAccountOrderDetail,
+} from "../identity/operations";
 import type {
   AccountContext,
   AccountMember,
@@ -758,6 +762,97 @@ export const MOCK_ACCOUNT_ORDERS: EpAccountOrder[] = [
       },
     },
   },
+];
+
+/** One sample order with a product line and a shipping line. Canvas only. */
+export const MOCK_ACCOUNT_ORDER_DETAIL: EpAccountOrderDetail = {
+  id: "11111111-1111-4111-8111-111111111111",
+  order_number: "1001",
+  status: "complete",
+  payment: "paid",
+  shipping: "fulfilled",
+  meta: {
+    timestamps: { created_at: "2024-03-01T12:00:00Z" },
+    display_price: {
+      with_tax: {
+        amount: 4999,
+        currency: "USD",
+        formatted: "$49.99",
+        float_price: 49.99,
+      },
+    },
+  },
+  contact: { name: "Sample Buyer", email: "sample.buyer@example.com" },
+  shipping_address: {
+    first_name: "Sample",
+    last_name: "Buyer",
+    line_1: "1 Sample Street",
+    line_2: "",
+    line_3: "Floor 2",
+    city: "London",
+    postcode: "SW1A 1AA",
+    country: "GB",
+    phone_number: "020 7946 0000",
+    instructions: "Reception desk",
+  },
+  billing_address: {
+    first_name: "Sample",
+    last_name: "Buyer",
+    line_1: "1 Sample Street",
+    line_2: "",
+    line_3: "Floor 2",
+    city: "London",
+    postcode: "SW1A 1AA",
+    country: "GB",
+  },
+  items: [
+    {
+      id: "sample-item-1",
+      name: "Sample Deck Shoe",
+      sku: "sample-deck-shoe",
+      quantity: 2,
+      product_id: "sample-product-1",
+      meta: {
+        display_price: {
+          with_tax: {
+            unit: {
+              amount: 2000,
+              currency: "USD",
+              formatted: "$20.00",
+              float_price: 20,
+            },
+            value: {
+              amount: 4000,
+              currency: "USD",
+              formatted: "$40.00",
+              float_price: 40,
+            },
+          },
+        },
+      },
+    },
+    {
+      id: "sample-item-shipping",
+      name: "Sample Shipping",
+      sku: "__ep_shipping",
+      quantity: 1,
+    },
+  ],
+};
+
+/** A sample order that succeeded with no lines. Canvas only. */
+export const MOCK_ACCOUNT_ORDER_DETAIL_ITEMLESS: EpAccountOrderDetail = {
+  id: "22222222-2222-4222-8222-222222222222",
+  order_number: "1002",
+  status: "complete",
+  payment: "paid",
+  shipping: "fulfilled",
+  items: [],
+};
+
+export const MOCK_ACCOUNT_ORDER_DETAILS: EpAccountOrderDetail[] = [
+  MOCK_ACCOUNT_ORDER_DETAIL,
+  MOCK_ACCOUNT_ORDER_DETAIL_ITEMLESS,
 ];
 
 export const MOCK_ACCOUNT_ADDRESSES: EpAccountAddress[] = [

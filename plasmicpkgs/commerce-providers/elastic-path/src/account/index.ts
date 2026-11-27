@@ -85,6 +85,17 @@ export {
   registerEPAccountOrderList,
   epAccountOrderListMeta,
 } from "./EPAccountOrderList";
+export {
+  EPAccountOrderDetailProvider,
+  registerEPAccountOrderDetailProvider,
+  epAccountOrderDetailProviderMeta,
+} from "./EPAccountOrderDetailProvider";
+export type { EPAccountOrderDetailProviderActions } from "./EPAccountOrderDetailProvider";
+export {
+  EPAccountOrderItemList,
+  registerEPAccountOrderItemList,
+  epAccountOrderItemListMeta,
+} from "./EPAccountOrderItemList";
 export type {
   AccountContext,
   AccountState,
@@ -105,4 +116,7 @@ export type {
   AccountOrderHistoryError,
   AccountOrderHistoryContext,
   AccountOrderPreviewState,
+  AccountOrderDetailStatus,
+  AccountOrderDetailData,
+  AccountOrderDetailPreviewState,
 } from "./types";

@@ -175,7 +175,25 @@ approved Elastic Path paths, not a raw order document: `created_at` stays at
 the server. Orders come from the store-wide order collection, so a row is kept
 only when that account relationship matches. A saved address is read from the
 organisation's own address path, which is already account-scoped.
-_Avoid_: customer order, order detail (a single order is a separate read)
+_Avoid_: customer order
+
+**Account order detail**:
+One order of the selected organisation, read by `identity.accountOrder({ id })`.
+The browser sends only that id, after it has been checked as a canonical UUID.
+The server attaches the implicit shopper token and the account-management
+token for the selected account. The order id is not the access boundary. A
+successful Elastic Path response is kept only when
+`relationships.account.data.id` is that account. An unknown id, a guest order
+with no account relationship, an order owned by another account, and a missing
+or unusable relationship all become the same not-found result, with no order
+body. The kept result extends the sanitized account-order summary with
+contact, shipping and billing address fields, and the included items. Item
+prices stay on Elastic Path's nested paths,
+`meta.display_price.with_tax.unit` and `meta.display_price.with_tax.value`.
+EP Account Order Detail Provider performs this read from its own Order ID. It
+does not wait for account order history to load, and it does not call the
+history or page operations.
+_Avoid_: checkout order, raw order document
 
 **Account roster**:
 The member's accounts as `{id, name}`, derived from the token response,

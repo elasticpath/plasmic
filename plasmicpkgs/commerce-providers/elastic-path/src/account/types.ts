@@ -141,3 +141,24 @@ export type AccountOrderPreviewState =
   | "firstPage"
   | "middlePage"
   | "lastPage";
+
+/** `$ctx.accountOrderDetailData.status`. */
+export type AccountOrderDetailStatus =
+  | "loading"
+  | "ready"
+  | "not-found"
+  | "error";
+
+export type AccountOrderDetailData = {
+  status: AccountOrderDetailStatus;
+  error: AccountOrderHistoryError | null;
+};
+
+export type AccountOrderDetailPreviewState =
+  | "auto"
+  | "ready"
+  | "not-found"
+  | "loading"
+  | "error"
+  | "noSelectedAccount"
+  | "lapsed";

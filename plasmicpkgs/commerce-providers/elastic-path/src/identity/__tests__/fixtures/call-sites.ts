@@ -80,6 +80,22 @@ identity.accountOrderPage({ limit: 10, offset: 0, include: "items" });
 // @ts-expect-error SDK options stay on the server
 identity.accountOrderPage({ limit: 10, offset: 0, client: {} });
 
+identity.accountOrder({ id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" });
+// @ts-expect-error the order id is required
+identity.accountOrder();
+// @ts-expect-error the server chooses the account
+identity.accountOrder({ id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", accountId: "acct-1" });
+// @ts-expect-error tokens stay on the server
+identity.accountOrder({ id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", token: "secret" });
+// @ts-expect-error account tokens stay on the server
+identity.accountOrder({ id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", accountToken: "secret" });
+// @ts-expect-error filters stay on the server
+identity.accountOrder({ id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", filter: "eq(id,order-1)" });
+// @ts-expect-error include stays on the server
+identity.accountOrder({ id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", include: "items" });
+// @ts-expect-error SDK options stay on the server
+identity.accountOrder({ id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", client: {} });
+
 identity.createAccountAddress({ line_1: "1 High Street", country: "GB" });
 // @ts-expect-error the address object is required
 identity.createAccountAddress();
