@@ -192,6 +192,35 @@ removed component or a removed published prop. All are empty instead.
 
 ### Added
 
+`EPSearchTypeahead` ("EP Search Typeahead") is a search box for a site header
+that lists a few matching products as the shopper types, and goes to the search
+page on submit. It calls `ep.multiSearch` itself and loads no InstantSearch
+(#731). EP Search Autocomplete runs inside EP Catalog Search Provider, so a
+header typeahead built from it puts InstantSearch on every page. Bundled alone
+with the loader's settings, EP Search Typeahead is about 63 KB minified, most
+of it the shopper SDK client that other components share. A test fails if
+InstantSearch enters its module graph.
+
+- It searches 300 ms after the last keystroke, from 2 characters, for up to 5
+  products, and renders only the answer to the latest query. All three are
+  props. EP Search Autocomplete is unchanged: #724 reports that it searches on
+  every keystroke.
+- Each hit renders the Hit Card slot with the same `currentProduct`,
+  `currentHit` and `currentProductIndex` as `EPSearchHits`, so one card layout
+  serves both. Choosing a hit follows the card's first link, or goes to
+  `currentHit.path` when the card has no link.
+- Loading Content, Empty Content and Error Content slots cover the states
+  between. `$ctx.searchTypeaheadData` publishes `query`, `status`, `isOpen`,
+  `hitCount` and `searchPageUrl`.
+- The input is an ARIA combobox over a listbox of hits. The arrow keys move
+  through the hits, Enter opens the active one, and Escape or moving focus away
+  closes the list.
+- Submitting goes to `/search?search[query]=…`, which EP Catalog Search
+  Provider reads with its default Index Name. Search Page Path and Query
+  Parameter change it.
+- On the Studio canvas it never searches, and shows sample products while it is
+  selected.
+
 Every root export is also its own entry point, named after the export, such
 as `@elasticpath/plasmic-ep-commerce-elastic-path/EPProductGrid`.
 `./exports-map.json` lists them all. A loader that rewrites root imports into

@@ -92,6 +92,37 @@ ul[data-ep-autocomplete-list] {
   padding: 8px 12px;
   cursor: pointer;
 }
+:where([data-ep-search-typeahead]) {
+  position: relative;
+}
+:where([data-ep-search-typeahead-panel]) {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  margin-top: 4px;
+  max-height: 60vh;
+  overflow-y: auto;
+  background: #ffffff;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  padding: 4px 0;
+}
+/* Not :where(), so a page-wide ul rule cannot override the reset. */
+ul[data-ep-search-typeahead-hits] {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+:where([data-ep-search-typeahead-hit]) {
+  cursor: pointer;
+}
+:where([data-ep-search-typeahead-hit]:hover),
+:where([data-ep-search-typeahead-hit][aria-selected="true"]) {
+  background: #f5f5f5;
+}
 @media (max-width: 680px) {
   :where([data-ep-autocomplete-panel]) {
     position: fixed;

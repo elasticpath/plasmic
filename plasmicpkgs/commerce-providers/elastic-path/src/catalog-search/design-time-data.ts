@@ -422,3 +422,13 @@ export interface CurrentSuggestion {
   source: string;
   query: string;
 }
+
+export type SearchTypeaheadStatus = "idle" | "loading" | "success" | "error";
+
+export interface SearchTypeaheadData {
+  query: string;
+  status: SearchTypeaheadStatus;
+  isOpen: boolean;
+  hitCount: number;
+  searchPageUrl: string;
+}
