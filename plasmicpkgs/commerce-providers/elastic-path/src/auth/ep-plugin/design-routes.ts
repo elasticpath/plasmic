@@ -1,15 +1,21 @@
+import type { EpDesignFnName } from "../../ep-server-functions/design-fn-names";
+import {
+  epDesignFnNotServedMessage,
+  isEpDesignFnName,
+} from "../../ep-server-functions/design-fn-names";
 import { epGetProduct } from "../../ep-server-functions/getProduct";
 import { epGetProductList } from "../../ep-server-functions/getProductList";
 import { epGetProductPage } from "../../ep-server-functions/getProductPage";
 import { epGetRelatedProducts } from "../../ep-server-functions/getRelatedProducts";
 import { epGetSearchAttributes } from "../../ep-server-functions/getSearchAttributes";
-import {
-  epDesignFnNotServedMessage,
-  isEpDesignFnName,
-} from "../../ep-server-functions/design-fn-names";
-import type { EpDesignFnName } from "../../ep-server-functions/design-fn-names";
 import { withEpSession } from "../../ep-server-functions/session-context";
+import {
+  isAllowedEpHost,
+  reportRejectedEpHost,
+  resolveHostAllowlist,
+} from "../host-allowlist";
 import type { EpAuth } from "./create-ep-auth-better";
+import type { EpPluginOptions } from "./ep-plugin";
 import { mintImplicitEpToken, resolveEpStore } from "./implicit-token";
 import { isTrustedDevEnvironment } from "./production-guard";
 
@@ -35,6 +41,12 @@ const CORS_HEADERS: Record<string, string> = {
 
 interface DesignRouteContext {
   params: Promise<{ fn?: string }>;
+}
+
+export interface EpDesignStore
+  extends Required<Pick<EpPluginOptions, "resolveConfig">> {
+  /** Extends the default allow-list, as `createEpAuth`'s option does. */
+  hostAllowlist?: readonly string[];
 }
 
 export interface EpDesignRoutes {
@@ -97,8 +109,50 @@ function jsonResponse(body: unknown, status: number): Response {
   });
 }
 
-export function createEpDesignRoutes(epAuth: EpAuth): EpDesignRoutes {
-  const store = epAuth.config;
+const LABEL = "createEpDesignRoutes";
+
+type StoreResolver = () => Promise<{ clientId: string; host: string }>;
+
+function toStoreResolver(source: EpAuth | EpDesignStore): StoreResolver {
+  if ("config" in source) {
+    const config = source.config;
+    return async () => {
+      const store = await resolveEpStore(config, `${LABEL}.resolveConfig`);
+      if (!store.clientId || !store.host) {
+        throw new Error(
+          `${LABEL}: no clientId/host to mint an implicit token with`
+        );
+      }
+      return store;
+    };
+  }
+  const hostAllowlist = resolveHostAllowlist(source.hostAllowlist);
+  const { resolveConfig } = source;
+  return async () => {
+    const resolved = await resolveConfig({ hostAllowlist });
+    if (!resolved?.clientId || !resolved.host) {
+      throw new Error(
+        `${LABEL}: resolveConfig named no store (it needs both a clientId and a host)`
+      );
+    }
+    if (!isAllowedEpHost(resolved.host, hostAllowlist)) {
+      reportRejectedEpHost(
+        resolved.host,
+        `${LABEL}.resolveConfig`,
+        hostAllowlist
+      );
+      throw new Error(
+        `${LABEL}: EP API host "${resolved.host}" is not on the EP host allow-list`
+      );
+    }
+    return { clientId: resolved.clientId, host: resolved.host };
+  };
+}
+
+export function createEpDesignRoutes(
+  source: EpAuth | EpDesignStore
+): EpDesignRoutes {
+  const resolveStore = toStoreResolver(source);
 
   return {
     options() {
@@ -126,15 +180,7 @@ export function createEpDesignRoutes(epAuth: EpAuth): EpDesignRoutes {
       >;
 
       try {
-        const { clientId, host } = await resolveEpStore(
-          store,
-          "createEpDesignRoutes.resolveConfig"
-        );
-        if (!clientId || !host) {
-          throw new Error(
-            "createEpDesignRoutes: no clientId/host to mint an implicit token with"
-          );
-        }
+        const { clientId, host } = await resolveStore();
         const accessToken = await implicitTokenFor(host, clientId);
         const result = await withEpSession(
           {
